@@ -1,0 +1,17 @@
+backend/firebase-service-account.json
+firebase-service-account.json
+
+# Real environment files hold live credentials (Stripe keys, DB passwords) and
+# must never be committed. Only the .env.example templates are tracked.
+.env
+.env.*
+!.env.example
+# Compose configuration template. Carries no real values — only variable names,
+# defaults and comments — and must be committed or nobody else can bring the
+# stack up. Without this negation the `.env.*` rule above silently swallows it.
+!.env.docker.example
+backend/.env
+backend/firebase-service-account.json
+.env
+.env.*
+*service-account*.json
