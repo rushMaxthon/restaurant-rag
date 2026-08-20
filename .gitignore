@@ -1,17 +1,23 @@
-backend/firebase-service-account.json
-firebase-service-account.json
-
-# Real environment files hold live credentials (Stripe keys, DB passwords) and
-# must never be committed. Only the .env.example templates are tracked.
-.env
-.env.*
-!.env.example
-# Compose configuration template. Carries no real values — only variable names,
-# defaults and comments — and must be committed or nobody else can bring the
-# stack up. Without this negation the `.env.*` rule above silently swallows it.
-!.env.docker.example
-backend/.env
-backend/firebase-service-account.json
-.env
-.env.*
+# --- credentials -------------------------------------------------------------
+# Service-account JSON grants real project access. Unanchored, so it matches at
+# any depth: firebase-service-account.json, backend/firebase-service-account.json, ...
 *service-account*.json
+
+# --- environment files ---------------------------------------------------------
+# Real environment files hold live credentials (Stripe keys, DB passwords, API
+# tokens) and must NEVER be committed. These patterns contain no slash, so git
+# applies them at EVERY depth — .env, backend/.env, mobile/.env, .env.production,
+# .env.local and anything else beginning with `.env.` are all covered.
+.env
+.env.*
+
+# Only the templates are exempt. They carry variable names, defaults and
+# comments — never a real value. Without these negations the `.env.*` rule above
+# silently swallows them and nobody else can bring the stack up.
+!.env.example
+!.env.docker.example
+
+# React Native's versioned Xcode shim (mobile/ios/.xcode.env) holds a NODE_BINARY
+# path and no secrets, so it stays tracked — the rules above never match it. Its
+# developer-specific counterpart must not be committed.
+.xcode.env.local
