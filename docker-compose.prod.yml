@@ -1,0 +1,199 @@
+# ===========================================================================
+# Production overrides. NOT applied automatically — select it explicitly:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from the base topology:
+#   * no source bind mounts anywhere — the image is the artefact
+#   * no published ports except nginx 80/443
+#   * DEBUG off, ENVIRONMENT=production
+#   * TLS terminated at the edge, domains rendered from the environment
+#   * log rotation and memory limits set
+#
+# This audit does not run any of it. Certificates and DNS must exist first;
+# see nginx/conf.d/prod/default.conf.template.
+# ===========================================================================
+
+# Anchors must be defined before they are referenced, so both live at the top.
+
+x-logging: &default-logging
+  # Without this, container logs grow until the disk fills. That is a genuine
+  # outage mode for a long-running deployment, not a tidiness concern.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Merged over the base x-backend-env by compose's mapping merge, so only the
+# keys that differ in production are listed.
+x-backend-env-prod: &backend-env-prod
+  ENVIRONMENT: production
+  DEBUG: "false"
+
+# G9 — immutable image tags in production.
+#
+# The base file names every image `…:${IMAGE_TAG:-local}`. `local` is a mutable
+# tag: it cannot be pulled meaningfully, two servers can disagree about what it
+# points at, and there is nothing to roll back TO. Compose performs variable
+# substitution across the whole document, so this single `:?` reference is
+# enough to make IMAGE_TAG mandatory for every production command — the `:-local`
+# defaults in the base file then resolve to whatever is supplied here.
+#
+# Use something immutable and traceable: a git SHA, or a release version.
+#   IMAGE_TAG=$(git rev-parse --short HEAD) docker compose -f … up -d
+x-require-immutable-image-tag: "${IMAGE_TAG:?IMAGE_TAG must be set to an immutable tag in production (e.g. a git SHA) so a deploy can be rolled back}"
+
+# G2 — variables whose BASE-FILE DEFAULTS produce a stack that starts cleanly and
+# behaves wrongly. Each of these is a silent failure, which is the worst kind:
+#
+#   BACKEND_CORS_ORIGINS   defaults to localhost → production frontends are
+#                          blocked by the browser while server logs stay clean
+#   STRIPE_*_KEY           default to `_mock`    → `stripe_is_configured` is
+#                          false, cards silently unavailable, COD only
+#   STRIPE_WEBHOOK_SECRET  defaults to empty     → every webhook is rejected and
+#                          no card payment can ever be confirmed
+#
+# Compose substitutes across the whole document, so naming them here makes them
+# mandatory for every production command without overriding any service's own
+# environment mapping. The values still flow to the containers through the base
+# file's x-backend-env anchor.
+x-require-cors-origins: "${BACKEND_CORS_ORIGINS:?set the exact production origins, e.g. https://admin.example.com,https://app.example.com}"
+x-require-stripe-secret-key: "${STRIPE_SECRET_KEY:?set the live Stripe secret key}"
+x-require-stripe-publishable-key: "${STRIPE_PUBLISHABLE_KEY:?set the live Stripe publishable key}"
+x-require-stripe-webhook-secret: "${STRIPE_WEBHOOK_SECRET:?set the Stripe webhook signing secret — without it no card payment can ever be confirmed}"
+
+services:
+
+  postgres:
+    logging: *default-logging
+    # No published ports. Reach it with `docker compose exec postgres psql`, or
+    # over an SSH tunnel — never by opening 5432 to the network.
+    ports: !reset []
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?set in .env}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env}"
+      POSTGRES_DB: "${POSTGRES_DB:?set in .env}"
+
+  redis:
+    logging: *default-logging
+    ports: !reset []
+
+  # KEPT in production, deliberately. Even with generation on Ollama Cloud this
+  # container is still required: Cloud serves no embedding route, so menu
+  # embeddings and customer RAG retrieval have nowhere else to run. Removing it
+  # would break pgvector retrieval, not merely slow it down.
+  #
+  # If generation moves to Cloud, this host only ever serves nomic-embed-text —
+  # a 274MB model — so the memory limits below can be cut substantially.
+  ollama:
+    logging: *default-logging
+    ports: !reset []
+    # The audit measured the model host swapping (12.2GB of a 13.3GB swap file)
+    # because inference shared RAM with everything else. An explicit reservation
+    # is what stops that recurring on a shared box. Size it above the model:
+    # qwen3:8b at Q4_K_M needs ~6GB resident plus KV cache.
+    mem_limit: ${OLLAMA_MEM_LIMIT:-10g}
+    mem_reservation: ${OLLAMA_MEM_RESERVATION:-8g}
+
+  migrate:
+    logging: *default-logging
+    volumes: !reset []
+    environment:
+      <<: *backend-env-prod
+
+  api:
+    logging: *default-logging
+    volumes: !reset []
+    # Drops the dev override's uvicorn --reload and falls back to the image CMD:
+    # gunicorn supervising UvicornWorkers.
+    command: !reset null
+    ports: !reset []
+    environment:
+      <<: *backend-env-prod
+    mem_limit: ${API_MEM_LIMIT:-2g}
+
+  worker-default:
+    logging: *default-logging
+    volumes: !reset []
+    environment:
+      <<: *backend-env-prod
+
+  worker-analytics:
+    logging: *default-logging
+    volumes: !reset []
+    environment:
+      <<: *backend-env-prod
+
+  worker-embeddings:
+    logging: *default-logging
+    volumes: !reset []
+    environment:
+      <<: *backend-env-prod
+
+  worker-notifications:
+    logging: *default-logging
+    volumes: !reset []
+    environment:
+      <<: *backend-env-prod
+
+  beat:
+    logging: *default-logging
+    volumes:
+      # Keep only the schedule volume; the dev source mount is dropped.
+      - beat_schedule:/var/run/celery
+    environment:
+      <<: *backend-env-prod
+
+  frontend-admin:
+    logging: *default-logging
+    build:
+      args:
+        # Cross-origin in production, so BACKEND_CORS_ORIGINS must list the
+        # admin origin exactly. See the note in the nginx prod template about
+        # serving the API same-origin instead, which avoids CORS entirely.
+        VITE_API_BASE_URL: "${ADMIN_API_BASE_URL:?e.g. https://api.example.com/api}"
+
+  frontend-customer:
+    logging: *default-logging
+    build:
+      args:
+        VITE_API_BASE_URL: "${CUSTOMER_API_BASE_URL:?e.g. https://api.example.com/api}"
+
+  nginx:
+    logging: *default-logging
+    environment:
+      # Substituted into the server blocks by the nginx image's envsubst
+      # entrypoint, which processes /etc/nginx/templates/*.template on start.
+      API_DOMAIN: "${API_DOMAIN:?e.g. api.example.com}"
+      ADMIN_DOMAIN: "${ADMIN_DOMAIN:?e.g. admin.example.com}"
+      APP_DOMAIN: "${APP_DOMAIN:?e.g. app.example.com}"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/conf.d/prod:/etc/nginx/templates:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    ports:
+      # The only ports published anywhere in the production stack.
+      - "80:80"
+      - "443:443"
+
+  # Certificate issue and renewal. Behind a profile, so it never starts as part
+  # of a normal `up` — it is invoked explicitly at deploy time:
+  #
+  #   docker compose --profile certs run --rm certbot certonly --webroot \
+  #     -w /var/www/certbot -d "$API_DOMAIN" -d "$ADMIN_DOMAIN" -d "$APP_DOMAIN" \
+  #     --email "$ACME_EMAIL" --agree-tos --no-eff-email
+  #   docker compose --profile certs run --rm certbot renew
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["certs"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    networks:
+      - edge
+
+volumes:
+  letsencrypt:
+  certbot_webroot:

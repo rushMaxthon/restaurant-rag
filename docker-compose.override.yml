@@ -1,0 +1,94 @@
+# ===========================================================================
+# Development overrides. Applied automatically by `docker compose up`.
+#
+# Differences from the base topology, all of them deliberate:
+#   * the API runs uvicorn --reload with the source bind-mounted
+#   * ports are published on 127.0.0.1 so nothing is reachable off this machine
+#   * DEBUG is on and /docs is available
+#   * fewer workers, because a laptop is also running everything else
+# ===========================================================================
+
+services:
+
+  postgres:
+    # Published on loopback only, so a psql/GUI client can attach without
+    # exposing the database to the local network.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+
+  ollama:
+    # Loopback only — never 0.0.0.0. Ollama is unauthenticated, so binding it to
+    # all interfaces would hand an open inference endpoint to anyone on the same
+    # wifi. This exists so `ollama pull` and quick curl checks work from the host.
+    ports:
+      - "127.0.0.1:${OLLAMA_HOST_PORT:-11434}:11434"
+    # macOS note: Docker cannot pass a GPU (Metal or otherwise) into a container,
+    # so this container is CPU-only there and will be slow. To use the host's
+    # native Ollama instead, set in .env:
+    #     OLLAMA_BASE_URL=http://host.docker.internal:11434
+    # and stop this service. On Linux with NVIDIA, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  api:
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+    # Source bind-mounted and --reload on, so an edit is live without a rebuild.
+    # This intentionally shadows the image's /srv/backend.
+    volumes:
+      - ./backend:/srv/backend
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.main:app
+      - --reload
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+
+  # Workers get the same bind mount so a task edit is picked up on restart
+  # without rebuilding. Celery does not hot-reload, so a restart is still needed.
+  worker-default:
+    volumes:
+      - ./backend:/srv/backend
+  worker-analytics:
+    volumes:
+      - ./backend:/srv/backend
+  worker-embeddings:
+    volumes:
+      - ./backend:/srv/backend
+  worker-notifications:
+    volumes:
+      - ./backend:/srv/backend
+  beat:
+    volumes:
+      - ./backend:/srv/backend
+      - beat_schedule:/var/run/celery
+  migrate:
+    volumes:
+      - ./backend:/srv/backend
+
+  nginx:
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/conf.d/dev:/etc/nginx/conf.d:ro
+    ports:
+      # http://localhost      → customer app  (API same-origin at /api)
+      # http://localhost:8081 → admin panel   (API same-origin at /api)
+      - "127.0.0.1:${HTTP_HOST_PORT:-80}:80"
+      - "127.0.0.1:${ADMIN_HOST_PORT:-8081}:8081"

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>778571432975-lgq88i6muhin1ks8s56qekj0g6mutg5q.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.778571432975-lgq88i6muhin1ks8s56qekj0g6mutg5q</string>
+	<key>API_KEY</key>
+	<string>AIzaSyDanZboiHvHvSu305EPUI-fa3pyoL3ZIuI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>778571432975</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.quickbite.bangkokbowl</string>
+	<key>PROJECT_ID</key>
+	<string>quickbite-7833a</string>
+	<key>STORAGE_BUCKET</key>
+	<string>quickbite-7833a.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:778571432975:ios:b4232f093aa9a083374f7a</string>
+</dict>
+</plist>

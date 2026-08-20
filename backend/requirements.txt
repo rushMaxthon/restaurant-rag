@@ -1,0 +1,23 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+# Production process manager. uvicorn's own server is single-process and the
+# dev README starts it with --reload; gunicorn supervises N UvicornWorkers,
+# restarts a worker that dies, and drains connections on redeploy.
+gunicorn==23.0.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pgvector==0.3.6
+pydantic==2.10.2
+pydantic-settings==2.6.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+python-multipart==0.0.18
+email-validator==2.2.0
+httpx==0.27.2
+celery==5.4.0
+redis==5.2.1
+orjson==3.10.12
+firebase-admin==6.8.0
+stripe==11.4.0

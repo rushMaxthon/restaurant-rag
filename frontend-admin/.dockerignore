@@ -1,0 +1,17 @@
+# Keep the build context small and reproducible. node_modules in particular
+# must be excluded: `npm ci` inside the image installs the correct platform
+# binaries, and copying a host-built tree in would shadow them with macOS ones.
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+*.log
+npm-debug.log*
+Dockerfile
+.dockerignore

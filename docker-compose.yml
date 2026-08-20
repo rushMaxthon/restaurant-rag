@@ -1,0 +1,604 @@
+# ===========================================================================
+# Base topology. Shared by every environment; nothing here publishes a port
+# except the edge proxy, and no secret has a value.
+#
+#   docker compose up -d                      → base + docker-compose.override.yml (dev)
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d   → prod
+#
+# Configuration comes from a compose env file at the repository root. Copy
+# .env.docker.example to .env and fill it in; it is gitignored (.env.* is
+# already covered by the repo's .gitignore).
+#
+# Startup order is enforced, not hoped for:
+#   postgres (healthy) ─▶ migrate (runs to completion) ─▶ api ─▶ workers, beat
+# ===========================================================================
+
+x-backend-image: &backend-image
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  image: restaurant-rag/backend:${IMAGE_TAG:-local}
+
+# Every backend process — API, four workers, beat, migrate — reads exactly this
+# environment. Sharing one anchor is what guarantees a worker cannot connect to
+# a different database from the API that queued its task.
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  DEBUG: ${DEBUG:-false}
+  APP_NAME: ${APP_NAME:-Restaurant RAG API}
+  APP_VERSION: ${APP_VERSION:-1.0.0}
+  API_V1_PREFIX: ${API_V1_PREFIX:-/api}
+  BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Kolkata}
+  BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost,http://localhost:8081}
+
+  # Service names, not localhost — each container has its own loopback.
+  POSTGRES_SERVER: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set — see .env.docker.example}"
+  POSTGRES_DB: ${POSTGRES_DB:-restaurant_rag}
+  DATABASE_ECHO: ${DATABASE_ECHO:-false}
+  # Connection pool, PER PROCESS. Total demand is
+  #   (GUNICORN_WORKERS + sum of CELERY_*_CONCURRENCY) x (pool + overflow)
+  # At the defaults below: (4 + 9) x 10 = 130, plus beat and the migrate job,
+  # against POSTGRES_MAX_CONNECTIONS=200. Raise the worker counts and this
+  # arithmetic has to be redone, or Postgres starts refusing connections.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+  # Log timestamps in the business timezone, so a log line lines up with the
+  # nightly run times without mental arithmetic. Keep aligned with
+  # BUSINESS_TIMEZONE — compose cannot nest one default inside another.
+  TZ: ${TZ:-Asia/Kolkata}
+
+  JWT_SECRET_KEY: "${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set — generate with: openssl rand -hex 32}"
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+
+  # Three separate Redis databases on one server: cache, results, broker.
+  #   /0 cache    — disposable; may be flushed at any time
+  #   /1 results  — task return values
+  #   /2 broker   — QUEUED WORK. Previously shared /0 with the cache, which put
+  #                 pending tasks in the same keyspace as data the app is
+  #                 entitled to clear. Separating them means no cache operation
+  #                 can ever touch a queued notification or payment reaper run.
+  REDIS_URL: redis://redis:6379/0
+  REDIS_CACHE_TTL_SECONDS: ${REDIS_CACHE_TTL_SECONDS:-259200}
+  CELERY_BROKER_URL: redis://redis:6379/2
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+
+  # Defaults to the in-network Ollama container. Override in .env to point at a
+  # dedicated GPU host (or at the macOS host, where Docker cannot pass a GPU
+  # into a container at all): OLLAMA_BASE_URL=http://host.docker.internal:11434
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+  # Bearer token for Ollama Cloud. Empty for a local Ollama, which needs none.
+  # Backend-only: it is never a build arg and never reaches a browser or the
+  # mobile app, both of which receive only VITE_API_BASE_URL.
+  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+  # Where EMBEDDINGS go, when that is not the generation host.
+  #
+  # Ollama Cloud serves NO embedding route — /api/embed answers 401 for every
+  # model with or without a key, and /api/embeddings and /v1/embeddings answer
+  # 404, while /api/generate with the same key answers 200. So a cloud-generation
+  # deployment must keep a local Ollama for menu embeddings and RAG retrieval,
+  # and point this at it. Empty means "same host as generation".
+  OLLAMA_EMBEDDING_BASE_URL: ${OLLAMA_EMBEDDING_BASE_URL:-}
+  # How much hidden reasoning the generation model may produce.
+  #   "false" for qwen3:8b — it discards its reasoning, so producing it is waste
+  #   "low"   for gpt-oss  — it IGNORES think:false and reasons anyway, and that
+  #                          reasoning counts against num_predict. Measured: at
+  #                          "false" the response field came back EMPTY on every
+  #                          path (planner 0/3, narrator 0/2, answers 0/4); at
+  #                          "low" it is planner 4/4, narrator 3/3, answers 8/8.
+  OLLAMA_THINK_MODE: ${OLLAMA_THINK_MODE:-false}
+  OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen3:8b}
+  # Embeddings stay on nomic-embed-text in BOTH setups — Ollama Cloud serves no
+  # embedding route, so this always resolves against a local Ollama.
+  OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+
+  # --- embeddings: which provider turns text into vectors -------------------
+  # "ollama" (local, nomic-embed-text) or "gemini" (production, Gemini
+  # Embedding 2). Chosen independently of generation: a deployment can run
+  # cloud generation with local embeddings, or cloud both.
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+  # 768 to match the Vector(768) column. Changing it needs a migration AND a
+  # full re-embed, so it exists only so both providers check against one number.
+  EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+  # Backend-only secret. Never a build arg, never in a browser or mobile bundle.
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+  GEMINI_EMBEDDING_TIMEOUT_SECONDS: ${GEMINI_EMBEDDING_TIMEOUT_SECONDS:-20}
+
+  AI_MANAGER_CHAT_ANSWER_MODEL: ${AI_MANAGER_CHAT_ANSWER_MODEL:-qwen3:8b}
+  CHAT_TOOL_PLANNER_MODEL: ${CHAT_TOOL_PLANNER_MODEL:-qwen3:8b}
+  AI_MANAGER_NARRATION_MODEL: ${AI_MANAGER_NARRATION_MODEL:-qwen3:8b}
+  ANALYST_MODEL: ${ANALYST_MODEL:-qwen3:8b}
+  QWEN_OFFER_MODEL_NAME: ${QWEN_OFFER_MODEL_NAME:-qwen3:8b}
+
+  ENABLE_AI_MANAGER_INSIGHTS: ${ENABLE_AI_MANAGER_INSIGHTS:-false}
+  ENABLE_AI_MANAGER_CHAT_TOOLS: ${ENABLE_AI_MANAGER_CHAT_TOOLS:-true}
+  ENABLE_AI_MANAGER_CHAT_ANSWERS: ${ENABLE_AI_MANAGER_CHAT_ANSWERS:-true}
+  ENABLE_AI_MANAGER_ACTIONS: ${ENABLE_AI_MANAGER_ACTIONS:-false}
+  AI_MANAGER_CRON_ENABLED: ${AI_MANAGER_CRON_ENABLED:-false}
+  ENABLE_AI_MANAGER_NARRATION: ${ENABLE_AI_MANAGER_NARRATION:-false}
+  ENABLE_AI_MANAGER_CHAT_LLM_ROUTER: ${ENABLE_AI_MANAGER_CHAT_LLM_ROUTER:-true}
+  # The anchor of the timeout chain. GUNICORN_TIMEOUT and nginx's
+  # proxy_read_timeout must BOTH stay above this, or the worker is killed or the
+  # connection cut mid-answer and the owner sees a network error instead of the
+  # deterministic fallback the app was about to send.
+  AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS: ${AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS:-110}
+  # The single biggest latency lever: on a CPU-only host every token is roughly
+  # a second of the owner's time.
+  AI_MANAGER_CHAT_ANSWER_MAX_TOKENS: ${AI_MANAGER_CHAT_ANSWER_MAX_TOKENS:-120}
+
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_mock}
+  STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_mock}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-inr}
+  STRIPE_API_VERSION: ${STRIPE_API_VERSION:-2024-11-20.acacia}
+  PAYMENT_INTENT_TTL_MINUTES: ${PAYMENT_INTENT_TTL_MINUTES:-30}
+
+  FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+  FCM_CREDENTIALS_PATH: /run/secrets/firebase-service-account.json
+
+x-backend-depends: &backend-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  migrate:
+    condition: service_completed_successfully
+
+
+services:
+
+  # ---------------------------------------------------------------- data ----
+  postgres:
+    # pgvector, not plain postgres:16. The first migration runs
+    # `CREATE EXTENSION vector` (app/config/database.py), which fails on the
+    # stock image and takes the whole deployment down at step one.
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    # Stock Postgres allows 100 connections. The pool arithmetic in the backend
+    # env anchor above can legitimately ask for ~130 before beat and migrate are
+    # counted, and exceeding the limit surfaces as intermittent
+    # "sorry, too many clients already" rather than a clean failure.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      TZ: ${TZ:-Asia/Kolkata}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      POSTGRES_DB: ${POSTGRES_DB:-restaurant_rag}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # -d and -U named explicitly: pg_isready otherwise probes a database named
+      # after the OS user and reports "not accepting" on a perfectly healthy
+      # server, which would stall migrate forever.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-restaurant_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # appendonly: the broker holds queued Celery tasks. Losing the cache on
+    # restart is fine; losing a queued notification is not.
+    # noeviction: the broker (DB 2) holds queued work. Under an LRU policy Redis
+    # would silently drop pending tasks to make room for cache entries, which is
+    # a lost push notification with no error anywhere. With noeviction a full
+    # Redis fails writes instead — and `cache_set_json` already catches
+    # RedisError and degrades to a cache miss, so the cache absorbs the pressure
+    # while queued work survives.
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1"
+      - --maxmemory-policy
+      - ${REDIS_MAXMEMORY_POLICY:-noeviction}
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+      # How many generations Ollama serves at once. The audit measured the
+      # running server at `-np 1`, which is why one owner's question blocks
+      # every other restaurant's. Kept at 1 by default because raising it
+      # multiplies KV-cache memory on a host already short of it — raise this
+      # only after the model host has real headroom (audit §3, A1/A3).
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      # 1, deliberately. Two resident models were 8.1GB of weights on a 16GB
+      # machine and a direct contributor to the measured swap thrash. All five
+      # model settings name the same model precisely so this can stay at 1.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      # Matches the keep_alive the application sends on every request, so an
+      # idle owner does not pay a model reload on their next question.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-60m}
+      # Matches the num_ctx the chat answer call pins. A larger server-side
+      # context allocates KV cache the request can never use.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-4096}
+    volumes:
+      # ~6GB of weights. Without this volume every restart re-downloads the
+      # model and the AI Manager falls back to templates until it finishes.
+      - ollama_models:/root/.ollama
+    healthcheck:
+      # `ollama list` uses the CLI already in the image, so no curl is needed.
+      # It answers "is the model server ready", not merely "is the container up".
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot may pull a model; a short start period would mark it
+      # unhealthy while it is working correctly.
+      start_period: 120s
+    networks:
+      # `ai` only. Deliberately NOT on `edge`, and no ports are published in any
+      # environment: Ollama has no authentication of any kind, so an exposed
+      # :11434 is an open inference endpoint and a data-exfiltration path.
+      - ai
+      # Egress only, so `ollama pull` can reach the model registry. Without it
+      # the container starts fine and every pull fails with a DNS error.
+      - egress
+
+  # Pulls the models the app is configured to use. One-shot, and behind a
+  # profile so a routine `up` does not re-run it:
+  #   docker compose --profile setup run --rm ollama-pull
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["setup"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        ollama pull "${OLLAMA_CHAT_MODEL:-qwen3:8b}"
+        ollama pull "${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}"
+        ollama list
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: "no"
+    networks:
+      - ai
+
+  # ----------------------------------------------------------- migrations ----
+  migrate:
+    <<: *backend-image
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # One-shot. Everything that touches the schema waits on
+    # service_completed_successfully, so a failed migration stops the deploy
+    # instead of starting an API against a half-migrated database.
+    restart: "no"
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+
+  # ------------------------------------------------------------------ api ----
+  api:
+    <<: *backend-image
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
+      # Must exceed AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS.
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-180}
+      GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-30}
+      GUNICORN_KEEPALIVE: ${GUNICORN_KEEPALIVE:-5}
+      # Which peers may set X-Forwarded-*. gunicorn's default of 127.0.0.1 makes
+      # it ignore nginx entirely, because nginx connects from a bridge address.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+    depends_on: *backend-depends
+    healthcheck:
+      # Hits the app's own /health route. Uses python rather than curl so the
+      # runtime image stays free of an extra package.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - edge      # reachable by the proxy
+      - backend   # postgres + redis
+      - ai        # ollama
+      - egress    # Stripe API, FCM
+
+  # -------------------------------------------------------------- workers ----
+  #
+  # Four services rather than one worker consuming all queues. The `analytics`
+  # queue runs multi-minute AI jobs; sharing a worker with `notifications` would
+  # leave a push notification queued behind a nightly briefing.
+  worker-default:
+    <<: *backend-image
+    restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - app.config.celery:celery_app
+      - worker
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      - --queues=default
+      - --hostname=default@%h
+      - --concurrency=${CELERY_DEFAULT_CONCURRENCY:-2}
+      - --soft-time-limit=${CELERY_TASK_SOFT_TIME_LIMIT:-300}
+      - --time-limit=${CELERY_TASK_TIME_LIMIT:-360}
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.config.celery:celery_app inspect ping -d default@$$HOSTNAME >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+      # reap_unpaid_orders_task calls provider.cancel_intent() against Stripe.
+      - egress
+
+  worker-analytics:
+    <<: *backend-image
+    restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - app.config.celery:celery_app
+      - worker
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      - --queues=analytics
+      - --hostname=analytics@%h
+      # Concurrency 1 by default and that is intentional: Ollama serves one
+      # generation at a time (llama-server runs with -np 1), so extra analytics
+      # workers would queue against each other at the model host while holding
+      # database connections open.
+      - --concurrency=${CELERY_ANALYTICS_CONCURRENCY:-1}
+      - --soft-time-limit=${CELERY_ANALYTICS_SOFT_TIME_LIMIT:-3600}
+      - --time-limit=${CELERY_ANALYTICS_TIME_LIMIT:-3900}
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.config.celery:celery_app inspect ping -d analytics@$$HOSTNAME >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+      - ai
+      - egress
+
+  worker-embeddings:
+    <<: *backend-image
+    restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - app.config.celery:celery_app
+      - worker
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      - --queues=embeddings
+      - --hostname=embeddings@%h
+      - --concurrency=${CELERY_EMBEDDINGS_CONCURRENCY:-2}
+      - --soft-time-limit=${CELERY_TASK_SOFT_TIME_LIMIT:-300}
+      - --time-limit=${CELERY_TASK_TIME_LIMIT:-360}
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.config.celery:celery_app inspect ping -d embeddings@$$HOSTNAME >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+      - ai
+      - egress
+
+  worker-notifications:
+    <<: *backend-image
+    restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - app.config.celery:celery_app
+      - worker
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      - --queues=notifications
+      - --hostname=notifications@%h
+      - --concurrency=${CELERY_NOTIFICATIONS_CONCURRENCY:-4}
+      - --soft-time-limit=${CELERY_TASK_SOFT_TIME_LIMIT:-300}
+      - --time-limit=${CELERY_TASK_TIME_LIMIT:-360}
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.config.celery:celery_app inspect ping -d notifications@$$HOSTNAME >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+      # messaging.send_each_for_multicast() reaches Firebase over the internet.
+      - egress
+
+  # ----------------------------------------------------------------- beat ----
+  beat:
+    <<: *backend-image
+    restart: unless-stopped
+    # EXACTLY ONE INSTANCE, EVER. `docker compose up --scale beat=2` would run
+    # every nightly briefing and every outcome measurement twice. There is no
+    # locking in the schedule to prevent that.
+    command:
+      - celery
+      - -A
+      - app.config.celery:celery_app
+      - beat
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      # The schedule file is a shelve database on a volume, so a restart resumes
+      # rather than re-firing tasks it already ran.
+      - --schedule=/var/run/celery/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      # Celery beat exposes no ping interface, so liveness is inferred from its
+      # work: PersistentScheduler rewrites the schedule file each time it sends
+      # a task. The `reap-unpaid-orders` entry is unconditional and fires every
+      # five minutes (app/config/celery.py), so a file older than fifteen means
+      # beat has stopped scheduling even though the process is still up — which
+      # is the failure a plain process check would miss entirely.
+      test: ["CMD-SHELL", "python -c \"import os,sys,time; f='/var/run/celery/celerybeat-schedule'; sys.exit(0 if os.path.exists(f) and time.time()-os.path.getmtime(f) < 900 else 1)\" || python -c \"import os,sys; sys.exit(0 if os.path.exists('/var/run/celery/celerybeat-schedule.db') else 1)\""]
+      interval: 60s
+      timeout: 10s
+      # Generous: the first sync only happens once beat has sent its first task.
+      start_period: 360s
+      retries: 3
+    volumes:
+      - beat_schedule:/var/run/celery
+    secrets:
+      - firebase-service-account.json
+    networks:
+      - backend
+
+  # ------------------------------------------------------------ frontends ----
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile
+      args:
+        # Build-time, because Vite inlines import.meta.env into the bundle.
+        # Changing this needs a rebuild, not a restart.
+        VITE_API_BASE_URL: ${ADMIN_API_BASE_URL:-/api}
+    image: restaurant-rag/frontend-admin:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    networks:
+      - edge
+
+  frontend-customer:
+    build:
+      context: ./frontend-customer
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${CUSTOMER_API_BASE_URL:-/api}
+    image: restaurant-rag/frontend-customer:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    networks:
+      - edge
+
+  # ---------------------------------------------------------------- proxy ----
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - frontend-admin
+      - frontend-customer
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edge
+
+
+volumes:
+  postgres_data:      # the business database — the one that must be backed up
+  redis_data:         # cache is disposable; queued Celery tasks are not
+  ollama_models:      # ~6GB of weights; reproducible but slow to refetch
+  beat_schedule:      # celery beat's last-run state
+
+networks:
+  # Only `edge` carries anything with a published port, and only nginx publishes.
+  edge:
+    driver: bridge
+
+  # postgres + redis. Frontend containers are not on it, so a compromised static
+  # server has no route to the database.
+  #
+  # `internal: true` blocks OUTBOUND traffic, not just inbound. That is exactly
+  # what is wanted for a database and a cache — neither has any business calling
+  # the internet — but it is also why the services that DO need egress carry the
+  # separate `egress` network below rather than relying on this one.
+  backend:
+    driver: bridge
+    internal: true
+
+  # Carries only API/worker → ollama traffic. Kept internal and separate from
+  # `backend` so the unauthenticated model port sits on the narrowest possible
+  # network: nothing on it but the callers that actually generate.
+  ai:
+    driver: bridge
+    internal: true
+
+  # Outbound internet, for the services that genuinely need it. No ports are
+  # published on it — it grants egress, not ingress. Membership is deliberate
+  # and minimal:
+  #
+  #   ollama                → pulls model weights from the registry
+  #   api                   → Stripe API, FCM
+  #   worker-default        → the unpaid-order reaper calls provider.cancel_intent()
+  #                           against Stripe (services/payments/service.py)
+  #   worker-notifications  → messaging.send_each_for_multicast() to FCM
+  #                           (services/notifications.py)
+  #   worker-analytics      → Stripe/FCM reachable from insight actions
+  #   worker-embeddings     → symmetry with the other model-calling worker
+  #
+  # postgres, redis, beat, migrate and both frontends are deliberately absent:
+  # none of them originates an outbound connection.
+  egress:
+    driver: bridge
+
+secrets:
+  firebase-service-account.json:
+    # Mounted at /run/secrets/… and referenced by FCM_CREDENTIALS_PATH. Kept out
+    # of the image entirely (see backend/.dockerignore): a service-account
+    # private key in a layer is readable by anyone who can pull the image.
+    file: ${FIREBASE_CREDENTIALS_FILE:-./backend/firebase-service-account.json}

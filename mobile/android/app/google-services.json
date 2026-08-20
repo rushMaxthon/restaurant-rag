@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "778571432975",
+    "project_id": "quickbite-7833a",
+    "storage_bucket": "quickbite-7833a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:778571432975:android:bfb713164a5ead1a374f7a",
+        "android_client_info": {
+          "package_name": "com.quickbite.all"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "778571432975-occ31194dasppfs62b3rlt2c8gptk1kv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCsqNFVIHfEjiBHOrCt183IrvWQwQb43I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "778571432975-occ31194dasppfs62b3rlt2c8gptk1kv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "778571432975-lgq88i6muhin1ks8s56qekj0g6mutg5q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.quickbite.all"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:778571432975:android:cd2061e5bd2dc015374f7a",
+        "android_client_info": {
+          "package_name": "com.quickbite.all"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "778571432975-occ31194dasppfs62b3rlt2c8gptk1kv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCsqNFVIHfEjiBHOrCt183IrvWQwQb43I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "778571432975-occ31194dasppfs62b3rlt2c8gptk1kv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "778571432975-lgq88i6muhin1ks8s56qekj0g6mutg5q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.quickbite.all"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

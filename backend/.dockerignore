@@ -1,0 +1,39 @@
+# Keep the build context small and, more importantly, keep secrets out of image
+# layers. Anything listed here is invisible to `docker build`.
+
+# --- secrets: these must be mounted at runtime, never baked in ---------------
+.env
+.env.*
+!.env.example
+firebase-service-account.json
+*.pem
+*.key
+
+# --- local environments ------------------------------------------------------
+.venv/
+venv/
+ENV/
+
+# --- python build artefacts --------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- vcs / editor / os -------------------------------------------------------
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# NOTE: tests/ is deliberately NOT ignored. The suite is expected to run inside
+# this image (`docker compose run --rm api python -m unittest discover -s tests`),
+# so excluding it would defeat that.
