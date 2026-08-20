@@ -70,6 +70,9 @@ COPY --chown=app:app . /srv/backend
 
 USER app
 
+# Documents the compose default only. A PaaS that assigns a port at runtime
+# (Render sets $PORT, default 10000) ignores EXPOSE entirely and routes to
+# whatever the process actually binds — see the --bind in CMD below.
 EXPOSE 8000
 
 # Deliberately NO image-level HEALTHCHECK.
@@ -83,6 +86,20 @@ EXPOSE 8000
 
 # Production default. Never --reload; the dev override replaces this wholesale.
 #
+# --bind 0.0.0.0:${PORT:-8000}: two requirements at once. Render assigns the
+#   port through $PORT (default 10000) and routes to nothing else, so a
+#   hardcoded 8000 makes the deploy hang and time out with "no open ports
+#   detected". $PORT is unset under compose, where the fallback keeps 8000 —
+#   the port nginx, the healthchecks and the published mappings all name. The
+#   host must stay 0.0.0.0: Render's proxy reaches the container over the
+#   network, and a loopback bind refuses it.
+# --workers defaults to 2, not 4. The pool is PER WORKER, so this number
+#   multiplies DB_POOL_SIZE + DB_MAX_OVERFLOW against the server's connection
+#   limit (100 on every Render Postgres plan under 8GB, ~3 of them reserved).
+#   It is also the main driver of memory on a 512MB Render instance, where 4
+#   workers of this app OOM. Deployments with room to spare raise it through
+#   the environment: docker-compose.prod.yml and .env.production both set
+#   GUNICORN_WORKERS=4 explicitly, so this default does not change them.
 # --worker-tmp-dir /dev/shm: gunicorn heartbeats through a temp file, and on a
 #   container filesystem that is slow enough to trip the worker timeout under
 #   load. /dev/shm is tmpfs.
@@ -90,18 +107,26 @@ EXPOSE 8000
 #   or gunicorn kills the worker mid-answer and the owner sees a dropped
 #   connection instead of the deterministic fallback the app was about to send.
 # --forwarded-allow-ips defaults to 127.0.0.1, which is wrong here: nginx runs
-#   in its own container and connects from a Docker bridge address, so the
-#   X-Forwarded-Proto it sets was being ignored and the app believed every
-#   request was plain HTTP. Trusting any peer is safe in this topology because
-#   the API publishes no port in production — nginx is the only route to it.
+#   in its own container and connects from a Docker bridge address, and Render's
+#   proxy likewise reaches the container over the network, so the
+#   X-Forwarded-Proto they set was being ignored and the app believed every
+#   request was plain HTTP. Trusting any peer is safe in both topologies because
+#   the container is only reachable through that proxy.
+#
+# EVERY expansion below is quoted, and that is load-bearing for exactly one of
+# them. An unquoted ${FORWARDED_ALLOW_IPS:-*} is subject to pathname expansion,
+# so with the value `*` (what .env.production, docker-compose and render.yaml
+# all set) the shell replaced it with the contents of WORKDIR and gunicorn was
+# invoked as `--forwarded-allow-ips alembic.ini app requirements.txt seed.py`.
+# Quoting is what makes the value reach gunicorn as the literal `*`.
 CMD ["sh", "-c", "exec gunicorn app.main:app \
     --worker-class uvicorn.workers.UvicornWorker \
-    --workers ${GUNICORN_WORKERS:-4} \
-    --bind 0.0.0.0:8000 \
-    --timeout ${GUNICORN_TIMEOUT:-180} \
-    --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} \
-    --keep-alive ${GUNICORN_KEEPALIVE:-5} \
-    --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-*} \
+    --workers \"${GUNICORN_WORKERS:-2}\" \
+    --bind \"0.0.0.0:${PORT:-8000}\" \
+    --timeout \"${GUNICORN_TIMEOUT:-180}\" \
+    --graceful-timeout \"${GUNICORN_GRACEFUL_TIMEOUT:-30}\" \
+    --keep-alive \"${GUNICORN_KEEPALIVE:-5}\" \
+    --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" \
     --worker-tmp-dir /dev/shm \
     --access-logfile - \
     --error-logfile -"]

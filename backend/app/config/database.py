@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Generator
 
 from sqlalchemy import Connection, create_engine, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
@@ -35,7 +36,46 @@ SessionLocal = sessionmaker(
 
 
 def initialize_pg_extensions(connection: Connection) -> None:
-    connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    """Ensure pgvector exists before any migration references a Vector column.
+
+    The existence check is not an optimisation, it is the managed-Postgres path.
+    pgvector's control file carries no `trusted = true`, so on a provider that
+    hands out a plain database owner rather than a superuser — Render, and most
+    others — `CREATE EXTENSION vector` answers:
+
+        ERROR: permission denied to create extension "vector"
+        HINT:  Must be superuser to create this extension.
+
+    Measured behaviour: once the extension is present, `CREATE EXTENSION IF NOT
+    EXISTS` succeeds for that same unprivileged role (Postgres short-circuits on
+    the name before it checks privileges). So a one-off enable by the provider
+    is enough forever, and looking first means the ordinary redeploy needs no
+    privilege at all.
+
+    When it is genuinely absent and uncreatable, the raw error names neither the
+    database nor the fix, and it surfaces inside a deploy log where it reads as
+    a broken migration. Replacing it with the one command that resolves it is
+    the difference between a five-minute fix and an afternoon.
+    """
+
+    already_installed = connection.execute(
+        text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+    ).scalar()
+    if already_installed:
+        return
+
+    try:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    except ProgrammingError as exc:
+        connection.rollback()
+        raise RuntimeError(
+            "pgvector is not installed on this database and this role may not "
+            "create it. Connect as a superuser (on Render: the database's psql "
+            "shell, or a dashboard SQL console) and run once:\n"
+            "    CREATE EXTENSION vector;\n"
+            "Then redeploy — migrations need no elevated privilege afterwards."
+        ) from exc
+
     connection.commit()
 
 

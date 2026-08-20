@@ -1,0 +1,404 @@
+# ---------------------------------------------------------------------------
+# Render blueprint for the backend (API + Celery + Postgres + Key Value).
+#
+# The frontends and nginx are deliberately NOT here. In the compose topology
+# nginx terminates TLS and serves both SPAs same-origin with the API; on Render
+# every service gets its own hostname and TLS, so nginx has no job and the SPAs
+# belong in a static site with their own blueprint entry. Porting them without
+# that rethink would ship a reverse proxy in front of a reverse proxy.
+#
+# Ollama is not here either: Render has no GPU instance type this app can use,
+# so production points generation at Ollama Cloud and embeddings at Gemini,
+# exactly as .env.production already documents. There is no local Ollama in
+# this topology, which is why EMBEDDING_PROVIDER is pinned to `gemini` below.
+#
+# Apply with:  render blueprint launch   (or connect the repo in the dashboard)
+# ---------------------------------------------------------------------------
+
+databases:
+  - name: restaurant-rag-db
+    databaseName: restaurant_rag
+    user: restaurant_rag
+    # Every Render Postgres plan below 8GB caps connections at 100, ~3 of them
+    # reserved. DB_POOL_SIZE + DB_MAX_OVERFLOW in the env group is sized against
+    # that number — raise them together or not at all.
+    plan: basic-256mb
+    # 16 matches what the migration chain was verified against locally
+    # (PostgreSQL 16.13 + pgvector 0.8.2, full 0001..0047 upgrade from empty).
+    postgresMajorVersion: "16"
+    region: oregon
+    ipAllowList: []   # internal-only: no public client needs this database
+
+services:
+  # ----------------------------------------------------------------- cache --
+  #
+  # ONE instance serves three roles that compose splits across redis db 0/1/2:
+  # the application cache, the Celery broker and the Celery result backend. A
+  # blueprint cannot append a database index to `connectionString`, so they
+  # share db 0 — safe, because Celery namespaces its keys.
+  #
+  # maxmemoryPolicy MUST stay noeviction. Any `allkeys-*` policy lets Redis drop
+  # a queued task to make room for a cache entry, so an order confirmation would
+  # vanish silently instead of being delivered late.
+  - name: restaurant-rag-cache
+    type: keyvalue
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: noeviction
+    ipAllowList: []   # internal-only
+
+  # ------------------------------------------------------------------- api --
+  - name: restaurant-rag-api
+    type: web
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # No dockerCommand: the image CMD already binds 0.0.0.0:${PORT:-8000} and
+    # Render sets PORT. Overriding it here would fork the production command.
+    healthCheckPath: /health
+    # Migrations run once per deploy, before ANY new instance serves traffic —
+    # not in the container start command, which would race N gunicorn workers
+    # against the same alembic_version row. A failed pre-deploy aborts the
+    # deploy and leaves the previous version serving.
+    #
+    # Requires a paid instance type; free instances have no pre-deploy step.
+    preDeployCommand: alembic upgrade head
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - fromGroup: restaurant-rag-backend
+      - key: DATABASE_URL
+        fromDatabase:
+          name: restaurant-rag-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      # Sized for a 512MB starter instance. The pool is per worker, so the API
+      # holds at most 2 x (3 + 2) = 10 connections. See the arithmetic comment
+      # on the env group.
+      - key: GUNICORN_WORKERS
+        value: "2"
+      # Must exceed AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS (60 in the group), or
+      # gunicorn kills the worker mid-answer and the owner sees a dropped
+      # connection instead of the deterministic fallback.
+      - key: GUNICORN_TIMEOUT
+        value: "120"
+      - key: GUNICORN_GRACEFUL_TIMEOUT
+        value: "30"
+      - key: GUNICORN_KEEPALIVE
+        value: "5"
+      # Render terminates TLS at its edge proxy and forwards over the private
+      # network, so the app must trust the X-Forwarded-Proto that proxy sets —
+      # otherwise every request looks like plain HTTP. Safe because the
+      # container is reachable only through that proxy.
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+
+  # --------------------------------------------------------------- workers --
+  #
+  # ONE worker across all four queues, where compose runs four. Compose's split
+  # exists so a push notification never queues behind a multi-minute analytics
+  # job; here that separation costs a whole paid instance per queue. Concurrency
+  # 2 preserves most of the benefit — a long analytics task occupies one child
+  # and the other keeps draining notifications.
+  #
+  # Split it the moment analytics volume grows: copy this block, give each copy
+  # its own --queues, and re-check the connection arithmetic in the env group.
+  - name: restaurant-rag-worker
+    type: worker
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # The time limits are the ANALYTICS ones (compose gives that queue
+    # 3600/3900 and the rest 300/360). A single worker takes one pair, and it
+    # has to be the loosest of the queues it serves or a nightly briefing is
+    # killed mid-run. The cost is that a wedged notification task also gets an
+    # hour before Celery reclaims it; splitting the worker per queue restores
+    # the tight limits for the fast queues.
+    dockerCommand: >-
+      celery -A app.config.celery:celery_app worker
+      --loglevel=info
+      --queues=default,analytics,embeddings,notifications
+      --concurrency=2
+      --soft-time-limit=3600
+      --time-limit=3900
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - fromGroup: restaurant-rag-backend
+      - key: DATABASE_URL
+        fromDatabase:
+          name: restaurant-rag-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+
+  # ------------------------------------------------------------------ beat --
+  #
+  # Scheduler only — it queues tasks and executes none, so it stays tiny.
+  #
+  # numInstances is pinned to 1 and must never be raised: two beats fire every
+  # scheduled task twice, which for the unpaid-order reaper means cancelling
+  # orders twice and for the nightly briefing means paying for it twice.
+  #
+  # The schedule file sits on the ephemeral container filesystem, so a deploy
+  # resets last-run state and a task whose window is open may fire once more
+  # than it would have. Every scheduled task here is idempotent, so that is
+  # acceptable; a Render disk would fix it at the cost of zero-downtime deploys.
+  - name: restaurant-rag-beat
+    type: worker
+    runtime: docker
+    plan: starter
+    region: oregon
+    numInstances: 1
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: >-
+      celery -A app.config.celery:celery_app beat
+      --loglevel=info
+      --schedule=/var/run/celery/celerybeat-schedule
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - fromGroup: restaurant-rag-backend
+      - key: DATABASE_URL
+        fromDatabase:
+          name: restaurant-rag-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: restaurant-rag-cache
+          property: connectionString
+
+# ---------------------------------------------------------------------------
+# Shared configuration. Everything here must be IDENTICAL across the API, the
+# worker and beat — a worker computing a briefing under different thresholds
+# than the API that displays it produces numbers nobody can reconcile.
+#
+# Only literals, generated values and `sync: false` prompts can live in a
+# group; fromDatabase/fromService are per-service and repeat above.
+#
+# Values marked `sync: false` are NOT stored in this file. Render prompts for
+# them at launch and keeps them in the dashboard, which is what keeps live
+# credentials out of version control.
+# ---------------------------------------------------------------------------
+envVarGroups:
+  - name: restaurant-rag-backend
+    envVars:
+      # --- application ----------------------------------------------------
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: APP_NAME
+        value: Restaurant RAG API
+      - key: APP_VERSION
+        value: 1.0.0
+      - key: API_V1_PREFIX
+        value: /api
+      - key: BUSINESS_TIMEZONE
+        value: Asia/Kolkata
+      - key: TZ
+        value: Asia/Kolkata
+
+      # Exact scheme+host of every browser origin that calls the API. No
+      # trailing slash and no wildcard: the API sends credentials, so a
+      # wildcard makes the browser reject the response and breaks login
+      # rather than loosening anything.
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+
+      # --- auth -----------------------------------------------------------
+      #
+      # Generated once by Render and shared by all three services. It must be
+      # the same everywhere: a token minted by the API is verified by whatever
+      # process handles the next request.
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+
+      # --- database pool --------------------------------------------------
+      #
+      # The pool is PER PROCESS, so the deployment's total demand is
+      #   (gunicorn workers + celery children + beat) x (POOL_SIZE + OVERFLOW)
+      # At these values: (2 + 2 + 1) x 5 = 25, against a 100-connection limit
+      # with ~3 reserved. The headroom absorbs a deploy, where the old and new
+      # instances are both connected for a moment.
+      #
+      # Raise a worker count or concurrency and redo this sum first.
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      # Below any idle timeout the managed server enforces, so a connection is
+      # never handed out after the server has already dropped it.
+      - key: DB_POOL_RECYCLE
+        value: "1800"
+      - key: DB_POOL_TIMEOUT
+        value: "30"
+      - key: DATABASE_ECHO
+        value: "false"
+
+      # --- cache / celery -------------------------------------------------
+      - key: REDIS_CACHE_TTL_SECONDS
+        value: "259200"
+      # No CELERY_* knobs here. The app reads none of them — compose uses them
+      # only to interpolate command flags, so setting them on Render would be
+      # configuration that looks authoritative and does nothing. The equivalent
+      # flags are on the worker's dockerCommand.
+
+      # --- models: cloud generation, Gemini embeddings --------------------
+      #
+      # There is no Ollama container in this topology, so EMBEDDING_PROVIDER
+      # must be `gemini`: Ollama Cloud serves generation but NO embedding
+      # route (/api/embed answers 401 with or without a key), and leaving this
+      # at `ollama` would send every embedding to a host that does not exist.
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.com
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-2
+      # Fixed at 768 to match the Vector(768) column on menu_embeddings.
+      # Changing it requires a migration AND a full re-embed.
+      - key: EMBEDDING_DIMENSIONS
+        value: "768"
+      - key: GEMINI_EMBEDDING_TIMEOUT_SECONDS
+        value: "20"
+      - key: OLLAMA_EMBEDDING_BASE_URL
+        value: ""
+      # "low" is REQUIRED for gpt-oss and is not optional: it ignores
+      # think:false and reasons anyway, and that reasoning counts against
+      # num_predict — measured 0/4 usable chat answers at "false", 8/8 at
+      # "low". "medium"/"high" are measured not to fit these budgets.
+      - key: OLLAMA_THINK_MODE
+        value: low
+      - key: OLLAMA_CHAT_MODEL
+        value: gpt-oss:20b
+      - key: AI_MANAGER_CHAT_ANSWER_MODEL
+        value: gpt-oss:20b
+      - key: CHAT_TOOL_PLANNER_MODEL
+        value: gpt-oss:20b
+      - key: AI_MANAGER_NARRATION_MODEL
+        value: gpt-oss:20b
+      - key: ANALYST_MODEL
+        value: gpt-oss:20b
+      - key: QWEN_OFFER_MODEL_NAME
+        value: gpt-oss:20b
+      # 300, not the local 120: at 120 gpt-oss's JSON truncates mid-object and
+      # the answer is discarded. Must stay under GUNICORN_TIMEOUT (120s).
+      - key: AI_MANAGER_CHAT_ANSWER_MAX_TOKENS
+        value: "300"
+      - key: AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS
+        value: "60"
+
+      # --- AI manager feature flags ---------------------------------------
+      #
+      # The nightly analysis generates against the cloud for every active
+      # restaurant, which is a real per-token cost. It stays off until someone
+      # decides to pay for it.
+      - key: ENABLE_AI_MANAGER_CHAT_TOOLS
+        value: "true"
+      - key: ENABLE_AI_MANAGER_CHAT_ANSWERS
+        value: "true"
+      - key: ENABLE_AI_MANAGER_CHAT_LLM_ROUTER
+        value: "true"
+      - key: ENABLE_AI_MANAGER_INSIGHTS
+        value: "false"
+      - key: ENABLE_AI_MANAGER_NARRATION
+        value: "false"
+      - key: ENABLE_AI_MANAGER_ACTIONS
+        value: "false"
+      - key: AI_MANAGER_CRON_ENABLED
+        value: "false"
+
+      # --- payments -------------------------------------------------------
+      #
+      # Any value ending in _mock silently disables card payments
+      # (settings.stripe_is_configured), so real keys are required here. The
+      # webhook secret comes from the Stripe dashboard AFTER the endpoint is
+      # registered against the API's Render hostname; without it every webhook
+      # is rejected and no card payment can ever be confirmed.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_API_VERSION
+        value: 2024-11-20.acacia
+      - key: PAYMENT_CURRENCY
+        value: inr
+      - key: PAYMENT_INTENT_TTL_MINUTES
+        value: "30"
+
+      # --- Firebase / push -------------------------------------------------
+      #
+      # There is no Docker secret mount on Render. Upload the service-account
+      # JSON as a SECRET FILE named firebase-service-account.json on the api,
+      # worker and beat services — secret files cannot be declared in a
+      # blueprint — and Render mounts it at the path below. Until then push
+      # notifications fail at send time; nothing else is affected.
+      - key: FCM_CREDENTIALS_PATH
+        value: /etc/secrets/firebase-service-account.json
+      # Left empty on purpose: the project is then inferred from the
+      # credentials file, which is correct by construction.
+      - key: FCM_PROJECT_ID
+        value: ""

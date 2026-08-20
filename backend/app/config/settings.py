@@ -40,6 +40,14 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8081"
     )
 
+    # A managed provider hands out ONE connection string rather than the five
+    # discrete parts below — Render injects `DATABASE_URL` from the database it
+    # provisions, and its host, password and database name are all generated, so
+    # they cannot be written into a compose file ahead of time. When this is set
+    # it wins over POSTGRES_*, which lets the same image run unchanged on Render
+    # and under docker compose. Empty (the compose case) composes the URL from
+    # the parts, exactly as before.
+    database_url: str = ""
     postgres_server: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "postgres"
@@ -499,8 +507,31 @@ class Settings(BaseSettings):
         host = (urlparse(self.ollama_base_url).hostname or "").lower()
         return host not in _LOCAL_OLLAMA_HOSTS and not host.endswith(".local")
 
+    @staticmethod
+    def normalize_database_url(url: str) -> str:
+        """Name the psycopg (v3) driver explicitly in a provider-supplied URL.
+
+        Render's `DATABASE_URL` is `postgresql://...`, and several providers
+        still emit the legacy `postgres://` form. SQLAlchemy maps BOTH to
+        psycopg2, which this image does not ship — requirements.txt pins
+        `psycopg[binary]` v3 — so either form would fail at import with
+        `ModuleNotFoundError: No module named 'psycopg2'`, before a single
+        request or migration ran. Rewriting only the scheme leaves credentials,
+        host, port, database and any query string (`?sslmode=require`) exactly
+        as the provider issued them.
+        """
+
+        scheme, separator, rest = url.partition("://")
+        if not separator or scheme.startswith("postgresql+"):
+            return url
+        if scheme in {"postgres", "postgresql"}:
+            return f"postgresql+psycopg://{rest}"
+        return url
+
     @property
     def sqlalchemy_database_uri(self) -> str:
+        if self.database_url:
+            return self.normalize_database_url(self.database_url)
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
