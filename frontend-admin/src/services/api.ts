@@ -39,8 +39,13 @@ import type {
   ActionOutcome,
 } from '../types/app';
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
+// Imported for the fetch calls below AND re-exported, because
+// services/aiManagerStream.ts already imports API_BASE_URL from this module:
+// the public surface stays exactly as it was, while the value itself now comes
+// from the single config module.
+import { API_BASE_URL } from '../config/api';
+
+export { API_BASE_URL };
 
 export const AUTH_INVALID_EVENT = 'restaurant-rag-admin-auth-invalid';
 

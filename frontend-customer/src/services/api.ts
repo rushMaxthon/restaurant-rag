@@ -24,7 +24,9 @@ import type {
   UserPreferences,
 } from '../types/app';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api';
+// Single source of truth for which backend this app talks to. Stays
+// module-private, exactly as before — nothing outside this file used it.
+import { API_BASE_URL } from '../config/api';
 export const AUTH_INVALID_EVENT = 'restaurant-rag-auth-invalid';
 
 class ApiError extends Error {

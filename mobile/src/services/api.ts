@@ -43,7 +43,9 @@ import type {
   UserPreferences,
 } from '@/types/app';
 
-const API_BASE_URL = 'http://192.168.29.236:8000/api';
+// Single source of truth for which backend this app talks to: the LAN dev
+// server under Metro, the Render service in a release build.
+import { API_BASE_URL } from '@/config/api';
 
 /**
  * How long a settled response may be reused.
