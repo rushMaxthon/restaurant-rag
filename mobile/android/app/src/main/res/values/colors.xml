@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFF7ED</color>
+    <!-- Backs launch_screen.xml. White to match iOS's LaunchScreen.storyboard
+         (systemBackgroundColor) - the splash artwork is centerCrop full-bleed,
+         so this only shows at the very edges on unusual aspect ratios. -->
+    <color name="splash_background">#FFFFFF</color>
 </resources>

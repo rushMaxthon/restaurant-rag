@@ -14,26 +14,24 @@ import { getCountryFlagEmoji } from '@/utils/phoneNumber';
 import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 /**
- * Width the mobile-number field beside this picker needs before its
- * placeholder starts clipping, at a font scale of 1.
+ * How the trigger presents itself.
  *
- * Measured, not guessed: "Enter your mobile number" renders ~168dp at
- * fontSize 15, and the auth `input` style adds 28dp of horizontal padding.
- * It lives here because it exists only because of this picker — the chip
- * reserves `trigger.minWidth` from the same row. Callers multiply it by
- * `PixelRatio.getFontScale()`, since the placeholder grows with the OS font
- * while the row does not.
+ * `standalone` is a self-contained chip with its own border. `embedded` drops
+ * the border, background, and fixed width so the trigger reads as the left-hand
+ * segment of the single bordered control `PhoneNumberField` draws around it.
  */
-export const PHONE_INPUT_MIN_WIDTH = 196;
+export type CountryCodePickerVariant = 'standalone' | 'embedded';
 
 type Props = {
   selectedCountry: CountryOption;
   onSelect: (country: CountryOption) => void;
+  variant?: CountryCodePickerVariant;
 };
 
 export function CountryCodePicker({
   selectedCountry,
   onSelect,
+  variant = 'standalone',
 }: Props): React.JSX.Element {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -87,7 +85,13 @@ export function CountryCodePicker({
 
   return (
     <>
-      <Pressable onPress={() => setVisible(true)} style={styles.trigger}>
+      <Pressable
+        onPress={() => setVisible(true)}
+        style={[
+          styles.trigger,
+          variant === 'embedded' ? styles.triggerEmbedded : null,
+        ]}
+      >
         <Text style={styles.flag}>
           {getCountryFlagEmoji(selectedCountry.code)}
         </Text>
@@ -132,10 +136,9 @@ const createStyles = (theme: AppTheme) =>
     trigger: {
       minHeight: 50,
       minWidth: 102,
-      // Holds its size in the phone row: without this the chip is a flex child
-      // that can be shrunk below its 102dp floor on a narrow screen, squashing
-      // the flag and dial code instead of letting the number field wrap. Width
-      // and appearance are unchanged at every size.
+      // Never shrink: squashing the flag and dial code to buy the number field
+      // a few more dp makes both unreadable. The number field absorbs the
+      // slack instead — it only ever holds digits.
       flexShrink: 0,
       flexGrow: 0,
       paddingHorizontal: 12,
@@ -147,6 +150,22 @@ const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
+    },
+    triggerEmbedded: {
+      // The container already draws the border, background, and radius, so
+      // repeating them here would put a box inside a box.
+      borderWidth: 0,
+      borderRadius: 0,
+      backgroundColor: 'transparent',
+      // Content-sized rather than pinned to 102dp. This is the responsive part:
+      // "+1" gives the number field ~20dp more room than "+880" does, instead
+      // of every country paying for the widest one.
+      minWidth: undefined,
+      paddingHorizontal: 12,
+      // Fills the container's height so the divider beside it runs edge to
+      // edge, and so the tap target grows with the OS font rather than
+      // floating in the middle of a taller row.
+      alignSelf: 'stretch',
     },
     flag: {
       fontSize: 17,

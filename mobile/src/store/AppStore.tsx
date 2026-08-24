@@ -535,20 +535,19 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     let active = true;
 
     /**
-     * Resolves this build's configuration from its own bundle ID.
+     * Fetches this build's configuration from the backend.
      *
-     * Falls back to the last cached config so a cold start without
-     * connectivity still boots, and never throws: startup must not depend on
-     * the network.
+     * Takes the bundle id rather than resolving it: identity headers are
+     * applied once in `bootstrap` so they cover every request, including the
+     * launches where the cache fast path means this is never called.
+     *
+     * Falls back to `cachedAppConfig` and never throws: startup must not
+     * depend on the network.
      */
-    async function loadAppConfig(
+    async function fetchAppConfig(
+      bundleId: string,
       cachedAppConfig: AppConfig | null,
     ): Promise<AppConfig | null> {
-      const identity = await resolveAppIdentity();
-      // Applied before any request so every call — including this one — carries
-      // the app identity the backend scopes on.
-      setAppIdentityHeaders(identity);
-      const bundleId = identity.bundleId;
       try {
         const resolved = await api.getAppConfig();
         console.log(
@@ -611,11 +610,40 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      // Awaited before the app is marked bootstrapped, so no screen ever
-      // renders without the app identity resolved.
-      const resolvedAppConfig = await loadAppConfig(storedAppConfig);
+      // Resolved once, here, rather than inside the fetch: these headers scope
+      // EVERY later request, so they must be applied even on the launches
+      // where the cache fast path below skips the network entirely.
+      const identity = await resolveAppIdentity();
       if (!active) {
         return;
+      }
+      setAppIdentityHeaders(identity);
+
+      // A cached config is only usable if it belongs to THIS build. The cache
+      // lives under a single key, so a binary whose bundle id changed would
+      // otherwise boot on the previous app's identity - wrong app mode, wrong
+      // restaurant - until the refresh landed.
+      const usableCache =
+        storedAppConfig && storedAppConfig.bundle_id === identity.bundleId
+          ? storedAppConfig
+          : null;
+
+      // FAST PATH: boot on the cached config and refresh in the background.
+      //
+      // It came from the backend on an earlier launch, so it is real data, not
+      // a guess - and holding the splash for a round trip that almost always
+      // returns the same thing is what made every launch cost a network call.
+      // Waiting is now limited to the cases that genuinely have nothing to
+      // show: a first launch, or a bundle id the cache does not match.
+      const resolvedAppConfig =
+        usableCache ?? (await fetchAppConfig(identity.bundleId, null));
+      if (!active) {
+        return;
+      }
+      if (usableCache) {
+        console.log(
+          `[AppConfig] Booted from cache: app_key=${usableCache.app_key} app_mode=${usableCache.app_mode} (refreshing in background)`,
+        );
       }
       setAppConfig(resolvedAppConfig);
       // Only a config that actually came from the backend — now, or on an
@@ -681,6 +709,32 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
             : null),
       );
       setBootstrapped(true);
+
+      // Background refresh for the fast path. Deliberately after
+      // `setBootstrapped`: the app is already on screen and usable, so a slow
+      // or sleeping API costs the user nothing here. Nothing awaits it.
+      if (usableCache) {
+        void (async () => {
+          const fresh = await fetchAppConfig(identity.bundleId, null);
+          if (!active || !fresh) {
+            return;
+          }
+          setAppConfig(fresh);
+          setAppConfigStatus('resolved');
+          // The backend can re-point a bundle id at a different app client.
+          // Rare, but it voids any session issued for the old one, so drop it
+          // here rather than letting every later request fail with a 401.
+          if (fresh.app_client_id !== usableCache.app_client_id) {
+            console.warn(
+              `[AppScope] App client changed on refresh: ${usableCache.app_client_id} -> ${fresh.app_client_id}; discarding session`,
+            );
+            void storage.writeAuth(null);
+            setToken(null);
+            setUser(null);
+            setAppIdentity(null);
+          }
+        })();
+      }
 
       if (!activeAuth?.token || activeAuth.user?.role !== 'CUSTOMER') {
         setFavoritesHydrated(true);

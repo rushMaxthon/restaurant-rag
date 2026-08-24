@@ -548,6 +548,101 @@ class StripeSignatureVerificationTests(unittest.TestCase):
 # --- reaper ----------------------------------------------------------------
 
 
+class ProviderReconciliationTests(unittest.TestCase):
+    """The safety net for a webhook that never arrives.
+
+    Every one of these is a real production failure mode: Stripe exhausting its
+    retries, an endpoint registered after the fact, or a free-tier instance
+    asleep for the whole delivery window.
+    """
+
+    def _status(self, session, order, provider):
+        with patch.object(
+            payments_service, "resolve_provider", return_value=provider
+        ), patch("app.services.orders.run_order_placed_side_effects"):
+            return payments_service.get_payment_status(
+                session, make_customer(order), order.id
+            )
+
+    def _succeeded(self, order, *, amount=None, intent_id="pi_test_1"):
+        return payments_base.PaymentIntentResult(
+            intent_id=intent_id,
+            client_secret=f"{intent_id}_secret",
+            amount=order.total_amount if amount is None else amount,
+            currency=order.currency,
+            status="succeeded",
+        )
+
+    def test_status_poll_recovers_a_payment_the_webhook_never_delivered(self) -> None:
+        order = make_order()
+        transaction = make_transaction(order)
+        session = FakeSession(orders=[order], transactions=[transaction])
+        provider = FakeProvider()
+        provider.retrieve_result = self._succeeded(order)
+
+        response = self._status(session, order, provider)
+
+        self.assertEqual(response.payment_status, PaymentStatus.PAID)
+        self.assertEqual(order.payment_status, PaymentStatus.PAID)
+        self.assertEqual(order.status, OrderStatus.PLACED)
+        self.assertEqual(order.payment_reference, transaction.provider_intent_id)
+        self.assertEqual(transaction.status, PaymentStatus.PAID)
+
+    def test_unpaid_intent_leaves_the_order_alone(self) -> None:
+        order = make_order()
+        transaction = make_transaction(order)
+        session = FakeSession(orders=[order], transactions=[transaction])
+        provider = FakeProvider()
+        provider.retrieve_result = payments_base.PaymentIntentResult(
+            intent_id="pi_test_1",
+            client_secret="pi_test_1_secret",
+            amount=order.total_amount,
+            currency=order.currency,
+            status="requires_payment_method",
+        )
+
+        response = self._status(session, order, provider)
+
+        self.assertEqual(response.payment_status, PaymentStatus.PENDING)
+        self.assertEqual(order.status, OrderStatus.PAYMENT_PENDING)
+
+    def test_underpayment_is_refused_here_too(self) -> None:
+        order = make_order(total="250.00")
+        transaction = make_transaction(order)
+        session = FakeSession(orders=[order], transactions=[transaction])
+        provider = FakeProvider()
+        provider.retrieve_result = self._succeeded(order, amount=Decimal("1.00"))
+
+        self._status(session, order, provider)
+
+        self.assertEqual(order.payment_status, PaymentStatus.FAILED)
+        self.assertEqual(transaction.failure_code, "amount_mismatch")
+
+    def test_provider_outage_never_breaks_the_status_read(self) -> None:
+        order = make_order()
+        transaction = make_transaction(order)
+        session = FakeSession(orders=[order], transactions=[transaction])
+        provider = FakeProvider()  # retrieve_result unset -> raises
+
+        response = self._status(session, order, provider)
+
+        self.assertEqual(response.payment_status, PaymentStatus.PENDING)
+
+    def test_cod_order_never_calls_the_provider(self) -> None:
+        order = make_order(
+            payment_method=PaymentMethod.COD,
+            payment_status=PaymentStatus.COD,
+            order_status=OrderStatus.PLACED,
+        )
+        session = FakeSession(orders=[order], transactions=[])
+        provider = FakeProvider()
+        provider.retrieve_result = self._succeeded(order)
+
+        response = self._status(session, order, provider)
+
+        self.assertEqual(response.payment_status, PaymentStatus.COD)
+
+
 class ReaperTests(unittest.TestCase):
     def test_expired_unpaid_order_is_cancelled(self) -> None:
         order = make_order(placed_at=datetime.now(UTC) - timedelta(hours=2))
@@ -562,6 +657,29 @@ class ReaperTests(unittest.TestCase):
         self.assertEqual(order.status, OrderStatus.CANCELLED)
         self.assertEqual(order.payment_status, PaymentStatus.CANCELLED)
         self.assertEqual(provider.cancelled, [transaction.provider_intent_id])
+
+    def test_order_paid_without_a_webhook_is_reconciled_not_cancelled(self) -> None:
+        order = make_order(placed_at=datetime.now(UTC) - timedelta(hours=2))
+        transaction = make_transaction(order)
+        session = FakeSession(orders=[order], transactions=[transaction])
+        provider = FakeProvider()
+        provider.retrieve_result = payments_base.PaymentIntentResult(
+            intent_id=transaction.provider_intent_id,
+            client_secret="secret",
+            amount=order.total_amount,
+            currency=order.currency,
+            status="succeeded",
+        )
+
+        with patch.object(
+            payments_service, "resolve_provider", return_value=provider
+        ), patch("app.services.orders.run_order_placed_side_effects"):
+            cancelled = payments_service.reap_expired_unpaid_orders(session)
+
+        self.assertEqual(cancelled, 0)
+        self.assertEqual(order.payment_status, PaymentStatus.PAID)
+        self.assertEqual(order.status, OrderStatus.PLACED)
+        self.assertEqual(provider.cancelled, [])
 
     def test_paid_order_is_never_reaped(self) -> None:
         order = make_order(

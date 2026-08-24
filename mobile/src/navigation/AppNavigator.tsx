@@ -1,11 +1,5 @@
-import React from 'react';
-import {
-  ActivityIndicator,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { StatusBar, StyleSheet, Text, View } from 'react-native';
 import {
   NavigationContainer,
   DefaultTheme,
@@ -18,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePreferences, useSession } from '@hooks/useAppStore';
 import { AppOverlays } from '@components/AppOverlays';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { AppSplashScreen } from '@components/AppSplashScreen';
 import { HomeScreen } from '@screens/home/HomeScreen';
 import { SearchScreen } from '@screens/search/SearchScreen';
 import { OrderListScreen } from '@screens/orders/orderList/OrderListScreen';
@@ -142,13 +137,12 @@ export function AppNavigator(): React.JSX.Element {
   const { bootstrapped, token } = useSession();
   const { preferencesOnboardingCompleted } = usePreferences();
 
-  if (!bootstrapped) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator color={theme.colors.primary} />
-      </View>
-    );
-  }
+  // Kept mounted across the whole hand-off and only torn down once the splash
+  // has finished fading, so there is never a frame with neither the splash nor
+  // the app on screen. `bootstrapped` alone cannot drive this: it flips the
+  // instant init finishes, which is when the fade STARTS, not when it ends.
+  const [isSplashMounted, setIsSplashMounted] = useState(true);
+  const handleSplashHidden = useCallback(() => setIsSplashMounted(false), []);
 
   return (
     <View style={styles.root}>
@@ -156,185 +150,199 @@ export function AppNavigator(): React.JSX.Element {
         barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={theme.colors.background}
       />
-      <NavigationContainer
-        onReady={markNotificationNavigationReady}
-        ref={navigationRef}
-        theme={{
-          ...(theme.mode === 'dark' ? DarkTheme : DefaultTheme),
-          colors: {
-            ...(theme.mode === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
-            background: theme.colors.background,
-            card: theme.colors.surface,
-            border: theme.colors.border,
-            text: theme.colors.text,
-            primary: theme.colors.primary,
-            notification: theme.colors.primary,
-          },
-        }}
-      >
-        {preferencesOnboardingCompleted ? (
-          <Stack.Navigator
-            screenOptions={{
-              header: ({ navigation, options, route, back }) => (
-                <AppHeader
-                  canGoBack={Boolean(back)}
-                  onBack={navigation.goBack}
-                  right={options.headerRight?.({ canGoBack: Boolean(back) })}
-                  title={
-                    typeof options.title === 'string' &&
-                    options.title.length > 0
-                      ? options.title
-                      : route.name
-                  }
-                />
-              ),
-              contentStyle: { backgroundColor: theme.colors.background },
-            }}
-          >
-            <Stack.Screen
-              name="MainTabs"
-              component={MainTabs}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Restaurant"
-              component={RestaurantScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Restaurants"
-              component={RestaurantsScreen}
-              options={{ title: 'Restaurants' }}
-            />
-            <Stack.Screen
-              name="MenuItemDetail"
-              component={MenuItemDetailScreen}
-              options={{ title: 'Menu item' }}
-            />
-            <Stack.Screen
-              name="Search"
-              component={SearchScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="PersonalizedPicks"
-              component={PersonalizedPicksScreen}
-              options={{ title: 'Personalized Picks' }}
-            />
-            <Stack.Screen
-              name="Favorites"
-              component={FavoritesScreen}
-              options={{ title: 'Favorites' }}
-            />
-            <Stack.Screen name="Cart" component={CartScreen} />
-            <Stack.Screen
-              name="Payment"
-              component={PaymentScreen}
-              options={{ title: 'Payment' }}
-            />
-            <Stack.Screen
-              name="OrderSuccess"
-              component={OrderSuccessScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="OrderList"
-              component={OrderListScreen}
-              options={{ title: 'Order history' }}
-            />
-            <Stack.Screen
-              name="OrderDetail"
-              component={OrderDetailScreen}
-              options={{ title: 'Order details' }}
-            />
-            <Stack.Screen
-              name="ProfileDetails"
-              component={ProfileDetailsScreen}
-              options={{ title: 'Profile details' }}
-            />
-            <Stack.Screen
-              name="UserPreferences"
-              component={PreferencesScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="SavedAddresses"
-              component={SavedAddressesScreen}
-              options={{ title: 'Saved addresses' }}
-            />
-            <Stack.Screen
-              name="SavedAddressEditor"
-              component={SavedAddressEditorScreen}
-              options={({ route }) => ({
-                title:
-                  route.params.mode === 'edit' ? 'Edit address' : 'Add address',
-              })}
-            />
-            <Stack.Screen
-              name="LocationSelect"
-              component={LocationSelectScreen}
-              options={{
+      {/* Mounts only once init is done. Rendering the navigator underneath a
+          still-opaque splash is deliberate: it gets a frame to lay itself out
+          before AppSplashScreen fades and reveals it. */}
+      {bootstrapped ? (
+        <NavigationContainer
+          onReady={markNotificationNavigationReady}
+          ref={navigationRef}
+          theme={{
+            ...(theme.mode === 'dark' ? DarkTheme : DefaultTheme),
+            colors: {
+              ...(theme.mode === 'dark'
+                ? DarkTheme.colors
+                : DefaultTheme.colors),
+              background: theme.colors.background,
+              card: theme.colors.surface,
+              border: theme.colors.border,
+              text: theme.colors.text,
+              primary: theme.colors.primary,
+              notification: theme.colors.primary,
+            },
+          }}
+        >
+          {preferencesOnboardingCompleted ? (
+            <Stack.Navigator
+              screenOptions={{
+                header: ({ navigation, options, route, back }) => (
+                  <AppHeader
+                    canGoBack={Boolean(back)}
+                    onBack={navigation.goBack}
+                    right={options.headerRight?.({ canGoBack: Boolean(back) })}
+                    title={
+                      typeof options.title === 'string' &&
+                      options.title.length > 0
+                        ? options.title
+                        : route.name
+                    }
+                  />
+                ),
+                contentStyle: { backgroundColor: theme.colors.background },
+              }}
+            >
+              <Stack.Screen
+                name="MainTabs"
+                component={MainTabs}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Restaurant"
+                component={RestaurantScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Restaurants"
+                component={RestaurantsScreen}
+                options={{ title: 'Restaurants' }}
+              />
+              <Stack.Screen
+                name="MenuItemDetail"
+                component={MenuItemDetailScreen}
+                options={{ title: 'Menu item' }}
+              />
+              <Stack.Screen
+                name="Search"
+                component={SearchScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="PersonalizedPicks"
+                component={PersonalizedPicksScreen}
+                options={{ title: 'Personalized Picks' }}
+              />
+              <Stack.Screen
+                name="Favorites"
+                component={FavoritesScreen}
+                options={{ title: 'Favorites' }}
+              />
+              <Stack.Screen name="Cart" component={CartScreen} />
+              <Stack.Screen
+                name="Payment"
+                component={PaymentScreen}
+                options={{ title: 'Payment' }}
+              />
+              <Stack.Screen
+                name="OrderSuccess"
+                component={OrderSuccessScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="OrderList"
+                component={OrderListScreen}
+                options={{ title: 'Order history' }}
+              />
+              <Stack.Screen
+                name="OrderDetail"
+                component={OrderDetailScreen}
+                options={{ title: 'Order details' }}
+              />
+              <Stack.Screen
+                name="ProfileDetails"
+                component={ProfileDetailsScreen}
+                options={{ title: 'Profile details' }}
+              />
+              <Stack.Screen
+                name="UserPreferences"
+                component={PreferencesScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="SavedAddresses"
+                component={SavedAddressesScreen}
+                options={{ title: 'Saved addresses' }}
+              />
+              <Stack.Screen
+                name="SavedAddressEditor"
+                component={SavedAddressEditorScreen}
+                options={({ route }) => ({
+                  title:
+                    route.params.mode === 'edit'
+                      ? 'Edit address'
+                      : 'Add address',
+                })}
+              />
+              <Stack.Screen
+                name="LocationSelect"
+                component={LocationSelectScreen}
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                }}
+              />
+              <Stack.Screen
+                name="NotificationSettings"
+                component={NotificationSettingsScreen}
+                options={{ title: 'Notifications' }}
+              />
+              <Stack.Screen
+                name="Privacy"
+                component={PrivacyScreen}
+                options={{ title: 'Privacy' }}
+              />
+              <Stack.Screen
+                name="Appearance"
+                component={AppearanceScreen}
+                options={{ title: 'Appearance' }}
+              />
+              <Stack.Screen
+                name="HelpSupport"
+                component={HelpSupportScreen}
+                options={{ title: 'Help & support' }}
+              />
+              <Stack.Screen
+                name="Login"
+                component={LoginScreen}
+                options={{
+                  title: token ? 'Account Login' : 'Login',
+                  presentation: 'modal',
+                }}
+              />
+              <Stack.Screen
+                name="Register"
+                component={RegisterScreen}
+                options={{
+                  title: token ? 'Create Account' : 'Register',
+                  presentation: 'modal',
+                }}
+              />
+              <Stack.Screen
+                name="OtpVerification"
+                component={OtpVerificationScreen}
+                options={{ title: 'Verify OTP' }}
+              />
+            </Stack.Navigator>
+          ) : (
+            <Stack.Navigator
+              screenOptions={{
                 headerShown: false,
-                presentation: 'modal',
+                contentStyle: { backgroundColor: theme.colors.background },
               }}
-            />
-            <Stack.Screen
-              name="NotificationSettings"
-              component={NotificationSettingsScreen}
-              options={{ title: 'Notifications' }}
-            />
-            <Stack.Screen
-              name="Privacy"
-              component={PrivacyScreen}
-              options={{ title: 'Privacy' }}
-            />
-            <Stack.Screen
-              name="Appearance"
-              component={AppearanceScreen}
-              options={{ title: 'Appearance' }}
-            />
-            <Stack.Screen
-              name="HelpSupport"
-              component={HelpSupportScreen}
-              options={{ title: 'Help & support' }}
-            />
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-              options={{
-                title: token ? 'Account Login' : 'Login',
-                presentation: 'modal',
-              }}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-              options={{
-                title: token ? 'Create Account' : 'Register',
-                presentation: 'modal',
-              }}
-            />
-            <Stack.Screen
-              name="OtpVerification"
-              component={OtpVerificationScreen}
-              options={{ title: 'Verify OTP' }}
-            />
-          </Stack.Navigator>
-        ) : (
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: theme.colors.background },
-            }}
-          >
-            <Stack.Screen
-              name="PreferencesOnboarding"
-              component={PreferencesOnboardingScreen}
-            />
-          </Stack.Navigator>
-        )}
-      </NavigationContainer>
+            >
+              <Stack.Screen
+                name="PreferencesOnboarding"
+                component={PreferencesOnboardingScreen}
+              />
+            </Stack.Navigator>
+          )}
+        </NavigationContainer>
+      ) : null}
       <AppOverlays />
+      {/* Last child so it sits above the navigator, and rendered from the very
+          first frame - it is what the native splash hands off to. */}
+      {isSplashMounted ? (
+        <AppSplashScreen done={bootstrapped} onHidden={handleSplashHidden} />
+      ) : null}
     </View>
   );
 }
@@ -343,12 +351,6 @@ const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: theme.colors.background,
-    },
-    loader: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
       backgroundColor: theme.colors.background,
     },
     tabBar: {

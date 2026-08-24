@@ -128,12 +128,14 @@ def get_payment_status(
     *,
     app_scope_restaurant_id: uuid.UUID | None = None,
 ) -> PaymentStatusResponse:
-    return _status_response(
-        db,
-        _load_customer_order(
-            db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
-        ),
+    order = _load_customer_order(
+        db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
     )
+    # The client polls this endpoint while it waits for the webhook. Asking the
+    # provider directly here is what stops a lost or late webhook from stranding
+    # a genuinely paid order at PENDING forever.
+    _reconcile_with_provider(db, order)
+    return _status_response(db, order)
 
 
 def create_payment_intent(
@@ -397,6 +399,72 @@ def _mark_refunded(db: Session, order: Order, transaction: PaymentTransaction) -
     db.commit()
 
 
+def _reconcile_with_provider(db: Session, order: Order) -> None:
+    """Ask the provider what really became of a card order that still looks unpaid.
+
+    Webhooks are the primary path, but delivery is not guaranteed: Stripe gives
+    up after its retry window, an endpoint can be registered late or not at all,
+    and a sleeping free-tier instance can miss the window entirely. Any of those
+    leaves a customer who was actually charged looking at PENDING forever, and
+    leaves the reaper ready to cancel the order out from under them.
+
+    This does not weaken the rule at the top of this module. The intent is read
+    straight from the provider over an authenticated server-to-server call --
+    the same source of truth the webhook carries, pulled instead of pushed.
+    Nothing the client sent is consulted, and the amount check in `_mark_paid`
+    still applies.
+
+    Deliberately silent on failure: a status read must keep working during a
+    provider outage, and the next poll simply tries again.
+    """
+
+    if order.payment_method != PaymentMethod.CARD:
+        return
+    if order.payment_status not in RETRYABLE_PAYMENT_STATUSES:
+        return
+
+    transaction = _latest_transaction(db, order.id)
+    if transaction is None or not transaction.provider_intent_id:
+        return
+
+    provider = resolve_provider(PaymentMethod.CARD)
+    if provider is None or not provider.is_configured():
+        return
+
+    try:
+        remote = provider.retrieve_intent(transaction.provider_intent_id)
+    except PaymentProviderError as error:
+        logger.warning(
+            "Payment reconciliation failed order_id=%s intent=%s error=%s",
+            order.id,
+            transaction.provider_intent_id,
+            error,
+        )
+        return
+
+    if remote.status != "succeeded":
+        return
+
+    logger.info(
+        "Reconciled paid order missed by webhook order_id=%s intent=%s",
+        order.id,
+        remote.intent_id,
+    )
+    # `_mark_paid` is idempotent, so the real webhook arriving later is a no-op.
+    _mark_paid(
+        db,
+        order,
+        transaction,
+        WebhookEvent(
+            event_id=f"reconcile:{remote.intent_id}",
+            event_type="payment_intent.succeeded",
+            intent_id=remote.intent_id,
+            amount=remote.amount,
+            currency=remote.currency,
+        ),
+    )
+
+
 def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None) -> dict[str, str]:
     """Verify, deduplicate, and apply a Stripe event.
 
@@ -477,6 +545,10 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
     provider = resolve_provider(PaymentMethod.CARD)
     cancelled = 0
     for order in stale_orders:
+        # Confirm with the provider before cancelling. Cancelling an order whose
+        # webhook was merely lost would leave the customer charged for an order
+        # we told them was cancelled.
+        _reconcile_with_provider(db, order)
         if order.payment_status == PaymentStatus.PAID:
             continue
         transaction = _latest_transaction(db, order.id)

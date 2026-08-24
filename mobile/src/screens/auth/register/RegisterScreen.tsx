@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -10,10 +9,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthScreenLayout } from '@components/AuthScreenLayout';
-import {
-  CountryCodePicker,
-  PHONE_INPUT_MIN_WIDTH,
-} from '@components/CountryCodePicker';
+import { PhoneNumberField } from '@components/PhoneNumberField';
 import { firebaseAuthService } from '@services/firebaseAuth';
 import { setPendingRegistrationDraft } from '@services/registrationDraft';
 import { useAppActions } from '@hooks/useAppStore';
@@ -174,34 +170,21 @@ export function RegisterScreen({
 
       <View style={styles.field}>
         <Text style={styles.label}>Mobile number</Text>
-        <View style={styles.phoneRow}>
-          <CountryCodePicker
-            onSelect={selectedCountry => {
-              setCountry(selectedCountry);
-              setErrors(current => ({ ...current, phoneNumber: undefined }));
-              setApiError(null);
-            }}
-            selectedCountry={country}
-          />
-          <TextInput
-            autoComplete="tel"
-            keyboardType="number-pad"
-            maxLength={15}
-            onChangeText={value => {
-              setPhoneNumber(sanitizeLocalPhoneNumber(value));
-              setErrors(current => ({ ...current, phoneNumber: undefined }));
-              setApiError(null);
-            }}
-            placeholder="Enter your mobile number"
-            placeholderTextColor={theme.colors.hint}
-            style={[
-              styles.input,
-              styles.phoneInput,
-              errors.phoneNumber ? styles.inputError : null,
-            ]}
-            value={phoneNumber}
-          />
-        </View>
+        <PhoneNumberField
+          hasError={Boolean(errors.phoneNumber)}
+          onChangeText={value => {
+            setPhoneNumber(sanitizeLocalPhoneNumber(value));
+            setErrors(current => ({ ...current, phoneNumber: undefined }));
+            setApiError(null);
+          }}
+          onSelectCountry={selectedCountry => {
+            setCountry(selectedCountry);
+            setErrors(current => ({ ...current, phoneNumber: undefined }));
+            setApiError(null);
+          }}
+          selectedCountry={country}
+          value={phoneNumber}
+        />
         <Text style={styles.helperText}>
           Tap the country code to change region.
         </Text>
@@ -309,22 +292,6 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 14,
       color: theme.colors.text,
       fontSize: 15,
-    },
-    phoneRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      // Same wrap behaviour as the login screen: the number field moves to its
-      // own full-width line rather than being squeezed by the country chip.
-      flexWrap: 'wrap',
-    },
-    phoneInput: {
-      flex: 1,
-      // Same rule and same measured constant as LoginScreen: the field keeps
-      // its place beside the country chip while the placeholder still fits, and
-      // takes its own full-width line once the screen is narrow enough or the
-      // OS font large enough that it would be cut off.
-      minWidth: PHONE_INPUT_MIN_WIDTH * PixelRatio.getFontScale(),
     },
     helperText: {
       color: theme.colors.hint,

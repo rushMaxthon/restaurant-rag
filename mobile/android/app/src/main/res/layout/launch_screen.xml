@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Content view for the native splash Dialog that react-native-splash-screen
+  shows in MainActivity.onCreate, before the JS bundle has rendered anything.
+
+  react-native-splash-screen's own SplashScreen.java references
+  `R.layout.launch_screen` from its own package, resolved through its
+  android/src/main/res/values/refs.xml alias (`@layout/launch_screen`) at
+  resource-link time - this file is what that alias resolves to. It must keep
+  this exact name and live in the app module's res/layout.
+
+  @drawable/launch_screen is the density ladder (ldpi through xxxhdpi)
+  already staged under res/drawable-*/ - the same artwork iOS's
+  LaunchScreen.storyboard shows, so both platforms present the same splash.
+
+  centerCrop (Android's scaleAspectFill) matches the storyboard's imageView
+  contentMode.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/splash_background">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/launch_screen" />
+
+</FrameLayout>

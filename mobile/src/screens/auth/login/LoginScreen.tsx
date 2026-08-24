@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -10,10 +9,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthScreenLayout } from '@components/AuthScreenLayout';
-import {
-  CountryCodePicker,
-  PHONE_INPUT_MIN_WIDTH,
-} from '@components/CountryCodePicker';
+import { PhoneNumberField } from '@components/PhoneNumberField';
 import { api } from '@services/api';
 import { useAppActions } from '@hooks/useAppStore';
 import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
@@ -114,34 +110,21 @@ export function LoginScreen({ navigation, route }: Props): React.JSX.Element {
     >
       <View style={styles.field}>
         <Text style={styles.label}>Mobile number</Text>
-        <View style={styles.phoneRow}>
-          <CountryCodePicker
-            onSelect={selectedCountry => {
-              setCountry(selectedCountry);
-              setErrors(current => ({ ...current, phoneNumber: undefined }));
-              setApiError(null);
-            }}
-            selectedCountry={country}
-          />
-          <TextInput
-            autoComplete="tel"
-            keyboardType="number-pad"
-            maxLength={15}
-            onChangeText={value => {
-              setPhoneNumber(sanitizeLocalPhoneNumber(value));
-              setErrors(current => ({ ...current, phoneNumber: undefined }));
-              setApiError(null);
-            }}
-            placeholder="Enter your mobile number"
-            placeholderTextColor={theme.colors.hint}
-            style={[
-              styles.input,
-              styles.phoneInput,
-              errors.phoneNumber ? styles.inputError : null,
-            ]}
-            value={phoneNumber}
-          />
-        </View>
+        <PhoneNumberField
+          hasError={Boolean(errors.phoneNumber)}
+          onChangeText={value => {
+            setPhoneNumber(sanitizeLocalPhoneNumber(value));
+            setErrors(current => ({ ...current, phoneNumber: undefined }));
+            setApiError(null);
+          }}
+          onSelectCountry={selectedCountry => {
+            setCountry(selectedCountry);
+            setErrors(current => ({ ...current, phoneNumber: undefined }));
+            setApiError(null);
+          }}
+          selectedCountry={country}
+          value={phoneNumber}
+        />
         <Text style={styles.helperText}>
           Tap the country code to change region.
         </Text>
@@ -207,32 +190,6 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 14,
       color: theme.colors.text,
       fontSize: 15,
-    },
-    phoneRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      // Lets the number field drop onto its own full-width line when the row
-      // cannot give it `phoneInput.minWidth`. Nothing moves at normal sizes on
-      // a normal phone; it only engages where the field would otherwise be too
-      // narrow to show its placeholder.
-      flexWrap: 'wrap',
-    },
-    phoneInput: {
-      flex: 1,
-      // The wrap threshold, not a cosmetic width: the width below which
-      // "Enter your mobile number" starts being cut off mid-word.
-      //
-      // 168dp of text at fontSize 15 plus the input's 28dp of horizontal
-      // padding. Multiplied by the OS font scale because the placeholder grows
-      // with it while the row does not — which is why this clipped on devices
-      // that look fine at 100%.
-      //
-      // Sized so nothing moves in the common case: a 393dp screen at 100%
-      // leaves the field 197dp, just over the 196dp it needs, so it stays
-      // beside the country chip exactly as it does today. A narrower screen or
-      // a larger font drops it to its own full-width line instead of clipping.
-      minWidth: PHONE_INPUT_MIN_WIDTH * PixelRatio.getFontScale(),
     },
     helperText: {
       color: theme.colors.hint,

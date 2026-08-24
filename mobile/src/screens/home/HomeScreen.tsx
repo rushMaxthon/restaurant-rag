@@ -76,6 +76,46 @@ interface ScopedMenuSnapshot {
 const emptyMenuSnapshot: ScopedMenuSnapshot = { restaurant: null, items: [] };
 
 /**
+ * Hard ceiling on one feed load.
+ *
+ * The axios client already sets `timeout: 120000`, but that is not a guarantee:
+ * it is implemented through the native networking module, and a connection that
+ * fails at the transport layer can leave the JS promise permanently unsettled -
+ * measured on iOS, where feed requests never settled even after 140s. The
+ * `Promise.all` below then never resolves, its `finally` never runs, and the
+ * screen sits on its skeleton forever with no error and no way back.
+ *
+ * 25s is well past a slow cold start on a healthy connection, so this only
+ * fires when something is genuinely wrong - and when it does, the catch below
+ * surfaces the "Feed unavailable" toast and pull-to-refresh still works.
+ */
+const HOME_FEED_TIMEOUT_MS = 25_000;
+
+/** Rejects if `promise` has not settled within `ms`, so a caller cannot hang. */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
  * Loads the branded app's own menu the same way the restaurant screen does:
  * resolve the restaurant detail, pick its default bookable branch, then read
  * that branch's menu. The backend also scopes `/menu-items` to the app client,
@@ -263,13 +303,7 @@ export function HomeScreen(): React.JSX.Element {
         // arrived and told us this is a single-restaurant build.
         scopedRestaurantId,
       }),
-    [
-      locationScopeKey,
-      preferenceScopeKey,
-      scopedRestaurantId,
-      token,
-      user?.id,
-    ],
+    [locationScopeKey, preferenceScopeKey, scopedRestaurantId, token, user?.id],
   );
 
   const loadHomeFeed = useCallback(
@@ -309,36 +343,42 @@ export function HomeScreen(): React.JSX.Element {
           orderRows,
           offerRows,
           menuSnapshot,
-        ] = await Promise.all([
-          api.getRestaurants(token),
-          api.getGeneratedCombos(8).catch(() => []),
-          api
-            .getRecommendationsForContext({
-              token,
-              preferences: preferencesRef.current,
-              dedupeMultiLocation: true,
-              selectedLocation: selectedLocationRef.current,
-            })
-            .catch(() => []),
-          token
-            ? api.getPersonalizedRecommendationContext(token).catch(() => null)
-            : Promise.resolve(null),
-          token ? api.getOrders(token).catch(() => []) : Promise.resolve([]),
-          token
-            ? api.getPersonalizedOffers(token, 4).catch(error => {
-                console.warn('personalized offers load failed', error);
-                return [];
+        ] = await withTimeout(
+          Promise.all([
+            api.getRestaurants(token),
+            api.getGeneratedCombos(8).catch(() => []),
+            api
+              .getRecommendationsForContext({
+                token,
+                preferences: preferencesRef.current,
+                dedupeMultiLocation: true,
+                selectedLocation: selectedLocationRef.current,
               })
-            : Promise.resolve([]),
-          scopedRestaurantId
-            ? loadScopedRestaurantMenu(scopedRestaurantId, token).catch(
-                error => {
-                  console.warn('scoped menu load failed', error);
-                  return emptyMenuSnapshot;
-                },
-              )
-            : Promise.resolve(emptyMenuSnapshot),
-        ]);
+              .catch(() => []),
+            token
+              ? api
+                  .getPersonalizedRecommendationContext(token)
+                  .catch(() => null)
+              : Promise.resolve(null),
+            token ? api.getOrders(token).catch(() => []) : Promise.resolve([]),
+            token
+              ? api.getPersonalizedOffers(token, 4).catch(error => {
+                  console.warn('personalized offers load failed', error);
+                  return [];
+                })
+              : Promise.resolve([]),
+            scopedRestaurantId
+              ? loadScopedRestaurantMenu(scopedRestaurantId, token).catch(
+                  error => {
+                    console.warn('scoped menu load failed', error);
+                    return emptyMenuSnapshot;
+                  },
+                )
+              : Promise.resolve(emptyMenuSnapshot),
+          ]),
+          HOME_FEED_TIMEOUT_MS,
+          'Home feed',
+        );
         setRestaurants(restaurantRows);
         setGeneratedCombos(comboRows);
         setRecommendations(recommendationRows);

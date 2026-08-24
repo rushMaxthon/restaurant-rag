@@ -4,6 +4,11 @@
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!-- Matches launch_screen.xml's background, so the very first frame
+             Android draws for a cold start - before MainActivity.onCreate has
+             even run to show the splash Dialog - is the same color rather
+             than a plain system white/black flash. -->
+        <item name="android:windowBackground">@color/splash_background</item>
     </style>
 
 </resources>
