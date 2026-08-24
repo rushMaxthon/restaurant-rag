@@ -19,6 +19,12 @@ import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
 import { resolveStatusPillTone, StatusPill } from '../components/StatusPill';
 import { ApiError, api, formatCurrency, formatDate } from '../services/api';
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from '../services/pageCache';
 import type { GeneratedCombo, UserRole } from '../types/app';
 
 interface GeneratedCombosPageProps {
@@ -108,8 +114,14 @@ function GeneratedCombosWorkspace({
   onToast,
   embedded = false,
 }: GeneratedCombosPageProps) {
-  const [rows, setRows] = useState<GeneratedCombo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const combosKey = `generated-combos:${tokenScope(token)}:${restaurantId ?? ''}:${locationId ?? ''}`;
+  const [rows, setRows] = useState<GeneratedCombo[]>(
+    () => getPageSnapshot<GeneratedCombo[]>(combosKey) ?? [],
+  );
+  // Only true when this scope has never been fetched this session - not on
+  // every mount, so revisiting this page keeps showing its data instead of a
+  // skeleton.
+  const [loading, setLoading] = useState(() => !hasPageSnapshot(combosKey));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>('ALL');
@@ -123,7 +135,21 @@ function GeneratedCombosWorkspace({
   const isAdmin = role === 'ADMIN';
   const isRestaurantScoped = Boolean(restaurantId) || role === 'OWNER';
 
-  const loadRows = async () => {
+  // `force`: bypasses the cache. The retry button and the rebuild flow below
+  // both force, since they exist specifically to fetch past whatever's
+  // cached; the mount effect never does, which is what makes revisiting this
+  // page free.
+  const loadRows = async (force = false) => {
+    if (!force) {
+      const cached = getPageSnapshot<GeneratedCombo[]>(combosKey);
+      if (cached) {
+        setRows(cached);
+        setErrorMessage(null);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setErrorMessage(null);
     try {
@@ -133,6 +159,7 @@ function GeneratedCombosWorkspace({
         locationId ?? undefined,
       );
       setRows(combos);
+      setPageSnapshot(combosKey, combos);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -147,36 +174,8 @@ function GeneratedCombosWorkspace({
   };
 
   useEffect(() => {
-    let active = true;
-
-    api
-      .getManagedGeneratedCombos(token, restaurantId ?? undefined, locationId ?? undefined)
-      .then((combos) => {
-        if (!active) {
-          return;
-        }
-        setRows(combos);
-        setErrorMessage(null);
-        setLoading(false);
-      })
-      .catch((error) => {
-        if (!active) {
-          return;
-        }
-        const message =
-          error instanceof ApiError
-            ? error.message
-            : 'Unable to load generated combos.';
-        setRows([]);
-        setErrorMessage(message);
-        setLoading(false);
-        onToast('Generated combos unavailable', message, 'error');
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [locationId, onToast, restaurantId, token]);
+    void loadRows();
+  }, [combosKey, locationId, onToast, restaurantId, token]);
 
   useEffect(() => {
     if (openStatusMenuId === null) {
@@ -321,9 +320,13 @@ function GeneratedCombosWorkspace({
         combo.id,
         nextStatus,
       );
-      setRows((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry)),
-      );
+      setRows((current) => {
+        const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
+        // Genuine data change: keeps the cache in step with what's now on
+        // screen.
+        setPageSnapshot(combosKey, next);
+        return next;
+      });
       setSelectedCombo((current) =>
         current && current.id === updated.id ? updated : current,
       );
@@ -504,7 +507,7 @@ function GeneratedCombosWorkspace({
         title="Unable to load generated combos"
       />
       <div className="page-intro__actions">
-        <button className="secondary-button" onClick={() => void loadRows()} type="button">
+        <button className="secondary-button" onClick={() => void loadRows(true)} type="button">
           Try again
         </button>
       </div>
@@ -612,7 +615,7 @@ function GeneratedCombosWorkspace({
                 setRebuilding(true);
                 try {
                   const result = await api.rebuildAdminGeneratedCombos(token);
-                  await loadRows();
+                  await loadRows(true);
                   onToast(
                     'Combos rebuilt',
                     `Created ${result.created_count}, updated ${result.updated_count}, deactivated ${result.deactivated_count}.`,

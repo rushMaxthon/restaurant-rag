@@ -25,6 +25,17 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { RestaurantMenuTable } from "../components/RestaurantMenuTable";
 import { StatusPill } from "../components/StatusPill";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
+import { invalidateRestaurantDetailCache } from "./RestaurantDetailPage";
+import { buildLocationsRestaurantKey } from "./LocationsPage";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import {
   ORDER_FILTER_STATUSES,
   type LocationDayOfWeek,
@@ -210,6 +221,15 @@ function toSlotForm(slot: LocationFulfillmentSlot): SlotFormState {
   };
 }
 
+interface LocationDetailSnapshot {
+  restaurant: RestaurantDetail;
+  orders: Order[];
+}
+
+function buildLocationDetailKey(scope: string, restaurantId: string, locationId: string): string {
+  return `location-detail:${scope}:${restaurantId}:${locationId}`;
+}
+
 export function LocationDetailPage({
   token,
   role,
@@ -219,13 +239,33 @@ export function LocationDetailPage({
   onNavigate,
   onToast,
 }: LocationDetailPageProps) {
-  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null);
-  const [location, setLocation] = useState<RestaurantLocation | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const scope = tokenScope(token);
+  const detailKey = buildLocationDetailKey(scope, restaurantId, locationId);
+  const cachedDetail = getPageSnapshot<LocationDetailSnapshot>(detailKey);
+  const cachedLocation = cachedDetail?.restaurant.locations.find(
+    (entry) => entry.id === locationId,
+  ) ?? null;
+
+  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(
+    () => cachedDetail?.restaurant ?? null,
+  );
+  const [location, setLocation] = useState<RestaurantLocation | null>(
+    () => cachedLocation,
+  );
+  // Only true when this restaurant/location pair has never been fetched this
+  // session - not on every mount, so revisiting it keeps showing its data
+  // instead of a skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(detailKey));
   const [activeTab, setActiveTab] = useState<LocationTab>("details");
-  const [settingsForm, setSettingsForm] = useState<LocationSettingsForm | null>(null);
-  const [generalSettingsForm, setGeneralSettingsForm] = useState<LocationGeneralSettingsForm | null>(null);
-  const [slots, setSlots] = useState<LocationFulfillmentSlot[]>([]);
+  const [settingsForm, setSettingsForm] = useState<LocationSettingsForm | null>(
+    () => (cachedLocation ? toLocationSettingsForm(cachedLocation) : null),
+  );
+  const [generalSettingsForm, setGeneralSettingsForm] = useState<LocationGeneralSettingsForm | null>(
+    () => (cachedLocation ? toGeneralSettingsForm(cachedLocation) : null),
+  );
+  const [slots, setSlots] = useState<LocationFulfillmentSlot[]>(
+    () => cachedLocation?.fulfillment_slots ?? [],
+  );
   const [slotForm, setSlotForm] = useState<SlotFormState>(() => emptySlotFormForType("PICKUP"));
   const [slotView, setSlotView] = useState<OrderFulfillmentType>("PICKUP");
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
@@ -233,7 +273,7 @@ export function LocationDetailPage({
   const [isSavingGeneralSettings, setIsSavingGeneralSettings] = useState(false);
   const [isSavingSlot, setIsSavingSlot] = useState(false);
   const [deletingSlotId, setDeletingSlotId] = useState<string | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -250,13 +290,25 @@ export function LocationDetailPage({
     }
   }, [assignedRestaurantId, onNavigate, restaurantId, role]);
 
-  const hydrateLocation = (detail: RestaurantDetail) => {
+  // `ordersForCache`: the orders array to pair with `detail` when writing the
+  // cache. Taken explicitly rather than read from the `orders` state variable,
+  // because `reloadLocationDetails` calls this WITHOUT having just fetched
+  // orders - closing over `orders` there is fine (it reflects the current,
+  // unrelated-to-this-mutation list), but `loadLocationWorkspace` DOES fetch a
+  // fresh list in the same call, and reading state instead of that fresh
+  // value would cache a render behind (React state setters don't apply
+  // synchronously - the bug this comment is here to prevent).
+  const hydrateLocation = (detail: RestaurantDetail, ordersForCache: Order[]) => {
     const matchedLocation = detail.locations.find((entry) => entry.id === locationId) ?? null;
     setRestaurant(detail);
     setLocation(matchedLocation);
     setSettingsForm(matchedLocation ? toLocationSettingsForm(matchedLocation) : null);
     setGeneralSettingsForm(matchedLocation ? toGeneralSettingsForm(matchedLocation) : null);
     setSlots(matchedLocation?.fulfillment_slots ?? []);
+    setPageSnapshot<LocationDetailSnapshot>(detailKey, {
+      restaurant: detail,
+      orders: ordersForCache,
+    });
   };
 
   const loadLocationWorkspace = async () => {
@@ -264,17 +316,33 @@ export function LocationDetailPage({
       api.getRestaurant(token, restaurantId),
       api.getOrders(token, restaurantId, locationId),
     ]);
-    hydrateLocation(detail);
+    hydrateLocation(detail, locationOrders);
     setOrders(locationOrders);
   };
 
+  // Always hits the network - called after a slot/settings mutation to
+  // resync with the server, so bypassing the cache is the point.
   const reloadLocationDetails = async () => {
     const detail = await api.getRestaurant(token, restaurantId);
-    hydrateLocation(detail);
+    hydrateLocation(detail, orders);
   };
 
   useEffect(() => {
     if (role === "OWNER" && assignedRestaurantId && restaurantId !== assignedRestaurantId) {
+      return;
+    }
+
+    const cached = getPageSnapshot<LocationDetailSnapshot>(detailKey);
+    if (cached) {
+      const matchedLocation =
+        cached.restaurant.locations.find((entry) => entry.id === locationId) ?? null;
+      setRestaurant(cached.restaurant);
+      setLocation(matchedLocation);
+      setSettingsForm(matchedLocation ? toLocationSettingsForm(matchedLocation) : null);
+      setGeneralSettingsForm(matchedLocation ? toGeneralSettingsForm(matchedLocation) : null);
+      setSlots(matchedLocation?.fulfillment_slots ?? []);
+      setOrders(cached.orders);
+      setIsLoading(false);
       return;
     }
 
@@ -300,7 +368,7 @@ export function LocationDetailPage({
     return () => {
       active = false;
     };
-  }, [assignedRestaurantId, locationId, onToast, restaurantId, role, token]);
+  }, [assignedRestaurantId, detailKey, locationId, onToast, restaurantId, role, token]);
 
   const filteredOrders = useMemo(() => {
     const normalized = orderQuery.trim().toLowerCase();
@@ -332,16 +400,25 @@ export function LocationDetailPage({
 
   const syncLocation = (updatedLocation: RestaurantLocation) => {
     setLocation(updatedLocation);
-    setRestaurant((current) =>
-      current
-        ? {
-            ...current,
-            locations: current.locations.map((entry) =>
-              entry.id === updatedLocation.id ? updatedLocation : entry,
-            ),
-          }
-        : current,
-    );
+    setRestaurant((current) => {
+      if (!current) {
+        return current;
+      }
+      const next = {
+        ...current,
+        locations: current.locations.map((entry) =>
+          entry.id === updatedLocation.id ? updatedLocation : entry,
+        ),
+      };
+      // Genuine data change: this page's own cache is refreshed directly.
+      // RestaurantDetailPage and LocationsPage show the same branch (name,
+      // city, open/active state) - invalidated so neither shows the pre-edit
+      // version on its next visit.
+      setPageSnapshot<LocationDetailSnapshot>(detailKey, { restaurant: next, orders });
+      invalidateRestaurantDetailCache(scope, restaurantId);
+      invalidatePageSnapshot(buildLocationsRestaurantKey(scope, restaurantId));
+      return next;
+    });
     setSettingsForm(toLocationSettingsForm(updatedLocation));
     setGeneralSettingsForm(toGeneralSettingsForm(updatedLocation));
     setSlots(updatedLocation.fulfillment_slots ?? []);
@@ -574,9 +651,17 @@ export function LocationDetailPage({
 
     try {
       const updated = await api.updateOrderStatus(token, order.id, nextStatus);
-      setOrders((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry)),
-      );
+      setOrders((current) => {
+        const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
+        if (restaurant) {
+          setPageSnapshot<LocationDetailSnapshot>(detailKey, { restaurant, orders: next });
+        }
+        return next;
+      });
+      // The global Orders list and RestaurantDetailPage's own orders tab show
+      // the same underlying order through different filters.
+      invalidatePageSnapshotsByPrefix(buildOrdersCacheKeyPrefix(scope));
+      invalidateRestaurantDetailCache(scope, restaurantId);
       onToast(
         "Order updated",
         `${order.customer.full_name}'s order moved to ${nextStatus.replaceAll("_", " ")}.`,

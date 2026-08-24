@@ -20,6 +20,12 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { StatusPill } from "../components/StatusPill";
 import { pluralize } from "../services/format";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type {
   GeneratedOfferUserMatch,
   ManagedPersonalizedOffer,
@@ -265,6 +271,11 @@ function describeMatchTarget(match: GeneratedOfferUserMatch): string {
   return "Template-level match";
 }
 
+interface OffersSnapshot {
+  restaurantContexts: RestaurantContext[];
+  offers: OfferRow[];
+}
+
 export function OffersPage({
   token,
   role,
@@ -272,9 +283,20 @@ export function OffersPage({
   onNavigate,
   onToast,
 }: OffersPageProps) {
-  const [restaurantContexts, setRestaurantContexts] = useState<RestaurantContext[]>([]);
-  const [offers, setOffers] = useState<OfferRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Remounted on every navigation to this page (see services/pageCache.ts),
+  // so the key covers every input that changes what gets fetched: the
+  // account (an admin sees every restaurant's offers) and, for an owner,
+  // which restaurant.
+  const offersKey = `offers:${tokenScope(token)}:${role === "ADMIN" ? "admin" : restaurantId ?? ""}`;
+  const cachedOffers = getPageSnapshot<OffersSnapshot>(offersKey);
+  const [restaurantContexts, setRestaurantContexts] = useState<RestaurantContext[]>(
+    () => cachedOffers?.restaurantContexts ?? [],
+  );
+  const [offers, setOffers] = useState<OfferRow[]>(() => cachedOffers?.offers ?? []);
+  // Only true when this account/restaurant has never been fetched this
+  // session - not on every mount, so revisiting this page keeps showing its
+  // data instead of a skeleton.
+  const [loading, setLoading] = useState(() => !hasPageSnapshot(offersKey));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<"ALL" | PersonalizedOfferState>("ALL");
@@ -301,7 +323,21 @@ export function OffersPage({
     };
   }, []);
 
-  const loadOffersWorkspace = useCallback(async () => {
+  // `force`: bypasses the cache. The AI-generation flow below always forces,
+  // since it exists specifically to fetch offers newer than whatever's
+  // cached; the mount effect never does, which is what makes revisiting this
+  // page free.
+  const loadOffersWorkspace = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = getPageSnapshot<OffersSnapshot>(offersKey);
+      if (cached) {
+        setRestaurantContexts(cached.restaurantContexts);
+        setOffers(cached.offers);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setLoadError(null);
     try {
@@ -338,14 +374,17 @@ export function OffersPage({
       if (!isMountedRef.current) {
         return;
       }
+      const nextOffers = offerRowsByRestaurant.flat().sort((left, right) => {
+        const expiryLeft = left.expires_at ? new Date(left.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const expiryRight = right.expires_at ? new Date(right.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
+        return expiryLeft - expiryRight || left.name.localeCompare(right.name);
+      });
       setRestaurantContexts(contexts);
-      setOffers(
-        offerRowsByRestaurant.flat().sort((left, right) => {
-          const expiryLeft = left.expires_at ? new Date(left.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
-          const expiryRight = right.expires_at ? new Date(right.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
-          return expiryLeft - expiryRight || left.name.localeCompare(right.name);
-        }),
-      );
+      setOffers(nextOffers);
+      setPageSnapshot<OffersSnapshot>(offersKey, {
+        restaurantContexts: contexts,
+        offers: nextOffers,
+      });
     } catch (error: unknown) {
       if (!isMountedRef.current) {
         return;
@@ -363,7 +402,7 @@ export function OffersPage({
         setLoading(false);
       }
     }
-  }, [onToast, restaurantId, role, token]);
+  }, [offersKey, onToast, restaurantId, role, token]);
 
   useEffect(() => {
     void loadOffersWorkspace();
@@ -510,7 +549,7 @@ export function OffersPage({
           continue;
         }
         if (status.successful) {
-          await loadOffersWorkspace();
+          await loadOffersWorkspace(true);
           const generatedCount = status.summary?.offers_generated ?? 0;
           const skippedCount = status.summary?.skipped_users ?? 0;
           const scannedCount = status.summary?.users_scanned ?? 0;
@@ -765,10 +804,13 @@ export function OffersPage({
         restaurant_city: restaurant?.city ?? "",
       };
       setOffers((current) => {
-        if (!editingOfferId) {
-          return [nextRow, ...current];
-        }
-        return current.map((offer) => (offer.id === nextRow.id ? nextRow : offer));
+        const next = !editingOfferId
+          ? [nextRow, ...current]
+          : current.map((offer) => (offer.id === nextRow.id ? nextRow : offer));
+        // Genuine data change: keeps the cache in step with what's now on
+        // screen.
+        setPageSnapshot<OffersSnapshot>(offersKey, { restaurantContexts, offers: next });
+        return next;
       });
       closeModal();
       onToast(
@@ -808,7 +850,11 @@ export function OffersPage({
         restaurant_slug: offer.restaurant_slug,
         restaurant_city: offer.restaurant_city,
       };
-      setOffers((current) => current.map((row) => (row.id === nextRow.id ? nextRow : row)));
+      setOffers((current) => {
+        const next = current.map((row) => (row.id === nextRow.id ? nextRow : row));
+        setPageSnapshot<OffersSnapshot>(offersKey, { restaurantContexts, offers: next });
+        return next;
+      });
       onToast("Offer updated", successMessage.replace("{name}", updated.name), "success");
     } catch (error: unknown) {
       onToast(
@@ -830,7 +876,11 @@ export function OffersPage({
       } else {
         await api.deleteRestaurantOffer(token, offerPendingDelete.restaurant_id, offerPendingDelete.id);
       }
-      setOffers((current) => current.filter((offer) => offer.id !== offerPendingDelete.id));
+      setOffers((current) => {
+        const next = current.filter((offer) => offer.id !== offerPendingDelete.id);
+        setPageSnapshot<OffersSnapshot>(offersKey, { restaurantContexts, offers: next });
+        return next;
+      });
       onToast("Offer deleted", `${offerPendingDelete.name} was deleted.`, "success");
       setOfferPendingDelete(null);
     } catch (error: unknown) {

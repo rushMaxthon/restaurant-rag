@@ -10,6 +10,13 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { StatusPill } from "../components/StatusPill";
 import { ApiError, api, formatCurrency } from "../services/api";
 import { pluralize } from "../services/format";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type {
   AdminMenuItem,
   MenuItem,
@@ -62,6 +69,27 @@ function formatLaunchLabel(value: string): string {
   }).format(date);
 }
 
+interface MenuItemsSnapshot {
+  rows: MenuRow[];
+  restaurant: Restaurant | null;
+  ownerLocations: RestaurantLocation[];
+}
+
+// Shared with MenuItemEditorPage: creating, editing or deleting an item from
+// there is a genuine data change for the list this page shows, so that page
+// invalidates everything under this prefix on a successful save.
+export function buildMenuItemsCacheKeyPrefix(scope: string): string {
+  return `menu-items:${scope}:`;
+}
+
+function buildMenuItemsCacheKey(
+  scope: string,
+  isAdmin: boolean,
+  restaurantId: string | null,
+): string {
+  return `${buildMenuItemsCacheKeyPrefix(scope)}${isAdmin ? "admin" : restaurantId ?? ""}`;
+}
+
 export function MenuItemsPage({
   token,
   role,
@@ -70,10 +98,21 @@ export function MenuItemsPage({
   onToast,
 }: MenuItemsPageProps) {
   const isAdmin = role === "ADMIN";
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [ownerLocations, setOwnerLocations] = useState<RestaurantLocation[]>([]);
-  const [rows, setRows] = useState<MenuRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const scope = tokenScope(token);
+  const menuItemsKey = buildMenuItemsCacheKey(scope, isAdmin, restaurantId ?? null);
+  const cachedMenuItems = getPageSnapshot<MenuItemsSnapshot>(menuItemsKey);
+
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(
+    () => cachedMenuItems?.restaurant ?? null,
+  );
+  const [ownerLocations, setOwnerLocations] = useState<RestaurantLocation[]>(
+    () => cachedMenuItems?.ownerLocations ?? [],
+  );
+  const [rows, setRows] = useState<MenuRow[]>(() => cachedMenuItems?.rows ?? []);
+  // Only true when this account/restaurant has never been fetched this
+  // session - not on every mount, so revisiting the menu keeps it visible
+  // instead of showing a skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(menuItemsKey));
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState<
     "ALL" | "AVAILABLE" | "HIDDEN"
@@ -129,14 +168,33 @@ export function MenuItemsPage({
     source: item,
   });
 
-  const load = async () => {
+  // `force`: bypasses the cache. Used by the explicit reload paths below and
+  // never by the mount effect, which is what makes revisiting this page free.
+  const load = async (force = false) => {
+    if (!force) {
+      const cached = getPageSnapshot<MenuItemsSnapshot>(menuItemsKey);
+      if (cached) {
+        setRows(cached.rows);
+        setRestaurant(cached.restaurant);
+        setOwnerLocations(cached.ownerLocations);
+        setIsLoading(false);
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       if (isAdmin) {
         const items = await api.getAdminMenuItems(token);
-        setRows(items.map(mapAdminItem));
+        const nextRows = items.map(mapAdminItem);
+        setRows(nextRows);
         setRestaurant(null);
         setOwnerLocations([]);
+        setPageSnapshot<MenuItemsSnapshot>(menuItemsKey, {
+          rows: nextRows,
+          restaurant: null,
+          ownerLocations: [],
+        });
         return;
       }
 
@@ -156,9 +214,17 @@ export function MenuItemsPage({
         ownedRestaurants.find((entry) => entry.id === restaurantId) ??
         ownedRestaurants[0] ??
         null;
+      const nextRows = ownerItems.map((item) =>
+        mapOwnerItem(item, assignedRestaurant),
+      );
       setRestaurant(assignedRestaurant);
       setOwnerLocations(locations);
-      setRows(ownerItems.map((item) => mapOwnerItem(item, assignedRestaurant)));
+      setRows(nextRows);
+      setPageSnapshot<MenuItemsSnapshot>(menuItemsKey, {
+        rows: nextRows,
+        restaurant: assignedRestaurant,
+        ownerLocations: locations,
+      });
     } catch (error: unknown) {
       const message =
         error instanceof ApiError
@@ -172,7 +238,7 @@ export function MenuItemsPage({
 
   useEffect(() => {
     void load();
-  }, [isAdmin, restaurantId, token]);
+  }, [isAdmin, restaurantId, token, menuItemsKey]);
 
   const availabilityTiles = useMemo<Array<StatTileItem<"ALL" | "AVAILABLE" | "HIDDEN">>>(() => {
     const available = rows.filter((row) => row.isAvailable).length;
@@ -352,6 +418,10 @@ export function MenuItemsPage({
           entry.id === updated.id ? mapOwnerItem(updated, restaurant) : entry,
         ),
       );
+      // Genuine data change: the cached snapshot for this scope no longer
+      // matches what the server has. Only affects the NEXT visit - this page
+      // keeps showing the already-patched `rows` above.
+      invalidatePageSnapshotsByPrefix(buildMenuItemsCacheKeyPrefix(scope));
       onToast(
         "Availability updated",
         `${updated.name} is now ${updated.is_available ? "available" : "hidden"}.`,
@@ -381,6 +451,7 @@ export function MenuItemsPage({
     try {
       await api.deleteMenuItem(token, itemToDelete.id);
       setRows((current) => current.filter((entry) => entry.id !== itemToDelete.id));
+      invalidatePageSnapshotsByPrefix(buildMenuItemsCacheKeyPrefix(scope));
       onToast(
         "Item deleted",
         `${itemToDelete.name} has been removed from the menu.`,

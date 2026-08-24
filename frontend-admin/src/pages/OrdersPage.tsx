@@ -22,6 +22,13 @@ import { StatusPill } from "../components/StatusPill";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
+import {
   ORDER_FILTER_STATUSES,
   type Order,
   type OrderStatus,
@@ -56,24 +63,95 @@ const STATUS_KEYS: OrderStatus[] = [
 
 type TileCounts = Partial<Record<"ALL" | OrderStatus, number>>;
 
+interface OrdersSnapshot {
+  orders: Order[];
+  total: number;
+}
+
+// This page is remounted from scratch every time it's navigated to (see the
+// note in services/pageCache.ts), so these keys have to encode every input
+// that changes what the API returns — including the auth scope, or one
+// admin's cached page would flash on screen for the next admin to sign in.
+const ORDERS_CACHE_PREFIX = "orders";
+
+// Exported so any other page that changes an order's status (e.g.
+// RestaurantDetailPage's own Orders tab) can invalidate this list too - the
+// same order data, just viewed through a different filtered lens.
+export function buildOrdersCacheKeyPrefix(scope: string): string {
+  return `${ORDERS_CACHE_PREFIX}:${scope}:`;
+}
+
+function buildOrdersListKey(
+  scope: string,
+  params: {
+    page: number;
+    pageSize: number;
+    query: string;
+    status: "ALL" | OrderStatus;
+    sort: TableSortState | null;
+  },
+): string {
+  return [
+    ORDERS_CACHE_PREFIX,
+    scope,
+    "list",
+    params.page,
+    params.pageSize,
+    params.query,
+    params.status,
+    params.sort?.id ?? "",
+    params.sort?.direction ?? "",
+  ].join(":");
+}
+
+function buildOrdersTilesKey(scope: string, query: string): string {
+  return [ORDERS_CACHE_PREFIX, scope, "tiles", query].join(":");
+}
+
+// The literal defaults every useState below starts from. Used to compute the
+// cache key for the very first render, before any filter has been touched.
+const DEFAULT_SORT: TableSortState = { id: "placed_at", direction: "desc" };
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_QUERY = "";
+const DEFAULT_STATUS_FILTER = "ALL" as const;
+
 export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps) {
   const isAdmin = role === "ADMIN";
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [total, setTotal] = useState(0);
-  const [tileCounts, setTileCounts] = useState<TileCounts>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const scope = tokenScope(token);
+  const initialListKey = buildOrdersListKey(scope, {
+    page: DEFAULT_PAGE,
+    pageSize: DEFAULT_PAGE_SIZE,
+    query: DEFAULT_QUERY,
+    status: DEFAULT_STATUS_FILTER,
+    sort: DEFAULT_SORT,
+  });
+  const initialTilesKey = buildOrdersTilesKey(scope, DEFAULT_QUERY);
+
+  const [orders, setOrders] = useState<Order[]>(
+    () => getPageSnapshot<OrdersSnapshot>(initialListKey)?.orders ?? [],
+  );
+  const [total, setTotal] = useState(
+    () => getPageSnapshot<OrdersSnapshot>(initialListKey)?.total ?? 0,
+  );
+  const [tileCounts, setTileCounts] = useState<TileCounts>(
+    () => getPageSnapshot<TileCounts>(initialTilesKey) ?? {},
+  );
+  // Only true when this exact combination of filters has never been fetched
+  // (or was invalidated by a mutation) — not on every mount. A page that was
+  // already loaded keeps showing its data instead of a skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(initialListKey));
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>("ALL");
-  const [sort, setSort] = useState<TableSortState | null>({
-    id: "placed_at",
-    direction: "desc",
-  });
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [query, setQuery] = useState(DEFAULT_QUERY);
+  const [debouncedQuery, setDebouncedQuery] = useState(DEFAULT_QUERY);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>(
+    DEFAULT_STATUS_FILTER,
+  );
+  const [sort, setSort] = useState<TableSortState | null>(DEFAULT_SORT);
+  const [page, setPage] = useState(DEFAULT_PAGE);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const onToastRef = useRef(onToast);
 
   useEffect(() => {
@@ -92,6 +170,24 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   // Server-side page fetch: only the visible slice is loaded.
   useEffect(() => {
     let active = true;
+    const listKey = buildOrdersListKey(scope, {
+      page,
+      pageSize,
+      query: debouncedQuery,
+      status: statusFilter,
+      sort,
+    });
+
+    const cached = getPageSnapshot<OrdersSnapshot>(listKey);
+    if (cached) {
+      // Already fetched for this exact combination — either the lazy-init
+      // seed on first mount, or an earlier fetch during this same mount that
+      // a filter toggle is now revisiting. No skeleton, no network call.
+      setOrders(cached.orders);
+      setTotal(cached.total);
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     api
@@ -108,6 +204,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
         }
         setOrders(rows);
         setTotal(totalCount);
+        setPageSnapshot<OrdersSnapshot>(listKey, { orders: rows, total: totalCount });
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -126,11 +223,18 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
     return () => {
       active = false;
     };
-  }, [token, page, pageSize, debouncedQuery, statusFilter, sort]);
+  }, [token, scope, page, pageSize, debouncedQuery, statusFilter, sort]);
 
   // Tile counts come from cheap COUNT-only requests (limit=1 + X-Total-Count).
   useEffect(() => {
     let active = true;
+    const tilesKey = buildOrdersTilesKey(scope, debouncedQuery);
+
+    const cached = getPageSnapshot<TileCounts>(tilesKey);
+    if (cached) {
+      setTileCounts(cached);
+      return;
+    }
 
     void Promise.all([
       api.getOrdersCount(token, { search: debouncedQuery || undefined }),
@@ -149,12 +253,13 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
         next[status] = byStatus[index];
       });
       setTileCounts(next);
+      setPageSnapshot(tilesKey, next);
     });
 
     return () => {
       active = false;
     };
-  }, [token, debouncedQuery]);
+  }, [token, scope, debouncedQuery]);
 
   const statusTiles = useMemo<Array<StatTileItem<"ALL" | OrderStatus>>>(
     () => [
@@ -269,6 +374,12 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
       setOrders((current) =>
         current.map((entry) => (entry.id === updated.id ? updated : entry)),
       );
+      // A genuine data change: every cached list/tile combination for this
+      // session is now stale (the moved order may no longer belong in some
+      // filtered views, and the tile counts have shifted). The visible page
+      // keeps its already-patched local state; this only affects what the
+      // NEXT visit to Orders fetches.
+      invalidatePageSnapshotsByPrefix(`${ORDERS_CACHE_PREFIX}:${scope}:`);
       onToastRef.current(
         "Order updated",
         `${order.restaurant.name} order moved to ${nextStatus.replaceAll("_", " ")}.`,

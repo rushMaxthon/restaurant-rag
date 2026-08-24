@@ -15,6 +15,7 @@ import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ApiError, api, formatDate } from '../services/api';
 import { formatResponseTime, pluralize } from '../services/format';
+import { getPageSnapshot, setPageSnapshot, tokenScope } from '../services/pageCache';
 import type { AdminAILog } from '../types/app';
 
 interface AILogsPageProps {
@@ -38,19 +39,29 @@ function responseTimeTone(ms: number | null): 'fast' | 'ok' | 'slow' {
 }
 
 export function AILogsPage({ token, onToast }: AILogsPageProps) {
-  const [logs, setLogs] = useState<AdminAILog[]>([]);
+  const logsKey = `ai-logs:${tokenScope(token)}`;
+  const [logs, setLogs] = useState<AdminAILog[]>(() => getPageSnapshot<AdminAILog[]>(logsKey) ?? []);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'SUCCESS' | 'FAILURE'>('ALL');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    const cached = getPageSnapshot<AdminAILog[]>(logsKey);
+    if (cached) {
+      setLogs(cached);
+      return;
+    }
+
     api.getAdminAILogs(token)
-      .then(setLogs)
+      .then((rows) => {
+        setLogs(rows);
+        setPageSnapshot(logsKey, rows);
+      })
       .catch((error: unknown) => {
         const message = error instanceof ApiError ? error.message : 'Unable to load AI logs.';
         onToast('AI logs unavailable', message, 'error');
       });
-  }, [onToast, token]);
+  }, [logsKey, onToast, token]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();

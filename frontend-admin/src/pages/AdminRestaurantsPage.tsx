@@ -8,6 +8,12 @@ import { pluralize } from '../services/format';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ApiError, api, formatDate } from '../services/api';
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from '../services/pageCache';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
 import { StatusPill } from '../components/StatusPill';
 import { AppClientFields } from '../components/AppClientFields';
@@ -81,9 +87,22 @@ const emptyEditForm: EditRestaurantForm = {
   is_open: false,
 };
 
+// Shared with RestaurantDetailPage: editing a restaurant's own details there
+// is a genuine data change for the list this page shows.
+export function buildAdminRestaurantsCacheKeyPrefix(scope: string): string {
+  return `admin-restaurants:${scope}`;
+}
+
 export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestaurantsPageProps) {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const scope = tokenScope(token);
+  const restaurantsKey = buildAdminRestaurantsCacheKeyPrefix(scope);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => getPageSnapshot<Restaurant[]>(restaurantsKey) ?? [],
+  );
+  // Only true when nothing has been fetched yet this session - not on every
+  // mount, so revisiting this page keeps showing its data instead of a
+  // skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(restaurantsKey));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [page, setPage] = useState(1);
@@ -103,11 +122,24 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
 
-  const loadRestaurants = async () => {
+  // `force`: bypasses the cache. The create flow below always forces, since it
+  // needs the newly created restaurant in the list; the mount effect never
+  // does, which is what makes revisiting this page free.
+  const loadRestaurants = async (force = false) => {
+    if (!force) {
+      const cached = getPageSnapshot<Restaurant[]>(restaurantsKey);
+      if (cached) {
+        setRestaurants(cached);
+        setIsLoading(false);
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const rows = await api.getAdminRestaurants(token);
       setRestaurants(rows);
+      setPageSnapshot(restaurantsKey, rows);
     } catch (error: unknown) {
       const message = error instanceof ApiError ? error.message : 'Unable to load restaurants.';
       onToast('Restaurants unavailable', message, 'error');
@@ -118,7 +150,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
 
   useEffect(() => {
     void loadRestaurants();
-  }, [token]);
+  }, [token, restaurantsKey]);
 
   const approvalTiles = useMemo<Array<StatTileItem<'ALL' | 'APPROVED' | 'PENDING'>>>(() => {
     const approved = restaurants.filter((restaurant) => restaurant.is_approved);
@@ -210,9 +242,13 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   ];
 
   const syncRestaurant = (updated: Restaurant) => {
-    setRestaurants((current) =>
-      current.map((entry) => (entry.id === updated.id ? updated : entry)),
-    );
+    setRestaurants((current) => {
+      const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
+      // Genuine data change: keep the cache in step with what's now on
+      // screen, so a later visit doesn't show the pre-edit snapshot.
+      setPageSnapshot(restaurantsKey, next);
+      return next;
+    });
   };
 
   const closeCreateModal = () => {
@@ -294,7 +330,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
         owner_password: createForm.owner_password,
         ...trimAppClientForm(createForm),
       });
-      await loadRestaurants();
+      await loadRestaurants(true);
       closeCreateModal();
       onToast(
         'Restaurant created',
@@ -408,9 +444,11 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
     setIsDeleteSubmitting(true);
     try {
       await api.deleteRestaurant(token, restaurantToDelete.id);
-      setRestaurants((current) =>
-        current.filter((entry) => entry.id !== restaurantToDelete.id),
-      );
+      setRestaurants((current) => {
+        const next = current.filter((entry) => entry.id !== restaurantToDelete.id);
+        setPageSnapshot(restaurantsKey, next);
+        return next;
+      });
       onToast(
         'Restaurant deleted',
         `${restaurantToDelete.name} was archived successfully.`,

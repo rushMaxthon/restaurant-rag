@@ -28,6 +28,12 @@ import {
   toNumber,
 } from "../services/api";
 import { formatResponseTime, pluralize } from "../services/format";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type {
   AdminAILog,
   AdminDashboardStats,
@@ -244,6 +250,31 @@ function DashboardBarsChart({
   );
 }
 
+interface DashboardSnapshot {
+  stats: AdminDashboardStats | null;
+  restaurants: Restaurant[];
+  users: User[];
+  orders: Order[];
+  menuItems: MenuItem[];
+  aiLogs: AdminAILog[];
+  assignedRestaurant: Restaurant | null;
+  lastUpdatedAt: Date;
+}
+
+// Remounted on every navigation to this page (see services/pageCache.ts), so
+// the key has to cover everything that changes what gets fetched: which
+// account is looking (admin sees every restaurant, an owner sees only their
+// own) and, for an owner, which restaurant.
+function buildDashboardKey(
+  scope: string,
+  isAdmin: boolean,
+  restaurantId: string | null,
+): string {
+  return ["dashboard", scope, isAdmin ? "admin" : "owner", restaurantId ?? ""].join(
+    ":",
+  );
+}
+
 export function DashboardPage({
   token,
   role,
@@ -252,18 +283,41 @@ export function DashboardPage({
   onToast,
 }: DashboardPageProps) {
   const isAdmin = role === "ADMIN";
-  const [loading, setLoading] = useState(true);
-  const [timeWindow, setTimeWindow] = useState<DashboardWindow>("7d");
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [aiLogs, setAiLogs] = useState<AdminAILog[]>([]);
-  const [assignedRestaurant, setAssignedRestaurant] =
-    useState<Restaurant | null>(null);
+  const scope = tokenScope(token);
+  const dashboardKey = buildDashboardKey(scope, isAdmin, restaurantId ?? null);
+  const cachedDashboard = getPageSnapshot<DashboardSnapshot>(dashboardKey);
 
+  // Only true when nothing has ever been fetched for this account/restaurant
+  // in this session — not on every mount. Revisiting the dashboard after
+  // already loading it once keeps showing that data instead of a skeleton.
+  const [loading, setLoading] = useState(() => !hasPageSnapshot(dashboardKey));
+  const [timeWindow, setTimeWindow] = useState<DashboardWindow>("7d");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(
+    () => cachedDashboard?.lastUpdatedAt ?? null,
+  );
+  const [stats, setStats] = useState<AdminDashboardStats | null>(
+    () => cachedDashboard?.stats ?? null,
+  );
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => cachedDashboard?.restaurants ?? [],
+  );
+  const [users, setUsers] = useState<User[]>(() => cachedDashboard?.users ?? []);
+  const [orders, setOrders] = useState<Order[]>(
+    () => cachedDashboard?.orders ?? [],
+  );
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(
+    () => cachedDashboard?.menuItems ?? [],
+  );
+  const [aiLogs, setAiLogs] = useState<AdminAILog[]>(
+    () => cachedDashboard?.aiLogs ?? [],
+  );
+  const [assignedRestaurant, setAssignedRestaurant] = useState<Restaurant | null>(
+    () => cachedDashboard?.assignedRestaurant ?? null,
+  );
+
+  // The explicit "Refresh" button. Unlike the mount effect below, this always
+  // hits the network — a user-requested refresh is one of the cases the cache
+  // is deliberately NOT allowed to shortcut.
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
@@ -286,6 +340,23 @@ export function DashboardPage({
         setUsers(userRows);
         setOrders(orderRows);
         setAiLogs(aiLogRows);
+
+        const fetchedAt = new Date();
+        setLastUpdatedAt(fetchedAt);
+        // Built from the response just fetched, not from React state -
+        // `setStats` et al. above haven't applied yet at this point in the
+        // function, so reading `stats`/`restaurants`/... here would cache
+        // last render's values instead of what was just fetched.
+        setPageSnapshot<DashboardSnapshot>(dashboardKey, {
+          stats: dashboardStats,
+          restaurants: restaurantRows,
+          users: userRows,
+          orders: orderRows,
+          menuItems: [],
+          aiLogs: aiLogRows,
+          assignedRestaurant: null,
+          lastUpdatedAt: fetchedAt,
+        });
       } else {
         if (!restaurantId) {
           onToast(
@@ -310,9 +381,20 @@ export function DashboardPage({
         setAssignedRestaurant(currentRestaurant);
         setOrders(orderRows);
         setMenuItems(menuRows);
-      }
 
-      setLastUpdatedAt(new Date());
+        const fetchedAt = new Date();
+        setLastUpdatedAt(fetchedAt);
+        setPageSnapshot<DashboardSnapshot>(dashboardKey, {
+          stats: null,
+          restaurants: [],
+          users: [],
+          orders: orderRows,
+          menuItems: menuRows,
+          aiLogs: [],
+          assignedRestaurant: currentRestaurant,
+          lastUpdatedAt: fetchedAt,
+        });
+      }
     } catch (error: unknown) {
       const message =
         error instanceof ApiError ? error.message : "Unable to load dashboard.";
@@ -320,10 +402,28 @@ export function DashboardPage({
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, onToast, restaurantId, token]);
+  }, [isAdmin, onToast, restaurantId, token, dashboardKey]);
 
+  // Mount effect: unlike `loadDashboard`, this respects the cache. It only
+  // hits the network when nothing has been fetched yet for this exact
+  // account/restaurant combination this session.
   useEffect(() => {
     let active = true;
+
+    const cached = getPageSnapshot<DashboardSnapshot>(dashboardKey);
+    if (cached) {
+      setStats(cached.stats);
+      setRestaurants(cached.restaurants);
+      setUsers(cached.users);
+      setOrders(cached.orders);
+      setMenuItems(cached.menuItems);
+      setAiLogs(cached.aiLogs);
+      setAssignedRestaurant(cached.assignedRestaurant);
+      setLastUpdatedAt(cached.lastUpdatedAt);
+      setLoading(false);
+      return;
+    }
+
     void (async () => {
       setLoading(true);
       try {
@@ -349,6 +449,17 @@ export function DashboardPage({
           setUsers(userRows);
           setOrders(orderRows);
           setAiLogs(aiLogRows);
+          setLastUpdatedAt(new Date());
+          setPageSnapshot<DashboardSnapshot>(dashboardKey, {
+            stats: dashboardStats,
+            restaurants: restaurantRows,
+            users: userRows,
+            orders: orderRows,
+            menuItems: [],
+            aiLogs: aiLogRows,
+            assignedRestaurant: null,
+            lastUpdatedAt: new Date(),
+          });
         } else {
           if (!restaurantId) {
             onToast(
@@ -374,9 +485,17 @@ export function DashboardPage({
           setAssignedRestaurant(currentRestaurant);
           setOrders(orderRows);
           setMenuItems(menuRows);
-        }
-        if (active) {
           setLastUpdatedAt(new Date());
+          setPageSnapshot<DashboardSnapshot>(dashboardKey, {
+            stats: null,
+            restaurants: [],
+            users: [],
+            orders: orderRows,
+            menuItems: menuRows,
+            aiLogs: [],
+            assignedRestaurant: currentRestaurant,
+            lastUpdatedAt: new Date(),
+          });
         }
       } catch (error: unknown) {
         if (!active) {
@@ -396,7 +515,7 @@ export function DashboardPage({
     return () => {
       active = false;
     };
-  }, [isAdmin, onToast, restaurantId, token]);
+  }, [isAdmin, onToast, restaurantId, token, dashboardKey]);
 
   const windowDays = getWindowDays(timeWindow);
   const currentWindowStart = useMemo(() => getWindowStart(windowDays), [windowDays]);

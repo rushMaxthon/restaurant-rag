@@ -32,6 +32,14 @@ import {
   toNumber,
 } from "../services/api";
 import { humanizeEnum } from "../services/format";
+import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import {
   ORDER_FULFILLMENT_STATUSES,
   type Order,
@@ -125,8 +133,16 @@ export function OrderDetailPage({
   onToast,
 }: OrderDetailPageProps) {
   const isOwner = role === "OWNER";
-  const [order, setOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const scope = tokenScope(token);
+  const orderKey = `order-detail:${scope}:${orderId}`;
+  const [order, setOrder] = useState<Order | null>(
+    () => getPageSnapshot<Order>(orderKey) ?? null,
+  );
+  // Only true when this order has never been fetched this session - not on
+  // every mount, so revisiting it keeps showing its data instead of a
+  // skeleton. The page is remounted with key={orderId} (see the mount effect
+  // below), so a different order never inherits this one's cached state.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(orderKey));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const onToastRef = useRef(onToast);
@@ -138,6 +154,11 @@ export function OrderDetailPage({
   // The page is mounted with key={orderId}, so loading state starts fresh
   // for every order and does not need to be reset inside the effect.
   useEffect(() => {
+    if (hasPageSnapshot(orderKey)) {
+      setIsLoading(false);
+      return;
+    }
+
     let active = true;
 
     api
@@ -145,6 +166,7 @@ export function OrderDetailPage({
       .then((row) => {
         if (active) {
           setOrder(row);
+          setPageSnapshot(orderKey, row);
         }
       })
       .catch((error: unknown) => {
@@ -167,7 +189,7 @@ export function OrderDetailPage({
     return () => {
       active = false;
     };
-  }, [token, orderId]);
+  }, [token, orderId, orderKey]);
 
   const currentStepIndex = useMemo(
     () => (order ? STATUS_FLOW.indexOf(order.status) : -1),
@@ -207,6 +229,9 @@ export function OrderDetailPage({
     try {
       const updated = await api.updateOrderStatus(token, order.id, nextStatus);
       setOrder(updated);
+      setPageSnapshot(orderKey, updated);
+      // The global Orders list shows the same order through its own filters.
+      invalidatePageSnapshotsByPrefix(buildOrdersCacheKeyPrefix(scope));
       onToastRef.current(
         "Order updated",
         `Order moved to ${humanizeEnum(nextStatus)}.`,

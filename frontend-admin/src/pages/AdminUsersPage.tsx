@@ -9,6 +9,12 @@ import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable
 import { ApiError, api, formatDate } from '../services/api';
 import { pluralize } from '../services/format';
 import { StatusPill } from '../components/StatusPill';
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from '../services/pageCache';
 import type { User, UserRole } from '../types/app';
 
 interface AdminUsersPageProps {
@@ -27,6 +33,12 @@ const ROLE_META: Record<UserRole, { label: string; icon: typeof Shield }> = {
   CUSTOMER: { label: 'Customer', icon: UserRound },
 };
 
+// Shared with NotificationsPage, which fetches the exact same user list to
+// estimate its audience size - one fetch serves both.
+export function buildAdminUsersCacheKey(scope: string): string {
+  return `admin-users:${scope}`;
+}
+
 export function AdminUsersPage({
   token,
   currentUserId,
@@ -36,8 +48,14 @@ export function AdminUsersPage({
   // An owner's list is already narrowed to their customers server-side, so the
   // role dimension (tiles, filter, column) carries no information for them.
   const isOwnerView = role === 'OWNER';
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // The backend already scopes this list per session (an owner's is narrowed
+  // to their own customers), so the token scope alone is enough of a key.
+  const usersKey = buildAdminUsersCacheKey(tokenScope(token));
+  const [users, setUsers] = useState<User[]>(() => getPageSnapshot<User[]>(usersKey) ?? []);
+  // Only true when nothing has been fetched yet this session - not on every
+  // mount, so revisiting this page keeps showing its data instead of a
+  // skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(usersKey));
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
@@ -50,15 +68,25 @@ export function AdminUsersPage({
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   useEffect(() => {
+    const cached = getPageSnapshot<User[]>(usersKey);
+    if (cached) {
+      setUsers(cached);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     api.getAdminUsers(token)
-      .then(setUsers)
+      .then((rows) => {
+        setUsers(rows);
+        setPageSnapshot(usersKey, rows);
+      })
       .catch((error: unknown) => {
         const message = error instanceof ApiError ? error.message : 'Unable to load users.';
         onToast('Users unavailable', message, 'error');
       })
       .finally(() => setIsLoading(false));
-  }, [onToast, token]);
+  }, [onToast, token, usersKey]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -99,7 +127,11 @@ export function AdminUsersPage({
   }, [pageSize, query, roleFilter, statusFilter]);
 
   const syncUser = (updated: User) => {
-    setUsers((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+    setUsers((current) => {
+      const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
+      setPageSnapshot(usersKey, next);
+      return next;
+    });
   };
 
   // Re-fetched rather than reused from the list so the modal reflects the
@@ -221,7 +253,7 @@ export function AdminUsersPage({
   const toggleUser = async (user: User) => {
     try {
       const updated = await api.updateUserStatus(token, user.id, !user.is_active);
-      setUsers((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      syncUser(updated);
       onToast('User updated', `${updated.full_name} is now ${updated.is_active ? 'active' : 'inactive'}.`, 'success');
     } catch (error: unknown) {
       const message = error instanceof ApiError ? error.message : 'Unable to update user status.';

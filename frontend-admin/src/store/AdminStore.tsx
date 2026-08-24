@@ -7,6 +7,7 @@ import {
   type PropsWithChildren,
 } from 'react';
 import { ApiError, AUTH_INVALID_EVENT } from '../services/api';
+import { clearPageSnapshots } from '../services/pageCache';
 import { storage } from '../services/storage';
 import type { AuthSession, ToastMessage, User, UserRole } from '../types/app';
 import { AdminStoreContext, type AdminStoreValue } from './AdminStoreContext';
@@ -106,6 +107,11 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
         // restaurant — it would 403 rather than leak, but it is the wrong
         // starting state and it looks like a leak.
         clearRestaurantScopedState();
+        // Same reasoning for the in-memory page cache (services/pageCache.ts):
+        // without this, the next person to sign in on this tab would see the
+        // previous session's cached admin data flash on screen for the instant
+        // before their own fetch lands.
+        clearPageSnapshots();
       },
       pushToast,
       dismissToast,

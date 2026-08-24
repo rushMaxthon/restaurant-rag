@@ -31,12 +31,22 @@ import { RestaurantMenuTable } from "../components/RestaurantMenuTable";
 import { RestaurantOffersManager } from "../components/RestaurantOffersManager";
 import { StatusPill } from "../components/StatusPill";
 import { GeneratedCombosPage } from "./GeneratedCombosPage";
+import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
+import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
 import {
   ApiError,
   api,
   formatCurrency,
   formatDate,
 } from "../services/api";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type {
   AppClient,
   Order,
@@ -147,6 +157,29 @@ function toLocationForm(location?: RestaurantLocation | null): LocationForm {
   };
 }
 
+interface RestaurantDetailSnapshot {
+  restaurant: RestaurantDetail;
+  orders: Order[];
+}
+
+function buildRestaurantDetailKey(scope: string, restaurantId: string): string {
+  return `restaurant-detail:${scope}:${restaurantId}`;
+}
+
+/**
+ * For other pages that edit the same restaurant/locations from elsewhere
+ * (LocationsPage manages locations for the same restaurant this page shows a
+ * copy of) - call after a mutation there so this page's cache doesn't show
+ * pre-edit data on the next visit.
+ */
+export function invalidateRestaurantDetailCache(scope: string, restaurantId: string): void {
+  invalidatePageSnapshot(buildRestaurantDetailKey(scope, restaurantId));
+}
+
+function buildRestaurantAppClientKey(scope: string, restaurantId: string): string {
+  return `restaurant-app-client:${scope}:${restaurantId}`;
+}
+
 export function RestaurantDetailPage({
   token,
   role,
@@ -162,22 +195,50 @@ export function RestaurantDetailPage({
     : assignedRestaurantId
       ? `/admin/restaurants/${assignedRestaurantId}/locations`
       : "/dashboard";
-  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+
+  const scope = tokenScope(token);
+  // App.tsx already remounts this page fresh per restaurantId (it's part of
+  // the `key`), so a different restaurant never seeing another's cache is
+  // guaranteed there too - this key is what makes returning to the SAME
+  // restaurant, after navigating away and back, free.
+  const detailKey = buildRestaurantDetailKey(scope, restaurantId);
+  const appClientKey = buildRestaurantAppClientKey(scope, restaurantId);
+  const cachedDetail = getPageSnapshot<RestaurantDetailSnapshot>(detailKey);
+  const cachedAppClient = getPageSnapshot<AppClient>(appClientKey);
+
+  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(
+    () => cachedDetail?.restaurant ?? null,
+  );
+  const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
+  // Only true when this restaurant has never been fetched this session - not
+  // on every mount, so revisiting it keeps showing its data instead of a
+  // skeleton.
+  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(detailKey));
   const [activeSection, setActiveSection] = useState<SectionKey>(initialSection);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [isSettingsSubmitting, setIsSettingsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState<RestaurantForm | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<RestaurantForm | null>(
+    () => (cachedDetail ? toEditForm(cachedDetail.restaurant) : null),
+  );
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
+    () =>
+      cachedDetail?.restaurant.locations.find((location) => location.is_active)?.id
+      ?? cachedDetail?.restaurant.locations[0]?.id
+      ?? null,
+  );
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [locationForm, setLocationForm] = useState<LocationForm>(toLocationForm());
   const [isLocationSubmitting, setIsLocationSubmitting] = useState(false);
   const [locationToDeactivate, setLocationToDeactivate] = useState<RestaurantLocation | null>(null);
-  const [appClient, setAppClient] = useState<AppClient | null>(null);
-  const [appClientForm, setAppClientForm] = useState<AppClientFormValues | null>(null);
+  const [appClient, setAppClient] = useState<AppClient | null>(() => cachedAppClient ?? null);
+  const [appClientForm, setAppClientForm] = useState<AppClientFormValues | null>(
+    () =>
+      cachedAppClient && cachedDetail
+        ? toAppClientForm(cachedAppClient, cachedDetail.restaurant.name)
+        : null,
+  );
   const [appClientErrors, setAppClientErrors] = useState<AppClientFormErrors>({});
   const [appClientLoadError, setAppClientLoadError] = useState<string | null>(null);
   const [isAppClientSubmitting, setIsAppClientSubmitting] = useState(false);
@@ -243,6 +304,20 @@ export function RestaurantDetailPage({
       return;
     }
 
+    const cached = getPageSnapshot<RestaurantDetailSnapshot>(detailKey);
+    if (cached) {
+      setRestaurant(cached.restaurant);
+      setSelectedLocationId(
+        cached.restaurant.locations.find((location) => location.is_active)?.id
+        ?? cached.restaurant.locations[0]?.id
+        ?? null,
+      );
+      setEditForm(toEditForm(cached.restaurant));
+      setOrders(cached.orders);
+      setIsLoading(false);
+      return;
+    }
+
     let active = true;
 
     Promise.all([
@@ -262,6 +337,10 @@ export function RestaurantDetailPage({
         setEditForm(toEditForm(detail));
         setOrders(restaurantOrders);
         setIsLoading(false);
+        setPageSnapshot<RestaurantDetailSnapshot>(detailKey, {
+          restaurant: detail,
+          orders: restaurantOrders,
+        });
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -283,7 +362,7 @@ export function RestaurantDetailPage({
     return () => {
       active = false;
     };
-  }, [assignedRestaurantId, backPath, onNavigate, onToast, restaurantId, role, token]);
+  }, [assignedRestaurantId, backPath, onNavigate, onToast, restaurantId, role, token, detailKey]);
 
   // Loaded lazily so the app client request only happens when the tab is opened.
   useEffect(() => {
@@ -297,6 +376,13 @@ export function RestaurantDetailPage({
       return;
     }
 
+    const cachedClient = getPageSnapshot<AppClient>(appClientKey);
+    if (cachedClient) {
+      setAppClient(cachedClient);
+      setAppClientForm(toAppClientForm(cachedClient, restaurant.name));
+      return;
+    }
+
     let active = true;
 
     api
@@ -307,6 +393,7 @@ export function RestaurantDetailPage({
         }
         setAppClient(loaded);
         setAppClientForm(toAppClientForm(loaded, restaurant.name));
+        setPageSnapshot(appClientKey, loaded);
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -321,7 +408,16 @@ export function RestaurantDetailPage({
     return () => {
       active = false;
     };
-  }, [activeSection, appClientForm, appClientLoadError, isAdmin, onToast, restaurant, token]);
+  }, [
+    activeSection,
+    appClientForm,
+    appClientLoadError,
+    appClientKey,
+    isAdmin,
+    onToast,
+    restaurant,
+    token,
+  ]);
 
   const updateAppClientField = (field: DerivedAppClientField, value: string) => {
     setAppClientForm((current) => {
@@ -372,6 +468,7 @@ export function RestaurantDetailPage({
       );
       setAppClient(saved);
       setAppClientForm(toAppClientForm(saved, restaurant.name));
+      setPageSnapshot(appClientKey, saved);
       onToast(
         appClient ? "App settings updated" : "App client created",
         `${restaurant.name} now uses app key "${saved.app_key}".`,
@@ -502,6 +599,11 @@ export function RestaurantDetailPage({
 
       setRestaurant(updated);
       setEditForm(toEditForm(updated));
+      // Genuine data change: this page's own cache and the admin restaurants
+      // list (name/city/status can show there too) both need to reflect it
+      // on their next visit.
+      setPageSnapshot<RestaurantDetailSnapshot>(detailKey, { restaurant: updated, orders });
+      invalidatePageSnapshotsByPrefix(buildAdminRestaurantsCacheKeyPrefix(scope));
       closeEditModal();
       onToast("Restaurant updated", `${updated.name} was saved.`, "success");
     } catch (error: unknown) {
@@ -531,6 +633,8 @@ export function RestaurantDetailPage({
       );
       setRestaurant(updated);
       setEditForm(toEditForm(updated));
+      setPageSnapshot<RestaurantDetailSnapshot>(detailKey, { restaurant: updated, orders });
+      invalidatePageSnapshotsByPrefix(buildAdminRestaurantsCacheKeyPrefix(scope));
       onToast(
         "Settings updated",
         `${updated.name} settings were refreshed.`,
@@ -574,12 +678,19 @@ export function RestaurantDetailPage({
         ? await api.updateRestaurantLocation(token, restaurant.id, editingLocationId, payload)
         : await api.createRestaurantLocation(token, restaurant.id, payload);
 
-      setRestaurant((current) => current ? ({
-        ...current,
-        locations: editingLocationId
-          ? current.locations.map((location) => location.id === nextLocation.id ? nextLocation : location)
-          : [...current.locations, nextLocation],
-      }) : current);
+      setRestaurant((current) => {
+        if (!current) {
+          return current;
+        }
+        const next = {
+          ...current,
+          locations: editingLocationId
+            ? current.locations.map((location) => location.id === nextLocation.id ? nextLocation : location)
+            : [...current.locations, nextLocation],
+        };
+        setPageSnapshot<RestaurantDetailSnapshot>(detailKey, { restaurant: next, orders });
+        return next;
+      });
       setSelectedLocationId(nextLocation.id);
       closeLocationModal();
       onToast(
@@ -612,10 +723,17 @@ export function RestaurantDetailPage({
         restaurant.id,
         locationToDeactivate.id,
       );
-      setRestaurant((current) => current ? ({
-        ...current,
-        locations: current.locations.map((entry) => entry.id === nextLocation.id ? nextLocation : entry),
-      }) : current);
+      setRestaurant((current) => {
+        if (!current) {
+          return current;
+        }
+        const next = {
+          ...current,
+          locations: current.locations.map((entry) => entry.id === nextLocation.id ? nextLocation : entry),
+        };
+        setPageSnapshot<RestaurantDetailSnapshot>(detailKey, { restaurant: next, orders });
+        return next;
+      });
       onToast(
         "Location deactivated",
         `${locationToDeactivate.branch_name} is now inactive.`,
@@ -639,9 +757,16 @@ export function RestaurantDetailPage({
 
     try {
       const updated = await api.updateOrderStatus(token, order.id, nextStatus);
-      setOrders((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry)),
-      );
+      setOrders((current) => {
+        const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
+        if (restaurant) {
+          setPageSnapshot<RestaurantDetailSnapshot>(detailKey, { restaurant, orders: next });
+        }
+        return next;
+      });
+      // The global Orders list (OrdersPage) shows the same underlying order
+      // data through different filters - it needs to know this is now stale.
+      invalidatePageSnapshotsByPrefix(buildOrdersCacheKeyPrefix(scope));
       onToast(
         "Order updated",
         `${order.customer.full_name}'s order moved to ${nextStatus.replaceAll("_", " ")}.`,

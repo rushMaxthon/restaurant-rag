@@ -5,6 +5,13 @@ import { PageIntro } from '../components/PageIntro';
 import { humanizeEnum, pluralize } from '../services/format';
 import { useAdminStore } from '../hooks/useAdminStore';
 import { api, ApiError } from '../services/api';
+import { buildAdminUsersCacheKey } from './AdminUsersPage';
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from '../services/pageCache';
 import type {
   NotificationAudience,
   NotificationType,
@@ -83,6 +90,10 @@ function formatTimestamp(value: string) {
 
 export function NotificationsPage({ onToast }: NotificationsPageProps) {
   const { token } = useAdminStore();
+  const scope = tokenScope(token);
+  // Shares AdminUsersPage's exact cache key - one fetch serves both.
+  const usersKey = buildAdminUsersCacheKey(scope);
+  const historyKey = `notification-history:${scope}`;
   const [audience, setAudience] = useState<NotificationAudience>('CUSTOMERS');
   const [notificationType, setNotificationType] =
     useState<NotificationType>('GENERAL');
@@ -91,32 +102,58 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
   const [category, setCategory] = useState('');
   const [targetUserId, setTargetUserId] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>([]);
-  const [history, setHistory] = useState<NotificationHistoryItem[]>([]);
+  // Only true when neither list has been fetched yet this session - not on
+  // every mount, so revisiting this page keeps showing its data instead of a
+  // skeleton.
+  const [loading, setLoading] = useState(
+    () => !hasPageSnapshot(usersKey) || !hasPageSnapshot(historyKey),
+  );
+  const [users, setUsers] = useState<User[]>(() => getPageSnapshot<User[]>(usersKey) ?? []);
+  const [history, setHistory] = useState<NotificationHistoryItem[]>(
+    () => getPageSnapshot<NotificationHistoryItem[]>(historyKey) ?? [],
+  );
   const [lastResult, setLastResult] = useState<SendNotificationResponse | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const loadData = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setLoading(true);
-    try {
-      const [historyResponse, usersResponse] = await Promise.all([
-        api.getNotificationHistory(token),
-        api.getAdminUsers(token),
-      ]);
-      setHistory(historyResponse);
-      setUsers(usersResponse);
-    } catch (error) {
-      const messageText =
-        error instanceof Error ? error.message : 'Unable to load notification data.';
-      onToast('Notifications unavailable', messageText, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [onToast, token]);
+  // `force`: bypasses the cache. Used by the error-recovery reload below and
+  // never by the mount effect, which is what makes revisiting this page free.
+  const loadData = useCallback(
+    async (force = false) => {
+      if (!token) {
+        return;
+      }
+
+      if (!force) {
+        const cachedUsers = getPageSnapshot<User[]>(usersKey);
+        const cachedHistory = getPageSnapshot<NotificationHistoryItem[]>(historyKey);
+        if (cachedUsers && cachedHistory) {
+          setUsers(cachedUsers);
+          setHistory(cachedHistory);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setLoading(true);
+      try {
+        const [historyResponse, usersResponse] = await Promise.all([
+          api.getNotificationHistory(token),
+          api.getAdminUsers(token),
+        ]);
+        setHistory(historyResponse);
+        setUsers(usersResponse);
+        setPageSnapshot(historyKey, historyResponse);
+        setPageSnapshot(usersKey, usersResponse);
+      } catch (error) {
+        const messageText =
+          error instanceof Error ? error.message : 'Unable to load notification data.';
+        onToast('Notifications unavailable', messageText, 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [historyKey, onToast, token, usersKey],
+  );
 
   useEffect(() => {
     void loadData();
@@ -173,7 +210,11 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
         target_user_id: audience === 'SPECIFIC_USER' ? targetUserId : null,
       });
       setLastResult(response);
-      setHistory(current => [response.history, ...current].slice(0, 20));
+      setHistory(current => {
+        const next = [response.history, ...current].slice(0, 20);
+        setPageSnapshot(historyKey, next);
+        return next;
+      });
       onToast(
         'Notification sent',
         `Delivered to ${response.success_count} devices with ${response.failure_count} failures.`,
@@ -190,7 +231,7 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
           ? error.message
           : 'Unable to send the notification.';
       onToast('Send failed', messageText, 'error');
-      await loadData();
+      await loadData(true);
     } finally {
       setSubmitting(false);
     }

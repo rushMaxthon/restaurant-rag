@@ -13,6 +13,8 @@ import { EmptyPanel } from "../components/EmptyPanel";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { PageIntro } from "../components/PageIntro";
 import { ApiError, api } from "../services/api";
+import { invalidatePageSnapshotsByPrefix, tokenScope } from "../services/pageCache";
+import { buildMenuItemsCacheKeyPrefix } from "./MenuItemsPage";
 import type {
   MenuItem,
   MenuItemUpsertPayload,
@@ -195,6 +197,10 @@ export function MenuItemEditorPage({
           : `${createdName} is now listed at ${createdCount} ${branchLabel}.`,
         "success",
       );
+      // A genuine data change for the list MenuItemsPage shows - without
+      // this, navigating back would show its cached snapshot from before
+      // these items existed.
+      invalidatePageSnapshotsByPrefix(buildMenuItemsCacheKeyPrefix(tokenScope(token)));
       onNavigate(backPath);
     } catch (error: unknown) {
       if (
@@ -279,6 +285,7 @@ export function MenuItemEditorPage({
         });
         onToast("Menu item created", `${created.name} is now listed.`, "success");
       }
+      invalidatePageSnapshotsByPrefix(buildMenuItemsCacheKeyPrefix(tokenScope(token)));
       onNavigate(backPath);
     } catch (error: unknown) {
       const message =

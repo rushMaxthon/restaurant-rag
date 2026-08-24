@@ -20,6 +20,14 @@ import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
+import { invalidateRestaurantDetailCache } from "./RestaurantDetailPage";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type { Restaurant, RestaurantDetail, RestaurantLocation, UserRole } from "../types/app";
 
 interface LocationsPageProps {
@@ -95,6 +103,13 @@ function toLocationForm(location?: RestaurantLocation | null): LocationFormState
   };
 }
 
+// This restaurant/branch list is exactly what selectedRestaurantId keys off,
+// so it lives at the same cache key AdminRestaurantsPage writes - switching
+// between the two admin screens shares one fetch instead of two.
+export function buildLocationsRestaurantKey(scope: string, restaurantId: string): string {
+  return `locations-restaurant:${scope}:${restaurantId}`;
+}
+
 export function LocationsPage({
   token,
   role,
@@ -105,12 +120,32 @@ export function LocationsPage({
 }: LocationsPageProps) {
   const isAdmin = role === "ADMIN";
   const isScopedToRestaurant = scopedRestaurantId !== null;
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const scope = tokenScope(token);
+  const adminRestaurantsKey = buildAdminRestaurantsCacheKeyPrefix(scope);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => getPageSnapshot<Restaurant[]>(adminRestaurantsKey) ?? [],
+  );
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(
     scopedRestaurantId ?? (role === "OWNER" ? assignedRestaurantId : null),
   );
-  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const initialLocationsRestaurantKey = selectedRestaurantId
+    ? buildLocationsRestaurantKey(scope, selectedRestaurantId)
+    : null;
+  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(
+    () =>
+      (initialLocationsRestaurantKey &&
+        getPageSnapshot<RestaurantDetail>(initialLocationsRestaurantKey)) ||
+      null,
+  );
+  // Only true when neither the restaurant list nor this restaurant's own
+  // detail has ever been fetched this session - not on every mount, so
+  // revisiting a restaurant's locations keeps showing them instead of a
+  // skeleton.
+  const [isLoading, setIsLoading] = useState(() =>
+    initialLocationsRestaurantKey
+      ? !hasPageSnapshot(initialLocationsRestaurantKey)
+      : false,
+  );
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "OPEN" | "CLOSED" | "ACTIVE" | "INACTIVE"
@@ -134,6 +169,13 @@ export function LocationsPage({
       return;
     }
 
+    const cachedRestaurants = getPageSnapshot<Restaurant[]>(adminRestaurantsKey);
+    if (cachedRestaurants) {
+      setRestaurants(cachedRestaurants);
+      setSelectedRestaurantId((current) => current ?? cachedRestaurants[0]?.id ?? null);
+      return;
+    }
+
     let active = true;
     api
       .getAdminRestaurants(token)
@@ -143,6 +185,7 @@ export function LocationsPage({
         }
         setRestaurants(rows);
         setSelectedRestaurantId((current) => current ?? rows[0]?.id ?? null);
+        setPageSnapshot(adminRestaurantsKey, rows);
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -158,11 +201,19 @@ export function LocationsPage({
     return () => {
       active = false;
     };
-  }, [assignedRestaurantId, isAdmin, onToast, scopedRestaurantId, token]);
+  }, [assignedRestaurantId, adminRestaurantsKey, isAdmin, onToast, scopedRestaurantId, token]);
 
   useEffect(() => {
     if (!selectedRestaurantId) {
       setRestaurant(null);
+      setIsLoading(false);
+      return;
+    }
+
+    const locationsRestaurantKey = buildLocationsRestaurantKey(scope, selectedRestaurantId);
+    const cached = getPageSnapshot<RestaurantDetail>(locationsRestaurantKey);
+    if (cached) {
+      setRestaurant(cached);
       setIsLoading(false);
       return;
     }
@@ -176,6 +227,7 @@ export function LocationsPage({
           return;
         }
         setRestaurant(detail);
+        setPageSnapshot(locationsRestaurantKey, detail);
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -197,7 +249,7 @@ export function LocationsPage({
     return () => {
       active = false;
     };
-  }, [onToast, selectedRestaurantId, token]);
+  }, [onToast, scope, selectedRestaurantId, token]);
 
   const locationTiles = useMemo<
     Array<StatTileItem<"ALL" | "OPEN" | "CLOSED" | "ACTIVE" | "INACTIVE">>
@@ -324,18 +376,26 @@ export function LocationsPage({
   };
 
   const syncLocation = (nextLocation: RestaurantLocation) => {
-    setRestaurant((current) =>
-      current
-        ? {
-            ...current,
-            locations: current.locations.some((location) => location.id === nextLocation.id)
-              ? current.locations.map((location) =>
-                  location.id === nextLocation.id ? nextLocation : location,
-                )
-              : [...current.locations, nextLocation],
-          }
-        : current,
-    );
+    setRestaurant((current) => {
+      if (!current) {
+        return current;
+      }
+      const next = {
+        ...current,
+        locations: current.locations.some((location) => location.id === nextLocation.id)
+          ? current.locations.map((location) =>
+              location.id === nextLocation.id ? nextLocation : location,
+            )
+          : [...current.locations, nextLocation],
+      };
+      // Genuine data change: this page's own cache is refreshed directly, and
+      // RestaurantDetailPage's copy of the same restaurant (it shows a
+      // Locations tab too) is invalidated so it re-fetches on its next visit
+      // rather than showing the pre-edit branch list.
+      setPageSnapshot(buildLocationsRestaurantKey(scope, current.id), next);
+      invalidateRestaurantDetailCache(scope, current.id);
+      return next;
+    });
   };
 
   const submitLocation = async (event: React.FormEvent<HTMLFormElement>) => {

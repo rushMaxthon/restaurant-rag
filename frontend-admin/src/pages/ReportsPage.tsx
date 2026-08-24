@@ -27,6 +27,13 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { StatusPill } from "../components/StatusPill";
 import { ApiError, api, formatCurrency } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
+import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import {
   ORDER_FILTER_STATUSES,
   type OrderStatus,
@@ -225,9 +232,42 @@ export function ReportsPage({
 }: ReportsPageProps) {
   const isAdmin = role === "ADMIN";
   const defaultRange = useMemo(() => getPresetRange("30d"), []);
-  const [reports, setReports] = useState<ReportsSnapshot | null>(null);
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const scope = tokenScope(token);
+  // Admins fetch the same list AdminRestaurantsPage shows - share its exact
+  // key so switching between the two pages costs one fetch instead of two.
+  // An owner's restaurant list comes from a different endpoint, so it gets
+  // its own key.
+  const restaurantsKey = isAdmin
+    ? buildAdminRestaurantsCacheKeyPrefix(scope)
+    : `reports-owner-restaurants:${scope}`;
+
+  // The initial-render key, built from the same literals every filter
+  // useState below starts from - computed ahead of them so `reports` and
+  // `loading` can seed from it in their own lazy initializers, exactly like
+  // the key the mount effect will compute once those states exist.
+  const initialReportsKey = [
+    "reports",
+    scope,
+    defaultRange.from,
+    defaultRange.to,
+    // `restaurantFilter`'s own initial value is `restaurantId ?? ""` too, so
+    // this matches the real key regardless of admin/owner.
+    restaurantId ?? "",
+    "",
+    "",
+    "",
+  ].join(":");
+
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => getPageSnapshot<Restaurant[]>(restaurantsKey) ?? [],
+  );
+  const [reports, setReports] = useState<ReportsSnapshot | null>(
+    () => getPageSnapshot<ReportsSnapshot>(initialReportsKey) ?? null,
+  );
+  // Only true when this exact filter combination has never been fetched this
+  // session - not on every mount, so revisiting reports (with the same
+  // defaults) keeps showing its data instead of a skeleton.
+  const [loading, setLoading] = useState(() => !hasPageSnapshot(initialReportsKey));
   const [error, setError] = useState<string | null>(null);
   const [preset, setPreset] = useState<DatePreset>("30d");
   const [dateFrom, setDateFrom] = useState(defaultRange.from);
@@ -239,94 +279,68 @@ export function ReportsPage({
   const [activeTab, setActiveTab] = useState<ReportsTab>("analytics");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
-  const loadRestaurants = useCallback(async () => {
-    try {
-      const rows = isAdmin
-        ? await api.getAdminRestaurants(token)
-        : await api.getOwnerRestaurants(token);
-      setRestaurants(rows);
-      if (!isAdmin) {
-        setRestaurantFilter((current) => current || restaurantId || rows[0]?.id || "");
-      }
-    } catch (loadError) {
-      const message =
-        loadError instanceof ApiError
-          ? loadError.message
-          : "Unable to load restaurant filters.";
-      onToast("Filter options unavailable", message, "error");
-    }
-  }, [isAdmin, onToast, restaurantId, token]);
-
-  const loadReports = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const snapshot = await api.getReports(token, {
-        dateFrom: dateFrom || null,
-        dateTo: dateTo || null,
-        restaurantId: isAdmin ? restaurantFilter || null : restaurantId,
-        cuisineType: cuisineFilter || null,
-        category: categoryFilter || null,
-        orderStatus: statusFilter || null,
-      });
-      setReports(snapshot);
-      setLastUpdatedAt(new Date());
-    } catch (loadError) {
-      const message =
-        loadError instanceof ApiError
-          ? loadError.message
-          : "Unable to load analytics.";
-      setError(message);
-      onToast("Reports unavailable", message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    categoryFilter,
-    cuisineFilter,
+  // Every filter that reaches the API belongs in this key - a filter change
+  // is exactly the "required scope/filter change" that should hit the
+  // network again, while returning to a combination already fetched this
+  // session should not.
+  const reportsKey = [
+    "reports",
+    scope,
     dateFrom,
     dateTo,
-    isAdmin,
-    onToast,
-    restaurantFilter,
-    restaurantId,
+    isAdmin ? restaurantFilter : restaurantId ?? "",
+    cuisineFilter,
+    categoryFilter,
     statusFilter,
-    token,
-  ]);
+  ].join(":");
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
+  // `force`: bypasses the cache. The Refresh button below always forces;
+  // the mount/filter-change effects never do, which is what makes revisiting
+  // this page (or a filter combination already seen) free.
+  const loadRestaurants = useCallback(
+    async (force = false) => {
+      if (!force) {
+        const cached = getPageSnapshot<Restaurant[]>(restaurantsKey);
+        if (cached) {
+          setRestaurants(cached);
+          if (!isAdmin) {
+            setRestaurantFilter((current) => current || restaurantId || cached[0]?.id || "");
+          }
+          return;
+        }
+      }
+
       try {
         const rows = isAdmin
           ? await api.getAdminRestaurants(token)
           : await api.getOwnerRestaurants(token);
-        if (!active) {
-          return;
-        }
         setRestaurants(rows);
+        setPageSnapshot(restaurantsKey, rows);
         if (!isAdmin) {
           setRestaurantFilter((current) => current || restaurantId || rows[0]?.id || "");
         }
       } catch (loadError) {
-        if (!active) {
-          return;
-        }
         const message =
           loadError instanceof ApiError
             ? loadError.message
             : "Unable to load restaurant filters.";
         onToast("Filter options unavailable", message, "error");
       }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [isAdmin, onToast, restaurantId, token]);
+    },
+    [isAdmin, onToast, restaurantId, restaurantsKey, token],
+  );
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
+  const loadReports = useCallback(
+    async (force = false) => {
+      if (!force) {
+        const cached = getPageSnapshot<ReportsSnapshot>(reportsKey);
+        if (cached) {
+          setReports(cached);
+          setLoading(false);
+          return;
+        }
+      }
+
       setLoading(true);
       setError(null);
       try {
@@ -338,15 +352,10 @@ export function ReportsPage({
           category: categoryFilter || null,
           orderStatus: statusFilter || null,
         });
-        if (!active) {
-          return;
-        }
         setReports(snapshot);
         setLastUpdatedAt(new Date());
+        setPageSnapshot(reportsKey, snapshot);
       } catch (loadError) {
-        if (!active) {
-          return;
-        }
         const message =
           loadError instanceof ApiError
             ? loadError.message
@@ -354,26 +363,31 @@ export function ReportsPage({
         setError(message);
         onToast("Reports unavailable", message, "error");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [
-    categoryFilter,
-    cuisineFilter,
-    dateFrom,
-    dateTo,
-    isAdmin,
-    onToast,
-    restaurantFilter,
-    restaurantId,
-    statusFilter,
-    token,
-  ]);
+    },
+    [
+      categoryFilter,
+      cuisineFilter,
+      dateFrom,
+      dateTo,
+      isAdmin,
+      onToast,
+      reportsKey,
+      restaurantFilter,
+      restaurantId,
+      statusFilter,
+      token,
+    ],
+  );
+
+  useEffect(() => {
+    void loadRestaurants();
+  }, [loadRestaurants]);
+
+  useEffect(() => {
+    void loadReports();
+  }, [loadReports]);
 
   const cuisineOptions = useMemo(() => {
     const values = new Set<string>();
@@ -782,8 +796,8 @@ export function ReportsPage({
             className="rpt-btn rpt-btn--primary"
             disabled={loading}
             onClick={() => {
-              void loadRestaurants();
-              void loadReports();
+              void loadRestaurants(true);
+              void loadReports(true);
             }}
             type="button"
           >

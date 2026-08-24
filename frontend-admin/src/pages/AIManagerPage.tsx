@@ -11,6 +11,14 @@ import { PageIntro } from "../components/PageIntro";
 import { useAdminStore } from "../hooks/useAdminStore";
 import { ApiError, api, formatCurrency } from "../services/api";
 import { DEFAULT_PERIOD_DAYS, PERIOD_OPTIONS } from "../services/insightFormat";
+import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
+import {
+  getPageSnapshot,
+  hasPageSnapshot,
+  invalidatePageSnapshotsByPrefix,
+  setPageSnapshot,
+  tokenScope,
+} from "../services/pageCache";
 import type {
   DiagnosticsSnapshot,
   OfferPerformanceSnapshot,
@@ -23,6 +31,21 @@ import type {
 
 const RESTAURANT_STORAGE_KEY = "ai-manager:restaurant";
 
+interface AIManagerSnapshot {
+  briefing: OwnerBriefing | null;
+  diagnostics: DiagnosticsSnapshot | null;
+  insights: OwnerInsight[];
+  proposals: OwnerActionProposal[];
+  offers: OfferPerformanceSnapshot | null;
+}
+
+// scopeId and periodDays both change what gets fetched, so both are in the
+// key: switching the period, or (for an admin) the restaurant, is exactly the
+// "required scope/filter change" that should hit the network again.
+function buildAIManagerKey(scope: string, scopeId: string | null, periodDays: number): string {
+  return `ai-manager:${scope}:${scopeId ?? ""}:${periodDays}`;
+}
+
 type PendingAction =
   | { kind: "approve"; proposal: OwnerActionProposal }
   | { kind: "reject"; proposal: OwnerActionProposal }
@@ -32,10 +55,14 @@ export function AIManagerPage() {
   const { token: sessionToken, role, pushToast } = useAdminStore();
   const token = sessionToken ?? "";
   const isAdmin = role === "ADMIN";
+  const scope = tokenScope(token);
+  const adminRestaurantsKey = buildAdminRestaurantsCacheKeyPrefix(scope);
 
   // An owner is pinned to their own restaurant by the backend; an admin must
   // name one, because there is no sensible cross-restaurant diagnosis.
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => getPageSnapshot<Restaurant[]>(adminRestaurantsKey) ?? [],
+  );
   // Remembered across reloads: an admin working through one restaurant's
   // numbers had to re-pick it after every refresh, and the page silently
   // reverted to whichever restaurant happened to sort first.
@@ -43,27 +70,42 @@ export function AIManagerPage() {
     () => window.localStorage.getItem(RESTAURANT_STORAGE_KEY) ?? "",
   );
 
-  const [briefing, setBriefing] = useState<OwnerBriefing | null>(null);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot | null>(null);
-  const [insights, setInsights] = useState<OwnerInsight[]>([]);
-  const [proposals, setProposals] = useState<OwnerActionProposal[]>([]);
-  const [offers, setOffers] = useState<OfferPerformanceSnapshot | null>(null);
-
   // One period for the whole screen. Every panel used to pick its own — the
   // briefing described 60 days, the KPI tiles followed it, offers showed 7, and
   // the feed interleaved rows from two different runs. Four windows, one
   // screen, and only a footnote saying so.
   const [periodDays, setPeriodDays] = useState<number>(DEFAULT_PERIOD_DAYS);
 
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [actionBusy, setActionBusy] = useState(false);
-
   const scopeId = useMemo(
     () => (isAdmin ? selectedRestaurantId || null : null),
     [isAdmin, selectedRestaurantId],
   );
+  const aiManagerKey = buildAIManagerKey(scope, scopeId, periodDays);
+  const cachedAIManager = getPageSnapshot<AIManagerSnapshot>(aiManagerKey);
+
+  const [briefing, setBriefing] = useState<OwnerBriefing | null>(
+    () => cachedAIManager?.briefing ?? null,
+  );
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot | null>(
+    () => cachedAIManager?.diagnostics ?? null,
+  );
+  const [insights, setInsights] = useState<OwnerInsight[]>(
+    () => cachedAIManager?.insights ?? [],
+  );
+  const [proposals, setProposals] = useState<OwnerActionProposal[]>(
+    () => cachedAIManager?.proposals ?? [],
+  );
+  const [offers, setOffers] = useState<OfferPerformanceSnapshot | null>(
+    () => cachedAIManager?.offers ?? null,
+  );
+
+  // Only true when this exact scope+period has never been fetched this
+  // session - not on every mount, so revisiting the AI Manager keeps showing
+  // its data instead of a skeleton.
+  const [loading, setLoading] = useState(() => !hasPageSnapshot(aiManagerKey));
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
     if (!isAdmin || !selectedRestaurantId) {
@@ -76,10 +118,22 @@ export function AIManagerPage() {
     if (!isAdmin || !token) {
       return;
     }
+
+    const cachedRestaurants = getPageSnapshot<Restaurant[]>(adminRestaurantsKey);
+    if (cachedRestaurants) {
+      setRestaurants(cachedRestaurants);
+      setSelectedRestaurantId((current) => {
+        const remembered = cachedRestaurants.some((row) => row.id === current) ? current : "";
+        return remembered || cachedRestaurants[0]?.id || "";
+      });
+      return;
+    }
+
     api
       .getAdminRestaurants(token)
       .then((rows) => {
         setRestaurants(rows);
+        setPageSnapshot(adminRestaurantsKey, rows);
         setSelectedRestaurantId((current) => {
           // A remembered id the admin can no longer see must not stick.
           const remembered = rows.some((row) => row.id === current) ? current : "";
@@ -90,53 +144,83 @@ export function AIManagerPage() {
         // Non-fatal: the page still works once a restaurant is chosen.
         setRestaurants([]);
       });
-  }, [isAdmin, token]);
+  }, [adminRestaurantsKey, isAdmin, token]);
 
-  const load = useCallback(async () => {
-    if (!token || (isAdmin && !scopeId)) {
+  // `force`: bypasses the cache. Used by the explicit Refresh button below and
+  // never by the mount effect, which is what makes revisiting this page free.
+  const load = useCallback(
+    async (force = false) => {
+      if (!token || (isAdmin && !scopeId)) {
+        setLoading(false);
+        return;
+      }
+
+      if (!force) {
+        const cached = getPageSnapshot<AIManagerSnapshot>(aiManagerKey);
+        if (cached) {
+          setBriefing(cached.briefing);
+          setDiagnostics(cached.diagnostics);
+          setInsights(cached.insights);
+          setProposals(cached.proposals);
+          setOffers(cached.offers);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setLoading(true);
+      const options = { restaurantId: scopeId };
+
+      // Every panel gets the same window, and they all go out together. The
+      // briefing no longer has to be fetched first to tell the others which
+      // period to use, so this is one round trip instead of two.
+      const [briefingResult, diagnosticsResult, feedResult, proposalResult, offerResult] =
+        await Promise.allSettled([
+          api.getOwnerBriefing(token, scopeId, { windowDays: periodDays }),
+          api.getOwnerDiagnostics(token, { ...options, windowDays: periodDays }),
+          api.getOwnerInsightFeed(token, { ...options, windowDays: periodDays, limit: 20 }),
+          api.getOwnerRecommendations(token, { ...options, statuses: ["PROPOSED"] }),
+          api.getOwnerOfferPerformance(token, { ...options, windowDays: periodDays }),
+        ]);
+
+      // A 404 here is the normal "nothing generated yet" state, not an error.
+      const nextBriefing = briefingResult.status === "fulfilled" ? briefingResult.value : null;
+      const nextDiagnostics =
+        diagnosticsResult.status === "fulfilled" ? diagnosticsResult.value : null;
+      const nextInsights = feedResult.status === "fulfilled" ? feedResult.value : [];
+      const nextProposals = proposalResult.status === "fulfilled" ? proposalResult.value : [];
+      const nextOffers = offerResult.status === "fulfilled" ? offerResult.value : null;
+
+      setBriefing(nextBriefing);
+      setDiagnostics(nextDiagnostics);
+      setInsights(nextInsights);
+      setProposals(nextProposals);
+      setOffers(nextOffers);
+      setPageSnapshot<AIManagerSnapshot>(aiManagerKey, {
+        briefing: nextBriefing,
+        diagnostics: nextDiagnostics,
+        insights: nextInsights,
+        proposals: nextProposals,
+        offers: nextOffers,
+      });
+
+      const failure = [diagnosticsResult, feedResult, proposalResult, offerResult].find(
+        (result) =>
+          result.status === "rejected" &&
+          !(result.reason instanceof ApiError && result.reason.status === 404),
+      );
+      if (failure && failure.status === "rejected") {
+        const message =
+          failure.reason instanceof Error
+            ? failure.reason.message
+            : "Unable to load the AI manager";
+        pushToast("Could not load everything", message, "error");
+      }
+
       setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    const options = { restaurantId: scopeId };
-
-    // Every panel gets the same window, and they all go out together. The
-    // briefing no longer has to be fetched first to tell the others which
-    // period to use, so this is one round trip instead of two.
-    const [briefingResult, diagnosticsResult, feedResult, proposalResult, offerResult] =
-      await Promise.allSettled([
-        api.getOwnerBriefing(token, scopeId, { windowDays: periodDays }),
-        api.getOwnerDiagnostics(token, { ...options, windowDays: periodDays }),
-        api.getOwnerInsightFeed(token, { ...options, windowDays: periodDays, limit: 20 }),
-        api.getOwnerRecommendations(token, { ...options, statuses: ["PROPOSED"] }),
-        api.getOwnerOfferPerformance(token, { ...options, windowDays: periodDays }),
-      ]);
-
-    // A 404 here is the normal "nothing generated yet" state, not an error.
-    setBriefing(briefingResult.status === "fulfilled" ? briefingResult.value : null);
-    setDiagnostics(
-      diagnosticsResult.status === "fulfilled" ? diagnosticsResult.value : null,
-    );
-    setInsights(feedResult.status === "fulfilled" ? feedResult.value : []);
-    setProposals(proposalResult.status === "fulfilled" ? proposalResult.value : []);
-    setOffers(offerResult.status === "fulfilled" ? offerResult.value : null);
-
-    const failure = [diagnosticsResult, feedResult, proposalResult, offerResult].find(
-      (result) =>
-        result.status === "rejected" &&
-        !(result.reason instanceof ApiError && result.reason.status === 404),
-    );
-    if (failure && failure.status === "rejected") {
-      const message =
-        failure.reason instanceof Error
-          ? failure.reason.message
-          : "Unable to load the AI manager";
-      pushToast("Could not load everything", message, "error");
-    }
-
-    setLoading(false);
-  }, [token, isAdmin, scopeId, periodDays, pushToast]);
+    },
+    [token, isAdmin, scopeId, periodDays, pushToast, aiManagerKey],
+  );
 
   useEffect(() => {
     void load();
@@ -149,6 +233,10 @@ export function AIManagerPage() {
       setInsights((current) =>
         current.map((row) => (row.id === updated.id ? updated : row)),
       );
+      // Genuine data change: the current view stays showing the just-patched
+      // state above; this only affects what the NEXT visit to any period for
+      // this scope fetches.
+      invalidatePageSnapshotsByPrefix(`ai-manager:${scope}:${scopeId ?? ""}:`);
     } catch (error) {
       pushToast(
         "Could not update the insight",
@@ -181,6 +269,12 @@ export function AIManagerPage() {
         pushToast("Recommendation rejected", "It will not be suggested again soon.", "info");
       }
       setProposals((current) => current.filter((row) => row.id !== proposal.id));
+      // Approving may create a live offer, which the offers panel would show
+      // under a different period than the one open right now - simplest to
+      // invalidate every period for this scope so whichever one is revisited
+      // next re-fetches, rather than patching just the current one and
+      // guessing whether it was affected.
+      invalidatePageSnapshotsByPrefix(`ai-manager:${scope}:${scopeId ?? ""}:`);
     } catch (error) {
       pushToast(
         kind === "approve" ? "Could not create the offer" : "Could not reject",
@@ -280,7 +374,7 @@ export function AIManagerPage() {
             <button
               type="button"
               className="secondary-button"
-              onClick={() => void load()}
+              onClick={() => void load(true)}
               disabled={loading || needsRestaurant}
             >
               <RefreshCw size={15} strokeWidth={2.2} />
