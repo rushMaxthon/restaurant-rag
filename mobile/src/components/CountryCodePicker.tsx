@@ -13,6 +13,19 @@ import { COUNTRIES, type CountryOption } from '@/data/countries';
 import { getCountryFlagEmoji } from '@/utils/phoneNumber';
 import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
+/**
+ * Width the mobile-number field beside this picker needs before its
+ * placeholder starts clipping, at a font scale of 1.
+ *
+ * Measured, not guessed: "Enter your mobile number" renders ~168dp at
+ * fontSize 15, and the auth `input` style adds 28dp of horizontal padding.
+ * It lives here because it exists only because of this picker — the chip
+ * reserves `trigger.minWidth` from the same row. Callers multiply it by
+ * `PixelRatio.getFontScale()`, since the placeholder grows with the OS font
+ * while the row does not.
+ */
+export const PHONE_INPUT_MIN_WIDTH = 196;
+
 type Props = {
   selectedCountry: CountryOption;
   onSelect: (country: CountryOption) => void;
@@ -119,6 +132,12 @@ const createStyles = (theme: AppTheme) =>
     trigger: {
       minHeight: 50,
       minWidth: 102,
+      // Holds its size in the phone row: without this the chip is a flex child
+      // that can be shrunk below its 102dp floor on a narrow screen, squashing
+      // the flag and dial code instead of letting the number field wrap. Width
+      // and appearance are unchanged at every size.
+      flexShrink: 0,
+      flexGrow: 0,
       paddingHorizontal: 12,
       borderRadius: 10,
       borderWidth: 1,

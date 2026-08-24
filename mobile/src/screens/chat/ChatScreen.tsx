@@ -111,6 +111,14 @@ function ChatHero({
   statLabel: string;
   statValue: string;
 }) {
+  // Subscribes to the ACTIVE theme rather than closing over the module-level
+  // `styles` export at the bottom of this file. That export is
+  // `createStyles(theme)` evaluated once at import time against the default
+  // LIGHT theme, so a component reading it renders a cream card on a dark
+  // screen no matter what the user picked. The style definitions themselves
+  // were already theme-aware — only this lookup was frozen.
+  const styles = useThemedStyles(createStyles);
+
   return (
     <View style={styles.heroCard}>
       <View style={styles.heroGlowPrimary} />
@@ -129,6 +137,11 @@ function ChatHero({
 }
 
 function LoginPromptCard({ onPress }: { onPress: () => void }) {
+  // Same fix as ChatHero: both the styles AND the icon colour below were read
+  // from the frozen light-theme module exports.
+  const theme = useTheme();
+  const styles = useThemedStyles(createStyles);
+
   return (
     <View style={styles.loginCard}>
       <View style={styles.loginCardIcon}>

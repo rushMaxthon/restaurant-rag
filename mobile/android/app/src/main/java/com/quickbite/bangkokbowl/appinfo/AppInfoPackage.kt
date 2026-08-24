@@ -1,4 +1,4 @@
-package com.quickbite.all.appinfo
+package com.quickbite.bangkokbowl.appinfo
 
 import android.view.View
 import com.facebook.react.ReactPackage

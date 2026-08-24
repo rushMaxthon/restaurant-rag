@@ -102,7 +102,7 @@ export function HomeScreen(): React.JSX.Element {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const { width: screenWidth } = useWindowDimensions();
-  const { token, user, appConfig } = useSession();
+  const { token, user, appConfig, appConfigStatus } = useSession();
   const { preferences } = usePreferences();
   const { favoritesHydrated } = useFavoritesState();
   const selectedLocation = useSelectedLocation();
@@ -111,6 +111,7 @@ export function HomeScreen(): React.JSX.Element {
     isFavorite,
     isFavoritePending,
     pushToast,
+    refreshAppConfig,
     addToCart,
     requestAddToCart,
     setSelectedPersonalizedOffer,
@@ -133,6 +134,10 @@ export function HomeScreen(): React.JSX.Element {
   const [menuRestaurant, setMenuRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Distinguishes "still trying to resolve the app config" from "tried and
+  // could not", so the screen shows a retry instead of an endless skeleton.
+  const [appConfigRetrying, setAppConfigRetrying] = useState(false);
+  const [appConfigRetryFailed, setAppConfigRetryFailed] = useState(false);
   const trackedOfferIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedFeedRef = useRef(false);
   const isFeedRequestInFlightRef = useRef(false);
@@ -159,12 +164,44 @@ export function HomeScreen(): React.JSX.Element {
     user?.default_address?.split(',').map(part => part.trim())[1] ||
     'Tap to choose delivery area';
   const profileInitial = user?.full_name?.trim().charAt(0).toUpperCase() ?? '';
+  // `appConfigStatus` is checked FIRST and deliberately: with an unresolved
+  // config this expression is false, which is indistinguishable from a genuine
+  // marketplace build. That is how a single-restaurant app rendered every
+  // restaurant on the platform when the config fetch failed. While unresolved
+  // the screen shows the skeleton below instead of committing to either mode.
+  const appConfigResolved = appConfigStatus === 'resolved';
   const isSingleRestaurant =
+    appConfigResolved &&
     appConfig?.app_mode === 'SINGLE_RESTAURANT' &&
     Boolean(appConfig?.restaurant_id);
   const scopedRestaurantId = isSingleRestaurant
     ? appConfig?.restaurant_id ?? null
     : null;
+
+  const handleRetryAppConfig = useCallback(async () => {
+    setAppConfigRetrying(true);
+    setAppConfigRetryFailed(false);
+    const status = await refreshAppConfig();
+    setAppConfigRetrying(false);
+    if (status !== 'resolved') {
+      setAppConfigRetryFailed(true);
+    }
+  }, [refreshAppConfig]);
+
+  // One automatic attempt when this screen appears without a config. Bootstrap
+  // already retried on its own schedule; this covers the case where the API was
+  // still waking when that budget ran out. Ref-guarded so a re-focus cannot
+  // turn it into a retry loop — after this, recovery is the user's tap.
+  const autoRetriedAppConfigRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (appConfigResolved || autoRetriedAppConfigRef.current) {
+        return;
+      }
+      autoRetriedAppConfigRef.current = true;
+      void handleRetryAppConfig();
+    }, [appConfigResolved, handleRetryAppConfig]),
+  );
   const allCategory = useMemo(
     () => ({ id: 'all', label: 'All', icon: 'apps', query: '' }),
     [],
@@ -219,8 +256,20 @@ export function HomeScreen(): React.JSX.Element {
         hasToken: Boolean(token),
         preferences: preferenceScopeKey,
         selectedLocation: locationScopeKey,
+        // The app scope belongs in this key, not just in loadHomeFeed's deps.
+        // `shouldLoad` short-circuits on `hasLoadedFeedRef`, so a feed fetched
+        // while the config was still unresolved — unscoped, no restaurant menu
+        // — would otherwise be kept until it went stale, even after the config
+        // arrived and told us this is a single-restaurant build.
+        scopedRestaurantId,
       }),
-    [locationScopeKey, preferenceScopeKey, token, user?.id],
+    [
+      locationScopeKey,
+      preferenceScopeKey,
+      scopedRestaurantId,
+      token,
+      user?.id,
+    ],
   );
 
   const loadHomeFeed = useCallback(
@@ -896,6 +945,41 @@ export function HomeScreen(): React.JSX.Element {
     />
   );
 
+  // Rendered BEFORE the loading branch and before any feed content: without a
+  // resolved config this build does not yet know whether it is a marketplace
+  // or a single restaurant, and guessing shows a Bangkok Bowl customer every
+  // competitor on the platform. Waiting is the only safe answer.
+  if (!appConfigResolved) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        {header}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {appConfigRetryFailed && !appConfigRetrying ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Can't reach the server</Text>
+              <Text style={styles.emptyText}>
+                We couldn't load this app's settings. Check your connection and
+                try again.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleRetryAppConfig}
+                style={styles.retryButton}
+              >
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <HomeSkeleton />
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -1355,6 +1439,18 @@ export const createStyles = (theme: AppTheme) =>
     emptyText: {
       color: theme.colors.secondaryText,
       lineHeight: 20,
+    },
+    retryButton: {
+      marginTop: 12,
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      backgroundColor: theme.colors.primary,
+    },
+    retryButtonText: {
+      color: theme.colors.onPrimary,
+      fontWeight: '700',
     },
   });
 

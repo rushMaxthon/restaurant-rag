@@ -1,4 +1,4 @@
-package com.quickbite.all
+package com.quickbite.bangkokbowl
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

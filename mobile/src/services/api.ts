@@ -125,8 +125,50 @@ function mapError(error: unknown): never {
   throw new ApiError('Something went wrong', 500);
 }
 
-/** Startup config resolution must not hold the splash screen for long. */
-const APP_CONFIG_TIMEOUT_MS = 8000;
+/**
+ * Per-ATTEMPT budget for startup config resolution.
+ *
+ * This was a single 8s timeout, which is a correct budget for a warm server
+ * and an impossible one for a cold start. Production answers /app-config in
+ * ~0.3s warm, but the API sleeps when idle and takes 50s or more to wake, so
+ * the one attempt always aborted and the app booted with NO config — which is
+ * how a single-restaurant build silently rendered the marketplace feed.
+ *
+ * Kept short per attempt rather than raised to one long timeout: a genuinely
+ * unreachable backend should still fail fast, and the schedule below is what
+ * covers a slow wake-up.
+ */
+const APP_CONFIG_ATTEMPT_TIMEOUT_MS = 12000;
+
+/**
+ * Delay before each retry. Four attempts at 12s plus these gaps is a ~60s
+ * total budget, which clears the documented 50s cold start with headroom while
+ * an offline device still gives up in about a minute.
+ */
+const APP_CONFIG_RETRY_DELAYS_MS = [1000, 3000, 8000];
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Whether another attempt could plausibly succeed.
+ *
+ * A timeout or a dead connection is exactly the cold-start case, and a 5xx is
+ * a server still coming up. A 4xx is not retryable: the backend answered, and
+ * it is telling us this bundle id resolves to nothing. Retrying that would
+ * turn a fast, correct failure into a minute of waiting.
+ */
+function isRetryableAppConfigError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+  if (error.response) {
+    return error.response.status >= 500;
+  }
+  // No response at all: timeout (ECONNABORTED) or a network-level failure.
+  return true;
+}
 
 export const APP_BUNDLE_ID_HEADER = 'X-App-Bundle-Id';
 export const APP_PLATFORM_HEADER = 'X-App-Platform';
@@ -154,19 +196,37 @@ export const api = {
    */
   async getAppConfig(): Promise<AppConfig> {
     console.log(`[BundleId] Request: GET ${API_BASE_URL}/app-config`);
-    try {
-      // Identity travels on the shared client defaults, so this request is
-      // resolved from exactly the same headers as every other call.
-      const response = await client.get<AppConfig>('/app-config', {
-        timeout: APP_CONFIG_TIMEOUT_MS,
-      });
-      console.log(
-        `[BundleId] Backend matched bundle_id: ${response.data.bundle_id} -> app_key=${response.data.app_key}`,
-      );
-      return response.data;
-    } catch (error) {
-      return mapError(error);
+    const attempts = APP_CONFIG_RETRY_DELAYS_MS.length + 1;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        // Identity travels on the shared client defaults, so this request is
+        // resolved from exactly the same headers as every other call.
+        const response = await client.get<AppConfig>('/app-config', {
+          timeout: APP_CONFIG_ATTEMPT_TIMEOUT_MS,
+        });
+        console.log(
+          `[BundleId] Backend matched bundle_id: ${response.data.bundle_id} -> app_key=${response.data.app_key}`,
+        );
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const retryable = isRetryableAppConfigError(error);
+        if (!retryable || attempt === attempts) {
+          break;
+        }
+        const wait = APP_CONFIG_RETRY_DELAYS_MS[attempt - 1];
+        console.warn(
+          `[AppConfig] Attempt ${attempt}/${attempts} failed (${
+            error instanceof Error ? error.message : String(error)
+          }). Retrying in ${wait}ms — the API may be waking from idle.`,
+        );
+        await delay(wait);
+      }
     }
+
+    return mapError(lastError);
   },
   async login(payload: {
     email?: string | null;

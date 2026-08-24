@@ -54,6 +54,12 @@ import {
  * in the app. Each slice below notifies only the consumers that read it, and
  * the actions slice never changes at all.
  */
+/**
+ * 'unresolved' means the backend has never told this install what it is —
+ * neither now nor on a previous launch. It is NOT a synonym for marketplace.
+ */
+export type AppConfigStatus = 'resolved' | 'unresolved';
+
 export interface SessionValue {
   bootstrapped: boolean;
   /**
@@ -62,6 +68,19 @@ export interface SessionValue {
    * could not be resolved and nothing was cached.
    */
   appConfig: AppConfig | null;
+  /**
+   * Whether `appConfig` is trustworthy, as distinct from what it contains.
+   *
+   * `appConfig === null` is ambiguous on its own: it reads as "marketplace" to
+   * any consumer that asks `app_mode === 'SINGLE_RESTAURANT'`, which is how a
+   * failed config fetch silently turned a single-restaurant build into a
+   * marketplace one. Screens that scope on app mode MUST branch on this first
+   * and render a loading state while it is 'unresolved' — never guess a mode.
+   *
+   * 'resolved' covers a cached config too: it was fetched from the backend on
+   * an earlier launch, so it is real, just possibly stale.
+   */
+  appConfigStatus: AppConfigStatus;
   token: string | null;
   user: User | null;
 }
@@ -84,6 +103,15 @@ export interface PromptsValue {
 }
 
 export interface AppStoreActions {
+  /**
+   * Re-resolves this build's app config from the backend.
+   *
+   * Bootstrap already retries, so this exists for the case that outlives it:
+   * the app opened while the API was asleep and every attempt was exhausted.
+   * A screen sitting on 'unresolved' calls this to recover without the user
+   * having to force-quit and relaunch. Resolves to the new status.
+   */
+  refreshAppConfig: () => Promise<AppConfigStatus>;
   setSession: (
     token: string,
     user: User,
@@ -427,6 +455,8 @@ function useLatestRef<T>(value: T) {
 export function AppStoreProvider({ children }: PropsWithChildren) {
   const [bootstrapped, setBootstrapped] = useState(false);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [appConfigStatus, setAppConfigStatus] =
+    useState<AppConfigStatus>('unresolved');
   const [appIdentity, setAppIdentity] = useState<StoredAppIdentity | null>(
     null,
   );
@@ -464,6 +494,7 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
   // for the lifetime of the provider, so the actions context never changes and
   // consumers never re-render because an unrelated action was recreated.
   const tokenRef = useLatestRef(token);
+  const appConfigStatusRef = useLatestRef(appConfigStatus);
   const userRef = useLatestRef(user);
   const preferencesRef = useLatestRef(preferences);
   const selectedPersonalizedOfferRef = useLatestRef(selectedPersonalizedOffer);
@@ -587,6 +618,10 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
         return;
       }
       setAppConfig(resolvedAppConfig);
+      // Only a config that actually came from the backend — now, or on an
+      // earlier launch — counts as resolved. Null stays 'unresolved' so no
+      // screen can read it as marketplace.
+      setAppConfigStatus(resolvedAppConfig ? 'resolved' : 'unresolved');
 
       // A stored session belongs to one app. If this build now resolves to a
       // different app client - the bundle id changed, or the app was re-pointed
@@ -1540,8 +1575,38 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
 
   // Every action is identity-stable, so this object is built once and the
   // actions context never notifies a consumer.
+  /**
+   * Re-resolves the app config after bootstrap gave up.
+   *
+   * A failure here deliberately leaves any existing config in place: a refresh
+   * that cannot reach the backend must never downgrade a build that already
+   * knows which app it is.
+   */
+  const refreshAppConfig = useCallback(async (): Promise<AppConfigStatus> => {
+    try {
+      const identity = await resolveAppIdentity();
+      setAppIdentityHeaders(identity);
+      const resolved = await api.getAppConfig();
+      void storage.writeAppConfig(resolved);
+      setAppConfig(resolved);
+      setAppConfigStatus('resolved');
+      console.log(
+        `[AppConfig] Refreshed: app_key=${resolved.app_key} app_mode=${resolved.app_mode}`,
+      );
+      return 'resolved';
+    } catch (error) {
+      console.warn(
+        `[AppConfig] Refresh failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return appConfigStatusRef.current;
+    }
+  }, [appConfigStatusRef]);
+
   const actions = useMemo<AppStoreActions>(
     () => ({
+      refreshAppConfig,
       setSession,
       updateUser,
       setThemePreference,
@@ -1584,6 +1649,7 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
       isFavoritePending,
       logout,
       pushToast,
+      refreshAppConfig,
       refreshFavoriteIds,
       requestAddToCart,
       savePreferences,
@@ -1602,8 +1668,8 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
   );
 
   const session = useMemo<SessionValue>(
-    () => ({ bootstrapped, appConfig, token, user }),
-    [appConfig, bootstrapped, token, user],
+    () => ({ bootstrapped, appConfig, appConfigStatus, token, user }),
+    [appConfig, appConfigStatus, bootstrapped, token, user],
   );
 
   const preferencesValue = useMemo<PreferencesValue>(

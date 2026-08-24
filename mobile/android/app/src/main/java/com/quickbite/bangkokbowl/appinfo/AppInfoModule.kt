@@ -1,4 +1,4 @@
-package com.quickbite.all.appinfo
+package com.quickbite.bangkokbowl.appinfo
 
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext

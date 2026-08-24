@@ -1,4 +1,4 @@
-package com.quickbite.all
+package com.quickbite.bangkokbowl
 
 import android.app.Application
 import com.facebook.react.PackageList
@@ -6,7 +6,7 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.quickbite.all.appinfo.AppInfoPackage
+import com.quickbite.bangkokbowl.appinfo.AppInfoPackage
 
 class MainApplication : Application(), ReactApplication {
 

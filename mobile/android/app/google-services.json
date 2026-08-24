@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:778571432975:android:bfb713164a5ead1a374f7a",
         "android_client_info": {
-          "package_name": "com.quickbite.all"
+          "package_name": "com.quickbite.bangkokbowl"
         }
       },
       "oauth_client": [
@@ -34,7 +34,7 @@
               "client_id": "778571432975-lgq88i6muhin1ks8s56qekj0g6mutg5q.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.quickbite.all"
+                "bundle_id": "com.quickbite.bangkokbowl"
               }
             }
           ]

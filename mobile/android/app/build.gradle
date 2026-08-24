@@ -84,9 +84,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.quickbite.all"
+    namespace "com.quickbite.bangkokbowl"
     defaultConfig {
-        applicationId "com.quickbite.all"
+        applicationId "com.quickbite.bangkokbowl"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

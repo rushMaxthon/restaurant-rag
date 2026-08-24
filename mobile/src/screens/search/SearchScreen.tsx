@@ -715,7 +715,7 @@ export function SearchScreen(): React.JSX.Element {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<SearchNavigation>();
-  const { token, appConfig } = useSession();
+  const { token, appConfig, appConfigStatus } = useSession();
   const { preferences } = usePreferences();
   const { favoritesHydrated } = useFavoritesState();
   const {
@@ -725,7 +725,13 @@ export function SearchScreen(): React.JSX.Element {
     requestAddToCart,
     toggleFavorite,
   } = useAppActions();
+  // Same rule as HomeScreen: an unresolved config must never read as
+  // marketplace, or a single-restaurant build would search the whole platform
+  // and surface competitors' dishes. The loading gate below holds the screen
+  // until the mode is known.
+  const appConfigResolved = appConfigStatus === 'resolved';
   const isSingleRestaurant =
+    appConfigResolved &&
     appConfig?.app_mode === 'SINGLE_RESTAURANT' &&
     Boolean(appConfig?.restaurant_id);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -1314,7 +1320,12 @@ export function SearchScreen(): React.JSX.Element {
     matchingDishes.length +
     matchingCuisines.length;
 
-  if (loading) {
+  // `!appConfigResolved` holds the skeleton for the same reason HomeScreen
+  // does: rendering results before the app mode is known is what leaks other
+  // restaurants into a single-restaurant build. Reaching this screen normally
+  // requires passing HomeScreen's gate, so this is defence in depth for a deep
+  // link that opens search directly.
+  if (loading || !appConfigResolved) {
     return (
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <SearchScreenSkeleton />
