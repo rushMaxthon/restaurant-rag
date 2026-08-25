@@ -938,11 +938,23 @@ export function DashboardPage({
               </div>
               <div className="dashboard-admin-health__selector">Platform</div>
               <div className="dashboard-admin-health">
-                <div className="dashboard-admin-health__row dashboard-admin-health__row--success">
+                <div
+                  className={
+                    aiStats.total > 0
+                      ? "dashboard-admin-health__row dashboard-admin-health__row--success"
+                      : "dashboard-admin-health__row"
+                  }
+                >
                   <span>Status</span>
                   <StatusPill status={aiStats.total > 0 ? "ACTIVE" : "IDLE"} />
                 </div>
-                <div className="dashboard-admin-health__row dashboard-admin-health__row--warning">
+                <div
+                  className={
+                    aiStats.failures > 0
+                      ? "dashboard-admin-health__row dashboard-admin-health__row--warning"
+                      : "dashboard-admin-health__row"
+                  }
+                >
                   <span>Alert level</span>
                   <StatusPill status={aiStats.failures > 0 ? "AMBER" : "CLEAR"} />
                 </div>
@@ -1004,8 +1016,13 @@ export function DashboardPage({
               </div>
               {topRestaurants.length > 0 ? (
                 <div className="dashboard-admin-list">
-                  {topRestaurants.map((restaurant) => (
-                    <article className="dashboard-admin-list__row" key={restaurant.name}>
+                  {topRestaurants.map((restaurant, index) => (
+                    <article
+                      className="dashboard-admin-list__row"
+                      // Names repeat across the platform, so the name alone is
+                      // not a stable identity for this list.
+                      key={`${restaurant.name}-${index}`}
+                    >
                       <div>
                         <strong>{restaurant.name}</strong>
                         <span>{restaurant.cuisine}</span>

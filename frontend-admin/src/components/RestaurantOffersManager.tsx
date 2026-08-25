@@ -5,6 +5,7 @@ import { DataToolbar } from './DataToolbar';
 import { EmptyPanel } from './EmptyPanel';
 import { Pagination } from './Pagination';
 import { ResponsiveTable, type TableColumn } from './ResponsiveTable';
+import { Modal } from './Modal';
 import { StatusPill } from './StatusPill';
 import { ApiError, api, formatCurrency, formatDate } from '../services/api';
 import type {
@@ -706,12 +707,7 @@ export function RestaurantOffersManager({
       ) : null}
 
       {selectedOfferDetails ? (
-        <div className="modal-overlay" onClick={closeOfferDetails} role="presentation">
-          <section
-            className="modal-card combo-detail-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeOfferDetails} className="combo-detail-modal">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">{selectedOfferDetails.record_kind === 'GENERATED' ? 'Generated campaign' : 'Offer details'}</span>
@@ -817,17 +813,11 @@ export function RestaurantOffersManager({
                 </div>
               )}
             </div>
-          </section>
-        </div>
+        </Modal>
       ) : null}
 
       {isModalOpen ? (
-        <div className="modal-overlay" onClick={closeModal} role="presentation">
-          <section
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Campaign editor</span>
@@ -1108,8 +1098,7 @@ export function RestaurantOffersManager({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+        </Modal>
       ) : null}
 
       <ConfirmDialog

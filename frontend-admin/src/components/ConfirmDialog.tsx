@@ -11,7 +11,7 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-import { useEffect } from "react";
+import { Modal } from "./Modal";
 
 export function ConfirmDialog({
   open,
@@ -25,31 +25,12 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) {
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [busy, onCancel, open]);
-
   if (!open) {
     return null;
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel} role="presentation">
-      <section
-        aria-modal="true"
-        className="modal-card confirm-dialog"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
+    <Modal busy={busy} className="confirm-dialog" onClose={onCancel}>
         <div className="panel__header modal-card__header">
           <div>
             <span className="eyebrow">{eyebrow}</span>
@@ -90,7 +71,6 @@ export function ConfirmDialog({
             </button>
           </div>
         </div>
-      </section>
-    </div>
+    </Modal>
   );
 }

@@ -1,5 +1,6 @@
 import { Bell, Send, Users, UserRound, Store, Shield } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EmptyPanel } from '../components/EmptyPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageIntro } from '../components/PageIntro';
 import { humanizeEnum, pluralize } from '../services/format';
@@ -434,10 +435,11 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
                 </article>
               </div>
             ) : (
-              <div className="ntf-empty">
-                <strong>No delivery yet</strong>
-                <span>Send a notification to view the delivery result summary here.</span>
-              </div>
+              <EmptyPanel
+                description="Send a notification to view the delivery result summary here."
+                icon={Send}
+                title="No delivery yet"
+              />
             )}
           </section>
 
@@ -453,15 +455,17 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
             </header>
 
             {loading ? (
-              <div className="ntf-empty">
-                <strong>Loading notification history…</strong>
-                <span>Recent campaigns and delivery counts will appear here.</span>
-              </div>
+              <EmptyPanel
+                description="Recent campaigns and delivery counts will appear here."
+                icon={Bell}
+                title="Loading notification history…"
+              />
             ) : history.length === 0 ? (
-              <div className="ntf-empty">
-                <strong>No notifications yet</strong>
-                <span>Your first sent campaign will appear here with delivery counts.</span>
-              </div>
+              <EmptyPanel
+                description="Your first sent campaign will appear here with delivery counts."
+                icon={Bell}
+                title="No notifications yet"
+              />
             ) : (
               <div className="ntf-history__list">
                 {history.map(item => (

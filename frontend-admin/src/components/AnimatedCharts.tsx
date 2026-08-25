@@ -199,13 +199,16 @@ export function AreaTrendChart({
         {geometry.yTicks
           .slice()
           .reverse()
-          .map((tick) => {
+          .map((tick, tickIndex) => {
             const y =
               geometry.plotTop +
               geometry.plotHeight -
               (tick / geometry.maxRounded) * geometry.plotHeight;
             return (
-              <g key={tick}>
+              // Indexed: on a series with a small range the rounded ticks can
+              // repeat (two 0s, two 1s), and duplicate keys let React drop
+              // gridlines.
+              <g key={`tick-${tickIndex}`}>
                 <line
                   className={`${className}__grid-line`}
                   x1={geometry.plotLeft}
@@ -363,7 +366,7 @@ export function VerticalBarsChart({
       {data.map((item, index) => (
         <div
           className={`${className}__item`}
-          key={item.label}
+          key={`${item.label}-${index}`}
           onBlur={() => setHoveredIndex(null)}
           onFocus={() => setHoveredIndex(index)}
           onMouseEnter={() => setHoveredIndex(index)}
@@ -425,7 +428,7 @@ export function HorizontalBarsChart({
       {data.map((item, index) => (
         <div
           className={`${className}__row`}
-          key={item.label}
+          key={`${item.label}-${index}`}
           onBlur={() => setHoveredIndex(null)}
           onFocus={() => setHoveredIndex(index)}
           onMouseEnter={() => setHoveredIndex(index)}

@@ -1,6 +1,7 @@
 import { BadgeCheck, CheckCircle2, Clock3, Eye, Pencil, Smartphone, Store, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Checkbox } from '../components/common/Checkbox';
+import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
@@ -102,6 +103,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   // Only true when nothing has been fetched yet this session - not on every
   // mount, so revisiting this page keeps showing its data instead of a
   // skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(restaurantsKey));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
@@ -139,9 +141,12 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
     try {
       const rows = await api.getAdminRestaurants(token);
       setRestaurants(rows);
+      setLoadError(null);
       setPageSnapshot(restaurantsKey, rows);
     } catch (error: unknown) {
       const message = error instanceof ApiError ? error.message : 'Unable to load restaurants.';
+      // Keeps the failure on screen after the toast fades, and gives it a way out.
+      setLoadError(message);
       onToast('Restaurants unavailable', message, 'error');
     } finally {
       setIsLoading(false);
@@ -555,6 +560,11 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
           }
           emptyDescription="Try a different search or approval filter."
           emptyTitle="No restaurants match the current filters"
+          error={loadError}
+          onRetry={() => {
+            setLoadError(null);
+            void loadRestaurants(true);
+          }}
           keyExtractor={(restaurant) => restaurant.id}
           loading={isLoading}
           mobileStatus={(restaurant) => (
@@ -622,13 +632,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
       />
 
       {isCreateOpen ? (
-        <div className="modal-overlay" onClick={closeCreateModal} role="presentation">
-          <section
-            aria-labelledby="add-restaurant-title"
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeCreateModal} labelledBy="add-restaurant-title">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Admin action</span>
@@ -713,12 +717,10 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
       {isEditOpen && selectedRestaurant ? (
-        <div className="modal-overlay" onClick={closeEditModal} role="presentation">
-          <section className="modal-card" onClick={(event) => event.stopPropagation()} role="dialog">
+        <Modal onClose={closeEditModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Restaurant editor</span>
@@ -859,8 +861,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );

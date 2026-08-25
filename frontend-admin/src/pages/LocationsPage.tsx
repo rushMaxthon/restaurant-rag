@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "../components/common/Checkbox";
+import { Modal } from "../components/Modal";
 import { DataToolbar } from "../components/DataToolbar";
 import { StatTiles, type StatTileItem } from "../components/StatTiles";
 import { pluralize } from "../services/format";
@@ -141,6 +142,9 @@ export function LocationsPage({
   // detail has ever been fetched this session - not on every mount, so
   // revisiting a restaurant's locations keeps showing them instead of a
   // skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the error panel's Try again; nothing else in the deps changes.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [isLoading, setIsLoading] = useState(() =>
     initialLocationsRestaurantKey
       ? !hasPageSnapshot(initialLocationsRestaurantKey)
@@ -227,6 +231,7 @@ export function LocationsPage({
           return;
         }
         setRestaurant(detail);
+        setLoadError(null);
         setPageSnapshot(locationsRestaurantKey, detail);
       })
       .catch((error: unknown) => {
@@ -238,6 +243,8 @@ export function LocationsPage({
             ? error.message
             : "Unable to load locations for this restaurant.";
         setRestaurant(null);
+        // Keeps the failure on screen after the toast fades, and gives it a way out.
+        setLoadError(message);
         onToast("Locations unavailable", message, "error");
       })
       .finally(() => {
@@ -249,7 +256,7 @@ export function LocationsPage({
     return () => {
       active = false;
     };
-  }, [onToast, scope, selectedRestaurantId, token]);
+  }, [onToast, scope, selectedRestaurantId, token, reloadNonce]);
 
   const locationTiles = useMemo<
     Array<StatTileItem<"ALL" | "OPEN" | "CLOSED" | "ACTIVE" | "INACTIVE">>
@@ -639,6 +646,11 @@ export function LocationsPage({
               columns={columns}
               emptyDescription="Add the first branch or adjust the current restaurant and filters."
               emptyTitle="No locations match this view"
+              error={loadError}
+              onRetry={() => {
+                setLoadError(null);
+                setReloadNonce((current) => current + 1);
+              }}
               keyExtractor={(location) => location.id}
               loading={isLoading}
               mobileStatus={(location) => (
@@ -669,12 +681,7 @@ export function LocationsPage({
       </section>
 
       {isLocationModalOpen && restaurant ? (
-        <div className="modal-overlay" onClick={closeLocationModal} role="presentation">
-          <section
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeLocationModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Location editor</span>
@@ -894,8 +901,7 @@ export function LocationsPage({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
 
       {restaurant && restaurant.locations.length > 0 ? (

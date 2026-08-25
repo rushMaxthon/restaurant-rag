@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, SendHorizonal, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, SendHorizonal, Sparkles, Trash2 } from "lucide-react";
 
 import { AnswerText } from "./AnswerText";
+import { BriefingMessage } from "./BriefingMessage";
+import { ConversationRail } from "./ConversationRail";
+import { groupChatSessions, type ChatSession } from "./chatSessions";
+import { FindingsMessage } from "./FindingsMessage";
+import type {
+  OwnerChatHistoryItem,
+  DiagnosticsSnapshot,
+  OwnerBriefing,
+  OwnerInsight,
+  OwnerInsightStatus,
+} from "../../types/app";
 import { api } from "../../services/api";
 import { streamOwnerChatMessage } from "../../services/aiManagerStream";
 
@@ -9,6 +20,15 @@ interface OwnerChatPanelProps {
   token: string;
   restaurantId: string | null;
   onError: (message: string) => void;
+  /** The nightly analysis, rendered as the assistant's opening messages. */
+  briefing: OwnerBriefing | null;
+  diagnostics: DiagnosticsSnapshot | null;
+  insights: OwnerInsight[];
+  periodPhrase: string;
+  loading: boolean;
+  needsRestaurant: boolean;
+  busyId: string | null;
+  onUpdateInsightStatus: (insight: OwnerInsight, status: OwnerInsightStatus) => void;
 }
 
 interface ChatEntry {
@@ -49,14 +69,161 @@ function hasNumbers(facts?: Record<string, unknown> | null): boolean {
   );
 }
 
-export function OwnerChatPanel({ token, restaurantId, onError }: OwnerChatPanelProps) {
+function labelise(key: string): string {
+  const spaced = key.replaceAll("_", " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function formatFact(value: unknown): string {
+  if (typeof value === "number") {
+    return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
+  }
+  if (typeof value === "string" || typeof value === "boolean" || value === null) {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * The figures behind an answer, as a labelled table.
+ *
+ * These used to render as `JSON.stringify(facts, null, 2)` inside a `<pre>` in a
+ * 340px column - the right idea presented as a stack trace. The shape is known:
+ * a `headline` object of metric totals and a `findings` array.
+ */
+function FactsTable({ facts }: { facts: Record<string, unknown> }) {
+  const headline = (facts.headline ?? {}) as Record<string, unknown>;
+  const findings = Array.isArray(facts.findings) ? (facts.findings as unknown[]) : [];
+
+  return (
+    <div className="ai-facts">
+      {Object.keys(headline).length > 0 ? (
+        <dl className="ai-facts__grid">
+          {Object.entries(headline).map(([key, value]) => (
+            <div className="ai-facts__row" key={key}>
+              <dt>{labelise(key)}</dt>
+              <dd>{formatFact(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {findings.length > 0 ? (
+        <ul className="ai-facts__findings">
+          {findings.map((finding, index) => {
+            const row = (finding ?? {}) as Record<string, unknown>;
+            const title = row.title ?? row.subject ?? `Finding ${index + 1}`;
+            return <li key={`finding-${index}`}>{formatFact(title)}</li>;
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+export function OwnerChatPanel({
+  token,
+  restaurantId,
+  onError,
+  briefing,
+  diagnostics,
+  insights,
+  periodPhrase,
+  loading,
+  needsRestaurant,
+  busyId,
+  onUpdateInsightStatus,
+}: OwnerChatPanelProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [expandedFacts, setExpandedFacts] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  /** Replays stored messages into the thread. Facts are not persisted, so a
+   *  restored answer has no "Show the numbers" - only live ones do. */
+  const openSession = useCallback((session: ChatSession) => {
+    setSessionId(session.id);
+    setExpandedFacts(null);
+    setEntries(
+      session.messages.map((row: OwnerChatHistoryItem) => ({
+        id: `history-${row.id}`,
+        role: row.role,
+        text: row.message,
+      })),
+    );
+  }, []);
+
+  /**
+   * Restores the conversation on arrival.
+   *
+   * Every turn was already being stored against a session; the screen just
+   * never read it, so leaving the page threw the thread away. On mount we load
+   * the history, list it in the rail, and reopen the most recent conversation.
+   */
+  useEffect(() => {
+    // Nothing to restore until a restaurant is chosen; the welcome state above
+    // renders instead, so there is no state to reset here either.
+    if (needsRestaurant) {
+      return;
+    }
+    let active = true;
+    // Wrapped rather than run in the effect body: setting state synchronously
+    // there cascades a second render before the first has painted.
+    const restore = async () => {
+      setHistoryLoading(true);
+      try {
+        const grouped = groupChatSessions(await api.getOwnerChatHistory(token, { restaurantId }));
+        if (!active) {
+          return;
+        }
+        setSessions(grouped);
+        if (grouped.length > 0) {
+          openSession(grouped[0]);
+        } else {
+          setEntries([]);
+          setSessionId(null);
+        }
+      } catch {
+        // A missing history is not worth interrupting the screen for: the
+        // briefing still renders and a new question still works.
+        if (active) {
+          setSessions([]);
+        }
+      } finally {
+        if (active) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+    void restore();
+    return () => {
+      active = false;
+    };
+  }, [token, restaurantId, needsRestaurant, openSession]);
+
+  /** Re-reads the rail after the stored history changes. */
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(groupChatSessions(await api.getOwnerChatHistory(token, { restaurantId })));
+    } catch {
+      // The rail is a convenience; a failed refresh must not disturb the thread.
+    }
+  }, [restaurantId, token]);
+
+  /** Starts a fresh thread. Past conversations stay in the rail. */
+  const startNewChat = useCallback(() => {
+    abortRef.current?.abort();
+    setEntries([]);
+    setSessionId(null);
+    setExpandedFacts(null);
+    setQuestion("");
+    inputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     // Abort any answer still streaming when the panel unmounts, so a navigation
@@ -138,6 +305,9 @@ export function OwnerChatPanel({ token, restaurantId, onError }: OwnerChatPanelP
     } finally {
       setSending(false);
       abortRef.current = null;
+      // The first answer in a new thread is what creates the session
+      // server-side, so this is the earliest the rail can list it.
+      void refreshSessions();
     }
   };
 
@@ -146,127 +316,212 @@ export function OwnerChatPanel({ token, restaurantId, onError }: OwnerChatPanelP
       await api.clearOwnerChatHistory(token, { restaurantId, sessionId });
       setEntries([]);
       setSessionId(null);
+      setExpandedFacts(null);
+      await refreshSessions();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Unable to clear the conversation");
     }
   };
 
-  return (
-    <section className="ai-card ai-chat">
-      <header className="ai-card__head">
-        <div className="ai-card__title">
-          <span className="ai-eyebrow">Ask your data</span>
-          <h2>Questions about this restaurant</h2>
-        </div>
-        {entries.length > 0 ? (
-          <button type="button" className="secondary-button ai-btn" onClick={clearHistory}>
-            <Trash2 size={14} strokeWidth={2.2} />
-            Clear
-          </button>
-        ) : null}
-      </header>
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
 
-      <div className="ai-chat__log" ref={scrollRef}>
-        {entries.length === 0 ? (
-          <div className="ai-chat__intro">
-            <p>
-              Ask about revenue, dishes, busy times, customers, offers, or what to do next.
-              Answers are calculated from your data, and every figure can be checked.
-            </p>
-            <div className="ai-chat__starters">
+  // Driven by `open` alone. Tying it to `entries.length` meant Escape could
+  // never collapse the surface once a question had been asked - the entries
+  // survive in state either way, so reopening restores the conversation.
+  if (needsRestaurant) {
+    return (
+      <div className="ai-thread">
+        <div className="ai-thread__scroll">
+          <div className="ai-welcome">
+            <span className="ai-welcome__mark">
+              <Sparkles size={22} strokeWidth={2.1} />
+            </span>
+            <h1>AI Restaurant Manager</h1>
+            <p>Choose a restaurant above to see its briefing and ask about its data.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ai-workspace">
+      <div className="ai-thread">
+        <div className="ai-thread__scroll" ref={scrollRef}>
+        <div className="ai-thread__column">
+          {loading ? (
+            <div className="ai-turn ai-turn--assistant">
+              <span className="ai-turn__mark">
+                <Sparkles size={15} strokeWidth={2.2} />
+              </span>
+              <div className="ai-turn__body">
+                <span className="ai-msg__typing">Reading your data…</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* The nightly analysis, said rather than displayed: the briefing
+                  is the assistant's first message and the findings its second.
+                  They sit outside `entries` so clearing the conversation does
+                  not clear the analysis. */}
+              <div className="ai-turn ai-turn--assistant">
+                <span className="ai-turn__mark">
+                  <Sparkles size={15} strokeWidth={2.2} />
+                </span>
+                <div className="ai-turn__body">
+                  <BriefingMessage briefing={briefing} diagnostics={diagnostics} />
+                </div>
+              </div>
+
+              <div className="ai-turn ai-turn--assistant">
+                <span className="ai-turn__mark">
+                  <Sparkles size={15} strokeWidth={2.2} />
+                </span>
+                <div className="ai-turn__body">
+                  <FindingsMessage
+                    busyId={busyId}
+                    insights={insights}
+                    onUpdateStatus={onUpdateInsightStatus}
+                    periodPhrase={periodPhrase}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {entries.map((entry) => (
+            <div
+              className={`ai-turn ai-turn--${entry.role.toLowerCase()}`}
+              key={entry.id}
+            >
+              {entry.role === "ASSISTANT" ? (
+                <span className="ai-turn__mark">
+                  <Sparkles size={15} strokeWidth={2.2} />
+                </span>
+              ) : null}
+              <div className="ai-turn__body">
+                {/* The assistant's answer carries structure — headings, lists,
+                    emphasis — so it is rendered rather than dumped into a <p>.
+                    A question the owner typed is plain text and stays that way. */}
+                {entry.role === "ASSISTANT" ? (
+                  <>
+                    <AnswerText text={entry.text} />
+                    {entry.streaming && !entry.text ? (
+                      <p>
+                        <span className="ai-msg__typing">Thinking…</span>
+                      </p>
+                    ) : null}
+                    {!entry.streaming && hasNumbers(entry.facts) ? (
+                      <div className="ai-msg__meta">
+                        {/* No skill name and no "AI wording" badge: they name
+                            the machinery, which is ours to care about. "Show
+                            the numbers" stays, because the figures behind an
+                            answer are the owner's business. */}
+                        <button
+                          className="ai-facts-toggle"
+                          onClick={() =>
+                            setExpandedFacts((current) => (current === entry.id ? null : entry.id))
+                          }
+                          type="button"
+                        >
+                          {expandedFacts === entry.id ? (
+                            <ChevronDown size={13} strokeWidth={2.3} />
+                          ) : (
+                            <ChevronRight size={13} strokeWidth={2.3} />
+                          )}
+                          Show the numbers
+                        </button>
+                      </div>
+                    ) : null}
+                    {expandedFacts === entry.id && hasNumbers(entry.facts) ? (
+                      <FactsTable facts={entry.facts as Record<string, unknown>} />
+                    ) : null}
+                  </>
+                ) : (
+                  <p>{entry.text}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="ai-composer">
+        <div className="ai-composer__column">
+          {entries.length === 0 ? (
+            <div className="ai-starters">
               {STARTERS.map((starter) => (
                 <button
+                  className="ai-starters__item"
                   key={starter}
-                  type="button"
-                  className="secondary-button ai-btn"
                   onClick={() => ask(starter)}
+                  type="button"
                 >
                   {starter}
                 </button>
               ))}
             </div>
-          </div>
-        ) : (
-          entries.map((entry) => (
-            <article
-              key={entry.id}
-              className={`ai-msg ai-msg--${entry.role.toLowerCase()}`}
+          ) : null}
+
+          <form
+            className="ai-composer__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void ask(question);
+            }}
+          >
+            <input
+              aria-label="Ask about your data"
+              disabled={sending}
+              maxLength={500}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Ask about revenue, dishes, busy times, customers, offers…"
+              ref={inputRef}
+              type="text"
+              value={question}
+            />
+            <button
+              aria-label="Send"
+              className="ai-composer__send"
+              disabled={sending || !question.trim()}
+              type="submit"
             >
-              {/* The assistant's answer carries structure — headings, lists,
-                  emphasis — so it is rendered rather than dumped into a <p>.
-                  A question the owner typed is plain text and stays that way. */}
-              {entry.role === "ASSISTANT" ? (
-                <>
-                  <AnswerText text={entry.text} />
-                  {entry.streaming && !entry.text ? (
-                    <p>
-                      <span className="ai-msg__typing">Thinking…</span>
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <p>{entry.text}</p>
-              )}
+              <SendHorizonal size={16} strokeWidth={2.2} />
+            </button>
+          </form>
 
-              {entry.role === "ASSISTANT" && !entry.streaming ? (
-                <div className="ai-msg__meta">
-                  {/* No skill name and no "AI wording" / "Direct from data"
-                      badge. They name the machinery — an owner reading
-                      "multi part" or "tool answer" learns nothing about their
-                      restaurant and everything about our internals. How the
-                      answer was produced is a developer concern; it stays in
-                      the logs and in the stored turn. "Show the numbers" is
-                      kept, because the figures behind an answer are the
-                      owner's business. */}
-                  {hasNumbers(entry.facts) ? (
-                    <button
-                      type="button"
-                      className="ai-facts-toggle"
-                      onClick={() =>
-                        setExpandedFacts((current) =>
-                          current === entry.id ? null : entry.id,
-                        )
-                      }
-                    >
-                      {expandedFacts === entry.id ? (
-                        <ChevronDown size={13} strokeWidth={2.3} />
-                      ) : (
-                        <ChevronRight size={13} strokeWidth={2.3} />
-                      )}
-                      Show the numbers
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {expandedFacts === entry.id && hasNumbers(entry.facts) ? (
-                <pre className="ai-facts">{JSON.stringify(entry.facts, null, 2)}</pre>
-              ) : null}
-            </article>
-          ))
-        )}
+          <div className="ai-composer__foot">
+            <span>Answers are calculated from your data. Every figure can be checked.</span>
+            {entries.length > 0 ? (
+              // Scoped to this session, so deleting one thread leaves the rest
+              // of the history in the rail.
+              <button className="ai-composer__clear" onClick={clearHistory} type="button">
+                <Trash2 size={12} strokeWidth={2.2} />
+                Delete this chat
+              </button>
+            ) : null}
+          </div>
+          </div>
+        </div>
       </div>
 
-      <form
-        className="ai-chat__composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void ask(question);
-        }}
-      >
-        <input
-          type="text"
-          value={question}
-          placeholder="Ask about revenue, dishes, customers…"
-          maxLength={500}
-          onChange={(event) => setQuestion(event.target.value)}
-          disabled={sending}
-        />
-        <button type="submit" className="primary-button" disabled={sending || !question.trim()}>
-          <SendHorizonal size={15} strokeWidth={2.2} />
-          {sending ? "Asking…" : "Ask"}
-        </button>
-      </form>
-    </section>
+      <ConversationRail
+        activeSessionId={sessionId}
+        loading={historyLoading}
+        onNewChat={startNewChat}
+        onSelect={openSession}
+        sessions={sessions}
+      />
+    </div>
   );
 }

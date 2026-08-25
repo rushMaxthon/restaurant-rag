@@ -9,6 +9,7 @@ import {
   Store,
   UtensilsCrossed,
 } from "lucide-react";
+import { Modal } from "../components/Modal";
 import { AppClientFields } from "../components/AppClientFields";
 import {
   toAppClientForm,
@@ -1371,12 +1372,7 @@ export function RestaurantDetailPage({
       ) : null}
 
       {isEditOpen && editForm ? (
-        <div className="modal-overlay" onClick={closeEditModal} role="presentation">
-          <section
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeEditModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Restaurant editor</span>
@@ -1653,13 +1649,11 @@ export function RestaurantDetailPage({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
 
       {isLocationModalOpen ? (
-        <div className="modal-overlay" onClick={closeLocationModal} role="presentation">
-          <section className="modal-card" onClick={(event) => event.stopPropagation()} role="dialog">
+        <Modal onClose={closeLocationModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Location editor</span>
@@ -1731,8 +1725,7 @@ export function RestaurantDetailPage({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );

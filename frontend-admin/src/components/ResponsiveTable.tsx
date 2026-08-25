@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { TableActions, type TableAction } from "./TableActions";
 import { EmptyPanel } from "./EmptyPanel";
+import { ErrorPanel } from "./ErrorPanel";
 
 export interface TableColumn<Row> {
   id: string;
@@ -28,6 +29,13 @@ interface ResponsiveTableProps<Row> {
   emptyTitle: string;
   emptyDescription: string;
   emptyAction?: ReactNode;
+  /**
+   * Set when the rows failed to load. Takes precedence over the empty state,
+   * which would otherwise claim there is simply no data.
+   */
+  error?: string | null;
+  onRetry?: () => void;
+  retrying?: boolean;
   mobileTitle: (row: Row) => ReactNode;
   mobileSubtitle?: (row: Row) => ReactNode;
   mobileStatus?: (row: Row) => ReactNode;
@@ -46,6 +54,9 @@ export function ResponsiveTable<Row>({
   emptyTitle,
   emptyDescription,
   emptyAction,
+  error,
+  onRetry,
+  retrying,
   mobileTitle,
   mobileSubtitle,
   mobileStatus,
@@ -131,6 +142,21 @@ export function ResponsiveTable<Row>({
             </article>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // Checked before `rows.length === 0`: a failed load also leaves zero rows, and
+  // "no orders yet" is the wrong thing to tell someone whose request errored.
+  if (error) {
+    return (
+      <div className="table-container">
+        <ErrorPanel
+          description={error}
+          onRetry={onRetry}
+          retrying={retrying}
+          title={`${emptyTitle.replace(/^No /, '').replace(/ yet$/, '')} didn't load`}
+        />
       </div>
     );
   }

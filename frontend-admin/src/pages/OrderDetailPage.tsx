@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ArrowRight,
   Banknote,
   CalendarClock,
@@ -22,7 +21,9 @@ import {
   User,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyPanel } from "../components/EmptyPanel";
+import { ErrorPanel } from "../components/ErrorPanel";
 import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
@@ -144,6 +145,8 @@ export function OrderDetailPage({
   // below), so a different order never inherits this one's cached state.
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(orderKey));
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the error panel's Try again, which re-runs the fetch effect.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const onToastRef = useRef(onToast);
 
@@ -166,6 +169,7 @@ export function OrderDetailPage({
       .then((row) => {
         if (active) {
           setOrder(row);
+          setLoadError(null);
           setPageSnapshot(orderKey, row);
         }
       })
@@ -189,7 +193,7 @@ export function OrderDetailPage({
     return () => {
       active = false;
     };
-  }, [token, orderId, orderKey]);
+  }, [token, orderId, orderKey, reloadNonce]);
 
   const currentStepIndex = useMemo(
     () => (order ? STATUS_FLOW.indexOf(order.status) : -1),
@@ -246,15 +250,16 @@ export function OrderDetailPage({
     }
   };
 
+  // The other three detail screens use breadcrumbs; this one had a bespoke
+  // back button. Same navigation, one pattern.
   const backButton = (
-    <button
-      className="secondary-button order-detail__back"
-      onClick={() => onNavigate("/orders")}
-      type="button"
-    >
-      <ArrowLeft size={16} strokeWidth={2.2} />
-      Back to orders
-    </button>
+    <Breadcrumbs
+      items={[
+        { label: "Orders", path: "/orders" },
+        { label: order ? `#${order.id.slice(0, 8)}` : "Order" },
+      ]}
+      onNavigate={onNavigate}
+    />
   );
 
   if (isLoading) {
@@ -276,13 +281,21 @@ export function OrderDetailPage({
       <div className="page-stack">
         {backButton}
         <section className="admin-surface">
-          <EmptyPanel
-            description={
-              loadError ??
-              "This order may not exist or is outside your restaurant scope."
-            }
-            title="Order not found"
-          />
+          {loadError ? (
+            <ErrorPanel
+              description={loadError}
+              onRetry={() => {
+                setLoadError(null);
+                setReloadNonce((current) => current + 1);
+              }}
+              title="This order didn't load"
+            />
+          ) : (
+            <EmptyPanel
+              description="This order may not exist or is outside your restaurant scope."
+              title="Order not found"
+            />
+          )}
         </section>
       </div>
     );

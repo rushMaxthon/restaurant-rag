@@ -141,6 +141,10 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   // (or was invalidated by a mutation) — not on every mount. A page that was
   // already loaded keeps showing its data instead of a skeleton.
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(initialListKey));
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the error panel's Try again, which is what re-runs the fetch
+  // effect: the filter combination has not changed, so nothing else would.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -204,6 +208,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
         }
         setOrders(rows);
         setTotal(totalCount);
+        setLoadError(null);
         setPageSnapshot<OrdersSnapshot>(listKey, { orders: rows, total: totalCount });
       })
       .catch((error: unknown) => {
@@ -212,6 +217,9 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
         }
         const message =
           error instanceof ApiError ? error.message : "Unable to load orders.";
+        // The toast is the immediate signal; the panel is what stays on screen
+        // once it fades, and is the only thing offering a way to recover.
+        setLoadError(message);
         onToastRef.current("Orders unavailable", message, "error");
       })
       .finally(() => {
@@ -223,7 +231,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
     return () => {
       active = false;
     };
-  }, [token, scope, page, pageSize, debouncedQuery, statusFilter, sort]);
+  }, [token, scope, page, pageSize, debouncedQuery, statusFilter, sort, reloadNonce]);
 
   // Tile counts come from cheap COUNT-only requests (limit=1 + X-Total-Count).
   useEffect(() => {
@@ -485,8 +493,13 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
           }
           emptyDescription="Try another search or status filter."
           emptyTitle="No orders match the current filters"
+          error={loadError}
           keyExtractor={(order) => order.id}
           loading={isLoading}
+          onRetry={() => {
+            setLoadError(null);
+            setReloadNonce((current) => current + 1);
+          }}
           mobileStatus={(order) => <StatusPill status={order.status} />}
           mobileSubtitle={(order) => order.restaurant.name}
           mobileTitle={(order) => `#${order.id.slice(0, 8)}`}

@@ -112,6 +112,7 @@ export function MenuItemsPage({
   // Only true when this account/restaurant has never been fetched this
   // session - not on every mount, so revisiting the menu keeps it visible
   // instead of showing a skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(menuItemsKey));
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState<
@@ -230,6 +231,8 @@ export function MenuItemsPage({
         error instanceof ApiError
           ? error.message
           : "Unable to load menu items.";
+      // Keeps the failure on screen after the toast fades, and gives it a way out.
+      setLoadError(message);
       onToast("Menu unavailable", message, "error");
     } finally {
       setIsLoading(false);
@@ -600,6 +603,11 @@ export function MenuItemsPage({
             }
             emptyDescription="Use Add New to create the first item or adjust the current filters."
             emptyTitle="No menu items match this view"
+            error={loadError}
+            onRetry={() => {
+              setLoadError(null);
+              void load(true);
+            }}
             keyExtractor={(item) => item.id}
             loading={isLoading}
             mobileStatus={(item) => (

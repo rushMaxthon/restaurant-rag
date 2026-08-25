@@ -1,5 +1,6 @@
 import { Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
@@ -55,6 +56,9 @@ export function AdminUsersPage({
   // Only true when nothing has been fetched yet this session - not on every
   // mount, so revisiting this page keeps showing its data instead of a
   // skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by the error panel's Try again; nothing else in the deps changes.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(usersKey));
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
@@ -79,14 +83,17 @@ export function AdminUsersPage({
     api.getAdminUsers(token)
       .then((rows) => {
         setUsers(rows);
+        setLoadError(null);
         setPageSnapshot(usersKey, rows);
       })
       .catch((error: unknown) => {
         const message = error instanceof ApiError ? error.message : 'Unable to load users.';
+        // Keeps the failure on screen after the toast fades, and gives it a way out.
+        setLoadError(message);
         onToast('Users unavailable', message, 'error');
       })
       .finally(() => setIsLoading(false));
-  }, [onToast, token, usersKey]);
+  }, [onToast, token, usersKey, reloadNonce]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -383,6 +390,11 @@ export function AdminUsersPage({
           }
           emptyDescription="Try a different role, status, or search query."
           emptyTitle="No users match the current filters"
+          error={loadError}
+          onRetry={() => {
+            setLoadError(null);
+            setReloadNonce((current) => current + 1);
+          }}
           keyExtractor={(user) => user.id}
           loading={isLoading}
           mobileStatus={(user) => (
@@ -427,13 +439,7 @@ export function AdminUsersPage({
       />
 
       {viewUser ? (
-        <div className="modal-overlay" onClick={() => setViewUser(null)} role="presentation">
-          <section
-            aria-labelledby="view-customer-title"
-            className="modal-card modal-card--compact"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={() => setViewUser(null)} labelledBy="view-customer-title" className="modal-card--compact">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Customer details</span>
@@ -491,18 +497,11 @@ export function AdminUsersPage({
                 </button>
               </div>
             </div>
-          </section>
-        </div>
+          </Modal>
       ) : null}
 
       {editUser ? (
-        <div className="modal-overlay" onClick={() => setEditUser(null)} role="presentation">
-          <section
-            aria-labelledby="edit-customer-title"
-            className="modal-card modal-card--compact"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={() => setEditUser(null)} labelledBy="edit-customer-title" className="modal-card--compact">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Customer editor</span>
@@ -556,8 +555,7 @@ export function AdminUsersPage({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );

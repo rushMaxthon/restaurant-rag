@@ -10,10 +10,11 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Modal } from '../components/Modal';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
 import { pluralize } from '../services/format';
-import { EmptyPanel } from '../components/EmptyPanel';
+import { ErrorPanel } from '../components/ErrorPanel';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
@@ -502,16 +503,17 @@ function GeneratedCombosWorkspace({
   ];
 
   const table = errorMessage ? (
+    // One shell, with the retry built in, instead of an empty-state panel plus a
+    // detached button below it.
     <section className="admin-surface page-stack">
-      <EmptyPanel
+      <ErrorPanel
         description={errorMessage}
-        title="Unable to load generated combos"
+        onRetry={() => {
+          setErrorMessage(null);
+          void loadRows(true);
+        }}
+        title="Generated combos didn't load"
       />
-      <div className="page-intro__actions">
-        <button className="secondary-button" onClick={() => void loadRows(true)} type="button">
-          Try again
-        </button>
-      </div>
     </section>
   ) : (
     <>
@@ -705,16 +707,7 @@ function GeneratedCombosWorkspace({
       {table}
 
       {selectedCombo ? (
-        <div
-          className="modal-overlay"
-          onClick={() => setSelectedCombo(null)}
-          role="presentation"
-        >
-          <section
-            className="modal-card combo-detail-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={() => setSelectedCombo(null)} className="combo-detail-modal">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Generated combo details</span>
@@ -818,8 +811,7 @@ function GeneratedCombosWorkspace({
                 </button>
               </div>
             </div>
-          </section>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );

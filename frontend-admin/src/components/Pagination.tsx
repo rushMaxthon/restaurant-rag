@@ -1,3 +1,4 @@
+import { buildPageWindow, GAP } from './paginationWindow';
 interface PaginationProps {
   page: number;
   totalPages: number;
@@ -23,7 +24,7 @@ export function Pagination({
     }
   }
 
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
+  const pages = buildPageWindow(page, totalPages);
   const startItem =
     totalItems !== undefined && pageSize !== undefined
       ? Math.min((page - 1) * pageSize + 1, totalItems)
@@ -44,16 +45,30 @@ export function Pagination({
       </div>
       {totalPages > 1 ? (
         <div className="pagination__pages">
-          {pages.map((entry) => (
-            <button
-              className={entry === page ? 'pagination__page pagination__page--active' : 'pagination__page'}
-              key={entry}
-              onClick={() => onPageChange(entry)}
-              type="button"
-            >
-              {entry}
-            </button>
-          ))}
+          {pages.map((entry, index) =>
+            entry === GAP ? (
+              <span
+                aria-hidden="true"
+                className="pagination__gap"
+                // Index, because a window can legitimately contain two gaps and
+                // the value itself is not unique.
+                key={`gap-${index}`}
+              >
+                &hellip;
+              </span>
+            ) : (
+              <button
+                aria-current={entry === page ? 'page' : undefined}
+                aria-label={`Page ${entry}`}
+                className={entry === page ? 'pagination__page pagination__page--active' : 'pagination__page'}
+                key={entry}
+                onClick={() => onPageChange(entry)}
+                type="button"
+              >
+                {entry}
+              </button>
+            ),
+          )}
         </div>
       ) : (
         <div aria-hidden="true" className="pagination__pages pagination__pages--hidden" />

@@ -11,6 +11,7 @@ import {
   TicketPercent,
   Trash2,
 } from "lucide-react";
+import { Modal } from "../components/Modal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataToolbar } from "../components/DataToolbar";
 import { StatTiles, type StatTileItem } from "../components/StatTiles";
@@ -508,12 +509,6 @@ export function OffersPage({
 
   const tableLoading = loading && !loadError && offers.length === 0;
   const tableEmptyState = useMemo(() => {
-    if (loadError) {
-      return {
-        title: "Unable to load offers right now",
-        description: loadError,
-      };
-    }
     if (restaurantContexts.length === 0) {
       return {
         title: "Nothing to manage yet",
@@ -527,7 +522,7 @@ export function OffersPage({
           ? "No manual or AI-generated offers are available yet. Try Generate AI Offers Now or narrow the filters."
           : "No offers are available for this restaurant yet.",
     };
-  }, [loadError, restaurantContexts.length, role]);
+  }, [restaurantContexts.length, role]);
 
   const handleGenerateAiOffers = useCallback(async () => {
     if (role !== "ADMIN" || aiGenerationRunning) {
@@ -1034,7 +1029,12 @@ export function OffersPage({
           }
           emptyDescription={tableEmptyState.description}
           emptyTitle={tableEmptyState.title}
+          error={loadError}
           keyExtractor={(offer) => offer.id}
+          onRetry={() => {
+            setLoadError(null);
+            void loadOffersWorkspace(true);
+          }}
           loading={tableLoading}
           mobileStatus={(offer) => <StatusPill status={offer.effective_state} />}
           mobileSubtitle={(offer) => `${offer.record_kind === "GENERATED" ? "AI generated" : "Manual template"} · ${offer.restaurant_name}`}
@@ -1077,12 +1077,7 @@ export function OffersPage({
       />
 
       {selectedOfferDetails ? (
-        <div className="modal-overlay" onClick={closeOfferDetails} role="presentation">
-          <section
-            className="modal-card combo-detail-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeOfferDetails} className="combo-detail-modal">
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">
@@ -1193,17 +1188,11 @@ export function OffersPage({
                 </div>
               )}
             </div>
-          </section>
-        </div>
+          </Modal>
       ) : null}
 
       {isModalOpen ? (
-        <div className="modal-overlay" onClick={closeModal} role="presentation">
-          <section
-            className="modal-card"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
+        <Modal onClose={closeModal}>
             <div className="panel__header modal-card__header">
               <div>
                 <span className="eyebrow">Campaign editor</span>
@@ -1511,8 +1500,7 @@ export function OffersPage({
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+          </Modal>
       ) : null}
     </div>
   );
