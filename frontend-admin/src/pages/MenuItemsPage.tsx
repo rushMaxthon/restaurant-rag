@@ -8,6 +8,7 @@ import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
+import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { ApiError, api, formatCurrency } from "../services/api";
 import { pluralize } from "../services/format";
 import {
@@ -119,7 +120,7 @@ export function MenuItemsPage({
     "ALL" | "AVAILABLE" | "HIDDEN"
   >("ALL");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [itemToDelete, setItemToDelete] = useState<MenuRow | null>(null);
 
   const mapOwnerItem = (

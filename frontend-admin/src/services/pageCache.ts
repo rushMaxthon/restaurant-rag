@@ -62,6 +62,11 @@ export function invalidatePageSnapshotsByPrefix(prefix: string): void {
 }
 
 /** Drops everything. Called on logout so the next session never seeds from it. */
+/** How many screens currently hold a snapshot. Read-only; for display. */
+export function countPageSnapshots(): number {
+  return snapshots.size;
+}
+
 export function clearPageSnapshots(): void {
   snapshots.clear();
 }

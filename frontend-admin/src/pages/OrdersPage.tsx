@@ -19,6 +19,7 @@ import {
   type TableSortState,
 } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
+import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import {
@@ -112,16 +113,19 @@ function buildOrdersTilesKey(scope: string, query: string): string {
 // cache key for the very first render, before any filter has been touched.
 const DEFAULT_SORT: TableSortState = { id: "placed_at", direction: "desc" };
 const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 10;
 const DEFAULT_QUERY = "";
 const DEFAULT_STATUS_FILTER = "ALL" as const;
 
 export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps) {
   const isAdmin = role === "ADMIN";
   const scope = tokenScope(token);
+  // Read on render, not at module scope: a module constant is evaluated once
+  // when the bundle loads, so changing the preference only took effect after a
+  // full reload rather than on the next visit.
+  const defaultPageSize = readWorkspaceSettings().defaultPageSize;
   const initialListKey = buildOrdersListKey(scope, {
     page: DEFAULT_PAGE,
-    pageSize: DEFAULT_PAGE_SIZE,
+    pageSize: defaultPageSize,
     query: DEFAULT_QUERY,
     status: DEFAULT_STATUS_FILTER,
     sort: DEFAULT_SORT,
@@ -155,7 +159,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   );
   const [sort, setSort] = useState<TableSortState | null>(DEFAULT_SORT);
   const [page, setPage] = useState(DEFAULT_PAGE);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const onToastRef = useRef(onToast);
 
   useEffect(() => {

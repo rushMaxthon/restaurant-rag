@@ -5,6 +5,7 @@ import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
+import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { pluralize } from '../services/format';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
@@ -108,7 +109,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);

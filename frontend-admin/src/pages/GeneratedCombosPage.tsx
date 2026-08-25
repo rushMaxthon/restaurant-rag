@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
+import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { pluralize } from '../services/format';
 import { ErrorPanel } from '../components/ErrorPanel';
 import { PageIntro } from '../components/PageIntro';
@@ -129,7 +130,7 @@ function GeneratedCombosWorkspace({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>('ALL');
   const [restaurantFilter, setRestaurantFilter] = useState<string>('ALL');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [rebuilding, setRebuilding] = useState(false);
   const [selectedCombo, setSelectedCombo] = useState<GeneratedCombo | null>(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState<string | null>(null);

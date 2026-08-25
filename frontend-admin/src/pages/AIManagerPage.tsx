@@ -4,7 +4,8 @@ import { RefreshCw } from "lucide-react";
 import { OwnerChatPanel } from "../components/ai/OwnerChatPanel";
 import { useAdminStore } from "../hooks/useAdminStore";
 import { ApiError, api } from "../services/api";
-import { DEFAULT_PERIOD_DAYS, PERIOD_OPTIONS } from "../services/insightFormat";
+import { PERIOD_OPTIONS } from "../services/insightFormat";
+import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import {
   getPageSnapshot,
@@ -59,7 +60,11 @@ export function AIManagerPage() {
   // briefing described 60 days, the KPI tiles followed it, offers showed 7, and
   // the feed interleaved rows from two different runs. Four windows, one
   // screen, and only a footnote saying so.
-  const [periodDays, setPeriodDays] = useState<number>(DEFAULT_PERIOD_DAYS);
+  // Seeded from the workspace preference rather than a constant: the picker
+  // reset to three months on every visit, whatever you last looked at.
+  const [periodDays, setPeriodDays] = useState<number>(
+    () => readWorkspaceSettings().defaultPeriodDays,
+  );
 
   const scopeId = useMemo(
     () => (isAdmin ? selectedRestaurantId || null : null),

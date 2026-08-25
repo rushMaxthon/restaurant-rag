@@ -27,14 +27,18 @@ export function AdminLayout({
   const [showMaintenanceBanner, setShowMaintenanceBanner] = useState(
     () => readWorkspaceSettings().maintenanceBanner,
   );
+  const [compact, setCompact] = useState(() => readWorkspaceSettings().compactDashboard);
 
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [currentPath]);
 
   useEffect(() => {
-    const sync = () =>
-      setShowMaintenanceBanner(readWorkspaceSettings().maintenanceBanner);
+    const sync = () => {
+      const next = readWorkspaceSettings();
+      setShowMaintenanceBanner(next.maintenanceBanner);
+      setCompact(next.compactDashboard);
+    };
     window.addEventListener(WORKSPACE_SETTINGS_EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
@@ -44,7 +48,7 @@ export function AdminLayout({
   }, []);
 
   return (
-    <div className="admin-layout">
+    <div className="admin-layout" data-density={compact ? "compact" : undefined}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>

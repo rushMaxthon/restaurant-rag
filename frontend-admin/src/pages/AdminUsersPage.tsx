@@ -7,6 +7,7 @@ import { StatTiles, type StatTileItem } from '../components/StatTiles';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
+import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { ApiError, api, formatDate } from '../services/api';
 import { pluralize } from '../services/format';
 import { StatusPill } from '../components/StatusPill';
@@ -64,7 +65,7 @@ export function AdminUsersPage({
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [pendingDeactivation, setPendingDeactivation] = useState<User | null>(null);
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);

@@ -14,6 +14,7 @@ import { Checkbox } from "../components/common/Checkbox";
 import { Modal } from "../components/Modal";
 import { DataToolbar } from "../components/DataToolbar";
 import { StatTiles, type StatTileItem } from "../components/StatTiles";
+import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { pluralize } from "../services/format";
 import { EmptyPanel } from "../components/EmptyPanel";
 import { PageIntro } from "../components/PageIntro";
@@ -155,7 +156,7 @@ export function LocationsPage({
     "ALL" | "OPEN" | "CLOSED" | "ACTIVE" | "INACTIVE"
   >("ALL");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [busyLocationId, setBusyLocationId] = useState<string | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
