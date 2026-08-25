@@ -33,4 +33,4 @@ const PROD_API_BASE_URL = 'https://restaurant-rag-api-xjfx.onrender.com/api';
  * developer's build reaches their laptop, with nothing to remember and no
  * step that can be forgotten before a release.
  */
-export const API_BASE_URL = PROD_API_BASE_URL;
+export const API_BASE_URL = DEV_API_BASE_URL;

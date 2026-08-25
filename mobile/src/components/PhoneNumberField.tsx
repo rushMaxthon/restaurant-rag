@@ -1,5 +1,17 @@
-import React from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Animated,
+  StyleSheet,
+  TextInput,
+  View,
+  type TextInputProps,
+} from 'react-native';
 import { CountryCodePicker } from '@components/CountryCodePicker';
 import type { CountryOption } from '@/data/countries';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
@@ -26,48 +38,87 @@ type Props = {
   onChangeText: (value: string) => void;
   hasError?: boolean;
   placeholder?: string;
-} & Pick<TextInputProps, 'autoFocus' | 'onSubmitEditing' | 'returnKeyType'>;
+} & Pick<
+  TextInputProps,
+  'autoFocus' | 'onSubmitEditing' | 'returnKeyType' | 'blurOnSubmit'
+>;
 
-export function PhoneNumberField({
-  selectedCountry,
-  onSelectCountry,
-  value,
-  onChangeText,
-  hasError = false,
-  /**
-   * Short on purpose. The screens label this field "Mobile number" directly
-   * above, so a long placeholder repeated the label and was also the single
-   * reason the old layout needed 196dp. "Enter your mobile number" does not fit
-   * beside a country chip on a 320dp screen at any font scale.
-   */
-  placeholder = 'Mobile number',
-  ...inputProps
-}: Props): React.JSX.Element {
-  const theme = useTheme();
-  const styles = useThemedStyles(createStyles);
+export const PhoneNumberField = forwardRef<TextInput, Props>(
+  function PhoneNumberField(
+    {
+      selectedCountry,
+      onSelectCountry,
+      value,
+      onChangeText,
+      hasError = false,
+      /**
+       * Short on purpose. The screens label this field "Mobile number" directly
+       * above, so a long placeholder repeated the label and was also the single
+       * reason the old layout needed 196dp. "Enter your mobile number" does not
+       * fit beside a country chip on a 320dp screen at any font scale.
+       */
+      placeholder = 'Mobile number',
+      ...inputProps
+    },
+    ref,
+  ) {
+    const theme = useTheme();
+    const styles = useThemedStyles(createStyles);
+    const [focused, setFocused] = useState(false);
 
-  return (
-    <View style={[styles.container, hasError ? styles.containerError : null]}>
-      <CountryCodePicker
-        onSelect={onSelectCountry}
-        selectedCountry={selectedCountry}
-        variant="embedded"
-      />
-      <View style={styles.divider} />
-      <TextInput
-        autoComplete="tel"
-        keyboardType="number-pad"
-        maxLength={15}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.hint}
-        style={styles.input}
-        value={value}
-        {...inputProps}
-      />
-    </View>
-  );
-}
+    /**
+     * The focus ring is a separate overlay whose opacity is animated, rather than
+     * an animated `borderColor` on the container. Colour cannot be driven on the
+     * native thread, so animating it would put a JS-thread write on every frame
+     * of a transition that fires while the keyboard is also animating in.
+     */
+    const focusProgress = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+      Animated.timing(focusProgress, {
+        toValue: focused ? 1 : 0,
+        duration: 160,
+        useNativeDriver: true,
+      }).start();
+    }, [focused, focusProgress]);
+
+    const handleFocus = useCallback(() => setFocused(true), []);
+    const handleBlur = useCallback(() => setFocused(false), []);
+
+    return (
+      <View style={[styles.container, hasError ? styles.containerError : null]}>
+        <CountryCodePicker
+          onSelect={onSelectCountry}
+          selectedCountry={selectedCountry}
+          variant="embedded"
+        />
+        <View style={styles.divider} />
+        <TextInput
+          autoComplete="tel"
+          keyboardType="number-pad"
+          maxLength={15}
+          onBlur={handleBlur}
+          onChangeText={onChangeText}
+          onFocus={handleFocus}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.hint}
+          ref={ref}
+          style={styles.input}
+          value={value}
+          {...inputProps}
+        />
+        {hasError ? null : (
+          <Animated.View
+            // Purely decorative, and it sits on top of the input: without this
+            // it would swallow the tap that focuses the field it decorates.
+            pointerEvents="none"
+            style={[styles.focusRing, { opacity: focusProgress }]}
+          />
+        )}
+      </View>
+    );
+  },
+);
 
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
@@ -94,6 +145,20 @@ const createStyles = (theme: AppTheme) =>
     divider: {
       width: StyleSheet.hairlineWidth,
       backgroundColor: theme.colors.border,
+    },
+    focusRing: {
+      // Offset by the container's own 1dp border so the ring lands exactly on
+      // top of it instead of a pixel inside, which would read as a double line.
+      position: 'absolute',
+      top: -1,
+      left: -1,
+      right: -1,
+      bottom: -1,
+      // Container radius (10) plus the 1dp the ring is offset by, so the two
+      // curves are concentric.
+      borderRadius: 11,
+      borderWidth: 1.5,
+      borderColor: theme.colors.primary,
     },
     input: {
       flex: 1,

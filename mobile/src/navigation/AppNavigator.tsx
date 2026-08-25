@@ -306,6 +306,11 @@ export function AppNavigator(): React.JSX.Element {
                 options={{
                   title: token ? 'Account Login' : 'Login',
                   presentation: 'modal',
+                  // The screen draws its own header - brand mark, headline, and
+                  // a close control - and owns its top safe-area inset. The
+                  // shared AppHeader above it would repeat the title and pad
+                  // the inset a second time.
+                  headerShown: false,
                 }}
               />
               <Stack.Screen
@@ -314,6 +319,10 @@ export function AppNavigator(): React.JSX.Element {
                 options={{
                   title: token ? 'Create Account' : 'Register',
                   presentation: 'modal',
+                  // Same reason as Login: the screen draws its own header and
+                  // owns its top safe-area inset, so the shared AppHeader
+                  // would repeat the title and pad the inset twice.
+                  headerShown: false,
                 }}
               />
               <Stack.Screen

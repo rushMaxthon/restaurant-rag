@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/Ionicons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AuthScreenLayout } from '@components/AuthScreenLayout';
+import { AuthField, AuthTextField } from '@components/AuthField';
 import { PhoneNumberField } from '@components/PhoneNumberField';
 import { firebaseAuthService } from '@services/firebaseAuth';
 import { setPendingRegistrationDraft } from '@services/registrationDraft';
-import { useAppActions } from '@hooks/useAppStore';
+import { useAppActions, useSession } from '@hooks/useAppStore';
 import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import {
@@ -40,6 +54,26 @@ function validatePhoneNumber(value: string): boolean {
   return /^\d{8,15}$/.test(value.trim());
 }
 
+/** Matches the login screen's entrance so the two read as one flow. */
+const ENTRANCE_DURATION_MS = 520;
+const ENTRANCE_RISE = 20;
+
+/**
+ * Initials for the brand mark, from whatever this white-label build is called.
+ * Kept in step with the login screen's mark, which is the thing a user just
+ * came from when they tap through to register.
+ */
+function brandInitials(displayName: string | undefined): string {
+  const words = (displayName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return 'RR';
+  }
+  if (words.length === 1) {
+    return words[0].charAt(0).toUpperCase();
+  }
+  return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+}
+
 export function RegisterScreen({
   navigation,
   route,
@@ -47,6 +81,7 @@ export function RegisterScreen({
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const { pushToast } = useAppActions();
+  const { appConfig } = useSession();
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState(
     route.params?.prefilledPhoneNumber ?? '',
@@ -60,6 +95,11 @@ export function RegisterScreen({
   const [errors, setErrors] = useState<RegisterErrors>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const phoneRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   const register = async () => {
     const nextErrors: RegisterErrors = {};
@@ -133,200 +173,462 @@ export function RegisterScreen({
     }
   };
 
-  return (
-    <AuthScreenLayout
-      eyebrow="Create Account"
-      footerActionLabel="Login"
-      footerPrompt="Already have an account?"
-      onFooterAction={() =>
-        navigation.navigate('Login', {
-          redirectTo: route.params?.redirectTo,
-          prefilledPhoneNumber: phoneNumber,
-          prefilledCountryCode: country.code,
-        })
+  // --- motion --------------------------------------------------------------
+
+  const entrance = useRef(new Animated.Value(0)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    // Honour the OS "reduce motion" setting rather than animating regardless.
+    AccessibilityInfo.isReduceMotionEnabled().then(reduceMotion => {
+      if (cancelled) {
+        return;
       }
-      subtitle="Create your account with your name, mobile number, email, and password. We will verify your phone number with a secure OTP before creating your account."
-      title="Create your account"
-      errorMessage={apiError}
-    >
-      <View style={styles.field}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          autoComplete="name"
-          onChangeText={value => {
-            setFullName(value);
-            setErrors(current => ({ ...current, fullName: undefined }));
-            setApiError(null);
-          }}
-          placeholder="Enter your full name"
-          placeholderTextColor={theme.colors.hint}
-          style={[styles.input, errors.fullName ? styles.inputError : null]}
-          value={fullName}
-        />
-        {errors.fullName ? (
-          <Text style={styles.error}>{errors.fullName}</Text>
-        ) : null}
-      </View>
+      if (reduceMotion) {
+        entrance.setValue(1);
+        return;
+      }
+      Animated.timing(entrance, {
+        toValue: 1,
+        duration: ENTRANCE_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entrance]);
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Mobile number</Text>
-        <PhoneNumberField
-          hasError={Boolean(errors.phoneNumber)}
-          onChangeText={value => {
-            setPhoneNumber(sanitizeLocalPhoneNumber(value));
-            setErrors(current => ({ ...current, phoneNumber: undefined }));
-            setApiError(null);
-          }}
-          onSelectCountry={selectedCountry => {
-            setCountry(selectedCountry);
-            setErrors(current => ({ ...current, phoneNumber: undefined }));
-            setApiError(null);
-          }}
-          selectedCountry={country}
-          value={phoneNumber}
-        />
-        <Text style={styles.helperText}>
-          Tap the country code to change region.
-        </Text>
-        {errors.phoneNumber ? (
-          <Text style={styles.error}>{errors.phoneNumber}</Text>
-        ) : null}
-      </View>
+  /**
+   * Staggers the bands off a single driver: each reads its own slice of the
+   * same 0..1 progress, so the sequence costs one native animation and the
+   * bands cannot drift apart the way three scheduled timings can.
+   */
+  const bandStyle = useCallback(
+    (start: number) => {
+      const progress = entrance.interpolate({
+        inputRange: [start, Math.min(start + 0.65, 1)],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      });
+      return {
+        opacity: progress,
+        transform: [
+          {
+            translateY: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [ENTRANCE_RISE, 0],
+            }),
+          },
+        ],
+      };
+    },
+    [entrance],
+  );
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          onChangeText={value => {
-            setEmail(value);
-            setErrors(current => ({ ...current, email: undefined }));
-            setApiError(null);
-          }}
-          placeholder="Enter your email"
-          placeholderTextColor={theme.colors.hint}
-          style={[styles.input, errors.email ? styles.inputError : null]}
-          value={email}
-        />
-        {errors.email ? <Text style={styles.error}>{errors.email}</Text> : null}
-      </View>
+  const headerBand = useMemo(() => bandStyle(0), [bandStyle]);
+  const formBand = useMemo(() => bandStyle(0.18), [bandStyle]);
+  const footerBand = useMemo(() => bandStyle(0.35), [bandStyle]);
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          autoComplete="new-password"
-          onChangeText={value => {
-            setPassword(value);
-            setErrors(current => ({ ...current, password: undefined }));
-            setApiError(null);
-          }}
-          placeholder="Create a password"
-          placeholderTextColor={theme.colors.hint}
-          secureTextEntry
-          style={[styles.input, errors.password ? styles.inputError : null]}
-          value={password}
-        />
-        {errors.password ? (
-          <Text style={styles.error}>{errors.password}</Text>
-        ) : null}
-      </View>
+  const pressIn = useCallback(() => {
+    Animated.spring(buttonScale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 45,
+      bounciness: 0,
+    }).start();
+  }, [buttonScale]);
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Confirm Password</Text>
-        <TextInput
-          autoComplete="new-password"
-          onChangeText={value => {
-            setConfirmPassword(value);
-            setErrors(current => ({ ...current, confirmPassword: undefined }));
-            setApiError(null);
-          }}
-          placeholder="Confirm your password"
-          placeholderTextColor={theme.colors.hint}
-          secureTextEntry
-          style={[
-            styles.input,
-            errors.confirmPassword ? styles.inputError : null,
-          ]}
-          value={confirmPassword}
-        />
-        {errors.confirmPassword ? (
-          <Text style={styles.error}>{errors.confirmPassword}</Text>
-        ) : null}
-      </View>
+  const pressOut = useCallback(() => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 45,
+      bounciness: 6,
+    }).start();
+  }, [buttonScale]);
 
-      <Pressable
-        disabled={submitting}
-        onPress={register}
-        style={[styles.button, submitting ? styles.buttonDisabled : null]}
+  // --- render --------------------------------------------------------------
+
+  const brandName = appConfig?.display_name ?? 'Restaurant RAG';
+
+  /**
+   * The confirm field's live tick. Shown only once the two actually match and
+   * the password itself is long enough to be worth confirming, so it cannot
+   * appear next to two matching but invalid entries and read as approval.
+   */
+  const passwordsMatch =
+    confirmPassword.length > 0 &&
+    confirmPassword === password &&
+    password.length >= 8;
+
+  return (
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <KeyboardAvoidingView
+        // Android must be given an explicit behaviour, not left to the
+        // manifest's `adjustResize`: from targetSdk 35 the window is
+        // edge-to-edge and no longer resizes for the keyboard, so without
+        // this the fields below the fold are simply unreachable.
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
       >
-        <View style={styles.buttonContent}>
-          {submitting ? (
-            <ActivityIndicator color={theme.colors.white} size="small" />
-          ) : null}
-          <Text style={styles.buttonText}>
-            {submitting ? 'Sending OTP...' : 'Create Account'}
-          </Text>
-        </View>
-      </Pressable>
-    </AuthScreenLayout>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={[styles.header, headerBand]}>
+            {navigation.canGoBack() ? (
+              <Pressable
+                accessibilityLabel="Close"
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={navigation.goBack}
+                style={styles.dismissButton}
+              >
+                <Icon
+                  color={theme.colors.text}
+                  // Presented modally, so each platform gets the dismissal
+                  // affordance its users read as "close this sheet".
+                  name={Platform.OS === 'ios' ? 'chevron-down' : 'arrow-back'}
+                  size={22}
+                />
+              </Pressable>
+            ) : null}
+
+            <View style={styles.brandMark}>
+              <Text style={styles.brandMarkText}>
+                {brandInitials(appConfig?.display_name)}
+              </Text>
+            </View>
+
+            <Text style={styles.title}>Create account</Text>
+            <Text style={styles.subtitle}>
+              Join {brandName}. We'll text you a one-time code to verify your
+              number.
+            </Text>
+          </Animated.View>
+
+          <Animated.View style={[styles.form, formBand]}>
+            {apiError ? (
+              <View style={styles.alert}>
+                <Icon
+                  color={theme.colors.deepRed}
+                  name="alert-circle-outline"
+                  size={18}
+                />
+                <Text style={styles.alertText}>{apiError}</Text>
+              </View>
+            ) : null}
+
+            <AuthTextField
+              autoComplete="name"
+              blurOnSubmit={false}
+              error={errors.fullName}
+              label="Name"
+              onChangeText={value => {
+                setFullName(value);
+                setErrors(current => ({ ...current, fullName: undefined }));
+                setApiError(null);
+              }}
+              onSubmitEditing={() => phoneRef.current?.focus()}
+              placeholder="Your full name"
+              returnKeyType="next"
+              textContentType="name"
+              value={fullName}
+            />
+
+            <AuthField
+              error={errors.phoneNumber}
+              helperText="Tap the country code to change region."
+              label="Mobile number"
+            >
+              <PhoneNumberField
+                blurOnSubmit={false}
+                hasError={Boolean(errors.phoneNumber)}
+                onChangeText={value => {
+                  setPhoneNumber(sanitizeLocalPhoneNumber(value));
+                  setErrors(current => ({
+                    ...current,
+                    phoneNumber: undefined,
+                  }));
+                  setApiError(null);
+                }}
+                onSelectCountry={selectedCountry => {
+                  setCountry(selectedCountry);
+                  setErrors(current => ({
+                    ...current,
+                    phoneNumber: undefined,
+                  }));
+                  setApiError(null);
+                }}
+                onSubmitEditing={() => emailRef.current?.focus()}
+                ref={phoneRef}
+                returnKeyType="next"
+                selectedCountry={country}
+                value={phoneNumber}
+              />
+            </AuthField>
+
+            <AuthTextField
+              autoCapitalize="none"
+              autoComplete="email"
+              blurOnSubmit={false}
+              error={errors.email}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={value => {
+                setEmail(value);
+                setErrors(current => ({ ...current, email: undefined }));
+                setApiError(null);
+              }}
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              placeholder="you@example.com"
+              ref={emailRef}
+              returnKeyType="next"
+              textContentType="emailAddress"
+              value={email}
+            />
+
+            <AuthTextField
+              autoComplete="new-password"
+              blurOnSubmit={false}
+              error={errors.password}
+              // States the rule up front instead of letting the user discover
+              // it by failing submit. Same rule `register()` enforces.
+              helperText="At least 8 characters, with letters and numbers."
+              label="Password"
+              onChangeText={value => {
+                setPassword(value);
+                setErrors(current => ({ ...current, password: undefined }));
+                setApiError(null);
+              }}
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              placeholder="Create a password"
+              ref={passwordRef}
+              returnKeyType="next"
+              secureToggle
+              value={password}
+            />
+
+            <AuthTextField
+              adornment={
+                passwordsMatch ? (
+                  <Icon
+                    color={theme.colors.success}
+                    name="checkmark-circle"
+                    size={20}
+                  />
+                ) : null
+              }
+              autoComplete="new-password"
+              error={errors.confirmPassword}
+              label="Confirm password"
+              onChangeText={value => {
+                setConfirmPassword(value);
+                setErrors(current => ({
+                  ...current,
+                  confirmPassword: undefined,
+                }));
+                setApiError(null);
+              }}
+              onSubmitEditing={register}
+              placeholder="Re-enter your password"
+              ref={confirmRef}
+              returnKeyType="go"
+              secureToggle
+              value={confirmPassword}
+            />
+
+            <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ busy: submitting, disabled: submitting }}
+                disabled={submitting}
+                onPress={register}
+                onPressIn={pressIn}
+                onPressOut={pressOut}
+                style={[styles.button, submitting ? styles.buttonBusy : null]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={theme.colors.white} size="small" />
+                ) : null}
+                <Text style={styles.buttonText}>
+                  {submitting ? 'Sending OTP...' : 'Create account'}
+                </Text>
+              </Pressable>
+            </Animated.View>
+          </Animated.View>
+
+          {/* Pushes the footer to the bottom when the form is shorter than the
+              screen, and simply follows it when it is not. */}
+          <View style={styles.spacer} />
+
+          <Animated.View style={[styles.footer, footerBand]}>
+            <Text style={styles.footerPrompt}>Already have an account?</Text>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() =>
+                navigation.navigate('Login', {
+                  redirectTo: route.params?.redirectTo,
+                  prefilledPhoneNumber: phoneNumber,
+                  prefilledCountryCode: country.code,
+                })
+              }
+            >
+              <Text style={styles.footerAction}>Log in</Text>
+            </Pressable>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 export const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
-    field: {
-      gap: 8,
-    },
-    label: {
-      color: theme.colors.secondaryText,
-      fontSize: 13,
-      fontWeight: '700',
-    },
-    input: {
-      minHeight: 50,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+    safeArea: {
+      flex: 1,
       backgroundColor: theme.colors.background,
-      paddingHorizontal: 14,
-      color: theme.colors.text,
-      fontSize: 15,
     },
-    helperText: {
-      color: theme.colors.hint,
-      fontSize: 12,
-      lineHeight: 17,
+    flex: {
+      flex: 1,
     },
-    inputError: {
-      borderColor: 'rgba(203,32,45,0.35)',
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: 24,
+      paddingTop: 8,
+      paddingBottom: 16,
     },
-    error: {
-      color: theme.colors.deepRed,
-      fontSize: 12,
-      fontWeight: '700',
-      lineHeight: 18,
+
+    // --- header ------------------------------------------------------------
+    header: {
+      paddingTop: 8,
     },
-    button: {
-      minHeight: 48,
-      borderRadius: 10,
+    dismissButton: {
+      width: 40,
+      height: 40,
+      marginLeft: -8,
+      marginBottom: 12,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.chip,
+    },
+    brandMark: {
+      // 52dp against the login screen's 60dp: this form is five fields long,
+      // so the header buys its breathing room back from the mark rather than
+      // from the space between the fields.
+      width: 52,
+      height: 52,
+      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: theme.colors.primary,
-      marginTop: 4,
+      // Tinted in the mark's own hue: a neutral grey shadow under saturated
+      // orange reads as dirt, a shadow in the hue reads as light.
+      shadowColor: theme.colors.primary,
+      shadowOpacity: 0.32,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 16,
+      elevation: 6,
     },
-    buttonDisabled: {
-      opacity: 0.72,
+    brandMarkText: {
+      color: theme.colors.white,
+      fontSize: 20,
+      fontWeight: '900',
+      letterSpacing: 0.5,
     },
-    buttonContent: {
+    title: {
+      marginTop: 22,
+      color: theme.colors.text,
+      fontSize: 30,
+      lineHeight: 36,
+      fontWeight: '800',
+      letterSpacing: -0.9,
+    },
+    subtitle: {
+      marginTop: 8,
+      color: theme.colors.secondaryText,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+
+    // --- form --------------------------------------------------------------
+    form: {
+      marginTop: 28,
+      // 18 against login's 20: five fields multiply every gap, so the form
+      // tightens slightly to keep the submit button closer to the fold.
+      gap: 18,
+    },
+    alert: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      backgroundColor: theme.colors.dangerSoft,
+      borderWidth: 1,
+      borderColor:
+        theme.mode === 'dark' ? 'rgba(203,32,45,0.26)' : 'rgba(203,32,45,0.14)',
+    },
+    alertText: {
+      flex: 1,
+      color: theme.colors.deepRed,
+      fontSize: 13,
+      lineHeight: 19,
+      fontWeight: '700',
+    },
+    button: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 10,
+      minHeight: 54,
+      borderRadius: 14,
+      backgroundColor: theme.colors.primary,
+      marginTop: 4,
+      shadowColor: theme.colors.primary,
+      shadowOpacity: 0.28,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 16,
+      elevation: 4,
+    },
+    buttonBusy: {
+      opacity: 0.72,
     },
     buttonText: {
       color: theme.colors.white,
-      fontSize: 15,
+      fontSize: 16,
+      fontWeight: '800',
+      letterSpacing: 0.2,
+    },
+
+    // --- footer ------------------------------------------------------------
+    spacer: {
+      flex: 1,
+      minHeight: 28,
+    },
+    footer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      paddingTop: 24,
+    },
+    footerPrompt: {
+      color: theme.colors.secondaryText,
+      fontSize: 14,
+    },
+    footerAction: {
+      color: theme.colors.primary,
+      fontSize: 14,
       fontWeight: '800',
     },
   });
