@@ -816,36 +816,9 @@ button {
   color: var(--primary);
 }
 
-.generated-combos-visibility-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 24px;
-  padding: 0 9px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-
 .generated-combos-visibility-copy {
   display: grid;
   gap: 4px;
-}
-
-.generated-combos-visibility-badge--live {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.generated-combos-visibility-badge--draft {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
-.generated-combos-visibility-badge--archived {
-  background: #f2f4f8;
-  color: var(--muted);
 }
 
 .combo-confidence-note {
@@ -3686,10 +3659,6 @@ button {
   font-weight: 500;
 }
 
-.offer-table__status .status-pill {
-  justify-self: start;
-}
-
 .offer-table__status span {
   color: var(--hint);
 }
@@ -3914,40 +3883,156 @@ button {
   }
 }
 
-.status-pill {
+/* --- status badges ------------------------------------------------------
+   One visual system for every passive status indicator in the admin. The
+   `.status-pill` component covers most of them; the two named badges share
+   the base so a status never renders in two different shapes depending on
+   which screen it happens to sit on.
+
+   Interactive chips - `.menu-size-status-chip`, `.toggle-pill`,
+   `.reports-preset-chip` - are deliberately NOT part of this: they are
+   buttons, and they need a full tap target rather than a compact badge. */
+
+.status-pill,
+.generated-combos-visibility-badge,
+.st-role-pill,
+.usr-role {
+  /* Shrink-wrap to the label, in every container.
+     `inline-flex` alone was not enough, and this is what made the old chips
+     render as full-width bars: most parents these land in are grids
+     (`.admin-table__cell-content`, `.mobile-data-card__field > strong`,
+     `.offer-table__status`), and a grid item stretches to fill its column
+     unless told otherwise. `justify-self` covers the grid case, `align-self`
+     stops a flex row stretching them to the row's full height, and
+     `width: fit-content` covers plain block parents. */
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
+  gap: 6px;
+  justify-self: start;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  /* Asymmetric on purpose: the dot already reads as visual padding on the
+     leading edge, so an equal 10px there would look lopsided. */
+  padding: 3px 10px 3px 8px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 0.71rem;
-  font-weight: 700;
-  line-height: 1;
-  text-transform: capitalize;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  /* Labels arrive pre-formatted from `formatStatusLabel` in sentence case.
+     The old `capitalize` was a no-op on the SCREAMING_CASE enum values it
+     received - it only upper-cases first letters - so every chip rendered in
+     full caps, which is most of why they were so wide. */
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* The status dot. Drawn in CSS rather than markup so all ~70 call sites pick it
+   up without a single JSX change, and `currentColor` keeps it in step with the
+   tone automatically.
+
+   `.st-role-pill` and `.usr-role` are deliberately absent: they render their own
+   Shield / Store / UserRound icon, and a dot beside an icon is two leading marks
+   saying the same thing. */
+.status-pill::before,
+.generated-combos-visibility-badge::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.st-role-pill,
+.usr-role {
+  padding-left: 9px;
 }
 
 .status-pill--interactive {
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid transparent;
+  padding-right: 8px;
   cursor: pointer;
-  box-shadow: 0 6px 16px rgba(20, 28, 45, 0.06);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .combo-status-trigger:hover .status-pill--interactive,
 .combo-status-trigger:focus-visible .status-pill--interactive {
-  transform: translateY(-1px);
-  border-color: rgba(255, 82, 0, 0.16);
-  box-shadow: 0 10px 22px rgba(20, 28, 45, 0.1);
+  border-color: rgba(255, 82, 0, 0.28);
+  box-shadow: 0 2px 8px rgba(20, 28, 45, 0.08);
 }
 
-.status-pill--success { background: var(--success-soft); color: var(--success); }
-.status-pill--warning { background: var(--warning-soft); color: var(--warning); }
-.status-pill--info { background: var(--blue-soft); color: var(--blue); }
-.status-pill--primary { background: var(--primary-soft); color: var(--primary); }
-.status-pill--danger { background: var(--danger-soft); color: var(--danger); }
-.status-pill--muted { background: #f2f4f8; color: var(--muted); }
+/* Tones.
+   Text colours are darkened from the raw brand tokens: `--warning` (#f2a100)
+   on `--warning-soft` (#fff4d8) is amber on cream and fails contrast at this
+   size. The border is the same hue at low alpha, which gives the badge an
+   edge without the weight of a solid outline. */
+.status-pill--success,
+.generated-combos-visibility-badge--live,
+.st-role-pill--owner,
+.usr-role--owner {
+  background: var(--success-soft);
+  color: #15805a;
+  border-color: rgba(32, 168, 110, 0.22);
+}
+
+.status-pill--warning,
+.generated-combos-visibility-badge--draft {
+  background: var(--warning-soft);
+  color: #8a6100;
+  border-color: rgba(242, 161, 0, 0.28);
+}
+
+.status-pill--info,
+.usr-role--customer {
+  background: var(--blue-soft);
+  color: #2357c4;
+  border-color: rgba(43, 102, 228, 0.2);
+}
+
+.status-pill--primary,
+.st-role-pill--admin,
+.usr-role--admin {
+  background: var(--primary-soft);
+  color: #d94800;
+  border-color: rgba(255, 82, 0, 0.22);
+}
+
+.status-pill--danger {
+  background: var(--danger-soft);
+  color: #c22e37;
+  border-color: rgba(213, 59, 67, 0.2);
+}
+
+/* Reserved for states that are genuinely dormant - archived, closed, expired.
+   A live order must never land here; see `.status-pill--neutral`. */
+.status-pill--muted,
+.generated-combos-visibility-badge--archived {
+  background: #eef0f5;
+  color: #5c6377;
+  border-color: rgba(109, 116, 137, 0.18);
+}
+
+/* Live but not yet acted on - PLACED. Previously `muted`, which made a brand
+   new order look identical to an archived one. */
+.status-pill--neutral {
+  background: #f0edfd;
+  color: #6a3fd0;
+  border-color: rgba(138, 92, 246, 0.22);
+}
+
+/* Shrink-wrap guard for the remaining passive badges. See the note in the
+   status badge block above: a grid parent stretches its items, and these are all
+   one refactor away from landing in a table cell. No visual change today. */
+.usr-you,
+.branch-card__flag,
+.ntf-history__badge,
+.notifications-history-card__badge,
+.ai-trace__stage {
+  justify-self: start;
+  width: fit-content;
+}
 
 .modal-overlay {
   position: fixed;
@@ -7202,29 +7287,6 @@ button {
   white-space: nowrap;
 }
 
-.st-role-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  justify-self: start;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.st-role-pill--admin {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.st-role-pill--owner {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
 .st-account__facts {
   display: grid;
   gap: 8px;
@@ -7742,32 +7804,6 @@ button {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-
-.usr-role {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.usr-role--admin {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.usr-role--owner {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.usr-role--customer {
-  background: var(--blue-soft);
-  color: var(--blue);
 }
 
 @media (max-width: 900px) {

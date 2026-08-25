@@ -17,7 +17,8 @@ import { EmptyPanel } from '../components/EmptyPanel';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
-import { resolveStatusPillTone, StatusPill } from '../components/StatusPill';
+import { StatusPill } from '../components/StatusPill';
+import { formatStatusLabel, resolveStatusPillTone } from '../components/statusPillUtils';
 import { ApiError, api, formatCurrency, formatDate } from '../services/api';
 import {
   getPageSnapshot,
@@ -378,7 +379,7 @@ function GeneratedCombosWorkspace({
           <span
             className={`status-pill status-pill--${resolveStatusPillTone(combo.status)} status-pill--interactive`}
           >
-            <span>{combo.status.replaceAll('_', ' ')}</span>
+            <span>{formatStatusLabel(combo.status)}</span>
             {isUpdating ? (
               <Loader2 className="combo-status-spinner" size={13} strokeWidth={2.1} />
             ) : (
