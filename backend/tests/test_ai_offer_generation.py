@@ -110,6 +110,10 @@ class AIOfferGenerationTests(unittest.TestCase):
                 "skipped_users": 2,
                 "llm_failures": 1,
                 "elapsed_ms": 123,
+                # Segment-run fields, zero for a per-customer run.
+                "segments_considered": 0,
+                "segments_skipped": 0,
+                "customers_matched": 0,
             },
         )
 
@@ -637,32 +641,38 @@ class AIOfferTaskScopeTests(unittest.TestCase):
             generate_ai_offers_task.run(restaurant_id="not-a-uuid", allow_disabled=True)
         self.assertIn("Invalid restaurant_id", str(caught.exception))
 
+    @patch("app.tasks.ai_offers.generate_segment_offers")
     @patch("app.tasks.ai_offers.generate_ai_offers")
     @patch("app.tasks.ai_offers.SessionLocal")
-    def test_a_valid_restaurant_id_reaches_the_generator_as_a_uuid(
-        self, mock_session: Mock, mock_generate: Mock
+    def test_a_scoped_run_uses_the_segment_generator(
+        self, mock_session: Mock, mock_per_customer: Mock, mock_segments: Mock
     ) -> None:
+        # An owner asking about their own restaurant gets a handful of offers
+        # built from that restaurant's data, not one offer per customer.
         from app.tasks.ai_offers import generate_ai_offers_task
 
         scope = uuid.uuid4()
         mock_session.return_value.__enter__.return_value = Mock()
-        mock_generate.return_value = AIOfferGenerationSummary()
+        mock_segments.return_value = AIOfferGenerationSummary()
 
         generate_ai_offers_task.run(restaurant_id=str(scope), allow_disabled=True)
 
-        self.assertEqual(mock_generate.call_args.kwargs["restaurant_id"], scope)
+        self.assertEqual(mock_segments.call_args.kwargs["restaurant_id"], scope)
+        mock_per_customer.assert_not_called()
 
+    @patch("app.tasks.ai_offers.generate_segment_offers")
     @patch("app.tasks.ai_offers.generate_ai_offers")
     @patch("app.tasks.ai_offers.SessionLocal")
-    def test_an_unscoped_run_still_passes_none(
-        self, mock_session: Mock, mock_generate: Mock
+    def test_an_unscoped_run_still_uses_the_per_customer_generator(
+        self, mock_session: Mock, mock_per_customer: Mock, mock_segments: Mock
     ) -> None:
         # The platform-wide admin run must keep working exactly as before.
         from app.tasks.ai_offers import generate_ai_offers_task
 
         mock_session.return_value.__enter__.return_value = Mock()
-        mock_generate.return_value = AIOfferGenerationSummary()
+        mock_per_customer.return_value = AIOfferGenerationSummary()
 
         generate_ai_offers_task.run(allow_disabled=True)
 
-        self.assertIsNone(mock_generate.call_args.kwargs["restaurant_id"])
+        mock_per_customer.assert_called_once()
+        mock_segments.assert_not_called()

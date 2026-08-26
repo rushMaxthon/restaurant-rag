@@ -98,6 +98,11 @@ class AIOfferGenerationSummary:
     skipped_users: int = 0
     llm_failures: int = 0
     elapsed_ms: int = 0
+    # Segment-based runs only. A per-customer run leaves these at zero, so the
+    # two shapes stay distinguishable in a stored summary.
+    segments_considered: int = 0
+    segments_skipped: int = 0
+    customers_matched: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)

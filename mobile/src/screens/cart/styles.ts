@@ -1089,51 +1089,100 @@ export const createStyles = (theme: AppTheme) =>
     },
     emptyWrap: {
       flex: 1,
-      padding: theme.spacing.screen,
+      paddingHorizontal: theme.spacing.screen,
       alignItems: 'center',
       justifyContent: 'center',
+      // Optically centred, not mathematically. A centred block of text reads
+      // as sitting low on the screen; lifting it clear of the exact middle is
+      // what makes it look placed rather than dropped.
+      paddingBottom: 72,
     },
-    emptyCard: {
-      width: '100%',
-      borderRadius: 28,
-      padding: 22,
-      gap: 12,
-      backgroundColor: theme.colors.surfaceRaised,
-      borderWidth: 1,
-      borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+    // Two rings rather than one flat circle: the outer tint bleeds the accent
+    // into the page so the icon is an anchor for the composition instead of a
+    // sticker on an empty screen.
+    emptyIconRing: {
+      width: 104,
+      height: 104,
+      borderRadius: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        theme.mode === 'dark'
+          ? 'rgba(255, 122, 69, 0.08)'
+          : 'rgba(255, 82, 0, 0.05)',
     },
-    emptyEyebrow: {
-      color: theme.colors.primary,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 1,
-      textTransform: 'uppercase',
+    emptyIconCore: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.primarySoft,
     },
     emptyTitle: {
+      marginTop: 22,
       color: theme.colors.text,
-      fontSize: 28,
-      lineHeight: 32,
+      fontSize: 24,
+      lineHeight: 30,
       fontWeight: '800',
-      letterSpacing: -0.8,
+      letterSpacing: -0.6,
+      textAlign: 'center',
     },
     emptyText: {
+      marginTop: 8,
+      // Held to a comfortable measure so the line does not run the full width
+      // of a large phone.
+      maxWidth: 300,
       color: theme.colors.secondaryText,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 22,
+      textAlign: 'center',
     },
     emptyButton: {
-      marginTop: 8,
-      minHeight: 50,
-      borderRadius: 18,
+      marginTop: 26,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 8,
+      // Sized to its label rather than stretched edge to edge: a full-width
+      // bar on an otherwise empty screen reads as a form, not an invitation.
+      alignSelf: 'center',
+      paddingHorizontal: 26,
+      minHeight: 52,
+      borderRadius: 26,
       backgroundColor: theme.colors.primary,
+      // A lift, not a glow: a wide soft accent shadow haloed the pill against
+      // the white ground instead of seating it on the page.
+      shadowColor: theme.colors.primary,
+      shadowOpacity: theme.mode === 'dark' ? 0 : 0.18,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 4,
+    },
+    emptyButtonPressed: {
+      opacity: 0.9,
+      transform: [{ scale: 0.98 }],
     },
     emptyButtonText: {
       color: theme.colors.white,
       fontSize: 15,
       fontWeight: '800',
+    },
+    emptyLink: {
+      marginTop: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    emptyLinkPressed: {
+      opacity: 0.6,
+    },
+    emptyLinkText: {
+      color: theme.colors.secondaryText,
+      fontSize: 14,
+      fontWeight: '700',
     },
   });
 

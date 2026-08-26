@@ -559,23 +559,38 @@ export function OffersPage({
         if (status.successful) {
           await loadOffersWorkspace(true);
           const generatedCount = status.summary?.offers_generated ?? 0;
-          const skippedCount = status.summary?.skipped_users ?? 0;
+          const matchedCount = status.summary?.customers_matched ?? 0;
           const scannedCount = status.summary?.users_scanned ?? 0;
+          const consideredCount = status.summary?.segments_considered ?? 0;
+          const alreadyRunning = status.summary?.segments_skipped ?? 0;
           if (!isMountedRef.current) {
             return;
           }
           if (generatedCount > 0) {
             onToast(
               "AI offers generated",
-              `${generatedCount} offers generated${skippedCount ? `, ${skippedCount} users skipped` : ""}.`,
+              // Offers and the customers they reach. The old wording counted
+              // "users skipped", which meant something when the run wrote one
+              // offer per customer and means nothing now that it writes a few
+              // offers and matches people to them.
+              `${generatedCount} offer${generatedCount === 1 ? "" : "s"} created from your order history` +
+                (matchedCount > 0
+                  ? `, reaching ${matchedCount} of ${scannedCount} customers.`
+                  : "."),
               "success",
+            );
+          } else if (alreadyRunning > 0) {
+            onToast(
+              "Your offers are already up to date",
+              `Every pattern we found (${alreadyRunning}) is already covered by a live offer, so nothing was duplicated.`,
+              "info",
             );
           } else {
             onToast(
               "No new AI offers generated",
-              scannedCount > 0
-                ? `${scannedCount} users were checked, but no new offers were created${skippedCount ? ` and ${skippedCount} users were skipped` : ""}.`
-                : "The task finished without creating any offers. Check worker logs if you expected offers.",
+              consideredCount === 0 && scannedCount === 0
+                ? "There is not enough order history yet to find a pattern worth an offer."
+                : "No pattern was strong enough to build an offer from. More orders will change that.",
               "info",
             );
           }

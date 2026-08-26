@@ -534,6 +534,12 @@ export interface AIOfferGenerationSummary {
   skipped_users: number;
   llm_failures: number;
   elapsed_ms: number;
+  /** Segment runs only: how many patterns the analysis found. */
+  segments_considered?: number;
+  /** Segments already covered by a live offer, so not duplicated. */
+  segments_skipped?: number;
+  /** Customers whose own history made them eligible for a new offer. */
+  customers_matched?: number;
 }
 
 /**

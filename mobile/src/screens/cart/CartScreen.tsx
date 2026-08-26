@@ -1324,23 +1324,53 @@ export function CartScreen(): React.JSX.Element {
   if (cart.items.length === 0) {
     return (
       <SafeAreaView edges={[]} style={styles.safeArea}>
+        {/* No card frame and no "CART" eyebrow: the header above already says
+            Cart, and a border around an empty state frames nothing. What was
+            missing is the app's own empty-state shape - icon, title, line,
+            action - which every other screen already uses. */}
         <View style={styles.emptyWrap}>
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyEyebrow}>Cart</Text>
-            <Text style={styles.emptyTitle}>Your cart is waiting.</Text>
-            <Text style={styles.emptyText}>
-              Add a few dishes and we will line them up here for a fast
-              checkout.
-            </Text>
-            <Pressable
-              onPress={() =>
-                navigation.navigate('MainTabs', { screen: 'Home' })
-              }
-              style={styles.emptyButton}
-            >
-              <Text style={styles.emptyButtonText}>Browse restaurants</Text>
-            </Pressable>
+          <View style={styles.emptyIconRing}>
+            <View style={styles.emptyIconCore}>
+              <Icon
+                color={theme.colors.primary}
+                name="bag-handle-outline"
+                size={30}
+              />
+            </View>
           </View>
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptyText}>
+            Add a few dishes and they will line up here, ready for a fast
+            checkout.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Home' })}
+            style={({ pressed }) => [
+              styles.emptyButton,
+              pressed && styles.emptyButtonPressed,
+            ]}
+          >
+            <Icon color={theme.colors.white} name="search-outline" size={17} />
+            <Text style={styles.emptyButtonText}>Browse restaurants</Text>
+          </Pressable>
+          {/* A second way out. From an empty cart the useful next step is
+              often a past order to reorder from, not the whole menu again. */}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Orders' })}
+            style={({ pressed }) => [
+              styles.emptyLink,
+              pressed && styles.emptyLinkPressed,
+            ]}
+          >
+            <Text style={styles.emptyLinkText}>See your past orders</Text>
+            <Icon
+              color={theme.colors.secondaryText}
+              name="chevron-forward"
+              size={15}
+            />
+          </Pressable>
         </View>
       </SafeAreaView>
     );

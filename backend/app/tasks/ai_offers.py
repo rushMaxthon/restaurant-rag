@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.config.celery import celery_app
 from app.config.database import SessionLocal
 from app.services.ai_offer_generation import generate_ai_offers
+from app.services.ai_offer_segments import generate_segment_offers
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -58,14 +59,26 @@ def generate_ai_offers_task(
         }
 
     with SessionLocal() as db:
-        summary = generate_ai_offers(
-            db,
-            user_limit=user_limit,
-            batch_size=batch_size,
-            force_refresh=force_refresh,
-            allow_disabled=allow_disabled,
-            restaurant_id=scope_id,
-        )
+        if scope_id is not None:
+            # A scoped run is an owner asking about their own restaurant, and
+            # that question is answered by analysing the restaurant once and
+            # producing a few segment offers - not by walking its customer list
+            # and writing one offer each. The unscoped platform-wide run below
+            # is unchanged.
+            summary = generate_segment_offers(
+                db,
+                restaurant_id=scope_id,
+                force_refresh=force_refresh,
+                allow_disabled=allow_disabled,
+            )
+        else:
+            summary = generate_ai_offers(
+                db,
+                user_limit=user_limit,
+                batch_size=batch_size,
+                force_refresh=force_refresh,
+                allow_disabled=allow_disabled,
+            )
 
     logger.info(
         "AI offer generation task finished users_scanned=%s offers_generated=%s fallbacks=%s llm_failures=%s elapsed_ms=%s",
