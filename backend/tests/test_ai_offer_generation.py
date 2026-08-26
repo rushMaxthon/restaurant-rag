@@ -28,7 +28,10 @@ from app.models.enums import (
 from app.models.personalized_offer import GeneratedOffer, GeneratedOfferUserMatch
 from app.models.user import User
 from app.main import app
-from app.services.auth import require_admin
+from fastapi import HTTPException
+
+from app.config.database import get_db
+from app.services.auth import get_current_user, require_admin
 from app.services.ai_offer_generation import (
     AIOfferCandidate,
     AIOfferGenerationSummary,
@@ -489,3 +492,177 @@ class AdminAIOfferTriggerApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OwnerAIOfferTriggerApiTests(unittest.TestCase):
+    """The owner-facing trigger, which replaced the button in the admin panel.
+
+    The whole point of a separate endpoint is the scope, so that is what these
+    assert: the restaurant comes from the session, and there is no way for the
+    request to widen it.
+    """
+
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+        self.owner = User(
+            id=uuid.uuid4(),
+            full_name="Owner Tester",
+            email="owner-gen@example.com",
+            phone_number=None,
+            hashed_password="hash",
+            role=UserRole.OWNER,
+            is_active=True,
+            is_verified=True,
+            default_address=None,
+        )
+        self.customer = User(
+            id=uuid.uuid4(),
+            full_name="Customer Tester",
+            email="customer-gen@example.com",
+            phone_number=None,
+            hashed_password="hash",
+            role=UserRole.CUSTOMER,
+            is_active=True,
+            is_verified=True,
+            default_address=None,
+        )
+        self.restaurant_id = uuid.uuid4()
+        app.dependency_overrides[get_db] = lambda: iter([Mock()])
+        app.dependency_overrides[get_current_user] = lambda: self.owner
+
+    def tearDown(self) -> None:
+        app.dependency_overrides.clear()
+        self.client.close()
+
+    def _inline_result(self) -> Mock:
+        result = Mock()
+        result.id = "owner-task"
+        result.state = "SUCCESS"
+        result.successful.return_value = True
+        result.result = {
+            "users_scanned": 7,
+            "offers_generated": 3,
+            "offers_replaced": 0,
+            "fallbacks_used": 0,
+            "validation_failures": 0,
+            "skipped_users": 4,
+            "llm_failures": 0,
+            "elapsed_ms": 120,
+        }
+        return result
+
+    @patch("app.api.personalized_offers.resolve_owner_restaurant_id")
+    @patch("app.api.personalized_offers.generate_ai_offers_task.apply")
+    def test_the_run_is_pinned_to_the_signed_in_owners_restaurant(
+        self, mock_apply: Mock, mock_resolve: Mock
+    ) -> None:
+        mock_resolve.return_value = self.restaurant_id
+        mock_apply.return_value = self._inline_result()
+
+        response = self.client.post(
+            "/api/owner/offers/generate-ai", json={"force_refresh": False}
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertTrue(payload["ready"])
+        self.assertEqual(payload["summary"]["offers_generated"], 3)
+        mock_apply.assert_called_once_with(
+            kwargs={
+                "user_limit": None,
+                "batch_size": None,
+                "force_refresh": False,
+                "allow_disabled": True,
+                # The scope, and it came from the session rather than the body.
+                "restaurant_id": str(self.restaurant_id),
+            }
+        )
+
+    @patch("app.api.personalized_offers.resolve_owner_restaurant_id")
+    @patch("app.api.personalized_offers.generate_ai_offers_task.apply")
+    def test_a_restaurant_id_in_the_body_cannot_widen_the_run(
+        self, mock_apply: Mock, mock_resolve: Mock
+    ) -> None:
+        # The request schema has no restaurant field. An extra key is ignored,
+        # so the resolved scope is still the only one that reaches the task.
+        mock_resolve.return_value = self.restaurant_id
+        mock_apply.return_value = self._inline_result()
+        someone_else = str(uuid.uuid4())
+
+        response = self.client.post(
+            "/api/owner/offers/generate-ai",
+            json={"force_refresh": False, "restaurant_id": someone_else},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        sent = mock_apply.call_args.kwargs["kwargs"]["restaurant_id"]
+        self.assertEqual(sent, str(self.restaurant_id))
+        self.assertNotEqual(sent, someone_else)
+
+    @patch("app.api.personalized_offers.resolve_owner_restaurant_id")
+    def test_a_customer_cannot_trigger_generation(self, mock_resolve: Mock) -> None:
+        app.dependency_overrides[get_current_user] = lambda: self.customer
+        mock_resolve.side_effect = HTTPException(
+            status_code=403, detail="Only owners can access restaurant-scoped resources"
+        )
+        response = self.client.post(
+            "/api/owner/offers/generate-ai", json={"force_refresh": False}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @patch("app.api.personalized_offers.resolve_owner_restaurant_id")
+    @patch("app.api.personalized_offers.celery_app.AsyncResult")
+    def test_status_requires_an_owner_with_a_restaurant(
+        self, mock_async_result: Mock, mock_resolve: Mock
+    ) -> None:
+        mock_resolve.side_effect = HTTPException(status_code=403, detail="nope")
+        response = self.client.get("/api/owner/offers/generate-ai/owner-task")
+        self.assertEqual(response.status_code, 403)
+        # The scope check runs before the task is read, not after.
+        mock_async_result.assert_not_called()
+
+
+class AIOfferTaskScopeTests(unittest.TestCase):
+    """The task parses its scope rather than trusting it.
+
+    Celery serialises arguments to JSON, which has no UUID type, so the id
+    arrives as a string. A malformed one must fail the run - silently dropping
+    it would widen a scoped run to every restaurant on the platform.
+    """
+
+    def test_a_malformed_restaurant_id_fails_rather_than_widening(self) -> None:
+        from app.tasks.ai_offers import generate_ai_offers_task
+
+        with self.assertRaises(ValueError) as caught:
+            generate_ai_offers_task.run(restaurant_id="not-a-uuid", allow_disabled=True)
+        self.assertIn("Invalid restaurant_id", str(caught.exception))
+
+    @patch("app.tasks.ai_offers.generate_ai_offers")
+    @patch("app.tasks.ai_offers.SessionLocal")
+    def test_a_valid_restaurant_id_reaches_the_generator_as_a_uuid(
+        self, mock_session: Mock, mock_generate: Mock
+    ) -> None:
+        from app.tasks.ai_offers import generate_ai_offers_task
+
+        scope = uuid.uuid4()
+        mock_session.return_value.__enter__.return_value = Mock()
+        mock_generate.return_value = AIOfferGenerationSummary()
+
+        generate_ai_offers_task.run(restaurant_id=str(scope), allow_disabled=True)
+
+        self.assertEqual(mock_generate.call_args.kwargs["restaurant_id"], scope)
+
+    @patch("app.tasks.ai_offers.generate_ai_offers")
+    @patch("app.tasks.ai_offers.SessionLocal")
+    def test_an_unscoped_run_still_passes_none(
+        self, mock_session: Mock, mock_generate: Mock
+    ) -> None:
+        # The platform-wide admin run must keep working exactly as before.
+        from app.tasks.ai_offers import generate_ai_offers_task
+
+        mock_session.return_value.__enter__.return_value = Mock()
+        mock_generate.return_value = AIOfferGenerationSummary()
+
+        generate_ai_offers_task.run(allow_disabled=True)
+
+        self.assertIsNone(mock_generate.call_args.kwargs["restaurant_id"])

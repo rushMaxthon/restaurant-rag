@@ -199,8 +199,19 @@ def _is_draft_combo_expired(
     return created_at < (reference_time - timedelta(days=max_age_days))
 
 
-def _remaining_unique_users_to_publish(unique_user_count: int) -> int:
+def remaining_unique_users_to_publish(unique_user_count: int) -> int:
+    """How many more distinct customers a combo needs before it is published.
+
+    Public because the owner chat shows it on a combo card: activating a combo
+    that is still below the threshold changes its status without making it
+    visible, and an owner who is not told that reads it as a broken button.
+    """
+
     return max(settings.generated_combo_min_visible_unique_users - unique_user_count, 0)
+
+
+# Retained so the existing private call sites in this module keep working.
+_remaining_unique_users_to_publish = remaining_unique_users_to_publish
 
 
 def _normalize_combo_status_value(status_value: str | None) -> str | None:

@@ -6,12 +6,14 @@ import { BriefingMessage } from "./BriefingMessage";
 import { ConversationRail } from "./ConversationRail";
 import { groupChatSessions, type ChatSession } from "./chatSessions";
 import { FindingsMessage } from "./FindingsMessage";
+import { SuggestionCards } from "./SuggestionCards";
 import type {
   OwnerChatHistoryItem,
   DiagnosticsSnapshot,
   OwnerBriefing,
   OwnerInsight,
   OwnerInsightStatus,
+  SuggestionCard,
 } from "../../types/app";
 import { api } from "../../services/api";
 import { streamOwnerChatMessage } from "../../services/aiManagerStream";
@@ -38,6 +40,8 @@ interface ChatEntry {
   skill?: string | null;
   answerSource?: string | null;
   facts?: Record<string, unknown> | null;
+  /** Actionable offer/combo cards the answer came with. */
+  suggestions?: SuggestionCard[];
   streaming?: boolean;
 }
 
@@ -154,6 +158,9 @@ export function OwnerChatPanel({
         id: `history-${row.id}`,
         role: row.role,
         text: row.message,
+        // Stored with the turn, so a reopened thread keeps its cards rather
+        // than degrading to the bare text.
+        suggestions: row.suggestions ?? [],
       })),
     );
   }, []);
@@ -216,6 +223,40 @@ export function OwnerChatPanel({
   }, [restaurantId, token]);
 
   /** Starts a fresh thread. Past conversations stay in the rail. */
+  /**
+   * Runs the one action a card carries, and reports the label to show after.
+   *
+   * Each branch is an existing, audited path: creating an offer goes through
+   * proposal approval, which re-checks the discount ceilings and cannot produce
+   * a second offer for the same proposal. Nothing here writes an offer directly.
+   */
+  const runSuggestion = useCallback(
+    async (card: SuggestionCard): Promise<string> => {
+      if (card.kind === "combo") {
+        await api.updateGeneratedComboStatus(token, card.id, "LIVE");
+        return "Combo is live";
+      }
+      if (card.action === "activate") {
+        const result = await api.activateSuggestedOffer(token, card.id, restaurantId);
+        return result.detail;
+      }
+      const approval = await api.approveOwnerRecommendation(token, card.id, restaurantId);
+      // The rail lists sessions by their turns; approving does not add one, but
+      // the proposal is gone from the next answer's recommendations.
+      return approval.detail || "Offer created";
+    },
+    [token, restaurantId],
+  );
+
+  /** Opens the screen that owns the thing the card is about. */
+  const viewSuggestion = useCallback((card: SuggestionCard) => {
+    const path = card.kind === "combo" ? "/generated-combos" : "/offers";
+    window.history.pushState({}, "", path);
+    // The app tracks the path through `popstate`, so a bare pushState would
+    // change the URL without changing the screen.
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
+
   const startNewChat = useCallback(() => {
     abortRef.current?.abort();
     setEntries([]);
@@ -287,6 +328,9 @@ export function OwnerChatPanel({
                 data.facts && typeof data.facts === "object"
                   ? (data.facts as Record<string, unknown>)
                   : null,
+              suggestions: Array.isArray(data.suggestions)
+                ? (data.suggestions as SuggestionCard[])
+                : [],
               // The final frame carries the whole answer, so a dropped token
               // frame cannot leave a half-written reply on screen.
               ...(typeof data.answer === "string" ? { text: data.answer } : {}),
@@ -420,6 +464,13 @@ export function OwnerChatPanel({
                       <p>
                         <span className="ai-msg__typing">Thinking…</span>
                       </p>
+                    ) : null}
+                    {!entry.streaming && entry.suggestions?.length ? (
+                      <SuggestionCards
+                        cards={entry.suggestions}
+                        onAct={runSuggestion}
+                        onView={viewSuggestion}
+                      />
                     ) : null}
                     {!entry.streaming && hasNumbers(entry.facts) ? (
                       <div className="ai-msg__meta">

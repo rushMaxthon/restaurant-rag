@@ -9,7 +9,7 @@ function msg(
   created_at: string,
 ): OwnerChatHistoryItem {
   return { id: `${session}-${created_at}`, session_id: session, role, message,
-           skill: null, answer_source: null, created_at };
+           skill: null, answer_source: null, created_at, suggestions: [] };
 }
 
 describe('groupChatSessions', () => {

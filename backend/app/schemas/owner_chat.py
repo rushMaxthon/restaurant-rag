@@ -31,6 +31,9 @@ class OwnerChatResponse(BaseModel):
     fallback_reason: str | None = None
     # The numbers the answer was allowed to state, so a reply can be audited.
     facts: dict[str, Any] = Field(default_factory=dict)
+    # Offers and combos this answer suggests, each with the one action that
+    # applies to it. Empty for the great majority of answers.
+    suggestions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class OwnerChatHistoryItem(BaseModel):
@@ -41,8 +44,33 @@ class OwnerChatHistoryItem(BaseModel):
     skill: str | None
     answer_source: str | None
     created_at: datetime
+    # Replayed with the message so a restored conversation keeps its cards
+    # instead of degrading to the bare text on the next page load.
+    suggestions: list[dict[str, Any]] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_message(cls, row: Any) -> "OwnerChatHistoryItem":
+        """Build from an ORM row, lifting the cards out of the stored facts."""
+
+        item = cls.model_validate(row)
+        stored = (getattr(row, "facts", None) or {}).get("suggestions")
+        if isinstance(stored, list):
+            item.suggestions = stored
+        return item
+
+
+class SuggestionOfferActivationResponse(BaseModel):
+    """The end state of an offer a chat card started."""
+
+    offer_id: uuid.UUID
+    name: str
+    state: str
+    # True when the offer was already running, so the client can say "already
+    # active" rather than reporting a change that did not happen.
+    already_active: bool
+    detail: str
 
 
 class OwnerChatClearResponse(BaseModel):
@@ -52,6 +80,7 @@ class OwnerChatClearResponse(BaseModel):
 
 __all__ = [
     "OwnerChatClearResponse",
+    "SuggestionOfferActivationResponse",
     "OwnerChatHistoryItem",
     "OwnerChatRequest",
     "OwnerChatResponse",

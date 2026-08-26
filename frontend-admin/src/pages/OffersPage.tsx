@@ -519,27 +519,40 @@ export function OffersPage({
       title: "No offers found",
       description:
         role === "ADMIN"
-          ? "No manual or AI-generated offers are available yet. Try Generate AI Offers Now or narrow the filters."
-          : "No offers are available for this restaurant yet.",
+          ? "No manual or AI-generated offers are available yet. Try narrowing the filters."
+          // The hint follows the button: generation is the owner's action now,
+          // so the owner is the one told it exists.
+          : "No offers are available for this restaurant yet. Try Generate AI Offers, or narrow the filters.",
     };
   }, [restaurantContexts.length, role]);
 
   const handleGenerateAiOffers = useCallback(async () => {
-    if (role !== "ADMIN" || aiGenerationRunning) {
+    // Owner-only. The platform-wide admin run still exists behind
+    // /admin/offers/generate-ai, but generating offers is now something an
+    // owner does for their own restaurant from their own screen.
+    if (role !== "OWNER" || aiGenerationRunning) {
       return;
     }
 
     setAiGenerationRunning(true);
     try {
-      const queued = await api.triggerAdminAIOfferGeneration(token, {
+      const queued = await api.triggerOwnerAIOfferGeneration(token, {
         force_refresh: false,
       });
       let attempts = 0;
 
       while (attempts < 20) {
         attempts += 1;
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        const status = await api.getAdminAIOfferGenerationStatus(token, queued.task_id);
+        // The owner run executes inline, so the trigger response is already the
+        // finished result. Polling it again would only add a wait to a job that
+        // is done; the loop stays for the case where it comes back pending.
+        const status =
+          attempts === 1 && queued.ready
+            ? queued
+            : await (async () => {
+                await new Promise((resolve) => window.setTimeout(resolve, 1500));
+                return api.getOwnerAIOfferGenerationStatus(token, queued.task_id);
+              })();
         if (!status.ready) {
           continue;
         }
@@ -902,25 +915,28 @@ export function OffersPage({
         actions={
           <>
             {role === "ADMIN" ? (
-              <>
-                <button
-                  className="secondary-button"
-                  disabled={aiGenerationRunning}
-                  onClick={() => void handleGenerateAiOffers()}
-                  type="button"
-                >
-                  <PlayCircle size={16} strokeWidth={2.2} />
-                  {aiGenerationRunning ? "Generating AI offers..." : "Generate AI Offers Now"}
-                </button>
-                <button
-                  className="secondary-button"
-                  onClick={() => onNavigate("/restaurants")}
-                  type="button"
-                >
-                  <Store size={16} strokeWidth={2.2} />
-                  Restaurants
-                </button>
-              </>
+              <button
+                className="secondary-button"
+                onClick={() => onNavigate("/restaurants")}
+                type="button"
+              >
+                <Store size={16} strokeWidth={2.2} />
+                Restaurants
+              </button>
+            ) : null}
+            {/* Generation moved here from the admin panel: it reads this
+                restaurant's own order history, so it belongs to the person who
+                owns that data rather than to a platform-wide sweep. */}
+            {role === "OWNER" ? (
+              <button
+                className="secondary-button"
+                disabled={aiGenerationRunning}
+                onClick={() => void handleGenerateAiOffers()}
+                type="button"
+              >
+                <PlayCircle size={16} strokeWidth={2.2} />
+                {aiGenerationRunning ? "Generating AI offers…" : "Generate AI Offers"}
+              </button>
             ) : null}
             <button className="primary-button" onClick={() => void openCreateModal()} type="button">
               <TicketPercent size={16} strokeWidth={2.2} />

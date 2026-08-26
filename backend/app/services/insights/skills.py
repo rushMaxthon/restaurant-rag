@@ -30,6 +30,11 @@ from app.services.insights.actions import list_proposals
 from app.services.insights.facts import FactPack
 from app.services.insights.generation import get_latest_briefing
 from app.services.insights.offer_performance import fetch_offer_performance
+from app.services.insights.suggestion_cards import (
+    combo_cards,
+    offer_cards_from_catalogue,
+    offer_cards_from_proposals,
+)
 from app.services.insights.periods import PeriodComparison, resolve_period_comparison
 from app.services.insights.presentation import (
     action,
@@ -115,6 +120,10 @@ class SkillResult:
     answer: str
     fact_pack: FactPack
     data: dict[str, Any] = field(default_factory=dict)
+    # Actionable cards for the client to render beside the answer. Deliberately
+    # not part of `data`: `data` is handed to the narrator as `details`, and a
+    # model shown its own cards writes the prose the cards exist to replace.
+    suggestions: list[dict[str, Any]] = field(default_factory=list)
     # Set when the question cannot be answered from the data at all, so the
     # caller knows not to dress it up with narration.
     unsupported: bool = False
@@ -1083,16 +1092,29 @@ def recommendations(db: Session, scope: InsightsScope, params: SkillParams) -> S
             }
         )
 
-    return SkillResult(
-        skill="recommendations",
-        answer=blocks(
+    cards = offer_cards_from_proposals(db, proposals)
+    if cards:
+        # The cards carry the name, the discount and the rationale, so repeating
+        # all of it in prose above them is noise. The lead-in stays, the list goes.
+        answer = blocks(
+            f"Here {'is' if len(cards) == 1 else 'are'} {len(cards)} "
+            f"thing{'s' if len(cards) != 1 else ''} worth doing. "
+            "Impact figures are estimates, and nothing runs until you approve it.",
+        )
+    else:
+        answer = blocks(
             f"Here {'is' if len(items) == 1 else 'are'} {len(items)} "
             f"thing{'s' if len(items) != 1 else ''} worth doing:",
             numbered(items),
             "Impact figures are estimates. Nothing runs until you approve it.",
-        ),
+        )
+
+    return SkillResult(
+        skill="recommendations",
+        answer=answer,
         fact_pack=_pack(comparison, findings=findings),
         data={"proposals": [str(proposal.id) for proposal in proposals]},
+        suggestions=cards,
     )
 
 
@@ -1243,11 +1265,23 @@ def tool_answer(db: Session, scope: InsightsScope, params: SkillParams) -> Skill
             unsupported=True,
         )
 
+    # Two lookups have something the owner can act on rather than only read.
+    # Note the answer text itself is left alone here: on the tool path the
+    # narrator rewrites it from the facts, so shortening this template changed
+    # nothing that reached the screen. Only the skills that answer with their
+    # own wording - recommendations, item_promotion_advice - were trimmed.
+    cards: list[dict[str, Any]] = []
+    if tool == "get_combos":
+        cards = combo_cards(db, scope)
+    elif tool == "get_offer_catalogue":
+        cards = offer_cards_from_catalogue(db, scope)
+
     return SkillResult(
         skill="tool_answer",
         answer=answer,
         fact_pack=_pack(comparison, findings=[{"tool": tool, "numbers": result.data}]),
         data={"tool": tool, "args": result.args},
+        suggestions=cards,
     )
 
 
@@ -1703,14 +1737,23 @@ def item_promotion_advice(
         in {OwnerActionType.PROMOTE_ITEM, OwnerActionType.PROMOTE_CATEGORY}
     ]
     pending = ""
+    promotion_cards = offer_cards_from_proposals(db, proposals)
     if proposals:
-        pending = blocks(
+        count = (
             f"There {'is' if len(proposals) == 1 else 'are'} already "
             f"{len(proposals)} pending recommendation"
-            f"{'s' if len(proposals) != 1 else ''} covering this:",
-            bullets(proposal.title for proposal in proposals[:3]),
-            "Nothing runs until you approve it.",
+            f"{'s' if len(proposals) != 1 else ''} covering this"
         )
+        if promotion_cards:
+            # Each proposal now has a card below carrying its name, discount and
+            # rationale, so listing the titles here says it twice.
+            pending = f"{count}. Nothing runs until you approve it."
+        else:
+            pending = blocks(
+                f"{count}:",
+                bullets(proposal.title for proposal in proposals[:3]),
+                "Nothing runs until you approve it.",
+            )
         findings.extend(
             {
                 "recommendation": proposal.title,
@@ -1736,6 +1779,7 @@ def item_promotion_advice(
         answer=blocks(lead, bullets(declines), verdict, pending),
         fact_pack=_pack(comparison, findings=findings, notes=_volume_note(snapshot)),
         data={"declining_items": findings},
+        suggestions=promotion_cards,
     )
 
 

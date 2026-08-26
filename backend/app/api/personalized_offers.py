@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -28,7 +29,18 @@ from app.schemas.personalized_offer import (
     PersonalizedOfferPreviewResponse,
     PersonalizedOfferUpsertRequest,
 )
-from app.services.auth import get_current_user, require_customer
+from app.schemas.admin import (
+    AdminAIOfferGenerationStatusResponse,
+    AdminAIOfferGenerationTriggerResponse,
+    OwnerAIOfferGenerationRequest,
+)
+from app.config.celery import celery_app
+from app.tasks.ai_offers import generate_ai_offers_task
+from app.services.auth import (
+    get_current_user,
+    require_customer,
+    resolve_owner_restaurant_id,
+)
 from app.services.personalized_offers import (
     create_restaurant_offer,
     delete_generated_offer,
@@ -45,6 +57,8 @@ from app.services.personalized_offers import (
     update_restaurant_offer,
 )
 from app.services.restaurant_locations import require_location_for_restaurant
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Personalized Offers"])
 
@@ -358,3 +372,114 @@ def remove_generated_offer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated offer not found")
     delete_generated_offer(db, generated_offer=generated_offer)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/owner/offers/generate-ai",
+    response_model=AdminAIOfferGenerationTriggerResponse,
+)
+def trigger_owner_ai_offer_generation(
+    payload: OwnerAIOfferGenerationRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AdminAIOfferGenerationTriggerResponse:
+    """Generate personalized offers for the caller's own restaurant.
+
+    The owner-facing counterpart of the platform-wide admin run. The difference
+    that matters is the scope: `restaurant_id` is resolved from the signed-in
+    owner and passed to the task, so the run scans only the customers who have
+    paid this restaurant and can only produce offers for it. Nothing in the
+    request body can widen that - there is no restaurant field to send.
+
+    Runs inline rather than queued, so the screen can report the result without
+    a worker being attached.
+    """
+
+    restaurant_id = resolve_owner_restaurant_id(db, current_user)
+
+    task_kwargs = {
+        "user_limit": payload.user_limit,
+        "batch_size": payload.batch_size,
+        "force_refresh": payload.force_refresh,
+        "allow_disabled": True,
+        "restaurant_id": str(restaurant_id),
+    }
+
+    try:
+        result = generate_ai_offers_task.apply(kwargs=task_kwargs)
+    except Exception as error:  # pragma: no cover - defensive execution failure path
+        logger.exception(
+            "Owner AI offer generation failed owner_user_id=%s restaurant_id=%s",
+            current_user.id,
+            restaurant_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unable to run AI offer generation right now: {error}",
+        ) from error
+
+    logger.info(
+        "Owner AI offer generation completed owner_user_id=%s restaurant_id=%s "
+        "task_id=%s force_refresh=%s successful=%s",
+        current_user.id,
+        restaurant_id,
+        result.id,
+        payload.force_refresh,
+        result.successful(),
+    )
+
+    if result.successful():
+        return AdminAIOfferGenerationTriggerResponse(
+            task_id=str(result.id),
+            queued=False,
+            status=str(result.state or "SUCCESS").upper(),
+            message="AI offer generation completed.",
+            ready=True,
+            successful=True,
+            summary=result.result if isinstance(result.result, dict) else None,
+        )
+
+    return AdminAIOfferGenerationTriggerResponse(
+        task_id=str(result.id),
+        queued=False,
+        status=str(result.state or "FAILURE").upper(),
+        message="AI offer generation failed.",
+        ready=True,
+        successful=False,
+        error=str(result.result or "AI offer generation failed."),
+    )
+
+
+@router.get(
+    "/owner/offers/generate-ai/{task_id}",
+    response_model=AdminAIOfferGenerationStatusResponse,
+)
+def get_owner_ai_offer_generation_status(
+    task_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AdminAIOfferGenerationStatusResponse:
+    """Progress of a run this owner started.
+
+    Resolving the owner's restaurant first is not decoration: it is what stops a
+    signed-in customer, or an owner with no restaurant, from reading task
+    results at all.
+    """
+
+    resolve_owner_restaurant_id(db, current_user)
+
+    result = celery_app.AsyncResult(task_id)
+    task_state = str(result.state or "PENDING").upper()
+    response = AdminAIOfferGenerationStatusResponse(
+        task_id=task_id,
+        status=task_state,
+        ready=result.ready(),
+        successful=result.successful() if result.ready() else None,
+    )
+    if not result.ready():
+        return response
+    if result.successful():
+        response.summary = result.result if isinstance(result.result, dict) else None
+        return response
+    response.error = str(result.result or "AI offer generation failed.")
+    return response

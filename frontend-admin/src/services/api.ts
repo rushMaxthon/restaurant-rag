@@ -33,6 +33,7 @@ import type {
   OwnerBriefing,
   OwnerChatAnswer,
   OwnerChatClearResult,
+  SuggestionOfferActivation,
   OwnerChatHistoryItem,
   OwnerInsight,
   OwnerInsightStatus,
@@ -177,6 +178,36 @@ export const api = {
       token,
       body: payload,
     });
+  },
+  /**
+   * Generates offers for the signed-in owner's own restaurant.
+   *
+   * Separate from the admin trigger rather than a parameter on it: the scope is
+   * resolved server-side from the session, so there is deliberately no
+   * restaurant field an owner could set to widen the run.
+   */
+  triggerOwnerAIOfferGeneration(
+    token: string,
+    payload: {
+      user_limit?: number | null;
+      batch_size?: number | null;
+      force_refresh?: boolean;
+    } = {},
+  ): Promise<AdminAIOfferGenerationTriggerResponse> {
+    return request<AdminAIOfferGenerationTriggerResponse>('/owner/offers/generate-ai', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
+  getOwnerAIOfferGenerationStatus(
+    token: string,
+    taskId: string,
+  ): Promise<AdminAIOfferGenerationStatusResponse> {
+    return request<AdminAIOfferGenerationStatusResponse>(
+      `/owner/offers/generate-ai/${taskId}`,
+      { token },
+    );
   },
   getAdminAIOfferGenerationStatus(
     token: string,
@@ -871,6 +902,23 @@ export const api = {
   ): Promise<OwnerActionApproval> {
     return request<OwnerActionApproval>(
       `/owner/insights/recommendations/${proposalId}/approve${scopeQuery(restaurantId)}`,
+      { method: 'POST', token },
+    );
+  },
+  /**
+   * Starts an offer this restaurant already has, from a chat card.
+   *
+   * Deliberately not `updateRestaurantOffer`: that takes a full upsert, so a
+   * card would have to reconstruct every field of the offer to change one, and
+   * any field it got wrong would be written silently.
+   */
+  activateSuggestedOffer(
+    token: string,
+    offerId: string,
+    restaurantId?: string | null,
+  ): Promise<SuggestionOfferActivation> {
+    return request<SuggestionOfferActivation>(
+      `/owner/insights/suggestions/offers/${offerId}/activate${scopeQuery(restaurantId)}`,
       { method: 'POST', token },
     );
   },

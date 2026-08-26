@@ -8170,3 +8170,322 @@ summary:focus-visible,
   color: var(--text-muted, #6b7280);
   padding: 0.25rem 0;
 }
+
+/* ---------------------------------- */
+/* Suggestion cards (offers / combos)  */
+/* ---------------------------------- */
+
+/* An answer that suggests an offer or a combo carries the thing itself, not a
+   description of it. The card is deliberately louder than the surrounding
+   message - a left accent rail, a solid surface, a real button - because it is
+   the one part of the reply the owner is meant to act on rather than read. */
+.ai-sugs {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ai-sug {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+/* Once it is live the card has nothing left to ask for, so it stops competing
+   with the cards that do. */
+.ai-sug.is-settled {
+  border-left-color: var(--success);
+  background: var(--surface-subtle);
+}
+
+.ai-sug__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-sug__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ai-sug__icon--combo {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.ai-sug__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.ai-sug__title strong {
+  font-size: var(--fs-body-sm);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ai-sug__kind {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The state chip follows the badge system: sized to its text, never stretched. */
+.ai-sug__state {
+  flex-shrink: 0;
+  width: fit-content;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.ai-sug__state--active {
+  background: var(--success-soft);
+  border-color: transparent;
+  color: var(--success);
+}
+
+/* Both are one click from being live, so both read as actionable. Only the
+   verb on the button differs: one creates the offer, the other starts it. */
+.ai-sug__state--creatable,
+.ai-sug__state--activatable {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+/* The commercial terms, which is what gets scanned first. */
+.ai-sug__terms {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-sug__deal {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.ai-sug__price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-sug__price s {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.ai-sug__price b {
+  font-size: var(--fs-body);
+  font-weight: 750;
+  color: var(--text);
+}
+
+.ai-sug__save {
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-sug__meta {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-sug__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-sug__items li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-caption);
+  color: var(--text);
+}
+
+.ai-sug__items b {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.ai-sug__why {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.ai-sug__impact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ai-sug__evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+
+.ai-sug__evidence > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.ai-sug__evidence dt {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ai-sug__evidence dd {
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-sug__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-sug__act {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--control-h-sm);
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  cursor: pointer;
+  transition: filter 0.16s ease;
+}
+
+.ai-sug__act:hover:not(:disabled) { filter: brightness(1.06); }
+
+.ai-sug__act:disabled { opacity: 0.7; cursor: progress; }
+
+.ai-sug__act:focus-visible,
+.ai-sug__view:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+.ai-sug__spin {
+  animation: ai-sug-spin 0.9s linear infinite;
+}
+
+@keyframes ai-sug-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-sug__spin { animation: none; }
+}
+
+.ai-sug__view {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--control-h-sm);
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-sug__view:hover { background: var(--surface-subtle); }
+
+.ai-sug__done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  color: var(--success);
+}
+
+.ai-sug__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--danger, #d92d20);
+}
+
+@media (max-width: 640px) {
+  .ai-sug__head { flex-wrap: wrap; }
+
+  .ai-sug__act,
+  .ai-sug__view { flex: 1 1 auto; justify-content: center; }
+}

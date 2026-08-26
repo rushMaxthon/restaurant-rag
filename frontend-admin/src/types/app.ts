@@ -525,11 +525,34 @@ export interface GeneratedOfferUserMatch {
   updated_at: string;
 }
 
+export interface AIOfferGenerationSummary {
+  users_scanned: number;
+  offers_generated: number;
+  offers_replaced: number;
+  fallbacks_used: number;
+  validation_failures: number;
+  skipped_users: number;
+  llm_failures: number;
+  elapsed_ms: number;
+}
+
+/**
+ * The response to a generation request.
+ *
+ * An inline run - which is what both the admin and owner triggers do - comes
+ * back already finished, so it carries the same result fields as the status
+ * endpoint. The type was missing them, which is why the finished result had to
+ * be re-fetched to be read.
+ */
 export interface AdminAIOfferGenerationTriggerResponse {
   task_id: string;
   queued: boolean;
   status: string;
   message: string;
+  ready: boolean;
+  successful: boolean | null;
+  summary: AIOfferGenerationSummary | null;
+  error: string | null;
 }
 
 export interface AdminAIOfferGenerationStatusResponse {
@@ -537,16 +560,7 @@ export interface AdminAIOfferGenerationStatusResponse {
   status: string;
   ready: boolean;
   successful: boolean | null;
-  summary: {
-    users_scanned: number;
-    offers_generated: number;
-    offers_replaced: number;
-    fallbacks_used: number;
-    validation_failures: number;
-    skipped_users: number;
-    llm_failures: number;
-    elapsed_ms: number;
-  } | null;
+  summary: AIOfferGenerationSummary | null;
   error: string | null;
 }
 
@@ -1029,6 +1043,39 @@ export interface OfferPerformanceSnapshot {
   offers: OfferPerformanceRow[];
 }
 
+/**
+ * One actionable offer or combo the assistant suggested.
+ *
+ * Built server-side from the same rows the answer was written from, so a card
+ * can never state a discount or a price the underlying record does not carry.
+ * `action` is the single thing the owner can do with it, already resolved
+ * against the target's real state - the client never has to work out whether a
+ * suggestion needs creating or merely activating.
+ */
+export interface SuggestionCard {
+  version: number;
+  kind: 'offer' | 'combo';
+  /** The proposal (for `create`) or the offer/combo itself (for `activate`). */
+  id: string;
+  /** The live offer/combo once one exists, for the View action. */
+  target_id: string | null;
+  title: string;
+  summary: string | null;
+  status: string;
+  state: 'creatable' | 'activatable' | 'active';
+  action: 'create' | 'activate' | null;
+  action_label: string;
+  details: Array<{ label: string; value: string }>;
+  discount: { type: string; value: number } | null;
+  minimum_order_amount: number | null;
+  valid_for_days: number | null;
+  pricing: { original: number | null; offered: number | null; saving: number | null } | null;
+  reason: string | null;
+  expected_impact: number | null;
+  expected_impact_basis: string | null;
+  evidence: Array<{ label: string; value: string }>;
+}
+
 export interface OwnerChatAnswer {
   session_id: string;
   answer: string;
@@ -1037,6 +1084,15 @@ export interface OwnerChatAnswer {
   routed_by: string;
   fallback_reason: string | null;
   facts: Record<string, unknown>;
+  suggestions: SuggestionCard[];
+}
+
+export interface SuggestionOfferActivation {
+  offer_id: string;
+  name: string;
+  state: string;
+  already_active: boolean;
+  detail: string;
 }
 
 export interface OwnerChatHistoryItem {
@@ -1047,6 +1103,8 @@ export interface OwnerChatHistoryItem {
   skill: string | null;
   answer_source: string | null;
   created_at: string;
+  /** Replayed with the message, so a restored thread keeps its cards. */
+  suggestions: SuggestionCard[];
 }
 
 export interface OwnerChatClearResult {

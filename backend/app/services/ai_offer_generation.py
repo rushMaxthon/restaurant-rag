@@ -157,12 +157,23 @@ def _pick_default_restaurant(
     db: Session,
     *,
     preferred_cuisine: str | None = None,
+    restaurant_id: uuid.UUID | None = None,
 ) -> tuple[Restaurant, RestaurantLocation | None] | None:
+    """Pick a restaurant to build an offer for.
+
+    `restaurant_id` pins the choice to one restaurant. It is what makes an
+    owner-triggered run safe: without it every fallback branch below would
+    happily choose somebody else's restaurant, and an owner pressing Generate
+    would create offers across the whole platform.
+    """
+
     restaurant_query = (
         select(Restaurant)
         .where(Restaurant.is_active.is_(True), Restaurant.is_approved.is_(True))
         .order_by(Restaurant.updated_at.desc(), Restaurant.created_at.desc())
     )
+    if restaurant_id is not None:
+        restaurant_query = restaurant_query.where(Restaurant.id == restaurant_id)
     if preferred_cuisine:
         preferred_restaurants = db.scalars(
             restaurant_query.where(func.lower(Restaurant.cuisine_type) == preferred_cuisine.lower())
@@ -212,7 +223,19 @@ def _load_active_menu_item(
     )
 
 
-def _build_offer_candidate_for_user(db: Session, user: User) -> AIOfferCandidate | None:
+def _build_offer_candidate_for_user(
+    db: Session,
+    user: User,
+    *,
+    restaurant_id: uuid.UUID | None = None,
+) -> AIOfferCandidate | None:
+    """The best offer to build for this customer.
+
+    When `restaurant_id` is set every branch is confined to that restaurant: an
+    owner-triggered run must only ever produce offers for their own restaurant,
+    however strong this customer's signals for somebody else's are.
+    """
+
     preferences = _load_user_preferences(db, user.id)
     insights = _load_order_insights(db, user.id)
     if insights.latest_order_at is None:
@@ -228,7 +251,14 @@ def _build_offer_candidate_for_user(db: Session, user: User) -> AIOfferCandidate
     if repeated_patterns:
         winner = repeated_patterns[0]
         menu_item = _load_active_menu_item(db, winner.menu_item_id)
-        if menu_item is not None and menu_item.restaurant is not None:
+        if (
+            menu_item is not None
+            and menu_item.restaurant is not None
+            # Their strongest repeat item may be somebody else's dish. Under a
+            # scope that is not a candidate, so fall through to the branches
+            # below rather than building an offer for another restaurant.
+            and (restaurant_id is None or menu_item.restaurant_id == restaurant_id)
+        ):
             audience = (
                 PersonalizedOfferAudience.INACTIVE_USERS
                 if is_inactive
@@ -268,7 +298,9 @@ def _build_offer_candidate_for_user(db: Session, user: User) -> AIOfferCandidate
                 fallback_max_discount_amount=settings.ai_max_flat_discount,
             )
 
-    if insights.favorite_restaurant_id is not None:
+    if insights.favorite_restaurant_id is not None and (
+        restaurant_id is None or insights.favorite_restaurant_id == restaurant_id
+    ):
         restaurant = db.scalar(
             select(Restaurant).where(
                 Restaurant.id == insights.favorite_restaurant_id,
@@ -339,7 +371,9 @@ def _build_offer_candidate_for_user(db: Session, user: User) -> AIOfferCandidate
     if preferred_cuisine is None:
         preferred_cuisine = insights.top_cuisine
     if preferred_cuisine:
-        default_target = _pick_default_restaurant(db, preferred_cuisine=preferred_cuisine)
+        default_target = _pick_default_restaurant(
+            db, preferred_cuisine=preferred_cuisine, restaurant_id=restaurant_id
+        )
         if default_target is not None:
             restaurant, location = default_target
             return AIOfferCandidate(
@@ -368,7 +402,7 @@ def _build_offer_candidate_for_user(db: Session, user: User) -> AIOfferCandidate
                 fallback_max_discount_amount=None,
             )
 
-    default_target = _pick_default_restaurant(db)
+    default_target = _pick_default_restaurant(db, restaurant_id=restaurant_id)
     if default_target is None:
         return None
     restaurant, location = default_target
@@ -671,7 +705,16 @@ def generate_ai_offers(
     batch_size: int | None = None,
     force_refresh: bool = False,
     allow_disabled: bool = False,
+    restaurant_id: uuid.UUID | None = None,
 ) -> AIOfferGenerationSummary:
+    """Generate personalized offers.
+
+    `restaurant_id` confines a run to one restaurant, which is what an owner
+    triggering this from their own Offers screen gets. It narrows the run at
+    both ends: only customers who have actually paid that restaurant are
+    scanned, and every candidate is pinned to it.
+    """
+
     summary = AIOfferGenerationSummary()
     if not settings.enable_ai_offer_generation and not allow_disabled:
         logger.info("AI offer generation skipped because ENABLE_AI_OFFER_GENERATION is disabled")
@@ -693,10 +736,17 @@ def generate_ai_offers(
             .where(
                 User.role == UserRole.CUSTOMER,
                 User.is_active.is_(True),
+                # Scoped at the source: an owner's run scans the customers who
+                # have actually paid *them*, not every customer on the platform.
                 select(Order.id)
                 .where(
                     Order.customer_id == User.id,
                     Order.payment_status == PaymentStatus.PAID,
+                    *(
+                        [Order.restaurant_id == restaurant_id]
+                        if restaurant_id is not None
+                        else []
+                    ),
                 )
                 .exists(),
             )
@@ -709,8 +759,25 @@ def generate_ai_offers(
 
         for user in users:
             summary.users_scanned += 1
-            candidate = _build_offer_candidate_for_user(db, user)
+            candidate = _build_offer_candidate_for_user(
+                db, user, restaurant_id=restaurant_id
+            )
             if candidate is None:
+                summary.skipped_users += 1
+                continue
+
+            # Second gate, on the way out. The branches above are each scoped,
+            # so this should never fire - which is exactly why it is here: a
+            # future branch that forgets the scope must not be able to write an
+            # offer against somebody else's restaurant.
+            if restaurant_id is not None and candidate.restaurant_id != restaurant_id:
+                logger.warning(
+                    "Discarded out-of-scope AI offer candidate user_id=%s "
+                    "candidate_restaurant_id=%s scope_restaurant_id=%s",
+                    user.id,
+                    candidate.restaurant_id,
+                    restaurant_id,
+                )
                 summary.skipped_users += 1
                 continue
 

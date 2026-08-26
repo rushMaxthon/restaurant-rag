@@ -33,7 +33,7 @@ import json
 import logging
 import re
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterator
 
 import httpx
@@ -114,6 +114,9 @@ class ChatTurn:
     fallback_reason: str | None = None
     facts: dict[str, Any] | None = None
     data: dict[str, Any] | None = None
+    # Actionable cards the client renders beside the answer. Carried on the turn
+    # and stored inside `facts`, so a restored conversation keeps its cards.
+    suggestions: list[dict[str, Any]] = field(default_factory=list)
     # The parameters this turn resolved, so the next one can inherit them.
     skill_params: dict[str, Any] | None = None
 
@@ -1096,6 +1099,14 @@ def answer_question(
         # that the figures are that branch's and not the whole restaurant's.
         answer = f"{branch_prefix} {answer}"
 
+    # Cards ride inside the stored facts rather than in a column of their own:
+    # `facts` is already the JSONB record of what this turn was built from, and
+    # the narrator never reads it (it is given `_shareable_facts`, built freshly
+    # from the fact pack), so nothing the model sees changes.
+    turn_facts = result.fact_pack.to_payload()
+    if result.suggestions:
+        turn_facts["suggestions"] = result.suggestions
+
     turn = ChatTurn(
         session_id=resolved_session,
         question=trimmed,
@@ -1104,8 +1115,9 @@ def answer_question(
         answer_source=source,
         routed_by=resolved_route.source,
         fallback_reason=fallback_reason,
-        facts=result.fact_pack.to_payload(),
+        facts=turn_facts,
         data=result.data,
+        suggestions=result.suggestions,
         skill_params=resolved_route.params.to_dict(),
     )
 
@@ -1224,6 +1236,7 @@ def stream_answer(
             "skill": turn.skill,
             "answer": turn.answer,
             "facts": turn.facts,
+            "suggestions": turn.suggestions,
         },
     )
 

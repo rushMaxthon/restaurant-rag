@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -13,7 +15,9 @@ from app.models.enums import (
     InsightNarrationSource,
     OwnerActionStatus,
     OwnerInsightStatus,
+    PersonalizedOfferState,
 )
+from app.models.personalized_offer import PersonalizedOffer
 from app.models.user import User
 from app.schemas.insights import (
     ActionOutcomeResponse,
@@ -31,6 +35,7 @@ from app.schemas.owner_chat import (
     OwnerChatHistoryItem,
     OwnerChatRequest,
     OwnerChatResponse,
+    SuggestionOfferActivationResponse,
 )
 from app.schemas.owner_actions import (
     OwnerActionApprovalResponse,
@@ -63,6 +68,8 @@ from app.services.insights.generation import (
 )
 from app.services.insights.scope import resolve_insights_scope
 from app.services.insights.service import get_diagnostics_snapshot
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/owner/insights", tags=["Owner Insights"])
 
@@ -340,6 +347,7 @@ def send_owner_chat_message(
         routed_by=turn.routed_by,
         fallback_reason=turn.fallback_reason,
         facts=turn.facts or {},
+        suggestions=turn.suggestions,
     )
 
 
@@ -390,7 +398,7 @@ def list_owner_chat_history(
         db, current_user=current_user, restaurant_id=restaurant_id
     )
     rows = get_chat_history(db, scope=scope, session_id=session_id, limit=limit)
-    return [OwnerChatHistoryItem.model_validate(row) for row in rows]
+    return [OwnerChatHistoryItem.from_message(row) for row in rows]
 
 
 @router.delete("/chat/history", response_model=OwnerChatClearResponse)
@@ -611,3 +619,87 @@ def reject_recommendation(
         ) from error
 
     return OwnerActionProposalResponse.model_validate(updated)
+
+
+@router.post(
+    "/suggestions/offers/{offer_id}/activate",
+    response_model=SuggestionOfferActivationResponse,
+)
+def activate_suggested_offer(
+    offer_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    restaurant_id: uuid.UUID | None = Query(default=None),
+) -> SuggestionOfferActivationResponse:
+    """Start running an offer this restaurant already has.
+
+    Narrow on purpose. The offer management endpoint takes a full upsert, which
+    would mean a chat card reconstructing every field of an offer just to change
+    one - and any field it got wrong would be silently written. This changes the
+    state and nothing else.
+
+    Only the two reversible states are accepted. EXPIRED and DISABLED are
+    deliberate end states, and resurrecting one from a chat card would undo a
+    decision somebody made on the Offers screen.
+    """
+
+    scope = resolve_insights_scope(
+        db, current_user=current_user, restaurant_id=restaurant_id
+    )
+    offer = db.scalar(
+        select(PersonalizedOffer).where(
+            PersonalizedOffer.id == offer_id,
+            # Scoped in the query, so another restaurant's id is a 404 rather
+            # than a permission error that confirms the offer exists.
+            PersonalizedOffer.restaurant_id == scope.restaurant_id,
+        )
+    )
+    if offer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
+        )
+
+    if offer.state == PersonalizedOfferState.ACTIVE:
+        # Idempotent: two clicks, or a stale card, report the same end state
+        # rather than failing the second one.
+        return SuggestionOfferActivationResponse(
+            offer_id=offer.id,
+            name=offer.name,
+            state=offer.state.value,
+            already_active=True,
+            detail="This offer is already running.",
+        )
+
+    if offer.state not in {PersonalizedOfferState.DRAFT, PersonalizedOfferState.PAUSED}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"An offer in state {offer.state.value} cannot be started from "
+                "here. Reopen it on the Offers screen."
+            ),
+        )
+
+    if offer.expires_at is not None and offer.expires_at <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This offer's validity has already passed. Extend it first.",
+        )
+
+    offer.state = PersonalizedOfferState.ACTIVE
+    db.add(offer)
+    db.commit()
+    db.refresh(offer)
+
+    logger.info(
+        "Suggested offer activated offer_id=%s restaurant_id=%s user_id=%s",
+        offer.id,
+        scope.restaurant_id,
+        current_user.id,
+    )
+    return SuggestionOfferActivationResponse(
+        offer_id=offer.id,
+        name=offer.name,
+        state=offer.state.value,
+        already_active=False,
+        detail="Offer is now running.",
+    )

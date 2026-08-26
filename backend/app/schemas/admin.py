@@ -87,6 +87,19 @@ class AdminAIOfferGenerationRequest(BaseModel):
     queue_only: bool = False
 
 
+class OwnerAIOfferGenerationRequest(BaseModel):
+    """An owner's request to generate offers for their own restaurant.
+
+    Deliberately has no restaurant field and no `queue_only`: the scope comes
+    from the signed-in owner, and the run is always inline so the screen can
+    report a result without a worker attached.
+    """
+
+    user_limit: int | None = None
+    batch_size: int | None = None
+    force_refresh: bool = False
+
+
 class AdminAIOfferGenerationTriggerResponse(BaseModel):
     task_id: str | None = None
     queued: bool
