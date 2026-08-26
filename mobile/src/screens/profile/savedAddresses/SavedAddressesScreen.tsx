@@ -19,7 +19,7 @@ import {
   useSession,
 } from '@hooks/useAppStore';
 import { ApiError, api } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import type { SavedAddress } from '@/types/app';
 import {
@@ -645,5 +645,3 @@ export const createStyles = (theme: AppTheme) =>
     actionText: { color: theme.colors.text, fontWeight: '700' },
     actionTextDanger: { color: theme.colors.deepRed },
   });
-
-export const styles = createStyles(theme);

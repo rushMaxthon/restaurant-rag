@@ -1,7 +1,7 @@
 import type { AppClient, AppMode } from '../types/app';
 
 export const BUNDLE_ID_NAMESPACE = 'com.quickbite';
-export const DEFAULT_BRAND_PRIMARY_COLOR = '#E23744';
+export const DEFAULT_BRAND_PRIMARY_COLOR = '#FF5200';
 export const DEFAULT_MINIMUM_SUPPORTED_VERSION = '1.0.0';
 
 export const APP_KEY_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
@@ -98,7 +98,7 @@ export function validateAppClientForm(values: AppClientFormValues): AppClientFor
   }
 
   if (!BRAND_COLOR_PATTERN.test(values.brand_primary_color)) {
-    errors.brand_primary_color = 'Use a 6-digit hex colour, e.g. #E23744.';
+    errors.brand_primary_color = 'Use a 6-digit hex colour, e.g. #FF5200.';
   }
 
   if (!APP_VERSION_PATTERN.test(values.minimum_supported_version)) {

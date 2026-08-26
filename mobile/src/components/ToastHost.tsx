@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { ToastMessage } from '@/types/app';
 
 interface ToastHostProps {
@@ -53,11 +53,11 @@ function getToastPalette(theme: AppTheme, tone: ToastMessage['tone']) {
         icon: 'information-circle',
         iconColor: theme.colors.primary,
         iconBg: theme.colors.primarySoft,
-        cardBg: theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF7F1',
+        cardBg: theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF7F1'),
         borderColor:
           theme.mode === 'dark'
             ? theme.colors.border
-            : 'rgba(255, 82, 0, 0.22)',
+            : theme.primaryTint(0.22),
         accentColor: theme.colors.primary,
       };
   }
@@ -221,4 +221,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

@@ -16,7 +16,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useSession } from '@hooks/useAppStore';
 import { api, formatCurrency, formatDateTime } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import type { Order } from '@/types/app';
 
@@ -378,7 +378,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 24,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF4EC'),
       paddingHorizontal: 16,
       paddingVertical: 15,
       overflow: 'hidden',
@@ -391,7 +391,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 150,
       height: 150,
       borderRadius: 75,
-      backgroundColor: 'rgba(255, 82, 0, 0.10)',
+      backgroundColor: theme.primaryTint(0.10),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -400,7 +400,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 120,
       height: 120,
       borderRadius: 60,
-      backgroundColor: 'rgba(255, 198, 168, 0.42)',
+      backgroundColor: theme.tone('rgba(255, 198, 168, 0.42)'),
     },
     heroBadge: {
       alignSelf: 'flex-start',
@@ -521,7 +521,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 10,
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.22)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.22),
       backgroundColor:
         theme.mode === 'dark'
           ? theme.colors.surfaceAlt
@@ -595,5 +595,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

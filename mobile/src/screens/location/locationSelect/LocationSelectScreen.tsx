@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { ApiError, api } from '@services/api';
 import { locationService } from '@services/location';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import {
   useAppActions,
   useSelectedLocation,
@@ -688,5 +688,3 @@ export const createStyles = (theme: AppTheme) =>
       backgroundColor: theme.colors.divider,
     },
   });
-
-export const styles = createStyles(theme);

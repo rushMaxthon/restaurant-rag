@@ -41,7 +41,7 @@ import {
 } from '@hooks/useAppStore';
 import { ApiError, api } from '@services/api';
 import { buildMenuItemFromGeneratedComboItem } from '@utils/generatedComboCart';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import { homeCategories } from '@/data/homeCategories';
 import { searchSuggestions } from '@/data/searchSuggestions';
 import type {
@@ -1305,7 +1305,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 22,
       backgroundColor: theme.colors.primarySoft,
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.border : '#FFD8C7',
+      borderColor: theme.mode === 'dark' ? theme.colors.border : theme.tone('#FFD8C7'),
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
@@ -1322,7 +1322,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 22,
       backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.border : '#FFE0D1',
+      borderColor: theme.mode === 'dark' ? theme.colors.border : theme.tone('#FFE0D1'),
       paddingHorizontal: 14,
       flexDirection: 'row',
       alignItems: 'center',
@@ -1389,7 +1389,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 26,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF2EA',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF2EA'),
       padding: 16,
       gap: 10,
       overflow: 'hidden',
@@ -1402,7 +1402,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 83,
       top: -44,
       right: -18,
-      backgroundColor: 'rgba(255, 82, 0, 0.12)',
+      backgroundColor: theme.primaryTint(0.12),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -1411,7 +1411,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 52,
       bottom: -34,
       left: -16,
-      backgroundColor: 'rgba(255, 189, 153, 0.35)',
+      backgroundColor: theme.tone('rgba(255, 189, 153, 0.35)'),
     },
     greeting: {
       color: theme.colors.primary,
@@ -1493,5 +1493,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '700',
     },
   });
-
-export const styles = createStyles(theme);

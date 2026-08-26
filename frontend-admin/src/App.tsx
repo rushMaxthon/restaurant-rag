@@ -5,6 +5,7 @@ import { AdminLayout } from "./layouts/AdminLayout";
 import { AIManagerPage } from "./pages/AIManagerPage";
 import { AILogsPage } from "./pages/AILogsPage";
 import { AdminRestaurantsPage } from "./pages/AdminRestaurantsPage";
+import { BrandingPage } from "./pages/BrandingPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
@@ -162,6 +163,7 @@ function isAllowedPath(
     OWNER: [
       "/dashboard",
       "/restaurants",
+      "/branding",
       "/offers",
       "/generated-combos",
       "/menu-items",
@@ -486,6 +488,13 @@ function App() {
       />
     ) : pathname === "/notifications" ? (
       <NotificationsPage onToast={pushToast} />
+    ) : pathname === "/branding" ? (
+      <BrandingPage
+        onToast={pushToast}
+        restaurantId={restaurantId}
+        restaurantName={user?.restaurant_name ?? null}
+        token={token}
+      />
     ) : pathname === "/settings" ? (
       <SettingsPage onToast={pushToast} />
     ) : (

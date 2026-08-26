@@ -365,8 +365,8 @@ button {
 .admin-sidebar__link:hover,
 .secondary-button:hover,
 .table-actions button:hover,
-.primary-button:hover,
-.pagination__page:hover,
+.primary-button:hover:not(:disabled),
+.pagination__page:hover:not(:disabled),
 .settings-row:hover {
   transform: translateY(-1px);
 }
@@ -2170,9 +2170,9 @@ select:focus-visible {
   box-shadow: 0 6px 16px rgba(214, 59, 67, 0.18);
 }
 
-.primary-button:disabled,
-.secondary-button:disabled,
-.table-actions button:disabled,
+/* The pagination ellipsis, on its own. It used to share this rule with every
+   disabled button, which handed them `align-items: flex-end` and a 6px bottom
+   pad - so a disabled button's label sat low in its box and looked broken. */
 .pagination__gap {
   display: inline-flex;
   align-items: flex-end;
@@ -2181,6 +2181,16 @@ select:focus-visible {
   padding-bottom: 6px;
   color: var(--hint);
   user-select: none;
+}
+
+/* A disabled button stays a button: same box, same centring, visibly inert. */
+.primary-button:disabled,
+.secondary-button:disabled,
+.table-actions button:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
 }
 
 .pagination__page:disabled {
@@ -8488,4 +8498,1019 @@ summary:focus-visible,
 
   .ai-sug__act,
   .ai-sug__view { flex: 1 1 auto; justify-content: center; }
+}
+
+
+/* ---------------------------------- */
+/* Branding: choosing the app's colour */
+/* ---------------------------------- */
+
+.bp-surface {
+  width: 100%;
+}
+
+.bp {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas:
+    'picker preview'
+    'actions preview';
+  grid-template-rows: auto 1fr;
+  gap: 0 40px;
+  align-items: start;
+}
+
+.bp__picker { grid-area: picker; }
+.bp__preview { grid-area: preview; }
+.bp__actions { grid-area: actions; }
+
+.bp__picker {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+}
+
+/* Groups a heading with its controls, so the gap between sections is larger
+   than the gap between a heading and what it introduces. */
+.bp__section {
+  display: grid;
+}
+
+.bp__section-head h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bp__section-head p {
+  margin: 4px 0 0;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+/* --- the swatch grid ------------------------------------------------------ */
+
+/* Colour first, name second: the owner is choosing a colour, so the colour is
+   the control and the label is a caption. The old cards gave equal weight to a
+   sentence of description and made twelve of them unscannable. */
+/* Fixed at six columns rather than auto-filled: the twelve presets then read as
+   two even rows at any width, and the cells widen to take up the picker column
+   instead of leaving a band of empty card beside them. */
+.bp__swatches {
+  display: grid;
+  /* Capped cells, not stretched ones: letting six columns share a very wide
+     card floated a 46px swatch in the middle of a 180px cell. */
+  grid-template-columns: repeat(6, minmax(0, 132px));
+  justify-content: start;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1400px) {
+  .bp__swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .bp__swatches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Every tile carries a border, so the twelve read as one set. Previously only
+   the selected one had a box and the rest floated, which made the grid look
+   like eleven loose dots and one framed oddity. */
+.bp-swatch {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 14px 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.bp-swatch:hover { border-color: var(--muted); }
+
+.bp-swatch.is-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+
+.bp-swatch:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+.bp-swatch__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-pill);
+  color: #ffffff;
+  /* Inset rather than a border, so a pale swatch still has an edge without a
+     ring that changes the colour being judged. */
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.bp-swatch__name {
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  color: var(--text);
+  text-align: center;
+}
+
+.bp-swatch__hex {
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- custom colour -------------------------------------------------------- */
+
+.bp__custom {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: fit-content;
+  margin-top: 14px;
+  padding: 12px 16px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  cursor: pointer;
+}
+
+.bp__custom.is-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+
+/* The native picker is clipped to a round swatch so it reads as one of the
+   tiles above rather than a form control bolted on beneath them. */
+.bp__custom-swatch {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.bp__custom-swatch input[type='color'] {
+  position: absolute;
+  inset: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.bp__custom-fields { display: grid; gap: 5px; }
+.bp__custom-fields b { font-size: var(--fs-caption); font-weight: 650; color: var(--text); }
+
+.bp__custom-fields input[type='text'] {
+  width: 130px;
+  min-height: var(--control-h-sm);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.bp__custom-fields input.is-invalid { border-color: var(--danger, #d92d20); }
+
+.bp__custom-tag {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bp__warning {
+  margin: 10px 0 0;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--warning, #b54708);
+  max-width: 62ch;
+}
+
+/* Anchored on a rule at the foot of the picker column rather than floating a
+   button under the last field with a column of empty card beneath it. */
+.bp__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  align-self: end;
+}
+
+.bp__live { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.bp__live-dot {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.bp__live-copy { display: grid; gap: 1px; min-width: 0; }
+.bp__live-copy b { font-size: var(--fs-body-sm); font-weight: 700; color: var(--text); }
+.bp__live-copy i {
+  font-size: var(--fs-caption);
+  font-style: normal;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bp__spin { animation: bp-spin 0.9s linear infinite; }
+
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bp__spin { animation: none; }
+  .bp-swatch__chip { transition: none; }
+}
+
+/* --- the preview ---------------------------------------------------------- */
+
+.bp__preview {
+  display: grid;
+  gap: 12px;
+  position: sticky;
+  top: 16px;
+}
+
+.bp__preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bp__preview-label {
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bp__modes {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+}
+
+.bp__modes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bp__modes button.is-active {
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.bp__modes button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+/* The phone. Every colour below comes from a custom property the component
+   sets from the device's own palette maths - nothing here invents a colour. */
+.bp-phone {
+  border-radius: 26px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+/* --- the phone ------------------------------------------------------------
+   Everything below is expressed at the device's own logical scale - a 44pt
+   header button is 44px here - and the whole frame is scaled once by the stage.
+   That is what keeps the proportions honest; shrinking each number by hand is
+   how the previous version drifted into looking like a mockup. */
+
+.ph__stage {
+  width: 300px;
+  height: 620px;
+  overflow: hidden;
+}
+
+.ph {
+  width: var(--w);
+  height: 812px;
+  transform: scale(0.7634);
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  border-radius: 38px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+}
+
+.ph--dark { box-shadow: 0 18px 40px rgba(8, 10, 14, 0.4); }
+
+.ph__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ph__island {
+  width: 108px;
+  height: 30px;
+  border-radius: 16px;
+  background: #000000;
+}
+
+.ph__signal {
+  width: 44px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--ink);
+  opacity: 0.75;
+}
+
+/* Scrolls in the app; here it simply clips, so the screen shows its top. */
+.ph__scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 16px 12px;
+  overflow: hidden;
+}
+
+/* A real scroll view clips its overflow; flex children would instead squash to
+   fit, which silently shortened the cards and misrepresented their proportions. */
+.ph__scroll > * {
+  flex-shrink: 0;
+}
+
+.ph__scroll--chat { gap: 0; }
+
+/* --- header (44pt controls, 48pt location card) --------------------------- */
+
+.ph__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 10px;
+  background: var(--bg);
+}
+
+.ph__profile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 22px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  color: var(--p);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.ph__loc {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: var(--alt);
+  border: 1px solid var(--line);
+}
+
+.ph__loc b {
+  grid-column: 1;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ph__loc i {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--ink-2);
+}
+
+.ph__loc em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-style: normal;
+  color: var(--ink-2);
+}
+
+.ph__iconbtn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 22px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+
+.ph__cartbadge {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--p);
+  color: var(--on-p);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* --- shared atoms --------------------------------------------------------- */
+
+.ph__chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.ph__chip.is-brand {
+  border-color: transparent;
+  background: var(--soft);
+  color: var(--p);
+  font-weight: 700;
+}
+
+.ph__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: var(--p);
+  color: var(--on-p);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ph__btn--sm { min-height: 34px; padding: 0 14px; font-size: 13px; border-radius: 12px; }
+
+/* The chat add button: 8pt radius, 12/8 padding, exactly as ChatBubble sets. */
+.ph__btn--add {
+  min-height: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ph__btn--pay { min-height: 52px; min-width: 168px; padding: 0 20px; border-radius: 18px; font-size: 15px; }
+
+.ph__accent { color: var(--p); font-weight: 800; }
+
+.ph__seeall { color: var(--p); font-size: 13px; font-weight: 800; white-space: nowrap; }
+
+.ph__sec { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+
+.ph__sec-copy { display: grid; gap: 2px; min-width: 0; }
+.ph__sec-copy > b { font-size: 17px; font-weight: 800; color: var(--ink); letter-spacing: -0.2px; }
+.ph__sec-copy > i { font-size: 12px; font-style: normal; color: var(--ink-2); line-height: 16px; }
+
+.ph__rule { height: 1px; background: var(--line); }
+
+.ph__heart {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+
+.ph__veg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  /* Semantic, never the brand: a veg mark that followed the accent would lie. */
+  border: 2px solid #d92d20;
+}
+
+/* --- home ----------------------------------------------------------------- */
+
+.ph__promo {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border-radius: 16px;
+  background: var(--hero);
+}
+
+.ph__promo-top { display: flex; align-items: center; gap: 10px; }
+
+.ph__promo-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  background: var(--raised);
+  border: 1px solid var(--soft);
+}
+
+.ph__promo-top b { font-size: 16px; font-weight: 900; letter-spacing: -0.3px; color: var(--ink); }
+.ph__promo > i { font-size: 11.5px; font-style: normal; line-height: 16px; color: var(--ink-2); }
+
+.ph__promo-row { display: flex; align-items: center; gap: 8px; }
+.ph__promo-row .ph__btn { margin-left: auto; }
+
+.ph__pick {
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.ph__pick-media { position: relative; height: 118px; background: var(--soft); }
+
+.ph__match {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(20, 23, 34, 0.72);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ph__pick-media .ph__heart { position: absolute; top: 10px; right: 10px; }
+
+.ph__pick-body { display: grid; gap: 8px; padding: 12px; }
+
+.ph__pick-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.ph__pick-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ph__pick-meta { font-size: 11px; color: var(--ink-2); }
+
+.ph__pick-foot { display: flex; align-items: center; gap: 10px; }
+
+.ph__price { display: grid; gap: 1px; margin-right: auto; }
+.ph__price em { font-size: 9px; font-style: normal; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--hint); }
+.ph__price b { font-size: 17px; font-weight: 800; color: var(--ink); }
+
+.ph__combo {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.ph__combo-top { display: flex; align-items: center; justify-content: space-between; }
+.ph__combo > b { font-size: 15px; font-weight: 800; color: var(--ink); line-height: 20px; }
+.ph__combo-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.ph__combo-foot { display: flex; align-items: center; gap: 8px; }
+.ph__combo-foot .ph__accent { font-size: 17px; }
+.ph__combo-foot s { font-size: 13px; color: var(--ink-2); }
+
+.ph__round {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-left: auto;
+  border-radius: 12px;
+  background: var(--p);
+  color: var(--on-p);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* --- chat ----------------------------------------------------------------- */
+
+.ph__chathead { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+
+.ph__ghost {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--p);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ph__h1 { margin-top: 12px; font-size: 28px; font-weight: 900; line-height: 34px; letter-spacing: -0.6px; color: var(--ink); }
+.ph__lead { margin-top: 4px; font-size: 14px; font-style: normal; line-height: 22px; color: var(--ink-2); }
+
+.ph__row { display: flex; gap: 10px; align-items: flex-end; margin-top: 14px; }
+.ph__row--me { justify-content: flex-end; }
+
+.ph__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 18px;
+  background: var(--p);
+  color: var(--on-p);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* 18pt corners with a 4pt tail on the sender's side, as ChatBubble sets. */
+.ph__bubble {
+  display: grid;
+  gap: 12px;
+  max-width: 84%;
+  padding: 12px 14px;
+  border-radius: 18px 18px 18px 4px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.ph__bubble--me {
+  border-radius: 18px 18px 4px 18px;
+  background: var(--p);
+  color: var(--on-p);
+}
+
+.ph__food {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.ph__foodimg { width: 58px; height: 58px; flex-shrink: 0; border-radius: 10px; background: var(--soft); }
+.ph__foodcopy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.ph__foodcopy b { font-size: 15px; font-weight: 700; color: var(--ink); }
+.ph__foodcopy i { font-size: 12px; font-style: normal; color: var(--ink-2); }
+
+.ph__composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 16px 10px;
+  padding: 6px;
+  border-radius: 28px;
+  background: var(--hero);
+}
+
+.ph__input {
+  flex: 1;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 24px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.ph__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 26px;
+  background: var(--p);
+  color: var(--on-p);
+  font-size: 18px;
+}
+
+/* --- cart ----------------------------------------------------------------- */
+
+.ph__navbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ph__navbar b { margin: 0 auto; font-size: 20px; font-weight: 800; color: var(--ink); }
+
+.ph__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: var(--hero);
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.ph__panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.ph__panel--plain { grid-auto-flow: column; align-items: center; justify-content: space-between; }
+
+.ph__panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+.ph__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  background: var(--soft);
+  color: var(--p);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ph__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--hero);
+}
+
+.ph__itemimg { width: 58px; height: 58px; flex-shrink: 0; border-radius: 15px; background: var(--soft); }
+.ph__itemcopy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.ph__itemcopy > b { font-size: 15px; font-weight: 800; color: var(--ink); }
+.ph__itemcopy > i { font-size: 12px; font-style: normal; color: var(--ink-2); }
+
+.ph__itemprice { display: flex; align-items: flex-end; gap: 10px; margin-top: 2px; }
+.ph__pricestack { display: grid; gap: 1px; }
+.ph__pricestack em { font-size: 9px; font-style: normal; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--hint); }
+.ph__pricestack i { font-size: 11px; font-style: normal; font-weight: 700; color: var(--ink-2); }
+.ph__itemprice > b { font-size: 14px; font-weight: 800; color: var(--ink); }
+
+/* Tinted, bordered, with white circular buttons - not a solid accent block. */
+.ph__qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: var(--alt);
+  border: 1px solid var(--soft);
+}
+
+.ph__qty em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--raised);
+  color: var(--p);
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ph__qty > span { min-width: 14px; text-align: center; font-size: 12px; font-weight: 800; color: var(--ink); }
+
+.ph__addmore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--soft);
+}
+
+.ph__addmore-copy { display: grid; gap: 2px; }
+.ph__addmore-copy b { font-size: 15px; font-weight: 800; color: var(--p); }
+.ph__addmore-copy i { font-size: 12px; font-style: normal; color: var(--ink-2); }
+
+.ph__chev { font-style: normal; font-size: 18px; color: var(--ink-2); }
+
+.ph__bill {
+  display: grid;
+  gap: 10px;
+  padding: 15px;
+  border-radius: 24px;
+  background: var(--hero);
+  border: 1px solid var(--soft);
+}
+
+.ph__bill-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ph__bill-head .ph__accent { font-size: 11px; }
+
+.ph__bill-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.ph__bill-row i { font-size: 13px; font-style: normal; color: var(--ink-2); }
+.ph__bill-row b { font-size: 13px; font-weight: 700; color: var(--ink); }
+
+.ph__bill-row.is-total b:first-child { font-size: 16px; font-weight: 800; }
+.ph__bill-row.is-total b:last-child { font-size: 18px; font-weight: 800; }
+
+.ph__paybar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 18px;
+  border-top: 1px solid var(--line);
+  border-radius: 24px 24px 0 0;
+  background: var(--bg);
+}
+
+.ph__pay { display: grid; gap: 1px; margin-right: auto; }
+.ph__pay em { font-size: 10px; font-style: normal; font-weight: 700; letter-spacing: 0.6px; color: var(--hint); }
+.ph__pay b { font-size: 22px; font-weight: 800; color: var(--ink); }
+.ph__pay i { font-size: 11px; font-style: normal; color: var(--ink-2); }
+
+/* --- tab bar (58pt + inset, 11pt labels) ---------------------------------- */
+
+.ph__tabbar {
+  display: flex;
+  height: 64px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  background: var(--tab);
+}
+
+.ph__tab {
+  flex: 1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  color: var(--hint);
+}
+
+.ph__tab.is-active { color: var(--p); font-weight: 700; }
+
+/* Stands in for the app's outline icons: a rounded glyph-sized mark that takes
+   the tab's own colour, so the active tint is what is being judged. */
+.ph__tabicon {
+  width: 22px;
+  height: 20px;
+  border-radius: 6px 6px 7px 7px;
+  border: 2px solid currentColor;
+  opacity: 0.92;
+}
+
+/* --- screen switcher ------------------------------------------------------ */
+
+.bp__screens {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  width: fit-content;
+}
+
+.bp__screens button {
+  padding: 4px 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 650;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bp__screens button.is-active {
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.bp__screens button:focus-visible { outline: none; box-shadow: var(--shadow-ring); }
+
+.bp__facts {
+  display: flex;
+  gap: 18px;
+  margin: 2px 0 0;
+}
+
+.bp__facts > div { display: grid; gap: 1px; }
+
+.bp__facts dt {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bp__facts dd {
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bp__note {
+  margin: 0;
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+@media (max-width: 1080px) {
+  .bp {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .bp__preview {
+    position: static;
+    max-width: 320px;
+  }
 }

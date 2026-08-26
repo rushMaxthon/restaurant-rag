@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { theme, type AppTheme } from '@/theme';
+import { type AppTheme } from '@/theme';
 
 /**
  * Cart styles live here rather than in `CartScreen` so the section components
@@ -113,7 +113,7 @@ export const createStyles = (theme: AppTheme) =>
       textAlignVertical: 'center',
       overflow: 'hidden',
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF3EA',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF3EA'),
       color: theme.colors.primary,
       fontSize: 10.5,
       fontWeight: '800',
@@ -233,7 +233,7 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'center',
       flexShrink: 0,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF4EC'),
     },
     offerPaletteLockedText: {
       color: theme.colors.hint,
@@ -245,10 +245,10 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 11,
       paddingVertical: 7,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF5EE',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF5EE'),
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     clearChipText: {
       color: theme.colors.primary,
@@ -290,10 +290,10 @@ export const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF5EE',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF5EE'),
       borderWidth: theme.mode === 'dark' ? 0 : 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     fulfillmentPrimaryActionText: {
       color: theme.colors.primary,
@@ -332,10 +332,10 @@ export const createStyles = (theme: AppTheme) =>
       padding: 3,
       borderRadius: 18,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.background : '#FFF7F1',
+        theme.mode === 'dark' ? theme.colors.background : theme.tone('#FFF7F1'),
       borderWidth: theme.mode === 'dark' ? 0 : 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.06)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.06),
     },
     fulfillmentToggleButton: {
       flex: 1,
@@ -363,7 +363,7 @@ export const createStyles = (theme: AppTheme) =>
       elevation: theme.mode === 'dark' ? 2 : 0,
     },
     fulfillmentToggleButtonDisabled: {
-      backgroundColor: theme.mode === 'dark' ? 'transparent' : '#FFFDFC',
+      backgroundColor: theme.mode === 'dark' ? 'transparent' : theme.tone('#FFFDFC'),
       borderColor: theme.mode === 'dark' ? 'transparent' : theme.colors.border,
     },
     fulfillmentToggleText: {
@@ -383,7 +383,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 18,
       padding: 10,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFFCF9',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFFCF9'),
       borderWidth: theme.mode === 'dark' ? 0 : 1,
       borderColor: theme.colors.border,
     },
@@ -399,7 +399,7 @@ export const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF1E7',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF1E7'),
     },
     fulfillmentSelectedCopy: {
       flex: 1,
@@ -432,9 +432,9 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 10,
       paddingVertical: 7,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.dangerSoft : '#FFF5EF',
+        theme.mode === 'dark' ? theme.colors.dangerSoft : theme.tone('#FFF5EF'),
       borderWidth: theme.mode === 'dark' ? 0 : 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.border : '#FFD8C3',
+      borderColor: theme.mode === 'dark' ? theme.colors.border : theme.tone('#FFD8C3'),
     },
     fulfillmentWarningText: {
       flex: 1,
@@ -459,9 +459,9 @@ export const createStyles = (theme: AppTheme) =>
     },
     fulfillmentBodyWarning: {
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.dangerSoft : '#FFF3EC',
+        theme.mode === 'dark' ? theme.colors.dangerSoft : theme.tone('#FFF3EC'),
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.primary : '#FFB892',
+      borderColor: theme.mode === 'dark' ? theme.colors.primary : theme.tone('#FFB892'),
     },
     fulfillmentInfo: {
       flex: 1,
@@ -504,10 +504,10 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 999,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFF5EE',
+      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : theme.tone('#FFF5EE'),
       borderWidth: theme.mode === 'dark' ? 0 : 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     fulfillmentActionHighlighted: {
       backgroundColor: theme.colors.primary,
@@ -563,7 +563,7 @@ export const createStyles = (theme: AppTheme) =>
       textAlignVertical: 'center',
       overflow: 'hidden',
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF3EA',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF3EA'),
       color: theme.colors.primary,
       fontSize: 11,
       fontWeight: '800',
@@ -596,10 +596,10 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'space-between',
       gap: 12,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF7F1',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF7F1'),
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     addMoreItemsCopy: {
       flex: 1,
@@ -627,7 +627,7 @@ export const createStyles = (theme: AppTheme) =>
       gap: 12,
       borderRadius: 18,
       padding: 10,
-      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFFCFA',
+      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : theme.tone('#FFFCFA'),
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
@@ -729,10 +729,10 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 7,
       paddingVertical: 5,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF3EA',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF3EA'),
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     quantityButton: {
       width: 26,
@@ -796,7 +796,7 @@ export const createStyles = (theme: AppTheme) =>
       backgroundColor: theme.colors.surfaceRaised,
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.10)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.10),
       shadowColor: theme.colors.shadow,
       shadowOpacity: 0.06,
       shadowOffset: { width: 0, height: 6 },
@@ -810,7 +810,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 94,
       height: 94,
       borderRadius: 999,
-      backgroundColor: 'rgba(255,82,0,0.08)',
+      backgroundColor: theme.primaryTint(0.08),
     },
     upsellCarouselHeader: {
       flexDirection: 'row',
@@ -823,7 +823,7 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 9,
       paddingVertical: 5,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.primarySoft : '#FFF1E7',
+        theme.mode === 'dark' ? theme.colors.primarySoft : theme.tone('#FFF1E7'),
     },
     upsellBadgeText: {
       color: theme.colors.primary,
@@ -934,7 +934,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 16,
       borderWidth: 1,
       borderColor: theme.colors.border,
-      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFFDFC',
+      backgroundColor: theme.mode === 'dark' ? theme.colors.surface : theme.tone('#FFFDFC'),
       paddingHorizontal: 16,
       paddingVertical: 11,
       textAlignVertical: 'top',
@@ -949,10 +949,10 @@ export const createStyles = (theme: AppTheme) =>
       padding: 15,
       gap: 10,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF8F3',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF8F3'),
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
       shadowColor: theme.colors.shadow,
       shadowOpacity: 0.05,
       shadowOffset: { width: 0, height: 10 },
@@ -1073,7 +1073,7 @@ export const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: theme.colors.primary,
-      shadowColor: 'rgba(255,82,0,0.28)',
+      shadowColor: theme.primaryTint(0.28),
       shadowOpacity: 0.24,
       shadowOffset: { width: 0, height: 10 },
       shadowRadius: 16,
@@ -1108,8 +1108,8 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'center',
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.08)'
-          : 'rgba(255, 82, 0, 0.05)',
+          ? theme.primaryTint(0.08)
+          : theme.primaryTint(0.05),
     },
     emptyIconCore: {
       width: 68,
@@ -1185,5 +1185,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '700',
     },
   });
-
-export const styles = createStyles(theme);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 interface HomeSectionHeaderProps {
   title: string;
@@ -63,7 +63,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

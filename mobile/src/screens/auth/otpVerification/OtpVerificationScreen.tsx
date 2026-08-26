@@ -16,7 +16,7 @@ import {
   getPendingRegistrationDraft,
 } from '@services/registrationDraft';
 import { useAppActions } from '@hooks/useAppStore';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import { navigateAfterAuth } from '@utils/authRedirect';
 
@@ -377,4 +377,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

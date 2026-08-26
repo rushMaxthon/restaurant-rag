@@ -19,7 +19,7 @@ import {
   useSession,
 } from '@hooks/useAppStore';
 import { ApiError, api, formatCurrency, placeholderImage } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { FavoriteItem } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import { isCustomizableMenuItem } from '@utils/menuItemCustomization';
@@ -477,4 +477,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

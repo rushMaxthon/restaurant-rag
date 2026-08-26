@@ -19,8 +19,8 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useTheme } from '@/theme';
-import { styles } from '../styles';
+import { useTheme, useThemedStyles } from '@/theme';
+import { createStyles } from '../styles';
 
 type ComboAddButtonProps = {
   hasAppeared: boolean;
@@ -39,6 +39,7 @@ export const ComboAddButton = React.memo(function ComboAddButton({
   onPress,
 }: ComboAddButtonProps) {
   const theme = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [showAddedState, setShowAddedState] = useState(false);
   const hasPlayedIntroRef = useRef(false);

@@ -11,7 +11,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useAppActions, useThemePreference } from '@hooks/useAppStore';
 import {
-  lightTheme,
   useTheme,
   useThemedStyles,
   type AppTheme,
@@ -248,5 +247,3 @@ export const createStyles = (theme: AppTheme) =>
       backgroundColor: theme.colors.primary,
     },
   });
-
-export const styles = createStyles(lightTheme);

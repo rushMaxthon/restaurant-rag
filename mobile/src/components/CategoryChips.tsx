@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 interface CategoryChipsProps {
   categories: string[];
@@ -75,7 +75,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

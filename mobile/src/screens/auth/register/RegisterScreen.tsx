@@ -27,7 +27,7 @@ import { PhoneNumberField } from '@components/PhoneNumberField';
 import { firebaseAuthService } from '@services/firebaseAuth';
 import { setPendingRegistrationDraft } from '@services/registrationDraft';
 import { useAppActions, useSession } from '@hooks/useAppStore';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import {
   buildInternationalPhoneNumber,
@@ -632,5 +632,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

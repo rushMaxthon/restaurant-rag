@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
 import { api } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   FulfillmentSelection,
   LocationScheduleDayGroup,
@@ -1050,4 +1050,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

@@ -13,7 +13,7 @@ import { OrderStepper } from '@components/OrderStepper';
 import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useSession } from '@hooks/useAppStore';
 import { api, formatCurrency, formatDateTime } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { Order } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 
@@ -165,7 +165,7 @@ export const createStyles = (theme: AppTheme) =>
     empty: {
       borderRadius: 16,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF7F2',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF7F2'),
       padding: 20,
       gap: 6,
     },
@@ -192,5 +192,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

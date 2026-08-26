@@ -17,7 +17,7 @@ import type { RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { ApiError, api } from '@services/api';
 import { useAppActions, useSession } from '@hooks/useAppStore';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import type {
   SavedAddress,
@@ -595,5 +595,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Eye,
   Layers3,
+  Palette,
   ReceiptText,
   Settings2,
   Smartphone,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { Modal } from "../components/Modal";
 import { AppClientFields } from "../components/AppClientFields";
+import { BrandingPanel } from "../components/BrandingPanel";
 import {
   toAppClientForm,
   toBundleId,
@@ -107,6 +109,7 @@ type LocationForm = {
 type SectionKey =
   | "details"
   | "settings"
+  | "branding"
   | "app_client"
   | "offers"
   | "locations"
@@ -269,6 +272,11 @@ export function RestaurantDetailPage({
 
       if (isAdmin) {
         baseSections.push(
+          // Admins reach branding here because they manage many restaurants and
+          // the sidebar is not scoped to one. An owner has a single restaurant,
+          // so for them it is a top-level sidebar item instead of a tab buried
+          // inside a workspace they would otherwise never open.
+          { key: "branding", label: "Branding", icon: Palette },
           { key: "app_client", label: "Mobile App", icon: Smartphone },
           { key: "locations", label: "Locations", icon: Eye },
           {
@@ -1021,6 +1029,27 @@ export function RestaurantDetailPage({
               <span>{formatDate(restaurant.created_at)}</span>
             </div>
           </div>
+        </section>
+      ) : null}
+
+      {activeSection === "branding" ? (
+        <section className="admin-surface page-stack">
+          <div className="panel__header">
+            <div>
+              <span className="eyebrow">Customer app</span>
+              <h2>Branding</h2>
+              <p>
+                The accent colour your customers see throughout the app. Menus,
+                prices and order status keep their own colours.
+              </p>
+            </div>
+          </div>
+          <BrandingPanel
+            onToast={onToast}
+            restaurantId={restaurantId}
+            restaurantName={restaurant?.name ?? "Your restaurant"}
+            token={token}
+          />
         </section>
       ) : null}
 

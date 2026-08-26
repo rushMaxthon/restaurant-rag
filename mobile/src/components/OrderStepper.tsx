@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { OrderStatus } from '@/types/app';
 
 const steps: OrderStatus[] = [
@@ -124,7 +124,7 @@ const createStyles = (theme: AppTheme) =>
     },
     noticeCardPending: {
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255,82,0,0.18)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.18),
       backgroundColor:
         theme.mode === 'dark'
           ? theme.colors.surfaceAlt
@@ -185,9 +185,9 @@ const createStyles = (theme: AppTheme) =>
       backgroundColor: theme.colors.success,
     },
     dotActive: {
-      backgroundColor: 'rgba(255, 82, 0, 0.12)',
+      backgroundColor: theme.primaryTint(0.12),
       borderWidth: 1,
-      borderColor: 'rgba(255, 82, 0, 0.18)',
+      borderColor: theme.primaryTint(0.18),
     },
     dotPending: {
       borderWidth: 2,
@@ -235,4 +235,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

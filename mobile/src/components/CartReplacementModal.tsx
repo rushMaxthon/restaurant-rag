@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 interface CartReplacementModalProps {
   visible: boolean;
@@ -202,4 +202,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

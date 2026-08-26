@@ -13,7 +13,7 @@ import { GeneratedComboCard } from '@components/home/GeneratedComboCard';
 import { OfferBannerCard } from '@components/home/OfferBannerCard';
 import { formatCurrency, placeholderImage } from '@services/api';
 import { dedupeById, splitBoldSegments } from '@utils/chatText';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   ChatHistoryItem,
   ChatSuggestionItem,
@@ -261,7 +261,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

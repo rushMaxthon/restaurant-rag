@@ -8,7 +8,7 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { HomeCategory } from '@/data/homeCategories';
 
 interface CategoryCarouselProps {
@@ -81,7 +81,7 @@ const createStyles = (theme: AppTheme) =>
     },
     cardActive: {
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.primarySoft : '#FFF2EB',
+        theme.mode === 'dark' ? theme.colors.primarySoft : theme.tone('#FFF2EB'),
       borderColor: theme.colors.primary,
     },
     iconWrap: {
@@ -106,7 +106,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

@@ -8,6 +8,7 @@ import {
   Layers3,
   LayoutDashboard,
   LogOut,
+  Palette,
   ReceiptText,
   Settings,
   Sparkles,
@@ -55,6 +56,7 @@ const sidebarSections: SidebarSection[] = [
     label: "Manage",
     items: [
       { path: "/restaurants", label: "Restaurants", icon: Store },
+      { path: "/branding", label: "Branding", icon: Palette },
       { path: "/orders", label: "Orders", icon: ReceiptText },
       { path: "/menu-items", label: "Menu Items", icon: UtensilsCrossed },
       { path: "/offers", label: "Offers", icon: TicketPercent },
@@ -75,6 +77,7 @@ const sidebarSections: SidebarSection[] = [
 const ownerVisiblePaths = new Set([
   "/dashboard",
   "/restaurants",
+  "/branding",
   "/offers",
   "/generated-combos",
   "/menu-items",

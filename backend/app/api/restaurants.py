@@ -4,6 +4,8 @@ import re
 import uuid
 from typing import Annotated
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +19,9 @@ from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.restaurant import (
+    RestaurantThemeResponse,
+    RestaurantThemeUpdate,
+    ThemePresetResponse,
     AdminRestaurantCreate,
     AdminRestaurantCreateResponse,
     AppClientResponse,
@@ -37,6 +42,12 @@ from app.services.app_clients import (
     build_app_client_for_restaurant,
     get_app_client_for_restaurant,
     upsert_app_client_for_restaurant,
+)
+from app.services.restaurant_theme import (
+    THEME_PRESETS,
+    ThemeValidationError,
+    read_theme,
+    resolve_theme,
 )
 from app.services.auth import get_current_user, get_current_user_optional, hash_password, require_admin, require_owner
 from app.services.personalized_offers import invalidate_all_personalized_offer_caches
@@ -730,3 +741,94 @@ def delete_restaurant_location_slot(
     db.delete(slot)
     db.commit()
     return LocationFulfillmentSlotResponse.model_validate(slot)
+
+
+logger = logging.getLogger(__name__)
+
+
+def _theme_restaurant_for(
+    db: Session, *, restaurant_id: uuid.UUID, user: User
+) -> Restaurant:
+    """Load a restaurant the caller is allowed to theme.
+
+    An owner may only reach their own; an admin may reach any. Anyone else gets
+    a 404 rather than a 403, so the endpoint does not confirm which restaurant
+    ids exist.
+    """
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found"
+        )
+    if user.role == UserRole.ADMIN:
+        return restaurant
+    if user.role == UserRole.OWNER and restaurant.owner_id == user.id:
+        return restaurant
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found"
+    )
+
+
+@router.get("/{restaurant_id}/theme", response_model=RestaurantThemeResponse)
+def get_restaurant_theme(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantThemeResponse:
+    """This restaurant's theme and the presets available to it."""
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    stored = read_theme(restaurant)
+    return RestaurantThemeResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        preset=stored["preset"],
+        primary_color=stored["primary_color"],
+        presets=[ThemePresetResponse(**vars(preset)) for preset in THEME_PRESETS],
+    )
+
+
+@router.put("/{restaurant_id}/theme", response_model=RestaurantThemeResponse)
+def put_restaurant_theme(
+    restaurant_id: uuid.UUID,
+    payload: RestaurantThemeUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantThemeResponse:
+    """Change this restaurant's theme.
+
+    Owner-writable, unlike the app-client record it used to live on: the colour
+    is the restaurant's own branding, not part of its mobile build configuration,
+    and an owner should not need an administrator to change it.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    try:
+        resolved = resolve_theme(
+            preset_id=payload.preset, primary_color=payload.primary_color
+        )
+    except ThemeValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    restaurant.theme = resolved
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    logger.info(
+        "Restaurant theme updated restaurant_id=%s user_id=%s preset=%s color=%s",
+        restaurant.id,
+        current_user.id,
+        resolved["preset"],
+        resolved["primary_color"],
+    )
+    return RestaurantThemeResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        preset=resolved["preset"],
+        primary_color=resolved["primary_color"],
+        presets=[ThemePresetResponse(**vars(preset)) for preset in THEME_PRESETS],
+    )

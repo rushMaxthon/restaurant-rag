@@ -33,6 +33,7 @@ import type {
   OwnerBriefing,
   OwnerChatAnswer,
   OwnerChatClearResult,
+  RestaurantTheme,
   SuggestionOfferActivation,
   OwnerChatHistoryItem,
   OwnerInsight,
@@ -921,6 +922,20 @@ export const api = {
       `/owner/insights/suggestions/offers/${offerId}/activate${scopeQuery(restaurantId)}`,
       { method: 'POST', token },
     );
+  },
+  getRestaurantTheme(token: string, restaurantId: string): Promise<RestaurantTheme> {
+    return request<RestaurantTheme>(`/restaurants/${restaurantId}/theme`, { token });
+  },
+  updateRestaurantTheme(
+    token: string,
+    restaurantId: string,
+    payload: { preset?: string | null; primary_color?: string | null },
+  ): Promise<RestaurantTheme> {
+    return request<RestaurantTheme>(`/restaurants/${restaurantId}/theme`, {
+      method: 'PUT',
+      token,
+      body: payload,
+    });
   },
   rejectOwnerRecommendation(
     token: string,

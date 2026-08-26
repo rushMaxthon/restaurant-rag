@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { formatCurrency, toNumber } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { GeneratedCombo } from '@/types/app';
 
 export const GENERATED_COMBO_CARD_GAP = 12;
@@ -67,7 +67,7 @@ function getComboBadge(
     return {
       label: 'Trending',
       iconName: 'flame',
-      backgroundColor: '#FFF0E8',
+      backgroundColor: theme.tone('#FFF0E8'),
       textColor: theme.colors.primary,
       iconColor: theme.colors.primary,
     };
@@ -99,7 +99,7 @@ function GeneratedComboCardComponent({
         : '#FFF6E8'
       : theme.mode === 'dark'
       ? theme.colors.primarySoft
-      : '#FFF1E8';
+      : theme.tone('#FFF1E8');
   const restaurantIconColor =
     badge?.label === 'Best Value' ? theme.colors.warning : theme.colors.primary;
 
@@ -231,7 +231,7 @@ const createStyles = (theme: AppTheme) =>
       width: 140,
       height: 140,
       borderRadius: 70,
-      backgroundColor: 'rgba(255, 82, 0, 0.06)',
+      backgroundColor: theme.primaryTint(0.06),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -240,7 +240,7 @@ const createStyles = (theme: AppTheme) =>
       width: 80,
       height: 80,
       borderRadius: 40,
-      backgroundColor: 'rgba(255, 197, 143, 0.08)',
+      backgroundColor: theme.tone('rgba(255, 197, 143, 0.08)'),
     },
     contentContainer: {
       flex: 1,
@@ -379,7 +379,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

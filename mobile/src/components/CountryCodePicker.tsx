@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { COUNTRIES, type CountryOption } from '@/data/countries';
 import { getCountryFlagEmoji } from '@/utils/phoneNumber';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 /**
  * How the trigger presents itself.
@@ -242,4 +242,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

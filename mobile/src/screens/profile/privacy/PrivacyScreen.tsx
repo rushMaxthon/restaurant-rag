@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 export function PrivacyScreen(): React.JSX.Element {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const switchTrackColor = {
     false: theme.mode === 'dark' ? theme.colors.surfaceAlt : '#D7D8DE',
-    true: theme.mode === 'dark' ? '#CC6A40' : '#FF9A6A',
+    true: theme.mode === 'dark' ? theme.tone('#CC6A40') : theme.tone('#FF9A6A'),
   };
   const [shareUsage, setShareUsage] = useState(true);
   const [saveChatHistory, setSaveChatHistory] = useState(true);
@@ -89,5 +89,3 @@ export const createStyles = (theme: AppTheme) =>
       lineHeight: 18,
     },
   });
-
-export const styles = createStyles(theme);

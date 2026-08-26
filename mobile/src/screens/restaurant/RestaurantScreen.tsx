@@ -43,7 +43,7 @@ import {
 } from '@hooks/useAppStore';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
 import { ApiError, api, placeholderImage } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import { getOfferPalette } from '@components/offers/offerPalette';
 import { getRestaurantScopedOffers } from '@components/offers/offerScope';
 import type {
@@ -1977,11 +1977,11 @@ export const createStyles = (theme: AppTheme) =>
       height: 34,
       borderRadius: 17,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.primarySoft : '#FFF1E8',
+        theme.mode === 'dark' ? theme.colors.primarySoft : theme.tone('#FFF1E8'),
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.border : '#F7D9C9',
+      borderColor: theme.mode === 'dark' ? theme.colors.border : theme.tone('#F7D9C9'),
     },
     branchSelectorCopy: {
       flex: 1,
@@ -2037,7 +2037,7 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 9,
       borderRadius: 999,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.primarySoft : '#FFF2E7',
+        theme.mode === 'dark' ? theme.colors.primarySoft : theme.tone('#FFF2E7'),
       minHeight: 28,
       alignItems: 'center',
       justifyContent: 'center',
@@ -2055,9 +2055,9 @@ export const createStyles = (theme: AppTheme) =>
       paddingVertical: 8,
       borderRadius: 14,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF5EF',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF5EF'),
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.border : '#FFD8C3',
+      borderColor: theme.mode === 'dark' ? theme.colors.border : theme.tone('#FFD8C3'),
     },
     fulfillmentUnavailableText: {
       flex: 1,
@@ -2125,7 +2125,7 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 999,
       backgroundColor: theme.mode === 'dark' ? theme.colors.chip : '#FAF7F3',
       borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? theme.colors.chipBorder : '#F0E7DF',
+      borderColor: theme.mode === 'dark' ? theme.colors.chipBorder : theme.tone('#F0E7DF'),
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
@@ -2298,7 +2298,7 @@ export const createStyles = (theme: AppTheme) =>
     locationSheetRowActive: {
       borderColor: theme.colors.primary,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF8F2',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF8F2'),
       shadowColor: theme.colors.primary,
       shadowOpacity: 0.12,
       shadowRadius: 22,
@@ -2388,5 +2388,3 @@ export const createStyles = (theme: AppTheme) =>
       letterSpacing: 0.1,
     },
   });
-
-export const styles = createStyles(theme);

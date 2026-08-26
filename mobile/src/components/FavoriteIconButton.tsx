@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 interface FavoriteIconButtonProps {
   active: boolean;
@@ -67,4 +67,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

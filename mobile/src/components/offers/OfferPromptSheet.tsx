@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { formatCurrency } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import { getOfferPalette } from '@/components/offers/offerPalette';
 import type { PendingOfferPrompt, PersonalizedOfferCard } from '@/types/app';
 
@@ -61,6 +61,7 @@ function OfferCard({
   onApply: (offerId: string) => void;
 }): React.JSX.Element {
   const theme = useTheme();
+  const styles = useThemedStyles(createStyles);
   const palette = useMemo(
     () =>
       getOfferPalette(
@@ -197,6 +198,7 @@ function SingleOfferCard({
   onContinue: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
+  const styles = useThemedStyles(createStyles);
   const palette = getOfferPalette(
     {
       offer_type: offer.offer_type,
@@ -455,7 +457,7 @@ const createStyles = (theme: AppTheme) =>
     sheet: {
       borderRadius: 28,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF7F2',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF7F2'),
       paddingHorizontal: 16,
       paddingTop: 16,
       paddingBottom: 14,
@@ -638,4 +640,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

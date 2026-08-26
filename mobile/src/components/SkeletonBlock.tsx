@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
-import { theme, useThemedStyles, type AppTheme } from '@/theme';
+import { useThemedStyles, type AppTheme } from '@/theme';
 
 interface SkeletonBlockProps {
   height: number;
@@ -60,4 +60,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

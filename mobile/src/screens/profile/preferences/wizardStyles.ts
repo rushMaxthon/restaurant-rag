@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { lightTheme, type AppTheme } from '@/theme';
+import { type AppTheme } from '@/theme';
 
 export const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
@@ -60,7 +60,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 156,
       height: 156,
       borderRadius: 78,
-      backgroundColor: 'rgba(255, 126, 62, 0.14)',
+      backgroundColor: theme.tone('rgba(255, 126, 62, 0.14)'),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -69,7 +69,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 122,
       height: 122,
       borderRadius: 61,
-      backgroundColor: 'rgba(255, 126, 62, 0.1)',
+      backgroundColor: theme.tone('rgba(255, 126, 62, 0.1)'),
     },
     heroBadge: {
       alignSelf: 'flex-start',
@@ -190,5 +190,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '900',
     },
   });
-
-export const styles = createStyles(lightTheme);

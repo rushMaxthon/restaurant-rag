@@ -17,7 +17,7 @@ import { OrderStepper } from '@components/OrderStepper';
 import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useSession } from '@hooks/useAppStore';
 import { api, formatCurrency, formatDateTime } from '@services/api';
-import { lightTheme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import type { Order } from '@/types/app';
 
@@ -523,7 +523,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 24,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF4EC'),
       paddingHorizontal: 18,
       paddingVertical: 18,
       gap: 14,
@@ -546,8 +546,8 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 85,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.08)'
-          : 'rgba(255, 82, 0, 0.10)',
+          ? theme.primaryTint(0.08)
+          : theme.primaryTint(0.10),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -558,8 +558,8 @@ export const createStyles = (theme: AppTheme) =>
       borderRadius: 64,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.06)'
-          : 'rgba(255, 189, 153, 0.32)',
+          ? theme.primaryTint(0.06)
+          : theme.tone('rgba(255, 189, 153, 0.32)'),
     },
     heroTopRow: {
       flexDirection: 'row',
@@ -962,5 +962,3 @@ export const createStyles = (theme: AppTheme) =>
       lineHeight: 20,
     },
   });
-
-export const styles = createStyles(lightTheme);

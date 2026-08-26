@@ -1082,6 +1082,22 @@ export interface SuggestionCard {
   evidence: Array<{ label: string; value: string }>;
 }
 
+export interface ThemePreset {
+  id: string;
+  label: string;
+  primary_color: string;
+  description: string;
+}
+
+/** A restaurant's chosen accent, plus the gallery it was chosen from. */
+export interface RestaurantTheme {
+  restaurant_id: string;
+  restaurant_name: string;
+  preset: string;
+  primary_color: string;
+  presets: ThemePreset[];
+}
+
 export interface OwnerChatAnswer {
   session_id: string;
   answer: string;

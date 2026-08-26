@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 export function HelpSupportScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -90,5 +90,3 @@ export const createStyles = (theme: AppTheme) =>
       fontSize: 12,
     },
   });
-
-export const styles = createStyles(theme);

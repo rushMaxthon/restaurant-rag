@@ -129,7 +129,7 @@ export function AppClientFields({
             aria-label="Brand primary colour hex value"
             disabled={disabled}
             maxLength={7}
-            placeholder="#E23744"
+            placeholder="#FF5200"
             required
             type="text"
             value={values.brand_primary_color}

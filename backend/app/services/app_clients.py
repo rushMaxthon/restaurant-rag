@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_APP_CLIENT_DISPLAY_NAME = "QuickBite"
 BUNDLE_ID_NAMESPACE = "com.quickbite"
-DEFAULT_BRAND_PRIMARY_COLOR = "#E23744"
+DEFAULT_BRAND_PRIMARY_COLOR = "#FF5200"
 DEFAULT_MINIMUM_SUPPORTED_VERSION = "1.0.0"
 DEFAULT_ORDER_NUMBER_PREFIX = "ORD"
 
@@ -663,10 +663,23 @@ def build_app_config_response(app_client: AppClient, *, bundle_id: str) -> AppCo
 
     Records written before a field existed fall back to defaults so that a build
     always receives a usable configuration.
+
+    Where the app client is tied to a restaurant, that restaurant's own theme
+    wins over the branding stored here. The restaurant is what the owner
+    controls; this record is the build configuration an administrator set up,
+    and the two must not disagree on screen.
     """
 
     branding = dict(app_client.branding or {})
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
+
+    restaurant = app_client.restaurant
+    if restaurant is not None:
+        from app.services.restaurant_theme import read_theme
+
+        stored = read_theme(restaurant)
+        branding[BRANDING_PRIMARY_COLOR_KEY] = stored["primary_color"]
+        branding["theme_preset"] = stored["preset"]
 
     return AppConfigResponse(
         app_client_id=app_client.id,

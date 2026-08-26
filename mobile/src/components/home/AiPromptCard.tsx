@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 interface AiPromptCardProps {
   onPress: () => void;
@@ -63,13 +63,13 @@ const createStyles = (theme: AppTheme) =>
     card: {
       borderRadius: 16,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFF5EE',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFF5EE'),
       paddingHorizontal: 13,
       paddingVertical: 12,
       gap: 9,
       overflow: 'hidden',
       borderWidth: 1,
-      borderColor: 'rgba(255, 82, 0, 0.12)',
+      borderColor: theme.primaryTint(0.12),
       shadowColor: theme.colors.shadow,
       shadowOpacity: 0.08,
       shadowOffset: { width: 0, height: 6 },
@@ -87,7 +87,7 @@ const createStyles = (theme: AppTheme) =>
       borderRadius: 52,
       top: -38,
       right: -14,
-      backgroundColor: 'rgba(255, 82, 0, 0.12)',
+      backgroundColor: theme.primaryTint(0.12),
     },
     glowSecondary: {
       position: 'absolute',
@@ -96,7 +96,7 @@ const createStyles = (theme: AppTheme) =>
       borderRadius: 37,
       bottom: -26,
       left: -10,
-      backgroundColor: 'rgba(255, 194, 160, 0.35)',
+      backgroundColor: theme.tone('rgba(255, 194, 160, 0.35)'),
     },
     header: {
       flexDirection: 'row',
@@ -109,7 +109,7 @@ const createStyles = (theme: AppTheme) =>
       borderRadius: 15,
       backgroundColor: theme.colors.surfaceRaised,
       borderWidth: 1,
-      borderColor: 'rgba(255, 82, 0, 0.16)',
+      borderColor: theme.primaryTint(0.16),
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -156,7 +156,7 @@ const createStyles = (theme: AppTheme) =>
           ? theme.colors.surfaceRaised
           : 'rgba(255,255,255,0.72)',
       borderWidth: 1,
-      borderColor: 'rgba(255, 82, 0, 0.10)',
+      borderColor: theme.primaryTint(0.10),
     },
     hintText: {
       color: theme.colors.text,
@@ -185,7 +185,6 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
 
 /**
  * Memoized: these cards sit in lists whose parent re-renders on unrelated

@@ -26,7 +26,7 @@ import { AuthField, AuthTextField } from '@components/AuthField';
 import { PhoneNumberField } from '@components/PhoneNumberField';
 import { api } from '@services/api';
 import { useAppActions, useSession } from '@hooks/useAppStore';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
 import { navigateAfterAuth } from '@utils/authRedirect';
 import {
@@ -523,5 +523,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

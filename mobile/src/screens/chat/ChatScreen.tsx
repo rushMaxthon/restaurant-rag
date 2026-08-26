@@ -24,7 +24,7 @@ import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useChatSession, useSession } from '@hooks/useAppStore';
 import { api } from '@services/api';
 import { buildMenuItemFromGeneratedComboItem } from '@utils/generatedComboCart';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   ChatHistoryItem,
   ChatMessageResponse,
@@ -111,12 +111,9 @@ function ChatHero({
   statLabel: string;
   statValue: string;
 }) {
-  // Subscribes to the ACTIVE theme rather than closing over the module-level
-  // `styles` export at the bottom of this file. That export is
-  // `createStyles(theme)` evaluated once at import time against the default
-  // LIGHT theme, so a component reading it renders a cream card on a dark
-  // screen no matter what the user picked. The style definitions themselves
-  // were already theme-aware — only this lookup was frozen.
+  // Subscribes to the ACTIVE theme. This file used to also export a
+  // `createStyles(theme)` stylesheet evaluated once at import time against the
+  // light theme; that export, and the 40-odd others like it, have been removed.
   const styles = useThemedStyles(createStyles);
 
   return (
@@ -976,7 +973,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 28,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF4EC'),
       paddingHorizontal: 18,
       paddingVertical: 18,
       gap: 10,
@@ -992,8 +989,8 @@ export const createStyles = (theme: AppTheme) =>
       right: -18,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.08)'
-          : 'rgba(255,82,0,0.10)',
+          ? theme.primaryTint(0.08)
+          : theme.primaryTint(0.10),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -1004,8 +1001,8 @@ export const createStyles = (theme: AppTheme) =>
       left: -18,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.06)'
-          : 'rgba(255,189,153,0.30)',
+          ? theme.primaryTint(0.06)
+          : theme.tone('rgba(255,189,153,0.30)'),
     },
     heroBadge: {
       alignSelf: 'flex-start',
@@ -1195,7 +1192,7 @@ export const createStyles = (theme: AppTheme) =>
     starterCard: {
       borderRadius: 24,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF6F0',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF6F0'),
       padding: 16,
       gap: 14,
       marginBottom: 14,
@@ -1273,7 +1270,7 @@ export const createStyles = (theme: AppTheme) =>
     composer: {
       borderRadius: 28,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.modalSurface : '#FFF8F3',
+        theme.mode === 'dark' ? theme.colors.modalSurface : theme.tone('#FFF8F3'),
       padding: 6,
       flexDirection: 'row',
       alignItems: 'center',
@@ -1285,19 +1282,19 @@ export const createStyles = (theme: AppTheme) =>
       elevation: 6,
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255, 82, 0, 0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     loggedOutComposer: {
       borderRadius: 28,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.modalSurface : '#FFF8F3',
+        theme.mode === 'dark' ? theme.colors.modalSurface : theme.tone('#FFF8F3'),
       padding: 6,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255, 82, 0, 0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     inputWrap: {
       flex: 1,
@@ -1339,7 +1336,7 @@ export const createStyles = (theme: AppTheme) =>
     },
     sendButtonDisabledStatic: {
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceAlt : '#FFB18A',
+        theme.mode === 'dark' ? theme.colors.surfaceAlt : theme.tone('#FFB18A'),
       width: 52,
       height: 52,
       borderRadius: 26,
@@ -1347,5 +1344,3 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'center',
     },
   });
-
-export const styles = createStyles(theme);

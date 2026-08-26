@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, ForeignKey, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -58,6 +58,15 @@ class Restaurant(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     logo_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # The restaurant's own look, owned by the owner rather than by whoever
+    # configured its mobile build. Empty means "use the platform default", which
+    # is what every restaurant starts as.
+    theme: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
 
     owner: Mapped["User"] = relationship(back_populates="owned_restaurant", foreign_keys=[owner_id])
     # One app client per restaurant is a product rule, not a DB constraint:

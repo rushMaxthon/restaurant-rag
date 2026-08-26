@@ -38,7 +38,7 @@ import {
   placeholderImage,
   toNumber,
 } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   CartSelectedOption,
   MenuItem,
@@ -1141,9 +1141,9 @@ export const createStyles = (theme: AppTheme) =>
       paddingHorizontal: 8,
       paddingVertical: 4,
       borderRadius: 999,
-      backgroundColor: 'rgba(255,82,0,0.12)',
+      backgroundColor: theme.primaryTint(0.12),
       borderWidth: 1,
-      borderColor: 'rgba(255,82,0,0.16)',
+      borderColor: theme.primaryTint(0.16),
     },
     badgeNewText: {
       color: theme.colors.primary,
@@ -1589,7 +1589,7 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'center',
       backgroundColor: theme.colors.surfaceRaised,
       borderWidth: 1,
-      borderColor: 'rgba(255,82,0,0.18)',
+      borderColor: theme.primaryTint(0.18),
     },
     secondaryButtonText: {
       color: theme.colors.primary,
@@ -1597,5 +1597,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

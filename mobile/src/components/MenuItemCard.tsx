@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { formatCurrency, placeholderImage } from '@services/api';
 import { FavoriteIconButton } from '@components/FavoriteIconButton';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { MenuItem } from '@/types/app';
 import { getNewItemBadgeMeta } from '@utils/newItemBadges';
 
@@ -230,7 +230,7 @@ const createStyles = (theme: AppTheme) =>
       borderRadius: 999,
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.chipBorder : 'rgba(255,82,0,0.16)',
+        theme.mode === 'dark' ? theme.colors.chipBorder : theme.primaryTint(0.16),
       paddingHorizontal: 8,
       paddingVertical: 3,
     },
@@ -320,7 +320,7 @@ const createStyles = (theme: AppTheme) =>
       borderColor:
         theme.mode === 'dark'
           ? theme.colors.chipBorder
-          : 'rgba(255, 82, 0, 0.15)',
+          : theme.primaryTint(0.15),
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -376,4 +376,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

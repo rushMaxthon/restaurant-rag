@@ -33,7 +33,7 @@ import {
 } from '@hooks/useAppStore';
 import { ApiError, api, formatCurrency, placeholderImage } from '@services/api';
 import { storage } from '@services/storage';
-import { lightTheme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { MenuItem, RecommendationItem, Restaurant } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import { isCustomizableMenuItem } from '@utils/menuItemCustomization';
@@ -2658,5 +2658,3 @@ export const createStyles = (theme: AppTheme) =>
       transform: [{ scale: 0.995 }],
     },
   });
-
-export const styles = createStyles(lightTheme);

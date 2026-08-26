@@ -31,7 +31,7 @@ import {
 } from '@hooks/useAppStore';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
 import { api, formatCurrency, toNumber, type ApiError } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   FulfillmentSelection,
   OrderFulfillmentType,
@@ -1183,10 +1183,10 @@ const createStyles = (theme: AppTheme) =>
       paddingVertical: 12,
       gap: 4,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF4EC'),
       borderWidth: 1,
       borderColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255, 82, 0, 0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
     },
     eyebrow: {
       color: theme.colors.primary,
@@ -1364,7 +1364,7 @@ const createStyles = (theme: AppTheme) =>
       backgroundColor:
         theme.mode === 'dark'
           ? theme.colors.surfaceAlt
-          : 'rgba(255, 82, 0, 0.08)',
+          : theme.primaryTint(0.08),
     },
     paymentMethodIconSelected: {
       backgroundColor: theme.colors.primary,
@@ -1389,7 +1389,7 @@ const createStyles = (theme: AppTheme) =>
       gap: 7,
       borderTopWidth: 1,
       borderTopColor:
-        theme.mode === 'dark' ? theme.colors.border : 'rgba(255, 82, 0, 0.08)',
+        theme.mode === 'dark' ? theme.colors.border : theme.primaryTint(0.08),
       paddingTop: 10,
     },
     cardNoticeText: {
@@ -1525,4 +1525,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

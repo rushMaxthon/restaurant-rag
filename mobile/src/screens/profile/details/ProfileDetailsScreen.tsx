@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useAppActions, useSession } from '@hooks/useAppStore';
 import { ApiError, api } from '@services/api';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 
 export function ProfileDetailsScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -263,5 +263,3 @@ export const createStyles = (theme: AppTheme) =>
       fontSize: 15,
     },
   });
-
-export const styles = createStyles(theme);

@@ -9,7 +9,7 @@ import {
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 
 type OrderSuccessRoute = RouteProp<RootStackParamList, 'OrderSuccess'>;
@@ -105,7 +105,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 30,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF4EC'),
       paddingHorizontal: 22,
       paddingVertical: 24,
       alignItems: 'center',
@@ -122,8 +122,8 @@ export const createStyles = (theme: AppTheme) =>
       right: -22,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.08)'
-          : 'rgba(255,82,0,0.10)',
+          ? theme.primaryTint(0.08)
+          : theme.primaryTint(0.10),
     },
     glowSecondary: {
       position: 'absolute',
@@ -134,8 +134,8 @@ export const createStyles = (theme: AppTheme) =>
       left: -18,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.06)'
-          : 'rgba(255,189,153,0.30)',
+          ? theme.primaryTint(0.06)
+          : theme.tone('rgba(255,189,153,0.30)'),
     },
     successBadge: {
       width: 82,
@@ -236,5 +236,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(theme);

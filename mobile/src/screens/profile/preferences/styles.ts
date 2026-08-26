@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { lightTheme, type AppTheme } from '@/theme';
+import { type AppTheme } from '@/theme';
 
 export const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
@@ -27,7 +27,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 168,
       height: 168,
       borderRadius: 84,
-      backgroundColor: 'rgba(255, 126, 62, 0.14)',
+      backgroundColor: theme.tone('rgba(255, 126, 62, 0.14)'),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -36,7 +36,7 @@ export const createStyles = (theme: AppTheme) =>
       width: 136,
       height: 136,
       borderRadius: 68,
-      backgroundColor: 'rgba(255, 126, 62, 0.1)',
+      backgroundColor: theme.tone('rgba(255, 126, 62, 0.1)'),
     },
     topBar: {
       flexDirection: 'row',
@@ -178,5 +178,3 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '800',
     },
   });
-
-export const styles = createStyles(lightTheme);

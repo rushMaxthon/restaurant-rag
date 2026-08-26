@@ -20,7 +20,7 @@ import {
 } from './components/ProfileRow';
 import { useAppActions, usePreferences, useSession } from '@hooks/useAppStore';
 import { api, formatCurrency, formatDateTime } from '@services/api';
-import { lightTheme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { Order, ProfileSummary } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 
@@ -503,7 +503,7 @@ export const createStyles = (theme: AppTheme) =>
     heroCard: {
       borderRadius: 22,
       backgroundColor:
-        theme.mode === 'dark' ? theme.colors.surfaceRaised : '#FFF4EC',
+        theme.mode === 'dark' ? theme.colors.surfaceRaised : theme.tone('#FFF4EC'),
       paddingHorizontal: 15,
       paddingVertical: 13,
       gap: 10,
@@ -526,8 +526,8 @@ export const createStyles = (theme: AppTheme) =>
       right: -20,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.08)'
-          : 'rgba(255,82,0,0.12)',
+          ? theme.primaryTint(0.08)
+          : theme.primaryTint(0.12),
     },
     heroGlowSecondary: {
       position: 'absolute',
@@ -538,8 +538,8 @@ export const createStyles = (theme: AppTheme) =>
       left: -24,
       backgroundColor:
         theme.mode === 'dark'
-          ? 'rgba(255, 122, 69, 0.06)'
-          : 'rgba(255,189,153,0.34)',
+          ? theme.primaryTint(0.06)
+          : theme.tone('rgba(255,189,153,0.34)'),
     },
     heroHeaderRow: {
       flexDirection: 'row',
@@ -896,5 +896,3 @@ export const createStyles = (theme: AppTheme) =>
       justifyContent: 'center',
     },
   });
-
-export const styles = createStyles(lightTheme);

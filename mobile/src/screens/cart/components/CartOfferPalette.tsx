@@ -288,7 +288,7 @@ function CartOfferPaletteComponent({
                     backgroundColor:
                       theme.mode === 'dark'
                         ? hexToRgba(palette.accent, 0.12)
-                        : '#FFF4EC',
+                        : theme.tone('#FFF4EC'),
                   },
                 ]}
               >

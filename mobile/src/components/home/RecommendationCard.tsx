@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { formatCurrency, placeholderImage } from '@services/api';
 import { FavoriteIconButton } from '@components/FavoriteIconButton';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RecommendationItem } from '@/types/app';
 import type { GestureResponderEvent } from 'react-native';
 import { getNewItemBadgeMeta } from '@utils/newItemBadges';
@@ -388,4 +388,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);

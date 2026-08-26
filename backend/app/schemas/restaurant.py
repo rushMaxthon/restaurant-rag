@@ -166,6 +166,35 @@ class AdminRestaurantUpdate(BaseModel):
     is_open: bool = False
 
 
+class ThemePresetResponse(BaseModel):
+    id: str
+    label: str
+    primary_color: str
+    description: str
+
+
+class RestaurantThemeResponse(BaseModel):
+    """The restaurant's look, plus the gallery to pick from."""
+
+    restaurant_id: uuid.UUID
+    # Returned so the preview can show the real restaurant. An owner's user
+    # record leaves `restaurant_name` null - it is a platform account - so the
+    # caller has no other way to label it without a second request.
+    restaurant_name: str
+    preset: str
+    primary_color: str
+    presets: list[ThemePresetResponse]
+
+
+class RestaurantThemeUpdate(BaseModel):
+    """Either a named preset or a custom colour; the preset wins if both come."""
+
+    preset: str | None = None
+    primary_color: str | None = Field(
+        default=None, min_length=7, max_length=7, pattern=r"^#[0-9A-Fa-f]{6}$"
+    )
+
+
 class RestaurantOwnerSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

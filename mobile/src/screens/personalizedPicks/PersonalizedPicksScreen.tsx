@@ -35,7 +35,7 @@ import { ApiError, api, formatCurrency, placeholderImage } from '@services/api';
 import { checkAuthAndRedirect } from '@utils/authRedirect';
 import { isCustomizableMenuItem } from '@utils/menuItemCustomization';
 import { buildLocationKey, buildPreferencesKey } from '@utils/preferencesKey';
-import { theme, useTheme, useThemedStyles, type AppTheme } from '@/theme';
+import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
   Order,
   PersonalizedRecommendationContext,
@@ -77,6 +77,7 @@ function trackPersonalizedPickEvent(
 }
 
 function PersonalizedPicksLoading(): React.JSX.Element {
+  const theme = useTheme();
   const styles = useThemedStyles(createStyles);
 
   return (
@@ -232,6 +233,7 @@ function PersonalizedPicksEmptyState({
 }: {
   onBrowseRestaurants: () => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const styles = useThemedStyles(createStyles);
 
   return (
@@ -255,6 +257,7 @@ export function PersonalizedPicksScreen({
   navigation,
   route,
 }: Props): React.JSX.Element {
+  const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const { width } = useWindowDimensions();
   const { token } = useSession();
@@ -752,7 +755,7 @@ const createStyles = (theme: AppTheme) =>
           ? 'rgba(255,255,255,0.05)'
           : theme.colors.chipBorder,
       backgroundColor:
-        theme.mode === 'dark' ? 'rgba(255,122,69,0.10)' : 'rgba(255,82,0,0.06)',
+        theme.mode === 'dark' ? theme.primaryTint(0.10) : theme.primaryTint(0.06),
       padding: 16,
       gap: 6,
     },
@@ -986,4 +989,3 @@ const createStyles = (theme: AppTheme) =>
     },
   });
 
-const styles = createStyles(theme);
