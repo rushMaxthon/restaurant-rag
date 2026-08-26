@@ -497,6 +497,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
           }
           emptyDescription="Try another search or status filter."
           emptyTitle="No orders match the current filters"
+          errorTitle="We couldn't load your orders"
           error={loadError}
           keyExtractor={(order) => order.id}
           loading={isLoading}

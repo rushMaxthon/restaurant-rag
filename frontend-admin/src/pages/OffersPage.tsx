@@ -1060,6 +1060,7 @@ export function OffersPage({
           }
           emptyDescription={tableEmptyState.description}
           emptyTitle={tableEmptyState.title}
+          errorTitle="We couldn't load offers"
           error={loadError}
           keyExtractor={(offer) => offer.id}
           onRetry={() => {

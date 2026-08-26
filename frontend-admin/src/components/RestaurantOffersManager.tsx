@@ -679,6 +679,7 @@ export function RestaurantOffersManager({
         columns={columns}
         emptyDescription="Create the first reusable template for this restaurant."
         emptyTitle="No offers created yet"
+        errorTitle="We couldn't load offers"
         keyExtractor={(offer) => offer.id}
         loading={loading}
         mobileStatus={(offer) => <StatusPill status={offer.effective_state} />}

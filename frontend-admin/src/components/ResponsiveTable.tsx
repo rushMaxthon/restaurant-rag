@@ -27,6 +27,16 @@ interface ResponsiveTableProps<Row> {
   loading?: boolean;
   skeletonRows?: number;
   emptyTitle: string;
+  /**
+   * Heading for the error state.
+   *
+   * Explicit rather than derived from `emptyTitle`. It used to be built by
+   * stripping "No " and appending "didn't load", which only reads correctly for
+   * titles shaped "No X yet" - "No orders match the current filters" came out
+   * as "orders match the current filters didn't load". An empty state and a
+   * failure are different sentences and do not transform into one another.
+   */
+  errorTitle?: string;
   emptyDescription: string;
   emptyAction?: ReactNode;
   /**
@@ -52,6 +62,7 @@ export function ResponsiveTable<Row>({
   loading = false,
   skeletonRows = 6,
   emptyTitle,
+  errorTitle,
   emptyDescription,
   emptyAction,
   error,
@@ -155,7 +166,7 @@ export function ResponsiveTable<Row>({
           description={error}
           onRetry={onRetry}
           retrying={retrying}
-          title={`${emptyTitle.replace(/^No /, '').replace(/ yet$/, '')} didn't load`}
+          title={errorTitle}
         />
       </div>
     );

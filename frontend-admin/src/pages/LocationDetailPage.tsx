@@ -1599,6 +1599,7 @@ export function LocationDetailPage({
             columns={orderColumns}
             emptyDescription={`No orders have been placed against ${location.branch_name} yet.`}
             emptyTitle="No branch orders yet"
+            errorTitle="We couldn't load branch orders"
             keyExtractor={(order) => order.id}
             mobileStatus={(order) => <StatusPill status={order.status} />}
             mobileSubtitle={(order) => `${order.customer.full_name} • ${order.fulfillment_type}`}

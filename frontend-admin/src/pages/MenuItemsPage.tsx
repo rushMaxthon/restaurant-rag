@@ -604,6 +604,7 @@ export function MenuItemsPage({
             }
             emptyDescription="Use Add New to create the first item or adjust the current filters."
             emptyTitle="No menu items match this view"
+            errorTitle="We couldn't load menu items"
             error={loadError}
             onRetry={() => {
               setLoadError(null);

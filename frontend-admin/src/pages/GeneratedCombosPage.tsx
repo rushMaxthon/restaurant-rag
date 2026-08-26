@@ -527,6 +527,7 @@ function GeneratedCombosWorkspace({
             : 'No generated combos match the current filters. Try a broader search or switch lifecycle filters.'
         }
         emptyTitle={rows.length === 0 ? 'No combo trends discovered yet' : 'No combos match these filters'}
+        errorTitle="We couldn't load generated combos"
         keyExtractor={(row) => row.id}
         loading={loading}
         mobileStatus={(row) => renderStatusControl(row)}

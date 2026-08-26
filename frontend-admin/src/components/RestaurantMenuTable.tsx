@@ -343,6 +343,7 @@ export function RestaurantMenuTable({
         columns={columns}
         emptyDescription="Try a different search, category, or diet filter."
         emptyTitle="No menu items match these filters"
+        errorTitle="We couldn't load menu items"
         keyExtractor={(item) => item.id}
         loading={isLoading}
         mobileStatus={(item) => (

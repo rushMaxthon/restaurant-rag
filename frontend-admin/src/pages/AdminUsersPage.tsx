@@ -391,6 +391,7 @@ export function AdminUsersPage({
           }
           emptyDescription="Try a different role, status, or search query."
           emptyTitle="No users match the current filters"
+          errorTitle="We couldn't load users"
           error={loadError}
           onRetry={() => {
             setLoadError(null);

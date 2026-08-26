@@ -561,6 +561,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
           }
           emptyDescription="Try a different search or approval filter."
           emptyTitle="No restaurants match the current filters"
+          errorTitle="We couldn't load restaurants"
           error={loadError}
           onRetry={() => {
             setLoadError(null);
