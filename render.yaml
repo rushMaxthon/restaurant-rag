@@ -135,13 +135,20 @@ services:
     # killed mid-run. The cost is that a wedged notification task also gets an
     # hour before Celery reclaims it; splitting the worker per queue restores
     # the tight limits for the fast queues.
+    # Waits for the API's pre-deploy migration before starting. Render deploys
+    # api/worker/beat from one commit with no ordering between them, so without
+    # this the workers can run new code against the old schema - which is how a
+    # background job came to select restaurants.theme before the column existed.
+    # They deliberately do not migrate themselves: two or three processes racing
+    # the same alembic_version row is the failure the API's pre-deploy avoids.
     dockerCommand: >-
-      celery -A app.config.celery:celery_app worker
+      sh -c "python -m app.scripts.wait_for_schema &&
+      exec celery -A app.config.celery:celery_app worker
       --loglevel=info
       --queues=default,analytics,embeddings,notifications
       --concurrency=2
       --soft-time-limit=3600
-      --time-limit=3900
+      --time-limit=3900"
     autoDeployTrigger: commit
     buildFilter:
       paths:
@@ -189,10 +196,17 @@ services:
     numInstances: 1
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
+    # Waits for the API's pre-deploy migration before starting. Render deploys
+    # api/worker/beat from one commit with no ordering between them, so without
+    # this the workers can run new code against the old schema - which is how a
+    # background job came to select restaurants.theme before the column existed.
+    # They deliberately do not migrate themselves: two or three processes racing
+    # the same alembic_version row is the failure the API's pre-deploy avoids.
     dockerCommand: >-
-      celery -A app.config.celery:celery_app beat
+      sh -c "python -m app.scripts.wait_for_schema &&
+      exec celery -A app.config.celery:celery_app beat
       --loglevel=info
-      --schedule=/var/run/celery/celerybeat-schedule
+      --schedule=/var/run/celery/celerybeat-schedule"
     autoDeployTrigger: commit
     buildFilter:
       paths:
