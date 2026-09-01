@@ -64,7 +64,7 @@ export function MessageBubble({
                 role="button"
                 tabIndex={0}
               >
-                <img src={item.image_url ?? createPlaceholderImage(item.name)} alt={item.name} />
+                <img loading="lazy" decoding="async" src={item.image_url ?? createPlaceholderImage(item.name)} alt={item.name} />
                 <div className="chat-food-card__copy">
                   <strong>{item.name}</strong>
                   <span>{item.restaurant_name}</span>

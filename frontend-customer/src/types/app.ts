@@ -4,7 +4,16 @@ export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER';
 export type DietPreference = 'VEG' | 'NON_VEG';
 export type SpiceLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export type BudgetTier = 'LOW' | 'MID' | 'HIGH';
-export type OrderStatus = 'PLACED' | 'ACCEPTED' | 'PREPARING' | 'OUT_FOR_DELIVERY' | 'DELIVERED';
+export type OrderStatus =
+  // A card order that exists but has not been paid yet. The kitchen never sees
+  // it, so it is not part of the status flow the stepper walks.
+  | 'PAYMENT_PENDING'
+  | 'PLACED'
+  | 'ACCEPTED'
+  | 'PREPARING'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
 export type ChatRole = 'USER' | 'ASSISTANT';
 export type OrderFulfillmentType = 'DELIVERY' | 'PICKUP';
@@ -171,6 +180,10 @@ export interface MenuItem {
   is_bestseller: boolean;
   image_url: string | null;
   popularity_score: DecimalValue;
+  /** Null until somebody has actually rated the dish — which is not the same
+      fact as a rating of zero, and does not render the same way. */
+  rating: DecimalValue | null;
+  rating_count: number;
   launched_at: string;
   created_at: string;
   updated_at: string;
@@ -624,4 +637,31 @@ export interface ToastMessage {
   title: string;
   description: string;
   tone?: 'success' | 'error' | 'info';
+}
+
+export type AppMode = 'MARKETPLACE' | 'SINGLE_RESTAURANT';
+
+export interface AppConfigBranding {
+  primary_color?: string;
+  theme_preset?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * This build's identity, resolved from `APP_BUNDLE_ID` at startup.
+ *
+ * The same payload the mobile app resolves from its own bundle ID, so the two
+ * agree on the restaurant, the display name and the brand colour without either
+ * hard-coding them.
+ */
+export interface AppConfig {
+  app_client_id: string;
+  app_key: string;
+  app_mode: AppMode;
+  restaurant_id: string | null;
+  display_name: string;
+  branding: AppConfigBranding;
+  order_prefix: string;
+  minimum_supported_version: string;
+  bundle_id: string;
 }

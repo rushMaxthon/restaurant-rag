@@ -44,7 +44,7 @@ export function ChatMessageCard({
           <div className="chat-suggestions">
             {suggestions.map((item) => (
               <article className="chat-food-card" key={item.id}>
-                <img src={item.image_url ?? createPlaceholderImage(item.name)} alt={item.name} />
+                <img loading="lazy" decoding="async" src={item.image_url ?? createPlaceholderImage(item.name)} alt={item.name} />
                 <div className="chat-food-card__copy">
                   <strong>{item.name}</strong>
                   <span>{item.restaurant_name}</span>

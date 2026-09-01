@@ -70,6 +70,8 @@ class RecommendationItemResponse(BaseModel):
     is_featured: bool = False
     image_url: str | None
     popularity_score: Decimal
+    rating: Decimal | None = None
+    rating_count: int = 0
     launched_at: datetime
     created_at: datetime
     updated_at: datetime

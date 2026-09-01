@@ -37,3 +37,23 @@ const PROD_API_BASE_URL = 'https://restaurant-rag-api-xjfx.onrender.com/api';
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ??
   (import.meta.env.PROD ? PROD_API_BASE_URL : DEV_API_BASE_URL);
+
+/**
+ * Which branded app this web build is.
+ *
+ * The phone learns its identity from its own bundle ID; a web build has no
+ * bundle ID, so it is named here and resolved through the same public
+ * `/app-config` endpoint the app uses. That single value decides the
+ * restaurant, the display name and the brand colour for the whole site.
+ *
+ * Deliberately sent as a query parameter and never as the `X-App-Bundle-Id`
+ * header. The header does two things on the backend, not one: it narrows which
+ * restaurants are visible, and — through `resolve_identity_app_client_id` — it
+ * decides which app client a customer account belongs to. Customer accounts are
+ * unique per app client, so sending the header would stop every existing web
+ * account from logging in and reject every token already issued. The query
+ * parameter carries only the first meaning, which is the one this app wants:
+ * scoping is applied here, in the client, against `APP_RESTAURANT_ID`.
+ */
+export const APP_BUNDLE_ID =
+  import.meta.env.VITE_APP_BUNDLE_ID ?? 'com.quickbite.bangkokbowl';

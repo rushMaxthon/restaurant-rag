@@ -174,6 +174,8 @@ class MenuItemResponse(BaseModel):
     recent_valid_order_count: int = 0
     recent_valid_order_window_days: int = 30
     popularity_score: Decimal
+    rating: Decimal | None = None
+    rating_count: int = 0
     launched_at: datetime
     created_at: datetime
     updated_at: datetime

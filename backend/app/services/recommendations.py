@@ -990,6 +990,8 @@ def _serialize_recommendations(scored_candidates: list[CandidateScore]) -> list[
             is_featured=get_menu_item_featured_flag(candidate.menu_item),
             image_url=candidate.menu_item.image_url,
             popularity_score=candidate.menu_item.popularity_score,
+            rating=candidate.menu_item.rating,
+            rating_count=candidate.menu_item.rating_count,
             launched_at=resolve_menu_item_launch_timestamp(candidate.menu_item),
             created_at=candidate.menu_item.created_at,
             updated_at=candidate.menu_item.updated_at,

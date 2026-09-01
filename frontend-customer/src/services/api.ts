@@ -1,4 +1,5 @@
 import type {
+  AppConfig,
   AuthResponse,
   BudgetTier,
   ChatHistoryItem,
@@ -26,7 +27,7 @@ import type {
 
 // Single source of truth for which backend this app talks to. Stays
 // module-private, exactly as before — nothing outside this file used it.
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, APP_BUNDLE_ID } from '../config/api';
 export const AUTH_INVALID_EVENT = 'restaurant-rag-auth-invalid';
 
 class ApiError extends Error {
@@ -162,6 +163,20 @@ export const api = {
       method: 'POST',
       body: input,
     });
+  },
+  /**
+   * This build's app configuration.
+   *
+   * Public and unauthenticated on purpose - it is what tells the app which
+   * restaurant it is before anyone has logged in. Sent as a query parameter
+   * rather than the `X-App-Bundle-Id` header; see `config/api.ts` for why that
+   * distinction is load-bearing for existing accounts.
+   */
+  async getAppConfig(signal?: AbortSignal): Promise<AppConfig> {
+    return request<AppConfig>(
+      `/app-config?bundle_id=${encodeURIComponent(APP_BUNDLE_ID)}`,
+      { signal },
+    );
   },
   async getRestaurants(): Promise<Restaurant[]> {
     return request<Restaurant[]>('/restaurants');
@@ -700,9 +715,33 @@ export function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
+/**
+ * Stand-in art for a dish with no photo.
+ *
+ * Was a `placehold.co` URL: a 200x200 remote PNG of two letters, stretched to
+ * fill a card several times that size, which is why a missing photo rendered as
+ * enormous pixelated initials — and why every such card cost a third-party
+ * request that fails offline and leaks the page to another host.
+ *
+ * Now an inline SVG, so it costs nothing, cannot fail, and is drawn in the
+ * restaurant's own colours: the tokens are read from the live theme, which
+ * means it follows a rebrand and both light and dark mode for free.
+ */
 export function createPlaceholderImage(seed: string): string {
-  const encoded = encodeURIComponent(seed.slice(0, 2).toUpperCase() || 'FD');
-  return `https://placehold.co/200x200/FFF3E0/CB202D?text=${encoded}`;
+  const initials = seed.trim().slice(0, 2).toUpperCase() || 'FD';
+  const style = typeof document === 'undefined' ? null : getComputedStyle(document.documentElement);
+  const ink = style?.getPropertyValue('--primary').trim() || '#FF5200';
+  const ground = style?.getPropertyValue('--primary-soft').trim() || '#FFF0E8';
+
+  // Wide rather than square, and lettered small: these are painted into card
+  // media boxes with `object-fit: cover`, so a square source gets cropped and
+  // scaled up — which is what made the old placeholder's initials fill a card.
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
+<rect width="420" height="260" fill="${ground}"/>
+<circle cx="210" cy="130" r="46" fill="${ink}" opacity="0.10"/>
+<text x="210" y="130" fill="${ink}" font-family="system-ui, sans-serif" font-size="30" font-weight="800" letter-spacing="1" text-anchor="middle" dominant-baseline="central">${initials}</text>
+</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function normalizePreferencesPayload(preferences: UserPreferences): {

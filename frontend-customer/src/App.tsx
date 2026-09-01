@@ -1,44 +1,78 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { CartReplacementModal } from './components/CartReplacementModal';
 import { OfferPromptModal } from './components/OfferPromptModal';
 import { ToastViewport } from './components/ToastViewport';
 import { useAppStore } from './hooks/useAppStore';
-import { api, toNumber } from './services/api';
+import { useAppConfig } from './store/useAppConfig';
+import { api } from './services/api';
 import type { AppliedPersonalizedOffer, ChatSuggestionItem, GeneratedCombo, MenuItem, PersonalizedOfferCard, Restaurant } from './types/app';
 import { checkAuthAndRedirect } from './utils/authRedirect';
 import { buildMenuItemFromGeneratedComboItem } from './utils/generatedComboCart';
 import { isCustomizableMenuItem } from './utils/menuItemCustomization';
-import { CartPage } from './pages/CartPage';
-import { ChatPage } from './pages/ChatPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
-import { FavoritesPage } from './pages/FavoritesPage';
-import { OrdersPage } from './pages/OrdersPage';
-import { OrderDetailPage } from './pages/OrderDetailPage';
-import { PreferencesOnboardingPage } from './pages/PreferencesOnboardingPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { ProfileDetailsPage } from './pages/ProfileDetailsPage';
-import { ProfileHelpPage } from './pages/ProfileHelpPage';
-import { ProfileOrdersPage } from './pages/ProfileOrdersPage';
-import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { RegisterPage } from './pages/RegisterPage';
-import { MenuItemDetailPage } from './pages/MenuItemDetail';
-import { RestaurantPage } from './pages/RestaurantPage';
 import type { UserPreferences } from './types/app';
+
+
+// Routes a first visit does not render are fetched when they are opened.
+const CartPage = lazy(() => import('./pages/CartPage').then((m) => ({ default: m.CartPage })));
+const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })));
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })));
+const OrdersPage = lazy(() => import('./pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })));
+const PreferencesOnboardingPage = lazy(() => import('./pages/PreferencesOnboardingPage').then((m) => ({ default: m.PreferencesOnboardingPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const ProfileDetailsPage = lazy(() => import('./pages/ProfileDetailsPage').then((m) => ({ default: m.ProfileDetailsPage })));
+const ProfileHelpPage = lazy(() => import('./pages/ProfileHelpPage').then((m) => ({ default: m.ProfileHelpPage })));
+const ProfileOrdersPage = lazy(() => import('./pages/ProfileOrdersPage').then((m) => ({ default: m.ProfileOrdersPage })));
+const ProfileSettingsPage = lazy(() => import('./pages/ProfileSettingsPage').then((m) => ({ default: m.ProfileSettingsPage })));
+const MenuItemDetailPage = lazy(() => import('./pages/MenuItemDetail').then((m) => ({ default: m.MenuItemDetailPage })));
+const RestaurantPage = lazy(() => import('./pages/RestaurantPage').then((m) => ({ default: m.RestaurantPage })));
+const AppearancePage = lazy(() => import('./pages/AppearancePage').then((m) => ({ default: m.AppearancePage })));
+const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })));
 
 function usePathname() {
   const [pathname, setPathname] = useState(window.location.pathname);
 
+  /**
+   * Push one entry and move.
+   *
+   * The push and the scroll happen here rather than inside the `setPathname`
+   * updater. A state updater has to be a pure function of the previous state:
+   * React invokes it twice under StrictMode to prove that it is, which pushed
+   * two history entries per navigation and made the back button need two
+   * presses to go one screen back.
+   *
+   * `window.location.pathname` is the current path rather than the `pathname`
+   * state for the same reason the effect below reads it — the URL is what the
+   * history stack actually holds, and reading it keeps this callback stable
+   * instead of rebuilding on every navigation.
+   */
   const navigate = useCallback((nextPath: string) => {
-    setPathname((currentPath) => {
-      if (nextPath === currentPath) {
-        return currentPath;
-      }
-      window.history.pushState({}, '', nextPath);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return nextPath;
-    });
+    if (nextPath === window.location.pathname) {
+      return;
+    }
+    window.history.pushState({}, '', nextPath);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setPathname(nextPath);
+  }, []);
+
+  /**
+   * Pop the stack, the way the phone's back arrow does.
+   *
+   * Falls through to Home when there is nothing to pop — a deep link opened in
+   * a fresh tab has no history entry behind it, and a back button that does
+   * nothing reads as broken.
+   */
+  const back = useCallback(() => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.history.pushState({}, '', '/');
+    setPathname('/');
   }, []);
 
   useEffect(() => {
@@ -49,7 +83,7 @@ function usePathname() {
     };
   }, []);
 
-  return { pathname, navigate };
+  return { pathname, navigate, back };
 }
 
 function matchRestaurantPath(pathname: string): string | null {
@@ -93,7 +127,8 @@ function App() {
     dismissToast,
     pushToast,
   } = useAppStore();
-  const { pathname, navigate } = usePathname();
+  const appConfig = useAppConfig();
+  const { pathname, navigate, back } = usePathname();
   const onboardingAllowedPaths = useMemo(
     () => new Set(['/preferences/onboarding', '/auth/login', '/auth/register']),
     [],
@@ -134,10 +169,13 @@ function App() {
     () => cart.items.reduce((total, item) => total + item.quantity, 0),
     [cart.items],
   );
-  const cartSubtotal = useMemo(
-    () => cart.items.reduce((total, item) => total + toNumber(item.menuItem.price) * item.quantity, 0),
-    [cart.items],
-  );
+  // What the header's location control reads. On the phone this is the branch
+  // the customer picked; here it is the branch the cart is already tied to,
+  // falling back to the app's own restaurant before anything is in the cart.
+  const locationLabel = appConfig.displayName;
+  const locationSubLabel =
+    cart.restaurantLocationName ?? 'Choose delivery or pickup at checkout';
+
 
   const requireAuth = useCallback((redirectPath: string) =>
     checkAuthAndRedirect({
@@ -303,6 +341,30 @@ function App() {
             onToast={pushToast}
           />
         );
+      case '/menu':
+        // The branded app's "full menu" is the restaurant screen, pointed at
+        // the one restaurant this build is. Keeping it on the same component
+        // means the marketplace route and this one cannot drift apart.
+        return appConfig.restaurantId ? (
+          <RestaurantPage
+            onAddToCart={handleAddMenuItem}
+            onNavigate={navigate}
+            restaurantId={appConfig.restaurantId}
+            token={token}
+          />
+        ) : (
+          <HomePage
+            addToCart={requestAddToCart}
+            onNavigate={navigate}
+            onToast={handleHomeToast}
+            preferences={homePreferences}
+            token={token}
+          />
+        );
+      case '/search':
+        return <SearchPage onNavigate={navigate} onToast={pushToast} token={token} />;
+      case '/profile/appearance':
+        return <AppearancePage />;
       case '/favorites':
         return <FavoritesPage token={token} onNavigate={navigate} onToast={pushToast} />;
       case '/cart':
@@ -343,15 +405,20 @@ function App() {
   return (
     <>
       <AppShell
-        currentPath={guardedPathname}
         cartCount={cartCount}
-        cartSubtotal={cartSubtotal}
+        currentPath={guardedPathname}
         isAuthenticated={isAuthenticated}
-        userName={user?.full_name ?? null}
+        locationLabel={locationLabel}
+        locationSubLabel={locationSubLabel}
+        onBack={back}
         onNavigate={navigate}
         onOpenCart={handleOpenCart}
+        userName={user?.full_name ?? null}
       >
-        {page}
+        {/* One boundary for every lazy route. The fallback is a plain block
+            rather than a spinner: the shell around it is already painted, so a
+            spinner would flash for the few milliseconds a chunk takes. */}
+        <Suspense fallback={<div className="route-fallback" />}>{page}</Suspense>
       </AppShell>
       <CartReplacementModal
         onCancel={dismissCartReplacement}

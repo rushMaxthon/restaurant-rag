@@ -58,6 +58,7 @@ export function RestaurantPage({
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [reloadKey, setReloadKey] = useState(0);
+  const [heroImageFailed, setHeroImageFailed] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
 
@@ -431,13 +432,20 @@ export function RestaurantPage({
   return (
     <div className="page-stack restaurant-page">
       <section className="restaurant-hero restaurant-hero--compact">
+        {/* Cover art, then the first dish the kitchen has a photograph of, then
+            the lettered placeholder. The middle step is the one that matters:
+            most restaurants never upload a cover, and a banner of initials
+            where the food should be is what makes a menu look unfinished.
+            Decorative — the name is set in the heading directly below it. */}
         <img
+          alt=""
           className="restaurant-hero__image"
+          onError={() => setHeroImageFailed(true)}
           src={
-            restaurant.cover_image_url ??
+            (!heroImageFailed && restaurant.cover_image_url) ||
+            menuItems.find((entry) => entry.image_url)?.image_url ||
             createPlaceholderImage(restaurant.name ?? "RS")
           }
-          alt={restaurant.name ?? "Restaurant"}
         />
         <div className="restaurant-hero__overlay" />
         <div className="restaurant-hero__content restaurant-hero__content--compact">

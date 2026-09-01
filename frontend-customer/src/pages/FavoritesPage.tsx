@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../hooks/useAppStore';
 import { ApiError, api, createPlaceholderImage, formatCurrency } from '../services/api';
+import { DishRating } from '../components/app/DishRating';
 import type { FavoriteItem } from '../types/app';
 import { isCustomizableMenuItem } from '../utils/menuItemCustomization';
+import { SignedOutGate } from '../components/app/SignedOutGate';
 
 interface FavoritesPageProps {
   token: string | null;
@@ -17,7 +19,6 @@ export function FavoritesPage({ token, onNavigate, onToast }: FavoritesPageProps
     isFavorite,
     isFavoritePending,
     requestAddToCart,
-    setPendingAuthRedirectPath,
     toggleFavorite,
   } = useAppStore();
   const [items, setItems] = useState<FavoriteItem[]>([]);
@@ -68,27 +69,18 @@ export function FavoritesPage({ token, onNavigate, onToast }: FavoritesPageProps
 
   if (!token) {
     return (
-      <div className="page-stack">
-        <section className="hero-panel hero-panel--compact">
-          <div className="hero-panel__copy">
-            <span className="eyebrow">Favorites</span>
-            <h1>Save dishes you want to come back to.</h1>
-            <p>Login to keep favorites synced between the customer site and the mobile app.</p>
-            <div className="hero-panel__actions">
-              <button
-                className="primary-button"
-                onClick={() => {
-                  setPendingAuthRedirectPath('/favorites');
-                  onNavigate('/auth/login');
-                }}
-                type="button"
-              >
-                Login to view favorites
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
+      <SignedOutGate
+        icon="heart"
+        onNavigate={onNavigate}
+        points={[
+          'One list, synced with the app',
+          'Saved dishes stay through menu changes',
+          'Reorder a favourite without hunting for it',
+        ]}
+        redirectPath="/favorites"
+        text="Tap the heart on any dish and it lands here, on the web and in the app alike."
+        title="Save dishes you want to come back to"
+      />
     );
   }
 
@@ -186,6 +178,7 @@ export function FavoritesPage({ token, onNavigate, onToast }: FavoritesPageProps
                     <div className="favorite-card__footer">
                       <div>
                         <strong>{formatCurrency(item.price)}</strong>
+                        <DishRating item={item} />
                         <span>{unavailable ? 'Currently unavailable' : 'Available to order'}</span>
                       </div>
                       <button

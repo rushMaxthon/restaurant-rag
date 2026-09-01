@@ -567,6 +567,8 @@ def list_admin_menu_items(
             recent_valid_order_count=get_menu_item_recent_valid_order_count(menu_item),
             recent_valid_order_window_days=settings.bestseller_window_days,
             popularity_score=menu_item.popularity_score,
+            rating=menu_item.rating,
+            rating_count=menu_item.rating_count,
             launched_at=resolve_menu_item_launch_timestamp(menu_item),
             created_at=menu_item.created_at,
             updated_at=menu_item.updated_at,

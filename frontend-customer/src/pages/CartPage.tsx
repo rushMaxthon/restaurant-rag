@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, formatCurrency, toNumber } from '../services/api';
+import { ApiError, api, createPlaceholderImage, formatCurrency, toNumber } from '../services/api';
+import { AppIcon } from '../components/AppIcon';
 import { useAppStore } from '../hooks/useAppStore';
 import { checkAuthAndRedirect } from '../utils/authRedirect';
 import type { ComboUpsellSuggestion, PersonalizedOfferPreview, Restaurant } from '../types/app';
@@ -12,6 +13,18 @@ import {
   isFulfillmentAvailableNow,
   isFulfillmentEnabled,
 } from '../utils/fulfillment';
+
+/** Matches the rate the total is built from, so the label cannot drift. */
+const TAX_RATE = 0.05;
+
+/** What the cart is counting towards, and how far along it is. */
+interface CartProgress {
+  tone: 'offer' | 'done' | 'block';
+  title: string;
+  hint: string;
+  /** 0 to 1. Clamped where it is drawn, not here. */
+  ratio: number;
+}
 
 interface CartPageProps {
   onNavigate: (path: string) => void;
@@ -247,7 +260,60 @@ export function CartPage({ onNavigate }: CartPageProps) {
     ),
     [cart.fulfillmentType, cart.items.length, restaurant?.delivery_fee, restaurantLocation?.delivery_fee],
   );
-  const taxAmount = useMemo(() => subtotal * 0.05, [subtotal]);
+  const taxAmount = useMemo(() => subtotal * TAX_RATE, [subtotal]);
+
+  /**
+   * The spend the cart is working towards, and how far along it is.
+   *
+   * Both targets below are real numbers the API already returns — a free
+   * delivery offer states the spend that unlocks it, and a branch states the
+   * minimum it will cook for. Neither is invented: a progress bar counting up
+   * to a threshold nobody set would be a lie told with a nice animation.
+   */
+  const freeDeliveryTarget = useMemo(() => {
+    if (activePersonalizedOffer?.discountType !== 'FREE_DELIVERY') {
+      return null;
+    }
+    const minimum = toNumber(activePersonalizedOffer.minimumOrderAmount);
+    return minimum > 0 ? minimum : null;
+  }, [activePersonalizedOffer]);
+
+  const minimumOrderAmount = useMemo(
+    () =>
+      toNumber(
+        restaurantLocation?.minimum_order_amount ?? restaurant?.minimum_order_amount ?? 0,
+      ),
+    [restaurant?.minimum_order_amount, restaurantLocation?.minimum_order_amount],
+  );
+
+  const cartProgress = useMemo((): CartProgress | null => {
+    if (freeDeliveryTarget !== null) {
+      return subtotal < freeDeliveryTarget
+        ? {
+            tone: 'offer',
+            title: `Free delivery above ${formatCurrency(freeDeliveryTarget)}`,
+            hint: `Add ${formatCurrency(freeDeliveryTarget - subtotal)} more to unlock`,
+            ratio: subtotal / freeDeliveryTarget,
+          }
+        : {
+            tone: 'done',
+            title: 'Free delivery unlocked',
+            hint: 'The delivery fee is covered on this order.',
+            ratio: 1,
+          };
+    }
+    // The minimum is the more urgent of the two: below it the order cannot be
+    // placed at all, so saying so here beats a disabled button with no reason.
+    if (minimumOrderAmount > 0 && subtotal < minimumOrderAmount) {
+      return {
+        tone: 'block',
+        title: `Minimum order ${formatCurrency(minimumOrderAmount)}`,
+        hint: `Add ${formatCurrency(minimumOrderAmount - subtotal)} more to place this order`,
+        ratio: subtotal / minimumOrderAmount,
+      };
+    }
+    return null;
+  }, [freeDeliveryTarget, minimumOrderAmount, subtotal]);
   const total = subtotal + deliveryFee + taxAmount - personalizedOfferDiscount;
   const pickupAddress = useMemo(() => {
     if (!restaurant) {
@@ -441,34 +507,80 @@ export function CartPage({ onNavigate }: CartPageProps) {
 
   if (cart.items.length === 0) {
     return (
-      <div className="empty-state">
-        <strong>Your cart is empty.</strong>
-        <span>Add a few dishes and they will show up here with live totals.</span>
-        <button className="primary-button primary-button--small" onClick={() => onNavigate('/')} type="button">
-          Browse restaurants
+      // No card frame and no eyebrow: the header above already says Cart, and a
+      // border around an empty state frames nothing. This is the app's own
+      // empty-state shape — ring, title, line, action — plus a second way out,
+      // because from an empty cart the useful next step is often a past order
+      // rather than the whole menu again.
+      <div className="page-stack cart-empty">
+        <span className="cart-empty__ring">
+          <span className="cart-empty__core">
+            <AppIcon name="bag" size={30} />
+          </span>
+        </span>
+        <h2 className="cart-empty__title">Your cart is empty</h2>
+        <p className="cart-empty__text">
+          Add a few dishes and they will line up here, ready for a fast checkout.
+        </p>
+        <button className="btn" onClick={() => onNavigate('/menu')} type="button">
+          <AppIcon name="search" size={17} />
+          Browse the menu
+        </button>
+        <button className="cart-empty__link" onClick={() => onNavigate('/orders')} type="button">
+          See your past orders
+          <AppIcon name="chevron-right" size={15} />
         </button>
       </div>
     );
   }
 
   return (
-    <div className="page-stack">
-      <section className="section-card">
-        <div className="section-card__header">
-          <div>
-            <span className="eyebrow">Checkout</span>
-            <h2>{cart.restaurantName}</h2>
-            <p className="section-subtle">
-              {cart.restaurantLocationName
-                ? `${cart.restaurantLocationName} branch`
-                : 'Review your items, confirm fulfillment details, and place the order in one smooth step.'}
-            </p>
-          </div>
-          <button className="text-link" onClick={clearCart} type="button">
-            Clear cart
-          </button>
+    <div className="page-stack cart-page">
+      {/* The page's own title block rather than a card header. A card frame
+          around the whole checkout put a border between the customer and the
+          only two things on the screen — what they are buying, and what it
+          costs. */}
+      <header className="cart-head">
+        <div className="cart-head__copy">
+          <span className="eyebrow">Checkout</span>
+          <h1>{cart.restaurantName}</h1>
+          <p className="cart-head__branch">
+            {cart.restaurantLocationName
+              ? `${cart.restaurantLocationName} branch`
+              : 'Review your items, confirm fulfillment details, and place the order.'}
+          </p>
         </div>
+        <button className="cart-head__clear" onClick={clearCart} type="button">
+          Clear cart
+        </button>
+      </header>
 
+      {cartProgress ? (
+        <div className={`cart-progress cart-progress--${cartProgress.tone}`}>
+          <div className="cart-progress__copy">
+            <strong>{cartProgress.title}</strong>
+            <span>{cartProgress.hint}</span>
+          </div>
+          {/* The bar is the same fact as the line beside it, drawn. Labelled
+              rather than hidden, so a screen reader gets the progress without
+              having to infer it from a decorative div. */}
+          <div
+            aria-label={cartProgress.title}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.round(Math.min(1, Math.max(0, cartProgress.ratio)) * 100)}
+            className="cart-progress__track"
+            role="progressbar"
+          >
+            <span
+              className="cart-progress__fill"
+              style={{ width: `${Math.min(100, Math.max(4, cartProgress.ratio * 100))}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="cart-body">
         {activePersonalizedOffer ? (
           <div className="cart-offer-banner">
             <div>
@@ -495,7 +607,13 @@ export function CartPage({ onNavigate }: CartPageProps) {
           </div>
         ) : null}
 
-        <div className="cart-fulfillment-card">
+        <div className="cart-layout">
+          {/* Left: what is being bought and where it is going. Right: what it
+              costs. The fulfillment card used to sit above the grid, which put
+              the address in a column of its own and left the summary floating
+              beside an empty gutter. */}
+          <div className="cart-main">
+            <div className="cart-fulfillment-card">
           <div className="cart-fulfillment-card__header">
             <div>
               <strong>Delivery or pickup</strong>
@@ -610,10 +728,9 @@ export function CartPage({ onNavigate }: CartPageProps) {
               </div>
             </div>
           ) : null}
-        </div>
+            </div>
 
-        <div className="cart-layout">
-          <div className="cart-items">
+            <div className="cart-items">
             {cart.items.map((item) => {
               const customizationLines = formatCustomizationSummary(
                 item.selectedSize,
@@ -621,6 +738,16 @@ export function CartPage({ onNavigate }: CartPageProps) {
               );
               return (
               <article className="cart-item" key={item.id}>
+                {/* The phone shows the dish, not just its name — with three or
+                    four similar Thai curries in a cart, the photo is what tells
+                    them apart at a glance. */}
+                <div className="cart-item__thumb">
+                  {item.menuItem.image_url ? (
+                    <img loading="lazy" decoding="async" alt="" src={item.menuItem.image_url} />
+                  ) : (
+                    <img loading="lazy" decoding="async" alt="" src={createPlaceholderImage(item.menuItem.name)} />
+                  )}
+                </div>
                 <div className="cart-item__copy">
                   <strong>{item.menuItem.name}</strong>
                   <p>{item.menuItem.description ?? 'Freshly prepared and ready to go.'}</p>
@@ -690,12 +817,15 @@ export function CartPage({ onNavigate }: CartPageProps) {
                 </button>
               </article>
             ))}
+            </div>
           </div>
 
           <aside className="checkout-card">
             <div className="checkout-card__header">
               <strong>Order summary</strong>
-              <span>{cart.items.length} items</span>
+              <span>
+                {cart.items.length} {cart.items.length === 1 ? 'item' : 'items'}
+              </span>
             </div>
             <label className="form-field">
               <span>Special instructions</span>
@@ -707,7 +837,10 @@ export function CartPage({ onNavigate }: CartPageProps) {
             </div>
             <div className="price-row"><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div>
             <div className="price-row"><span>Delivery fee</span><strong>{formatCurrency(deliveryFee)}</strong></div>
-            <div className="price-row"><span>Taxes</span><strong>{formatCurrency(taxAmount)}</strong></div>
+            <div className="price-row">
+              <span>Taxes ({Math.round(TAX_RATE * 100)}%)</span>
+              <strong>{formatCurrency(taxAmount)}</strong>
+            </div>
             {activePersonalizedOffer && isMonetaryPersonalizedOffer ? (
               <div className="price-row price-row--discount">
                 <span>{activePersonalizedOffer.discountLabel ?? 'Offer discount'}</span>
@@ -722,7 +855,7 @@ export function CartPage({ onNavigate }: CartPageProps) {
             </button>
           </aside>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

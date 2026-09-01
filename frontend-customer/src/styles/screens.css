@@ -1,0 +1,2161 @@
+/* =========================================================================
+   The rest of the storefront.
+   =========================================================================
+   `home.css` gave Home a type system, an inked surface and one card shape.
+   This sheet carries the same language to the four screens the customer
+   actually moves through afterwards — Menu, Orders, Cart and the doorway —
+   so the app stops changing its mind about what it looks like between one
+   click and the next.
+
+   It reads the tokens published in `index.css` and never a literal brand
+   colour, and it is loaded last so it can override both the app baseline in
+   `app.css` and the legacy rules in `index.css` without either being edited
+   out from under the screens still relying on them.
+   ========================================================================= */
+
+/* =========================================================================
+   1. Display type, everywhere
+   =========================================================================
+   The serif is the answer to "the same font on every screen": one face for
+   display type — page titles, section titles, the big number on a summary
+   tile — and the UI sans for everything that is an interface control or a row
+   of data. Named selectors rather than bare `h1, h2`, because a heading inside
+   a card row is a label, not a headline, and setting it in the serif makes a
+   list look like a magazine contents page. */
+
+.home-hero__title,
+.orders-hero__title,
+.cart-empty__title,
+.gate__title,
+.auth-aside__headline,
+.auth-panel__header h1,
+.ai-card__title,
+.section-header__title,
+.section-card__header h2,
+.section-card h2,
+.restaurant-page__menu-copy h2,
+.restaurant-hero__summary h1,
+.menu-detail-card__headline h1,
+.offer-prompt-modal__heading,
+.panel__heading,
+.empty-state__title,
+.summary-chip strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* The serif carries its weight in the shape of the letters, so the 900s the
+   sans needed would render it as a slab. */
+.home-hero__title,
+.orders-hero__title,
+.cart-empty__title,
+.gate__title,
+.summary-chip strong {
+  font-weight: 700;
+}
+
+/* An eyebrow is the serif's counterweight: small, wide, and in the sans, so
+   the two lines read as one unit rather than two competing titles. */
+.eyebrow,
+.section-card .eyebrow {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--hint);
+}
+
+/* =========================================================================
+   2. Menu — `RestaurantPage`
+   ========================================================================= */
+
+/* `width: 100%` is doing real work here. `.app-content` is a column flexbox
+   and this page carries `margin: 0 auto` — and a flex item with auto margins
+   on the cross axis does not stretch. The page was therefore shrink-to-fit:
+   its width came from its own contents, so a branch with dish photographs
+   measured differently from one falling back to lettered placeholders, and
+   `max-width` never bound because the box never reached it. An explicit width
+   makes the page the width of its container on every branch; the explicit
+   grid track keeps the column from being resized by the full-bleed hero,
+   which stretches itself with `100vw` and percentage margins. */
+.restaurant-page {
+  width: 100%;
+  max-width: 1120px;
+  gap: 26px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+}
+
+/* --- the storefront banner ---------------------------------------------
+   The old hero was a 252px letterbox with a translucent card floating in the
+   middle of it. At that height the photograph is a texture rather than a
+   picture, and the card put a second border inside a bordered box. */
+
+.restaurant-page .restaurant-hero--compact {
+  height: auto;
+  min-height: 400px;
+  display: flex;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.restaurant-page .restaurant-hero__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 58%;
+}
+
+.restaurant-page .restaurant-hero__overlay {
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--ink) 90%, transparent) 0%,
+      color-mix(in srgb, var(--ink) 70%, transparent) 46%,
+      color-mix(in srgb, var(--ink) 22%, transparent) 80%,
+      transparent 100%
+    ),
+    linear-gradient(to top, color-mix(in srgb, var(--ink) 72%, transparent), transparent 58%);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .restaurant-page .restaurant-hero__overlay {
+    background: linear-gradient(100deg, rgba(13, 19, 16, 0.9), rgba(13, 19, 16, 0.2) 84%, transparent);
+  }
+}
+
+.restaurant-page .restaurant-hero__content--compact {
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 16px;
+  width: 100%;
+  padding: 26px var(--space-screen) 30px;
+}
+
+.restaurant-page .restaurant-hero__topline {
+  position: absolute;
+  top: 20px;
+  left: var(--space-screen);
+  right: var(--space-screen);
+}
+
+/* The glass card was doing the scrim's job twice over. The scrim already
+   carries the copy, so what is left is the branch picker — the one control
+   here that genuinely needs a surface of its own. */
+.restaurant-page .restaurant-hero__card {
+  width: min(100%, 460px);
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.restaurant-page .restaurant-hero__summary {
+  gap: 8px;
+}
+
+.restaurant-page .restaurant-hero__content .eyebrow {
+  color: var(--on-ink-muted);
+}
+
+.restaurant-page .restaurant-hero__summary h1 {
+  font-size: clamp(38px, 5vw, 62px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  color: var(--on-media);
+}
+
+.restaurant-page .restaurant-branch-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  text-align: left;
+  color: var(--on-ink);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  backdrop-filter: blur(14px);
+  transition: background 0.16s ease;
+}
+
+.restaurant-page .restaurant-branch-trigger:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.restaurant-page .restaurant-branch-trigger__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.restaurant-page .restaurant-branch-trigger__eyebrow {
+  color: var(--on-ink-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* --- the facts strip ----------------------------------------------------
+   Lifted off the photograph and onto its own band under it. Delivery time,
+   fee and minimum are the three numbers that decide whether someone orders at
+   all; over a bright plate at 11px they were unreadable. */
+
+.restaurant-page .restaurant-hero__meta--compact,
+.restaurant-page .restaurant-fulfillment-row {
+  gap: 8px;
+}
+
+.restaurant-page .hero-meta-pill {
+  min-height: 32px;
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-ink);
+  background: var(--glass);
+  border-color: var(--glass-line);
+  backdrop-filter: blur(10px);
+}
+
+.restaurant-page .hero-meta-pill--open {
+  background: rgba(74, 222, 128, 0.22);
+  border-color: rgba(74, 222, 128, 0.34);
+}
+
+.restaurant-page .hero-meta-pill--closed {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+.restaurant-page .restaurant-hero__description {
+  max-width: 56ch;
+  -webkit-line-clamp: 2;
+  color: var(--on-ink-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.restaurant-page .restaurant-back-button {
+  min-height: 36px;
+  padding: 0 14px;
+  background: var(--glass);
+  border-color: var(--glass-line);
+  backdrop-filter: blur(14px);
+}
+
+/* --- the category bar ---------------------------------------------------
+   A full-width sticky band rather than a bordered card, so scrolling the menu
+   feels like moving inside one page instead of past a stack of panels. */
+
+.restaurant-page .restaurant-page__section--chips {
+  position: sticky;
+  top: 0;
+  z-index: 14;
+  padding: 12px 0;
+  border: 0;
+  border-radius: 0;
+  /* Opaque. A translucent bar with a blur behind it looks right until a
+     heading scrolls under it — then the words show through the chips and the
+     two lines of type sit on top of each other. */
+  background: var(--bg);
+  box-shadow: none;
+}
+
+.restaurant-page .restaurant-page__section--chips::after {
+  content: '';
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--divider);
+}
+
+.restaurant-page .restaurant-page__tabs {
+  position: static;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+}
+
+.restaurant-page .restaurant-page__tabs .tab-chip {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.restaurant-page .restaurant-page__tabs .tab-chip:hover {
+  border-color: var(--primary);
+  transform: none;
+}
+
+.restaurant-page .restaurant-page__tabs .tab-chip--active {
+  color: var(--on-ink);
+  background: var(--ink);
+  border-color: transparent;
+}
+
+/* --- the menu itself ---------------------------------------------------- */
+
+.restaurant-page .restaurant-page__section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.restaurant-page .restaurant-page__menu-head {
+  align-items: flex-end;
+  margin-bottom: 18px;
+}
+
+.restaurant-page .restaurant-page__menu-copy h2 {
+  font-size: clamp(26px, 2.6vw, 34px);
+}
+
+.restaurant-page .menu-list {
+  gap: 14px;
+}
+
+/* =========================================================================
+   3. The menu row
+   =========================================================================
+   Same card material as the home grid, laid on its side: copy left, a square
+   photograph right, and the add control docked to the photograph's bottom edge
+   so it reads as belonging to the dish rather than floating in the gutter. */
+
+.menu-item-card {
+  align-items: stretch;
+  gap: 20px;
+  padding: 18px;
+  border-radius: 22px;
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
+}
+
+.menu-item-card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-line);
+  box-shadow: var(--shadow-lg);
+}
+
+.menu-item-card__body {
+  gap: 10px;
+  align-content: start;
+}
+
+.menu-item-card__copy h3 {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+}
+
+.menu-item-card__copy p {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.menu-item-card__badges {
+  gap: 8px;
+}
+
+/* The veg / non-veg mark is a bordered square in every Indian menu there has
+   ever been, and it was a plain dot here — which reads as a status light. */
+.food-dot {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  background: var(--white);
+  border: 1.6px solid var(--deep-red);
+}
+
+.food-dot::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--deep-red);
+}
+
+.food-dot--veg {
+  background: var(--white);
+  border-color: var(--offer);
+}
+
+.food-dot--veg::after {
+  background: var(--offer);
+}
+
+.food-dot--nonveg {
+  background: var(--white);
+}
+
+.menu-item-card__price {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+/* =========================================================================
+   The star
+   ========================================================================= */
+
+.dish-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--warning);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+}
+
+/* On a tile the star shares the meta line with the category, so it takes that
+   line's scale and separator rather than shouting over it. */
+.dish-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dish-card__meta > span:first-child + .dish-rating::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.dish-card__meta .dish-rating {
+  font-size: 11.5px;
+}
+
+.menu-item-card__price strong {
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.4px;
+}
+
+.menu-item-card__price > span:last-child {
+  position: relative;
+  padding-left: 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.menu-item-card__price > span:last-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateY(-50%);
+}
+
+.menu-item-card__aside {
+  position: relative;
+  align-content: start;
+  gap: 0;
+}
+
+.menu-item-card__media {
+  width: 132px;
+  height: 132px;
+  border-radius: 18px;
+  background: var(--primary-soft);
+}
+
+.menu-item-card__media img {
+  transition: transform 0.4s ease;
+}
+
+.menu-item-card--interactive:hover .menu-item-card__media img {
+  transform: scale(1.05);
+}
+
+.menu-item-card__favorite {
+  top: 8px;
+  right: 8px;
+}
+
+/* Docked to the photograph with the same overhang the home tile uses: half
+   over the picture, half over the card, which is what makes it read as one
+   object with the dish above it. */
+.menu-item-card__add,
+.menu-item-card .quantity-picker--menu {
+  position: relative;
+  z-index: 1;
+  margin: -18px auto 0;
+  width: max-content;
+}
+
+.menu-item-card__add {
+  min-height: 38px;
+  min-width: 104px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--on-primary);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  background: var(--ink);
+  border: 1px solid transparent;
+  box-shadow: 0 6px 16px rgba(6, 10, 8, 0.22);
+  transition: background 0.14s ease, transform 0.14s ease;
+}
+
+.menu-item-card__add:hover:not(:disabled) {
+  background: var(--ink-lift);
+}
+
+.menu-item-card__add:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.menu-item-card .quantity-picker--menu {
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-primary);
+  box-shadow: 0 6px 16px rgba(6, 10, 8, 0.22);
+}
+
+.menu-item-card .quantity-picker--menu button,
+.menu-item-card .quantity-picker--menu .quantity-picker__count {
+  color: var(--on-primary);
+}
+
+/* A dish the kitchen has run out of should look unavailable before the button
+   is read, not only when it is pressed. */
+.menu-item-card:has(.menu-item-card__add:disabled) .menu-item-card__media {
+  filter: grayscale(0.85);
+  opacity: 0.7;
+}
+
+.menu-item-card__add:disabled {
+  color: var(--muted);
+  background: var(--surface-alt);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+/* =========================================================================
+   4. Orders
+   ========================================================================= */
+
+.orders-screen {
+  gap: 26px;
+}
+
+.orders-hero {
+  padding: 34px 26px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, var(--ink-lift), var(--ink) 64%);
+}
+
+.orders-hero__glow {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--primary) 42%, transparent),
+    transparent 70%
+  );
+}
+
+.orders-hero__badge {
+  color: var(--on-ink);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+}
+
+.orders-hero__title {
+  margin-top: 12px;
+  color: var(--on-ink);
+  font-size: clamp(30px, 3.4vw, 44px);
+  line-height: 1.04;
+}
+
+.orders-hero__subtitle {
+  max-width: 52ch;
+  color: var(--on-ink-muted);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+/* --- the three counts ---------------------------------------------------
+   A count is display type. Setting it in the serif at 34px is what turns three
+   grey boxes into the page's summary. */
+
+.summary-chip {
+  gap: 2px;
+  padding: 20px;
+  border-radius: 20px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+
+.summary-chip strong {
+  font-size: 34px;
+  line-height: 1.05;
+  color: var(--text);
+}
+
+.summary-chip small {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+}
+
+/* --- the rows ----------------------------------------------------------- */
+
+.order-row {
+  padding: 16px;
+  border-radius: 20px;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.order-row:hover {
+  transform: translateX(2px);
+  border-color: var(--brand-line);
+  box-shadow: var(--shadow-md);
+}
+
+.order-row__thumb {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  color: var(--on-ink);
+  background: var(--ink);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.order-row__title strong {
+  font-size: 15px;
+  letter-spacing: -0.2px;
+}
+
+.order-row__footer strong {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+}
+
+/* =========================================================================
+   5. Cart
+   ========================================================================= */
+
+/* --- nothing in it ------------------------------------------------------
+   The empty cart is the one screen in the app with no data to arrange, which
+   makes it the one that most looks broken when it is left plain. */
+
+.cart-empty {
+  gap: 14px;
+  min-height: 56vh;
+}
+
+.cart-empty__ring {
+  width: 116px;
+  height: 116px;
+  margin-bottom: 8px;
+  background: radial-gradient(circle at 50% 40%, var(--tint-12), transparent 68%);
+}
+
+.cart-empty__core {
+  width: 78px;
+  height: 78px;
+  color: var(--on-ink);
+  background: var(--ink);
+  box-shadow: 0 14px 30px rgba(6, 10, 8, 0.24);
+}
+
+.cart-empty__title {
+  font-size: clamp(28px, 3.4vw, 38px);
+  line-height: 1.06;
+}
+
+.cart-empty__text {
+  max-width: 40ch;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.cart-empty .btn {
+  min-height: 52px;
+  padding: 0 30px;
+  border-radius: 999px;
+}
+
+/* --- checkout -----------------------------------------------------------
+   The page is a title, a progress line, then two columns: what is being bought
+   on the left, what it costs on the right. Everything that is not one of those
+   three things lost its card frame. */
+
+.cart-page {
+  gap: 20px;
+}
+
+.cart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cart-head__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cart-head__copy h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.cart-head__branch {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* An outlined pill, not a text link. Clearing a cart is destructive and takes
+   a deliberate press; a bare coloured word beside a heading reads as a label. */
+.cart-head__clear {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.cart-head__clear:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* --- the progress line -------------------------------------------------- */
+
+.cart-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+.cart-progress__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cart-progress__copy strong {
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.1px;
+}
+
+.cart-progress__copy span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.cart-progress__track {
+  flex: 0 1 200px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+}
+
+.cart-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--warning);
+  transition: width 0.4s ease;
+}
+
+/* The three states the bar can be in. Colour carries the same message as the
+   words, so neither is doing the work alone. */
+.cart-progress--offer .cart-progress__copy strong,
+.cart-progress--block .cart-progress__copy strong {
+  color: color-mix(in srgb, var(--warning) 72%, var(--text));
+}
+
+.cart-progress--block {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.cart-progress--block .cart-progress__track {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.cart-progress--block .cart-progress__fill {
+  background: var(--danger);
+}
+
+.cart-progress--block .cart-progress__copy strong {
+  color: var(--danger);
+}
+
+.cart-progress--done {
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--offer) 30%, transparent);
+}
+
+.cart-progress--done .cart-progress__track {
+  background: color-mix(in srgb, var(--offer) 20%, transparent);
+}
+
+.cart-progress--done .cart-progress__fill {
+  background: var(--offer);
+}
+
+.cart-progress--done .cart-progress__copy strong {
+  color: var(--offer);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .cart-progress {
+    border-color: var(--border);
+  }
+
+  .cart-progress__track {
+    background: var(--divider);
+  }
+}
+
+/* --- the two columns ---------------------------------------------------- */
+
+.cart-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cart-layout {
+  align-items: start;
+  gap: 20px;
+}
+
+.cart-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.cart-fulfillment-card {
+  margin-bottom: 0;
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-xs);
+}
+
+/* One card holding every line, ruled between them — rather than a stack of
+   separate cards, which at four items reads as four unrelated purchases. */
+.cart-items {
+  gap: 0;
+  padding: 4px 18px;
+  border-radius: 22px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+
+.cart-items .cart-item {
+  padding: 18px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.cart-items .cart-item + .cart-item {
+  border-top: 1px solid var(--divider);
+}
+
+/* Not one of the things being bought — a suggestion about them — so it keeps a
+   frame of its own rather than passing as another line of the bill. */
+.cart-items .cart-item--upsell {
+  margin: 4px 0 14px;
+  padding: 16px;
+  border: 1px solid var(--brand-line);
+  border-radius: 18px;
+  background: var(--surface-alt);
+}
+
+.cart-item__thumb {
+  flex: 0 0 66px;
+  width: 66px;
+  height: 66px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.cart-item__copy p {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The summary follows the list on a long cart instead of scrolling away from
+   the total it belongs to. */
+.checkout-card {
+  gap: 14px;
+  padding: 22px;
+  background: var(--surface-raised);
+  border-color: var(--border);
+}
+
+/* Sticky only above the breakpoint where the grid actually has two columns.
+   Below it the summary is simply the last block on the page, and pinning it
+   there would park it over the items it is summing. */
+@media (min-width: 1101px) {
+  .checkout-card {
+    position: sticky;
+    top: 92px;
+  }
+}
+
+/* --- the phone reading --------------------------------------------------- */
+
+@media (max-width: 700px) {
+  .cart-page {
+    gap: 16px;
+  }
+
+  .cart-head {
+    align-items: center;
+  }
+
+  .cart-head__clear {
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 12.5px;
+  }
+
+  /* The bar goes under its own label rather than sharing the row, where at
+     this width it was squeezing the sentence that explains it. */
+  .cart-progress {
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .cart-progress__track {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .cart-items {
+    padding: 2px 14px;
+  }
+
+  .cart-items .cart-item {
+    padding: 14px 0;
+    align-items: flex-start;
+  }
+
+  .cart-item__thumb {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+  }
+
+  .cart-fulfillment-card,
+  .checkout-card {
+    padding: 16px;
+  }
+}
+
+/* --- checkout ----------------------------------------------------------- */
+
+.section-card {
+  border-radius: 24px;
+  border: 1px solid var(--border);
+}
+
+.cart-item {
+  border-radius: 18px;
+}
+
+.cart-item__thumb {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.checkout-card {
+  border-radius: 24px;
+}
+
+.checkout-card__header h3,
+.checkout-card__header strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.price-row--total {
+  padding-top: 14px;
+  border-top: 1px solid var(--divider);
+}
+
+.price-row--total span,
+.price-row--total strong {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* The one action the whole screen exists for. */
+.checkout-card .primary-button {
+  min-height: 54px;
+  border-radius: 16px;
+  font-size: 15px;
+  background: var(--ink);
+  color: var(--on-primary);
+  transition: background 0.16s ease, transform 0.14s ease;
+}
+
+.checkout-card .primary-button:hover:not(:disabled) {
+  background: var(--ink-lift);
+}
+
+.checkout-card .primary-button:active:not(:disabled) {
+  transform: scale(0.995);
+}
+
+/* =========================================================================
+   6. The doorway
+   =========================================================================
+   Login and sign-up were a two-panel landing page: a marketing aside on the
+   left, the form on the right. Someone arriving here has already chosen the
+   restaurant — they were sent here by a Checkout or a Favourite button — so
+   the pitch is not what they need, the form is. The composition centres on the
+   form, and what the aside was saying survives as a strip beneath it. */
+
+.auth-panel__header h1 {
+  font-size: clamp(30px, 3.6vw, 40px);
+  line-height: 1.05;
+}
+
+.auth-aside__headline em {
+  font-style: italic;
+  color: var(--primary);
+}
+
+@media (min-width: 960px) {
+  .auth-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    max-width: none;
+    padding: 64px var(--site-gutter) 80px;
+  }
+
+  .auth-panel {
+    order: 0;
+    width: min(100%, 520px);
+    gap: 22px;
+    padding: 40px;
+    border-radius: 28px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .auth-panel__top,
+  .auth-panel__header,
+  .auth-tabs {
+    text-align: center;
+  }
+
+  .auth-panel__top {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .auth-brand {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .auth-brand__copy {
+    align-items: center;
+  }
+
+  .auth-mark {
+    flex: 0 0 60px;
+    width: 60px;
+    height: 60px;
+    border-radius: 20px;
+    font-size: 19px;
+    background: var(--ink);
+    color: var(--on-ink);
+    box-shadow: 0 12px 26px rgba(6, 10, 8, 0.24);
+  }
+
+  .auth-panel__header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .auth-tabs {
+    justify-content: center;
+  }
+
+  /* --- what the aside used to say ------------------------------------
+     Kept, because "your picks learn your taste" is the honest reason to make
+     an account and dropping it would leave the form asking for a password in
+     exchange for nothing. Restated as one quiet row under the card rather
+     than a column competing with it. */
+  .auth-aside {
+    order: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    width: min(100%, 880px);
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    text-align: center;
+  }
+
+  .auth-aside__glow,
+  .auth-aside__brand {
+    display: none;
+  }
+
+  .auth-aside__headline {
+    max-width: 24ch;
+    font-size: 24px;
+    line-height: 1.2;
+    color: var(--text);
+  }
+
+  .auth-benefits {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .auth-benefits li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    text-align: center;
+    background: none;
+    border: 0;
+  }
+
+  .auth-benefits__icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    color: var(--primary);
+    background: var(--primary-soft);
+  }
+
+  .auth-benefits__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .auth-benefits__copy strong {
+    font-size: 14.5px;
+    font-weight: 800;
+  }
+
+  .auth-benefits__copy small {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 20px;
+  }
+}
+
+/* =========================================================================
+   7. Desktop
+   ========================================================================= */
+
+@media (min-width: 960px) {
+  .restaurant-page {
+    gap: 40px;
+  }
+
+  /* Edge to edge, like Home's. The copy inside stays in the page column so
+     the restaurant's name lines up with the menu beneath it. */
+  .restaurant-page .restaurant-hero--compact {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    margin-top: -36px;
+    min-height: 520px;
+  }
+
+  .restaurant-page .restaurant-hero__content--compact {
+    max-width: calc(1120px + var(--site-gutter) * 2);
+    margin: 0 auto;
+    padding: 40px var(--site-gutter) 44px;
+  }
+
+  .restaurant-page .restaurant-hero__topline {
+    left: 50%;
+    right: auto;
+    width: min(100%, calc(1120px + var(--site-gutter) * 2));
+    padding: 0 var(--site-gutter);
+    transform: translateX(-50%);
+  }
+
+  /* The chip bar spans the window and sticks under the site header. */
+  .restaurant-page .restaurant-page__section--chips {
+    top: 71px;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: 14px var(--site-gutter);
+  }
+
+  .restaurant-page .restaurant-page__tabs {
+    max-width: 1120px;
+    margin: 0 auto;
+    flex-wrap: wrap;
+  }
+
+  /* The menu rows run the full page column so they line up with the chip bar
+     and the hero copy above them. The copy keeps its own reading measure and
+     the photograph grows with the row, so the extra width lands on the card
+     rather than as empty gutter between the text and the picture. */
+  .restaurant-page .restaurant-page__menu-head,
+  .restaurant-page .menu-list {
+    width: 100%;
+    max-width: 1120px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .restaurant-page .menu-item-card {
+    width: 100%;
+  }
+
+  .menu-item-card {
+    gap: 32px;
+    padding: 22px;
+  }
+
+  .menu-item-card__copy p {
+    max-width: 62ch;
+  }
+
+  .menu-item-card__media {
+    width: 188px;
+    height: 188px;
+  }
+
+  .orders-hero {
+    padding: 52px 48px;
+  }
+
+  .summary-row {
+    gap: 18px;
+  }
+
+  .summary-chip {
+    padding: 26px;
+  }
+
+  .summary-chip strong {
+    font-size: 42px;
+  }
+}
+
+/* =========================================================================
+   8. Names, in the display face
+   =========================================================================
+   The serif was doing section titles only, which left every screen with two
+   voices: an editorial heading over a grid of interface-grey card labels. A
+   dish's name is the most important word on its card — it is the thing being
+   sold — so it is set in the same face as the section that introduces it.
+
+   What stays in the sans is everything that is not a name: descriptions,
+   meta lines, prices, buttons, form labels, chips and counts. A serif at 11px
+   in a metadata row is illegible, and a serif on a button stops reading as
+   something you can press.
+
+   The `.home` prefixes are not redundant — `home.css` sets these same rules at
+   two-class specificity, and a bare selector here would lose to it regardless
+   of load order. */
+
+.home .dish-card__name,
+.dish-card__name,
+.dish-tile__name,
+.home .home-item-card__copy strong,
+.home-item-card__copy strong,
+.menu-item-card__copy h3,
+.menu-item-card__body h3,
+.favorite-card__body h3,
+.home .generated-combo-card__title,
+.generated-combo-card__title,
+.restaurant-card__heading,
+.order-row__title strong,
+.home .recent-order__copy strong,
+.recent-order__copy strong,
+.cart-item__copy strong,
+.chat-food-card__copy strong,
+.home-offer-card strong,
+.profile-action-card strong,
+.auth-brand__copy strong,
+.auth-aside__name,
+.app-header__title,
+.home-section__copy h2,
+.offer-prompt-modal__copy h2,
+.menu-customization-card__header h3,
+.order-detail-hero h1,
+.profile-overview h1,
+.preferences-wizard__hero h1,
+.preferences-wizard__step h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* A serif reads about a step smaller than a sans at the same size — the
+   x-height is lower and the strokes are finer — so the names that sit at card
+   scale get that step back. Without it the redesign looks like it shrank the
+   menu. */
+.home .dish-card__name,
+.dish-card__name,
+.home .home-item-card__copy strong,
+.home-item-card__copy strong {
+  font-size: 16px;
+  line-height: 21px;
+}
+
+.menu-item-card__copy h3,
+.favorite-card__body h3 {
+  font-size: 18px;
+  line-height: 1.22;
+}
+
+.order-row__title strong,
+.recent-order__copy strong,
+.home .recent-order__copy strong,
+.cart-item__copy strong {
+  font-size: 16.5px;
+}
+
+.restaurant-card__heading,
+.generated-combo-card__title,
+.home .generated-combo-card__title {
+  font-size: 17px;
+  line-height: 1.24;
+}
+
+.app-header__title {
+  font-size: 18px;
+}
+
+@media (min-width: 960px) {
+  .home .dish-card__name,
+  .dish-card__name,
+  .home .home-item-card__copy strong,
+  .home-item-card__copy strong {
+    font-size: 17.5px;
+    line-height: 23px;
+  }
+
+  .menu-item-card__copy h3 {
+    font-size: 20px;
+  }
+}
+
+/* =========================================================================
+   6. The dish — `MenuItemDetail`
+   =========================================================================
+   The page was a square photograph beside a short paragraph, both vertically
+   centred in a row as tall as the photograph. For a dish with a one-line
+   description that left a column of empty cream taller than the copy itself,
+   and the eye had no reason to travel down the page. The photo now keeps a
+   landscape shape and both columns start at the top, so the copy leads and
+   the customisation cards below it sit where the reader is already looking. */
+
+.menu-detail-page {
+  /* Same auto-margin/flex-item trap as the menu: without an explicit width the
+     page is shrink-to-fit and its measure changes with its contents. */
+  width: 100%;
+  max-width: 1040px;
+}
+
+.menu-detail-card {
+  align-items: start;
+  border-radius: 24px;
+}
+
+.menu-detail-card__badges {
+  margin-bottom: 2px;
+}
+
+/* Three facts, each free to take the width its value needs — the row was a
+   rigid third-each grid, which set "18-24 min" in the same box as a star. */
+.menu-detail-meta {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.menu-detail-meta strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.menu-detail-meta__note {
+  color: var(--hint);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* --- what else the branch makes -----------------------------------------
+   A rail rather than a grid: it is a sideline to the dish being ordered, and
+   a grid of eight tiles under the add button would outweigh it. */
+
+.menu-detail-suggestions {
+  display: grid;
+  gap: 16px;
+}
+
+.menu-detail-suggestions__row {
+  gap: 14px;
+  padding-bottom: 4px;
+}
+
+.menu-detail-suggestions__row > * {
+  flex: 0 0 auto;
+  width: 224px;
+  scroll-snap-align: start;
+}
+
+@media (min-width: 960px) {
+  .menu-detail-page {
+    gap: 28px;
+  }
+
+  /* The photograph leads at a size that still leaves the copy the wider
+     column, and follows the customisation list rather than scrolling away
+     from the dish it belongs to. */
+  .menu-detail-card {
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+    padding: 24px;
+  }
+
+  .menu-detail-card__media,
+  .menu-detail-card__media-skeleton {
+    position: sticky;
+    top: 96px;
+    aspect-ratio: 4 / 3;
+    max-height: none;
+  }
+
+  .menu-detail-suggestions__row > * {
+    width: 252px;
+  }
+}
+
+/* =========================================================================
+   7. Offers, in motion
+   =========================================================================
+   An offer is the one card on the page that is trying to catch an eye, and it
+   was as still as the menu rows around it. The motion here is all decorative
+   furniture — the blobs the card already draws behind its copy, and a light
+   sweep across the glass — so nothing that carries meaning moves, and no text
+   is ever animated out from under someone mid-read.
+
+   Everything is off under `prefers-reduced-motion`, at the bottom of the
+   section. */
+
+.home-offer-card {
+  /* Staggered per card in the rail, so a row of offers arrives as a sequence
+     rather than three things appearing at once. */
+  animation: offer-card-in 560ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    opacity 180ms ease;
+}
+
+.home-offer-card:nth-child(2) { animation-delay: 90ms; }
+.home-offer-card:nth-child(3) { animation-delay: 180ms; }
+.home-offer-card:nth-child(4) { animation-delay: 270ms; }
+.home-offer-card:nth-child(5) { animation-delay: 360ms; }
+.home-offer-card:nth-child(n + 6) { animation-delay: 450ms; }
+
+@keyframes offer-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* --- the light sweep -----------------------------------------------------
+   A band of white glass crossing the card. It runs for a fifth of its cycle
+   and rests for the other four, so the rail glints rather than strobes; the
+   per-card delays keep the three from sweeping in unison. */
+
+.home-offer-card::after {
+  content: '';
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -40%;
+  width: 34%;
+  z-index: 2;
+  pointer-events: none;
+  transform: rotate(18deg) translateX(0);
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: offer-shine 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.home-offer-card:nth-child(2)::after { animation-delay: 1.1s; }
+.home-offer-card:nth-child(3)::after { animation-delay: 2.2s; }
+.home-offer-card:nth-child(n + 4)::after { animation-delay: 3.3s; }
+
+@keyframes offer-shine {
+  0% {
+    transform: rotate(18deg) translateX(0);
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  22% {
+    transform: rotate(18deg) translateX(420px);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(18deg) translateX(420px);
+    opacity: 0;
+  }
+}
+
+/* --- the furniture behind the copy --------------------------------------
+   The glow breathes and the two blobs drift on different periods, which is
+   what keeps the card from looking like a looping GIF: the parts never quite
+   line up again. */
+
+.home-offer-card__glow {
+  animation: offer-glow-breathe 6.5s ease-in-out infinite;
+}
+
+.home-offer-card__shape--one {
+  animation: offer-drift 11s ease-in-out infinite;
+}
+
+.home-offer-card__shape--two {
+  animation: offer-drift-alt 9s ease-in-out infinite;
+}
+
+@keyframes offer-glow-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.16); opacity: 1; }
+}
+
+@keyframes offer-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-10px, 8px, 0) scale(1.07); }
+}
+
+@keyframes offer-drift-alt {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(8px, -7px, 0) scale(1.12); }
+}
+
+/* --- pointer ------------------------------------------------------------- */
+
+.home-offer-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 44px var(--shadow-color);
+}
+
+.home-offer-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.home-offer-card__icon,
+.home-offer-card__cta span,
+.home-offer-card__badge {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.home-offer-card:hover .home-offer-card__icon {
+  transform: rotate(-8deg) scale(1.12);
+}
+
+/* The arrow leans towards the tap it is asking for. */
+.home-offer-card:hover .home-offer-card__cta span {
+  transform: translateX(4px);
+}
+
+.home-offer-card:hover .home-offer-card__badge {
+  transform: scale(1.03);
+}
+
+.home-offer-card:focus-visible {
+  outline: 2px solid var(--offer-accent);
+  outline-offset: 3px;
+}
+
+/* A disabled card is mid-request; it should sit still while it waits. */
+.home-offer-card--disabled::after,
+.home-offer-card--disabled .home-offer-card__glow,
+.home-offer-card--disabled .home-offer-card__shape {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-offer-card,
+  .home-offer-card::after,
+  .home-offer-card__glow,
+  .home-offer-card__shape,
+  .home-offer-card__icon,
+  .home-offer-card__cta span,
+  .home-offer-card__badge {
+    animation: none;
+    transition: none;
+  }
+
+  .home-offer-card:hover {
+    transform: none;
+  }
+}
+
+/* =========================================================================
+   8. The account — `ProfilePage`
+   =========================================================================
+   The old screen said everything twice: the header carried the name, the
+   email and an order count, and a label-and-value list underneath repeated
+   all three and added the rest of the numbers as rows. A count set as a form
+   field reads as something to edit, and the seven destinations below it were
+   seven identical boxes with a paragraph each.
+
+   So: identity and figures in the header, the two facts an order actually
+   needs in a card of their own, and the destinations as a grouped list with
+   the icons the tab bar already uses. */
+
+.profile-page {
+  width: 100%;
+  max-width: 1040px;
+}
+
+/* --- header -------------------------------------------------------------- */
+
+/* One column on a phone. As a two-column grid at 414px the actions took the
+   width they wanted and left the name a 90px well to wrap in — "Custo / 1",
+   with the email breaking a character at a time. */
+.profile-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+  border-radius: 26px;
+  border: 1px solid var(--brand-line);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--primary-rgb), 0.12), transparent 42%),
+    linear-gradient(150deg, var(--surface-alt) 0%, var(--surface-raised) 62%);
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-hero__identity {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.profile-page .profile-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  box-shadow: var(--shadow-md);
+}
+
+.profile-hero__copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-hero__copy h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.profile-hero__copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.profile-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.profile-page .micro-chip--verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--offer);
+  background: var(--success-soft);
+  border-color: transparent;
+}
+
+.profile-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-hero__actions .profile-hero__edit {
+  flex: 1 1 auto;
+}
+
+.profile-hero__edit {
+  min-height: 42px;
+  padding: 0 18px;
+}
+
+.profile-hero__refresh {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.profile-hero__refresh:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: var(--brand-line);
+}
+
+.profile-hero__refresh:disabled svg {
+  animation: spin 900ms linear infinite;
+}
+
+.profile-hero__refresh:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Four figures, not four rows. */
+/* Two by two on a phone — auto-fit put three across and left the fourth
+   stranded alone on a second row. Four across once there is room. */
+.profile-stats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 600px) {
+  .profile-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Solid tiles rather than translucent ones: over a gradient, a wash of white
+   is a different colour at each end of the row and the four stop reading as
+   one set. */
+.profile-stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--brand-line-soft);
+}
+
+.profile-stat strong {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.profile-stat span {
+  color: var(--hint);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.profile-page__sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+
+/* --- the two columns ------------------------------------------------------ */
+
+.profile-columns {
+  display: grid;
+  gap: 18px;
+}
+
+.profile-details-card,
+.profile-nav-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border-radius: 22px;
+}
+
+.profile-field {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.profile-field:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.profile-field__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--hint);
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.profile-field strong {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* An empty field is a thing to do, not a blank. */
+.profile-field__add {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.profile-field__add:hover {
+  text-decoration: underline;
+}
+
+/* --- destinations --------------------------------------------------------- */
+
+.profile-nav-group {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.profile-nav-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.profile-nav-row:hover {
+  background: var(--surface-alt);
+}
+
+.profile-nav-row__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--primary-soft-2);
+  color: var(--primary);
+}
+
+.profile-nav-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-nav-row__copy strong {
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.profile-nav-row__copy small {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-nav-row__chevron {
+  color: var(--hint);
+  transition: transform 160ms ease;
+}
+
+.profile-nav-row:hover .profile-nav-row__chevron {
+  transform: translateX(3px);
+  color: var(--primary);
+}
+
+/* Logging out is not a menu entry among the others: it sits apart, below a
+   rule, and is the only thing on the page in the danger colour. */
+.profile-logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 2px;
+  border-radius: 14px;
+  border: 1px solid var(--danger-soft);
+  background: var(--danger-soft);
+  color: var(--deep-red);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 160ms ease;
+}
+
+.profile-logout:hover {
+  border-color: var(--deep-red);
+}
+
+/* --- recent orders --------------------------------------------------------- */
+
+.profile-order-list {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-order-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--divider);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.profile-order-row:hover {
+  border-color: var(--brand-line);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-order-row__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--surface-alt);
+  color: var(--primary);
+}
+
+.profile-order-row__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-order-row__copy strong {
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.profile-order-row__copy small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.profile-order-row__end {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.profile-order-row__end strong {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.profile-order-row--skeleton {
+  height: 64px;
+  border-style: dashed;
+  background: var(--surface-alt);
+  cursor: default;
+}
+
+@media (min-width: 960px) {
+  .profile-page {
+    gap: 22px;
+  }
+
+  .profile-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 30px 32px;
+    gap: 24px 32px;
+  }
+
+  .profile-hero__actions {
+    align-items: flex-start;
+  }
+
+  .profile-hero__actions .profile-hero__edit {
+    flex: 0 0 auto;
+  }
+
+  .profile-columns {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 22px;
+    align-items: start;
+  }
+
+  .profile-details-card,
+  .profile-nav-card {
+    padding: 24px;
+  }
+}

@@ -1,8 +1,9 @@
-import type { KeyboardEvent, MouseEvent, SyntheticEvent } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent, type SyntheticEvent } from 'react';
 import type { MenuItem } from '../types/app';
 import { createPlaceholderImage, formatCurrency } from '../services/api';
 import { getNewItemBadgeMeta } from '../utils/newItemBadges';
 import { FavoriteButton } from './FavoriteButton';
+import { DishRating } from './app/DishRating';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -28,6 +29,9 @@ export function MenuItemCard({
   favoritePending = false,
 }: MenuItemCardProps) {
   const newItemMeta = getNewItemBadgeMeta(item);
+  // Seeded menus carry image URLs that no longer resolve, and a failed `<img>`
+  // paints its alt text across the row where the dish should be.
+  const [imageFailed, setImageFailed] = useState(false);
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -76,6 +80,7 @@ export function MenuItemCard({
           <div className="menu-item-card__footer">
             <div className="menu-item-card__price">
               <strong>{formatCurrency(item.price)}</strong>
+              <DishRating item={item} />
               <span>{item.is_bestseller ? 'Best Seller' : item.category}</span>
             </div>
           </div>
@@ -91,9 +96,15 @@ export function MenuItemCard({
             />
           </div>
           <img
-            src={item.image_url ?? createPlaceholderImage(item.name)}
-            alt={item.name}
+            alt=""
+            decoding="async"
             loading="lazy"
+            onError={() => setImageFailed(true)}
+            src={
+              item.image_url && !imageFailed
+                ? item.image_url
+                : createPlaceholderImage(item.name)
+            }
           />
         </div>
         {quantity > 0 ? (

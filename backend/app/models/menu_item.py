@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +52,15 @@ class MenuItem(TimestampMixin, Base):
         nullable=False,
         default=Decimal("0.00"),
         server_default="0.00",
+    )
+    # Nullable on purpose: a dish nobody has rated yet has no rating, which is
+    # a different fact from a rating of zero and has to render differently.
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(2, 1), nullable=True)
+    rating_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
     )
     launched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

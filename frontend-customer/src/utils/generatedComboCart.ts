@@ -30,6 +30,10 @@ export function buildMenuItemFromGeneratedComboItem(
     is_bestseller: false,
     image_url: item.image_url,
     popularity_score: 0,
+    // A combo line carries the dish's identity and price, not its reviews.
+    // Null rather than 0 so the tile shows no star instead of a bad one.
+    rating: null,
+    rating_count: 0,
     launched_at: context.createdAt,
     created_at: context.createdAt,
     updated_at: context.updatedAt,

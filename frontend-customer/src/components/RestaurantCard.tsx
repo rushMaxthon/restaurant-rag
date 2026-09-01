@@ -28,7 +28,7 @@ export function RestaurantCard({
       type="button"
       >
       <div className="restaurant-card__media">
-        <img
+        <img loading="lazy" decoding="async"
           src={restaurant.cover_image_url ?? createPlaceholderImage(restaurant.name)}
           alt={restaurant.name}
         />

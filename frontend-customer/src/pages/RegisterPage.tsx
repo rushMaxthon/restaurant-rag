@@ -1,7 +1,9 @@
-import {useState} from 'react';
-import {AuthShell} from '../components/AuthShell';
-import {ApiError, api} from '../services/api';
-import {useAppStore} from '../hooks/useAppStore';
+import { useState } from 'react';
+import { AuthShell } from '../components/AuthShell';
+import { AuthField } from '../components/auth/AuthField';
+import { PasswordStrength } from '../components/auth/PasswordStrength';
+import { ApiError, api } from '../services/api';
+import { useAppStore } from '../hooks/useAppStore';
 
 interface RegisterPageProps {
   onNavigate: (path: string) => void;
@@ -18,8 +20,8 @@ function validateEmail(email: string): boolean {
   return /\S+@\S+\.\S+/.test(email);
 }
 
-export function RegisterPage({onNavigate}: RegisterPageProps) {
-  const {consumePendingAuthRedirectPath, pushToast, setSession} = useAppStore();
+export function RegisterPage({ onNavigate }: RegisterPageProps) {
+  const { consumePendingAuthRedirectPath, pushToast, setSession } = useAppStore();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,6 +29,15 @@ export function RegisterPage({onNavigate}: RegisterPageProps) {
   const [errors, setErrors] = useState<RegisterErrors>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  /** Every field clears its own error and the banner as soon as it is edited,
+   *  so the form stops accusing the customer of a mistake they are fixing. */
+  const edit = <K extends keyof RegisterErrors>(field: K, apply: (value: string) => void) =>
+    (value: string) => {
+      apply(value);
+      setErrors((current) => ({ ...current, [field]: undefined }));
+      setApiError(null);
+    };
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,17 +75,11 @@ export function RegisterPage({onNavigate}: RegisterPageProps) {
         password,
       });
       await setSession(response.access_token, response.user);
-      pushToast(
-        'Account created',
-        'You can now browse, chat, and place orders.',
-        'success',
-      );
+      pushToast('Account created', 'You can now browse, chat, and place orders.', 'success');
       onNavigate(consumePendingAuthRedirectPath() ?? '/');
     } catch (error: unknown) {
       setApiError(
-        error instanceof ApiError
-          ? error.message
-          : 'Unable to create your account.',
+        error instanceof ApiError ? error.message : 'Unable to create your account.',
       );
     } finally {
       setSubmitting(false);
@@ -83,99 +88,75 @@ export function RegisterPage({onNavigate}: RegisterPageProps) {
 
   return (
     <AuthShell
-      eyebrow="Create Account"
-      footerActionLabel="Login"
-      footerPrompt="Already have an account?"
-      onFooterAction={() => onNavigate('/auth/login')}
-      subtitle="Create your account once and keep every reorder, recommendation, and delivery detail in sync."
+      errorMessage={apiError}
+      mode="register"
+      onDismiss={() => onNavigate('/')}
+      onSwitchMode={() => onNavigate('/auth/login')}
+      subtitle="Reorders, recommendations and addresses, all kept in sync."
       title="Start ordering smarter"
-      errorMessage={apiError}>
+    >
       <form className="auth-form" noValidate onSubmit={submit}>
-        <label className="auth-field">
-          <span>Name</span>
-          <input
-            autoComplete="name"
-            className={errors.fullName ? 'auth-input auth-input--error' : 'auth-input'}
-            onChange={(event) => {
-              setFullName(event.target.value);
-              setErrors((current) => ({...current, fullName: undefined}));
-              setApiError(null);
-            }}
-            placeholder="Enter your full name"
-            type="text"
-            value={fullName}
-          />
-          {errors.fullName ? (
-            <small className="auth-error">{errors.fullName}</small>
-          ) : null}
-        </label>
+        <AuthField
+          autoComplete="name"
+          error={errors.fullName}
+          icon="person"
+          label="Full name"
+          onChange={edit('fullName', setFullName)}
+          placeholder="Enter your full name"
+          type="text"
+          value={fullName}
+        />
 
-        <label className="auth-field">
-          <span>Email</span>
-          <input
-            autoComplete="email"
-            className={errors.email ? 'auth-input auth-input--error' : 'auth-input'}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setErrors((current) => ({...current, email: undefined}));
-              setApiError(null);
-            }}
-            placeholder="Enter your email"
-            type="email"
-            value={email}
-          />
-          {errors.email ? <small className="auth-error">{errors.email}</small> : null}
-        </label>
+        <AuthField
+          autoComplete="email"
+          error={errors.email}
+          icon="mail"
+          label="Email"
+          onChange={edit('email', setEmail)}
+          placeholder="you@example.com"
+          type="email"
+          value={email}
+        />
 
-        <label className="auth-field">
-          <span>Password</span>
-          <input
+        {/* The two passwords share a row. They are the only pair on this form
+            that is short enough to read at half width, and pairing them is what
+            keeps the submit button above the fold on a phone. */}
+        <div className="auth-row">
+          <AuthField
             autoComplete="new-password"
-            className={errors.password ? 'auth-input auth-input--error' : 'auth-input'}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setErrors((current) => ({...current, password: undefined}));
-              setApiError(null);
-            }}
-            placeholder="Create a password"
+            error={errors.password}
+            icon="lock"
+            label="Password"
+            onChange={edit('password', setPassword)}
+            placeholder="6+ characters"
             type="password"
             value={password}
-          />
-          {errors.password ? (
-            <small className="auth-error">{errors.password}</small>
-          ) : null}
-        </label>
+          >
+            <PasswordStrength password={password} />
+          </AuthField>
 
-        <label className="auth-field">
-          <span>Confirm password</span>
-          <input
+          <AuthField
             autoComplete="new-password"
-            className={
-              errors.confirmPassword ? 'auth-input auth-input--error' : 'auth-input'
-            }
-            onChange={(event) => {
-              setConfirmPassword(event.target.value);
-              setErrors((current) => ({
-                ...current,
-                confirmPassword: undefined,
-              }));
-              setApiError(null);
-            }}
-            placeholder="Confirm your password"
+            error={errors.confirmPassword}
+            icon="lock"
+            label="Confirm"
+            onChange={edit('confirmPassword', setConfirmPassword)}
+            placeholder="Repeat it"
             type="password"
             value={confirmPassword}
           />
-          {errors.confirmPassword ? (
-            <small className="auth-error">{errors.confirmPassword}</small>
-          ) : null}
-        </label>
+        </div>
 
         <button className="auth-submit" disabled={submitting} type="submit">
           <span className="auth-submit__content">
-            {submitting ? <span className="auth-spinner" aria-hidden="true" /> : null}
-            <span>{submitting ? 'Creating account...' : 'Create Account'}</span>
+            {submitting ? <span aria-hidden="true" className="auth-spinner" /> : null}
+            <span>{submitting ? 'Creating account…' : 'Create account'}</span>
           </span>
         </button>
+
+        <p className="auth-legal">
+          By continuing you agree to our terms and privacy policy.
+        </p>
       </form>
     </AuthShell>
   );

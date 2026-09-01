@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api } from '../services/api';
+import { useAppConfig } from '../store/useAppConfig';
 import { MessageBubble, type ChatTimelineMessage } from '../components/MessageBubble';
 import { Skeleton } from '../components/Skeleton';
 import { TypingIndicator } from '../components/TypingIndicator';
+import { SignedOutGate } from '../components/app/SignedOutGate';
 import type { ChatHistoryItem, ChatSuggestionItem, GeneratedCombo, PersonalizedOfferCard } from '../types/app';
 
 interface ChatPageProps {
@@ -77,6 +79,7 @@ export function ChatPage({
   onOpenOfferFromChat,
   onToast,
 }: ChatPageProps) {
+  const { restaurantId } = useAppConfig();
   const [messages, setMessages] = useState<ChatTimelineMessage[]>([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(Boolean(token));
@@ -185,6 +188,11 @@ export function ChatPage({
       await api.streamChatMessage(
         {
           message: trimmedMessage,
+          // Scopes the assistant to this build's restaurant. Without it the
+          // model answers from the whole marketplace, so a Bangkok Bowl visitor
+          // was being recommended pizza from Luigi's — dishes this app cannot
+          // even add to a cart. The backend already honours this field.
+          restaurant_id: restaurantId,
           session_id: sessionId,
         },
         token,
@@ -334,17 +342,18 @@ export function ChatPage({
 
   if (!token) {
     return (
-      <div className="empty-state">
-        <strong>Login to chat with the food assistant.</strong>
-        <span>Your past orders and preferences help the recommendations feel personal.</span>
-        <button
-          className="primary-button primary-button--small"
-          onClick={() => onNavigate('/auth/login')}
-          type="button"
-        >
-          Login
-        </button>
-      </div>
+      <SignedOutGate
+        icon="chat"
+        onNavigate={onNavigate}
+        points={[
+          'Ask by craving, budget or spice level',
+          'Answers drawn from the live menu, never invented',
+          'Add what it suggests straight to your cart',
+        ]}
+        redirectPath="/chat"
+        text="Your past orders and taste preferences are what make the suggestions feel personal, so the assistant needs to know who you are."
+        title="Ask for something you'll actually want"
+      />
     );
   }
 

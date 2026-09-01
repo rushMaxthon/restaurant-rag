@@ -1308,6 +1308,21 @@ def assign_legacy_items_to_primary_location(
             menu_item.restaurant_location_id = primary_location_id
 
 
+# --- demo ratings ----------------------------------------------------------
+# Seed data, and only seed data. Production ratings come from diners; these
+# exist so a freshly seeded database renders a storefront that looks like a
+# real one instead of a menu with every star blank.
+
+def seed_rating(popularity_score: float) -> float:
+    """A plausible star, loosely tracking popularity.
+
+    Ratings in the wild cluster hard between 3.8 and 4.9 — a food app with a
+    2.1 on the menu has delisted it — so the range is narrow on purpose.
+    """
+    base = 3.9 + (max(0.0, min(100.0, popularity_score)) - 50.0) / 50.0 * 0.8
+    return round(min(4.9, max(3.6, base + RNG.uniform(-0.15, 0.15))), 1)
+
+
 def build_branch_menu_items(
     base_menu: list[dict],
     branch_config: dict,
@@ -2054,6 +2069,7 @@ def run_seed():
 
             for branch_seed, location in zip(restaurant_seed["locations"], branch_locations, strict=True):
                 for item_seed in build_branch_menu_items(restaurant_seed["base_menu"], branch_seed):
+                    popularity_score = round(RNG.uniform(50.0, 100.0), 2)
                     menu_item, created = get_or_create_menu_item(
                         db,
                         restaurant_id=restaurant.id,
@@ -2069,15 +2085,25 @@ def run_seed():
                             "is_bestseller": RNG.choice([True, False]),
                             "image_url": item_seed.get("image_url") or existing_image_map.get(item_seed["name"]),
                             "is_new_launch": item_seed.get("is_new_launch", False),
-                            "popularity_score": round(RNG.uniform(50.0, 100.0), 2),
+                            "popularity_score": popularity_score,
+                            "rating": seed_rating(popularity_score),
+                            "rating_count": RNG.randint(12, 240),
                         },
                     )
                     if created:
                         created_menu_items += 1
-                    elif menu_item.image_url is None:
-                        inherited_image = item_seed.get("image_url") or existing_image_map.get(item_seed["name"])
-                        if inherited_image:
-                            menu_item.image_url = inherited_image
+                    else:
+                        if menu_item.image_url is None:
+                            inherited_image = item_seed.get("image_url") or existing_image_map.get(item_seed["name"])
+                            if inherited_image:
+                                menu_item.image_url = inherited_image
+                        # Backfill only. A dish seeded before ratings existed
+                        # has none, and re-seeding is how a demo database
+                        # catches up; anything already set is left alone so a
+                        # re-run cannot rewrite values somebody chose.
+                        if menu_item.rating is None:
+                            menu_item.rating = seed_rating(float(menu_item.popularity_score or 0))
+                            menu_item.rating_count = RNG.randint(12, 240)
 
             locations_by_restaurant_slug[restaurant_seed["slug"]] = branch_locations
 

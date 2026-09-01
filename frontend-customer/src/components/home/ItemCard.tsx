@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { createPlaceholderImage, formatCurrency } from '../../services/api';
 import type { RecommendationItem } from '../../types/app';
 import { getNewItemBadgeMeta } from '../../utils/newItemBadges';
@@ -25,6 +25,10 @@ export function ItemCard({
   addDisabled = false,
   disabled = false,
 }: ItemCardProps) {
+  // Seeded menus carry image URLs that no longer resolve, and an `<img>` that
+  // fails paints its alt text across the card. Falling back to the generated
+  // placeholder on error keeps the tile a tile.
+  const [imageFailed, setImageFailed] = useState(false);
   const isAvailable = item.is_available !== false;
   const newItemMeta = getNewItemBadgeMeta(item);
   const primaryBadge = newItemMeta.label;
@@ -62,9 +66,15 @@ export function ItemCard({
             <span className="home-item-card__match-badge">Match {Math.round(item.score * 100)}%</span>
           </div>
           <img
-            alt={item.name}
+            alt=""
+            decoding="async"
             loading="lazy"
-            src={item.image_url ?? createPlaceholderImage(item.name)}
+            onError={() => setImageFailed(true)}
+            src={
+              item.image_url && !imageFailed
+                ? item.image_url
+                : createPlaceholderImage(item.name)
+            }
           />
         </button>
         <div className="home-item-card__favorite">

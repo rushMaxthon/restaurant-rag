@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { DishCard } from '../components/app/DishCard';
+import { DishRating } from '../components/app/DishRating';
+import { SectionHeader } from '../components/app/SectionHeader';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { useAppStore } from '../hooks/useAppStore';
 import { ApiError, api, createPlaceholderImage, formatCurrency, toNumber } from '../services/api';
@@ -13,6 +16,7 @@ import type {
 import { checkAuthAndRedirect } from '../utils/authRedirect';
 import { getNewItemBadgeMeta } from '../utils/newItemBadges';
 import {
+  isCustomizableMenuItem,
   buildLineItemId,
   calculateUnitPrice,
   findCustomizationOption,
@@ -57,6 +61,7 @@ export function MenuItemDetailPage({
     price: number | string;
   } | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<CartSelectedOption[]>([]);
+  const [suggestions, setSuggestions] = useState<MenuItem[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -110,6 +115,68 @@ export function MenuItemDetailPage({
     };
   }, [itemId, reloadKey, token]);
 
+  /* The rest of the branch's menu, ranked for this dish.
+     Same category first — somebody reading a curry is closest to ordering
+     another curry — then the kitchen's bestsellers, then whatever diners have
+     actually rated highest. It is the branch's own menu rather than a
+     recommendation call: the customer is standing in front of one dish at one
+     branch, and a suggestion they cannot add to this order is worse than none.
+     A failure here leaves the rail empty and the page unaffected. */
+  useEffect(() => {
+    if (!item) {
+      setSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadSuggestions(currentItem: MenuItem) {
+      try {
+        const rows = await api.getMenuItems(
+          currentItem.restaurant_id,
+          token,
+          controller.signal,
+          currentItem.restaurant_location_id,
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const ranked = rows
+          .filter((row) => row.id !== currentItem.id && row.is_available)
+          .sort((left, right) => {
+            const sameCategory = Number(right.category === currentItem.category)
+              - Number(left.category === currentItem.category);
+            if (sameCategory !== 0) {
+              return sameCategory;
+            }
+            const bestseller = Number(right.is_bestseller) - Number(left.is_bestseller);
+            if (bestseller !== 0) {
+              return bestseller;
+            }
+            const rating = toNumber(right.rating ?? 0) - toNumber(left.rating ?? 0);
+            if (rating !== 0) {
+              return rating;
+            }
+            return toNumber(right.popularity_score ?? 0) - toNumber(left.popularity_score ?? 0);
+          })
+          .slice(0, 8);
+
+        setSuggestions(ranked);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSuggestions([]);
+        }
+      }
+    }
+
+    void loadSuggestions(item);
+
+    return () => {
+      controller.abort();
+    };
+  }, [item, token]);
+
   useEffect(() => {
     if (!item) {
       setSelectedSize(null);
@@ -152,6 +219,14 @@ export function MenuItemDetailPage({
         : 0
     ),
     [item, selectedOptions, selectedSize],
+  );
+  const cartQuantities = useMemo(
+    () =>
+      cart.items.reduce((map, entry) => {
+        map.set(entry.menuItem.id, (map.get(entry.menuItem.id) ?? 0) + entry.quantity);
+        return map;
+      }, new Map<string, number>()),
+    [cart.items],
   );
   const customizationSummary = useMemo(
     () => formatCustomizationSummary(selectedSize, selectedOptions),
@@ -406,6 +481,45 @@ export function MenuItemDetailPage({
     }
   };
 
+  const handleSuggestionAdd = (suggestion: MenuItem) => {
+    if (!requireAuth(`/menu-item/${item.id}`)) {
+      return;
+    }
+
+    /* A dish with sizes or option groups cannot be added from a tile without
+       silently picking for the customer, so the tile opens it instead. */
+    if (isCustomizableMenuItem(suggestion)) {
+      onNavigate(`/menu-item/${suggestion.id}`);
+      return;
+    }
+
+    void requestAddToCart({
+      menuItem: suggestion,
+      restaurantId: suggestion.restaurant_id,
+      restaurantName,
+    });
+  };
+
+  const handleSuggestionFavorite = async (suggestion: MenuItem) => {
+    if (!requireAuth(`/menu-item/${item.id}`)) {
+      return;
+    }
+
+    try {
+      const nextFavorite = await toggleFavorite({ menuItemId: suggestion.id });
+      pushToast(
+        nextFavorite ? 'Saved to favorites' : 'Removed from favorites',
+        nextFavorite
+          ? `${suggestion.name} is now in your favorites.`
+          : `${suggestion.name} was removed from favorites.`,
+        'success',
+      );
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Unable to update favorites right now.';
+      pushToast('Favorites unavailable', message, 'error');
+    }
+  };
+
   return (
     <div className="page-stack menu-detail-page">
       <div className="menu-detail-back-row">
@@ -420,7 +534,7 @@ export function MenuItemDetailPage({
 
       <section className="section-card menu-detail-card">
         <div className="menu-detail-card__media">
-          <img
+          <img loading="lazy" decoding="async"
             src={item.image_url ?? createPlaceholderImage(item.name)}
             alt={item.name}
           />
@@ -438,7 +552,10 @@ export function MenuItemDetailPage({
               <h1>{item.name}</h1>
             </div>
             <div className="menu-detail-card__headline-actions">
-              <span className="menu-detail-rating">{item.is_bestseller ? 'Best Seller' : item.category}</span>
+              {/* Only when there is something to say. Falling back to the
+                  category printed the same word twice: the badge row above
+                  already carries it. */}
+              {item.is_bestseller ? <span className="menu-detail-rating">Best Seller</span> : null}
               <FavoriteButton
                 active={favoritesHydrated ? isFavorite(item.id) : item.is_favorite}
                 disabled={isFavoritePending(item.id)}
@@ -455,12 +572,25 @@ export function MenuItemDetailPage({
               <span>{item.has_sizes ? 'Starting at' : 'Price'}</span>
               <strong>{formatCurrency(item.has_sizes ? liveUnitPrice : item.price)}</strong>
             </div>
+            {/* `popularity_score` used to sit here. It is an internal ranking
+                number — "50" tells a customer nothing and invites them to read
+                it as a rating out of a hundred. The star is what diners
+                actually said, and it renders only once somebody has said it. */}
+            {item.rating !== null && item.rating !== undefined ? (
+              <div>
+                <span>Rating</span>
+                <strong>
+                  <DishRating item={item} />
+                  {item.rating_count > 0 ? (
+                    <small className="menu-detail-meta__note">
+                      {item.rating_count} {item.rating_count === 1 ? 'rating' : 'ratings'}
+                    </small>
+                  ) : null}
+                </strong>
+              </div>
+            ) : null}
             <div>
-              <span>Popularity</span>
-              <strong>{Math.round(Number(item.popularity_score ?? 0))}</strong>
-            </div>
-            <div>
-              <span>Estimated prep</span>
+              <span>Prep time</span>
               <strong>18-24 min</strong>
             </div>
           </div>
@@ -625,6 +755,36 @@ export function MenuItemDetailPage({
           )}
         </div>
       </div>
+
+      {suggestions.length > 0 ? (
+        <section className="menu-detail-suggestions">
+          <SectionHeader
+            title="Goes well with this"
+            subtitle={`More from ${restaurantName}, starting with the rest of the ${item.category.toLowerCase()}.`}
+            actionLabel="See full menu"
+            onAction={() => onNavigate(`/restaurant/${item.restaurant_id}`)}
+          />
+          <div className="home-horizontal-row menu-detail-suggestions__row">
+            {suggestions.map((suggestion) => (
+              <DishCard
+                favoritePending={isFavoritePending(suggestion.id)}
+                isFavorite={favoritesHydrated ? isFavorite(suggestion.id) : suggestion.is_favorite}
+                item={suggestion}
+                key={suggestion.id}
+                onAdd={handleSuggestionAdd}
+                onDecrease={(menuItemId) =>
+                  updateCartQuantity(menuItemId, (cartQuantities.get(menuItemId) ?? 0) - 1)
+                }
+                onOpen={(menuItemId) => onNavigate(`/menu-item/${menuItemId}`)}
+                onToggleFavorite={handleSuggestionFavorite}
+                quantity={
+                  isCustomizableMenuItem(suggestion) ? 0 : cartQuantities.get(suggestion.id) ?? 0
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

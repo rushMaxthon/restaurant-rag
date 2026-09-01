@@ -1,13 +1,17 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, formatCurrency, formatDateTime, toNumber } from '../services/api';
-import { RestaurantCard } from '../components/RestaurantCard';
-import { Skeleton } from '../components/Skeleton';
-import { CategoryChip } from '../components/home/CategoryChip';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, formatCurrency, toNumber } from '../services/api';
+import { AppIcon } from '../components/AppIcon';
+import { AiPromptCard } from '../components/app/AiPromptCard';
+import { CategoryRail } from '../components/app/CategoryRail';
+import { buildMenuCategories } from '../components/app/menuCategories';
+import { DishCard } from '../components/app/DishCard';
+import { SearchBar } from '../components/app/SearchBar';
+import { SectionHeader } from '../components/app/SectionHeader';
 import { GeneratedComboCard } from '../components/home/GeneratedComboCard';
 import { ItemCard } from '../components/home/ItemCard';
 import { OfferCard } from '../components/home/OfferCard';
-import { SectionWrapper } from '../components/home/SectionWrapper';
 import { useAppStore } from '../hooks/useAppStore';
+import { useAppConfig } from '../store/useAppConfig';
 import type {
   AppliedPersonalizedOffer,
   GeneratedCombo,
@@ -20,6 +24,7 @@ import type {
 } from '../types/app';
 import { buildMenuItemFromGeneratedComboItem } from '../utils/generatedComboCart';
 import { checkAuthAndRedirect } from '../utils/authRedirect';
+import { buildPreferencesKey } from '../utils/preferencesKey';
 import { isCustomizableMenuItem } from '../utils/menuItemCustomization';
 
 interface HomePageProps {
@@ -38,20 +43,28 @@ interface HomePageProps {
   preferences: UserPreferences | null;
 }
 
-interface RecentOrderCardData {
-  orderId: string;
-  restaurantId: string;
-  restaurantName: string;
-  cuisine: string;
-  total: string;
-  placedAt: string;
-  status: Order['status'];
-  itemCount: number;
+/**
+ * How much of the menu the home screen previews before "See full menu".
+ *
+ * Eight rather than nine: the grid is two-up on a phone and four-up at the
+ * site width, and nine left a single stranded card on the last row of both.
+ */
+const MENU_PREVIEW_COUNT = 8;
+
+function greetingName(fullName: string | null | undefined): string {
+  const first = (fullName ?? '').trim().split(/\s+/)[0];
+  return first || 'there';
 }
 
-const QUICK_SEARCHES = ['Biryani', 'Healthy bowls', 'Budget snacks', 'Desserts'];
-const CATEGORY_FALLBACK = ['All', 'Pizza', 'Chinese', 'Burgers', 'Healthy', 'Desserts'];
-
+/**
+ * The single-restaurant home screen, section for section as the app builds it:
+ * hero, categories, the kitchen's menu, the AI prompt, personalized picks,
+ * combos, offers, then what you ordered last.
+ *
+ * The two marketplace rails the app renders — "Popular Now" and "Restaurants" —
+ * are absent by design. A branded app has exactly one restaurant, so both would
+ * point back at the kitchen the customer is already standing in.
+ */
 export const HomePage = memo(function HomePage({
   addToCart,
   token,
@@ -60,67 +73,111 @@ export const HomePage = memo(function HomePage({
   preferences,
 }: HomePageProps) {
   const {
+    cart,
     favoritesHydrated,
     isAuthenticated,
     isFavorite,
     isFavoritePending,
+    requestAddToCart,
     setSelectedPersonalizedOffer,
     setPendingAuthRedirectPath,
     toggleFavorite,
+    updateCartQuantity,
+    user,
   } = useAppStore();
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [offers, setOffers] = useState<PersonalizedOfferCard[]>([]);
+  const { displayName, restaurantId, ready } = useAppConfig();
+
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
-  const [generatedCombos, setGeneratedCombos] = useState<GeneratedCombo[]>([]);
+  const [combos, setCombos] = useState<GeneratedCombo[]>([]);
+  const [offers, setOffers] = useState<PersonalizedOfferCard[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [query, setQuery] = useState('');
-  const [activeCuisine, setActiveCuisine] = useState('All');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [navigatingRestaurantId, setNavigatingRestaurantId] = useState<string | null>(null);
-  const [pendingAddItemIds, setPendingAddItemIds] = useState<string[]>([]);
-  const pendingAddItemIdsRef = useRef<Set<string>>(new Set());
-  const addReleaseTimersRef = useRef<Map<string, number>>(new Map());
   const trackedOfferIdsRef = useRef<Set<string>>(new Set());
 
+  // Latest values for the loader, which is keyed on `feedScopeKey` rather than
+  // on these directly. Kept in sync during render so the effect never reads a
+  // value from the previous commit.
+  const tokenRef = useRef(token);
+  const preferencesRef = useRef(preferences);
+  const restaurantIdRef = useRef(restaurantId);
+  tokenRef.current = token;
+  preferencesRef.current = preferences;
+  restaurantIdRef.current = restaurantId;
+
+  /**
+   * One string that changes only when the feed genuinely should be refetched.
+   *
+   * Keying the effect on `preferences` directly re-ran it every time the store
+   * replaced that object — which it does on hydrate and on every profile sync,
+   * with identical contents. Together with `ready` flipping as `/app-config`
+   * resolved, the whole home feed was being fetched three times per visit:
+   * fifteen API calls where five will do.
+   */
+  const feedScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        hasToken: Boolean(token),
+        preferences: buildPreferencesKey(preferences),
+        restaurantId,
+      }),
+    [preferences, restaurantId, token],
+  );
+
   useEffect(() => {
+    // Wait for the config before the first fetch. Firing early produces an
+    // unscoped feed that is thrown away the moment the restaurant is known.
+    if (!ready) {
+      return;
+    }
     let active = true;
 
-    async function loadHomePage() {
+    async function load() {
       setLoading(true);
-
       try {
-        const [restaurantRows, comboRows, recommendationRows, orderRows, offerRows] = await Promise.all([
-          api.getRestaurants(),
-          api.getGeneratedCombos(8).catch(() => []),
+        const scoped = restaurantIdRef.current;
+        const restaurantRow = scoped ? await api.getRestaurant(scoped).catch(() => null) : null;
+        // The open branch is what the app prices and stocks the menu against;
+        // an inactive one would show dishes the kitchen cannot make.
+        const location =
+          restaurantRow?.locations?.find((entry) => entry.is_open && entry.is_active) ??
+          restaurantRow?.locations?.find((entry) => entry.is_active) ??
+          null;
+
+        const [menuRows, comboRows, recommendationRows, orderRows, offerRows] = await Promise.all([
+          scoped
+            ? api.getMenuItems(scoped, tokenRef.current, undefined, location?.id ?? null).catch(() => [])
+            : Promise.resolve<MenuItem[]>([]),
+          api.getGeneratedCombos(12).catch(() => []),
           api
             .getRecommendationsForContext({
-              token,
-              preferences,
+              token: tokenRef.current,
+              preferences: preferencesRef.current,
               dedupeMultiLocation: true,
             })
             .catch(() => []),
-          token ? api.getOrders(token).catch(() => []) : Promise.resolve([]),
-          token
-            ? api.getPersonalizedOffers(token, 4).catch((error) => {
-                console.warn('personalized offers load failed', error);
-                return [];
-              })
-            : Promise.resolve([]),
+          tokenRef.current ? api.getOrders(tokenRef.current).catch(() => []) : Promise.resolve<Order[]>([]),
+          tokenRef.current
+            ? api.getPersonalizedOffers(tokenRef.current, 6).catch(() => [])
+            : Promise.resolve<PersonalizedOfferCard[]>([]),
         ]);
+
         if (!active) {
           return;
         }
-        setRestaurants(restaurantRows);
-        setGeneratedCombos(comboRows);
-        setRecommendations(recommendationRows);
-        setOrders(orderRows);
-        setOffers(offerRows);
-      } catch (error: unknown) {
-        if (!active) {
-          return;
-        }
-        const message = error instanceof ApiError ? error.message : 'Unable to load restaurants right now.';
-        onToast('Home unavailable', message, 'error');
+        setRestaurant(restaurantRow);
+        setMenuItems(menuRows);
+        // Everything below is fetched unscoped because the endpoints are shared
+        // with the marketplace build. Narrowing here keeps one restaurant's app
+        // from advertising another's food.
+        setCombos(scoped ? comboRows.filter((row) => row.restaurant_id === scoped) : comboRows);
+        setRecommendations(
+          scoped ? recommendationRows.filter((row) => row.restaurant.id === scoped) : recommendationRows,
+        );
+        setOrders(scoped ? orderRows.filter((row) => row.restaurant_id === scoped) : orderRows);
+        setOffers(scoped ? offerRows.filter((row) => row.restaurant_id === scoped) : offerRows);
       } finally {
         if (active) {
           setLoading(false);
@@ -128,540 +185,468 @@ export const HomePage = memo(function HomePage({
       }
     }
 
-    void loadHomePage();
-
+    void load();
     return () => {
       active = false;
     };
-  }, [onToast, preferences, token]);
-
-  useEffect(() => {
-    trackedOfferIdsRef.current.clear();
-  }, [token]);
-
-  useEffect(() => () => {
-    for (const timerId of addReleaseTimersRef.current.values()) {
-      window.clearTimeout(timerId);
-    }
-    addReleaseTimersRef.current.clear();
-    pendingAddItemIdsRef.current.clear();
-  }, []);
-
-  const cuisines = useMemo(() => {
-    const discovered = Array.from(new Set(restaurants.map((restaurant) => restaurant.cuisine_type))).slice(0, 7);
-    if (discovered.length === 0) {
-      return CATEGORY_FALLBACK;
-    }
-    return ['All', ...discovered];
-  }, [restaurants]);
-
-  const deferredQuery = useDeferredValue(query);
-  const filteredRestaurants = useMemo(() => {
-    const normalized = deferredQuery.trim().toLowerCase();
-    return restaurants.filter((restaurant) => {
-      if (activeCuisine !== 'All' && restaurant.cuisine_type !== activeCuisine) {
-        return false;
-      }
-      if (!normalized) {
-        return true;
-      }
-      return [restaurant.name, restaurant.cuisine_type, restaurant.city].some((value) =>
-        value.toLowerCase().includes(normalized),
-      );
-    });
-  }, [activeCuisine, deferredQuery, restaurants]);
-
-  const popularRestaurants = useMemo(
-    () =>
-      [...restaurants]
-        .sort((left, right) => {
-          const openDiff = Number(right.is_open) - Number(left.is_open);
-          if (openDiff !== 0) {
-            return openDiff;
-          }
-          return toNumber(left.delivery_fee) - toNumber(right.delivery_fee);
-        })
-        .slice(0, 6),
-    [restaurants],
-  );
-
-  const recentOrders = useMemo<RecentOrderCardData[]>(() => {
-    const uniqueByRestaurant = new Set<string>();
-    return orders
-      .filter((order) => {
-        if (uniqueByRestaurant.has(order.restaurant_id)) {
-          return false;
-        }
-        uniqueByRestaurant.add(order.restaurant_id);
-        return true;
-      })
-      .slice(0, 4)
-      .map((order) => ({
-        orderId: order.id,
-        restaurantId: order.restaurant_id,
-        restaurantName: order.restaurant.name,
-        cuisine: order.restaurant.cuisine_type,
-        total: formatCurrency(order.total_amount),
-        placedAt: formatDateTime(order.placed_at),
-        status: order.status,
-        itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
-      }));
-  }, [orders]);
-
-  const suggestions = useMemo(() => {
-    if (preferences?.cuisines.length) {
-      return preferences.cuisines.slice(0, 4);
-    }
-    return QUICK_SEARCHES;
-  }, [preferences]);
-
-  const quickHighlights = useMemo(
-    () => [
-      {
-        label: 'Smart picks',
-        value: recommendations.length ? `${recommendations.length}+` : 'Fresh daily',
-      },
-      {
-        label: 'Popular now',
-        value: popularRestaurants.length ? popularRestaurants[0]?.cuisine_type ?? 'Curated daily' : 'Curated daily',
-      },
-      {
-        label: 'Fast delivery',
-        value: restaurants.length ? '25-35 min' : '30 min avg',
-      },
-    ],
-    [popularRestaurants, recommendations.length, restaurants.length],
-  );
-
-  const handleOpenRestaurant = useCallback((restaurantId: string) => {
-    if (navigatingRestaurantId) {
-      return;
-    }
-    setNavigatingRestaurantId(restaurantId);
-    onNavigate(`/restaurant/${restaurantId}`);
-  }, [navigatingRestaurantId, onNavigate]);
+    // `feedScopeKey` is the dependency; the values it summarises are read
+    // through refs so that a new object identity alone cannot re-fire this.
+  }, [feedScopeKey, ready]);
 
   useEffect(() => {
     if (!token || offers.length === 0) {
       return;
     }
-    const untrackedOffers = offers.filter((offer) => !trackedOfferIdsRef.current.has(offer.id));
-    if (untrackedOffers.length === 0) {
+    // Keyed on the match rather than the offer: the same offer can be matched
+    // to a customer more than once, and each match is its own impression.
+    const keyOf = (offer: PersonalizedOfferCard) =>
+      `${offer.generated_offer_user_match_id ?? ''}:${offer.generated_offer_id ?? ''}:${offer.offer_id}`;
+    const fresh = offers.filter((offer) => !trackedOfferIdsRef.current.has(keyOf(offer)));
+    if (fresh.length === 0) {
       return;
     }
-    for (const offer of untrackedOffers) {
-      trackedOfferIdsRef.current.add(offer.id);
-    }
-    void api.trackPersonalizedOfferEvents(
-      token,
-      untrackedOffers.map((offer) => ({
-        offer_id: offer.offer_id,
-        generated_offer_id: offer.generated_offer_id,
-        generated_offer_user_match_id: offer.generated_offer_user_match_id,
-        event_type: 'VIEWED' as const,
-        target_type: offer.target_type,
-        target_id:
-          offer.menu_item_id
-          ?? offer.generated_combo_id
-          ?? offer.restaurant_location_id
-          ?? offer.restaurant_id,
-      })),
-    ).catch(() => undefined);
-  }, [offers, token]);
-
-  const handleSearchChip = useCallback((value: string) => {
-    setQuery(value);
-    setActiveCuisine('All');
-  }, []);
-
-  const handleAddCombo = useCallback((combo: GeneratedCombo) => {
-    for (const item of combo.items) {
-      const restaurant = restaurants.find((entry) => entry.id === combo.restaurant_id);
-      if (!restaurant) {
-        continue;
-      }
-      addToCart({
-        menuItem: buildMenuItemFromGeneratedComboItem(item, {
-          source: 'home-generated-combo',
-          restaurantId: combo.restaurant_id,
-          restaurantLocationId: combo.restaurant_location_id,
-          restaurantLocationName: combo.restaurant_location_name,
-          restaurantCuisineType: restaurant.cuisine_type,
-          createdAt: restaurant.created_at,
-          updatedAt: restaurant.updated_at,
-        }),
-        restaurantId: combo.restaurant_id,
-        restaurantName: combo.restaurant_name,
-        restaurantLocationId: combo.restaurant_location_id,
-        restaurantLocationName: combo.restaurant_location_name,
-        quantity: item.quantity,
-        silent: true,
-      });
-    }
-    onToast('Combo added', `${combo.combo_name} was added to your cart.`, 'success');
-  }, [addToCart, onToast, restaurants]);
-
-  const handleAddRecommendationToCart = useCallback((item: RecommendationItem) => {
-    if (item.requires_location_selection && (item.available_locations_count ?? 1) > 1) {
-      onToast(
-        'Choose a branch',
-        `${item.name} is available at ${item.available_locations_count} locations. Open the restaurant to pick a branch before adding it.`,
-        'info',
-      );
-      onNavigate(`/restaurants/${item.restaurant_id}`);
-      return;
-    }
-
-    if (pendingAddItemIdsRef.current.has(item.id)) {
-      return;
-    }
-
-    if (isCustomizableMenuItem(item)) {
-      onNavigate(`/menu-item/${item.preferred_menu_item_id ?? item.id}`);
-      return;
-    }
-
-    pendingAddItemIdsRef.current.add(item.id);
-    setPendingAddItemIds((current) => [...current, item.id]);
-    const existingTimer = addReleaseTimersRef.current.get(item.id);
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-    }
-    addToCart({
-      menuItem: {
-        ...item,
-        id: item.preferred_menu_item_id ?? item.id,
-        restaurant_location_id: item.preferred_location_id ?? item.restaurant_location_id,
-        restaurant_location_name: item.preferred_location_name ?? item.restaurant_location_name,
-      },
-      restaurantId: item.restaurant_id,
-      restaurantName: item.restaurant.name,
-      restaurantLocationId: item.preferred_location_id ?? item.restaurant_location_id,
-      restaurantLocationName: item.preferred_location_name ?? item.restaurant_location_name,
-    });
-    const timerId = window.setTimeout(() => {
-      addReleaseTimersRef.current.delete(item.id);
-      pendingAddItemIdsRef.current.delete(item.id);
-      setPendingAddItemIds((current) => current.filter((entry) => entry !== item.id));
-    }, 320);
-    addReleaseTimersRef.current.set(item.id, timerId);
-  }, [addToCart, onNavigate, onToast]);
-
-  const handleOpenOffer = useCallback((offer: PersonalizedOfferCard) => {
-    const selectedOffer: AppliedPersonalizedOffer = {
-      generatedOfferId: offer.generated_offer_id,
-      generatedOfferUserMatchId: offer.generated_offer_user_match_id,
-      offerId: offer.offer_id,
-      offerName: offer.offer_name,
-      offerType: offer.offer_type,
-      audienceType: offer.audience_type,
-      targetType: offer.target_type,
-      restaurantId: offer.restaurant_id,
-      restaurantName: offer.restaurant_name,
-      restaurantLocationId: offer.restaurant_location_id,
-      restaurantLocationName: offer.restaurant_location_name,
-      offerRestaurantLocationId: offer.offer_restaurant_location_id,
-      menuItemId: offer.menu_item_id,
-      generatedComboId: offer.generated_combo_id,
-      cuisineType: offer.cuisine_type,
-      title: offer.title,
-      ctaLabel: offer.cta_label,
-      discountType: offer.discount_type,
-      discountValue: offer.discount_value,
-      discountLabel: offer.discount_label,
-      maxDiscountAmount: offer.max_discount_amount,
-      minimumOrderAmount: offer.minimum_order_amount,
-      termsLabel: offer.terms_label,
-      expiresAt: offer.expires_at,
-    };
-
-    setSelectedPersonalizedOffer(selectedOffer);
-    if (token) {
-      void api.trackPersonalizedOfferEvents(token, [
-        {
+    fresh.forEach((offer) => trackedOfferIdsRef.current.add(keyOf(offer)));
+    void api
+      .trackPersonalizedOfferEvents(
+        token,
+        fresh.map((offer) => ({
           offer_id: offer.offer_id,
           generated_offer_id: offer.generated_offer_id,
           generated_offer_user_match_id: offer.generated_offer_user_match_id,
-          event_type: 'CLICKED',
+          event_type: 'VIEWED' as const,
           target_type: offer.target_type,
           target_id:
-            offer.menu_item_id
-            ?? offer.generated_combo_id
-            ?? offer.restaurant_location_id
-            ?? offer.restaurant_id,
-        },
-      ]).catch(() => undefined);
-    }
+            offer.menu_item_id ??
+            offer.generated_combo_id ??
+            offer.restaurant_location_id ??
+            offer.restaurant_id,
+        })),
+      )
+      .catch(() => undefined);
+  }, [offers, token]);
 
-    if (offer.target_type === 'ITEM' && offer.menu_item_id) {
-      onNavigate(`/menu-item/${offer.menu_item_id}`);
-      return;
-    }
-    onNavigate(`/restaurant/${offer.restaurant_id}`);
-  }, [onNavigate, setSelectedPersonalizedOffer, token]);
+  const categories = useMemo(() => buildMenuCategories(menuItems), [menuItems]);
+  const activeCategory = categories.find((entry) => entry.id === selectedCategoryId);
 
-  const handleToggleFavorite = useCallback(async (item: RecommendationItem) => {
-    if (
-      !checkAuthAndRedirect({
+  const filteredMenuItems = useMemo(() => {
+    if (!activeCategory || activeCategory.id === 'all') {
+      return menuItems;
+    }
+    return menuItems.filter((item) => (item.category ?? '').toLowerCase() === activeCategory.id);
+  }, [activeCategory, menuItems]);
+
+  // A category can disappear when the menu reloads — a branch swap, a dish
+  // going off — and a filter pinned to a section that no longer exists would
+  // silently show an empty menu.
+  useEffect(() => {
+    if (selectedCategoryId !== 'all' && !categories.some((entry) => entry.id === selectedCategoryId)) {
+      setSelectedCategoryId('all');
+    }
+  }, [categories, selectedCategoryId]);
+
+  const menuPreview = filteredMenuItems.slice(0, MENU_PREVIEW_COUNT);
+
+  /** Quantity already in the cart, so a tile can show its stepper. */
+  const quantityFor = useCallback(
+    (menuItemId: string) =>
+      cart.items
+        .filter((entry) => entry.menuItem.id === menuItemId)
+        .reduce((total, entry) => total + entry.quantity, 0),
+    [cart.items],
+  );
+
+  const requireAuth = useCallback(
+    (redirectPath: string) =>
+      checkAuthAndRedirect({
         isAuthenticated,
-        redirectPath: '/',
+        redirectPath,
         onNavigate,
         pushToast: onToast,
         setPendingAuthRedirectPath,
-      })
-    ) {
-      return;
-    }
+      }),
+    [isAuthenticated, onNavigate, onToast, setPendingAuthRedirectPath],
+  );
 
-    try {
-      const nextFavorite = await toggleFavorite({ menuItemId: item.id });
-      onToast(
-        nextFavorite ? 'Saved to favorites' : 'Removed from favorites',
-        nextFavorite ? `${item.name} is now in your favorites.` : `${item.name} was removed from favorites.`,
-        'success',
-      );
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : 'Unable to update favorites right now.';
-      onToast('Favorites unavailable', message, 'error');
-    }
-  }, [isAuthenticated, onNavigate, onToast, setPendingAuthRedirectPath, toggleFavorite]);
+  /**
+   * What the banner shows, in the order a storefront should try: the cover
+   * photo the restaurant chose, then its logo, then the first dish it has a
+   * picture of. The last is the case that matters — most seeded kitchens have
+   * no cover art, and a lettered block where the food should be is the one
+   * thing that makes a food page look unfinished.
+   */
+  const heroImage = useMemo(
+    () =>
+      restaurant?.cover_image_url ??
+      restaurant?.logo_image_url ??
+      menuItems.find((item) => item.image_url)?.image_url ??
+      null,
+    [menuItems, restaurant],
+  );
+
+  const restaurantName = restaurant?.name ?? displayName;
+
+  const handleAddMenuItem = useCallback(
+    (item: MenuItem) => {
+      if (!requireAuth('/')) {
+        return;
+      }
+      // A dish with sizes or add-ons cannot be priced from a tile, so the phone
+      // opens it rather than guessing a default.
+      if (isCustomizableMenuItem(item)) {
+        onNavigate(`/menu-item/${item.id}`);
+        return;
+      }
+      void requestAddToCart({
+        menuItem: item,
+        restaurantId: item.restaurant_id,
+        restaurantName,
+      });
+    },
+    [onNavigate, requestAddToCart, requireAuth, restaurantName],
+  );
+
+  const handleDecrease = useCallback(
+    (menuItemId: string) => {
+      const entry = [...cart.items].reverse().find((row) => row.menuItem.id === menuItemId);
+      if (entry) {
+        updateCartQuantity(entry.id, entry.quantity - 1);
+      }
+    },
+    [cart.items, updateCartQuantity],
+  );
+
+  const handleAddCombo = useCallback(
+    (combo: GeneratedCombo) => {
+      if (!requireAuth('/')) {
+        return;
+      }
+      for (const item of combo.items) {
+        addToCart({
+          menuItem: buildMenuItemFromGeneratedComboItem(item, {
+            source: 'home-generated-combo',
+            restaurantId: combo.restaurant_id,
+            restaurantLocationId: combo.restaurant_location_id,
+            restaurantLocationName: combo.restaurant_location_name,
+            restaurantCuisineType: restaurant?.cuisine_type ?? null,
+            createdAt: combo.created_at,
+            updatedAt: combo.updated_at,
+          }),
+          restaurantId: combo.restaurant_id,
+          restaurantName: combo.restaurant_name,
+          restaurantLocationId: combo.restaurant_location_id,
+          restaurantLocationName: combo.restaurant_location_name,
+          quantity: item.quantity,
+          silent: true,
+        });
+      }
+      onToast('Combo added', `${combo.combo_name} was added to your cart.`, 'success');
+    },
+    [addToCart, onToast, requireAuth, restaurant],
+  );
+
+  const handleOpenOffer = useCallback(
+    (offer: PersonalizedOfferCard) => {
+      const selected: AppliedPersonalizedOffer = {
+        generatedOfferId: offer.generated_offer_id,
+        generatedOfferUserMatchId: offer.generated_offer_user_match_id,
+        offerId: offer.offer_id,
+        offerName: offer.offer_name,
+        offerType: offer.offer_type,
+        audienceType: offer.audience_type,
+        targetType: offer.target_type,
+        restaurantId: offer.restaurant_id,
+        restaurantName: offer.restaurant_name,
+        restaurantLocationId: offer.restaurant_location_id,
+        restaurantLocationName: offer.restaurant_location_name,
+        offerRestaurantLocationId: offer.offer_restaurant_location_id,
+        menuItemId: offer.menu_item_id,
+        generatedComboId: offer.generated_combo_id,
+        cuisineType: offer.cuisine_type,
+        title: offer.title,
+        ctaLabel: offer.cta_label,
+        discountType: offer.discount_type,
+        discountValue: offer.discount_value,
+        discountLabel: offer.discount_label,
+        maxDiscountAmount: offer.max_discount_amount,
+        minimumOrderAmount: offer.minimum_order_amount,
+        termsLabel: offer.terms_label,
+        expiresAt: offer.expires_at,
+      };
+      setSelectedPersonalizedOffer(selected);
+      if (token) {
+        void api
+          .trackPersonalizedOfferEvents(token, [
+            {
+              offer_id: offer.offer_id,
+              generated_offer_id: offer.generated_offer_id,
+              generated_offer_user_match_id: offer.generated_offer_user_match_id,
+              event_type: 'CLICKED',
+              target_type: offer.target_type,
+              target_id:
+                offer.menu_item_id ??
+                offer.generated_combo_id ??
+                offer.restaurant_location_id ??
+                offer.restaurant_id,
+            },
+          ])
+          .catch(() => undefined);
+      }
+      if (offer.target_type === 'ITEM' && offer.menu_item_id) {
+        onNavigate(`/menu-item/${offer.menu_item_id}`);
+        return;
+      }
+      onNavigate('/menu');
+    },
+    [onNavigate, setSelectedPersonalizedOffer, token],
+  );
+
+  const recentOrders = orders.slice(0, 3);
+  const hasPicks = recommendations.length > 0;
 
   return (
-    <div className="page-stack home-page">
+    <div className="screen screen--flush home">
+      {/* --- hero -----------------------------------------------------------
+          One element, two readings. On a phone it is the app's tinted greeting
+          card. On a desktop it becomes the restaurant's storefront banner, with
+          the cover photo and the facts a first-time visitor looks for before
+          they will order: what kind of food, whether the kitchen is open, and
+          what delivery costs. */}
       <section className="home-hero">
+        {/* The photograph is the banner now, not a panel beside it. Decorative:
+            every dish it shows is named and priced in the menu below, so a
+            screen reader gains nothing from it. */}
+        <div aria-hidden="true" className="home-hero__art">
+          {heroImage ? (
+            <img alt="" decoding="async" fetchPriority="high" src={heroImage} />
+          ) : (
+            <span className="home-hero__art-fallback">{displayName.slice(0, 2).toUpperCase()}</span>
+          )}
+        </div>
+
         <div className="home-hero__copy">
-          <span className="eyebrow">Food delivery, refined</span>
-          <h1>What are you craving today?</h1>
-          <p>
-            Discover restaurants, quick deals, and AI-powered suggestions tuned to your tastes and the food you keep
-            coming back to.
+          <p className="home-hero__greeting">
+            <span aria-hidden="true">👋</span> Hi {greetingName(user?.full_name)}
           </p>
-          <div className="home-hero__stats">
-            {quickHighlights.map((highlight) => (
-              <div className="home-hero__stat" key={highlight.label}>
-                <strong>{highlight.value}</strong>
-                <span>{highlight.label}</span>
-              </div>
-            ))}
+          <h1 className="home-hero__title">What are you craving today?</h1>
+          <p className="home-hero__subtitle">
+            Browse the kitchen, grab today&rsquo;s deals, and let AI build a meal around your
+            mood.
+          </p>
+
+          <div className="home-hero__facts">
+            <span className={restaurant?.is_open === false ? 'fact fact--shut' : 'fact fact--open'}>
+              <span className="fact__dot" />
+              {restaurant?.is_open === false ? 'Currently closed' : 'Open now'}
+            </span>
+            {restaurant?.cuisine_type ? <span className="fact">{restaurant.cuisine_type}</span> : null}
+            {restaurant ? (
+              <span className="fact">
+                {toNumber(restaurant.delivery_fee) === 0
+                  ? 'Free delivery'
+                  : `${formatCurrency(restaurant.delivery_fee)} delivery`}
+              </span>
+            ) : null}
+            {restaurant && toNumber(restaurant.minimum_order_amount) > 0 ? (
+              <span className="fact">
+                Min {formatCurrency(restaurant.minimum_order_amount)}
+              </span>
+            ) : null}
+            {(restaurant?.locations?.length ?? 0) > 1 ? (
+              <span className="fact">{restaurant?.locations?.length} branches</span>
+            ) : null}
+          </div>
+
+          <SearchBar onPress={() => onNavigate('/search')} placeholder={`Search ${displayName}`} />
+
+          <div className="home-hero__actions">
+            <button className="btn" onClick={() => onNavigate('/menu')} type="button">
+              See the full menu
+            </button>
+            <button className="btn btn--quiet" onClick={() => onNavigate('/chat')} type="button">
+              Ask AI what to order
+            </button>
           </div>
         </div>
 
-        <div className="home-hero__panel">
-          <label className="home-search-card">
-            <span className="eyebrow">Search smarter</span>
-            <input
-              placeholder="Try: spicy Chinese under ₹200"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="home-search-card__chips">
-              {suggestions.map((entry) => (
-                <button className="quick-chip" key={entry} onClick={() => handleSearchChip(entry)} type="button">
-                  {entry}
-                </button>
-              ))}
-            </div>
-          </label>
-          <div className="home-hero__aside">
-            <span className="home-hero__aside-label">Personalized for</span>
-            <strong>{preferences?.cuisines.length ? preferences.cuisines.join(', ') : 'Everyday comfort food'}</strong>
-            <p>
-              {preferences?.budget
-                ? `Budget: ${preferences.budget.toLowerCase()} spend, spice: ${preferences.spice_level?.toLowerCase() ?? 'balanced'}`
-                : 'Use onboarding preferences and live restaurant data to shape recommendations.'}
-            </p>
-          </div>
-        </div>
       </section>
 
-      <SectionWrapper
-        action={<span className="hint-text">{cuisines.length - 1 > 0 ? `${cuisines.length - 1} cuisines` : 'Curated daily'}</span>}
-        eyebrow="Browse"
-        subtitle="Start with the cuisines and moods that fit your next order."
-        title="Categories"
-      >
-        <div className="home-category-row">
-          {cuisines.map((cuisine) => (
-            <CategoryChip
-              active={activeCuisine === cuisine}
-              key={cuisine}
-              label={cuisine}
-              onClick={() => setActiveCuisine(cuisine)}
-            />
-          ))}
-        </div>
-      </SectionWrapper>
+      {/* --- categories ---------------------------------------------------- */}
+      {categories.length > 1 ? (
+        <section className="section">
+          <SectionHeader
+            subtitle="Browse by what fits the craving first."
+            title="Categories"
+          />
+          <CategoryRail
+            categories={categories}
+            onSelect={setSelectedCategoryId}
+            selectedId={selectedCategoryId}
+          />
+        </section>
+      ) : null}
 
-      <button className="home-ai-card" onClick={() => onNavigate('/chat')} type="button">
-        <div className="home-ai-card__icon">AI</div>
-        <div className="home-ai-card__copy">
-          <span className="eyebrow">Ask AI what to eat</span>
-          <strong>Not sure what to eat?</strong>
-          <p>Get personalized recommendations based on your cravings, budget, and cuisine preferences.</p>
-        </div>
-        <span className="home-ai-card__cta">Ask AI</span>
-      </button>
-
-      <SectionWrapper
-        action={
-          <button className="text-link" onClick={() => onNavigate('/chat')} type="button">
-            Ask AI for more
-          </button>
-        }
-        eyebrow="For you"
-        subtitle="Preference-aware dishes surfaced from live restaurant context."
-        title="Personalized Picks"
-      >
-        <div className="home-horizontal-row">
-          {loading
-            ? Array.from({ length: 4 }).map((_, index) => <Skeleton className="home-item-card" key={index} />)
-            : recommendations.slice(0, 6).map((item) => (
-                <ItemCard
-                  addDisabled={pendingAddItemIds.includes(item.id)}
-                  disabled={navigatingRestaurantId !== null}
-                  favoritePending={isFavoritePending(item.id)}
-                  isFavorite={favoritesHydrated ? isFavorite(item.id) : item.is_favorite}
-                  item={item}
-                  key={item.id}
-                  onAddToCart={handleAddRecommendationToCart}
-                  onOpenRestaurant={handleOpenRestaurant}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-                ))}
-          {!loading && recommendations.length === 0 ? (
-            <div className="home-inline-empty">
-              <strong>No personalized picks yet.</strong>
-              <span>Complete your preferences or ask AI for something specific to unlock smarter suggestions.</span>
-            </div>
-          ) : null}
-        </div>
-      </SectionWrapper>
-
-      <SectionWrapper
-        action={<span className="hint-text">Popular around you</span>}
-        eyebrow="Discovery"
-        subtitle="Popular restaurants with dependable delivery windows and strong menu depth."
-        title="Popular Now"
-      >
-        <div className="home-horizontal-row">
-          {loading
-            ? Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton className="restaurant-card restaurant-card--compact" key={index} />
-              ))
-            : popularRestaurants.map((restaurant) => (
-                <RestaurantCard
-                  disabled={navigatingRestaurantId !== null}
-                  key={restaurant.id}
-                  onOpen={handleOpenRestaurant}
-                  restaurant={restaurant}
-                  variant="compact"
-                />
-              ))}
-        </div>
-      </SectionWrapper>
-
-      {generatedCombos.length > 0 ? (
-        <SectionWrapper
-          action={<span className="hint-text">{`${generatedCombos.length} live combos`}</span>}
-          eyebrow="Trending"
-          subtitle="Auto-generated bundles created from the dishes customers already order together."
-          title="Frequently Ordered Together"
-        >
-          <div className="home-horizontal-row">
-            {generatedCombos.map((combo) => (
-              <GeneratedComboCard
-                combo={combo}
-                disabled={navigatingRestaurantId !== null}
-                key={combo.id}
-                onAddCombo={handleAddCombo}
-                onOpenRestaurant={handleOpenRestaurant}
+      {/* --- the kitchen's menu -------------------------------------------- */}
+      <section className="section">
+        <SectionHeader
+          actionLabel={menuItems.length > 0 ? 'See full menu' : undefined}
+          onAction={menuItems.length > 0 ? () => onNavigate('/menu') : undefined}
+          subtitle={
+            activeCategory && activeCategory.id !== 'all'
+              ? `${filteredMenuItems.length} ${activeCategory.label} ${
+                  filteredMenuItems.length === 1 ? 'dish' : 'dishes'
+                } ready to order.`
+              : 'Browse the kitchen and add straight to your cart.'
+          }
+          title="Explore Menu"
+        />
+        {loading && menuItems.length === 0 ? (
+          <div className="dish-grid">
+            {Array.from({ length: 8 }, (_, index) => (
+              <div className="dish-card dish-card--skeleton" key={index} />
+            ))}
+          </div>
+        ) : menuPreview.length > 0 ? (
+          <div className="dish-grid">
+            {menuPreview.map((item) => (
+              <DishCard
+                favoritePending={isFavoritePending(item.id)}
+                isFavorite={isFavorite(item.id)}
+                item={item}
+                key={item.id}
+                onAdd={handleAddMenuItem}
+                onDecrease={handleDecrease}
+                onOpen={(itemId) => onNavigate(`/menu-item/${itemId}`)}
+                onToggleFavorite={(dish) => void toggleFavorite({ menuItemId: dish.id })}
+                quantity={quantityFor(item.id)}
               />
             ))}
           </div>
-        </SectionWrapper>
-      ) : null}
-
-      {token && (loading || offers.length > 0) ? (
-        <SectionWrapper
-          action={<span className="hint-text">{offers.length ? `${offers.length} active campaigns` : 'Live restaurant campaigns'}</span>}
-          eyebrow="Campaigns"
-          subtitle="Manual restaurant and branch offers that unlock automatically when your cart qualifies."
-          title="Offers"
-        >
-          <div className="home-horizontal-row">
-            {loading
-              ? Array.from({ length: 4 }).map((_, index) => <Skeleton className="home-offer-card" key={index} />)
-              : offers.map((offer) => (
-                  <OfferCard
-                    disabled={navigatingRestaurantId !== null}
-                    key={offer.id}
-                    onOpen={handleOpenOffer}
-                    offer={offer}
-                  />
-                ))}
+        ) : (
+          <div className="empty-state">
+            <p className="empty-state__title">
+              {menuItems.length > 0 ? 'Nothing in this category yet.' : 'Menu is loading.'}
+            </p>
+            <p className="empty-state__text">
+              {menuItems.length > 0
+                ? 'Pick another category to see more dishes.'
+                : 'The kitchen menu will appear here in a moment.'}
+            </p>
           </div>
-        </SectionWrapper>
+        )}
+      </section>
+
+      {/* --- ask AI --------------------------------------------------------- */}
+      <AiPromptCard onPress={() => onNavigate('/chat')} />
+
+      {/* --- personalized picks --------------------------------------------- */}
+      <section className="section">
+        <SectionHeader
+          actionLabel={hasPicks ? 'See all' : 'Tune picks'}
+          onAction={() => onNavigate(hasPicks ? '/picks' : '/profile/preferences')}
+          subtitle={
+            hasPicks
+              ? 'Ranked against your taste profile and order history.'
+              : 'Tell us what you like and the ranking sharpens up.'
+          }
+          title="Personalized Picks"
+        />
+        {hasPicks ? (
+          <div className="rail">
+            {recommendations.slice(0, 8).map((item) => (
+              <ItemCard
+                addDisabled={!favoritesHydrated && false}
+                favoritePending={isFavoritePending(item.id)}
+                isFavorite={isFavorite(item.id)}
+                item={item}
+                key={item.id}
+                onAddToCart={() => onNavigate(`/menu-item/${item.id}`)}
+                onOpenRestaurant={() => onNavigate(`/menu-item/${item.id}`)}
+                onToggleFavorite={() => void toggleFavorite({ menuItemId: item.id })}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p className="empty-state__title">Picks are still warming up</p>
+            <p className="empty-state__text">
+              {token
+                ? 'Your account is active, but the personalized ranking is still catching up. Keep browsing — it sharpens with every order.'
+                : 'Log in and tell us about your tastes to unlock stronger matches.'}
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* --- combos ---------------------------------------------------------- */}
+      {combos.length > 0 ? (
+        <section className="section">
+          <SectionHeader
+            subtitle="Auto-generated bundles built from real completed orders."
+            title="Frequently Ordered Together"
+          />
+          <div className="rail">
+            {combos.map((combo) => (
+              <GeneratedComboCard
+                combo={combo}
+                key={combo.id}
+                onAddCombo={handleAddCombo}
+                onOpenRestaurant={() => onNavigate('/menu')}
+              />
+            ))}
+          </div>
+        </section>
       ) : null}
 
+      {/* --- offers ---------------------------------------------------------- */}
+      {token && offers.length > 0 ? (
+        <section className="section">
+          <SectionHeader
+            subtitle="Unlocked automatically the moment your cart qualifies."
+            title="Offers"
+          />
+          <div className="rail">
+            {offers.map((offer) => (
+              <OfferCard key={`${offer.generated_offer_user_match_id ?? offer.offer_id}`} offer={offer} onOpen={handleOpenOffer} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* --- reorder ---------------------------------------------------------- */}
       {recentOrders.length > 0 ? (
-        <SectionWrapper
-          action={<span className="hint-text">{`${recentOrders.length} recent spots`}</span>}
-          eyebrow="Reorder"
-          subtitle="Quick access to the places you recently trusted for delivery."
-          title="Recently Ordered"
-        >
-          <div className="home-recent-grid">
+        <section className="section">
+          <SectionHeader
+            actionLabel="See all"
+            onAction={() => onNavigate('/orders')}
+            subtitle="Jump back into meals you already liked."
+            title="Recently Ordered"
+          />
+          <div className="stack">
             {recentOrders.map((order) => (
               <button
-                className="home-recent-card"
-                key={order.orderId}
-                onClick={() => onNavigate(`/profile/orders`)}
+                className="recent-order"
+                key={order.id}
+                onClick={() => onNavigate(`/orders/${order.id}`)}
                 type="button"
               >
-                <div className="home-recent-card__topline">
-                  <strong>{order.restaurantName}</strong>
-                  <span className="chip chip--muted">{order.status.replaceAll('_', ' ')}</span>
-                </div>
-                <p>{order.cuisine}</p>
-                <div className="home-recent-card__meta">
-                  <span>{order.itemCount} items</span>
-                  <span>{order.total}</span>
-                </div>
-                <span className="home-recent-card__timestamp">{order.placedAt}</span>
+                <span className="recent-order__mark">
+                  <AppIcon name="receipt" size={18} />
+                </span>
+                <span className="recent-order__copy">
+                  <strong>{order.restaurant.name}</strong>
+                  <small>
+                    {order.items.length} {order.items.length === 1 ? 'item' : 'items'} ·{' '}
+                    {order.status.replaceAll('_', ' ').toLowerCase()}
+                  </small>
+                </span>
+                <span className="recent-order__total">
+                  {formatCurrency(toNumber(order.total_amount))}
+                </span>
               </button>
             ))}
           </div>
-        </SectionWrapper>
+        </section>
       ) : null}
-
-      <SectionWrapper
-        action={<span className="hint-text">Tap any card to open</span>}
-        eyebrow="Nearby"
-        subtitle="A polished list of restaurants ready to deliver right now."
-        title="Restaurants"
-      >
-        <div className="restaurant-grid home-restaurant-grid">
-          {loading
-            ? Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton className="restaurant-card restaurant-card--skeleton" key={index} />
-              ))
-            : filteredRestaurants.map((restaurant) => (
-                <RestaurantCard
-                  disabled={navigatingRestaurantId !== null}
-                  key={restaurant.id}
-                  onOpen={handleOpenRestaurant}
-                  restaurant={restaurant}
-                />
-              ))}
-        </div>
-        {!loading && filteredRestaurants.length === 0 ? (
-          <div className="empty-state">
-            <strong>No restaurants matched your search.</strong>
-            <span>Try another cuisine, city, or a shorter keyword.</span>
-          </div>
-        ) : null}
-      </SectionWrapper>
-
     </div>
   );
 });
