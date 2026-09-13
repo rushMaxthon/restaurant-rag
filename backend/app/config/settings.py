@@ -153,6 +153,16 @@ class Settings(BaseSettings):
     rag_max_reply_tokens: int = 120
 
     redis_url: str = "redis://localhost:6379/0"
+    # How long a cache call may spend trying to reach Redis before it gives up
+    # and reports a miss. Every call site already treats a `RedisError` as a
+    # miss, so an absent Redis is supported — but without these the client uses
+    # the OS default and retries, and one menu request that touches the cache
+    # eight times took 8.15 seconds to return the same answer it would have
+    # returned instantly. Redis is either alongside the app or milliseconds
+    # away; anything slower is already a failure, so waiting longer only makes
+    # the request slower before it misses anyway.
+    redis_socket_connect_timeout_seconds: float = 0.25
+    redis_socket_timeout_seconds: float = 0.5
     redis_cache_ttl_seconds: int = 259200
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"

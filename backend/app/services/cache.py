@@ -23,7 +23,29 @@ def normalize_cache_query(value: str) -> str:
 
 @lru_cache(maxsize=1)
 def get_redis_client() -> Redis:
-    return Redis.from_url(settings.redis_url, decode_responses=True)
+    """The shared client, with a deadline on reaching the server.
+
+    Every cache operation below already catches `RedisError` and degrades to a
+    miss, so an absent Redis is a supported state rather than an outage. What
+    was missing was a bound on how LONG that degradation takes: with no connect
+    timeout the client falls back to the OS default and retries, and a single
+    menu request that touches the cache eight times spent 8.15 seconds failing
+    to reach a server that was not running — long enough that the clients gave
+    up and rendered empty screens.
+
+    A short deadline makes the miss immediate, which is what "degrades
+    gracefully" was always meant to mean. It is deliberately small: Redis is
+    either alongside the app or a few milliseconds away, so anything slower than
+    this is already a failure, and waiting longer only makes a request slower
+    before returning the same miss.
+    """
+
+    return Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=settings.redis_socket_connect_timeout_seconds,
+        socket_timeout=settings.redis_socket_timeout_seconds,
+    )
 
 
 def cache_get_json(key: str) -> Any | None:
