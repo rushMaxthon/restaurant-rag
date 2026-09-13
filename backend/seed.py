@@ -11,7 +11,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from passlib.context import CryptContext
 
 from app.config.database import SessionLocal
-from app.services.app_clients import ensure_default_app_client
+from app.services.app_clients import (
+    create_app_client,
+    ensure_default_app_client,
+    get_app_client_for_restaurant,
+    resolve_app_client_identity,
+)
 from app.models.chat_history import ChatHistory
 from app.models.enums import (
     ChatMessageRole,
@@ -1192,6 +1197,37 @@ def apply_model_fields(model, values: dict, *, overwrite_existing: bool = True) 
             setattr(model, field, value)
 
 
+def ensure_restaurant_app_client(db, *, restaurant: Restaurant) -> tuple[object, bool]:
+    """Give a seeded restaurant the app client its branded clients resolve through.
+
+    Without one, `/app-config` answers 404 for that restaurant's bundle id and
+    the customer web app has no restaurant, display name or brand colour — it
+    renders its shell and then nothing. `ensure_default_app_client` only covers
+    the shared MARKETPLACE client that owns web customer accounts, which is a
+    different record and carries no bundle identifier at all.
+
+    Every value is derived rather than written out here, because the derivation
+    is what the clients are built against: `_to_app_key` turns "Bangkok Bowl"
+    into `bangkok_bowl`, `_to_bundle_segment` into `bangkokbowl`, and the result
+    is `com.quickbite.bangkokbowl` — the exact bundle id
+    `frontend-customer/src/config/api.ts` falls back to. Hardcoding the ids here
+    would let the two drift apart silently.
+    """
+
+    existing = get_app_client_for_restaurant(db, restaurant_id=restaurant.id)
+    if existing is not None:
+        return existing, False
+
+    identity = resolve_app_client_identity(db, restaurant_name=restaurant.name)
+    app_client = create_app_client(
+        restaurant_id=restaurant.id,
+        display_name=restaurant.name,
+        identity=identity,
+    )
+    db.add(app_client)
+    return app_client, True
+
+
 def ensure_primary_location(
     db,
     *,
@@ -2040,6 +2076,12 @@ def run_seed():
             restaurants.append(restaurant)
             restaurant_by_slug[restaurant.slug] = restaurant
             created_restaurants += int(created)
+        db.flush()
+
+        created_app_clients = 0
+        for restaurant in restaurants:
+            _, app_client_created = ensure_restaurant_app_client(db, restaurant=restaurant)
+            created_app_clients += int(app_client_created)
         db.commit()
 
         print("Creating restaurant locations and branch-wise menu items...")
@@ -2303,6 +2345,7 @@ def run_seed():
         print(f"Users created this run: {created_users} (Admin + Owners + Customers)")
         print(f"User preferences created this run: {created_preferences}")
         print(f"Restaurants created this run: {created_restaurants}")
+        print(f"App clients created this run: {created_app_clients}")
         print(f"Restaurant locations created this run: {created_locations}")
         print(f"Menu items created this run: {created_menu_items}")
         print(f"Personalized-offer demo orders created this run: {demo_offer_orders_created}")
