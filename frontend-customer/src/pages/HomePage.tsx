@@ -4,7 +4,7 @@ import { AppIcon } from '../components/AppIcon';
 import { AiPromptCard } from '../components/app/AiPromptCard';
 import { CategoryRail } from '../components/app/CategoryRail';
 import { buildMenuCategories } from '../components/app/menuCategories';
-import { DishCard } from '../components/app/DishCard';
+import { DishRow } from '../components/app/DishRow';
 import { SearchBar } from '../components/app/SearchBar';
 import { SectionHeader } from '../components/app/SectionHeader';
 import { GeneratedComboCard } from '../components/home/GeneratedComboCard';
@@ -26,6 +26,16 @@ import { buildMenuItemFromGeneratedComboItem } from '../utils/generatedComboCart
 import { checkAuthAndRedirect } from '../utils/authRedirect';
 import { buildPreferencesKey } from '../utils/preferencesKey';
 import { isCustomizableMenuItem } from '../utils/menuItemCustomization';
+import { withTimeout } from '../utils/withTimeout';
+
+/**
+ * How long any one home-feed section may wait before the page stops depending
+ * on it. Generous enough that a cold backend still fills the screen, short
+ * enough that a dead endpoint cannot hold the feed hostage. The failure this
+ * replaces was an unbounded wait, so the exact number matters far less than
+ * there being one; it is sized to a cold recommendation call.
+ */
+const SECTION_TIMEOUT_MS = 8000;
 
 interface HomePageProps {
   addToCart: (input: {
@@ -146,21 +156,39 @@ export const HomePage = memo(function HomePage({
           restaurantRow?.locations?.find((entry) => entry.is_active) ??
           null;
 
+        // Every call here already carried a `.catch()`, which covers a rejection
+        // and not a hang — and a hang is what happened. `Promise.all` waited on
+        // a recommendations request that never answered, so the `finally` below
+        // never cleared `loading` and the whole feed sat in skeletons while the
+        // menu, combos and offers had all arrived in milliseconds. A deadline
+        // turns that into an ordinary failure these handlers already absorb.
         const [menuRows, comboRows, recommendationRows, orderRows, offerRows] = await Promise.all([
           scoped
-            ? api.getMenuItems(scoped, tokenRef.current, undefined, location?.id ?? null).catch(() => [])
+            ? withTimeout(
+                api.getMenuItems(scoped, tokenRef.current, undefined, location?.id ?? null),
+                SECTION_TIMEOUT_MS,
+                'menu',
+              ).catch(() => [])
             : Promise.resolve<MenuItem[]>([]),
-          api.getGeneratedCombos(12).catch(() => []),
-          api
-            .getRecommendationsForContext({
+          withTimeout(api.getGeneratedCombos(12), SECTION_TIMEOUT_MS, 'combos').catch(() => []),
+          withTimeout(
+            api.getRecommendationsForContext({
               token: tokenRef.current,
               preferences: preferencesRef.current,
               dedupeMultiLocation: true,
-            })
-            .catch(() => []),
-          tokenRef.current ? api.getOrders(tokenRef.current).catch(() => []) : Promise.resolve<Order[]>([]),
+            }),
+            SECTION_TIMEOUT_MS,
+            'recommendations',
+          ).catch(() => []),
           tokenRef.current
-            ? api.getPersonalizedOffers(tokenRef.current, 6).catch(() => [])
+            ? withTimeout(api.getOrders(tokenRef.current), SECTION_TIMEOUT_MS, 'orders').catch(() => [])
+            : Promise.resolve<Order[]>([]),
+          tokenRef.current
+            ? withTimeout(
+                api.getPersonalizedOffers(tokenRef.current, 6),
+                SECTION_TIMEOUT_MS,
+                'offers',
+              ).catch(() => [])
             : Promise.resolve<PersonalizedOfferCard[]>([]),
         ]);
 
@@ -508,7 +536,7 @@ export const HomePage = memo(function HomePage({
         ) : menuPreview.length > 0 ? (
           <div className="dish-grid">
             {menuPreview.map((item) => (
-              <DishCard
+              <DishRow
                 favoritePending={isFavoritePending(item.id)}
                 isFavorite={isFavorite(item.id)}
                 item={item}

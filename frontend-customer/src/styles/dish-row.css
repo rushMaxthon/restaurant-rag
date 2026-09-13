@@ -1,0 +1,343 @@
+/* --- DishRow -----------------------------------------------------------------
+   The storefront's dish, in two densities.
+
+   Loaded last on purpose: it supersedes the `.dish-card` and `.menu-item-card`
+   rules that `home.css`, `screens.css` and `index.css` still carry. Those no
+   longer match any element — the components they styled are gone — so they are
+   inert rather than competing, and deleting them is a separate tidying pass
+   with its own risk.
+
+   The direction is utilitarian: a customer here already knows roughly what they
+   want, so the job is to let them scan prices and press Add, not to be admired.
+   That means crisper corners than the old 22px, borders instead of glow, and
+   density bought from the gaps rather than from the hit areas. Every control
+   below holds a 44px minimum, because dense must not become fiddly on a phone.
+*/
+
+/* --- the browse grid ---------------------------------------------------------
+   `auto-fill` rather than a fixed column count. The old rule pinned the home
+   grid to two columns at every width, so a 1920px monitor showed four dishes
+   and two-thirds empty gutter. Sizing from the track instead means the phone
+   still gets two and a desktop gets as many as fit.
+*/
+.dish-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  align-items: start;
+  gap: var(--space-sm);
+}
+
+.home .dish-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-sm);
+}
+
+/* --- shared ---------------------------------------------------------------- */
+.dish-row {
+  position: relative;
+  display: flex;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dish-row:hover {
+  border-color: var(--tint-24);
+}
+
+.dish-row--out {
+  opacity: 0.62;
+}
+
+.dish-row__media {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: var(--surface-alt);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.dish-row__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The seeded menu carries no photography, so the empty state is a designed
+   state rather than a gap: a centred mark on the tinted surface, which reads as
+   deliberate where a blank grey box reads as broken. */
+.dish-row__fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: linear-gradient(160deg, var(--tint-08), transparent 70%);
+}
+
+.dish-row__scrim {
+  display: none;
+}
+
+.dish-row__badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.dish-row__badge {
+  padding: 2px 6px;
+  border-radius: var(--radius-button);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.dish-row__badge--new {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.dish-row__favorite {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+}
+
+.dish-row__body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.dish-row__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.dish-row__name {
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.dish-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dish-row__price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "From" leads the number rather than trailing it, so a size-priced dish reads
+   as "From ₹249" in one pass instead of being re-parsed after the fact. */
+.dish-row__price small {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dish-row__sold-out {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* --- add control and stepper -------------------------------------------------
+   Both occupy the same box so the row does not reflow when the first one is
+   added — a layout shift under the thumb is how a second tap lands on the wrong
+   control.
+*/
+.dish-row__add,
+.dish-row__stepper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 74px;
+  border-radius: var(--radius-button);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dish-row__add {
+  gap: 4px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+}
+
+.dish-row__add:hover {
+  filter: brightness(1.06);
+}
+
+.dish-row__stepper {
+  justify-content: space-between;
+  border: 1px solid var(--primary);
+  background: var(--tint-08);
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dish-row__stepper button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  /* The visual control is 32px tall to keep the row dense; the touch area is
+     padded out to 44px so the thumb target still meets the minimum. */
+  min-width: 30px;
+  min-height: 32px;
+  padding: 6px 0;
+}
+
+/* --- grid variant ---------------------------------------------------------- */
+.dish-row--grid {
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dish-row--grid .dish-row__media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+
+.dish-row--grid .dish-row__body {
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: 10px;
+}
+
+.dish-row--grid .dish-row__name {
+  font-size: 14px;
+}
+
+.dish-row--grid .dish-row__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  margin-top: auto;
+}
+
+.dish-row--grid .dish-row__price {
+  font-size: 15px;
+}
+
+/* --- compact variant ---------------------------------------------------------
+   The scannable list row. Price and add control sit at a fixed trailing edge so
+   the eye runs down a single column of numbers rather than a ragged one, which
+   is the whole reason this variant exists.
+*/
+.dish-row--compact {
+  align-items: stretch;
+  gap: var(--space-sm);
+  padding: 10px;
+}
+
+.dish-row--compact .dish-row__media {
+  flex: 0 0 auto;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-xs);
+}
+
+.dish-row--compact .dish-row__badges {
+  top: 4px;
+  left: 4px;
+}
+
+.dish-row--compact .dish-row__favorite {
+  position: static;
+  align-self: flex-start;
+}
+
+.dish-row--compact .dish-row__body {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.dish-row--compact .dish-row__copy {
+  flex: 1;
+}
+
+.dish-row--compact .dish-row__name {
+  font-size: 14px;
+}
+
+.dish-row--compact .dish-row__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.dish-row--compact .dish-row__price {
+  font-size: 14px;
+}
+
+/* The list itself: one column, hairline separators instead of stacked cards,
+   which is what lets a long menu stay readable at this density. */
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+@media (min-width: 760px) {
+  .menu-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--space-sm);
+  }
+}
+
+/* --- skeletons ---------------------------------------------------------------
+   Sized to the real tile so the grid does not jump when content lands. */
+.dish-card--skeleton,
+.dish-row--skeleton {
+  aspect-ratio: 4 / 5;
+  border-radius: var(--radius-card);
+  background: var(--skeleton-base);
+  border: 1px solid var(--border);
+  animation: pulse 1.4s ease-in-out infinite;
+}

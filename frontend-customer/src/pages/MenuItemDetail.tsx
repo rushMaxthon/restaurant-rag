@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { DishCard } from '../components/app/DishCard';
+import { DishRow } from '../components/app/DishRow';
 import { DishRating } from '../components/app/DishRating';
 import { SectionHeader } from '../components/app/SectionHeader';
 import { FavoriteButton } from '../components/FavoriteButton';
@@ -766,7 +766,7 @@ export function MenuItemDetailPage({
           />
           <div className="home-horizontal-row menu-detail-suggestions__row">
             {suggestions.map((suggestion) => (
-              <DishCard
+              <DishRow
                 favoritePending={isFavoritePending(suggestion.id)}
                 isFavorite={favoritesHydrated ? isFavorite(suggestion.id) : suggestion.is_favorite}
                 item={suggestion}

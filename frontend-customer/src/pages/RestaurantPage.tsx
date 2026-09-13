@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   api,
@@ -6,7 +6,7 @@ import {
   formatCurrency,
 } from "../services/api";
 import { GeneratedComboCard } from "../components/home/GeneratedComboCard";
-import { MenuItemCard } from "../components/MenuItemCard";
+import { DishRow } from "../components/app/DishRow";
 import { Skeleton } from "../components/Skeleton";
 import { useAppStore } from "../hooks/useAppStore";
 import { sortMenuItemsByRecommendationSignal } from "../utils/menuPersonalization";
@@ -20,6 +20,16 @@ import {
   isFulfillmentEnabled,
 } from "../utils/fulfillment";
 import { isCustomizableMenuItem } from "../utils/menuItemCustomization";
+import { withTimeout } from "../utils/withTimeout";
+import { buildPreferencesKey } from "../utils/preferencesKey";
+
+/**
+ * How long any one section of this page may wait before the page stops
+ * depending on it. Matches `HomePage`: every call below already carried a
+ * `.catch()`, which covers a rejection and not a hang, and a hang is what
+ * surfaced as "The request took too long" with the menu never arriving.
+ */
+const SECTION_TIMEOUT_MS = 8000;
 
 interface RestaurantPageProps {
   restaurantId: string;
@@ -50,6 +60,19 @@ export function RestaurantPage({
     toggleFavorite,
     updateCartQuantity,
   } = useAppStore();
+
+  /**
+   * The store hands back a new `preferences` object whenever it merges the
+   * remote copy, even when nothing the user chose changed. Both effects below
+   * fetch preference-ranked data, so depending on the object re-fired them on
+   * every replacement — six identical menu requests in nine seconds, each one
+   * setting `loading` back to true, which is why the menu never stopped showing
+   * skeletons. `preferencesKey.ts` documents this exact rule; `HomePage`
+   * already follows it via `feedScopeKey`.
+   */
+  const preferencesKey = useMemo(() => buildPreferencesKey(preferences), [preferences]);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [generatedCombos, setGeneratedCombos] = useState<GeneratedCombo[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -150,12 +173,11 @@ export function RestaurantPage({
 
         const [items, recommendationRows, comboRows] = await Promise.all([
           api.getMenuItems(restaurantId, token, controller.signal, defaultLocation?.id ?? null),
-          api
-            .getRecommendationsForContext({
-              token,
-              preferences,
-            })
-            .catch(() => []),
+          withTimeout(
+            api.getRecommendationsForContext({ token, preferences: preferencesRef.current }),
+            SECTION_TIMEOUT_MS,
+            'recommendations',
+          ).catch(() => []),
           api.getRestaurantGeneratedCombos(restaurantId, 8, defaultLocation?.id ?? null).catch(() => []),
         ]);
         if (controller.signal.aborted) {
@@ -189,7 +211,7 @@ export function RestaurantPage({
     return () => {
       controller.abort();
     };
-  }, [preferences, restaurantId, token, reloadKey]);
+  }, [preferencesKey, restaurantId, token, reloadKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -203,12 +225,11 @@ export function RestaurantPage({
       try {
         const [items, recommendationRows, comboRows] = await Promise.all([
           api.getMenuItems(restaurant.id, token, controller.signal, selectedLocation.id),
-          api
-            .getRecommendationsForContext({
-              token,
-              preferences,
-            })
-            .catch(() => []),
+          withTimeout(
+            api.getRecommendationsForContext({ token, preferences: preferencesRef.current }),
+            SECTION_TIMEOUT_MS,
+            'recommendations',
+          ).catch(() => []),
           api.getRestaurantGeneratedCombos(restaurant.id, 8, selectedLocation.id).catch(() => []),
         ]);
         if (controller.signal.aborted) {
@@ -236,7 +257,7 @@ export function RestaurantPage({
 
     void loadLocationScopedContent();
     return () => controller.abort();
-  }, [preferences, pushToast, restaurant, selectedLocation, token]);
+  }, [preferencesKey, pushToast, restaurant, selectedLocation, token]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -718,13 +739,13 @@ export function RestaurantPage({
         ) : null}
         <div className="menu-list">
           {hasActiveLocations ? visibleItems.map((item) => (
-            <MenuItemCard
+            <DishRow
               favoritePending={isFavoritePending(item.id)}
               hasOfferAvailable={Boolean(offerAvailabilityByItemId[item.id])}
               isFavorite={favoritesHydrated ? isFavorite(item.id) : item.is_favorite}
               item={item}
               key={item.id}
-              onDecrease={(menuItem) => updateCartQuantity(menuItem.id, (cartQuantities.get(menuItem.id) ?? 0) - 1)}
+              onDecrease={(menuItemId) => updateCartQuantity(menuItemId, (cartQuantities.get(menuItemId) ?? 0) - 1)}
               onAdd={(menuItem) => {
                 if (!activeFulfillmentAvailable) {
                   pushToast(
@@ -740,9 +761,10 @@ export function RestaurantPage({
                 }
                 onAddToCart(menuItem, restaurant);
               }}
-              onOpen={(menuItem) => onNavigate(`/menu-item/${menuItem.id}`)}
+              onOpen={(menuItemId) => onNavigate(`/menu-item/${menuItemId}`)}
               onToggleFavorite={handleToggleFavorite}
               quantity={isCustomizableMenuItem(item) ? 0 : cartQuantities.get(item.id) ?? 0}
+              variant="compact"
             />
           )) : null}
         </div>
