@@ -161,6 +161,11 @@ export type OrderCreateRequest = {
   delivery_address: string;
   special_instructions?: string | null;
   payment_method?: string;
+  // The server has accepted these since the beginning and validates
+  // `scheduled_at` against the branch's slot rows. Omitted for an ASAP order,
+  // which is what the API defaults to.
+  schedule_type?: "ASAP" | "SCHEDULED";
+  scheduled_at?: string | undefined;
 };
 
 export type OrderValidationResponse = {

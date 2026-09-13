@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { availabilityNow, dayLabel, formatSlotTime, nextOpening } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/cart")({
@@ -47,6 +48,15 @@ function CartPage() {
   const eta = isDelivery
     ? s.currentLocation?.estimated_delivery_time
     : s.currentLocation?.estimated_pickup_time;
+
+  // The API has always said whether this branch can take the order right now.
+  // Nothing read it, so at 11pm you could fill a cart, reach checkout and only
+  // then be told the branch was closed. Said here instead, where the decision
+  // to continue is actually made.
+  const fulfillment = isDelivery ? "DELIVERY" : "PICKUP";
+  const availability = availabilityNow(s.currentLocation, fulfillment);
+  const reopens = availability.available ? null : nextOpening(s.currentLocation, fulfillment);
+  const blocked = !availability.available;
 
   if (!s.cart.length) {
     return (
@@ -234,12 +244,35 @@ function CartPage() {
             <span className="sum-total-figure">{formatMoney(total)}</span>
           </div>
 
+          {blocked && (
+            <div className="closed-notice mt-5">
+              <Clock className="mt-0.5 size-5 shrink-0 text-danger" />
+              <div>
+                <p className="font-bold">
+                  {isDelivery ? "Delivery" : "Pickup"} is closed right now
+                </p>
+                <p className="mt-0.5 text-sm text-muted">
+                  {availability.reason ?? "This branch is outside its opening hours."}
+                  {reopens && (
+                    <>
+                      {" "}
+                      Opens again {reopens.isToday ? "today" : dayLabel(reopens.day)} at{" "}
+                      <b className="text-foreground">{formatSlotTime(reopens.slot.start_time)}</b>.
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
           <Button
             className="mt-5 h-12 w-full text-base font-bold"
-            disabled={shortfall > 0}
-            asChild={shortfall === 0}
+            disabled={shortfall > 0 || blocked}
+            asChild={shortfall === 0 && !blocked}
           >
-            {shortfall > 0 ? (
+            {blocked ? (
+              <span>Closed right now</span>
+            ) : shortfall > 0 ? (
               <span>Minimum {formatMoney(minimumOrder)} to order</span>
             ) : isAuthenticated ? (
               <Link to="/checkout">

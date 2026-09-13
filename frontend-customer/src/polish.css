@@ -627,3 +627,24 @@ textarea.flex:focus-visible {
   outline-offset: 2px;
   border-radius: 0.25rem;
 }
+
+/* --- Branch hours ----------------------------------------------------------
+   A week of opening windows. Today's row is marked because it is the only one
+   most people are reading for. */
+.hours-row{display:grid;grid-template-columns:7.5rem 1fr;gap:.75rem;align-items:baseline;padding:.3rem .5rem;border-radius:calc(var(--radius) - 2px);font-size:.875rem}
+.hours-row dt{color:var(--muted);font-weight:700}
+.hours-row dd{margin:0;display:flex;flex-wrap:wrap;gap:.35rem .9rem;font-weight:600;font-variant-numeric:tabular-nums}
+.hours-row[data-today="true"]{background:var(--primary-soft)}
+.hours-row[data-today="true"] dt{color:var(--primary)}
+
+/* A branch that cannot take the order right now. Stated where the decision is
+   made, not discovered at checkout. */
+.closed-notice{display:flex;align-items:flex-start;gap:.7rem;border:1px solid color-mix(in srgb,var(--danger) 35%,var(--border));border-radius:calc(var(--radius) + 4px);background:color-mix(in srgb,var(--danger) 8%,var(--surface));padding:.9rem 1rem}
+.closed-notice[data-tone="soft"]{border-color:var(--border);background:var(--surface-alt)}
+
+/* Slot picker on checkout. */
+.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(7.2rem,1fr));gap:.5rem}
+.slot-chip{min-height:44px;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem;font-weight:700;font-size:.85rem;font-variant-numeric:tabular-nums;cursor:pointer;transition:border-color .16s,background .16s,color .16s}
+.slot-chip:hover:not(:disabled){border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
+.slot-chip[data-on="true"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}
+.slot-chip:disabled{opacity:.45;cursor:not-allowed}

@@ -20,6 +20,15 @@ import { CardPayment } from "@/components/bangkok/card-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { BranchHours } from "@/components/bangkok/branch-hours";
+import {
+  availabilityNow,
+  bookableTimes,
+  dayFromDate,
+  dayLabel,
+  formatTimeOfDay,
+  nextOpening,
+} from "@/lib/branch-hours";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
@@ -82,6 +91,7 @@ function Checkout() {
   // the server's `supported_methods` so an unconfigured Stripe shows as
   // "unavailable" rather than silently letting an order through unpaid.
   const [payingCard, setPayingCard] = useState(false);
+  const [chosenSlot, setChosenSlot] = useState<Date | null>(null);
   const method = "CARD" as const;
   // Set once the order and its intent exist; swaps the form for Stripe's
   // Payment Element. The cart is deliberately still full at this point — a
@@ -107,6 +117,34 @@ function Checkout() {
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
+
+  // Orders have carried schedule_type/scheduled_at since the beginning and the
+  // server validates a scheduled time against the branch's own slots. The app
+  // only ever sent ASAP, so outside opening hours there was nothing to do but
+  // fail. Now a closed branch can still take an order for its next window.
+  const fulfillment = isDelivery ? "DELIVERY" : "PICKUP";
+  const availability = availabilityNow(branch, fulfillment);
+  const reopens = availability.available ? null : nextOpening(branch, fulfillment);
+  const canOrderNow = availability.available;
+
+  // Times offered are the branch's own interval, never sooner than its prep
+  // time, and only on a day it is actually open.
+  const scheduleDay = reopens?.day ?? dayFromDate(new Date());
+  const scheduleDate = (() => {
+    const date = new Date();
+    if (reopens && !reopens.isToday) {
+      const target = dayLabel(reopens.day);
+      for (let i = 1; i <= 7; i += 1) {
+        const probe = new Date();
+        probe.setDate(date.getDate() + i);
+        if (dayLabel(dayFromDate(probe)) === target) return probe;
+      }
+    }
+    return date;
+  })();
+  const slotTimes = canOrderNow
+    ? []
+    : bookableTimes(branch, fulfillment, scheduleDay, scheduleDate);
 
   // Once the intent exists the page becomes the payment sheet. Nothing else on
   // the checkout form can still change the amount at this point, so showing it
@@ -194,6 +232,12 @@ function Checkout() {
       restaurant_id: orderRestaurantId,
       restaurant_location_id: orderLocationId,
       fulfillment_type: s.fulfillment,
+      // ASAP while the branch is open; otherwise the slot they picked. The
+      // server re-validates this against the same slot rows, so a stale page
+      // cannot book a window that has since closed.
+      ...(canOrderNow
+        ? {}
+        : { schedule_type: "SCHEDULED" as const, scheduled_at: chosenSlot?.toISOString() }),
       delivery_address: deliveryAddress,
       // Previously never sent, so the backend defaulted every order to COD and
       // marked it PLACED immediately — which is why "Place order" looked like
@@ -341,6 +385,66 @@ function Checkout() {
           </section>
 
           <section className="elevated-panel p-5 sm:p-6">
+            <h2 className="font-display text-xl font-black">When would you like it?</h2>
+
+            {canOrderNow ? (
+              <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                <Clock className="size-4 shrink-0 text-primary" />
+                Ordering now — ready in about {eta} {typeof eta === "number" ? "min" : ""}.
+              </p>
+            ) : (
+              <>
+                <div className="closed-notice mt-4" data-tone="soft">
+                  <Clock className="mt-0.5 size-5 shrink-0 text-muted" />
+                  <div>
+                    <p className="font-bold">
+                      {isDelivery ? "Delivery" : "Pickup"} is closed right now
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted">
+                      {availability.reason ?? "This branch is outside its opening hours."} Pick a
+                      time below and we'll have it ready then.
+                    </p>
+                  </div>
+                </div>
+
+                {slotTimes.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="text-sm font-black uppercase tracking-wide text-muted">
+                      {reopens && !reopens.isToday ? dayLabel(scheduleDay) : "Today"}
+                    </p>
+                    <div className="slot-grid mt-3">
+                      {slotTimes.slice(0, 18).map((time) => {
+                        const value = time.toISOString();
+                        return (
+                          <button
+                            type="button"
+                            key={value}
+                            className="slot-chip"
+                            data-on={chosenSlot?.toISOString() === value}
+                            onClick={() => setChosenSlot(time)}
+                          >
+                            {formatTimeOfDay(time)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-muted">
+                    No bookable times for this branch right now. Try pickup, or another branch.
+                  </p>
+                )}
+              </>
+            )}
+
+            <BranchHours
+              location={branch}
+              fulfillment={fulfillment}
+              className="mt-6 border-t border-border pt-5"
+            />
+          </section>
+
+          <section className="elevated-panel p-5 sm:p-6">
             <h2 className="font-display text-xl font-black">Payment</h2>
             <p className="mt-1 text-sm text-muted">
               Paid securely by card before your order reaches the kitchen.
@@ -437,7 +541,9 @@ function Checkout() {
 
           <Button
             className="mt-5 hidden h-12 w-full text-base lg:flex"
-            disabled={!s.cart.length || submitting || !cardAvailable}
+            disabled={
+              !s.cart.length || submitting || !cardAvailable || (!canOrderNow && !chosenSlot)
+            }
             type="submit"
           >
             {submitting
@@ -462,7 +568,9 @@ function Checkout() {
           </div>
           <Button
             className="h-13 flex-1 text-base"
-            disabled={!s.cart.length || submitting || !cardAvailable}
+            disabled={
+              !s.cart.length || submitting || !cardAvailable || (!canOrderNow && !chosenSlot)
+            }
             type="submit"
           >
             {submitting ? "Working…" : "Pay now"}
