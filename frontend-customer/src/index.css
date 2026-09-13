@@ -88,14 +88,42 @@
   --tint-24: rgba(var(--primary-rgb), 0.24);
 
   /* --- typography --------------------------------------------------------
-     Two faces, one system, every screen. The sans above carries the interface;
-     this serif carries display type — page titles, section titles, the number
-     on a summary tile. Both are drawn from what the OS already has: the
-     project ships no webfont, and a storefront should not blank its own
-     headlines waiting for one to download. */
-  --font-ui: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
-  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua',
-    Georgia, ui-serif, serif;
+     One face, every screen. The serif that used to carry display type is
+     retired: "fast and utilitarian" does not want two voices, and the serif in
+     practice resolved to Palatino Linotype on Windows and Iowan Old Style on
+     macOS — a different identity per platform, chosen by neither.
+
+     `--font-display` survives as a token rather than being deleted, because it
+     is named at 12 call sites across `home.css` and `screens.css`. Pointing it
+     at the same stack changes every one of them with a single edit and leaves
+     the door open to reintroduce a display face later without hunting them
+     down again.
+
+     The fallbacks are ordered by metric similarity to Inter, so the swap moves
+     letterforms as little as possible: Segoe UI Variable and Roboto are close;
+     the generic `sans-serif` is the last resort. */
+  --font-ui: 'InterVariable', 'Segoe UI Variable Text', 'Segoe UI', Roboto,
+    system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-ui);
+
+  /* --- type scale --------------------------------------------------------
+     A 1.2 ratio (minor third), which is tight enough that adjacent steps stay
+     distinguishable without any one step dominating a dense screen. A 1.25 or
+     1.333 scale pushes the top of the range past 40px, and a page whose
+     headline is 40px cannot also show six dishes above the fold.
+
+     Headings additionally get `--leading-tight`: at display sizes the default
+     line height opens gaps that read as unintentional spacing. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 26px;
+  --text-3xl: 31px;
+
+  --leading-tight: 1.15;
+  --leading-normal: 1.5;
 
   /* --- inked surfaces ----------------------------------------------------
      The brand mixed into near black. Every dark surface in the app — the home
@@ -120,15 +148,22 @@
   --shadow-lg: 0 10px 24px var(--shadow-color);
   --shadow-xl: 0 16px 38px var(--shadow-color);
 
-  /* --- radii, the app's scale ------------------------------------------- */
-  --radius-xl: 26px;
-  --radius-pill: 20px;
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-card: 12px;
-  --radius-sm: 12px;
-  --radius-xs: 10px;
-  --radius-button: 8px;
+  /* --- radii, the app's scale ---------------------------------------------
+     Roughly halved at the top end. The old scale peaked at 26px, which reads
+     as soft and consumer-friendly; this direction wants the opposite, and a
+     dense grid of large-radius cards wastes real estate at every corner.
+
+     `--radius-pill` is deliberately NOT reduced: on a chip or a status badge
+     the full round is the signal that the thing is a tag rather than a button,
+     so flattening it would remove meaning rather than decoration. */
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-card: 8px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --radius-button: 6px;
 
   /* --- spacing, the app's scale ----------------------------------------- */
   --space-xs: 8px;
@@ -1190,7 +1225,7 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: var(--secondary-text);
+  color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -1240,7 +1275,7 @@ a {
 .prompt-chip {
   border-color: rgba(var(--primary-rgb), 0.22);
   color: var(--primary);
-  background: var(--primary-soft-2);
+  background: var(--primary-soft);
 }
 
 .menu-list {
@@ -2525,7 +2560,7 @@ a {
   justify-items: start;
   padding: 18px;
   border-radius: 18px;
-  background: var(--primary-soft-2);
+  background: var(--primary-soft);
   border: 1px dashed rgba(var(--primary-rgb), 0.24);
 }
 

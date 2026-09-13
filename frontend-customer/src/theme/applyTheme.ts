@@ -18,15 +18,26 @@
 import type { AppTheme } from './themeBase';
 import { hexToRgb, tint } from './palette';
 
-/** Tokens the app expresses as shadow objects, which CSS states as one string. */
+/** Tokens the app expresses as shadow objects, which CSS states as one string.
+ *
+ * Flattened for the dense direction. Five distinct elevations made sense when
+ * cards were large and widely spaced; in a tight grid, stacked glow reads as
+ * blur rather than as depth, and it fights the hairline borders that now carry
+ * separation. The top of the scale is pulled down hard — `--shadow-xl` was a
+ * 38px blur, which on a 190px tile spread further than the tile itself.
+ *
+ * The five names are kept rather than collapsed, because they are referenced
+ * across four stylesheets; re-pointing the values costs one edit, renaming them
+ * would cost dozens and gain nothing.
+ */
 function shadows(theme: AppTheme): Record<string, string> {
   const s = theme.colors.shadow;
   return {
-    '--shadow-xs': `0 2px 6px ${s}`,
-    '--shadow-sm': `0 4px 10px ${s}`,
-    '--shadow-md': `0 6px 14px ${s}`,
-    '--shadow-lg': `0 10px 24px ${s}`,
-    '--shadow-xl': `0 16px 38px ${s}`,
+    '--shadow-xs': `0 1px 2px ${s}`,
+    '--shadow-sm': `0 1px 3px ${s}`,
+    '--shadow-md': `0 2px 6px ${s}`,
+    '--shadow-lg': `0 4px 12px ${s}`,
+    '--shadow-xl': `0 8px 20px ${s}`,
   };
 }
 

@@ -48,6 +48,30 @@ def get_redis_client() -> Redis:
     )
 
 
+@lru_cache(maxsize=1)
+def get_redis_delete_client() -> Redis:
+    """A second connection, used only by the delete/scan path, on a longer leash.
+
+    `redis_socket_timeout_seconds` is right for a GET: a read that times out is
+    a cache miss, and the caller falls through to the database for one slower
+    but correct answer. `cache_delete_pattern` walks `scan_iter`, which can take
+    several round trips against a large keyspace — one slow round trip under
+    the read deadline used to raise `RedisError` mid-scan and abandon the
+    delete, leaving the already-matched keys undeleted. Those keys then serve a
+    stale menu or offer for the full `redis_cache_ttl_seconds` (three days),
+    which is a far worse outcome than one invalidation call taking longer. A
+    separate client, rather than passing a timeout per call, because
+    redis-py pins `socket_timeout` to the connection at construction time.
+    """
+
+    return Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=settings.redis_socket_connect_timeout_seconds,
+        socket_timeout=settings.redis_delete_socket_timeout_seconds,
+    )
+
+
 def cache_get_json(key: str) -> Any | None:
     try:
         raw_value = get_redis_client().get(key)
@@ -87,7 +111,7 @@ def cache_delete(*keys: str) -> int:
         return 0
 
     try:
-        deleted = int(get_redis_client().delete(*keys))
+        deleted = int(get_redis_delete_client().delete(*keys))
     except RedisError:
         logger.exception("Redis connection failure during DELETE keys=%s", keys)
         return 0
@@ -98,7 +122,7 @@ def cache_delete(*keys: str) -> int:
 
 def cache_delete_pattern(pattern: str) -> int:
     try:
-        client = get_redis_client()
+        client = get_redis_delete_client()
         keys = list(client.scan_iter(match=pattern, count=200))
         if not keys:
             logger.info("Redis cache delete pattern=%s deleted=0", pattern)

@@ -148,7 +148,11 @@ export const HomePage = memo(function HomePage({
       setLoading(true);
       try {
         const scoped = restaurantIdRef.current;
-        const restaurantRow = scoped ? await api.getRestaurant(scoped).catch(() => null) : null;
+        const restaurantRow = scoped
+          ? await withTimeout(api.getRestaurant(scoped), SECTION_TIMEOUT_MS, 'restaurant').catch(
+              () => null,
+            )
+          : null;
         // The open branch is what the app prices and stocks the menu against;
         // an inactive one would show dishes the kitchen cannot make.
         const location =
@@ -530,7 +534,7 @@ export const HomePage = memo(function HomePage({
         {loading && menuItems.length === 0 ? (
           <div className="dish-grid">
             {Array.from({ length: 8 }, (_, index) => (
-              <div className="dish-card dish-card--skeleton" key={index} />
+              <div className="dish-row--skeleton" key={index} />
             ))}
           </div>
         ) : menuPreview.length > 0 ? (

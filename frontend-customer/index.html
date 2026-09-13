@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Preloaded because the font is needed for first paint. Without this the
+         browser discovers it only after parsing CSS, which is late enough that
+         the swap is visible as a flash of fallback text. `crossorigin` is
+         required even same-origin: fonts are fetched in CORS mode, and omitting
+         it causes a second, uncached fetch. -->
+    <link
+      rel="preload"
+      href="/fonts/inter-variable-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <title>frontend</title>
   </head>
   <body>

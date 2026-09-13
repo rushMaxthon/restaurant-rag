@@ -194,11 +194,22 @@
 }
 
 .dish-row__add {
+  position: relative;
   gap: 4px;
   border: 1px solid var(--primary);
   background: var(--primary);
   color: var(--on-primary);
   cursor: pointer;
+}
+
+/* The visible pill stays 32px so the row reads as dense; `::after` pads the
+   actual tap target out to the 44px minimum without growing the box the row
+   lays out against. Density has to come from spacing, never from shrinking
+   hit areas. */
+.dish-row__add::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
 }
 
 .dish-row__add:hover {
@@ -214,6 +225,7 @@
 }
 
 .dish-row__stepper button {
+  position: relative;
   border: 0;
   background: none;
   color: inherit;
@@ -221,11 +233,18 @@
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  /* The visual control is 32px tall to keep the row dense; the touch area is
-     padded out to 44px so the thumb target still meets the minimum. */
+  /* The visible glyph stays 30x32 so the stepper reads as dense; `::after`
+     below is what actually pads the tap target out to the 44px minimum — this
+     box alone was the M2 regression: it looked padded but wasn't. */
   min-width: 30px;
   min-height: 32px;
   padding: 6px 0;
+}
+
+.dish-row__stepper button::after {
+  content: '';
+  position: absolute;
+  inset: -6px -7px;
 }
 
 /* --- grid variant ---------------------------------------------------------- */
@@ -340,4 +359,13 @@
   background: var(--skeleton-base);
   border: 1px solid var(--border);
   animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* The compact list row is short and full-width, not portrait — the 4/5 ratio
+   above is sized for the browse grid's tiles and would stretch a list-row
+   skeleton far taller than the `.dish-row--compact` it stands in for. Height
+   matches that row exactly: 76px media plus 10px padding on each side. */
+.dish-row--compact.dish-row--skeleton {
+  aspect-ratio: auto;
+  height: 96px;
 }
