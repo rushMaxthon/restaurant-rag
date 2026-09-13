@@ -131,6 +131,32 @@ def make_menu_seed(
     }
 
 
+# Dish photography for the seed.
+#
+# Remote URLs rather than committed files, deliberately: production has NO
+# upload pipeline — an owner pastes a link into a text field in the admin and
+# the customer app hotlinks it directly. Committing local JPEGs would make the
+# seed behave better than the real product, and the photo-led card would then
+# be validated against a fiction.
+#
+# The consequence is the one production has too: these links can rot. That is
+# not a flaw in the fixture, it is the behaviour the fallback state exists for,
+# so a dead link here is exercising the design rather than breaking it.
+#
+# Keyed on dish name because the same dish appears at several branches with
+# different prices, and all of them should show the same photograph.
+DISH_IMAGE_URLS: dict[str, str] = {
+    "Pad Thai Veg": "https://images.unsplash.com/photo-1559314809-0d155014e29e?w=800&q=80",
+    "Green Curry Chicken": "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=800&q=80",
+    "Thai Basil Chicken": "https://images.unsplash.com/photo-1569562211093-4ed0d0758f12?w=800&q=80",
+    "Thai Iced Tea": "https://images.unsplash.com/photo-1558857563-b371033873b8?w=800&q=80",
+    "Coconut Cooler": "https://images.unsplash.com/photo-1536511132770-e5058c7e8c46?w=800&q=80",
+    "Red Curry Tofu": "https://images.unsplash.com/photo-1548943487-a2e4e43b4853?w=800&q=80",
+    "Thai Chilli Basil Rice": "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&q=80",
+    "Coconut Pandan Pudding": "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80",
+}
+
+
 RESTAURANT_SEED_DATA = [
     {
         "name": "Spice Route Indian Kitchen",
@@ -1411,6 +1437,13 @@ def build_branch_menu_items(
         if base_item["name"] in excluded:
             continue
         next_item = dict(base_item)
+        # Left as None when the map has no entry. That is deliberate coverage,
+        # not an oversight: a seeded menu where EVERY dish has a photograph
+        # would never exercise the placeholder state, which is the state a real
+        # menu spends much of its life in.
+        image_url = DISH_IMAGE_URLS.get(base_item["name"])
+        if image_url:
+            next_item["image_url"] = image_url
         next_item["price"] = (base_item["price"] + price_delta).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
         next_item["is_available"] = base_item["name"] not in unavailable
         items.append(next_item)
