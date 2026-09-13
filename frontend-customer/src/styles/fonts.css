@@ -1,0 +1,29 @@
+/* --- webfont ------------------------------------------------------------------
+   One face, self-hosted.
+
+   This reverses a documented decision. `index.css` previously said the project
+   "ships no webfont, and a storefront should not blank its own headlines
+   waiting for one to download" — a fair concern, and the reason the app used
+   whatever the OS had. The cost was that nobody owned the result: the UI stack
+   fell through to Segoe UI on Windows and Avenir Next on macOS, and the display
+   stack to Palatino Linotype and Iowan Old Style respectively. The app looked
+   materially different per platform and neither typeface was chosen.
+
+   `font-display: swap` answers the original objection directly: text paints
+   immediately in the fallback and upgrades when the file arrives, so a headline
+   is never blank. The file is 48KB, latin-only, and preloaded from `index.html`.
+
+   Self-hosted rather than an `@fontsource` package because `frontend-customer`
+   keeps `dependencies` to react and react-dom exactly; a static asset in
+   `public/` adds nothing to the dependency tree and removes a network hop.
+
+   One variable file covers every weight the app uses, so weight changes cost no
+   extra request.
+*/
+@font-face {
+  font-family: 'InterVariable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter-variable-latin.woff2') format('woff2');
+}

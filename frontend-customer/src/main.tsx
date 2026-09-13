@@ -1,5 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+// First: `@font-face` must be registered before any rule that names the family,
+// and before `index.css` defines `--font-ui` in terms of it.
+import './styles/fonts.css';
 import './index.css';
 import './styles/app.css';
 // Last, deliberately: the storefront layer for Home overrides the app

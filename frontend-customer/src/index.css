@@ -88,14 +88,23 @@
   --tint-24: rgba(var(--primary-rgb), 0.24);
 
   /* --- typography --------------------------------------------------------
-     Two faces, one system, every screen. The sans above carries the interface;
-     this serif carries display type — page titles, section titles, the number
-     on a summary tile. Both are drawn from what the OS already has: the
-     project ships no webfont, and a storefront should not blank its own
-     headlines waiting for one to download. */
-  --font-ui: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
-  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua',
-    Georgia, ui-serif, serif;
+     One face, every screen. The serif that used to carry display type is
+     retired: "fast and utilitarian" does not want two voices, and the serif in
+     practice resolved to Palatino Linotype on Windows and Iowan Old Style on
+     macOS — a different identity per platform, chosen by neither.
+
+     `--font-display` survives as a token rather than being deleted, because it
+     is named at 12 call sites across `home.css` and `screens.css`. Pointing it
+     at the same stack changes every one of them with a single edit and leaves
+     the door open to reintroduce a display face later without hunting them
+     down again.
+
+     The fallbacks are ordered by metric similarity to Inter, so the swap moves
+     letterforms as little as possible: Segoe UI Variable and Roboto are close;
+     the generic `sans-serif` is the last resort. */
+  --font-ui: 'InterVariable', 'Segoe UI Variable Text', 'Segoe UI', Roboto,
+    system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-ui);
 
   /* --- inked surfaces ----------------------------------------------------
      The brand mixed into near black. Every dark surface in the app — the home
