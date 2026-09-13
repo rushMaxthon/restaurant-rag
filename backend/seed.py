@@ -45,6 +45,17 @@ from app.services.restaurant_locations import ensure_default_location_slots
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 RNG = random.Random(42)
 MONEY_QUANT = Decimal("0.01")
+# Keys a location seed entry carries for the seeder's own use, which are NOT
+# columns on `RestaurantLocation`. `price_delta` shifts this branch's menu
+# prices, and `unavailable`/`excluded`/`extras` shape its menu; all four are
+# consumed by `build_branch_menu_items` and must be stripped before the rest of
+# the entry is splatted into the model, or construction fails with
+# "'price_delta' is an invalid keyword argument for RestaurantLocation".
+#
+# Named once because it is needed in two places — the primary location and the
+# secondary branches — and those two drifted apart, which is how that failure
+# reached a clean database.
+LOCATION_SEED_ONLY_KEYS = frozenset({"price_delta", "unavailable", "excluded", "extras"})
 ENABLE_PERSONALIZED_OFFERS_DEMO = os.getenv("SEED_PERSONALIZED_OFFERS_DEMO", "1").strip().lower() not in {
     "0",
     "false",
@@ -1188,6 +1199,13 @@ def ensure_primary_location(
     location_defaults: dict,
 ) -> tuple[RestaurantLocation, bool]:
     branch_name = location_defaults["branch_name"]
+    # `branch_name` is passed separately, and the seed-only keys are not columns
+    # at all, so neither belongs in the values applied to the model.
+    model_values = {
+        key: value
+        for key, value in location_defaults.items()
+        if key != "branch_name" and key not in LOCATION_SEED_ONLY_KEYS
+    }
     location = (
         db.query(RestaurantLocation)
         .filter(
@@ -1197,7 +1215,7 @@ def ensure_primary_location(
         .first()
     )
     if location is not None:
-        apply_model_fields(location, {k: v for k, v in location_defaults.items() if k != "branch_name"})
+        apply_model_fields(location, model_values)
         return location, False
 
     locations = (
@@ -1209,17 +1227,17 @@ def ensure_primary_location(
     if len(locations) == 1 and locations[0].branch_name == DEFAULT_BRANCH_NAME:
         location = locations[0]
         location.branch_name = branch_name
-        apply_model_fields(location, {k: v for k, v in location_defaults.items() if k != "branch_name"})
+        apply_model_fields(location, model_values)
         return location, False
 
     location, created = get_or_create_restaurant_location(
         db,
         restaurant_id=restaurant.id,
         branch_name=branch_name,
-        defaults={k: v for k, v in location_defaults.items() if k != "branch_name"},
+        defaults=model_values,
     )
     if not created:
-        apply_model_fields(location, {k: v for k, v in location_defaults.items() if k != "branch_name"})
+        apply_model_fields(location, model_values)
     return location, created
 
 
@@ -2046,7 +2064,11 @@ def run_seed():
                     db,
                     restaurant_id=restaurant.id,
                     branch_name=branch_seed["branch_name"],
-                    defaults={k: v for k, v in branch_seed.items() if k not in {"branch_name", "price_delta", "unavailable", "excluded", "extras"}},
+                    defaults={
+                        k: v
+                        for k, v in branch_seed.items()
+                        if k != "branch_name" and k not in LOCATION_SEED_ONLY_KEYS
+                    },
                 )
                 apply_model_fields(
                     location,

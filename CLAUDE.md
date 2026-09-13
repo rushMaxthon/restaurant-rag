@@ -1,0 +1,184 @@
+# CLAUDE.md
+
+Persistent context for this repo. Read this first; it exists so no session has to
+re-derive the map from scratch.
+
+Companion file: `.claude/worklog.md` — dated log of what each session actually
+did. Read the last 2-3 entries before starting work, append an entry when done.
+
+---
+
+## What this is
+
+A monorepo for a multi-restaurant ordering platform with two AI surfaces:
+customer-facing RAG food chat, and an AI Restaurant Manager for owners.
+
+| Path | What it is | Stack |
+|---|---|---|
+| `backend/` | source of truth for every business rule | FastAPI 0.115, SQLAlchemy 2.0, Postgres + pgvector, Celery + Redis, Ollama (qwen3:8b, nomic-embed-text), Stripe, Firebase Admin |
+| `frontend-customer/` | customer web app | React 19 + Vite, **zero runtime deps** |
+| `frontend-admin/` | shared ADMIN + OWNER dashboard | React 19 + Vite, only `lucide-react` + fontsource |
+| `mobile/` | customer app | React Native 0.85 CLI, React Navigation, Firebase phone auth, Stripe RN, Notifee |
+
+---
+
+## Conventions that are easy to violate by accident
+
+**No new dependencies in the web apps.** Both `frontend-customer` and
+`frontend-admin` are deliberately dependency-free at runtime. Routing is
+hand-rolled over the History API in `src/App.tsx` (regex-matched pathnames, a
+`usePathname` hook). State is React Context — `src/store/AppStore.tsx` /
+`src/store/AdminStore.tsx`. Styling is hand-written CSS in `src/index.css`
+(9.5k lines admin, 4.5k customer) — no Tailwind, no CSS-in-JS, no component
+library. Reaching for react-router, redux or a UI kit breaks the house style.
+
+**Comments explain *why*, not what.** See `backend/app/config/settings.py` — it
+reads like a lab notebook: measured timings, why `ollama_think_mode` is
+per-deployment, why revenue diagnostics exclude `CANCELLED`. Match that density
+when touching backend code. Terse "what" comments read as foreign here.
+
+**The LLM never invents data.** Every AI path retrieves rows from Postgres
+first, filters them by business rules, and only then lets the model phrase an
+answer over that fixed set. The narrator's numbers are verified back against the
+fact pack (`ai_manager_number_tolerance`). Every LLM path has a deterministic
+template fallback, and every AI feature flag defaults **off**.
+
+**Backend enforces, UI only hides.** Role filtering, branch scoping, payment
+method availability, slot validity and report scope are all re-validated
+server-side. Never treat a UI guard as the rule.
+
+**Tests are `unittest`, not pytest.** 42 files in `backend/tests/`, each
+inserting `backend/` on `sys.path` itself. Many encode a question that was once
+answered *wrong* — read the module docstring before changing an assertion.
+
+---
+
+## Domain model
+
+Two-level restaurants:
+
+- `Restaurant` — brand identity: discovery, ownership, branding.
+- `RestaurantLocation` — the orderable branch. Menu items, orders, generated
+  combos, payment methods, fulfillment toggles and weekly slots all hang off the
+  **location**, not the brand.
+- Cart scope is `restaurant + location`, so two branches cannot mix in one cart.
+
+Identity:
+
+- `AppClient` scopes customers. The same phone in the Marketplace app and in a
+  single-restaurant app are **two separate accounts**; JWTs are bound to their
+  app. See `docs/per-app-identity.md`.
+- Roles: `ADMIN`, `OWNER` (platform staff, `app_client_id` NULL), `CUSTOMER`.
+  One owner to exactly one restaurant. The role/app-client split is a DB CHECK
+  (`ck_users_app_client_scope_matches_role`), and customer uniqueness lives in
+  partial indexes defined in migration `0036`, not in the SQLAlchemy model.
+
+Orders: `PAYMENT_PENDING -> PLACED -> ACCEPTED -> PREPARING -> OUT_FOR_DELIVERY
+-> DELIVERED`, strictly linear, plus `CANCELLED`. There is no human cancellation
+path — every cancellation is system-derived (`OrderCancellationReason`).
+
+All enums live in one place: `backend/app/models/enums.py`. Read it early; it is
+the fastest way to understand the domain.
+
+---
+
+## The AI layers
+
+**1. Customer RAG chat** — `backend/app/services/rag.py` (~5.5k lines, the
+single biggest file). Order of operations: lightweight deterministic intent
+parsing, then Qwen intent extraction only when that is unreliable, then keyword
+and/or pgvector retrieval, then business-rule filtering, then Qwen phrases the
+answer — or is skipped entirely when grounded keyword matches already suffice —
+with a DB-backed fallback if the model is slow. Session memory and response
+cache in Redis. Combo-aware and new-item-aware. Deep dive:
+`backend/docs/chat-rag-workflow.md`.
+
+**2. AI Restaurant Manager** — `backend/app/services/insights/`. Three tiers:
+deterministic rules, then an LLM tool planner over 28 read-only tools, then
+honest refusal. `analyst/` is a separate LLM loop behind **three** flags on
+purpose (`enable_ai_manager_analyst`, `ai_manager_analyst_shadow_mode`,
+`enable_ai_manager_ai_findings`) — running it, storing its output and showing it
+to an owner are different decisions. Action proposals never spend money without
+an explicit approval call. Full walkthrough: `AI_RESTAURANT_MANAGER_WORKFLOW.md`.
+
+**3. Personalization** — `personalized_offers.py`, `recommendations.py`,
+`ai_recommendations.py`, `generated_combos.py`. Scoring is backend-driven;
+labels come from scoring, never handcrafted in a client.
+
+---
+
+## Where to make changes
+
+- business rules -> `backend/app/services/`
+- routes and contracts -> `backend/app/api/` + `backend/app/schemas/`
+- schema -> `backend/app/models/` + `backend/alembic/versions/`
+- admin UI -> `frontend-admin/src/pages/`, `frontend-admin/src/components/`
+- customer web UI -> `frontend-customer/src/pages/`, `.../components/`
+- mobile UI -> `mobile/src/screens/`, `.../components/`, `.../navigation/`
+
+---
+
+## Commands
+
+```bash
+# backend (from backend/)
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+alembic upgrade head
+python seed.py
+celery -A app.config.celery:celery_app worker --loglevel=info -Q embeddings,notifications,default,analytics
+python -m unittest discover -s tests      # tests are unittest-based, not pytest
+python -m compileall app alembic          # the repo's usual syntax check
+
+# web (from frontend-admin/ or frontend-customer/)
+npm run dev | npm run build | npm run lint
+
+# mobile (from mobile/)
+npm run start | npm run android | npm run ios
+./node_modules/.bin/tsc --noEmit
+npm run lint | npm run test
+```
+
+Verification this repo actually uses: `compileall` for backend, `npm run build`
+for both webs, `tsc --noEmit` for mobile.
+
+---
+
+## Deployment
+
+- `docker-compose.yml` — postgres, redis, ollama (+ model pull), migrate, api,
+  four queue-specific Celery workers (default / analytics / embeddings /
+  notifications), beat, both frontends, nginx.
+- `render.yaml` — managed Postgres + keyvalue + api / worker / beat.
+  `DATABASE_URL` is injected by Render and **overrides** the discrete
+  `POSTGRES_*` settings, so one image runs unchanged on Render and under compose.
+- Generation and embeddings are configured separately on purpose: Ollama Cloud
+  serves no embedding route, so embeddings can stay local while generation is
+  remote (`ollama_embedding_base_url`).
+
+---
+
+## Known rough edges in this checkout
+
+- **Local Python is 3.10.11; the backend needs 3.11+** (`StrEnum` in
+  `app/models/enums.py`). There is no `backend/.venv`. Backend code cannot be
+  run or tested here without a 3.11+ interpreter — `compileall` will also fail.
+  Use Docker, or say so rather than claiming tests pass.
+- `readme.md` and several docs cross-link with absolute macOS paths
+  (`/Users/imac/Desktop/restaurant-rag/...`), broken on this Windows checkout.
+- Migration numbering skips `0033`-`0035` (jumps `0032` to `0036`). Intentional
+  or not, do not "fix" it; the chain is defined by `down_revision`.
+- Windows + Git Bash: use forward slashes; working directory is `F:\restaurant-rag`.
+
+---
+
+## Docs worth reading before big changes
+
+| File | Covers |
+|---|---|
+| `AI_RESTAURANT_MANAGER_WORKFLOW.md` | the owner-facing AI, tier by tier, all 28 tools |
+| `LLM_ARCHITECTURE.md` | which model, why, backend vs LLM responsibilities |
+| `PROJECT_UNDERSTANDING.md` | broad product overview |
+| `backend/docs/chat-rag-workflow.md` | customer chat internals |
+| `docs/per-app-identity.md` | the AppClient identity split |
+| `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |
+| `MENU_ITEM_CUSTOMIZATION_FLOW.md`, `STRIPE_PAYMENT_INTEGRATION_PLAN.md` | those flows |
