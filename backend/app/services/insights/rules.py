@@ -38,7 +38,12 @@ SEVERITY_ORDER = {
     OwnerInsightSeverity.HIGH: 3,
 }
 
-CURRENCY_SYMBOLS = {"inr": "$", "usd": "$", "eur": "€", "gbp": "£"}
+# Maps a currency to how a person writes it. "inr" was rewritten to "$" by
+# the repo-wide rupee-to-dollar pass, which was wrong — this table is about
+# each currency's own symbol, not the one currently configured. The gap
+# that mattered was "cad": with no entry, `money()` fell through to the
+# code-prefixed form and owners read "CAD 1,260" instead of "$1,260".
+CURRENCY_SYMBOLS = {"inr": "₹", "usd": "$", "cad": "$", "aud": "$", "eur": "€", "gbp": "£"}
 
 
 @dataclass(slots=True)

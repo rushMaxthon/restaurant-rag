@@ -2459,6 +2459,11 @@ def _retrieve_candidates(
     return candidates
 
 
+# Below this, weak matches are still worth showing rather than returning
+# almost nothing; at or above it they only dilute a good answer.
+MIN_STRONG_KEYWORD_MATCHES = 3
+
+
 def _fetch_keyword_candidates(
     db: Session,
     message: str,
@@ -2519,16 +2524,136 @@ def _fetch_keyword_candidates(
         for menu_item, restaurant in rows
     ]
     hydrate_dynamic_bestseller_flags(db, [candidate.menu_item for candidate in candidates])
+    token_set = set(tokens)
     candidates.sort(
         key=lambda candidate: (
+            _keyword_match_strength(candidate, token_set),
             1 if is_menu_item_bestseller(candidate.menu_item) else 0,
             float(_safe_decimal(candidate.menu_item.popularity_score)),
             candidate.menu_item.created_at.timestamp(),
         ),
         reverse=True,
     )
-    logger.info("RAG keyword results count=%d names=%s", len(candidates), [candidate.menu_item.name for candidate in candidates[:5]])
+
+    # Once enough dishes actually carry the word in their name or category,
+    # description-only matches are noise — they are what put a combo box and a
+    # noodle dish in the answer to "rice". Below that threshold they are kept:
+    # a menu with two rice-named dishes still wants its biryani, which says
+    # "rice" only in its description.
+    strong = [c for c in candidates if _keyword_match_strength(c, token_set) >= KEYWORD_MATCH_CATEGORY]
+    if len(strong) >= MIN_STRONG_KEYWORD_MATCHES:
+        candidates = strong
+
+    logger.info(
+        "RAG keyword results count=%d strong=%d names=%s",
+        len(candidates),
+        len(strong),
+        [candidate.menu_item.name for candidate in candidates[:5]],
+    )
     return candidates[:limit]
+
+
+# How directly a candidate answered the query, so "rice" stops returning Pad
+# Thai. The SQL ORs the query tokens across name, category, cuisine,
+# description and the restaurant's own name, all weighted the same, and then
+# orders by popularity alone — so a dish whose DESCRIPTION happens to mention
+# rice outranks a dish that IS rice, purely because it sells better. The SQL
+# stays wide (it is the recall net); precision is applied here.
+KEYWORD_MATCH_NAME = 3
+KEYWORD_MATCH_CATEGORY = 2
+KEYWORD_MATCH_WEAK = 1
+
+
+def _keyword_match_strength(candidate: RetrievedMenuCandidate, tokens: set[str]) -> int:
+    """3 if a token is in the dish name, 2 for category/cuisine, 1 otherwise."""
+
+    item = candidate.menu_item
+    name = _normalize_text(item.name or "")
+    if any(token in name for token in tokens):
+        return KEYWORD_MATCH_NAME
+    category = _normalize_text(f"{item.category or ''} {item.cuisine_type or ''}")
+    if any(token in category for token in tokens):
+        return KEYWORD_MATCH_CATEGORY
+    return KEYWORD_MATCH_WEAK
+
+
+# Questions about what the MENU SUPPORTS, as opposed to what dishes it sells.
+#
+# Every input used to be funnelled into dish retrieval, so "do you have any
+# customize item in Menu?" was read as a search for a dish named "customize",
+# missed, and answered "we don't have a customize option — try the Penne
+# Arrabbiata". The customer asked whether they could adjust an order and was
+# told about pasta. The answer to a capability question lives in the schema
+# (`menu_item_sizes`, `menu_item_customization_groups`), not in a dish search,
+# so it is answered from there and never handed to the model to guess at.
+CUSTOMIZATION_QUERY_PATTERNS = (
+    r"\bcustomi[sz](?:e|ed|es|ing|ation|able)\b",
+    r"\badd[- ]?ons?\b",
+    r"\bextra (?:topping|cheese|sauce|portion)",
+    r"\bsize options?\b",
+    r"\b(?:choose|pick|select) (?:a |the )?(?:size|portion|topping)",
+    r"\bmake it (?:my way|to order)\b",
+)
+
+
+def _is_customization_query(message: str) -> bool:
+    normalized = _normalize_text(message)
+    if not normalized:
+        return False
+    return any(re.search(pattern, normalized) for pattern in CUSTOMIZATION_QUERY_PATTERNS)
+
+
+def _fetch_customizable_items(
+    db: Session,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    *,
+    limit: int = 6,
+) -> list[RetrievedMenuCandidate]:
+    """Dishes that genuinely offer a size or an add-on, scoped like any search."""
+
+    query = (
+        select(MenuItem, Restaurant)
+        .join(Restaurant, MenuItem.restaurant_id == Restaurant.id)
+        .join(RestaurantLocation, MenuItem.restaurant_location_id == RestaurantLocation.id)
+        .where(
+            Restaurant.is_active.is_(True),
+            Restaurant.is_approved.is_(True),
+            RestaurantLocation.is_active.is_(True),
+            MenuItem.is_available.is_(True),
+            or_(MenuItem.has_customizations.is_(True), MenuItem.has_sizes.is_(True)),
+        )
+        .order_by(MenuItem.popularity_score.desc())
+        .limit(limit)
+    )
+    if restaurant_id is not None:
+        query = query.where(Restaurant.id == restaurant_id)
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+
+    return [
+        RetrievedMenuCandidate(
+            menu_item=menu_item,
+            restaurant=restaurant,
+            distance=0.2,
+            source="customization_query",
+        )
+        for menu_item, restaurant in db.execute(query).all()
+    ]
+
+
+def _customization_reply(candidates: list[RetrievedMenuCandidate]) -> str:
+    if not candidates:
+        return (
+            "Not right now — every dish on this menu comes as it's listed, with no sizes or "
+            "add-ons to choose. Tell me what you're in the mood for and I'll find you something. 🍽️"
+        )
+    names = [candidate.menu_item.name for candidate in candidates[:3]]
+    listed = ", ".join(names[:-1]) + f" and {names[-1]}" if len(names) > 1 else names[0]
+    return (
+        f"Yes — some dishes let you pick a size or add extras. {listed} "
+        f"{'are' if len(names) > 1 else 'is'} a good place to start; open one to see its options."
+    )
 
 
 def _fetch_popular_candidates(
@@ -2573,7 +2698,14 @@ def _fetch_popular_candidates(
     hydrate_dynamic_bestseller_flags(db, [candidate.menu_item for candidate in candidates])
     candidates.sort(
         key=lambda candidate: (
-            1 if is_menu_item_bestseller(candidate.menu_item) else 0,
+            # `is_menu_item_bestseller` is the DYNAMIC flag — what is genuinely
+            # selling in the recent window. That is the better signal when it
+            # exists, but on a quiet branch almost nothing clears the threshold,
+            # the whole tier collapses, and this ordering degrades to raw
+            # popularity. Since this list is what we hand someone whose dish we
+            # do not sell — pitched to them as our bestsellers — the curated
+            # `is_bestseller` column is the right backstop.
+            1 if (is_menu_item_bestseller(candidate.menu_item) or candidate.menu_item.is_bestseller) else 0,
             float(_safe_decimal(candidate.menu_item.popularity_score)),
             candidate.menu_item.created_at.timestamp(),
         ),
@@ -3207,7 +3339,7 @@ User: Suggest spicy food
 Assistant: If you're in the mood for heat 🔥, the top spicy options from this menu are the strongest place to start.
 
 User: Do you have sushi?
-Assistant: There's no sushi on the menu right now — but if you're open to alternatives, these picks come closest.
+Assistant: We don't have sushi on the menu — but the Penne Arrabbiata is one of our bestsellers, and it's a favourite for a reason. Worth a try?
 
 User: Show me more
 Assistant: Sure — here are a few more options in the same lane, without repeating the last set.
@@ -4633,6 +4765,46 @@ def _prepare_chat_turn(
             fallback_reply=fallback_reply,
         )
 
+    # Answered before dish retrieval, because it is not a dish question. The
+    # reply is built from the menu's own schema rather than the model, so it
+    # cannot invent a customisation the kitchen does not offer.
+    if _is_customization_query(message):
+        customizable = _fetch_customizable_items(db, restaurant_id, restaurant_location_id)
+        suggestions = _suggestion_items(
+            customizable,
+            intent=resolved_intent,
+            uses_personal_context=False,
+        )
+        logger.info(
+            "RAG customization query user_id=%s message=%s customizable_items=%d",
+            user.id,
+            message,
+            len(customizable),
+        )
+        return PreparedChatTurn(
+            active_session_id=active_session_id,
+            message=message,
+            effective_message=effective_message,
+            restaurant_id=restaurant_id,
+            retrieval_source="customization_query" if customizable else "customization_none",
+            is_greeting=False,
+            is_follow_up=is_follow_up,
+            uses_personal_context=False,
+            should_bypass_llm=True,
+            suggestion_limit=len(suggestions),
+            vector_result_count=0,
+            extracted_intent=resolved_intent,
+            session_state=session_state,
+            final_candidates=customizable,
+            suggestions=suggestions,
+            history_messages=session_history_messages,
+            history_block=_build_history_block(session_history_messages),
+            context_block=_build_context_block(customizable),
+            prompt="",
+            timings=timings,
+            fallback_reply=_customization_reply(customizable),
+        )
+
     if _is_combo_query(message, resolved_intent):
         combo_topic = _extract_combo_topic(message) or _display_requested_topics(resolved_intent) or session_state.active_topic
         combo_rows = find_generated_combos_for_query(
@@ -4848,7 +5020,14 @@ def _prepare_chat_turn(
 
     history_messages: list[ChatHistory] = session_history_messages
     history_block = "Skipped for fast DB-backed reply."
-    context_block = _build_context_block(final_candidates)
+    # The model may only name dishes the customer can actually see. Context used
+    # to carry every retrieved candidate while the screen showed a narrower
+    # slice, so a reply could recommend a dish that had no card beneath it —
+    # worst on the no-match path, where suggestions are deliberately cut to 3
+    # and the reply happily named a fourth.
+    context_block = _build_context_block(
+        final_candidates[:suggestion_limit] if suggestion_limit else final_candidates
+    )
     prompt = ""
     if not should_bypass_llm:
         if not history_messages:
@@ -4866,9 +5045,15 @@ def _prepare_chat_turn(
         if retrieval_source in {"popular_fallback", "emergency_db_fallback"} and _intent_requested_topics(resolved_intent):
             # The context items are alternatives, not matches; without this
             # signal the model can answer "Yes" to a dish that is not sold.
+            # The context items are the menu's best sellers, ranked by
+            # popularity — say so. "If you're open to alternatives" made a
+            # recommendation sound like a consolation prize; "this is what
+            # people order most here" is the same sentence doing sales.
             availability_note = (
                 f"The menu context contains NO exact match for '{_display_requested_topics(resolved_intent)}'. "
-                "Say that plainly first, then offer the closest grounded alternatives from the context."
+                "First say plainly that it is not on the menu. Then recommend the context items as "
+                "the restaurant's most popular dishes — name them as bestsellers or crowd favourites, "
+                "not merely as alternatives — and invite them to try one."
             )
         prompt = _build_prompt(
             message=message,
