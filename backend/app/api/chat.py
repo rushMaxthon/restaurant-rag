@@ -134,12 +134,17 @@ def list_chat_history(
     current_user: Annotated[User, Depends(get_current_user)],
     app_scope: AppScopeDep,
     session_id: uuid.UUID | None = Query(default=None),
+    # Capped rather than unbounded: a thread is read from the bottom, and a
+    # customer who has been chatting for months does not need all of it shipped
+    # to render the part they are looking at.
+    limit: int = Query(default=50, ge=1, le=200),
 ) -> list[ChatHistoryItemResponse]:
     return get_chat_history(
         db,
         current_user,
         session_id=session_id,
         restaurant_id=app_scope.restaurant_filter_id,
+        limit=limit,
     )
 
 

@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
-import { ApiError, streamChatMessage, type ChatSuggestion } from "@/lib/api";
+import {
+  ApiError,
+  getChatHistory,
+  getToken,
+  streamChatMessage,
+  type ChatSuggestion,
+} from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
 
 type ConciergeSearch = { q?: string };
@@ -62,6 +68,62 @@ const STARTERS = [
 type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 
 /**
+ * One side of one exchange.
+ *
+ * Suggestions hang off the assistant turn that produced them rather than off
+ * the page, which is the whole reason this replaced a single `reply` string:
+ * asking a second question used to overwrite the dishes from the first, so the
+ * cards on screen could belong to a question no longer visible anywhere.
+ */
+type Turn = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  suggestions: ChatSuggestion[];
+};
+
+/**
+ * The session this browser is continuing.
+ *
+ * Held in localStorage, not just a ref: the backend has always written every
+ * turn to `chat_history` keyed by session, so the only thing standing between a
+ * reload and the conversation coming back was the client forgetting which
+ * session it had been in.
+ */
+const SESSION_KEY = "bangkok-bowl-chat-session";
+
+function readStoredSession(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeSession(sessionId: string): void {
+  try {
+    window.localStorage.setItem(SESSION_KEY, sessionId);
+  } catch {
+    // A browser refusing storage costs continuity across reloads, nothing more.
+  }
+}
+
+function clearStoredSession(): void {
+  try {
+    window.localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Same as above: losing the reset is cosmetic, throwing here would not be.
+  }
+}
+
+let turnSeq = 0;
+function nextTurnId(prefix: string): string {
+  turnSeq += 1;
+  return `${prefix}-${turnSeq}`;
+}
+
+/**
  * Strip the markdown the model insists on emitting.
  *
  * Qwen bolds dish names with ** whether or not the prompt asks it to, and this
@@ -82,14 +144,50 @@ function ConciergePage() {
   const search = Route.useSearch();
 
   const [status, setStatus] = useState<Status>("idle");
-  const [suggestions, setSuggestions] = useState<ChatSuggestion[]>([]);
-  const [reply, setReply] = useState("");
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
   const sessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoSentRef = useRef(false);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Replay the conversation the backend kept. Only for a signed-in customer:
+  // a guest's turns are keyed to a session id that dies with the tab, so there
+  // is nothing on the server to ask for.
+  useEffect(() => {
+    if (!getToken()) return;
+    const stored = readStoredSession();
+    if (!stored) return;
+    sessionIdRef.current = stored;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const history = await getChatHistory(stored);
+        if (cancelled || history.length === 0) return;
+        // Suggestions are not persisted with a turn, so replayed assistant
+        // turns carry prose only. Re-running retrieval to rebuild those cards
+        // would be a second answer to a question already answered, and would
+        // spend a model call per turn to redraw history.
+        setTurns(
+          history.map((item) => ({
+            id: item.id,
+            role: item.role === "USER" ? "user" : "assistant",
+            text: item.message,
+            suggestions: [],
+          })),
+        );
+        setStatus("done");
+      } catch {
+        // A failed replay is an empty thread, never a blocked chat.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // A craving chip on the home screen deep-links here with ?q=... — send it
   // immediately rather than just dropping it in the box, then drop the param
@@ -105,6 +203,11 @@ function ConciergePage() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Follow the newest turn, the way every chat surface does.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns]);
+
   async function sendQuery(message: string) {
     const text = message.trim();
     if (!text || status === "waiting" || status === "streaming") return;
@@ -115,8 +218,20 @@ function ConciergePage() {
 
     setError(null);
     setStatus("waiting");
-    setReply("");
     setDraft("");
+
+    // Both turns go in up front so the question stays on screen while the
+    // answer is still arriving, and the answer streams into a bubble that is
+    // already in place rather than appearing all at once at the end.
+    const answerId = nextTurnId("a");
+    setTurns((prev) => [
+      ...prev,
+      { id: nextTurnId("q"), role: "user", text, suggestions: [] },
+      { id: answerId, role: "assistant", text: "", suggestions: [] },
+    ]);
+
+    const patchAnswer = (patch: (turn: Turn) => Turn) =>
+      setTurns((prev) => prev.map((turn) => (turn.id === answerId ? patch(turn) : turn)));
 
     try {
       await streamChatMessage(
@@ -124,16 +239,17 @@ function ConciergePage() {
         {
           onMeta: (meta) => {
             sessionIdRef.current = meta.session_id;
-            setSuggestions(meta.suggestions);
+            storeSession(meta.session_id);
+            patchAnswer((turn) => ({ ...turn, suggestions: meta.suggestions }));
             setStatus((s) => (s === "waiting" ? "streaming" : s));
           },
           onToken: (chunk) => {
-            setReply((prev) => prev + chunk);
+            patchAnswer((turn) => ({ ...turn, text: turn.text + chunk }));
           },
           onDone: (done) => {
             sessionIdRef.current = done.session_id;
-            setSuggestions(done.suggestions);
-            setReply(done.reply);
+            storeSession(done.session_id);
+            patchAnswer((turn) => ({ ...turn, text: done.reply, suggestions: done.suggestions }));
             setStatus("done");
           },
         },
@@ -141,6 +257,8 @@ function ConciergePage() {
       );
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
+      // Drop the empty answer bubble; the question stays so it can be retried.
+      setTurns((prev) => prev.filter((turn) => turn.id !== answerId));
       setError(
         err instanceof ApiError
           ? err.message
@@ -155,8 +273,33 @@ function ConciergePage() {
     void sendQuery(draft);
   }
 
-  const hasResult = status !== "idle";
+  /**
+   * "Ask something else" — now genuinely a new conversation.
+   *
+   * It used to just set status back to "idle", which worked when the page held
+   * one reply. With a thread, `hasResult` is also true whenever `turns` is
+   * non-empty, so that alone would leave the old conversation on screen and the
+   * button looking broken.
+   *
+   * The stored session id goes too. Clearing the thread but keeping the session
+   * would put the same turns back on the next reload, which reads as the reset
+   * having silently failed. Nothing is deleted server-side — `chat_history`
+   * keeps the old session, it is simply no longer the one being continued.
+   */
+  function startNewConversation() {
+    abortRef.current?.abort();
+    sessionIdRef.current = null;
+    clearStoredSession();
+    setTurns([]);
+    setError(null);
+    setDraft("");
+    setStatus("idle");
+  }
+
+  const hasResult = turns.length > 0 || status !== "idle";
   const busy = status === "waiting" || status === "streaming";
+  const lastSuggestions =
+    [...turns].reverse().find((t) => t.suggestions.length > 0)?.suggestions ?? [];
 
   return (
     <div className="pb-32">
@@ -205,30 +348,75 @@ function ConciergePage() {
         </>
       ) : (
         <div className="page-pad mx-auto max-w-5xl py-10">
-          <button onClick={() => setStatus("idle")} className="back-link mb-4">
+          <button onClick={startNewConversation} className="back-link mb-4">
             <ArrowLeft className="size-4" /> Ask something else
           </button>
 
-          <h1 className="font-display text-3xl font-black sm:text-4xl">
-            Here's what we found for you
-          </h1>
+          <div className="mb-8 flex flex-col gap-8">
+            {turns.map((turn, index) => {
+              const isStreamingAnswer =
+                turn.role === "assistant" && index === turns.length - 1 && busy;
 
-          {reply && (
-            <p className="concierge-reply mt-4 max-w-3xl text-lg text-muted" aria-live="polite">
-              {stripMarkdown(reply)}
-              {status === "streaming" && <span className="stream-caret" aria-hidden="true" />}
-            </p>
-          )}
-          {status === "waiting" && (
-            <p className="typing mt-4 text-lg" role="status">
-              <span className="typing-dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              Finding dishes for you…
-            </p>
-          )}
+              if (turn.role === "user") {
+                return (
+                  <div key={turn.id} className="flex justify-end">
+                    <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-4 py-3 text-lg font-semibold text-primary-foreground sm:max-w-[70%]">
+                      {turn.text}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={turn.id} className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3">
+                    <span className="brand-mark mt-1 shrink-0">BB</span>
+                    <div className="max-w-3xl pt-1 text-lg text-muted">
+                      {turn.text ? (
+                        <p className="concierge-reply" aria-live="polite">
+                          {stripMarkdown(turn.text)}
+                          {isStreamingAnswer && (
+                            <span className="stream-caret" aria-hidden="true" />
+                          )}
+                        </p>
+                      ) : (
+                        <p className="typing text-lg" role="status">
+                          <span className="typing-dots" aria-hidden="true">
+                            <i />
+                            <i />
+                            <i />
+                          </span>
+                          Finding dishes for you…
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {isStreamingAnswer && turn.suggestions.length === 0 ? (
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <DishSkeleton key={i} />
+                      ))}
+                    </div>
+                  ) : (
+                    turn.suggestions.length > 0 && (
+                      <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {turn.suggestions.map((s, i) => (
+                          <div
+                            className="rise-in"
+                            style={{ "--i": i } as React.CSSProperties}
+                            key={s.id}
+                          >
+                            <DishCard item={suggestionToMenuItem(s)} />
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           {error && (
             <div className="inline-error form-error mt-4" role="alert">
@@ -237,25 +425,7 @@ function ConciergePage() {
             </div>
           )}
 
-          {status === "waiting" && suggestions.length === 0 ? (
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <DishSkeleton key={i} />
-              ))}
-            </div>
-          ) : (
-            suggestions.length > 0 && (
-              <div className="menu-grid mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {suggestions.map((s, i) => (
-                  <div className="rise-in" style={{ "--i": i } as React.CSSProperties} key={s.id}>
-                    <DishCard item={suggestionToMenuItem(s)} />
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-
-          {suggestions.length > 0 && (
+          {lastSuggestions.length > 0 && !busy && (
             <div className="mt-8 flex flex-wrap gap-3">
               <Button variant="outline" disabled={busy} onClick={() => sendQuery("Show me more")}>
                 Show me more
@@ -272,6 +442,8 @@ function ConciergePage() {
               </Button>
             </div>
           )}
+
+          <div ref={bottomRef} />
         </div>
       )}
 

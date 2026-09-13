@@ -77,6 +77,31 @@ export type ChatStreamMeta = {
 
 export type ChatStreamDone = ChatStreamMeta & { reply: string };
 
+export type ChatHistoryItem = {
+  id: string;
+  session_id: string;
+  restaurant_id: string | null;
+  restaurant_location_id: string | null;
+  role: "USER" | "ASSISTANT";
+  message: string;
+  created_at: string;
+};
+
+/**
+ * The conversation the backend has been keeping all along.
+ *
+ * Every turn was already written to `chat_history` and every request already
+ * sent the last few back as model context — the screen was the only party that
+ * forgot. Auth-only: a guest's turns are keyed to an ephemeral session id that
+ * does not survive a reload, so there is nothing to fetch for one.
+ */
+export async function getChatHistory(sessionId?: string | null): Promise<ChatHistoryItem[]> {
+  return request<ChatHistoryItem[]>("/chat/history", {
+    auth: true,
+    query: sessionId ? { session_id: sessionId, limit: 50 } : { limit: 50 },
+  });
+}
+
 export type PersonalizedOffer = {
   id: string;
   offer_id: string;

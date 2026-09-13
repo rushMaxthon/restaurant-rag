@@ -551,6 +551,61 @@ TOPIC_STOPWORDS = QUERY_STOPWORDS | {
     "options",
     "something",
     "whats",
+    # When a customer asks "what is menu for today?", the meta words above drop
+    # out and the LAST token standing becomes the dish. Without these that token
+    # was "today", so the turn ran as a search for a dish by that name and the
+    # reply opened by denying it: "We don't have a specific 'today' menu".
+    # Reported from the app, and quiet by construction — a search for a dish
+    # that does not exist still returns popular fallbacks, so the answer reads
+    # fluently and only its first clause is wrong.
+    #
+    # Pure time references only. Dayparts that name something the kitchen
+    # actually serves — breakfast, lunch, dinner, brunch — are deliberately NOT
+    # here: those are categories a customer can be shown, and silencing them
+    # would trade a wrong answer for no answer. Checked against all 189 dishes:
+    # no name on this menu contains any word below.
+    "afternoon",
+    "current",
+    "currently",
+    "daily",
+    "day",
+    "days",
+    "evening",
+    "morning",
+    "night",
+    "now",
+    # "right now" — only ever a time reference here; no dish name contains it.
+    "right",
+    "that",
+    "these",
+    "this",
+    "today",
+    "tomorrow",
+    "tonight",
+    "week",
+    "weekend",
+    "weekends",
+    "yesterday",
+}
+
+# `_extract_bare_topic_hint` used to inline its own copy of the meta words —
+# "menu", "dish", "food", "item", "something" — which is why adding time words
+# to TOPIC_STOPWORDS fixed `_canonicalize_topic` and left the reported
+# "today" bug alive: two lists encoded one idea and only one of them was
+# updated. Derived, not duplicated, so the next word added is added once.
+#
+# The extras are the attributes this extractor treats as filters rather than
+# topics: a request for "spicy veg starters" is a search by property, and
+# letting those words become the topic would send it looking for a dish called
+# "spicy".
+BARE_TOPIC_STOPWORDS = TOPIC_STOPWORDS | {
+    "non",
+    "restaurant",
+    "restaurants",
+    "spicy",
+    "starter",
+    "veg",
+    "vegetarian",
 }
 
 PERSONALIZED_QUERY_MARKERS = (
@@ -820,29 +875,7 @@ def _extract_bare_topic_hint(message: str) -> str | None:
     candidate_tokens = [
         _singularize_token(token)
         for token in _query_tokens(message)
-        if not token.isdigit()
-        and token
-        not in {
-            "about",
-            "anything",
-            "food",
-            "foods",
-            "dish",
-            "dishes",
-            "item",
-            "items",
-            "menu",
-            "menus",
-            "restaurant",
-            "restaurants",
-            "something",
-            "veg",
-            "vegetarian",
-            "non",
-            "spicy",
-            "starter",
-            "whats",
-        }
+        if not token.isdigit() and token not in BARE_TOPIC_STOPWORDS
     ]
     if not candidate_tokens or len(candidate_tokens) > 3:
         return None
@@ -2271,8 +2304,28 @@ def get_chat_history(
     session_id: uuid.UUID | None = None,
     *,
     restaurant_id: uuid.UUID | None = None,
+    limit: int | None = None,
 ) -> list[ChatHistoryItemResponse]:
-    if session_id is not None and restaurant_id is None:
+    """Turns for a caller to read, oldest first.
+
+    `limit` defaults to `HISTORY_MESSAGES` because that is what this returned
+    before it took the argument at all. That number is sized for the model's
+    context window, not for a person: six messages is three exchanges, which is
+    plenty of prompt and a conversation that appears to begin mid-sentence.
+    A UI rendering the thread passes its own.
+
+    Model context is NOT served from here — `_fetch_recent_history_messages`
+    does that — so widening this cannot lengthen a prompt.
+    """
+
+    effective_limit = HISTORY_MESSAGES if limit is None else max(1, limit)
+    # The cached entry holds exactly HISTORY_MESSAGES turns, so it can only
+    # answer the caller who asked for that many. Serving it to one who asked for
+    # more would silently truncate the thread; writing a longer list into it
+    # would over-serve every default caller afterwards. An explicit limit skips
+    # the cache in both directions rather than trying to reconcile the two.
+    use_cache = limit is None
+    if use_cache and session_id is not None and restaurant_id is None:
         # The session cache is not scope-aware, so it is only safe to use for
         # unscoped callers.
         cached_payload = cache_get_json(_session_cache_key(user.id, session_id))
@@ -2296,10 +2349,10 @@ def get_chat_history(
                 else_=1,
             ).asc(),
             desc(ChatHistory.id),
-        ).limit(HISTORY_MESSAGES)
+        ).limit(effective_limit)
     ).all()
     messages = list(reversed(messages))
-    if session_id is not None:
+    if use_cache and session_id is not None:
         cache_set_json(_session_cache_key(user.id, session_id), _serialize_history_entries(messages))
     return [ChatHistoryItemResponse.model_validate(message) for message in messages]
 
@@ -3494,6 +3547,116 @@ def _format_context_line(candidate: RetrievedMenuCandidate) -> str:
         f"{item.name} | ${_safe_decimal(item.price):.2f} | {veg_label} | "
         f"{item.category} | {restaurant.name}{new_label} | {description}"
     )
+
+
+# --- upsell grounding -------------------------------------------------------
+#
+# Measured, on the first test of the selling prompt: asked for something spicy
+# and vegetarian, the model recommended Paneer Chilli Momos ("Momos tossed in a
+# spicy paneer chilli sauce") and offered them "with the spicy chutney on the
+# side". No chutney. Exactly one dish on the whole menu mentions chutney —
+# Fried Chicken Momos — and the model had borrowed the detail from it.
+#
+# That is the failure mode a selling prompt invites and a prompt rule cannot
+# close: the words are real menu words, just attached to the wrong dish, so
+# nothing about the sentence looks invented. A guest orders expecting a side
+# that does not exist.
+#
+# The signal is cheap. A term that appears somewhere in the menu corpus but
+# NOWHERE in the context for THIS request was not retrieved — it was recalled.
+# Ubiquitous words ("sauce", "fresh", "served") carry no information about which
+# dish is being described, so they are excluded by document frequency rather
+# than by a hand-written stop list that would need maintaining alongside a menu
+# in six cuisines.
+#
+# Detection only, for now. A false positive here would suppress a good answer to
+# prevent an over-specific side dish, which is the worse trade; the log is the
+# evidence for whether enforcing it later is safe.
+
+_MENU_VOCABULARY: frozenset[str] | None = None
+
+# A term in more than this share of dishes describes the menu, not a dish.
+_VOCABULARY_MAX_DOCUMENT_FREQUENCY = 0.10
+_VOCABULARY_MIN_TERM_LENGTH = 4
+
+
+def _terms(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z]+", (text or "").lower())
+        if len(word) >= _VOCABULARY_MIN_TERM_LENGTH
+    }
+
+
+def _menu_vocabulary(db: Session) -> frozenset[str]:
+    """Distinctive food words, learned from the menu rather than declared.
+
+    Cached for the process: a new dish changes which words are distinctive, but
+    not enough to be worth a query per reply.
+    """
+
+    global _MENU_VOCABULARY
+    if _MENU_VOCABULARY is not None:
+        return _MENU_VOCABULARY
+
+    rows = db.execute(select(MenuItem.name, MenuItem.description)).all()
+    if not rows:
+        _MENU_VOCABULARY = frozenset()
+        return _MENU_VOCABULARY
+
+    document_count = len(rows)
+    frequency: dict[str, int] = {}
+    for name, description in rows:
+        for term in _terms(f"{name} {description or ''}"):
+            frequency[term] = frequency.get(term, 0) + 1
+
+    ceiling = max(1, int(document_count * _VOCABULARY_MAX_DOCUMENT_FREQUENCY))
+    _MENU_VOCABULARY = frozenset(
+        term for term, count in frequency.items() if count <= ceiling
+    )
+    return _MENU_VOCABULARY
+
+
+def ungrounded_menu_terms(reply: str, context_block: str, vocabulary: frozenset[str]) -> set[str]:
+    """Menu words the reply used that this request never retrieved.
+
+    Empty means every food term in the reply traces to something in context. It
+    does NOT mean the reply is true — a correct word can still be arranged into
+    a false sentence, which is why this is a signal and not a guarantee.
+    """
+
+    if not vocabulary:
+        return set()
+    return (_terms(reply) & vocabulary) - _terms(context_block)
+
+
+def _log_ungrounded_terms(
+    db: Session,
+    *,
+    reply: str,
+    context_block: str,
+    message: str,
+) -> set[str]:
+    """Record menu words the reply used but the retrieval never supplied.
+
+    Never raises and never alters the reply: this is instrumentation, and a
+    grounding checker that can break a chat is worse than the fabrication it
+    watches for.
+    """
+
+    try:
+        ungrounded = ungrounded_menu_terms(reply, context_block, _menu_vocabulary(db))
+    except Exception:  # pragma: no cover - a checker must not break the answer
+        logger.exception("Grounding check failed; reply returned unchecked")
+        return set()
+
+    if ungrounded:
+        logger.warning(
+            "Chat reply used menu terms absent from its context: %s | question=%r",
+            sorted(ungrounded),
+            _trim_text(message, 80),
+        )
+    return ungrounded
 
 
 def _build_context_block(candidates: list[RetrievedMenuCandidate]) -> str:
@@ -5727,6 +5890,12 @@ def handle_chat_message(
         try:
             raw_reply = _generate_reply(prepared.prompt)
             llm_strategy = "generated"
+            _log_ungrounded_terms(
+                db,
+                reply=raw_reply,
+                context_block=prepared.context_block,
+                message=message,
+            )
         except HTTPException:
             llm_strategy = "fallback_after_llm_failure"
         prepared.timings.llm_ms = round((perf_counter() - llm_started_at) * 1000, 2)
