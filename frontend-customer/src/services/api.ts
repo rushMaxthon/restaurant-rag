@@ -811,8 +811,18 @@ export function createPlaceholderImage(seed: string): string {
   // Wide rather than square, and lettered small: these are painted into card
   // media boxes with `object-fit: cover`, so a square source gets cropped and
   // scaled up — which is what made the old placeholder's initials fill a card.
+  //
+  // Two-tone rather than flat: a grid of placeholders was one repeated swatch,
+  // which read as "unstyled" rather than "no photo yet". The gradient angle is
+  // derived from the dish name so neighbouring cards differ, while the same
+  // dish always renders identically.
+  const angle = [...seed].reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
-<rect width="420" height="260" fill="${ground}"/>
+<defs><linearGradient id="g" gradientTransform="rotate(${angle} 0.5 0.5)">
+<stop offset="0%" stop-color="${ground}"/>
+<stop offset="100%" stop-color="${ink}" stop-opacity="0.14"/>
+</linearGradient></defs>
+<rect width="420" height="260" fill="url(#g)"/>
 <circle cx="210" cy="130" r="46" fill="${ink}" opacity="0.10"/>
 <text x="210" y="130" fill="${ink}" font-family="system-ui, sans-serif" font-size="30" font-weight="800" letter-spacing="1" text-anchor="middle" dominant-baseline="central">${initials}</text>
 </svg>`;
