@@ -51,6 +51,34 @@ server-side. Never treat a UI guard as the rule.
 inserting `backend/` on `sys.path` itself. Many encode a question that was once
 answered *wrong* — read the module docstring before changing an assertion.
 
+**Typography is owned, and self-hosted.** `frontend-customer` ships Inter
+Variable (48KB, latin-only) from `public/fonts/` via `src/styles/fonts.css`,
+imported before `index.css` in `main.tsx` and preloaded from `index.html`. This
+reverses an earlier documented decision to ship no webfont; that decision
+avoided render-blocking but meant nobody chose the result — the UI stack fell
+through to Segoe UI/Avenir Next and the display stack to Palatino Linotype on
+Windows / Iowan Old Style on macOS, differing by platform. `font-display: swap`
+answers the original concern directly. `--font-display` still exists as a
+token rather than being deleted — it now resolves to `--font-ui` — because it
+is still named at 12 sites across `home.css` and `screens.css`.
+`src/styles/fonts.test.ts` guards the chain end to end: every `@font-face`
+file exists in `public/`, `font-display: swap` is present, and `main.tsx`
+actually imports `fonts.css` (a missing import fails silently — the page just
+renders in the fallback stack).
+
+**Know which file owns which token.** `src/index.css` `:root` owns fonts,
+radii, spacing, and the type scale (`--text-xs` 11px through `--text-3xl`
+31px on a 1.2 ratio, plus `--leading-tight`/`--leading-normal`) — added so
+headings sit on an explicit scale instead of ad hoc sizes.
+`src/theme/applyTheme.ts` owns colours AND shadows, writing them onto the root
+element at runtime — so it OVERRIDES the `--shadow-*` values declared in
+`index.css`.
+Editing shadow values in CSS appears to do nothing. `themeBase.ts` also
+exports `radius` and `spacing` objects; these currently have zero consumers in
+components and are not published to CSS. `src/styles/tokens.test.ts` guards
+this map by asserting every `var(--token)` referenced in the stylesheets
+resolves to a definition from one of these two sources.
+
 ---
 
 ## Domain model
