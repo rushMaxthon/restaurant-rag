@@ -225,6 +225,39 @@ def get_embedding(text: str, *, task: EmbeddingTask = "document") -> list[float]
     )
 
 
+def warm_embedding_provider() -> bool:
+    """Load the embedding model before a customer needs it.
+
+    A local Ollama evicts model weights after `keep_alive` and reloads them on
+    the next request, inside that request's timeout. Someone pays for the
+    reload; this makes it startup rather than whoever asks the first question.
+
+    Returns whether the model is now resident, for logging only. Failure is not
+    raised: every AI path already falls back to a deterministic answer, so a
+    missing Ollama is a quality problem, and refusing to boot over it would
+    promote that into an outage.
+    """
+
+    if active_provider() != PROVIDER_OLLAMA:
+        # A managed endpoint holds no weights on our behalf and charges per
+        # call, so there is nothing to warm and no reason to spend a request.
+        return False
+
+    try:
+        # The query side, because that is what a customer's message embeds as.
+        get_embedding("warmup", task="query")
+    except EmbeddingError as error:
+        logger.warning(
+            "Embedding warm-up failed; the first chat query will pay the model "
+            "load instead: %s",
+            error,
+        )
+        return False
+
+    logger.info("Embedding model warm: %s", embedding_signature())
+    return True
+
+
 __all__ = [
     "PROVIDER_GEMINI",
     "PROVIDER_OLLAMA",
@@ -234,4 +267,5 @@ __all__ = [
     "embedding_signature",
     "get_embedding",
     "requires_ollama",
+    "warm_embedding_provider",
 ]

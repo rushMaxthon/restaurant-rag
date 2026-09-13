@@ -136,7 +136,14 @@ class Settings(BaseSettings):
     # Read timeout for chat generation. Sized for a CPU-only host: a cold
     # prompt-eval alone can take 20-30s before the first token is produced.
     ollama_chat_timeout_seconds: float = 90.0
-    ollama_embedding_timeout_seconds: float = 20.0
+    # Sized for a COLD load, not a warm call. Warm, nomic-embed-text answers in
+    # ~0.05s; when it has been evicted and qwen3:8b holds memory, the reload
+    # measured 23.0s on the reference CPU-only host. The previous 20.0 cleared
+    # the warm path and nothing else, so the first query after any idle period
+    # timed out — and `_embed_query` returns None rather than raising, so that
+    # query silently dropped to the keyword tier with no error anywhere.
+    # Flaky-looking, never flaky: it failed exactly once per eviction.
+    ollama_embedding_timeout_seconds: float = 60.0
     # Long enough that an idle owner does not pay a 14-second model reload on
     # their next question. The answer model, the planner and the narrator all
     # deliberately name the SAME model: two different ones evict each other on
