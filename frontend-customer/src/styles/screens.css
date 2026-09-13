@@ -1043,6 +1043,14 @@
   overflow: hidden;
 }
 
+/* `DishMedia`'s compact variant is sized for the 88px slot it fills
+   elsewhere (`dish-row.css`); the cart thumbnail is its own smaller box, so
+   the media fills that box instead of imposing its own fixed size. */
+.cart-item__thumb .dish-media--compact {
+  width: 100%;
+  height: 100%;
+}
+
 .checkout-card {
   border-radius: 24px;
 }
@@ -1054,9 +1062,23 @@
   letter-spacing: -0.02em;
 }
 
+/* Subtotal, delivery fee and tax are arithmetic on the way to the number that
+   matters; giving every row in the summary the same weight as the total made
+   the amount actually being charged no easier to find than a line item.
+   Bare `.price-row` (not `.checkout-card .price-row`) so its specificity
+   stays below `.price-row--total`'s own rule below and the descendant
+   override two rules down — both need to win over this, not the reverse. */
+.price-row {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 .price-row--total {
   padding-top: 14px;
   border-top: 1px solid var(--divider);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text);
 }
 
 .price-row--total span,
@@ -1066,10 +1088,16 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: var(--leading-tight);
+  /* Higher specificity than `.checkout-card .price-row` above, so the total
+     stays full-strength text colour rather than inheriting the muted tone
+     every other row just got. */
+  color: var(--text);
 }
 
-/* The one action the whole screen exists for. */
-.checkout-card .primary-button {
+/* The one action the whole screen exists for — now the sticky bar's button,
+   not the summary card's; the selector covers both so a viewer mid-migration
+   (or a future revert) never gets an unstyled button in either spot. */
+:is(.checkout-card, .cart-page__action-bar) .primary-button {
   min-height: 54px;
   border-radius: 16px;
   font-size: 15px;
@@ -1078,11 +1106,11 @@
   transition: background 0.16s ease, transform 0.14s ease;
 }
 
-.checkout-card .primary-button:hover:not(:disabled) {
+:is(.checkout-card, .cart-page__action-bar) .primary-button:hover:not(:disabled) {
   background: var(--ink-lift);
 }
 
-.checkout-card .primary-button:active:not(:disabled) {
+:is(.checkout-card, .cart-page__action-bar) .primary-button:active:not(:disabled) {
   transform: scale(0.995);
 }
 
@@ -1466,6 +1494,21 @@
   border-radius: 24px;
 }
 
+/* `DishMedia` owns the hero photo now and holds it at 16:9 (below); the
+   wrapper matched the old bare `<img>`'s 4:3 (phone) / 1:1 (desktop) boxes,
+   which left the shorter widescreen crop floating in a taller frame with the
+   wrapper's own background showing underneath it. */
+.menu-detail-card__media,
+.menu-detail-card__media-skeleton {
+  aspect-ratio: 16 / 9;
+  max-height: none;
+}
+
+.dish-media--detail {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
+
 .menu-detail-card__badges {
   margin-bottom: 2px;
 }
@@ -1528,7 +1571,7 @@
   .menu-detail-card__media-skeleton {
     position: sticky;
     top: 96px;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 9;
     max-height: none;
   }
 
@@ -2192,4 +2235,44 @@
   .restaurant-page .category-rail {
     top: 71px;
   }
+}
+
+/* =========================================================================
+   10. Sticky action bars — `MenuItemDetail`, `CartPage`
+   ========================================================================= */
+
+/* Sticky, because a dish with several customisation groups pushes the Add
+   button below the fold: the customer configures their order and then has to
+   go looking for the button. The phone app already does this; the web did not.
+   `--tab-bar-height` is added to the bottom offset so the bar parks ABOVE the
+   mobile tab bar rather than behind it. */
+.menu-detail-page__action-bar,
+.cart-page__action-bar {
+  position: sticky;
+  bottom: calc(var(--tab-bar-height) + var(--space-xs));
+  z-index: 6;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+}
+
+@media (min-width: 960px) {
+  /* No tab bar at site width, so the extra offset would just float the bar. */
+  .menu-detail-page__action-bar,
+  .cart-page__action-bar {
+    bottom: var(--space-md);
+  }
+}
+
+/* `.menu-detail-bar` already carries its own flex layout, padding and gap
+   (`index.css`); `.cart-page__action-bar` is new and needs the same kind of
+   frame around the one button it holds. */
+.cart-page__action-bar {
+  display: flex;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.cart-page__action-bar .primary-button {
+  width: 100%;
 }

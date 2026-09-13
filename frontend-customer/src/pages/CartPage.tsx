@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, createPlaceholderImage, formatCurrency, toNumber } from '../services/api';
+import { ApiError, api, formatCurrency, toNumber } from '../services/api';
 import { AppIcon } from '../components/AppIcon';
+import { DishMedia } from '../components/app/DishMedia';
 import { useAppStore } from '../hooks/useAppStore';
 import { checkAuthAndRedirect } from '../utils/authRedirect';
 import type { ComboUpsellSuggestion, PersonalizedOfferPreview, Restaurant } from '../types/app';
@@ -742,11 +743,11 @@ export function CartPage({ onNavigate }: CartPageProps) {
                     four similar Thai curries in a cart, the photo is what tells
                     them apart at a glance. */}
                 <div className="cart-item__thumb">
-                  {item.menuItem.image_url ? (
-                    <img loading="lazy" decoding="async" alt="" src={item.menuItem.image_url} />
-                  ) : (
-                    <img loading="lazy" decoding="async" alt="" src={createPlaceholderImage(item.menuItem.name)} />
-                  )}
+                  {/* `menuItem` is the full catalog item, so `image_url` is
+                      always on the type here — the `?? null` is only to match
+                      `DishMedia`'s signature, not to paper over a missing
+                      field. */}
+                  <DishMedia imageUrl={item.menuItem.image_url ?? null} name={item.menuItem.name} variant="compact" />
                 </div>
                 <div className="cart-item__copy">
                   <strong>{item.menuItem.name}</strong>
@@ -850,10 +851,16 @@ export function CartPage({ onNavigate }: CartPageProps) {
               </div>
             ) : null}
             <div className="price-row price-row--total"><span>Total</span><strong>{formatCurrency(total)}</strong></div>
-            <button className="primary-button" disabled={!canPlaceOrder} onClick={placeOrder} type="button">
-              {submitting ? 'Placing order...' : 'Place order'}
-            </button>
           </aside>
+        </div>
+
+        {/* Sticky and outside the two-column grid, same as the item page's
+            bar — the button that places a real order should not depend on
+            scrolling the summary card into view first. */}
+        <div className="cart-page__action-bar">
+          <button className="primary-button" disabled={!canPlaceOrder} onClick={placeOrder} type="button">
+            {submitting ? 'Placing order...' : 'Place order'}
+          </button>
         </div>
       </div>
     </div>

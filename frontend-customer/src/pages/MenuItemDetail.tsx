@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { DishMedia } from '../components/app/DishMedia';
 import { DishRow } from '../components/app/DishRow';
 import { DishRating } from '../components/app/DishRating';
 import { SectionHeader } from '../components/app/SectionHeader';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { useAppStore } from '../hooks/useAppStore';
-import { ApiError, api, createPlaceholderImage, formatCurrency, toNumber } from '../services/api';
+import { ApiError, api, formatCurrency, toNumber } from '../services/api';
 import { Skeleton } from '../components/Skeleton';
 import type {
   CartSelectedOption,
@@ -534,10 +535,7 @@ export function MenuItemDetailPage({
 
       <section className="section-card menu-detail-card">
         <div className="menu-detail-card__media">
-          <img loading="lazy" decoding="async"
-            src={item.image_url ?? createPlaceholderImage(item.name)}
-            alt={item.name}
-          />
+          <DishMedia imageUrl={item.image_url} name={item.name} variant="detail" />
         </div>
         <div className="menu-detail-card__copy">
           <div className="menu-detail-card__badges">
@@ -700,7 +698,7 @@ export function MenuItemDetailPage({
         </div>
       </section>
 
-      <div className="menu-detail-bar">
+      <div className="menu-detail-bar menu-detail-page__action-bar">
         <div className="menu-detail-bar__summary">
           <span>{quantity > 0 ? `${quantity} in cart` : 'Ready to order'}</span>
           <strong>{formatCurrency(liveUnitPrice * Math.max(quantity, 1))}</strong>
