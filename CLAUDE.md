@@ -196,7 +196,8 @@ for both webs, `tsc --noEmit` for mobile.
 
 ## Running it locally on this machine
 
-Working as of 2026-09-13. No Docker, Redis or Ollama here — none are required.
+Working as of 2026-09-13. No Docker here, and Ollama is not installed; Redis IS
+now installed and running as a service (see below).
 
 - **Python**: the default `python` is 3.10.11 and **cannot** run this backend
   (`StrEnum` needs 3.11+). A 3.11.9 venv lives at `backend/.venv`, built with
@@ -239,9 +240,18 @@ Working as of 2026-09-13. No Docker, Redis or Ollama here — none are required.
   directory, `nmake /F Makefile.win`, then copy `vector.dll`, `vector.control`
   and `sql/vector--*.sql` into `lib/` and `share/extension/` **elevated** — the
   install step needs admin rights and otherwise fails with "Access is denied".
-- **Redis**: not installed, not needed for the API. Every op in
-  `services/cache.py` catches `RedisError` and degrades to a miss. Celery
-  workers do need it.
+- **Redis**: installed and running as the Windows service `Redis`, from a
+  portable build at `C:edis-portable` (Redis 5.0.14.1, the tporadowski
+  Windows port — open source and free, unlike Memurai whose free tier is
+  development-only). AUTO_START, so it survives a reboot; `redis-cli.exe ping`
+  in that folder is the quickest check. `redis_url` already defaulted to
+  `redis://localhost:6379/0`, so nothing needed configuring.
+  - Memurai was tried first and its MSI fails with 1603: the custom action
+    `ca_SilentCheckIfPortIsAvailable` errors even though 6379 is free. Do not
+    spend time on it; the portable build works.
+  - Every op in `services/cache.py` still catches `RedisError` and degrades to
+    a miss, so the API survives Redis going away — but with it running, chat
+    session memory, the response cache and Celery all work.
 - **Ollama**: not installed. Every AI flag defaults off and every AI path falls
   back to deterministic templates, so the apps work — generated prose does not.
 

@@ -35,6 +35,16 @@ logger = logging.getLogger(__name__)
 TWO_PLACES = Decimal("0.01")
 EXTRA_DISCOUNT_CONFIDENCE_THRESHOLD = Decimal("8.00")
 DEFAULT_COUNTED_ORDER_STATUSES = (OrderStatus.DELIVERED,)
+# Statuses that can never count as demand, whatever the configuration says.
+# A generated combo is a claim that customers buy these dishes together, so it
+# has to be built from orders that actually happened: a CANCELLED order is a
+# sale that did not occur, and a PAYMENT_PENDING one has not been paid for. An
+# operator widening `generated_combo_counted_statuses` should be able to add
+# PLACED or PREPARING as a demand signal without silently inflating combos with
+# orders nobody ever received.
+NEVER_COUNTED_ORDER_STATUSES = frozenset(
+    {OrderStatus.CANCELLED, OrderStatus.PAYMENT_PENDING}
+)
 DEFAULT_COUNTED_PAYMENT_STATUSES = (PaymentStatus.PAID, PaymentStatus.COD)
 LIVE_STATUS_VALUES = (
     GeneratedComboLifecycleStatus.LIVE.value,
@@ -103,11 +113,15 @@ def _build_combo_description(menu_items: list[MenuItem]) -> str:
 def _counted_order_statuses() -> tuple[OrderStatus, ...]:
     resolved_statuses: list[OrderStatus] = []
     invalid_statuses: list[str] = []
+    rejected_statuses: list[str] = []
     for status_name in settings.generated_combo_counted_statuses_list:
         try:
             status = OrderStatus(status_name)
         except ValueError:
             invalid_statuses.append(status_name)
+            continue
+        if status in NEVER_COUNTED_ORDER_STATUSES:
+            rejected_statuses.append(status_name)
             continue
         if status not in resolved_statuses:
             resolved_statuses.append(status)
@@ -115,6 +129,13 @@ def _counted_order_statuses() -> tuple[OrderStatus, ...]:
         logger.warning(
             "Generated combo counted statuses ignored unknown values=%s",
             invalid_statuses,
+        )
+    if rejected_statuses:
+        # Loud, because this one is a real misconfiguration rather than a typo:
+        # the name is valid, so nothing else would flag it.
+        logger.warning(
+            "Generated combo counted statuses refused non-sale values=%s",
+            rejected_statuses,
         )
     if not resolved_statuses:
         return DEFAULT_COUNTED_ORDER_STATUSES
