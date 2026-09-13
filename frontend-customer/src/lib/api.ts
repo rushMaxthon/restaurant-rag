@@ -270,8 +270,10 @@ export const api = {
   createOrder: (payload: OrderCreateRequest) =>
     request<Order>("/orders", { method: "POST", body: payload, auth: true }),
 
+  // Chat replies are LLM-generated (Ollama), which routinely takes 15-25s —
+  // well past the default timeout, so this gets a longer budget of its own.
   sendChatMessage: (payload: { message: string; session_id?: string | null; restaurant_id?: string | null; restaurant_location_id?: string | null }) =>
-    request<ChatResponse>("/chat/message", { method: "POST", body: payload, auth: true }),
+    request<ChatResponse>("/chat/message", { method: "POST", body: payload, auth: true, timeoutMs: 45000 }),
 
   getGeneratedCombos: (limit = 12) => request<unknown[]>("/generated-combos", { query: { limit } }),
 
