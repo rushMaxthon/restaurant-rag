@@ -1190,7 +1190,7 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: var(--secondary-text);
+  color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -1240,7 +1240,7 @@ a {
 .prompt-chip {
   border-color: rgba(var(--primary-rgb), 0.22);
   color: var(--primary);
-  background: var(--primary-soft-2);
+  background: var(--primary-soft);
 }
 
 .menu-list {
@@ -2525,7 +2525,7 @@ a {
   justify-items: start;
   padding: 18px;
   border-radius: 18px;
-  background: var(--primary-soft-2);
+  background: var(--primary-soft);
   border: 1px dashed rgba(var(--primary-rgb), 0.24);
 }
 
