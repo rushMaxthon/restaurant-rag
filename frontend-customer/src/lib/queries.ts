@@ -5,7 +5,8 @@ import type { RestaurantLocation } from "@/lib/bangkok-data";
 export const queryKeys = {
   appConfig: ["app-config"] as const,
   restaurant: (id: string) => ["restaurant", id] as const,
-  menuItems: (restaurantId: string, locationId?: string | null) => ["menu-items", restaurantId, locationId ?? "all"] as const,
+  menuItems: (restaurantId: string, locationId?: string | null) =>
+    ["menu-items", restaurantId, locationId ?? "all"] as const,
   menuItem: (id: string) => ["menu-item", id] as const,
   orders: ["orders"] as const,
   order: (id: string) => ["order", id] as const,
@@ -14,7 +15,11 @@ export const queryKeys = {
 };
 
 export function useAppConfig() {
-  return useQuery({ queryKey: queryKeys.appConfig, queryFn: api.getAppConfig, staleTime: Infinity });
+  return useQuery({
+    queryKey: queryKeys.appConfig,
+    queryFn: api.getAppConfig,
+    staleTime: Infinity,
+  });
 }
 
 export function useRestaurant(restaurantId: string | undefined) {
@@ -26,7 +31,10 @@ export function useRestaurant(restaurantId: string | undefined) {
   });
 }
 
-export function useMenuItems(restaurantId: string | undefined, locationId: string | undefined | null) {
+export function useMenuItems(
+  restaurantId: string | undefined,
+  locationId: string | undefined | null,
+) {
   return useQuery({
     queryKey: queryKeys.menuItems(restaurantId ?? "", locationId),
     queryFn: () => api.getMenuItems(restaurantId as string, locationId),
@@ -40,6 +48,14 @@ export function useMenuItem(menuItemId: string | undefined) {
     queryKey: queryKeys.menuItem(menuItemId ?? ""),
     queryFn: () => api.getMenuItem(menuItemId as string),
     enabled: Boolean(menuItemId),
+  });
+}
+
+export function usePaymentConfig() {
+  return useQuery({
+    queryKey: ["payment-config"],
+    queryFn: api.getPaymentConfig,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -74,11 +90,18 @@ export function useSendChatMessage() {
 }
 
 export function usePersonalizedOffers(enabled: boolean) {
-  return useQuery({ queryKey: queryKeys.offers, queryFn: api.getPersonalizedOffers, enabled, staleTime: 60 * 1000 });
+  return useQuery({
+    queryKey: queryKeys.offers,
+    queryFn: api.getPersonalizedOffers,
+    enabled,
+    staleTime: 60 * 1000,
+  });
 }
 
 /** Prefers an open branch, falling back to the first one returned. */
-export function pickDefaultLocation(locations: RestaurantLocation[] | undefined): RestaurantLocation | undefined {
+export function pickDefaultLocation(
+  locations: RestaurantLocation[] | undefined,
+): RestaurantLocation | undefined {
   if (!locations?.length) return undefined;
   return locations.find((l) => l.is_open && l.is_active) ?? locations[0];
 }

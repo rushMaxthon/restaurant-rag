@@ -171,4 +171,12 @@ html{scrollbar-gutter:stable}
 .option-dot{display:grid;place-items:center;width:18px;height:18px;flex-shrink:0;border:2px solid var(--border);border-radius:50%;color:var(--on-primary);transition:border-color .16s,background .16s}
 .option-row[data-on="true"] .option-dot{border-color:var(--primary);background:var(--primary)}
 
+
+/* Payment method rows. Disabled is styled rather than merely dimmed, because a
+   greyed-out control with no explanation reads as a broken app. */
+.pay-option{display:flex;align-items:center;gap:.85rem;width:100%;border:2px solid var(--border);border-radius:calc(var(--radius) + 4px);background:var(--surface);padding:1rem;text-align:left;cursor:pointer;transition:border-color .16s,background .16s}
+.pay-option:hover:not(:disabled){border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
+.pay-option[data-on="true"]{border-color:var(--primary);background:var(--primary-soft)}
+.pay-option:disabled{cursor:not-allowed;opacity:.6;background:var(--surface-alt)}
+
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}

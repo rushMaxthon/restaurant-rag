@@ -14,7 +14,7 @@ from typing import Any, Iterator
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import Select, case, delete, desc, or_, select
+from sqlalchemy import Select, case, delete, desc, or_, select, func
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -2656,6 +2656,106 @@ def _customization_reply(candidates: list[RetrievedMenuCandidate]) -> str:
     )
 
 
+# A misspelling should still find the dish.
+#
+# Keyword retrieval is an ILIKE substring match, which is all-or-nothing: "pad
+# thai" finds Pad Thai, "padd thai" finds nothing. Vector search rescues some
+# near-misses but is unreliable about it — measured over 20 common
+# misspellings it caught "biriyani", "marghrita" and "chiken" while missing
+# "padd thai", "margarita pizza" and "noodels", all of which fell through to
+# the popular fallback and answered a question nobody asked.
+#
+# `word_similarity` compares the query against each WORD of the name rather
+# than the whole string, which is what multi-word dish names need: whole-string
+# similarity scores "noodels" against "Chicken Hakka Noodles" far too low to
+# use, while word similarity scores it 0.5.
+FUZZY_NAME_THRESHOLD = 0.45
+
+
+def _intent_without_item_names(intent: ExtractedIntent) -> ExtractedIntent:
+    """The same intent minus the dish names, for use with fuzzy matches.
+
+    `_filter_candidates` enforces the requested dish name, which is right for an
+    exact search and self-defeating for a fuzzy one: "padd thai" is filtered
+    against the literal string "padd thai", so the Pad Thai the trigram search
+    just found is discarded and the customer gets bestsellers instead. The
+    misspelling is the thing being corrected; every other constraint they gave —
+    budget, diet, spice — still applies.
+    """
+
+    return ExtractedIntent(
+        intent=intent.intent,
+        budget=intent.budget,
+        diet=intent.diet,
+        spicy=intent.spicy,
+        mood=intent.mood,
+        show_more=intent.show_more,
+        cuisine=intent.cuisine,
+        category=intent.category,
+    )
+
+
+def _fetch_fuzzy_candidates(
+    db: Session,
+    message: str,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    *,
+    limit: int = TOP_K_RESULTS,
+) -> list[RetrievedMenuCandidate]:
+    """Trigram matches on the dish name, for when exact matching found nothing."""
+
+    tokens = _query_tokens(message)
+    if not tokens:
+        return []
+    # The whole phrase first, then individual tokens: "padd thai" scores better
+    # as a phrase against "Pad Thai Veg" than either word does alone.
+    probes = [" ".join(tokens)] + [token for token in tokens if len(token) >= 4]
+    if not probes:
+        return []
+
+    score = func.greatest(*[func.word_similarity(probe, MenuItem.name) for probe in probes])
+    query = (
+        select(MenuItem, Restaurant, score.label("score"))
+        .join(Restaurant, MenuItem.restaurant_id == Restaurant.id)
+        .join(RestaurantLocation, MenuItem.restaurant_location_id == RestaurantLocation.id)
+        .where(
+            Restaurant.is_active.is_(True),
+            Restaurant.is_approved.is_(True),
+            RestaurantLocation.is_active.is_(True),
+            MenuItem.is_available.is_(True),
+            score > FUZZY_NAME_THRESHOLD,
+        )
+        .order_by(score.desc(), MenuItem.popularity_score.desc())
+        .limit(limit * 2)
+    )
+    if restaurant_id is not None:
+        query = query.where(Restaurant.id == restaurant_id)
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+
+    rows = db.execute(query).all()
+    candidates = [
+        RetrievedMenuCandidate(
+            menu_item=menu_item,
+            restaurant=restaurant,
+            # Between an exact keyword hit (0.25) and the popular fallback
+            # (0.5): better than "here are our bestsellers", worse than a real
+            # match, which is exactly what a fuzzy name hit is.
+            distance=0.35,
+            source="fuzzy_name",
+        )
+        for menu_item, restaurant, _ in rows
+    ]
+    if candidates:
+        logger.info(
+            "RAG fuzzy name match query=%s names=%s",
+            _normalize_text(message),
+            _candidate_name_summary(candidates[:5]),
+        )
+    return candidates[:limit]
+
+
 def _fetch_popular_candidates(
     db: Session,
     restaurant_id: uuid.UUID | None,
@@ -3088,6 +3188,20 @@ def _resolve_final_candidates(
         combined = _dedupe_candidates(filtered_keyword, filtered_vector)
         return combined[:TOP_K_RESULTS], "keyword", len(vector_candidates)
 
+    # Before giving up on the dish they named and pitching bestsellers, try the
+    # dish they MEANT. A typo is not a change of subject.
+    fuzzy_candidates = _filter_candidates(
+        _fetch_fuzzy_candidates(db, message, restaurant_id, restaurant_location_id, limit=limit),
+        budget_limit,
+        strict_budget=strict_budget,
+        intent=_intent_without_item_names(intent),
+        exclude_item_ids=exclude_item_ids,
+        exclude_dish_keys=exclude_dish_keys,
+    )
+    if fuzzy_candidates:
+        combined = _dedupe_candidates(fuzzy_candidates, filtered_vector)
+        return combined[:TOP_K_RESULTS], "fuzzy_name", len(vector_candidates)
+
     if not allow_popular_fallback:
         return [], "follow_up_exhausted", len(vector_candidates)
 
@@ -3156,6 +3270,17 @@ def _resolve_candidates_without_embedding(
     if filtered_keyword_candidates:
         retrieval_source = "keyword_follow_up" if is_follow_up else "keyword_intent"
         return filtered_keyword_candidates[:TOP_K_RESULTS], retrieval_source, 0
+
+    # This resolver has no dish-key exclusions to honour; only ids.
+    fuzzy_candidates = _filter_candidates(
+        _fetch_fuzzy_candidates(db, message, restaurant_id, restaurant_location_id, limit=limit),
+        budget_limit,
+        strict_budget=strict_budget,
+        intent=_intent_without_item_names(intent),
+        exclude_item_ids=exclude_item_ids,
+    )
+    if fuzzy_candidates:
+        return fuzzy_candidates[:TOP_K_RESULTS], "fuzzy_name", 0
 
     if not allow_popular_fallback:
         return [], "follow_up_exhausted", 0

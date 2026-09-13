@@ -1,10 +1,4 @@
-import type {
-  Restaurant,
-  RestaurantLocation,
-  MenuItem,
-  Order,
-  Money,
-} from "@/lib/bangkok-data";
+import type { Restaurant, RestaurantLocation, MenuItem, Order, Money } from "@/lib/bangkok-data";
 
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
@@ -111,6 +105,29 @@ export type OrderCreateItem = {
   quantity: number;
 };
 
+/** Mirrors PaymentConfigResponse. `stripe_enabled` is false until a key is set. */
+export type PaymentConfig = {
+  publishable_key: string;
+  stripe_enabled: boolean;
+  currency: string;
+  supported_methods: string[];
+};
+
+export type PaymentIntent = {
+  order_id: string;
+  payment_intent_id: string;
+  client_secret: string;
+  amount: string;
+  currency: string;
+  publishable_key: string;
+};
+
+export type PaymentStatus = {
+  order_id: string;
+  payment_status: string;
+  order_status: string;
+};
+
 export type OrderCreateRequest = {
   restaurant_id: string;
   restaurant_location_id?: string | null;
@@ -191,7 +208,11 @@ export function extractErrorMessage(body: unknown, fallback: string): string {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     const messages = detail
-      .map((entry) => (entry && typeof entry === "object" && "msg" in entry ? String((entry as { msg: unknown }).msg) : null))
+      .map((entry) =>
+        entry && typeof entry === "object" && "msg" in entry
+          ? String((entry as { msg: unknown }).msg)
+          : null,
+      )
       .filter((m): m is string => Boolean(m));
     if (messages.length) return messages.join(" ");
   }
@@ -265,7 +286,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    throw new ApiError(extractErrorMessage(payload, `Request failed (${response.status}).`), response.status);
+    throw new ApiError(
+      extractErrorMessage(payload, `Request failed (${response.status}).`),
+      response.status,
+    );
   }
 
   return payload as T;
@@ -287,23 +311,54 @@ export const api = {
   login: (email: string, password: string) =>
     request<AuthResponse>("/auth/login", { method: "POST", body: { email, password } }),
 
-  register: (payload: { full_name: string; email: string; password: string; phone_number?: string | null }) =>
-    request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
+  register: (payload: {
+    full_name: string;
+    email: string;
+    password: string;
+    phone_number?: string | null;
+  }) => request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
 
   getOrders: () => request<Order[]>("/orders", { auth: true }),
 
   getOrder: (orderId: string) => request<Order>(`/orders/${orderId}`, { auth: true }),
 
+  // Payment config is public: it carries only the publishable key and which
+  // methods this deployment can actually take.
+  getPaymentConfig: () => request<PaymentConfig>("/payments/config"),
+
+  createPaymentIntent: (orderId: string) =>
+    request<PaymentIntent>(`/orders/${orderId}/payment-intent`, { method: "POST", auth: true }),
+
+  getPaymentStatus: (orderId: string) =>
+    request<PaymentStatus>(`/orders/${orderId}/payment-status`, { auth: true }),
+
+  cancelPayment: (orderId: string) =>
+    request<PaymentStatus>(`/orders/${orderId}/payment-cancel`, { method: "POST", auth: true }),
+
   validateOrder: (payload: OrderCreateRequest) =>
-    request<OrderValidationResponse>("/orders/validate", { method: "POST", body: payload, auth: true }),
+    request<OrderValidationResponse>("/orders/validate", {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
 
   createOrder: (payload: OrderCreateRequest) =>
     request<Order>("/orders", { method: "POST", body: payload, auth: true }),
 
   // Chat replies are LLM-generated (Ollama), which routinely takes 15-25s —
   // well past the default timeout, so this gets a longer budget of its own.
-  sendChatMessage: (payload: { message: string; session_id?: string | null; restaurant_id?: string | null; restaurant_location_id?: string | null }) =>
-    request<ChatResponse>("/chat/message", { method: "POST", body: payload, auth: true, timeoutMs: 45000 }),
+  sendChatMessage: (payload: {
+    message: string;
+    session_id?: string | null;
+    restaurant_id?: string | null;
+    restaurant_location_id?: string | null;
+  }) =>
+    request<ChatResponse>("/chat/message", {
+      method: "POST",
+      body: payload,
+      auth: true,
+      timeoutMs: 45000,
+    }),
 
   getGeneratedCombos: (limit = 12) => request<unknown[]>("/generated-combos", { query: { limit } }),
 
