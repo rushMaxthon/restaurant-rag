@@ -40,3 +40,9 @@ venv/
 # next interpreter from adding to them.
 __pycache__/
 *.pyc
+
+# --- agent scratch -------------------------------------------------------------
+# Per-plan working directory for subagent-driven execution: ledger, task briefs,
+# implementer reports, review packages. Recoverable from git history and of no
+# use to anyone else, so it is never committed.
+.superpowers/

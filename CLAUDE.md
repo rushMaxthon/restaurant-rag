@@ -180,6 +180,16 @@ Working as of 2026-09-13. No Docker, Redis or Ollama here — none are required.
   - `POSTGRES_*` in `.env` are the LOCAL fallback and are ignored entirely while
     `DATABASE_URL` is set. Putting a Supabase password in `POSTGRES_PASSWORD`
     does nothing — that mistake cost four debugging rounds.
+  - **RLS is ON for all 40 public tables, with no policies.** Supabase grants
+    `anon` and `authenticated` full DML including TRUNCATE on everything in
+    `public`, and the anon key is published inside client apps — so RLS off
+    meant anyone with that key could read every user and order and empty the
+    tables. This app never uses PostgREST: the FastAPI backend owns auth and
+    every business rule, and connects as `postgres`, which owns the tables and
+    therefore bypasses RLS. Deny-by-default is correct here; do not disable it.
+    If one table ever needs direct client access, add a policy for that table.
+    NOT yet reproducible — applied to this project only, with no Alembic
+    migration, so a fresh environment starts open. See the worklog follow-up.
   - The Supabase MCP role is **not** superuser: `ALTER USER postgres WITH
     PASSWORD` fails with "permission denied to alter role". Password changes
     must go through the dashboard.
