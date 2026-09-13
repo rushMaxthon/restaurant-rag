@@ -412,7 +412,7 @@ export function RestaurantPage({
           <div className="menu-list">
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton
-                className="menu-item-card menu-item-card--skeleton"
+                className="dish-row--compact dish-row--skeleton"
                 key={index}
               />
             ))}

@@ -360,3 +360,12 @@
   border: 1px solid var(--border);
   animation: pulse 1.4s ease-in-out infinite;
 }
+
+/* The compact list row is short and full-width, not portrait — the 4/5 ratio
+   above is sized for the browse grid's tiles and would stretch a list-row
+   skeleton far taller than the `.dish-row--compact` it stands in for. Height
+   matches that row exactly: 76px media plus 10px padding on each side. */
+.dish-row--compact.dish-row--skeleton {
+  aspect-ratio: auto;
+  height: 96px;
+}

@@ -534,7 +534,7 @@ export const HomePage = memo(function HomePage({
         {loading && menuItems.length === 0 ? (
           <div className="dish-grid">
             {Array.from({ length: 8 }, (_, index) => (
-              <div className="dish-card dish-card--skeleton" key={index} />
+              <div className="dish-row--skeleton" key={index} />
             ))}
           </div>
         ) : menuPreview.length > 0 ? (
