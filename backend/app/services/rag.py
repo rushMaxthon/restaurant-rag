@@ -87,6 +87,25 @@ SESSION_CACHE_PREFIX = "chat:session"
 SESSION_STATE_CACHE_PREFIX = "chat:session-state"
 EMBEDDING_CACHE_PREFIX = "rag:embedding"
 RESPONSE_CACHE_PREFIX = "rag:response"
+
+# BUMP THIS whenever a change alters what a reply is allowed to say.
+#
+# Cached replies never reach the code that shapes a reply — that is the point of
+# a cache, and it is also how this bites. 5212542 taught the concierge to stop
+# offering food the kitchen cannot serve, and the trim worked when called
+# directly, but the app went on offering "the spicy chutney" on a dish that has
+# none: every one of those replies was being served from an entry written under
+# the old behaviour. The version was not bumped, so nothing moved namespace.
+#
+# Two things hid it. The cache is written AFTER the trim, so new replies are
+# stored correctly and the code reads as if it works. And Redis only started
+# running locally in 6d8ecac; before that every cache operation degraded to a
+# miss, so this literal had never once had to do its job here.
+#
+# A prompt change, a grounding rule, a formatting change — anything a customer
+# would notice — needs a bump. Retrieval and ranking changes do not: they alter
+# which dishes are found, and the key already carries the query descriptor.
+RESPONSE_CACHE_VERSION = "v11"
 GREETING_RESPONSE_CACHE_PREFIX = "rag:response:greeting"
 
 SYSTEM_PROMPT = """You are the host of a restaurant ordering app, and you sell for a living.
@@ -2149,7 +2168,13 @@ def _response_cache_key(
     scope = str(restaurant_id) if restaurant_id is not None else "global"
     descriptor = descriptor or _infer_cache_query_descriptor(message)
     topic_slug = re.sub(r"[^a-z0-9]+", "-", descriptor.topic or "general").strip("-") or "general"
-    key_parts = [RESPONSE_CACHE_PREFIX, scope, "v10", descriptor.cache_intent, topic_slug]
+    key_parts = [
+        RESPONSE_CACHE_PREFIX,
+        scope,
+        RESPONSE_CACHE_VERSION,
+        descriptor.cache_intent,
+        topic_slug,
+    ]
     if descriptor.budget is not None:
         key_parts.append(f"budget-{descriptor.budget.normalize()}")
     if descriptor.diet is not None:
