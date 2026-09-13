@@ -125,7 +125,13 @@ function Checkout() {
     e.preventDefault();
     setError(null);
 
-    if (!s.restaurantId || !s.branchId) {
+    // Order against the cart's own restaurant. The concierge answers across the
+    // whole marketplace, so a cart can legitimately hold another kitchen's dish
+    // — sending it under the app's current branch failed validation with "One
+    // or more menu items were not found for this restaurant".
+    const orderRestaurantId = s.cartRestaurantId ?? s.restaurantId;
+    const orderLocationId = s.cart[0]?.restaurantLocationId ?? s.branchId;
+    if (!orderRestaurantId || !orderLocationId) {
       setError("We couldn't determine your branch. Please pick a branch and try again.");
       return;
     }
@@ -137,8 +143,8 @@ function Checkout() {
     }
 
     const payload: OrderCreateRequest = {
-      restaurant_id: s.restaurantId,
-      restaurant_location_id: s.branchId,
+      restaurant_id: orderRestaurantId,
+      restaurant_location_id: orderLocationId,
       fulfillment_type: s.fulfillment,
       delivery_address: deliveryAddress,
       items: s.cart.map((line) => ({

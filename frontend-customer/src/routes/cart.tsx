@@ -81,7 +81,9 @@ function CartPage() {
           <p className="mt-2 text-muted">
             {s.totalItems} {s.totalItems === 1 ? "item" : "items"} from{" "}
             <span className="font-semibold text-foreground">
-              {s.currentLocation?.branch_name ?? "your branch"}
+              {/* The cart's own restaurant, which is not always the app's:
+                  the concierge answers across the whole marketplace. */}
+              {s.cartRestaurantName ?? s.currentLocation?.branch_name ?? "your branch"}
             </span>
           </p>
         </div>

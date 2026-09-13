@@ -7,7 +7,13 @@ import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 
 export function DishCard({ item }: { item: MenuItem }) {
-  const { addItem, cart, changeQuantity } = useBangkokStore();
+  const { addItem, cart, changeQuantity, conflictsWithCart } = useBangkokStore();
+
+  // A concierge suggestion can belong to another restaurant, and one order can
+  // only come from one kitchen. Rather than adding it and failing at checkout
+  // — which is what used to happen — send them to the dish page, where the
+  // choice to start a fresh cart is explained.
+  const conflicts = conflictsWithCart(item);
 
   // A dish with sizes or add-ons cannot be added from a card — there is nothing
   // here to choose them with. Sending it to the detail page is honest; adding a
@@ -81,10 +87,10 @@ export function DishCard({ item }: { item: MenuItem }) {
 
           {!item.is_available ? (
             <span className="text-sm font-semibold text-muted">Sold out</span>
-          ) : needsChoices ? (
+          ) : conflicts || needsChoices ? (
             <Button variant="outline" size="sm" asChild>
               <Link to="/menu/$itemId" params={{ itemId: item.id }}>
-                Choose
+                {conflicts ? "View" : "Choose"}
               </Link>
             </Button>
           ) : inCart > 0 && lastLine ? (

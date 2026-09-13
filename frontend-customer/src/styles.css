@@ -161,4 +161,14 @@ html{scrollbar-gutter:stable}
 .branch-pill--shut{background:color-mix(in srgb,var(--danger) 14%,var(--surface));color:var(--danger)}
 .branch-closed-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:var(--danger)}
 
+
+/* Size and add-on rows on the dish page. They used to be bare bordered boxes
+   with a tick that appeared beside the label, so the selected state was easy
+   to miss; the control now carries the state itself. */
+.option-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;width:100%;min-height:52px;border:1px solid var(--border);border-radius:calc(var(--radius) + 2px);background:var(--surface);padding:0 1rem;text-align:left;cursor:pointer;transition:border-color .16s,background .16s}
+.option-row:hover{border-color:color-mix(in srgb,var(--primary) 40%,var(--border))}
+.option-row[data-on="true"]{border-color:var(--primary);background:var(--primary-soft)}
+.option-dot{display:grid;place-items:center;width:18px;height:18px;flex-shrink:0;border:2px solid var(--border);border-radius:50%;color:var(--on-primary);transition:border-color .16s,background .16s}
+.option-row[data-on="true"] .option-dot{border-color:var(--primary);background:var(--primary)}
+
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}

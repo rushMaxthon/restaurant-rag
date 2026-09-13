@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { MenuItem, RestaurantLocation } from "@/lib/bangkok-data";
 import { useAppConfig, useRestaurant, pickDefaultLocation } from "@/lib/queries";
 import { applyBrandColor } from "@/lib/theme";
@@ -6,6 +14,13 @@ import { applyBrandColor } from "@/lib/theme";
 export type CartLine = {
   lineId: string;
   itemId: string;
+  // The order is placed against the line's OWN restaurant, not whichever one
+  // the app happens to be showing. The concierge answers across the whole
+  // marketplace, so a suggestion can easily belong to another kitchen; sending
+  // it under the current branch failed validation with "One or more menu items
+  // were not found for this restaurant".
+  restaurantId: string;
+  restaurantName: string | undefined;
   restaurantLocationId: string;
   name: string;
   image_url: string | null;
@@ -17,10 +32,17 @@ export type CartLine = {
   addOnNames: string[];
 };
 
-type AppState = { branchId: string; cart: CartLine[]; fulfillment: "DELIVERY" | "PICKUP"; dark: boolean };
+type AppState = {
+  branchId: string;
+  cart: CartLine[];
+  fulfillment: "DELIVERY" | "PICKUP";
+  dark: boolean;
+};
 
 type AddItemOptions = {
   unitPrice?: number;
+  /** Shown in the cart when the dish is not from the app's own restaurant. */
+  restaurantName?: string | undefined;
   sizeId: string | undefined;
   sizeName: string | undefined;
   optionIds?: string[];
@@ -34,6 +56,13 @@ type Store = AppState & {
   currentLocation: RestaurantLocation | undefined;
   isRestaurantLoading: boolean;
   setBranchId: (id: string) => void;
+  /** The restaurant the cart belongs to, or undefined while it is empty. */
+  cartRestaurantId: string | undefined;
+  cartRestaurantName: string | undefined;
+  /** True when adding this dish would mix two kitchens into one order. */
+  conflictsWithCart: (item: MenuItem) => boolean;
+  /** Empties the cart first, so a dish from another restaurant can start one. */
+  replaceCartWith: (item: MenuItem, options?: AddItemOptions) => void;
   addItem: (item: MenuItem, options?: AddItemOptions) => void;
   changeQuantity: (lineId: string, delta: number) => void;
   clearCart: () => void;
@@ -68,7 +97,9 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
 
   const appConfigQuery = useAppConfig();
   const restaurantQuery = useRestaurant(appConfigQuery.data?.restaurant_id);
-  const locations = restaurantQuery.data?.locations ?? [];
+  // `?? []` alone builds a fresh array every render, so the effect below and
+  // the context value both re-run on every render regardless of the data.
+  const locations = useMemo(() => restaurantQuery.data?.locations ?? [], [restaurantQuery.data]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -99,7 +130,12 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
         const signature = `${item.id}-${options?.sizeId ?? ""}-${optionIds.slice().sort().join("-")}`;
         const found = s.cart.find((line) => line.lineId === signature);
         if (found) {
-          return { ...s, cart: s.cart.map((line) => (line.lineId === signature ? { ...line, quantity: line.quantity + 1 } : line)) };
+          return {
+            ...s,
+            cart: s.cart.map((line) =>
+              line.lineId === signature ? { ...line, quantity: line.quantity + 1 } : line,
+            ),
+          };
         }
         return {
           ...s,
@@ -108,6 +144,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
             {
               lineId: signature,
               itemId: item.id,
+              restaurantId: item.restaurant_id,
+              restaurantName: options?.restaurantName,
               restaurantLocationId: item.restaurant_location_id,
               name: item.name,
               image_url: item.image_url,
@@ -124,9 +162,27 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Cart scope is restaurant + location — two kitchens cannot share one order.
+  // Rather than blocking the dish (which is what made a concierge suggestion
+  // feel broken), the UI offers to start a fresh cart with it.
+  const replaceCartWith = useCallback(
+    (item: MenuItem, options?: AddItemOptions) => {
+      setState((s) => ({ ...s, cart: [] }));
+      addItem(item, options);
+    },
+    [addItem],
+  );
+
   const changeQuantity = useCallback(
     (lineId: string, delta: number) =>
-      setState((s) => ({ ...s, cart: s.cart.map((line) => (line.lineId === lineId ? { ...line, quantity: line.quantity + delta } : line)).filter((line) => line.quantity > 0) })),
+      setState((s) => ({
+        ...s,
+        cart: s.cart
+          .map((line) =>
+            line.lineId === lineId ? { ...line, quantity: line.quantity + delta } : line,
+          )
+          .filter((line) => line.quantity > 0),
+      })),
     [],
   );
 
@@ -139,6 +195,13 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       currentLocation: locations.find((l) => l.id === state.branchId),
       isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
       setBranchId,
+      cartRestaurantId: state.cart[0]?.restaurantId,
+      cartRestaurantName: state.cart[0]?.restaurantName,
+      conflictsWithCart: (item: MenuItem) => {
+        const current = state.cart[0]?.restaurantId;
+        return Boolean(current && current !== item.restaurant_id);
+      },
+      replaceCartWith,
       addItem,
       changeQuantity,
       clearCart: () => setState((s) => ({ ...s, cart: [] })),
@@ -147,7 +210,18 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       totalItems: state.cart.reduce((n, line) => n + line.quantity, 0),
       subtotal: state.cart.reduce((n, line) => n + line.unitPrice * line.quantity, 0),
     }),
-    [state, appConfigQuery.data, restaurantQuery.data, locations, setBranchId, addItem, changeQuantity, appConfigQuery.isLoading, restaurantQuery.isLoading],
+    [
+      state,
+      appConfigQuery.data,
+      restaurantQuery.data,
+      locations,
+      setBranchId,
+      addItem,
+      replaceCartWith,
+      changeQuantity,
+      appConfigQuery.isLoading,
+      restaurantQuery.isLoading,
+    ],
   );
 
   return <AppStore.Provider value={value}>{children}</AppStore.Provider>;
