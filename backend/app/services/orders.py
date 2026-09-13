@@ -492,7 +492,10 @@ def validate_order_draft(
         tax_amount=draft.tax_amount,
         discount_amount=draft.discount_amount,
         total_amount=draft.total_amount,
-        currency="INR",
+        # Same source as the order this validates and the charge that
+        # follows it — a literal here meant the quote and the bill could
+        # name different currencies for the same number.
+        currency=settings.payment_currency.upper(),
         item_count=sum(item.quantity for item in draft.order_items),
     )
 

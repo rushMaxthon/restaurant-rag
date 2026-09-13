@@ -99,7 +99,7 @@ function formatTrend(current: number, previous: number): string {
 }
 
 function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "INR",
     notation: "compact",

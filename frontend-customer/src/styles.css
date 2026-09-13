@@ -108,4 +108,57 @@ html{scrollbar-gutter:stable}
    referenced by the menu grid but had never been defined. */
 .rail,.category-rail{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-padding-inline:1rem}
 
+
+/* --- Menu controls and badges ---------------------------------------------
+   Bestseller/New used to be plain orange text under the dish name, where they
+   read as part of the description. On the image they behave like the labels
+   they are, and they survive the eye scanning the grid vertically. */
+.dish-badge{border-radius:999px;padding:.2rem .55rem;font-size:.68rem;font-weight:900;letter-spacing:.02em;text-transform:uppercase;backdrop-filter:blur(4px);box-shadow:0 2px 8px rgb(20 23 31 / .18)}
+.dish-badge--hot{background:var(--primary);color:var(--on-primary)}
+.dish-badge--new{background:var(--success);color:#fff}
+
+.filter-toggle{display:inline-flex;align-items:center;gap:.45rem;min-height:48px;white-space:nowrap;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 1rem;font-weight:700;font-size:.9rem;cursor:pointer;transition:border-color .16s,background .16s,color .16s}
+.filter-toggle:hover{border-color:color-mix(in srgb,var(--success) 50%,var(--border))}
+.filter-toggle[data-on="true"]{border-color:var(--success);background:color-mix(in srgb,var(--success) 12%,var(--surface));color:var(--success)}
+
+.sort-select{display:inline-flex;align-items:center;gap:.45rem;min-height:48px;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem 0 1rem}
+.sort-select select{border:0;background:transparent;color:var(--text);font-weight:700;font-size:.9rem;cursor:pointer;padding-right:.25rem}
+.sort-select select:focus-visible{outline:2px solid var(--primary);outline-offset:4px;border-radius:.25rem}
+
+.dish-card{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.dish-card:hover{border-color:color-mix(in srgb,var(--primary) 30%,var(--border));box-shadow:0 2px 4px rgb(20 23 31 / .05),0 14px 30px -16px rgb(20 23 31 / .28);transform:translateY(-2px)}
+.dark .dish-card:hover{box-shadow:0 2px 4px rgb(0 0 0 / .3),0 14px 30px -16px rgb(0 0 0 / .7)}
+
+/* --- Order tracking --------------------------------------------------------
+   A horizontal rail reads as progress at a glance; the vertical checklist it
+   replaces needed reading top to bottom to answer "where is my food". */
+.track{display:grid;gap:.5rem}
+.track-bar{position:relative;height:4px;border-radius:999px;background:var(--surface-alt)}
+.track-fill{position:absolute;inset-block:0;left:0;border-radius:999px;background:var(--success);transition:width .6s cubic-bezier(.4,0,.2,1)}
+.track-steps{display:grid;gap:.5rem}
+.track-dot{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:var(--surface);color:var(--muted);flex-shrink:0}
+.track-dot[data-state="done"]{border-color:var(--success);background:var(--success);color:#fff}
+.track-dot[data-state="current"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 22%,transparent)}
+@keyframes track-pulse{0%,100%{box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 22%,transparent)}50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--primary) 6%,transparent)}}
+.track-dot[data-state="current"]{animation:track-pulse 2.2s ease-in-out infinite}
+
+.status-chip{display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;padding:.3rem .7rem;font-size:.7rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase}
+
+
+/* --- Branch picker ---------------------------------------------------------
+   Replaces a native <select>. Which branch you order from sets the fee, the
+   wait and whether the kitchen is open, so the menu shows all three. */
+.branch-trigger{display:flex;align-items:center;gap:.55rem;min-height:44px;max-width:15rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem;font-size:.875rem;font-weight:700;cursor:pointer;transition:border-color .16s,box-shadow .16s}
+.branch-trigger:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
+.branch-trigger[data-state="open"]{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent)}
+.branch-trigger:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+.branch-option{display:flex;align-items:flex-start;gap:.75rem;border-radius:calc(var(--radius) + 2px);padding:.65rem .7rem;cursor:pointer}
+.branch-option[data-selected="true"]{background:var(--primary-soft)}
+
+.branch-pill{flex-shrink:0;border-radius:999px;padding:.1rem .45rem;font-size:.62rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase}
+.branch-pill--open{background:color-mix(in srgb,var(--success) 16%,var(--surface));color:var(--success)}
+.branch-pill--shut{background:color-mix(in srgb,var(--danger) 14%,var(--surface));color:var(--danger)}
+.branch-closed-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}

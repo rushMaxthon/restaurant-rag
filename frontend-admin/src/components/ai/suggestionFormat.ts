@@ -7,8 +7,8 @@ import type { SuggestionCard } from "../../types/app";
  * correctness rule, not a styling one, and it is worth testing directly.
  */
 
-const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const exact = new Intl.NumberFormat("en-US", {
+const whole = new Intl.NumberFormat("en-CA", { maximumFractionDigits: 0 });
+const exact = new Intl.NumberFormat("en-CA", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });

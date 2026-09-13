@@ -112,7 +112,10 @@ class Order(TimestampMixin, Base):
         server_default="0.00",
     )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR", server_default="INR")
+    # Real orders stamp this from `payment_currency` at creation; the default
+    # only covers inserts that forget to. It must match that setting, or a
+    # forgotten stamp silently charges in a currency nobody displayed.
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="CAD", server_default="CAD")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_address: Mapped[str] = mapped_column(Text, nullable=False)
     placed_at: Mapped[datetime] = mapped_column(

@@ -461,10 +461,10 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = "pk_test_mock"
     stripe_webhook_secret: str = ""
     stripe_api_version: str = "2024-11-20.acacia"
-    # Every customer-facing price is rendered in USD, so the charge currency
+    # Every customer-facing price is rendered in CAD, so the charge currency
     # has to agree — a Stripe intent in another currency would show the
     # customer one number on the checkout screen and bill them a different one.
-    payment_currency: str = "usd"
+    payment_currency: str = "cad"
     # How long an unpaid card order survives before the reaper cancels it.
     payment_intent_ttl_minutes: int = 30
     razorpay_key_id: str = "rzp_test_mock"

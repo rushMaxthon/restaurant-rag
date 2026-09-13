@@ -80,7 +80,7 @@ function labelise(key: string): string {
 
 function formatFact(value: unknown): string {
   if (typeof value === "number") {
-    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+    return new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 }).format(value);
   }
   if (typeof value === "string" || typeof value === "boolean" || value === null) {
     return String(value);

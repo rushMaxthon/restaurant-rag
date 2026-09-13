@@ -72,7 +72,7 @@ export function formatImpact(amount: number | null): string | null {
     return null;
   }
   const rounded = Math.round(Math.abs(amount));
-  const formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(rounded);
+  const formatted = new Intl.NumberFormat('en-CA', { maximumFractionDigits: 0 }).format(rounded);
   // A true minus sign rather than a hyphen: these sit in a column of figures.
   return `${amount > 0 ? '+' : '−'}$${formatted}`;
 }

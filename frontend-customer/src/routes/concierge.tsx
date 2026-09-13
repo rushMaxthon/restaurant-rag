@@ -49,7 +49,7 @@ function suggestionToMenuItem(s: ChatSuggestion): MenuItem {
   };
 }
 
-const STARTERS = ["Something spicy and vegetarian", "A light lunch under 300 rupees", "Comfort food for a rainy day"];
+const STARTERS = ["Something spicy and vegetarian", "A light lunch under $15", "Comfort food for a rainy day"];
 
 type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 

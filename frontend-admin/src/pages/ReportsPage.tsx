@@ -108,7 +108,7 @@ function formatDateRange(dateFrom: string, dateTo: string): string {
 }
 
 function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "INR",
     notation: "compact",
@@ -117,7 +117,7 @@ function formatCompactCurrency(value: number) {
 }
 
 function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     notation: value >= 10000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(value);

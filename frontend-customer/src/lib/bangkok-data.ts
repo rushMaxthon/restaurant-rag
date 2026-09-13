@@ -10,7 +10,7 @@ export type Order = { id: string; status: string; payment_status: string; fulfil
 export const orderCode = (order: Pick<Order, "id">) => `#${order.id.slice(0, 8).toUpperCase()}`;
 
 /** Every price the customer sees goes through here — one place to change the currency. */
-export const formatMoney = (value: Money | number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value));
+export const formatMoney = (value: Money | number) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value));
 
 /** Derives the "All" + unique category list from a live menu-items response. */
 export const deriveCategories = (items: MenuItem[]) => ["All", ...Array.from(new Set(items.map((item) => item.category)))];
