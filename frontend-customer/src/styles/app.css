@@ -3286,3 +3286,91 @@
     justify-content: center;
   }
 }
+
+/* =========================================================================
+   Preference questionnaire
+   =========================================================================
+   The wizard renders questions it has never seen before, so these style the
+   shapes rather than any particular question: a chip grid, a typed-answer
+   chip that removes itself, and the hint line under both.
+   ========================================================================= */
+
+.preference-chip {
+  min-height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.preference-chip:hover:not(:disabled) {
+  border-color: var(--brand-line);
+}
+
+.preference-chip--active {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.preference-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* A typed answer has no option to deselect, so the chip itself is the control
+   that removes it. */
+.preference-chip--typed {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.preference-free-text {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.preference-free-text input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+  background: var(--input);
+  border: 1px solid var(--border);
+  outline: none;
+}
+
+.preference-free-text input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--tint-12);
+}
+
+.preference-free-text .secondary-button {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.preference-hint,
+.preference-error {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 18px;
+}
+
+.preference-hint {
+  color: var(--muted);
+}
+
+.preference-error {
+  color: var(--danger);
+  font-weight: 600;
+}

@@ -9,6 +9,7 @@ import { BrandingPage } from "./pages/BrandingPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
+import { PreferencesPage } from "./pages/PreferencesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LocationDetailPage } from "./pages/LocationDetailPage";
 import { LocationsPage } from "./pages/LocationsPage";
@@ -158,6 +159,7 @@ function isAllowedPath(
       "/reports",
       "/ai-manager",
       "/notifications",
+      "/preferences",
       "/settings",
     ],
     OWNER: [
@@ -171,6 +173,7 @@ function isAllowedPath(
       "/users",
       "/reports",
       "/ai-manager",
+      "/preferences",
       "/settings",
     ],
     CUSTOMER: [],
@@ -445,6 +448,8 @@ function App() {
         onNavigate={navigate}
         onToast={pushToast}
       />
+    ) : pathname === "/preferences" ? (
+      <PreferencesPage onToast={pushToast} role={role} token={token} />
     ) : pathname === "/generated-combos" ? (
       <GeneratedCombosPage
         onToast={pushToast}

@@ -1,5 +1,8 @@
 import type {
   AppConfig,
+  PreferenceAnswerSubmission,
+  PreferenceAnswersResponse,
+  PreferenceSchema,
   AuthResponse,
   BudgetTier,
   ChatHistoryItem,
@@ -497,6 +500,39 @@ export const api = {
       body: payload,
     });
   },
+  /**
+   * The questionnaire this build should ask.
+   *
+   * Unauthenticated: onboarding runs before anyone has an account.
+   */
+  async getPreferenceSchema(
+    restaurantId?: string | null,
+    signal?: AbortSignal,
+  ): Promise<PreferenceSchema> {
+    return request<PreferenceSchema>(
+      `/preferences/schema${restaurantScope(restaurantId)}`,
+      { signal },
+    );
+  },
+  async getPreferenceAnswers(
+    token: string,
+    restaurantId?: string | null,
+  ): Promise<PreferenceAnswersResponse> {
+    return request<PreferenceAnswersResponse>(
+      `/preferences/me/answers${restaurantScope(restaurantId)}`,
+      { token },
+    );
+  },
+  async savePreferenceAnswers(
+    token: string,
+    answers: PreferenceAnswerSubmission[],
+    restaurantId?: string | null,
+  ): Promise<PreferenceAnswersResponse> {
+    return request<PreferenceAnswersResponse>(
+      `/preferences/me/answers${restaurantScope(restaurantId)}`,
+      { method: 'PUT', token, body: { answers } },
+    );
+  },
   async getUserPreferences(token: string): Promise<UserPreferences> {
     return request<UserPreferences>('/preferences/me', { token });
   },
@@ -723,6 +759,17 @@ export const api = {
     return request<Order>(`/orders/${encodeURIComponent(orderId)}`, { token });
   },
 };
+
+/**
+ * The restaurant this build is, as a query parameter.
+ *
+ * The website cannot use the `X-App-Bundle-Id` header - that would move which
+ * app client its accounts belong to - so it names the restaurant explicitly
+ * wherever scope matters. See `config/api.ts`.
+ */
+function restaurantScope(restaurantId?: string | null): string {
+  return restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+}
 
 export function toNumber(value: DecimalValue): number {
   return typeof value === 'number' ? value : Number(value);

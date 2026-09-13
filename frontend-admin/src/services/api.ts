@@ -1,5 +1,9 @@
 import type {
   AdminAILog,
+  AdminPreferenceOption,
+  AdminPreferenceQuestion,
+  PreferenceOptionDraft,
+  PreferenceQuestionDraft,
   AdminAIOfferGenerationStatusResponse,
   AdminAIOfferGenerationTriggerResponse,
   AdminCreateRestaurantPayload,
@@ -156,6 +160,93 @@ export const api = {
     }
     const suffix = params.toString() ? `?${params.toString()}` : '';
     return request<ReportsSnapshot>(`/reports${suffix}`, { token });
+  },
+  // --- preference questionnaire -----------------------------------------
+  getPreferenceQuestions(token: string): Promise<AdminPreferenceQuestion[]> {
+    return request<AdminPreferenceQuestion[]>('/admin/preferences/questions', { token });
+  },
+  createPreferenceQuestion(
+    token: string,
+    payload: PreferenceQuestionDraft,
+  ): Promise<AdminPreferenceQuestion> {
+    return request<AdminPreferenceQuestion>('/admin/preferences/questions', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
+  updatePreferenceQuestion(
+    token: string,
+    questionId: string,
+    payload: Partial<PreferenceQuestionDraft>,
+  ): Promise<AdminPreferenceQuestion> {
+    return request<AdminPreferenceQuestion>(
+      `/admin/preferences/questions/${encodeURIComponent(questionId)}`,
+      { method: 'PATCH', token, body: payload },
+    );
+  },
+  deletePreferenceQuestion(token: string, questionId: string): Promise<void> {
+    return request<void>(
+      `/admin/preferences/questions/${encodeURIComponent(questionId)}`,
+      { method: 'DELETE', token },
+    );
+  },
+  /** Hide or restore an inherited question, for this restaurant only. */
+  setPreferenceQuestionVisibility(
+    token: string,
+    questionId: string,
+    isHidden: boolean,
+  ): Promise<AdminPreferenceQuestion> {
+    return request<AdminPreferenceQuestion>(
+      `/admin/preferences/questions/${encodeURIComponent(questionId)}/visibility`,
+      { method: 'POST', token, body: { is_hidden: isHidden } },
+    );
+  },
+  reorderPreferenceQuestions(
+    token: string,
+    ids: string[],
+  ): Promise<AdminPreferenceQuestion[]> {
+    return request<AdminPreferenceQuestion[]>('/admin/preferences/questions/reorder', {
+      method: 'POST',
+      token,
+      body: { ids },
+    });
+  },
+  createPreferenceOption(
+    token: string,
+    questionId: string,
+    payload: PreferenceOptionDraft,
+  ): Promise<AdminPreferenceOption> {
+    return request<AdminPreferenceOption>(
+      `/admin/preferences/questions/${encodeURIComponent(questionId)}/options`,
+      { method: 'POST', token, body: payload },
+    );
+  },
+  updatePreferenceOption(
+    token: string,
+    optionId: string,
+    payload: Partial<PreferenceOptionDraft>,
+  ): Promise<AdminPreferenceOption> {
+    return request<AdminPreferenceOption>(
+      `/admin/preferences/options/${encodeURIComponent(optionId)}`,
+      { method: 'PATCH', token, body: payload },
+    );
+  },
+  deletePreferenceOption(token: string, optionId: string): Promise<void> {
+    return request<void>(`/admin/preferences/options/${encodeURIComponent(optionId)}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+  reorderPreferenceOptions(
+    token: string,
+    questionId: string,
+    ids: string[],
+  ): Promise<AdminPreferenceOption[]> {
+    return request<AdminPreferenceOption[]>(
+      `/admin/preferences/questions/${encodeURIComponent(questionId)}/options/reorder`,
+      { method: 'POST', token, body: { ids } },
+    );
   },
   getAdminRestaurants(token: string): Promise<Restaurant[]> {
     return request<Restaurant[]>('/admin/restaurants', { token });

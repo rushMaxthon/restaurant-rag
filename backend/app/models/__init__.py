@@ -34,6 +34,12 @@ from app.models.user import User
 from app.models.user_device_token import UserDeviceToken
 from app.models.user_saved_address import UserSavedAddress
 from app.models.user_preferences import UserPreferences
+from app.models.preference import (
+    PreferenceOption,
+    PreferenceQuestion,
+    PreferenceQuestionOverride,
+    UserPreferenceAnswer,
+)
 
 __all__ = [
     "Base",
@@ -76,4 +82,8 @@ __all__ = [
     "GeneratedComboItem",
     "LocationFulfillmentSlot",
     "OwnerAnalysisRun",
+    "PreferenceQuestion",
+    "PreferenceOption",
+    "PreferenceQuestionOverride",
+    "UserPreferenceAnswer",
 ]

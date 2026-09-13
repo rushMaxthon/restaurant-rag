@@ -100,6 +100,71 @@ export const createStyles = (theme: AppTheme) =>
       fontSize: 13,
       lineHeight: 20,
     },
+    freeTextRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 12,
+    },
+    freeTextInput: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      color: theme.colors.text,
+      fontSize: 14,
+      backgroundColor: theme.colors.input,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    freeTextAdd: {
+      minHeight: 44,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.primarySoft,
+      borderWidth: 1,
+      borderColor: theme.primaryTint(0.24),
+    },
+    freeTextAddLabel: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    /**
+     * An answer to a question the restaurant has since hidden, or to an option
+     * it withdrew. Shown rather than dropped, because it is the customer's own
+     * data - and marked, so it does not read as something they can still pick.
+     */
+    staleNotice: {
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 10,
+      backgroundColor: theme.colors.warningSoft,
+    },
+    staleNoticeText: {
+      color: theme.colors.text,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    errorText: {
+      marginTop: 8,
+      color: theme.colors.deepRed,
+      fontSize: 12.5,
+      fontWeight: '600',
+    },
+    loadingWrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingVertical: 60,
+    },
+    loadingText: {
+      color: theme.colors.secondaryText,
+      fontSize: 13,
+    },
     chipRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',

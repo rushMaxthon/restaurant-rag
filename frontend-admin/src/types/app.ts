@@ -1133,3 +1133,74 @@ export interface OwnerChatClearResult {
   deleted_count: number;
   cleared_session_id: string | null;
 }
+
+/**
+ * The preference questionnaire, as the admin panel manages it.
+ *
+ * `is_inherited` marks a platform question seen from a restaurant: hideable,
+ * never editable. `answer_count` is what makes retiring one an informed
+ * decision rather than a guess.
+ */
+export type PreferenceInputType = 'SINGLE_SELECT' | 'MULTI_SELECT';
+
+export type PreferenceSignalRole =
+  | 'CUISINE'
+  | 'DISLIKED_CUISINE'
+  | 'DIET'
+  | 'SPICE'
+  | 'BUDGET'
+  | 'FAVORITE_ITEM'
+  | 'NONE';
+
+export interface AdminPreferenceOption {
+  id: string;
+  value: string;
+  label: string;
+  help_text?: string | null;
+  metadata: Record<string, unknown>;
+  display_order: number;
+  is_active: boolean;
+}
+
+export interface AdminPreferenceQuestion {
+  id: string;
+  restaurant_id: string | null;
+  key: string;
+  prompt: string;
+  help_text?: string | null;
+  input_type: PreferenceInputType;
+  is_required: boolean;
+  min_selections: number;
+  max_selections: number | null;
+  allows_free_text: boolean;
+  signal_role: PreferenceSignalRole;
+  display_order: number;
+  is_active: boolean;
+  is_inherited: boolean;
+  is_hidden_here: boolean;
+  answer_count: number;
+  options: AdminPreferenceOption[];
+}
+
+export interface PreferenceOptionDraft {
+  value: string;
+  label: string;
+  help_text?: string | null;
+  metadata?: Record<string, unknown>;
+  display_order?: number | null;
+  is_active?: boolean;
+}
+
+export interface PreferenceQuestionDraft {
+  key: string;
+  prompt: string;
+  help_text?: string | null;
+  input_type: PreferenceInputType;
+  is_required: boolean;
+  min_selections: number;
+  max_selections: number | null;
+  allows_free_text: boolean;
+  signal_role: PreferenceSignalRole;
+  is_active: boolean;
+  options: PreferenceOptionDraft[];
+}
