@@ -55,7 +55,7 @@ def sample_candidate() -> CandidateInsight:
         severity=OwnerInsightSeverity.MEDIUM,
         score=Decimal("1000"),
         title="Margherita Pizza sales are falling",
-        body="Margherita Pizza brought in ₹2,500, down ₹1,000 from ₹3,500.",
+        body="Margherita Pizza brought in $2,500, down $1,000 from $3,500.",
         dedupe_key="ITEM_DECLINE:margherita-pizza",
         dimension="item",
         subject="Margherita Pizza",
@@ -92,7 +92,7 @@ def sample_pack() -> FactPack:
 
 class NumberExtractionTests(unittest.TestCase):
     def test_reads_figures_out_of_prose(self) -> None:
-        values = extract_numbers("Revenue fell to ₹4,600 from ₹5,600, down 17.9%.")
+        values = extract_numbers("Revenue fell to $4,600 from $5,600, down 17.9%.")
         self.assertEqual(values, [4600.0, 5600.0, 17.9])
 
     def test_ignores_text_without_digits(self) -> None:
@@ -120,18 +120,18 @@ class GuardrailTests(unittest.TestCase):
         self.allowed = allowed_numbers(sample_pack())
 
     def test_supported_text_passes(self) -> None:
-        text = "Revenue fell to ₹4,600 from ₹5,600. Margherita Pizza dropped ₹1,000."
+        text = "Revenue fell to $4,600 from $5,600. Margherita Pizza dropped $1,000."
         self.assertEqual(unsupported_numbers(text, self.allowed), [])
 
     def test_invented_figure_is_caught(self) -> None:
         # 7,200 appears nowhere in the data.
-        text = "Revenue fell to ₹4,600 from ₹7,200."
+        text = "Revenue fell to $4,600 from $7,200."
         self.assertEqual(unsupported_numbers(text, self.allowed), [7200.0])
 
     def test_plausible_near_miss_is_still_caught(self) -> None:
         # 4,800 is close to the real 4,600 and would read as credible, which is
         # exactly why it must not survive.
-        text = "Revenue was ₹4,800 this week."
+        text = "Revenue was $4,800 this week."
         self.assertEqual(unsupported_numbers(text, self.allowed), [4800.0])
 
     def test_rounding_is_tolerated(self) -> None:
@@ -183,7 +183,7 @@ class LLMNarrationTests(unittest.TestCase):
             {
                 "headline": "Revenue is down 18%",
                 "narrative": (
-                    "Revenue was ₹4,600, down ₹1,000 from ₹5,600. "
+                    "Revenue was $4,600, down $1,000 from $5,600. "
                     "Margherita Pizza carried most of the fall."
                 ),
             }
@@ -197,7 +197,7 @@ class LLMNarrationTests(unittest.TestCase):
         reply = self._reply(
             {
                 "headline": "Revenue is down",
-                "narrative": "Revenue was ₹4,600, and delivery costs rose to ₹9,900.",
+                "narrative": "Revenue was $4,600, and delivery costs rose to $9,900.",
             }
         )
         with patch.object(narrator_module, "_call_model", return_value=reply):

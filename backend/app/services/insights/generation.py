@@ -705,7 +705,7 @@ def live_findings_for(
     driven from one analysis. They used to be two: the briefing narrated
     findings it had just worked out while the feed listed stored rows from
     whatever window the nightly run had chosen, so a quiet restaurant could read
-    "Lunch revenue fell from ₹142 to ₹31" directly above "Nothing to flag".
+    "Lunch revenue fell from $142 to $31" directly above "Nothing to flag".
     """
 
     snapshot = build_diagnostics_snapshot(db, scope=scope, comparison=comparison)

@@ -253,16 +253,16 @@ def _discount_label(offer: PersonalizedOffer) -> str | None:
         return None
     if offer.discount_type == PersonalizedOfferDiscountType.FREE_DELIVERY:
         if offer.minimum_order_amount and offer.minimum_order_amount > 0:
-            return f"Free delivery above Rs {offer.minimum_order_amount:.0f}"
+            return f"Free delivery above ${offer.minimum_order_amount:.0f}"
         return "Free delivery"
     if offer.discount_type == PersonalizedOfferDiscountType.PERCENTAGE:
         value = int(offer.discount_value) if offer.discount_value == int(offer.discount_value) else offer.discount_value
         label = f"{value}% OFF"
         if offer.max_discount_amount and offer.max_discount_amount > 0:
-            label = f"{label} up to Rs {offer.max_discount_amount:.0f}"
+            label = f"{label} up to ${offer.max_discount_amount:.0f}"
         return label
     if offer.discount_type == PersonalizedOfferDiscountType.FLAT:
-        return f"Rs {offer.discount_value:.0f} OFF"
+        return f"${offer.discount_value:.0f} OFF"
     return None
 
 
@@ -271,7 +271,7 @@ def _terms_label(offer: PersonalizedOffer) -> str:
     if offer.inactivity_days > 0:
         parts.append(f"Inactive {offer.inactivity_days} days")
     if offer.minimum_order_amount > 0:
-        parts.append(f"Min Rs {offer.minimum_order_amount:.0f}")
+        parts.append(f"Min ${offer.minimum_order_amount:.0f}")
     if offer.valid_for_days > 0:
         parts.append(f"Valid {offer.valid_for_days} days")
     return " · ".join(parts) if parts else "Offer"
@@ -544,16 +544,16 @@ def _generated_discount_label(offer: GeneratedOffer) -> str | None:
         return None
     if discount_type == PersonalizedOfferDiscountType.FREE_DELIVERY:
         if minimum_order_amount > 0:
-            return f"Free delivery above Rs {minimum_order_amount:.0f}"
+            return f"Free delivery above ${minimum_order_amount:.0f}"
         return "Free delivery"
     if discount_type == PersonalizedOfferDiscountType.PERCENTAGE:
         value = int(discount_value) if discount_value == int(discount_value) else discount_value
         label = f"{value}% OFF"
         if max_discount_amount and max_discount_amount > 0:
-            label = f"{label} up to Rs {max_discount_amount:.0f}"
+            label = f"{label} up to ${max_discount_amount:.0f}"
         return label
     if discount_type == PersonalizedOfferDiscountType.FLAT:
-        return f"Rs {discount_value:.0f} OFF"
+        return f"${discount_value:.0f} OFF"
     return None
 
 
@@ -564,7 +564,7 @@ def _generated_terms_label(offer: GeneratedOffer) -> str:
         parts.append(f"Inactive {inactivity_days} days")
     minimum_order_amount = _generated_offer_minimum_order_amount(offer)
     if minimum_order_amount > 0:
-        parts.append(f"Min Rs {minimum_order_amount:.0f}")
+        parts.append(f"Min ${minimum_order_amount:.0f}")
     valid_for_days = _generated_offer_valid_for_days(offer)
     if valid_for_days > 0:
         parts.append(f"Valid {valid_for_days} days")
@@ -3325,7 +3325,7 @@ def validate_offer_for_order(
     if offer.minimum_order_amount > 0 and subtotal < offer.minimum_order_amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Minimum order amount for this offer is Rs {offer.minimum_order_amount:.0f}",
+            detail=f"Minimum order amount for this offer is ${offer.minimum_order_amount:.0f}",
         )
     if not _offer_matches_cart_targets(offer, menu_items):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This offer does not apply to the current cart")
@@ -3402,7 +3402,7 @@ def validate_generated_offer_for_order(
     if minimum_order_amount > 0 and subtotal < minimum_order_amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Minimum order amount for this offer is Rs {minimum_order_amount:.0f}",
+            detail=f"Minimum order amount for this offer is ${minimum_order_amount:.0f}",
         )
     if not _generated_offer_matches_cart_targets(generated_offer, menu_items):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This offer does not apply to the current cart")
@@ -3526,7 +3526,7 @@ def preview_personalized_offer_for_user(
                 amount_to_unlock = _quantize(minimum_order_amount - subtotal)
                 preview.amount_to_unlock = amount_to_unlock
                 preview.message = (
-                    f"Add Rs {amount_to_unlock:.0f} more to unlock this offer"
+                    f"Add ${amount_to_unlock:.0f} more to unlock this offer"
                 )
                 return preview
             _, discount_amount = validate_generated_offer_for_order(
@@ -3623,7 +3623,7 @@ def preview_personalized_offer_for_user(
         if offer.minimum_order_amount > 0 and subtotal < offer.minimum_order_amount:
             amount_to_unlock = _quantize(offer.minimum_order_amount - subtotal)
             preview.amount_to_unlock = amount_to_unlock
-            preview.message = f"Add Rs {amount_to_unlock:.0f} more to unlock this offer"
+            preview.message = f"Add ${amount_to_unlock:.0f} more to unlock this offer"
             return preview
         _, discount_amount = validate_offer_for_order(
             db,

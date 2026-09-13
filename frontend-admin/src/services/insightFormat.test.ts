@@ -14,7 +14,7 @@ describe("percentIsMisleading", () => {
   });
 
   it("suppresses the real case that reached the screen", () => {
-    // ₹44 one week, ₹1,304 the next, rendered on a KPI tile as "+2859.6%".
+    // $44 one week, $1,304 the next, rendered on a KPI tile as "+2859.6%".
     expect(percentIsMisleading(44.07, 2859.6)).toBe(true);
   });
 

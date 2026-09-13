@@ -117,7 +117,7 @@ function HomeScreen({ name }: { name: string }) {
           </i>
           <span className="ph__promo-row">
             <span className="ph__chip">Spicy</span>
-            <span className="ph__chip">Under Rs. 250</span>
+            <span className="ph__chip">Under $250</span>
             <span className="ph__btn ph__btn--sm">Ask AI →</span>
           </span>
         </div>
@@ -151,7 +151,7 @@ function HomeScreen({ name }: { name: string }) {
             <span className="ph__pick-foot">
               <span className="ph__price">
                 <em>FROM</em>
-                <b>₹14.49</b>
+                <b>$14.49</b>
               </span>
               <span className="ph__chip is-brand">3 Branches</span>
               <span className="ph__btn">+ Add</span>
@@ -177,8 +177,8 @@ function HomeScreen({ name }: { name: string }) {
             <span className="ph__chip is-brand">6+ ordered</span>
           </span>
           <span className="ph__combo-foot">
-            <span className="ph__accent">₹16.45</span>
-            <s>₹18.08</s>
+            <span className="ph__accent">$16.45</span>
+            <s>$18.08</s>
             <span className="ph__round">+</span>
           </span>
         </div>
@@ -210,14 +210,14 @@ function ChatScreen({ name }: { name: string }) {
         <div className="ph__row">
           <span className="ph__avatar">AI</span>
           <span className="ph__bubble">
-            Looking for something under 10 rupees? The Thai Iced Tea is a great
+            Looking for something under 10 dollars? The Thai Iced Tea is a great
             pick — it’s a refreshing, sweet drink ☕.
             <span className="ph__food">
               <span className="ph__foodimg" />
               <span className="ph__foodcopy">
                 <b>Thai Iced Tea</b>
                 <i>{name}</i>
-                <i>₹4.39</i>
+                <i>$4.39</i>
               </span>
               <span className="ph__btn ph__btn--add">+ ADD</span>
             </span>
@@ -226,7 +226,7 @@ function ChatScreen({ name }: { name: string }) {
               <span className="ph__foodcopy">
                 <b>Coconut Pandan Pudding</b>
                 <i>{name}</i>
-                <i>₹5.99</i>
+                <i>$5.99</i>
               </span>
               <span className="ph__btn ph__btn--add">+ ADD</span>
             </span>
@@ -269,9 +269,9 @@ function CartScreen() {
               <span className="ph__itemprice">
                 <span className="ph__pricestack">
                   <em>EACH</em>
-                  <i>₹14.84</i>
+                  <i>$14.84</i>
                 </span>
-                <b>₹103.88</b>
+                <b>$103.88</b>
               </span>
             </span>
             <span className="ph__qty">
@@ -312,20 +312,20 @@ function CartScreen() {
           </span>
           <span className="ph__bill-row">
             <i>Subtotal</i>
-            <b>₹103.88</b>
+            <b>$103.88</b>
           </span>
           <span className="ph__bill-row">
             <i>Delivery fee</i>
-            <b>₹0.00</b>
+            <b>$0.00</b>
           </span>
           <span className="ph__bill-row">
             <i>Tax</i>
-            <b>₹5.19</b>
+            <b>$5.19</b>
           </span>
           <span className="ph__rule" />
           <span className="ph__bill-row is-total">
             <b>Total</b>
-            <b>₹109.07</b>
+            <b>$109.07</b>
           </span>
         </div>
       </div>
@@ -333,7 +333,7 @@ function CartScreen() {
       <div className="ph__paybar">
         <span className="ph__pay">
           <em>TO PAY</em>
-          <b>₹109.07</b>
+          <b>$109.07</b>
           <i>7 items · Pickup · ASAP</i>
         </span>
         <span className="ph__btn ph__btn--pay">Continue to payment</span>

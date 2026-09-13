@@ -1,6 +1,6 @@
 """Stripe implementation of :class:`PaymentProvider`.
 
-Amounts arrive as decimal major units (₹13.84) and are converted to the minor
+Amounts arrive as decimal major units ($13.84) and are converted to the minor
 units Stripe charges in (1384). Zero-decimal currencies are handled explicitly
 because dividing by 100 would silently overcharge them by 100x.
 """

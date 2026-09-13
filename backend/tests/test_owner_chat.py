@@ -574,7 +574,7 @@ class OwnerChatTests(unittest.TestCase):
             skill="metric_lookup",
             params=SkillParams(metric="gross_revenue"),
         )
-        reply = json.dumps({"answer": "Revenue came to ₹5,000 for the week."})
+        reply = json.dumps({"answer": "Revenue came to $5,000 for the week."})
         with patch.object(chat_module, "_call_model", return_value=reply):
             answer, source, reason = reword_answer("how much revenue", result, enabled=True, use_cache=False)
         self.assertEqual(source, ANSWER_SOURCE_LLM)
@@ -588,7 +588,7 @@ class OwnerChatTests(unittest.TestCase):
             skill="metric_lookup",
             params=SkillParams(metric="gross_revenue"),
         )
-        reply = json.dumps({"answer": "Revenue came to ₹9,999 for the week."})
+        reply = json.dumps({"answer": "Revenue came to $9,999 for the week."})
         with patch.object(chat_module, "_call_model", return_value=reply):
             answer, source, reason = reword_answer("how much revenue", result, enabled=True, use_cache=False)
         self.assertEqual(source, ANSWER_SOURCE_TEMPLATE)
@@ -841,7 +841,7 @@ class OwnerChatTests(unittest.TestCase):
     def _headline(self, **metric) -> SkillResult:
         return SkillResult(
             skill="metric_lookup",
-            answer="Revenue was **₹1,304**, up ₹1,260 (2859.6%) from ₹44 the period before.",
+            answer="Revenue was **$1,304**, up $1,260 (2859.6%) from $44 the period before.",
             fact_pack=FactPack(
                 period_label="11 Aug - 17 Aug 2026",
                 previous_period_label="04 Aug - 10 Aug 2026",
@@ -852,7 +852,7 @@ class OwnerChatTests(unittest.TestCase):
 
     def test_a_percentage_off_a_near_zero_base_is_withheld(self) -> None:
         # Arithmetically right, practically useless: a quiet week followed by a
-        # normal one reads as "up 2859.6%" and buries the ₹1,260 that matters.
+        # normal one reads as "up 2859.6%" and buries the $1,260 that matters.
         result = self._headline(
             current=1304.3, previous=44.07, change=1260.23, percent_change=2859.6
         )
@@ -861,7 +861,7 @@ class OwnerChatTests(unittest.TestCase):
 
         self.assertNotIn("percent_change", headline)
         # The money survives — it is the part an owner can act on — rounded,
-        # because "₹1,260.23" is not how an owner says it.
+        # because "$1,260.23" is not how an owner says it.
         self.assertEqual(headline["change"], 1260)
 
     def test_a_percentage_against_no_previous_trade_is_withheld(self) -> None:
@@ -932,8 +932,8 @@ class OwnerChatTests(unittest.TestCase):
         # Average order value is a real metric. The check must only fire where
         # the facts talk about a median and never about an average.
         result = self._headline(current=100.0, previous=90.0, change=10.0)
-        result.answer = "Average order value was ₹100."
-        reply = json.dumps({"answer": "Your average order value came to ₹100."})
+        result.answer = "Average order value was $100."
+        reply = json.dumps({"answer": "Your average order value came to $100."})
 
         with patch.object(chat_module, "_call_model", return_value=reply):
             _, source, reason = reword_answer("what is my aov", result, enabled=True, use_cache=False)
@@ -948,7 +948,7 @@ class OwnerChatTests(unittest.TestCase):
         self.assertIn("a median is not an average", prompt)
 
     def test_large_money_figures_lose_their_paise(self) -> None:
-        # Shown 1348.37 the model writes "₹1,348.37". Below a hundred the
+        # Shown 1348.37 the model writes "$1,348.37". Below a hundred the
         # decimals can matter (0.3 minutes to accept an order), so only larger
         # figures are rounded.
         result = self._headline(current=1348.37, previous=67.93, change=1280.44)
@@ -977,7 +977,7 @@ class OwnerChatTests(unittest.TestCase):
         # for quoting dates the prompt itself supplied.
         result = self._headline(current=1304.3, previous=1000.0, change=304.3)
         reply = json.dumps(
-            {"answer": "Revenue rose to ₹1,304, against ₹1,000 over 04 Aug - 10 Aug 2026."}
+            {"answer": "Revenue rose to $1,304, against $1,000 over 04 Aug - 10 Aug 2026."}
         )
 
         with patch.object(chat_module, "_call_model", return_value=reply):
@@ -991,7 +991,7 @@ class OwnerChatTests(unittest.TestCase):
         # Half a minute of generation for a question already answered against
         # unchanged data is half a minute the owner waits for nothing.
         result = self._headline(current=100.0, previous=90.0, change=10.0)
-        reply = json.dumps({"answer": "Revenue held at ₹100."})
+        reply = json.dumps({"answer": "Revenue held at $100."})
         # Unique per run: the cache is a real Redis, so a key written by an
         # earlier run would make the first call here a hit as well.
         question = f"how did we do {uuid.uuid4()}"
@@ -1080,10 +1080,10 @@ class OwnerChatTests(unittest.TestCase):
     def test_an_answer_in_another_script_is_rejected(self) -> None:
         # qwen3 is trained heavily on Chinese and occasionally reaches for a
         # Chinese word mid-sentence. A live answer read "the afternoon时段,
-        # which added ₹1,046": every figure correct, the sentence unreadable.
+        # which added $1,046": every figure correct, the sentence unreadable.
         # No guardrail about numbers would ever have caught it.
         result = self._headline(current=100.0, previous=90.0, change=10.0)
-        reply = json.dumps({"answer": "Revenue held at ₹100 in the afternoon时段."})
+        reply = json.dumps({"answer": "Revenue held at $100 in the afternoon时段."})
 
         with patch.object(chat_module, "_call_model", return_value=reply):
             answer, source, reason = reword_answer(
@@ -1096,7 +1096,7 @@ class OwnerChatTests(unittest.TestCase):
 
     def test_plain_english_with_a_rupee_sign_is_not_rejected(self) -> None:
         result = self._headline(current=100.0, previous=90.0, change=10.0)
-        reply = json.dumps({"answer": "Revenue held at ₹100 — steady week."})
+        reply = json.dumps({"answer": "Revenue held at $100 — steady week."})
 
         with patch.object(chat_module, "_call_model", return_value=reply):
             _, source, reason = reword_answer(
@@ -1108,7 +1108,7 @@ class OwnerChatTests(unittest.TestCase):
     def test_separate_breakdowns_are_kept_apart(self) -> None:
         # A flat list mixing "daypart: Afternoon" with "weekday: Friday" invited
         # the model to fuse them, and it did: "busiest on Friday afternoon" is a
-        # figure nothing measured — ₹1,091 is every afternoon, not Friday's.
+        # figure nothing measured — $1,091 is every afternoon, not Friday's.
         result = self._headline(current=100.0, previous=90.0, change=10.0)
         result.fact_pack.insights = [
             {"daypart": "Afternoon", "numbers": {"revenue": 1091}},
@@ -1506,7 +1506,7 @@ class OwnerChatTests(unittest.TestCase):
         The briefing narrated findings it had just worked out for the selected
         period while the feed listed stored rows from whatever window the
         nightly run had chosen, so an owner could read "Lunch revenue fell from
-        ₹142 to ₹31" directly above "Nothing to flag".
+        $142 to $31" directly above "Nothing to flag".
         """
 
         client = self._client_as(self.owner_a_id)

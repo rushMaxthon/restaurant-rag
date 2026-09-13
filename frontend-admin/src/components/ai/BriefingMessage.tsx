@@ -31,7 +31,7 @@ function formatMetric(metric: string, value: number): string {
   if (MONEY_METRICS.has(metric)) {
     return formatCurrency(value);
   }
-  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
 function MetricTile({ label, delta }: { label: string; delta: MetricDelta }) {

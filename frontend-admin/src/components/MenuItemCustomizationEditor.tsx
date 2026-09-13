@@ -1890,7 +1890,7 @@ export function MenuItemCustomizationEditor({
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Extra price</span>
-                                      <span>₹{option.extra_price}</span>
+                                      <span>${option.extra_price}</span>
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Countable</span>
@@ -2143,7 +2143,7 @@ export function MenuItemCustomizationEditor({
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Price</span>
-                            <span>{size.price ? `₹${size.price}` : "Pending"}</span>
+                            <span>{size.price ? `$${size.price}` : "Pending"}</span>
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Status</span>

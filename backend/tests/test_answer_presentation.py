@@ -52,8 +52,8 @@ class PresentationTests(unittest.TestCase):
     def test_an_action_puts_the_reason_on_its_own_indented_line(self) -> None:
         # The indent is what the renderer uses to keep the reason attached to
         # the action rather than starting a new point.
-        rendered = action("Promote Pad Thai Veg", "It fell by ₹1,329.")
-        self.assertEqual(rendered, "**Promote Pad Thai Veg**\n   It fell by ₹1,329.")
+        rendered = action("Promote Pad Thai Veg", "It fell by $1,329.")
+        self.assertEqual(rendered, "**Promote Pad Thai Veg**\n   It fell by $1,329.")
 
     def test_labelled_leads_with_the_label(self) -> None:
         self.assertEqual(labelled("Dish", "Pad Thai fell"), "**Dish** — Pad Thai fell")
@@ -74,14 +74,14 @@ class NumbersSurviveFormattingTests(unittest.TestCase):
         # changed what it extracts, correct answers would start being rejected.
         allowed = {1578.92, 35.8}
         self.assertEqual(
-            unsupported_numbers(f"Revenue was {bold('₹1,578.92')}, down 35.8%.", allowed),
+            unsupported_numbers(f"Revenue was {bold('$1,578.92')}, down 35.8%.", allowed),
             [],
         )
 
     def test_an_unsupported_figure_is_still_caught_through_formatting(self) -> None:
         allowed = {1578.92}
         self.assertEqual(
-            unsupported_numbers(f"Revenue was {bold('₹9,999.00')}.", allowed),
+            unsupported_numbers(f"Revenue was {bold('$9,999.00')}.", allowed),
             [9999.0],
         )
 
@@ -94,9 +94,9 @@ class ChunkingTests(unittest.TestCase):
 
     def test_chunks_reassemble_to_the_original_exactly(self) -> None:
         answer = blocks(
-            "Revenue was **₹739**, up 35.9%. It moved on two dishes.",
+            "Revenue was **$739**, up 35.9%. It moved on two dishes.",
             "Here is what moved most:",
-            bullets(["**Dish** — Pad Thai fell by ₹1,329", "**Category** — Rice grew"]),
+            bullets(["**Dish** — Pad Thai fell by $1,329", "**Category** — Rice grew"]),
             "Order volume is low.",
         )
         self.assertEqual("".join(chunk_answer(answer)), answer)
@@ -154,7 +154,7 @@ class CausalClaimGuardrailTests(unittest.TestCase):
     def test_correlational_wording_is_allowed(self) -> None:
         for phrase in (
             "Paneer Tikka contributed most of the increase.",
-            "Revenue was Rs 48,210, up Rs 6,320 alongside a rise in orders.",
+            "Revenue was $48,210, up $6,320 alongside a rise in orders.",
             "Lunch added the most, made up most of the change.",
             "Afternoon trade rose, which may be related to the offer.",
         ):
@@ -165,7 +165,7 @@ class CausalClaimGuardrailTests(unittest.TestCase):
         # "overdue" contains "due", "Droverton" contains "drove". Neither is a
         # causal claim, and a substring match would discard a correct answer.
         self.assertFalse(_claims_causation("Two invoices are overdue this week."))
-        self.assertFalse(_claims_causation("The Droverton branch took Rs 900."))
+        self.assertFalse(_claims_causation("The Droverton branch took $900."))
 
 
 if __name__ == "__main__":

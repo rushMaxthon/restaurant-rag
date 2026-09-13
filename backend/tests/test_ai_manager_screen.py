@@ -40,7 +40,7 @@ class MisleadingPercentageTests(unittest.TestCase):
         self.assertTrue(percent_is_misleading(0.0, 100.0))
 
     def test_a_huge_swing_off_a_tiny_base_is_misleading(self) -> None:
-        # The real case: ₹44 one week, ₹1,304 the next, reported as +2859.6%.
+        # The real case: $44 one week, $1,304 the next, reported as +2859.6%.
         self.assertTrue(percent_is_misleading(44.07, 2859.6))
 
     def test_an_ordinary_movement_keeps_its_percentage(self) -> None:
@@ -51,7 +51,7 @@ class MisleadingPercentageTests(unittest.TestCase):
         self.assertFalse(percent_is_misleading(100.0, None))
 
     def test_the_money_is_quoted_where_the_percentage_would_lie(self) -> None:
-        self.assertEqual(movement_label(44.07, 2859.6, 1260.23), "₹1,260")
+        self.assertEqual(movement_label(44.07, 2859.6, 1260.23), "$1,260")
         self.assertIn("%", movement_label(1368.0, 95.2, 1302.0))
 
     def test_the_body_and_the_title_agree(self) -> None:
@@ -85,7 +85,7 @@ class SeverityScaleTests(unittest.TestCase):
     """Severity has to mean something for a small restaurant too."""
 
     def test_a_small_restaurant_can_exceed_low(self) -> None:
-        # A quarter's revenue of ₹2,670 could never clear a flat ₹2,000 floor,
+        # A quarter's revenue of $2,670 could never clear a flat $2,000 floor,
         # so every finding it ever produced was LOW and the column carried no
         # information at all.
         medium, high = _severity_floors(2670.0)

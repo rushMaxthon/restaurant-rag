@@ -287,7 +287,7 @@ class PersonalizedOffersTests(unittest.TestCase):
             discount_value="10.00",
             max_discount_amount="80.00",
         )
-        self.assertEqual(_discount_label(offer), "10% OFF up to Rs 80")
+        self.assertEqual(_discount_label(offer), "10% OFF up to $80")
 
     def test_discount_amount_respects_percentage_cap(self) -> None:
         offer = make_offer(
@@ -308,7 +308,7 @@ class PersonalizedOffersTests(unittest.TestCase):
 
     def test_terms_label_includes_inactivity_minimum_and_validity(self) -> None:
         offer = make_offer(offer_type=PersonalizedOfferType.FAVORITE_RESTAURANT)
-        self.assertEqual(_terms_label(offer), "Inactive 14 days · Min Rs 299 · Valid 3 days")
+        self.assertEqual(_terms_label(offer), "Inactive 14 days · Min $299 · Valid 3 days")
 
     def test_effective_state_marks_expired_offer(self) -> None:
         offer = make_offer(offer_type=PersonalizedOfferType.FAVORITE_RESTAURANT)
@@ -388,7 +388,7 @@ class PersonalizedOffersTests(unittest.TestCase):
             audience_type=PersonalizedOfferAudience.ALL_CUSTOMERS,
             generated_title="Recommended from Spice Route Indian Kitchen",
             generated_subtitle="Restaurant-wide campaign",
-            generated_badge="Rs 15 OFF",
+            generated_badge="$15 OFF",
             generated_cta_label="Go go",
             discount_type=PersonalizedOfferDiscountType.FLAT,
             discount_value=Decimal("15.00"),
@@ -446,7 +446,7 @@ class PersonalizedOffersTests(unittest.TestCase):
         )
         custom_offer.name = "Diwali Special"
         custom_offer.restaurant = restaurant
-        custom_offer.notes = "Flat Rs 15 off on orders above Rs 45."
+        custom_offer.notes = "Flat $15 off on orders above $45."
         custom_offer.created_at = datetime.now(UTC)
         manual_card = PersonalizedOfferCardResponse(
             id=f"{custom_offer.id}:RESTAURANT:{restaurant.id}",
@@ -456,7 +456,7 @@ class PersonalizedOffersTests(unittest.TestCase):
             offer_name=custom_offer.name,
             offer_type=custom_offer.offer_type,
             audience_type=custom_offer.audience_type,
-            badge="Rs 15 OFF",
+            badge="$15 OFF",
             title=custom_offer.name,
             subtitle=custom_offer.notes,
             cta_label="View offer",
@@ -474,10 +474,10 @@ class PersonalizedOffersTests(unittest.TestCase):
             cuisine_type=restaurant.cuisine_type,
             discount_type=PersonalizedOfferDiscountType.FLAT,
             discount_value=Decimal("15.00"),
-            discount_label="Rs 15 OFF",
+            discount_label="$15 OFF",
             max_discount_amount=None,
             minimum_order_amount=Decimal("45.00"),
-            terms_label="Min Rs 45",
+            terms_label="Min $45",
             valid_for_days=3,
             expires_at=custom_offer.expires_at,
             created_at=custom_offer.created_at,
@@ -521,7 +521,7 @@ class PersonalizedOffersTests(unittest.TestCase):
             audience_type=PersonalizedOfferAudience.ALL_CUSTOMERS,
             generated_title="Recommended from Spice Route Indian Kitchen",
             generated_subtitle="Restaurant-wide campaign",
-            generated_badge="Rs 15 OFF",
+            generated_badge="$15 OFF",
             generated_cta_label="Go go",
             discount_type=PersonalizedOfferDiscountType.FLAT,
             discount_value=Decimal("15.00"),

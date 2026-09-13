@@ -38,7 +38,7 @@ SEVERITY_ORDER = {
     OwnerInsightSeverity.HIGH: 3,
 }
 
-CURRENCY_SYMBOLS = {"inr": "₹", "usd": "$", "eur": "€", "gbp": "£"}
+CURRENCY_SYMBOLS = {"inr": "$", "usd": "$", "eur": "€", "gbp": "£"}
 
 
 @dataclass(slots=True)
@@ -117,7 +117,7 @@ def share_phrase(share: float | None) -> str:
 
 
 def change_phrase(previous: float | None, change: float, percent_value: float | None) -> str:
-    """"₹1,260 (48.0%)" — or just the money where the percentage would mislead."""
+    """"$1,260 (48.0%)" — or just the money where the percentage would mislead."""
 
     if percent_is_misleading(previous, percent_value):
         return money(change)
@@ -191,8 +191,8 @@ def _severity_floors(period_revenue: float | None) -> tuple[float, float]:
 
     Two floors, and the lower of each pair wins: a flat rupee amount, and a
     share of what this restaurant actually takes. The flat floor alone made
-    severity meaningless for anyone small — a restaurant turning over ₹2,700 a
-    quarter could never clear ₹2,000, so every finding it ever produced was LOW
+    severity meaningless for anyone small — a restaurant turning over $2,700 a
+    quarter could never clear $2,000, so every finding it ever produced was LOW
     and the column stopped carrying information.
     """
 
@@ -810,7 +810,7 @@ def _drop_duplicate_category_findings(
     """Remove a category finding that one item already explains.
 
     A category containing a single moving dish produces two cards describing the
-    same event — "Salads is down ₹144" and "Thai Mango Salad is down ₹144" — which
+    same event — "Salads is down $144" and "Thai Mango Salad is down $144" — which
     reads as two problems when there is one. The item is kept, because it names
     the thing the owner can actually act on.
     """

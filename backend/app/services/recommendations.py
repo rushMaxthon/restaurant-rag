@@ -1575,7 +1575,7 @@ def _dedupe_multi_location_recommendations(
             preferred.model_copy(
                 update={
                     "display_price": lowest_price,
-                    "price_label": f"From ₹{lowest_price:.2f}",
+                    "price_label": f"From ${lowest_price:.2f}",
                     "available_locations_count": len(location_variants),
                     "preferred_menu_item_id": preferred.id,
                     "preferred_location_id": preferred.restaurant_location_id,

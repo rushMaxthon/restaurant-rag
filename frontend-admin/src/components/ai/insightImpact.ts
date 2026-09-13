@@ -4,15 +4,15 @@ import type { OwnerInsight } from '../../types/app';
  * Ranking and magnitude for a finding, read from fields the API already sends.
  *
  * The feed previously rendered every finding at identical weight in whatever
- * order it arrived, so a branch that had stopped trading sat level with a ₹71
+ * order it arrived, so a branch that had stopped trading sat level with a $71
  * dish. `score` is the backend's own ranking - roughly the absolute change,
  * weighted by how much the finding type matters - and `facts.absolute_change`
- * is the rupee figure behind it. Both were being discarded in the component.
+ * is the dollar figure behind it. Both were being discarded in the component.
  */
 export interface InsightImpact {
   /** Backend ranking. Higher is more worth reading. */
   score: number;
-  /** Signed rupee change, when the finding carries one. */
+  /** Signed dollar change, when the finding carries one. */
   amount: number | null;
   /** Share of this finding's score against the largest on screen, 0–1. */
   share: number;
@@ -38,7 +38,7 @@ export function rankInsights(
   const scored = insights.map((insight) => {
     const facts = (insight.facts ?? {}) as Record<string, unknown>;
     const amount = num(facts.absolute_change);
-    // `score` is the intended ranking. Falling back to the rupee change keeps
+    // `score` is the intended ranking. Falling back to the dollar change keeps
     // ordering sensible for any finding type that does not carry one.
     const score = num(insight.score) ?? Math.abs(amount ?? 0);
     return {
@@ -66,13 +66,13 @@ export function rankInsights(
     }));
 }
 
-/** Signed rupee label for a finding's bar, e.g. `−₹1,329`. */
+/** Signed dollar label for a finding's bar, e.g. `−$1,329`. */
 export function formatImpact(amount: number | null): string | null {
   if (amount === null || amount === 0) {
     return null;
   }
   const rounded = Math.round(Math.abs(amount));
-  const formatted = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(rounded);
+  const formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(rounded);
   // A true minus sign rather than a hyphen: these sit in a column of figures.
-  return `${amount > 0 ? '+' : '−'}₹${formatted}`;
+  return `${amount > 0 ? '+' : '−'}$${formatted}`;
 }

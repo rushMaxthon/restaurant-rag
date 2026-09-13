@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronLeft, Circle, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatINR, orderCode } from "@/lib/bangkok-data";
+import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder } from "@/lib/queries";
@@ -106,13 +106,13 @@ function OrderDetail() {
                   <span className="min-w-0 flex-1 truncate">
                     {i.quantity}× {i.item_name_snapshot}
                   </span>
-                  <span className="shrink-0 font-semibold">{formatINR(i.total_price)}</span>
+                  <span className="shrink-0 font-semibold">{formatMoney(i.total_price)}</span>
                 </div>
               ))}
             </div>
             <div className="mt-4 flex justify-between text-2xl font-black">
               <span>Total</span>
-              <span>{formatINR(o.total_amount)}</span>
+              <span>{formatMoney(o.total_amount)}</span>
             </div>
           </CardContent>
         </Card>

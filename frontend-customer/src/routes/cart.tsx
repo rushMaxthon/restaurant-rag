@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
-import { formatINR } from "@/lib/bangkok-data";
+import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 
@@ -127,11 +127,11 @@ function CartPage() {
                       </div>
                     )}
                     <p className="money mt-1.5 text-sm text-muted">
-                      {formatINR(line.unitPrice)} each
+                      {formatMoney(line.unitPrice)} each
                     </p>
                   </div>
                   <b className="money shrink-0 text-lg">
-                    {formatINR(line.unitPrice * line.quantity)}
+                    {formatMoney(line.unitPrice * line.quantity)}
                   </b>
                 </div>
 
@@ -205,8 +205,8 @@ function CartPage() {
           {shortfall > 0 && (
             <div className="mt-4 rounded-xl bg-primary-soft p-3">
               <p className="text-sm font-semibold">
-                Add <b className="money">{formatINR(shortfall)}</b> to reach the{" "}
-                {formatINR(minimumOrder)} minimum.
+                Add <b className="money">{formatMoney(shortfall)}</b> to reach the{" "}
+                {formatMoney(minimumOrder)} minimum.
               </p>
               <div className="meter mt-2">
                 <div className="meter-fill" style={{ width: `${progress}%` }} />
@@ -223,7 +223,7 @@ function CartPage() {
               <div className="flex justify-between" key={String(label)}>
                 <dt className="text-muted">{label}</dt>
                 <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : formatINR(Number(value))}
+                  {Number(value) === 0 ? "Free" : formatMoney(Number(value))}
                 </dd>
               </div>
             ))}
@@ -231,7 +231,7 @@ function CartPage() {
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
             <span className="text-lg font-black">Total</span>
-            <span className="font-display text-3xl font-black">{formatINR(total)}</span>
+            <span className="font-display text-3xl font-black">{formatMoney(total)}</span>
           </div>
 
           <Button
@@ -240,7 +240,7 @@ function CartPage() {
             asChild={shortfall === 0}
           >
             {shortfall > 0 ? (
-              <span>Minimum {formatINR(minimumOrder)} to order</span>
+              <span>Minimum {formatMoney(minimumOrder)} to order</span>
             ) : isAuthenticated ? (
               <Link to="/checkout">
                 Continue to checkout <ArrowRight className="size-4" />

@@ -19,7 +19,7 @@ The output is a small, deliberate subset of Markdown: `###` headings, `-` and
 `1.` lists, `**bold**`, and blank-line-separated paragraphs. Nothing else, so
 the renderer stays a few lines and cannot be surprised.
 
-Emphasis is applied to whole rendered figures (`**₹1,578.92**`) and never inside
+Emphasis is applied to whole rendered figures (`**$1,578.92**`) and never inside
 one, so the digits a number check extracts are unchanged by formatting.
 """
 
@@ -36,7 +36,7 @@ def bold(text: str | float | int) -> str:
     """Emphasise a whole value.
 
     Always wraps the complete rendered figure. Splitting emphasis inside a
-    number — `**₹1,5**78.92` — would leave the digits intact for the guardrail
+    number — `**$1,5**78.92` — would leave the digits intact for the guardrail
     but unreadable for a person.
     """
 

@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, Clock3, Flame, IndianRupee, Leaf, MapPin, Soup, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Clock3, Flame, DollarSign, Leaf, MapPin, Soup, Sparkles, Users } from "lucide-react";
 import heroImage from "@/assets/bangkok-bowl-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { DishCard } from "@/components/bangkok/dish-card";
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/")({ head: () => ({ meta: [{ title: "Bang
 
 const CRAVING_CHIPS = [
   { label: "Something spicy", query: "Something spicy", icon: Flame },
-  { label: "Under ₹300", query: "Something good under ₹300", icon: IndianRupee },
+  { label: "Under $15", query: "Something good under $15", icon: DollarSign },
   { label: "Comfort food", query: "Comfort food", icon: Soup },
   { label: "Light and fresh", query: "Something light and fresh", icon: Leaf },
   { label: "Feed two people", query: "Something to feed two people", icon: Users },

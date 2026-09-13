@@ -2,7 +2,7 @@ import { AlertCircle, ArrowUpRight, Check, Loader2, Sparkles, Tag, Utensils } fr
 import { useState } from "react";
 
 import type { SuggestionCard } from "../../types/app";
-import { discountLabel, needsDecimals, rupees } from "./suggestionFormat";
+import { discountLabel, needsDecimals, dollars } from "./suggestionFormat";
 
 /**
  * Offers and combos the assistant suggested, as things you can act on.
@@ -88,16 +88,16 @@ function Card({
           {card.pricing && card.pricing.offered !== null ? (
             <span className="ai-sug__price">
               <s>
-                {card.pricing.original !== null ? rupees(card.pricing.original, precise) : null}
+                {card.pricing.original !== null ? dollars(card.pricing.original, precise) : null}
               </s>
-              <b>{rupees(card.pricing.offered, precise)}</b>
+              <b>{dollars(card.pricing.offered, precise)}</b>
             </span>
           ) : null}
           {saving !== null && saving > 0 ? (
-            <span className="ai-sug__save">Saves {rupees(saving, precise)}</span>
+            <span className="ai-sug__save">Saves {dollars(saving, precise)}</span>
           ) : null}
           {card.minimum_order_amount ? (
-            <span className="ai-sug__meta">Min order {rupees(card.minimum_order_amount)}</span>
+            <span className="ai-sug__meta">Min order {dollars(card.minimum_order_amount)}</span>
           ) : null}
           {card.valid_for_days ? (
             <span className="ai-sug__meta">Runs {card.valid_for_days} days</span>
@@ -121,7 +121,7 @@ function Card({
       {card.expected_impact ? (
         <p className="ai-sug__impact">
           <Sparkles size={12} strokeWidth={2.2} />
-          Estimated recovery {rupees(card.expected_impact)}
+          Estimated recovery {dollars(card.expected_impact)}
         </p>
       ) : null}
 

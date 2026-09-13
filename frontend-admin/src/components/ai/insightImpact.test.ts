@@ -41,7 +41,7 @@ describe('rankInsights', () => {
     expect(second.impact.share).toBeCloseTo(816.225 / 1328.51, 5);
   });
 
-  it('reads the rupee change and its direction from facts', () => {
+  it('reads the dollar change and its direction from facts', () => {
     const byId = new Map(rankInsights(real).map((r) => [r.insight.id, r.impact]));
     expect(byId.get('item')?.amount).toBe(-1328.51);
     expect(byId.get('item')?.direction).toBe('down');
@@ -54,7 +54,7 @@ describe('rankInsights', () => {
     expect(byId.get('item')?.stoppedTrading).toBe(false);
   });
 
-  it('falls back to the rupee change when no score is sent', () => {
+  it('falls back to the dollar change when no score is sent', () => {
     const rows = rankInsights([
       insight({ id: 'a', score: 0, facts: { absolute_change: -900 } }),
       insight({ id: 'b', score: 0, facts: { absolute_change: -100 } }),
@@ -77,8 +77,8 @@ describe('rankInsights', () => {
 
 describe('formatImpact', () => {
   it('signs and groups the figure', () => {
-    expect(formatImpact(-1328.51)).toBe('−₹1,329');
-    expect(formatImpact(195.86)).toBe('+₹196');
+    expect(formatImpact(-1328.51)).toBe('−$1,329');
+    expect(formatImpact(195.86)).toBe('+$196');
   });
   it('renders nothing when there is no movement to show', () => {
     expect(formatImpact(null)).toBeNull();

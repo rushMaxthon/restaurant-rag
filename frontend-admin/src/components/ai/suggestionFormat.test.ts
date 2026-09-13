@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discountLabel, needsDecimals, rupees } from "./suggestionFormat";
+import { discountLabel, needsDecimals, dollars } from "./suggestionFormat";
 
 const pricing = (original: number | null, offered: number | null, saving: number | null) => ({
   original,
@@ -8,7 +8,7 @@ const pricing = (original: number | null, offered: number | null, saving: number
 });
 
 describe("needsDecimals", () => {
-  it("keeps whole rupees whole", () => {
+  it("keeps whole dollars whole", () => {
     expect(needsDecimals(pricing(320, 290, 30))).toBe(false);
   });
 
@@ -30,25 +30,27 @@ describe("needsDecimals", () => {
   });
 });
 
-describe("rupees", () => {
-  it("rounds to whole rupees by default", () => {
-    expect(rupees(31.57)).toBe("₹32");
+describe("dollars", () => {
+  it("rounds to whole dollars by default", () => {
+    expect(dollars(31.57)).toBe("$32");
   });
 
   it("shows exactly two decimals when asked", () => {
-    expect(rupees(31.5, true)).toBe("₹31.50");
+    expect(dollars(31.5, true)).toBe("$31.50");
   });
 
-  it("groups thousands the Indian way", () => {
-    expect(rupees(125000)).toBe("₹1,25,000");
+  it("groups thousands in threes, matching the currency", () => {
+    // Was lakh grouping ("1,25,000") while prices were rupees. Grouping has to
+    // follow the currency or the figure reads as a different number entirely.
+    expect(dollars(125000)).toBe("$125,000");
   });
 
   it("renders the displayed figures so they subtract correctly", () => {
     const p = pricing(31.57, 29.36, 2.21);
     const d = needsDecimals(p);
-    expect(rupees(p.original!, d)).toBe("₹31.57");
-    expect(rupees(p.offered!, d)).toBe("₹29.36");
-    expect(rupees(p.saving!, d)).toBe("₹2.21");
+    expect(dollars(p.original!, d)).toBe("$31.57");
+    expect(dollars(p.offered!, d)).toBe("$29.36");
+    expect(dollars(p.saving!, d)).toBe("$2.21");
   });
 });
 
@@ -71,7 +73,7 @@ describe("discountLabel", () => {
   });
 
   it("renders a flat discount as money", () => {
-    expect(discountLabel({ type: "FLAT", value: 150 })).toBe("₹150 off");
+    expect(discountLabel({ type: "FLAT", value: 150 })).toBe("$150 off");
   });
 
   it("names free delivery", () => {

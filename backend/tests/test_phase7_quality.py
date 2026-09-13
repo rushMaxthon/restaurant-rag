@@ -179,7 +179,7 @@ class Issue3MaterialityTests(unittest.TestCase):
             self.assertFalse(is_material_change(5000.0, 1.0))
 
     def test_headline_makes_no_claim_the_rules_would_reject(self) -> None:
-        # ₹195 on ₹544 fails the money gate, so no rule fires — and the
+        # $195 on $544 fails the money gate, so no rule fires — and the
         # briefing must not announce it either.
         with SettingsOverride(
             insight_revenue_change_percent=8.0, insight_revenue_change_minimum=1000.0
@@ -227,7 +227,7 @@ class Issue4ReconciliationTests(unittest.TestCase):
         with SettingsOverride(insights_min_orders_for_contribution=3):
             rows_current = [
                 contribution("big", "Big Seller", 1000.0, 500.0, current_orders=40),
-                # Two orders is below the contribution floor, so this real ₹300
+                # Two orders is below the contribution floor, so this real $300
                 # of movement is dropped from the listed shares.
                 contribution("tiny", "Rare Dish", 300.0, 0.0, current_orders=2, previous_orders=2),
             ]
@@ -297,8 +297,8 @@ class Issue5DuplicateInsightTests(unittest.TestCase):
         )
 
     def test_category_matching_one_item_is_dropped(self) -> None:
-        # The real run produced "Salads is down ₹144" beside "Thai Mango Salad
-        # is down ₹144" — the same event twice.
+        # The real run produced "Salads is down $144" beside "Thai Mango Salad
+        # is down $144" — the same event twice.
         kept = _drop_duplicate_category_findings(
             [
                 self._candidate(OwnerInsightType.ITEM_DECLINE, -143.84, "Thai Mango Salad"),
@@ -328,7 +328,7 @@ class Issue6SeverityTests(unittest.TestCase):
     """Severity is capped by the money involved, not just the share."""
 
     def test_the_exact_case_from_the_real_run(self) -> None:
-        # "Lunch trade has weakened" was HIGH on a ₹377 move.
+        # "Lunch trade has weakened" was HIGH on a $377 move.
         with SettingsOverride(
             insight_severity_medium_floor=Decimal("2000.00"),
             insight_severity_high_floor=Decimal("5000.00"),

@@ -1124,7 +1124,7 @@ export function toNumber(value: number | string): number {
 }
 
 export function formatCurrency(value: number | string): string {
-  return new Intl.NumberFormat('en-IN', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 2,

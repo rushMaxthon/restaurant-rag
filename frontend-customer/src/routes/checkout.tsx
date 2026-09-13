@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DishImage } from "@/components/bangkok/dish-image";
-import { formatINR, orderCode } from "@/lib/bangkok-data";
+import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, useValidateOrder } from "@/lib/queries";
@@ -309,11 +309,11 @@ function Checkout() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{line.name}</p>
                   <p className="money text-sm text-muted">
-                    {line.quantity} × {formatINR(line.unitPrice)}
+                    {line.quantity} × {formatMoney(line.unitPrice)}
                   </p>
                 </div>
                 <span className="money shrink-0 font-bold">
-                  {formatINR(line.unitPrice * line.quantity)}
+                  {formatMoney(line.unitPrice * line.quantity)}
                 </span>
               </div>
             ))}
@@ -328,7 +328,7 @@ function Checkout() {
               <div className="flex justify-between" key={String(label)}>
                 <dt className="text-muted">{label}</dt>
                 <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : formatINR(Number(value))}
+                  {Number(value) === 0 ? "Free" : formatMoney(Number(value))}
                 </dd>
               </div>
             ))}
@@ -336,7 +336,7 @@ function Checkout() {
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
             <span className="text-lg font-black">Total</span>
-            <span className="font-display text-3xl font-black">{formatINR(total)}</span>
+            <span className="font-display text-3xl font-black">{formatMoney(total)}</span>
           </div>
 
           <Button
@@ -344,7 +344,7 @@ function Checkout() {
             disabled={!s.cart.length || submitting}
             type="submit"
           >
-            {submitting ? "Placing order…" : `Place order · ${formatINR(total)}`}
+            {submitting ? "Placing order…" : `Place order · ${formatMoney(total)}`}
           </Button>
         </aside>
       </div>
@@ -357,7 +357,7 @@ function Checkout() {
               {s.totalItems} {s.totalItems === 1 ? "item" : "items"}
             </p>
             <p className="money font-display text-xl font-black leading-tight">
-              {formatINR(total)}
+              {formatMoney(total)}
             </p>
           </div>
           <Button

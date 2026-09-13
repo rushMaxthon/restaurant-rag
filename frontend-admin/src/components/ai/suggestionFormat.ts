@@ -7,21 +7,21 @@ import type { SuggestionCard } from "../../types/app";
  * correctness rule, not a styling one, and it is worth testing directly.
  */
 
-const whole = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
-const exact = new Intl.NumberFormat("en-IN", {
+const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const exact = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-export function rupees(amount: number, decimals = false): string {
-  return `₹${(decimals ? exact : whole).format(amount)}`;
+export function dollars(amount: number, decimals = false): string {
+  return `$${(decimals ? exact : whole).format(amount)}`;
 }
 
 /**
  * Whether a card's prices need decimals to stay honest.
  *
- * Rounding each figure independently broke the arithmetic on screen: ₹31.57 and
- * ₹29.36 rendered as ₹32 and ₹29 above a saving of ₹2.21 rendered as "₹2", so
+ * Rounding each figure independently broke the arithmetic on screen: $31.57 and
+ * $29.36 rendered as $32 and $29 above a saving of $2.21 rendered as "$2", so
  * the card appeared to claim 32 − 29 = 2. If any figure in the triple has a
  * fractional part, all three get decimals and the subtraction reads correctly.
  */
@@ -46,7 +46,7 @@ export function discountLabel(discount: SuggestionCard["discount"]): string | nu
     return `${Math.round(discount.value * 10) / 10}% off`;
   }
   if (discount.type === "FLAT") {
-    return `${rupees(discount.value)} off`;
+    return `${dollars(discount.value)} off`;
   }
   if (discount.type === "FREE_DELIVERY") {
     return "Free delivery";

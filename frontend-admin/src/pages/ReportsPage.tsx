@@ -3,7 +3,7 @@ import {
   Bot,
   Clock3,
   Download,
-  IndianRupee,
+  DollarSign,
   RefreshCw,
   Repeat2,
   ShoppingBag,
@@ -94,7 +94,7 @@ function formatTimestamp(value: Date | null): string {
   if (!value) {
     return "Not refreshed yet";
   }
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
@@ -108,7 +108,7 @@ function formatDateRange(dateFrom: string, dateTo: string): string {
 }
 
 function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-IN", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "INR",
     notation: "compact",
@@ -117,7 +117,7 @@ function formatCompactCurrency(value: number) {
 }
 
 function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat("en-IN", {
+  return new Intl.NumberFormat("en-US", {
     notation: value >= 10000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(value);
@@ -928,7 +928,7 @@ export function ReportsPage({
         />
         <StatTile
           hint={`${formatCurrency(summary?.average_order_value ?? 0)} average order value`}
-          icon={IndianRupee}
+          icon={DollarSign}
           label="Revenue"
           loading={loading}
           tone="accent"

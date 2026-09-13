@@ -11,8 +11,8 @@ describe("parseBlocks", () => {
   it("keeps a plain answer as one paragraph", () => {
     // A simple question should stay a simple sentence, with no structure
     // imposed on it.
-    expect(parseBlocks("Revenue was ₹1,578.92 in 18 Jun - 16 Aug 2026.")).toEqual([
-      { kind: "paragraph", lines: ["Revenue was ₹1,578.92 in 18 Jun - 16 Aug 2026."] },
+    expect(parseBlocks("Revenue was $1,578.92 in 18 Jun - 16 Aug 2026.")).toEqual([
+      { kind: "paragraph", lines: ["Revenue was $1,578.92 in 18 Jun - 16 Aug 2026."] },
     ]);
   });
 
@@ -30,10 +30,10 @@ describe("parseBlocks", () => {
   it("attaches an indented line to the item above it", () => {
     // This is what keeps a recommendation's "why" with its "what" instead of
     // starting a new point.
-    const blocks = parseBlocks("1. **Promote Pad Thai**\n   It fell by ₹1,329.");
+    const blocks = parseBlocks("1. **Promote Pad Thai**\n   It fell by $1,329.");
     expect(blocks[0]).toEqual({
       kind: "numbered",
-      items: ["**Promote Pad Thai**\nIt fell by ₹1,329."],
+      items: ["**Promote Pad Thai**\nIt fell by $1,329."],
     });
   });
 
@@ -83,7 +83,7 @@ describe("parseBlocks", () => {
 
   it("treats a partial answer as valid", () => {
     // Answers arrive a chunk at a time, so every prefix has to parse.
-    const full = "Here is what moved:\n- **Dish** — Pad Thai fell by ₹1,329\n";
+    const full = "Here is what moved:\n- **Dish** — Pad Thai fell by $1,329\n";
     for (let index = 1; index <= full.length; index += 1) {
       expect(() => parseBlocks(full.slice(0, index))).not.toThrow();
     }

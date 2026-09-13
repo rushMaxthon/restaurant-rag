@@ -18,7 +18,7 @@ describe('groupChatSessions', () => {
     msg('a', 'USER', 'hello', '2026-08-21T13:06:15Z'),
     msg('a', 'ASSISTANT', 'Hi there', '2026-08-21T13:06:18Z'),
     msg('b', 'USER', 'Why are my sales down?', '2026-08-24T09:00:00Z'),
-    msg('b', 'ASSISTANT', 'Sales are up by ₹622…', '2026-08-24T09:00:09Z'),
+    msg('b', 'ASSISTANT', 'Sales are up by $622…', '2026-08-24T09:00:09Z'),
   ];
 
   it('groups the flat list into one entry per session', () => {

@@ -967,9 +967,9 @@ def _starter_guidance(
         busiest = max(dayparts.contributions, key=lambda row: row.current)
         if busiest.current > quietest.current:
             # Heading and body both lead with the quiet stretch. Written the
-            # other way round — "Look at lunch" over "Afternoon took ₹259
-            # while lunch took ₹31" — the first figure sat next to the wrong
-            # label, and a summariser duly reported lunch taking ₹259.
+            # other way round — "Look at lunch" over "Afternoon took $259
+            # while lunch took $31" — the first figure sat next to the wrong
+            # label, and a summariser duly reported lunch taking $259.
             lines.append(
                 action(
                     f"{quietest.label} is your quietest stretch",
@@ -1127,7 +1127,7 @@ def branch_comparison(db: Session, scope: InsightsScope, params: SkillParams) ->
     """
 
     # The same widening ladder the other skills use. On the default seven days a
-    # branch that closed a month ago reads as "₹0 against ₹0", which is true and
+    # branch that closed a month ago reads as "$0 against $0", which is true and
     # useless; the window that actually contains the change is the one to answer
     # over, and the reply states which window that was.
     if _has_explicit_period(params):

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
-import { formatINR } from "@/lib/bangkok-data";
+import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItem, useMenuItems } from "@/lib/queries";
 
@@ -95,7 +95,7 @@ function DishPage() {
             </span>
           </div>
           <h1 className="mt-4 font-display text-4xl font-black sm:text-6xl">{item.name}</h1>
-          <p className="mt-3 text-2xl font-bold">{item.has_sizes ? `From ${formatINR(item.price)}` : formatINR(item.price)}</p>
+          <p className="mt-3 text-2xl font-bold">{item.has_sizes ? `From ${formatMoney(item.price)}` : formatMoney(item.price)}</p>
           <p className="mt-5 text-lg text-muted">{item.description}</p>
           {item.has_sizes && (
             <div className="mt-8">
@@ -104,7 +104,7 @@ function DishPage() {
                 {item.sizes.map((s) => (
                   <button className={(size || item.sizes[0]?.id) === s.id ? "category-pill active flex justify-between" : "category-pill flex justify-between"} onClick={() => setSize(s.id)} key={s.id}>
                     <span>{s.name}</span>
-                    <span>+{formatINR(s.price)}</span>
+                    <span>+{formatMoney(s.price)}</span>
                   </button>
                 ))}
               </div>
@@ -124,7 +124,7 @@ function DishPage() {
                         {active && <Check className="size-4 text-success" />}
                         {o.name}
                       </span>
-                      <span>+{formatINR(o.extra_price)}</span>
+                      <span>+{formatMoney(o.extra_price)}</span>
                     </button>
                   );
                 })}
@@ -145,7 +145,7 @@ function DishPage() {
       )}
       <div className="fixed inset-x-0 bottom-[58px] z-30 border-t border-border bg-surface p-3 lg:bottom-0">
         <Button disabled={!valid || !item.is_available} className="mx-auto flex w-full max-w-2xl" onClick={handleAdd}>
-          Add to cart · {formatINR(total)}
+          Add to cart · {formatMoney(total)}
         </Button>
       </div>
     </div>

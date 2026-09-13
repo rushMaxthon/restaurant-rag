@@ -150,7 +150,7 @@ function formatSlotTimeLabel(value: string): string {
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
     return value;
   }
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,

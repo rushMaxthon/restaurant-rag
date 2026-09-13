@@ -3,7 +3,6 @@ import {
   Bot,
   DollarSign,
   Flame,
-  IndianRupee,
   RefreshCw,
   ShieldCheck,
   ShoppingBag,
@@ -62,7 +61,7 @@ function formatTimestamp(value: Date | null): string {
   if (!value) {
     return "Not refreshed yet";
   }
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
@@ -100,7 +99,7 @@ function formatTrend(current: number, previous: number): string {
 }
 
 function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-IN", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "INR",
     notation: "compact",
@@ -523,11 +522,11 @@ export function DashboardPage({
   const currentWindowEnd = useMemo(() => lastUpdatedAt ?? new Date(), [lastUpdatedAt]);
 
   const chartDays = useMemo(() => {
-    const labelFormatter = new Intl.DateTimeFormat("en-IN", {
+    const labelFormatter = new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric",
     });
-    const metaFormatter = new Intl.DateTimeFormat("en-IN", {
+    const metaFormatter = new Intl.DateTimeFormat("en-US", {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -854,7 +853,7 @@ export function DashboardPage({
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--revenue"
             description="Gross paid order value captured across accessible restaurants."
-            icon={<IndianRupee size={18} />}
+            icon={<DollarSign size={18} />}
             label="Revenue"
             trend={revenueTrend}
             value={formatCurrency(stats?.total_revenue ?? 0)}
@@ -985,7 +984,7 @@ export function DashboardPage({
                         <strong>{order.restaurant.name}</strong>
                         <span>
                           Cuisine: {order.restaurant.cuisine_type} •{" "}
-                          {new Intl.DateTimeFormat("en-IN", {
+                          {new Intl.DateTimeFormat("en-US", {
                             hour: "2-digit",
                             minute: "2-digit",
                             hour12: false,

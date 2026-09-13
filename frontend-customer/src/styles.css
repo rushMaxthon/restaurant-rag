@@ -8,8 +8,8 @@
  --color-background: var(--bg); --color-foreground: var(--text); --color-card: var(--surface); --color-card-foreground: var(--text); --color-popover: var(--surface); --color-popover-foreground: var(--text);
  --color-primary: var(--primary); --color-primary-foreground: var(--on-primary); --color-secondary: var(--surface-alt); --color-secondary-foreground: var(--text); --color-muted: var(--muted); --color-muted-foreground: var(--muted); --color-accent: var(--primary-soft); --color-accent-foreground: var(--text); --color-destructive: var(--danger); --color-destructive-foreground: var(--on-primary); --color-border: var(--border); --color-input: var(--border); --color-ring: var(--primary); --color-surface: var(--surface); --color-surface-alt: var(--surface-alt); --color-success: var(--success); --color-danger: var(--danger);
 }
-:root { --primary:#FF5200; --primary-soft:#FFF0E8; --on-primary:#ffffff; --bg:#FAFAFA; --surface:#FFFFFF; --surface-alt:#F4F4F5; --text:#14171F; --muted:#6B7280; --border:#E5E7EB; --success:#16A34A; --danger:#DC2626; --radius:.5rem; --overlay:rgb(20 23 31 / .55); --shadow:0 12px 34px rgb(20 23 31 / .12); --placeholder-a:color-mix(in srgb,var(--primary) 15%,var(--surface)); --placeholder-b:color-mix(in srgb,var(--primary) 25%,var(--surface)); --placeholder-c:color-mix(in srgb,var(--success) 16%,var(--surface)); --placeholder-d:color-mix(in srgb,var(--text) 10%,var(--primary-soft)); }
-.dark { --primary:#FF6B26; --primary-soft:#3A2118; --on-primary:#ffffff; --bg:#111216; --surface:#191B20; --surface-alt:#23262D; --text:#F8FAFC; --muted:#A7ADB7; --border:#343740; --success:#4ADE80; --danger:#F87171; --overlay:rgb(0 0 0 / .62); --shadow:0 12px 34px rgb(0 0 0 / .4); }
+:root { --primary:#FF5200; --primary-soft:#FFF0E8; --on-primary:#ffffff; --bg:#FAFAFA; --surface:#FFFFFF; --surface-alt:#F4F4F5; --text:#14171F; --muted:#6B7280; --border:#E5E7EB; --success:#16A34A; --danger:#DC2626; --radius:.5rem; --overlay:rgb(20 23 31 / .55); --shadow:0 12px 34px rgb(20 23 31 / .12); --placeholder-a:color-mix(in srgb,var(--primary) 15%,var(--surface)); --placeholder-b:color-mix(in srgb,var(--primary) 25%,var(--surface)); --placeholder-c:color-mix(in srgb,var(--success) 16%,var(--surface)); --placeholder-d:color-mix(in srgb,var(--text) 10%,var(--primary-soft)); --scrollbar-thumb:#C9CDD4; --scrollbar-thumb-hover:#A2A8B3; }
+.dark { --primary:#FF6B26; --primary-soft:#3A2118; --on-primary:#ffffff; --bg:#111216; --surface:#191B20; --surface-alt:#23262D; --text:#F8FAFC; --muted:#A7ADB7; --border:#343740; --success:#4ADE80; --danger:#F87171; --overlay:rgb(0 0 0 / .62); --shadow:0 12px 34px rgb(0 0 0 / .4); --scrollbar-thumb:#3E434D; --scrollbar-thumb-hover:#565C68; }
 @layer base { *{border-color:var(--border)} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans)} button,a,select,input,textarea{letter-spacing:0} button,a,select{min-height:44px} }
 .font-display{font-family:var(--font-display)} .page-pad{padding-inline:clamp(1rem,3vw,3rem)} .section-pad{padding-block:clamp(2.5rem,6vw,5rem)}
 .brand-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--primary);color:var(--on-primary);font-weight:900;font-size:.82rem}.cart-count{position:absolute;right:-5px;top:-5px;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--text);color:var(--surface);font-size:.68rem;font-weight:800}.mobile-nav{display:grid;place-items:center;min-height:58px;font-size:.78rem;font-weight:700}.hero-overlay{background:linear-gradient(90deg,var(--overlay),color-mix(in srgb,var(--overlay) 50%,transparent))}.category-pill{min-height:44px;white-space:nowrap;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:.55rem 1rem;font-weight:700}.category-pill.active{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}.dish-card{box-shadow:0 1px 0 var(--border)}.dish-placeholder{color:var(--primary)}.placeholder-a{background:var(--placeholder-a)}.placeholder-b{background:var(--placeholder-b)}.placeholder-c{background:var(--placeholder-c)}.placeholder-d{background:var(--placeholder-d)}
@@ -62,5 +62,50 @@
 .step-pill{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:999px;background:var(--primary);color:var(--on-primary);font-size:.76rem;font-weight:900}
 .step-pill[data-done="true"]{background:var(--success)}
 .step-pill[data-todo="true"]{background:var(--surface-alt);color:var(--muted)}
+
+
+/* --- Scrollbars ------------------------------------------------------------
+   The default Windows scrollbar is a 17px light-grey slab. It reads as chrome
+   from another application, and in dark mode it stays bright — a white stripe
+   down the side of a dark page, which is the single most obvious tell that a
+   site was not finished.
+
+   Styled only where there is a real pointer. Touch platforms draw overlay
+   scrollbars that fade out on their own, and overriding those replaces good
+   native behaviour with a permanently visible bar.
+
+   scrollbar-gutter reserves the track on the root element whether or not the
+   page currently overflows, so navigating from a short page to a tall one no
+   longer shifts the whole layout sideways by the scrollbar's width. */
+html{scrollbar-gutter:stable}
+
+@media (pointer:fine){
+ /* Firefox: two properties, no pseudo-elements. */
+ *{scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent}
+
+ ::-webkit-scrollbar{width:10px;height:10px}
+ ::-webkit-scrollbar-track{background:transparent}
+ ::-webkit-scrollbar-thumb{
+  background:var(--scrollbar-thumb);
+  border-radius:999px;
+  /* Transparent border + background-clip insets the thumb inside the track,
+     so it reads as a floating pill rather than a full-width bar. */
+  border:2px solid transparent;
+  background-clip:padding-box;
+  transition:background-color .18s ease;
+ }
+ ::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover);background-clip:padding-box}
+ ::-webkit-scrollbar-thumb:active{background:var(--primary);background-clip:padding-box}
+ ::-webkit-scrollbar-corner{background:transparent}
+
+ /* Horizontal rails carry a slimmer bar: a 10px track under a row of chips
+    eats more of the row than it earns. */
+ .rail::-webkit-scrollbar,.category-rail::-webkit-scrollbar,.offer-rail::-webkit-scrollbar{height:6px}
+ .rail::-webkit-scrollbar-thumb,.category-rail::-webkit-scrollbar-thumb,.offer-rail::-webkit-scrollbar-thumb{border-width:1px}
+}
+
+/* Rails scroll horizontally with momentum and snap; `.category-rail` was
+   referenced by the menu grid but had never been defined. */
+.rail,.category-rail{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-padding-inline:1rem}
 
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}

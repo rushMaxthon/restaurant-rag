@@ -1992,8 +1992,8 @@ def _display_requested_topics(intent: ExtractedIntent | None) -> str:
 def _extract_budget_limit(message: str) -> Decimal | None:
     normalized = _normalize_text(message).replace(",", "")
     patterns = (
-        r"(?:under|below|less than|upto|up to|within)\s*(?:₹|rs\.?\s*)?(\d+(?:\.\d+)?)",
-        r"(?:₹|rs\.?\s*)(\d+(?:\.\d+)?)\s*(?:or less|or below|budget|max|maximum)?",
+        r"(?:under|below|less than|upto|up to|within)\s*(?:$|rs\.?\s*)?(\d+(?:\.\d+)?)",
+        r"(?:$|rs\.?\s*)(\d+(?:\.\d+)?)\s*(?:or less|or below|budget|max|maximum)?",
     )
     for pattern in patterns:
         matched = re.search(pattern, normalized)
@@ -2604,7 +2604,7 @@ def _dedupe_candidates_by_dish(candidates: list[RetrievedMenuCandidate]) -> list
 
     Every branch carries its own menu-item row, so without this the same dish
     can fill several suggestion slots at slightly different prices ("Kung Pao
-    Chicken Rs.29.96" and "Kung Pao Chicken Rs.14.69" side by side).
+    Chicken $29.96" and "Kung Pao Chicken $14.69" side by side).
     """
     deduped: list[RetrievedMenuCandidate] = []
     seen_dishes: set[tuple[uuid.UUID, str]] = set()
@@ -3132,7 +3132,7 @@ def _format_context_line(candidate: RetrievedMenuCandidate) -> str:
     veg_label = "Veg" if item.is_veg else "Non-Veg"
     new_label = " | New item" if is_menu_item_new(item) else ""
     return (
-        f"{item.name} | Rs. {_safe_decimal(item.price):.2f} | {veg_label} | "
+        f"{item.name} | ${_safe_decimal(item.price):.2f} | {veg_label} | "
         f"{item.category} | {restaurant.name}{new_label} | {description}"
     )
 
@@ -3158,7 +3158,7 @@ def _build_combo_context_block(
         item_names = combo.get("item_names") or []
         items_block = ", ".join(str(item_name) for item_name in item_names[:4])
         lines.append(
-            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\nPrice: Rs. {combo_price}\nIncludes: {items_block}"
+            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\nPrice: ${combo_price}\nIncludes: {items_block}"
         )
     return "\n\n".join(lines)
 
@@ -3718,7 +3718,7 @@ def _deserialize_chat_response_cache_payload(
 
 
 def _format_suggestion_names(suggestions: list[ChatSuggestionItem]) -> str:
-    suggestion_names = [f"{item.name} (Rs. {item.price})" for item in suggestions[:3]]
+    suggestion_names = [f"{item.name} (${item.price})" for item in suggestions[:3]]
     if not suggestion_names:
         return ""
     if len(suggestion_names) == 1:
@@ -3891,7 +3891,7 @@ def _build_offer_context_block(offers: list[PersonalizedOfferCardResponse]) -> s
         if offer.discount_label:
             details.append(offer.discount_label)
         if offer.minimum_order_amount > 0:
-            details.append(f"Min order Rs. {offer.minimum_order_amount}")
+            details.append(f"Min order ${offer.minimum_order_amount}")
         if offer.expires_at:
             details.append(f"Expires {offer.expires_at:%d %b}")
         lines.append("\n".join(details))

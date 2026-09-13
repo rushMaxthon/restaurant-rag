@@ -26,7 +26,7 @@ function formatLaunchLabel(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return "Recent launch";
   }
-  return new Intl.DateTimeFormat("en-IN", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
   }).format(date);
 }

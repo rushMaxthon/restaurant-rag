@@ -294,7 +294,7 @@ class Settings(BaseSettings):
     # revenue for the period, because an absolute floor alone means a small
     # restaurant can never produce anything above LOW. Whichever floor is lower
     # applies, so a big restaurant still needs real money to reach HIGH while a
-    # ₹1,300 movement on a ₹2,700 period is correctly loud.
+    # $1,300 movement on a $2,700 period is correctly loud.
     # How many bundle suggestions one run may propose. Five near-identical
     # "Bundle X + Y" rows crowded out the findings that actually explained the
     # period; the top pairings by real basket evidence are the useful ones.
@@ -461,7 +461,10 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = "pk_test_mock"
     stripe_webhook_secret: str = ""
     stripe_api_version: str = "2024-11-20.acacia"
-    payment_currency: str = "inr"
+    # Every customer-facing price is rendered in USD, so the charge currency
+    # has to agree — a Stripe intent in another currency would show the
+    # customer one number on the checkout screen and bill them a different one.
+    payment_currency: str = "usd"
     # How long an unpaid card order survives before the reaper cancels it.
     payment_intent_ttl_minutes: int = 30
     razorpay_key_id: str = "rzp_test_mock"

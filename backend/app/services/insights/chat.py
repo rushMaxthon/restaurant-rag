@@ -219,7 +219,7 @@ def _trim(value: Any) -> Any:
         if value.is_integer():
             return int(value)
         # Same reasoning for the paise: shown 1348.37 the model writes
-        # "₹1,348.37", which no owner would say out loud. Below a hundred the
+        # "$1,348.37", which no owner would say out loud. Below a hundred the
         # decimals can carry real meaning (0.3 minutes to accept an order), so
         # only larger figures are rounded. The guardrail already treats a
         # rounded form as the same figure, so nothing becomes unquotable.
@@ -255,7 +255,7 @@ def _grouped_findings(findings: list[Any]) -> dict[str, Any]:
 
     A flat list mixing "daypart: Afternoon" with "weekday: Friday" invites the
     model to fuse them, and it did: "you were busiest on Friday afternoon" is a
-    figure nothing measured — the ₹1,091 is every afternoon, not Friday's.
+    figure nothing measured — the $1,091 is every afternoon, not Friday's.
     Grouping them makes them two answers to two questions, which is what they
     are.
 
@@ -440,8 +440,8 @@ months, and an owner reading a figure has to know what it is a figure of.
    question and leave the rest out. Two or three numbers a sentence at most. Say each one once.
    Use a percentage only where it carries business meaning — if none is
    supplied for a figure, that is deliberate, so do not go looking for one.
-   Do not call a level a change. "Revenue was ₹X, up ₹Y from ₹Z" is right;
-   "revenue up ₹X" when ₹X is the total reads as the increase and overstates it
+   Do not call a level a change. "Revenue was $X, up $Y from $Z" is right;
+   "revenue up $X" when $X is the total reads as the increase and overstates it
    several times over.
    Keep every figure with the label the facts give it. If the facts say the
    afternoon took one amount and lunch took another, do not report lunch as
@@ -549,7 +549,7 @@ def _allowed_for(result: SkillResult) -> set[float]:
     invented number pass by coincidence.
 
     The summary's own figures are folded in because it rounds for readability
-    ("₹1,235" from 1234.56), and that rounded form is what a reader expects.
+    ("$1,235" from 1234.56), and that rounded form is what a reader expects.
     """
 
     facts = _shareable_facts(result)
@@ -575,7 +575,7 @@ MEAN_WORDS = re.compile(r"\b(average|mean|avg)\b", re.IGNORECASE)
 
 # qwen3 is trained heavily on Chinese and occasionally reaches for a Chinese
 # word mid-sentence — a live answer came back reading "the afternoon时段, which
-# added ₹1,046". The figures were right and the sentence was unreadable, which
+# added $1,046". The figures were right and the sentence was unreadable, which
 # no guardrail about numbers would ever have caught.
 NON_LATIN_SCRIPT = re.compile(
     "["

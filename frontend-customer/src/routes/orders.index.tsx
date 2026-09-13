@@ -4,7 +4,7 @@ import { ArrowRight, LogOut, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatINR, orderCode } from "@/lib/bangkok-data";
+import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
@@ -95,7 +95,7 @@ function Orders() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <b className="text-lg">{formatINR(o.total_amount)}</b>
+                  <b className="text-lg">{formatMoney(o.total_amount)}</b>
                   <Button variant="ghost" asChild className="mt-2 block">
                     <Link to="/orders/$orderId" params={{ orderId: o.id }}>
                       View order <ArrowRight />

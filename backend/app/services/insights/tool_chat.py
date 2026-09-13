@@ -569,7 +569,7 @@ def _money(value: Any) -> str:
 
     Safe for the number check because `money` rounds and the guardrail already
     allows a value's rounded forms — the same allowance that lets the skills
-    write "₹1,235" for 1234.56.
+    write "$1,235" for 1234.56.
     """
 
     try:

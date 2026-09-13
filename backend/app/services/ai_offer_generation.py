@@ -588,7 +588,7 @@ def _discount_badge(discount_type: PersonalizedOfferDiscountType, discount_value
     if discount_type == PersonalizedOfferDiscountType.PERCENTAGE:
         return f"{int(discount_value)}% OFF"
     if discount_type == PersonalizedOfferDiscountType.FLAT:
-        return f"Rs {discount_value:.0f} OFF"
+        return f"${discount_value:.0f} OFF"
     return "Offer"
 
 

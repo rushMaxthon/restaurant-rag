@@ -947,7 +947,7 @@ class FormatterGoldenTests(unittest.TestCase):
 
         # Uses the production helpers, so the test allows exactly what the real
         # guardrail allows — including the rounded forms `money()` writes, which
-        # is why "₹664" is legitimate for 664.26.
+        # is why "$664" is legitimate for 664.26.
         from app.services.insights.facts import (
             _expand_allowed,
             extract_numbers,

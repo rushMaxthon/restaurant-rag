@@ -8,8 +8,8 @@ approval and never read again — this module reads it.
 control, so the figures describe what occurred in the window after the offer
 went live. A festival, a seasonal swing, or an unrelated menu change would land
 in exactly the same numbers. Every string this module produces is worded to keep
-that distinction, because an owner told "this offer earned you ₹6,200" will act
-differently from one told "₹6,200 of orders used this offer".
+that distinction, because an owner told "this offer earned you $6,200" will act
+differently from one told "$6,200 of orders used this offer".
 """
 
 from __future__ import annotations
