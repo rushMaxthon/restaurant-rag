@@ -32,6 +32,24 @@ export type CartLine = {
   addOnNames: string[];
 };
 
+/**
+ * Whether adding this dish would mix two kitchens into one order.
+ *
+ * Exported and pure so the rule can be tested without a React tree. It is the
+ * rule behind a real failure: the concierge answers across the whole
+ * marketplace, so a suggestion can belong to another restaurant, and sending it
+ * under the app's current branch was rejected with "One or more menu items were
+ * not found for this restaurant" — at checkout, after the customer had done all
+ * the work.
+ */
+export function cartConflictsWith(
+  cart: Pick<CartLine, "restaurantId">[],
+  itemRestaurantId: string,
+): boolean {
+  const current = cart[0]?.restaurantId;
+  return Boolean(current && current !== itemRestaurantId);
+}
+
 type AppState = {
   branchId: string;
   cart: CartLine[];
@@ -197,10 +215,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       setBranchId,
       cartRestaurantId: state.cart[0]?.restaurantId,
       cartRestaurantName: state.cart[0]?.restaurantName,
-      conflictsWithCart: (item: MenuItem) => {
-        const current = state.cart[0]?.restaurantId;
-        return Boolean(current && current !== item.restaurant_id);
-      },
+      conflictsWithCart: (item: MenuItem) => cartConflictsWith(state.cart, item.restaurant_id),
       replaceCartWith,
       addItem,
       changeQuantity,

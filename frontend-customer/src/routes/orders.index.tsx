@@ -55,10 +55,10 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
 
   return (
     <article
-      className="line-card elevated-panel rise-in p-4 sm:p-5"
+      className="line-card elevated-panel rise-in min-w-0 p-4 sm:p-5"
       style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm">
             <span className={`status-chip ${tone}`}>{order.status.replaceAll("_", " ")}</span>
@@ -70,7 +70,7 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-display text-xl font-black leading-none tracking-tight">
+            <h2 className="whitespace-nowrap font-display text-xl font-black leading-none tracking-tight">
               Order {orderCode(order)}
             </h2>
             {/* Neither the date nor the item list was shown before, which made

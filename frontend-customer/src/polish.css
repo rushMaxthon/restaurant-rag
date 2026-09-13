@@ -631,20 +631,111 @@ textarea.flex:focus-visible {
 /* --- Branch hours ----------------------------------------------------------
    A week of opening windows. Today's row is marked because it is the only one
    most people are reading for. */
-.hours-row{display:grid;grid-template-columns:7.5rem 1fr;gap:.75rem;align-items:baseline;padding:.3rem .5rem;border-radius:calc(var(--radius) - 2px);font-size:.875rem}
-.hours-row dt{color:var(--muted);font-weight:700}
-.hours-row dd{margin:0;display:flex;flex-wrap:wrap;gap:.35rem .9rem;font-weight:600;font-variant-numeric:tabular-nums}
-.hours-row[data-today="true"]{background:var(--primary-soft)}
-.hours-row[data-today="true"] dt{color:var(--primary)}
+.hours-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.3rem 0.5rem;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.875rem;
+}
+.hours-row dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+.hours-row dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hours-row[data-today="true"] {
+  background: var(--primary-soft);
+}
+.hours-row[data-today="true"] dt {
+  color: var(--primary);
+}
 
 /* A branch that cannot take the order right now. Stated where the decision is
    made, not discovered at checkout. */
-.closed-notice{display:flex;align-items:flex-start;gap:.7rem;border:1px solid color-mix(in srgb,var(--danger) 35%,var(--border));border-radius:calc(var(--radius) + 4px);background:color-mix(in srgb,var(--danger) 8%,var(--surface));padding:.9rem 1rem}
-.closed-notice[data-tone="soft"]{border-color:var(--border);background:var(--surface-alt)}
+.closed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  padding: 0.9rem 1rem;
+}
+.closed-notice[data-tone="soft"] {
+  border-color: var(--border);
+  background: var(--surface-alt);
+}
 
 /* Slot picker on checkout. */
-.slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(7.2rem,1fr));gap:.5rem}
-.slot-chip{min-height:44px;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem;font-weight:700;font-size:.85rem;font-variant-numeric:tabular-nums;cursor:pointer;transition:border-color .16s,background .16s,color .16s}
-.slot-chip:hover:not(:disabled){border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
-.slot-chip[data-on="true"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}
-.slot-chip:disabled{opacity:.45;cursor:not-allowed}
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr));
+  gap: 0.5rem;
+}
+.slot-chip {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.85rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    color 0.16s;
+}
+.slot-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.slot-chip[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.slot-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- Touch targets ---------------------------------------------------------
+   Measured at 390px: the quantity steppers were 32-37px and Remove 36px. A
+   fingertip is about 44px, which is why both Apple and Google put the minimum
+   there — below it people miss, and on a quantity stepper a miss means the
+   wrong number of dishes. Widened only on coarse pointers, so the desktop
+   layout keeps its tighter proportions. */
+@media (pointer: coarse) {
+  .qty-step {
+    width: 44px;
+    height: 44px;
+  }
+  .remove-btn {
+    min-height: 44px;
+    padding-inline: 0.9rem;
+  }
+  .slot-chip,
+  .category-pill,
+  .craving-chip,
+  .filter-toggle,
+  .segmented-option {
+    min-height: 44px;
+  }
+  /* The dish title is the largest tap target on a card and was 24px tall.
+     Padding rather than font-size: the type scale is right, the hit area was
+     not. */
+  .dish-card a.font-display {
+    display: inline-block;
+    padding-block: 0.35rem;
+  }
+}
