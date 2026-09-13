@@ -189,9 +189,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (qs) url += `?${qs}`;
   }
 
+  // Deliberately NOT sending X-App-Bundle-Id here. On this backend that header
+  // does double duty: as a query param (used only in getAppConfig below) it
+  // just scopes which restaurant's data is visible, but as a request HEADER it
+  // also drives resolve_identity_app_client_id, which decides which app client
+  // a customer account belongs to. Customer identity is scoped per app client
+  // (partial unique index on (app_client_id, lower(email))), and the seeded
+  // customers belong to the "marketplace" app client, not Bangkok Bowl's. Send
+  // the header here and every login 401s even with correct credentials.
   const headers: Record<string, string> = {
     Accept: "application/json",
-    "X-App-Bundle-Id": BUNDLE_ID,
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (auth) {
