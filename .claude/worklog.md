@@ -28,6 +28,68 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-13 (4) — Ollama, the Lovable UI, discovery, and locking the concierge down
+
+**Goal:** real LLM answers instead of templates; replace `frontend-customer`
+with the Lovable-generated UI and wire it to the real backend; add discovery
+(craving chips → streaming concierge → personalised picks); then test the
+concierge the way an actual customer types, and fix what that broke.
+
+**Result:** all of it works end to end against Supabase. Ollama is installed
+with GPU (`qwen3:8b` generating, `nomic-embed-text` embedding, 189 menu items
+embedded, 0 failed). Login, cart, checkout, orders, chat and the three
+discovery surfaces all run on live data.
+
+**Changed:**
+- `frontend-customer/` — replaced wholesale with the TanStack Start app. This
+  reverses the zero-runtime-dependency rule in `CLAUDE.md` for THIS app only;
+  `frontend-admin` is untouched and still dependency-free.
+- `backend/app/services/rag.py` — role lock + domain gate (see below).
+- `backend/app/services/cache.py` — split `get_redis_delete_client()` out,
+  because redis-py pins `socket_timeout` at construction and deletes need a
+  longer leash than reads.
+- `backend/app/config/settings.py` — Redis connect/read timeouts; `:8080` CORS.
+- `backend/seed.py` — `ensure_restaurant_app_client()`, dish images,
+  `LOCATION_SEED_ONLY_KEYS`.
+
+**Verified:** 45 legitimate phrasings pass both concierge guards, 17 attacks
+refused, 0 either way, confirmed against the live API. `compileall` clean.
+Frontend: `npm run build`. No frontend tests exist to run.
+
+**What cost the most time, so it is not repeated:**
+- I polished components for hours inside a layout that was fundamentally
+  broken — a 430px phone canvas centred in a 1200px cap on a 1920px screen.
+  The user's "why are you not doing attractive UI things" was correct and I
+  was solving the wrong level. Check the layout before the components.
+- Tightening the concierge to an allowlist of food words refused 28 of 66
+  ordinary customer sentences — 42%. No keyword list enumerates how English
+  asks for dinner. Blocklist for topic, deterministic guard for role override.
+- `"what do you recommend"` was rejected by the SPAM guard, not the domain
+  guard: `_query_tokens` strips every word in it as a stopword. Testing the
+  functions individually would never have found it; only the pipeline did.
+- `X-App-Bundle-Id` on the login request scoped identity to the Bangkok Bowl
+  app client, while seeded customers live in `marketplace` — 401 with correct
+  credentials.
+- IVFFlat cannot be built on an empty table. Drop → backfill → rebuild with
+  `lists ≈ rows/1000` (14 here, not the 100 in migration `0001`).
+
+**Open:**
+- `docker-compose.yml` still builds a Dockerfile that no longer exists; the
+  customer app is SSR now and needs a Node runtime there.
+- Migration `0001` still creates the IVFFlat index before any data exists.
+- `/offers/personalized` 500s on a DB enum mismatch. Pre-existing.
+- Zero frontend tests.
+- Phase 2 UI: header, button system, 9 breakpoints and 7 button classes to
+  consolidate, mobile.
+- The Supabase DB password is still in transcripts and should be rotated.
+
+**Learned:**
+- Guard order matters more than guard content. Every false refusal found this
+  session came from an earlier guard firing, not from the guard that owned the
+  decision.
+- Test the pipeline, not the predicate. Both real bugs passed their unit-level
+  checks.
+
 ## 2026-09-13 (3) — Moved the database to Supabase
 
 **Goal:** replace local Postgres with Supabase as the app database, via the MCP server.

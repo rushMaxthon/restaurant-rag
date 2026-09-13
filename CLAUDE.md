@@ -16,7 +16,7 @@ customer-facing RAG food chat, and an AI Restaurant Manager for owners.
 | Path | What it is | Stack |
 |---|---|---|
 | `backend/` | source of truth for every business rule | FastAPI 0.115, SQLAlchemy 2.0, Postgres + pgvector, Celery + Redis, Ollama (qwen3:8b, nomic-embed-text), Stripe, Firebase Admin |
-| `frontend-customer/` | customer web app | React 19 + Vite, **zero runtime deps** |
+| `frontend-customer/` | customer web app | TanStack Start + React 19, Tailwind, shadcn/Radix, TanStack Query (SSR) |
 | `frontend-admin/` | shared ADMIN + OWNER dashboard | React 19 + Vite, only `lucide-react` + fontsource |
 | `mobile/` | customer app | React Native 0.85 CLI, React Navigation, Firebase phone auth, Stripe RN, Notifee |
 
@@ -24,13 +24,22 @@ customer-facing RAG food chat, and an AI Restaurant Manager for owners.
 
 ## Conventions that are easy to violate by accident
 
-**No new dependencies in the web apps.** Both `frontend-customer` and
-`frontend-admin` are deliberately dependency-free at runtime. Routing is
-hand-rolled over the History API in `src/App.tsx` (regex-matched pathnames, a
-`usePathname` hook). State is React Context — `src/store/AppStore.tsx` /
-`src/store/AdminStore.tsx`. Styling is hand-written CSS in `src/index.css`
-(9.5k lines admin, 4.5k customer) — no Tailwind, no CSS-in-JS, no component
-library. Reaching for react-router, redux or a UI kit breaks the house style.
+**No new dependencies in `frontend-admin`.** It is deliberately
+dependency-free at runtime: routing hand-rolled over the History API in
+`src/App.tsx` (regex-matched pathnames, a `usePathname` hook), state in React
+Context (`src/store/AdminStore.tsx`), styling hand-written CSS in
+`src/index.css` (9.5k lines) — no Tailwind, no CSS-in-JS, no component
+library. Reaching for react-router, redux or a UI kit breaks the house style
+there.
+
+**`frontend-customer` no longer follows that rule.** It was replaced wholesale
+on 2026-09-13 with a Lovable-generated TanStack Start app: file-based routing,
+Tailwind, shadcn/Radix, TanStack Query, ~60 runtime deps, and SSR via nitro
+(`vite.config.ts` wraps `@lovable.dev/vite-tanstack-config`, which already
+supplies the plugin set — adding those plugins by hand breaks the build).
+Everything below about hand-written CSS, `AppStore.tsx` and the token files
+describes the app that was REPLACED; treat it as history when working in
+`frontend-customer`, and as current when working in `frontend-admin`.
 
 **Comments explain *why*, not what.** See `backend/app/config/settings.py` — it
 reads like a lab notebook: measured timings, why `ollama_think_mode` is
