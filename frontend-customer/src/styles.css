@@ -16,4 +16,51 @@
 .craving-chip{display:inline-flex;align-items:center;gap:.5rem;min-height:44px;border-radius:999px;border:1px solid var(--border);background:var(--surface);padding:.65rem 1.15rem;font-weight:700;transition:background-color .15s,border-color .15s,transform .15s}.craving-chip:hover{border-color:var(--primary);background:var(--primary-soft);transform:translateY(-1px)}.craving-chip svg{color:var(--primary)}
 .offer-card{min-width:230px;max-width:260px;transition:border-color .15s,transform .15s}.offer-card:hover{border-color:var(--primary);transform:translateY(-2px)}.offer-badge{border-radius:999px;background:var(--primary-soft);color:var(--primary);padding:.3rem .65rem;font-size:.72rem;font-weight:800;letter-spacing:.02em;text-transform:uppercase}.offer-rail{display:flex;gap:1rem;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:.5rem}
 .veg-mark,.nonveg-mark{display:inline-grid;place-items:center;width:17px;height:17px;border:2px solid var(--success)}.veg-mark i{width:8px;height:8px;border-radius:50%;background:var(--success)}.nonveg-mark{border-color:var(--danger)}.nonveg-mark i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid var(--danger)}.surface-panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}.order-step{position:relative;padding-left:2rem}.order-step:before{content:"";position:absolute;left:0;top:.2rem;width:16px;height:16px;border-radius:50%;border:3px solid var(--border);background:var(--surface)}.order-step.done:before{border-color:var(--success);background:var(--success)}.order-step:not(:last-child):after{content:"";position:absolute;left:7px;top:1.2rem;width:2px;height:calc(100% + .5rem);background:var(--border)}
+
+/* --- Checkout surfaces -----------------------------------------------------
+   The cart and checkout are where a plain UI costs money: a flat list of names
+   and numbers reads as a prototype, and people abandon prototypes. These are
+   the primitives those two screens need in order to feel built rather than
+   rendered — elevation, a real segmented control, a quantity pill instead of
+   two loose buttons, and a progress meter for the minimum-order threshold. */
+.elevated-panel{border:1px solid var(--border);border-radius:calc(var(--radius) + 6px);background:var(--surface);box-shadow:0 1px 2px rgb(20 23 31 / .04),0 8px 24px -12px rgb(20 23 31 / .12)}
+.dark .elevated-panel{box-shadow:0 1px 2px rgb(0 0 0 / .3),0 8px 24px -12px rgb(0 0 0 / .6)}
+.line-card{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.line-card:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));box-shadow:0 2px 4px rgb(20 23 31 / .05),0 12px 28px -14px rgb(20 23 31 / .22);transform:translateY(-1px)}
+
+/* Segmented control: the indicator is a sibling that slides, so switching
+   fulfilment animates instead of repainting two buttons. */
+.segmented{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:.25rem;padding:.25rem;border-radius:999px;background:var(--surface-alt);border:1px solid var(--border)}
+.segmented-thumb{position:absolute;top:.25rem;bottom:.25rem;left:.25rem;width:calc(50% - .375rem);border-radius:999px;background:var(--primary);box-shadow:0 4px 12px -4px color-mix(in srgb,var(--primary) 70%,transparent);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+.segmented[data-active="PICKUP"] .segmented-thumb{transform:translateX(calc(100% + .25rem))}
+.segmented-option{position:relative;z-index:1;min-height:40px;border:0;background:transparent;border-radius:999px;font-weight:800;font-size:.9rem;color:var(--muted);cursor:pointer;transition:color .2s ease}
+.segmented-option[data-selected="true"]{color:var(--on-primary)}
+
+/* Quantity stepper reads as one control, not three elements that happen to be adjacent. */
+.qty-pill{display:inline-flex;align-items:center;gap:.15rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:.15rem;overflow:hidden}
+.qty-step{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:999px;background:transparent;color:var(--text);cursor:pointer;transition:background .15s ease,color .15s ease}
+.qty-step:hover:not(:disabled){background:var(--primary-soft);color:var(--primary)}
+.qty-step:disabled{opacity:.35;cursor:not-allowed}
+.qty-value{min-width:26px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
+
+.meter{height:6px;border-radius:999px;background:var(--surface-alt);overflow:hidden}
+.meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),color-mix(in srgb,var(--primary) 60%,#FFB067));transition:width .5s cubic-bezier(.4,0,.2,1)}
+
+.total-row{font-variant-numeric:tabular-nums}
+.money{font-variant-numeric:tabular-nums}
+
+/* Staggered entrance for list rows. Index is set inline as --i. */
+@keyframes rise-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.rise-in{animation:rise-in .42s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i,0) * 55ms)}
+
+/* Field affordance: the icon sits inside the control rather than floating above it. */
+.field-wrap{position:relative}
+.field-wrap>svg{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);transition:color .18s ease}
+.field-wrap:focus-within>svg{color:var(--primary)}
+.field-wrap input{padding-left:2.6rem}
+
+.step-pill{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:999px;background:var(--primary);color:var(--on-primary);font-size:.76rem;font-weight:900}
+.step-pill[data-done="true"]{background:var(--success)}
+.step-pill[data-todo="true"]{background:var(--surface-alt);color:var(--muted)}
+
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
