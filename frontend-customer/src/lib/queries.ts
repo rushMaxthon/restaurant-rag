@@ -51,10 +51,13 @@ export function useMenuItem(menuItemId: string | undefined) {
   });
 }
 
-export function usePaymentConfig() {
+export function usePaymentConfig(enabled = true) {
   return useQuery({
     queryKey: ["payment-config"],
     queryFn: api.getPaymentConfig,
+    // Needs a token, so it must not run before sign-in — an early 401 would be
+    // cached as "card unavailable" for the whole session.
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 }

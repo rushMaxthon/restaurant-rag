@@ -322,9 +322,11 @@ export const api = {
 
   getOrder: (orderId: string) => request<Order>(`/orders/${orderId}`, { auth: true }),
 
-  // Payment config is public: it carries only the publishable key and which
-  // methods this deployment can actually take.
-  getPaymentConfig: () => request<PaymentConfig>("/payments/config"),
+  // Authenticated: the endpoint requires a token, because the publishable key
+  // is not handed to anonymous callers even though it is not secret. Calling it
+  // without one 401s, the query fails, and the app concludes card is off — the
+  // checkout then refused every order with "card payments aren't switched on".
+  getPaymentConfig: () => request<PaymentConfig>("/payments/config", { auth: true }),
 
   createPaymentIntent: (orderId: string) =>
     request<PaymentIntent>(`/orders/${orderId}/payment-intent`, { method: "POST", auth: true }),

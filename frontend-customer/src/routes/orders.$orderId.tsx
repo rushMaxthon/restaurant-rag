@@ -213,11 +213,15 @@ function OrderDetail() {
             <span className="font-display text-3xl font-black">{formatMoney(o.total_amount)}</span>
           </div>
 
+          {/* Inferring "cash" from "not yet PAID" told a card customer their
+              order was cash on delivery for the whole window between paying and
+              the webhook landing. The order knows its own method. */}
           <p className="mt-4 text-sm text-muted">
-            Paid by{" "}
             {o.payment_status === "PAID"
-              ? "card"
-              : `${isDelivery ? "cash on delivery" : "cash on pickup"}`}
+              ? "Paid by card"
+              : o.payment_status === "COD"
+                ? `Pay by cash on ${isDelivery ? "delivery" : "pickup"}`
+                : "Card payment confirming…"}
           </p>
 
           <Button variant="outline" className="mt-5 h-12 w-full" asChild>

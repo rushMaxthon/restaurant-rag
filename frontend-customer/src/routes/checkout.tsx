@@ -96,7 +96,7 @@ function Checkout() {
   // Which methods this deployment can actually take. Card stays unavailable
   // until a Stripe key is configured, and saying so beats offering a button
   // that dead-ends.
-  const paymentConfig = usePaymentConfig();
+  const paymentConfig = usePaymentConfig(isAuthenticated);
   const cardAvailable = Boolean(paymentConfig.data?.stripe_enabled);
 
   if (!isAuthenticated) return null;
