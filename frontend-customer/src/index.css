@@ -125,6 +125,21 @@
   --leading-tight: 1.15;
   --leading-normal: 1.5;
 
+  /* --- motion --------------------------------------------------------------
+     Three durations and two curves, referenced by every animation in the app,
+     so the whole feel retunes from one place rather than from magic numbers
+     scattered across four stylesheets.
+
+     Only `transform` and `opacity` are ever animated against these. Both are
+     compositor properties; animating `height`, `top` or `width` forces layout
+     on every frame, which is what makes a page feel cheap on the mid-range
+     Android hardware most of these customers are using. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
   /* --- inked surfaces ----------------------------------------------------
      The brand mixed into near black. Every dark surface in the app — the home
      banner, the AI panel, the menu hero, a primary action on a card — is one

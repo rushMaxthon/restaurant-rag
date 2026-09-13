@@ -24,6 +24,7 @@ const STYLESHEETS = [
   'styles/home.css',
   'styles/screens.css',
   'styles/dish-row.css',
+  'styles/motion.css',
 ].map((file) => join(SRC, file));
 
 function read(path: string): string {

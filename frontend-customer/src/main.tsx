@@ -15,8 +15,15 @@ import './styles/screens.css';
 // styled separately, so its rules have to win over whatever they still say
 // about the grid and list containers it lives in.
 import './styles/dish-row.css';
+// After the component layers: motion decorates what they lay out, and its
+// reduced-motion rule must be able to override any transition they declare.
+import './styles/motion.css';
 import { AppRoot } from './AppRoot';
 import { AppConfigProvider } from './store/AppConfigProvider';
+
+// Opts into hidden-then-revealed. Set here rather than in the HTML so that a
+// JS bundle which never boots leaves every reveal target visible.
+document.documentElement.classList.add('js-motion');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
