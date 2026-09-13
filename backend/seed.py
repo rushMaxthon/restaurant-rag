@@ -16,6 +16,7 @@ from app.services.app_clients import (
     ensure_default_app_client,
     get_app_client_for_restaurant,
     resolve_app_client_identity,
+    unsuffixed_bundle_id_for_app_key,
 )
 from app.models.chat_history import ChatHistory
 from app.models.enums import (
@@ -1219,6 +1220,26 @@ def ensure_restaurant_app_client(db, *, restaurant: Restaurant) -> tuple[object,
         return existing, False
 
     identity = resolve_app_client_identity(db, restaurant_name=restaurant.name)
+
+    # `_generate_unique_bundle_id` suffixes on collision (`...bangkokbowl` ->
+    # `...bangkokbowl2`) instead of failing, because that suffixing is exactly
+    # right for an app that legitimately needs a second bundle id. It is
+    # exactly wrong here: this restaurant has no other bundle id, so a suffix
+    # means some OTHER client already parked on the name this one should have
+    # gotten, and every client the app ships already points at the unsuffixed
+    # id (see the docstring above). Seeding would then print success while
+    # `/app-config?bundle_id=<unsuffixed>` keeps 404ing — the original bug,
+    # now hidden behind a run that claims to have worked.
+    expected_bundle_id = unsuffixed_bundle_id_for_app_key(identity.app_key)
+    if identity.ios_bundle_id != expected_bundle_id:
+        raise RuntimeError(
+            f"Refusing to seed an app client for '{restaurant.name}': its bundle id "
+            f"'{expected_bundle_id}' is already taken by another app client, so "
+            f"resolve_app_client_identity() suffixed it to '{identity.ios_bundle_id}' "
+            "instead. That client would be unreachable at the bundle id the shipped "
+            "app expects. Free or rename the colliding client and re-run the seed."
+        )
+
     app_client = create_app_client(
         restaurant_id=restaurant.id,
         display_name=restaurant.name,

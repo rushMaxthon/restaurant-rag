@@ -106,8 +106,19 @@ def _generate_unique_app_key(db: Session, restaurant_name: str) -> str:
     return candidate
 
 
+def unsuffixed_bundle_id_for_app_key(app_key: str) -> str:
+    """The bundle id `_generate_unique_bundle_id` derives before it ever suffixes.
+
+    Exposed so a caller that needs the derivation to actually succeed (rather
+    than silently fall back to a suffixed sibling) can compare it against what
+    it got back and fail loudly on a mismatch.
+    """
+
+    return f"{BUNDLE_ID_NAMESPACE}.{_to_bundle_segment(app_key)}"
+
+
 def _generate_unique_bundle_id(db: Session, app_key: str) -> str:
-    base_bundle_id = f"{BUNDLE_ID_NAMESPACE}.{_to_bundle_segment(app_key)}"
+    base_bundle_id = unsuffixed_bundle_id_for_app_key(app_key)
     candidate = base_bundle_id
     suffix = 2
 
