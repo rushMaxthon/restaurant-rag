@@ -110,6 +110,11 @@
   filter: saturate(1.05) contrast(1.02);
 }
 
+/* Deliberately off the type scale: this is the oversized decorative brand
+   letterform behind the hero art when it fails to load, not a heading. The
+   type scale tops out at --text-3xl (31px) for headings; putting this on it
+   once shrank the watermark from 108px to 31px, turning a hero-filling mark
+   into a barely-visible one. */
 .home .home-hero__art-fallback {
   display: grid;
   place-items: center;
@@ -117,10 +122,9 @@
   height: 100%;
   color: var(--on-ink);
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  font-size: 108px;
   font-weight: 700;
   letter-spacing: 4px;
-  line-height: var(--leading-tight);
   opacity: 0.22;
   background: linear-gradient(135deg, var(--ink-lift), var(--ink));
 }
