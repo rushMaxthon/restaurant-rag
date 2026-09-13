@@ -3,8 +3,10 @@ import { ArrowRight, Clock3, Flame, IndianRupee, Leaf, MapPin, Soup, Sparkles, U
 import heroImage from "@/assets/bangkok-bowl-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { DishCard } from "@/components/bangkok/dish-card";
+import { OfferCard } from "@/components/bangkok/offer-card";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { useMenuItems } from "@/lib/queries";
+import { useAuth } from "@/lib/auth";
+import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
 
 export const Route = createFileRoute("/")({ head: () => ({ meta: [{ title: "Bangkok Bowl — Thai Food Delivery Ahmedabad" }, { name: "description", content: "Order fresh Thai noodles, curries and bowls from three Bangkok Bowl branches in Ahmedabad." }, { property: "og:title", content: "Bangkok Bowl — Thai Food Delivery Ahmedabad" }, { property: "og:description", content: "Big Thai flavour, cooked fresh and delivered across Ahmedabad." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }), component: Home });
 
@@ -18,9 +20,12 @@ const CRAVING_CHIPS = [
 
 function Home() {
   const { restaurantId, branchId, locations } = useBangkokStore();
+  const { isAuthenticated } = useAuth();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
+  const offersQuery = usePersonalizedOffers(isAuthenticated);
   const items = menuQuery.data ?? [];
   const bestsellers = (items.filter((i) => i.is_bestseller).length ? items.filter((i) => i.is_bestseller) : items).slice(0, 8);
+  const offers = offersQuery.data ?? [];
 
   return (
     <div className="pb-20 lg:pb-0">
@@ -40,6 +45,13 @@ function Home() {
           </div>
         </div>
       </section>
+
+      {isAuthenticated && offers.length > 0 && (
+        <section className="page-pad section-pad !pb-0">
+          <div className="mb-6"><p className="font-bold text-primary">PICKED FOR YOU</p><h2 className="font-display text-3xl font-black sm:text-4xl">Your personalised picks</h2></div>
+          <div className="offer-rail">{offers.map((offer) => <OfferCard key={offer.id} offer={offer} />)}</div>
+        </section>
+      )}
 
       <section className="page-pad section-pad">
         <div className="mb-7 flex items-end justify-between gap-4">

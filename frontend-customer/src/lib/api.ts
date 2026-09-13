@@ -83,6 +83,27 @@ export type ChatStreamMeta = {
 
 export type ChatStreamDone = ChatStreamMeta & { reply: string };
 
+export type PersonalizedOffer = {
+  id: string;
+  offer_id: string;
+  badge: string;
+  title: string;
+  subtitle: string;
+  cta_label: string;
+  target_type: string;
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_location_id: string | null;
+  restaurant_location_name: string | null;
+  menu_item_id: string | null;
+  menu_item_name: string | null;
+  generated_combo_id: string | null;
+  generated_combo_name: string | null;
+  discount_label: string | null;
+  terms_label: string | null;
+  expires_at: string | null;
+};
+
 export type OrderCreateItem = {
   menu_item_id: string;
   menu_item_size_id?: string | null;
@@ -286,7 +307,9 @@ export const api = {
 
   getGeneratedCombos: (limit = 12) => request<unknown[]>("/generated-combos", { query: { limit } }),
 
-  getPersonalizedOffers: () => request<unknown[]>("/personalized-offers", { auth: true }),
+  // NOTE: the real route is /offers/personalized (see backend app/api/personalized_offers.py) —
+  // there is no top-level /personalized-offers path on this API.
+  getPersonalizedOffers: () => request<PersonalizedOffer[]>("/offers/personalized", { auth: true }),
 };
 
 type ChatStreamPayload = {

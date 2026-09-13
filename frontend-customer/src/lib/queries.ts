@@ -73,6 +73,10 @@ export function useSendChatMessage() {
   return useMutation({ mutationFn: api.sendChatMessage });
 }
 
+export function usePersonalizedOffers(enabled: boolean) {
+  return useQuery({ queryKey: queryKeys.offers, queryFn: api.getPersonalizedOffers, enabled, staleTime: 60 * 1000 });
+}
+
 /** Prefers an open branch, falling back to the first one returned. */
 export function pickDefaultLocation(locations: RestaurantLocation[] | undefined): RestaurantLocation | undefined {
   if (!locations?.length) return undefined;
