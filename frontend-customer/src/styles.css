@@ -3,19 +3,290 @@
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 @theme inline {
- --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif; --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
- --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px);
- --color-background: var(--bg); --color-foreground: var(--text); --color-card: var(--surface); --color-card-foreground: var(--text); --color-popover: var(--surface); --color-popover-foreground: var(--text);
- --color-primary: var(--primary); --color-primary-foreground: var(--on-primary); --color-secondary: var(--surface-alt); --color-secondary-foreground: var(--text); --color-muted: var(--muted); --color-muted-foreground: var(--muted); --color-accent: var(--primary-soft); --color-accent-foreground: var(--text); --color-destructive: var(--danger); --color-destructive-foreground: var(--on-primary); --color-border: var(--border); --color-input: var(--border); --color-ring: var(--primary); --color-surface: var(--surface); --color-surface-alt: var(--surface-alt); --color-success: var(--success); --color-danger: var(--danger);
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--surface-alt);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--primary-soft);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--on-primary);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
 }
-:root { --primary:#FF5200; --primary-soft:#FFF0E8; --on-primary:#ffffff; --bg:#FAFAFA; --surface:#FFFFFF; --surface-alt:#F4F4F5; --text:#14171F; --muted:#6B7280; --border:#E5E7EB; --success:#16A34A; --danger:#DC2626; --radius:.5rem; --overlay:rgb(20 23 31 / .55); --shadow:0 12px 34px rgb(20 23 31 / .12); --placeholder-a:color-mix(in srgb,var(--primary) 15%,var(--surface)); --placeholder-b:color-mix(in srgb,var(--primary) 25%,var(--surface)); --placeholder-c:color-mix(in srgb,var(--success) 16%,var(--surface)); --placeholder-d:color-mix(in srgb,var(--text) 10%,var(--primary-soft)); --scrollbar-thumb:#C9CDD4; --scrollbar-thumb-hover:#A2A8B3; }
-.dark { --primary:#FF6B26; --primary-soft:#3A2118; --on-primary:#ffffff; --bg:#111216; --surface:#191B20; --surface-alt:#23262D; --text:#F8FAFC; --muted:#A7ADB7; --border:#343740; --success:#4ADE80; --danger:#F87171; --overlay:rgb(0 0 0 / .62); --shadow:0 12px 34px rgb(0 0 0 / .4); --scrollbar-thumb:#3E434D; --scrollbar-thumb-hover:#565C68; }
-@layer base { *{border-color:var(--border)} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans)} button,a,select,input,textarea{letter-spacing:0} button,a,select{min-height:44px} }
-.font-display{font-family:var(--font-display)} .page-pad{padding-inline:clamp(1rem,3vw,3rem)} .section-pad{padding-block:clamp(2.5rem,6vw,5rem)}
-.brand-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--primary);color:var(--on-primary);font-weight:900;font-size:.82rem}.cart-count{position:absolute;right:-5px;top:-5px;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--text);color:var(--surface);font-size:.68rem;font-weight:800}.mobile-nav{display:grid;place-items:center;min-height:58px;font-size:.78rem;font-weight:700}.hero-overlay{background:linear-gradient(90deg,var(--overlay),color-mix(in srgb,var(--overlay) 50%,transparent))}.category-pill{min-height:44px;white-space:nowrap;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:.55rem 1rem;font-weight:700}.category-pill.active{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}.dish-card{box-shadow:0 1px 0 var(--border)}.dish-placeholder{color:var(--primary)}.placeholder-a{background:var(--placeholder-a)}.placeholder-b{background:var(--placeholder-b)}.placeholder-c{background:var(--placeholder-c)}.placeholder-d{background:var(--placeholder-d)}
-.craving-chip{display:inline-flex;align-items:center;gap:.5rem;min-height:44px;border-radius:999px;border:1px solid var(--border);background:var(--surface);padding:.65rem 1.15rem;font-weight:700;transition:background-color .15s,border-color .15s,transform .15s}.craving-chip:hover{border-color:var(--primary);background:var(--primary-soft);transform:translateY(-1px)}.craving-chip svg{color:var(--primary)}
-.offer-card{min-width:230px;max-width:260px;transition:border-color .15s,transform .15s}.offer-card:hover{border-color:var(--primary);transform:translateY(-2px)}.offer-badge{border-radius:999px;background:var(--primary-soft);color:var(--primary);padding:.3rem .65rem;font-size:.72rem;font-weight:800;letter-spacing:.02em;text-transform:uppercase}.offer-rail{display:flex;gap:1rem;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:.5rem}
-.veg-mark,.nonveg-mark{display:inline-grid;place-items:center;width:17px;height:17px;border:2px solid var(--success)}.veg-mark i{width:8px;height:8px;border-radius:50%;background:var(--success)}.nonveg-mark{border-color:var(--danger)}.nonveg-mark i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid var(--danger)}.surface-panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}.order-step{position:relative;padding-left:2rem}.order-step:before{content:"";position:absolute;left:0;top:.2rem;width:16px;height:16px;border-radius:50%;border:3px solid var(--border);background:var(--surface)}.order-step.done:before{border-color:var(--success);background:var(--success)}.order-step:not(:last-child):after{content:"";position:absolute;left:7px;top:1.2rem;width:2px;height:calc(100% + .5rem);background:var(--border)}
+:root {
+  --primary: #ff5200;
+  --primary-soft: #fff0e8;
+  --on-primary: #ffffff;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-alt: #f4f4f5;
+  --text: #14171f;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --radius: 0.5rem;
+  --overlay: rgb(20 23 31 / 0.55);
+  --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
+  --placeholder-a: color-mix(in srgb, var(--primary) 15%, var(--surface));
+  --placeholder-b: color-mix(in srgb, var(--primary) 25%, var(--surface));
+  --placeholder-c: color-mix(in srgb, var(--success) 16%, var(--surface));
+  --placeholder-d: color-mix(in srgb, var(--text) 10%, var(--primary-soft));
+  --scrollbar-thumb: #c9cdd4;
+  --scrollbar-thumb-hover: #a2a8b3;
+}
+.dark {
+  --primary: #ff6b26;
+  --primary-soft: #3a2118;
+  --on-primary: #ffffff;
+  --bg: #111216;
+  --surface: #191b20;
+  --surface-alt: #23262d;
+  --text: #f8fafc;
+  --muted: #a7adb7;
+  --border: #343740;
+  --success: #4ade80;
+  --danger: #f87171;
+  --overlay: rgb(0 0 0 / 0.62);
+  --shadow: 0 12px 34px rgb(0 0 0 / 0.4);
+  --scrollbar-thumb: #3e434d;
+  --scrollbar-thumb-hover: #565c68;
+}
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+  }
+  button,
+  a,
+  select,
+  input,
+  textarea {
+    letter-spacing: 0;
+  }
+  button,
+  a,
+  select {
+    min-height: 44px;
+  }
+}
+.font-display {
+  font-family: var(--font-display);
+}
+.page-pad {
+  padding-inline: clamp(1rem, 3vw, 3rem);
+}
+.section-pad {
+  padding-block: clamp(2.5rem, 6vw, 5rem);
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 900;
+  font-size: 0.82rem;
+}
+.cart-count {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+.mobile-nav {
+  display: grid;
+  place-items: center;
+  min-height: 58px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.hero-overlay {
+  background: linear-gradient(
+    90deg,
+    var(--overlay),
+    color-mix(in srgb, var(--overlay) 50%, transparent)
+  );
+}
+.category-pill {
+  min-height: 44px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+}
+.category-pill.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.dish-card {
+  box-shadow: 0 1px 0 var(--border);
+}
+.dish-placeholder {
+  color: var(--primary);
+}
+.placeholder-a {
+  background: var(--placeholder-a);
+}
+.placeholder-b {
+  background: var(--placeholder-b);
+}
+.placeholder-c {
+  background: var(--placeholder-c);
+}
+.placeholder-d {
+  background: var(--placeholder-d);
+}
+.craving-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.65rem 1.15rem;
+  font-weight: 700;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+.craving-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+}
+.craving-chip svg {
+  color: var(--primary);
+}
+.offer-card {
+  min-width: 230px;
+  max-width: 260px;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.offer-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+.offer-badge {
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.offer-rail {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 0.5rem;
+}
+.veg-mark,
+.nonveg-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--success);
+}
+.veg-mark i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.nonveg-mark {
+  border-color: var(--danger);
+}
+.nonveg-mark i {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 8px solid var(--danger);
+}
+.surface-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.order-step {
+  position: relative;
+  padding-left: 2rem;
+}
+.order-step:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.2rem;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  background: var(--surface);
+}
+.order-step.done:before {
+  border-color: var(--success);
+  background: var(--success);
+}
+.order-step:not(:last-child):after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 1.2rem;
+  width: 2px;
+  height: calc(100% + 0.5rem);
+  background: var(--border);
+}
 
 /* --- Checkout surfaces -----------------------------------------------------
    The cart and checkout are where a plain UI costs money: a flat list of names
@@ -23,46 +294,383 @@
    the primitives those two screens need in order to feel built rather than
    rendered — elevation, a real segmented control, a quantity pill instead of
    two loose buttons, and a progress meter for the minimum-order threshold. */
-.elevated-panel{border:1px solid var(--border);border-radius:calc(var(--radius) + 6px);background:var(--surface);box-shadow:0 1px 2px rgb(20 23 31 / .04),0 8px 24px -12px rgb(20 23 31 / .12)}
-.dark .elevated-panel{box-shadow:0 1px 2px rgb(0 0 0 / .3),0 8px 24px -12px rgb(0 0 0 / .6)}
-.line-card{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
-.line-card:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border));box-shadow:0 2px 4px rgb(20 23 31 / .05),0 12px 28px -14px rgb(20 23 31 / .22);transform:translateY(-1px)}
+.elevated-panel {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgb(20 23 31 / 0.04),
+    0 8px 24px -12px rgb(20 23 31 / 0.12);
+}
+.dark .elevated-panel {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+.line-card {
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+.line-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  box-shadow:
+    0 2px 4px rgb(20 23 31 / 0.05),
+    0 12px 28px -14px rgb(20 23 31 / 0.22);
+  transform: translateY(-1px);
+}
+/* The light hover shadow is a near-black tint; on a dark surface it reads as
+   nothing, so the card appeared to lift without any shadow following it. */
+.dark .line-card:hover {
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.3),
+    0 12px 28px -14px rgb(0 0 0 / 0.7);
+}
+
+/* Size / add-on tags on a cart line and the thumbnail overflow counter. One
+   class instead of the same six utilities repeated per chip. */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  padding: 0.2rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Summary rows (subtotal / fee / tax) shared by the cart and the order page.
+   Baseline alignment matters here: a label in 14px next to a tabular figure
+   drifts a pixel when the row is centred rather than sat on a baseline. */
+.sum-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.sum-row dt {
+  color: var(--muted);
+}
+.sum-row dd {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sum-row[data-tone="success"] dt,
+.sum-row[data-tone="success"] dd {
+  color: var(--success);
+}
+.sum-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.sum-total .sum-total-figure {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* A quiet note under the total — payment method, sign-in hint. The icon takes
+   the primary colour so the line has one accent and nothing else competing. */
+.sum-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.sum-note svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.sum-note[data-tone="success"] svg {
+  color: var(--success);
+}
+
+/* Empty states. A white panel with a disc in the middle reads as a 404; the
+   soft radial wash behind the icon makes the whole panel feel intentional. */
+.empty-state {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  padding: 5rem 1.5rem;
+}
+.empty-state:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 60% 55% at 50% 0%,
+    color-mix(in srgb, var(--primary-soft) 80%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.empty-state > * {
+  position: relative;
+}
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin-inline: auto;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow:
+    0 0 0 10px color-mix(in srgb, var(--primary-soft) 55%, transparent),
+    0 0 0 20px color-mix(in srgb, var(--primary-soft) 25%, transparent);
+}
+
+/* Back link. The chevron nudges toward the destination on hover; the text
+   colour alone was too subtle a response for a 14px control. */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--muted);
+  transition: color 0.16s;
+}
+.back-link svg {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.back-link:hover {
+  color: var(--text);
+}
+.back-link:hover svg {
+  transform: translateX(-3px);
+}
+.back-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Section heading with a count. The count is set in tabular figures inside a
+   pill so "In progress 8" and "Past orders 12" line up. */
+.section-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding-inline: 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard focus on the compound controls. The segmented thumb is primary on
+   primary, so a single outline in the brand colour vanishes on the selected
+   option; a two-ring halo (surface, then primary) survives both states. */
+.qty-step:focus-visible,
+.segmented-option:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--primary);
+}
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+.remove-btn:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+.remove-btn:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
 
 /* Segmented control: the indicator is a sibling that slides, so switching
    fulfilment animates instead of repainting two buttons. */
-.segmented{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:.25rem;padding:.25rem;border-radius:999px;background:var(--surface-alt);border:1px solid var(--border)}
-.segmented-thumb{position:absolute;top:.25rem;bottom:.25rem;left:.25rem;width:calc(50% - .375rem);border-radius:999px;background:var(--primary);box-shadow:0 4px 12px -4px color-mix(in srgb,var(--primary) 70%,transparent);transition:transform .28s cubic-bezier(.4,0,.2,1)}
-.segmented[data-active="PICKUP"] .segmented-thumb{transform:translateX(calc(100% + .25rem))}
-.segmented-option{position:relative;z-index:1;min-height:40px;border:0;background:transparent;border-radius:999px;font-weight:800;font-size:.9rem;color:var(--muted);cursor:pointer;transition:color .2s ease}
-.segmented-option[data-selected="true"]{color:var(--on-primary)}
+.segmented {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+.segmented-thumb {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0.25rem;
+  width: calc(50% - 0.375rem);
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--primary) 70%, transparent);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.segmented[data-active="PICKUP"] .segmented-thumb {
+  transform: translateX(calc(100% + 0.25rem));
+}
+.segmented-option {
+  position: relative;
+  z-index: 1;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.segmented-option[data-selected="true"] {
+  color: var(--on-primary);
+}
 
 /* Quantity stepper reads as one control, not three elements that happen to be adjacent. */
-.qty-pill{display:inline-flex;align-items:center;gap:.15rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:.15rem;overflow:hidden}
-.qty-step{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:999px;background:transparent;color:var(--text);cursor:pointer;transition:background .15s ease,color .15s ease}
-.qty-step:hover:not(:disabled){background:var(--primary-soft);color:var(--primary)}
-.qty-step:disabled{opacity:.35;cursor:not-allowed}
-.qty-value{min-width:26px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
+.qty-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0.15rem;
+  overflow: hidden;
+}
+.qty-step {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.qty-step:hover:not(:disabled) {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.qty-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.qty-value {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
 
-.meter{height:6px;border-radius:999px;background:var(--surface-alt);overflow:hidden}
-.meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),color-mix(in srgb,var(--primary) 60%,#FFB067));transition:width .5s cubic-bezier(.4,0,.2,1)}
+.meter {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--primary),
+    color-mix(in srgb, var(--primary) 60%, #ffb067)
+  );
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-.total-row{font-variant-numeric:tabular-nums}
-.money{font-variant-numeric:tabular-nums}
+.total-row {
+  font-variant-numeric: tabular-nums;
+}
+.money {
+  font-variant-numeric: tabular-nums;
+}
 
 /* Staggered entrance for list rows. Index is set inline as --i. */
-@keyframes rise-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.rise-in{animation:rise-in .42s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i,0) * 55ms)}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise-in {
+  animation: rise-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
 
 /* Field affordance: the icon sits inside the control rather than floating above it. */
-.field-wrap{position:relative}
-.field-wrap>svg{position:absolute;left:.9rem;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);transition:color .18s ease}
-.field-wrap:focus-within>svg{color:var(--primary)}
-.field-wrap input{padding-left:2.6rem}
+.field-wrap {
+  position: relative;
+}
+.field-wrap > svg {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+.field-wrap:focus-within > svg {
+  color: var(--primary);
+}
+.field-wrap input {
+  padding-left: 2.6rem;
+}
 
-.step-pill{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:999px;background:var(--primary);color:var(--on-primary);font-size:.76rem;font-weight:900}
-.step-pill[data-done="true"]{background:var(--success)}
-.step-pill[data-todo="true"]{background:var(--surface-alt);color:var(--muted)}
-
+.step-pill {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+.step-pill[data-done="true"] {
+  background: var(--success);
+}
+.step-pill[data-todo="true"] {
+  background: var(--surface-alt);
+  color: var(--muted);
+}
 
 /* --- Scrollbars ------------------------------------------------------------
    The default Windows scrollbar is a 17px light-grey slab. It reads as chrome
@@ -77,106 +685,462 @@
    scrollbar-gutter reserves the track on the root element whether or not the
    page currently overflows, so navigating from a short page to a tall one no
    longer shifts the whole layout sideways by the scrollbar's width. */
-html{scrollbar-gutter:stable}
+html {
+  scrollbar-gutter: stable;
+}
 
-@media (pointer:fine){
- /* Firefox: two properties, no pseudo-elements. */
- *{scrollbar-width:thin;scrollbar-color:var(--scrollbar-thumb) transparent}
+@media (pointer: fine) {
+  /* Firefox: two properties, no pseudo-elements. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 
- ::-webkit-scrollbar{width:10px;height:10px}
- ::-webkit-scrollbar-track{background:transparent}
- ::-webkit-scrollbar-thumb{
-  background:var(--scrollbar-thumb);
-  border-radius:999px;
-  /* Transparent border + background-clip insets the thumb inside the track,
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+    /* Transparent border + background-clip insets the thumb inside the track,
      so it reads as a floating pill rather than a full-width bar. */
-  border:2px solid transparent;
-  background-clip:padding-box;
-  transition:background-color .18s ease;
- }
- ::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover);background-clip:padding-box}
- ::-webkit-scrollbar-thumb:active{background:var(--primary);background-clip:padding-box}
- ::-webkit-scrollbar-corner{background:transparent}
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.18s ease;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--primary);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 
- /* Horizontal rails carry a slimmer bar: a 10px track under a row of chips
+  /* Horizontal rails carry a slimmer bar: a 10px track under a row of chips
     eats more of the row than it earns. */
- .rail::-webkit-scrollbar,.category-rail::-webkit-scrollbar,.offer-rail::-webkit-scrollbar{height:6px}
- .rail::-webkit-scrollbar-thumb,.category-rail::-webkit-scrollbar-thumb,.offer-rail::-webkit-scrollbar-thumb{border-width:1px}
+  .rail::-webkit-scrollbar,
+  .category-rail::-webkit-scrollbar,
+  .offer-rail::-webkit-scrollbar {
+    height: 6px;
+  }
+  .rail::-webkit-scrollbar-thumb,
+  .category-rail::-webkit-scrollbar-thumb,
+  .offer-rail::-webkit-scrollbar-thumb {
+    border-width: 1px;
+  }
 }
 
 /* Rails scroll horizontally with momentum and snap; `.category-rail` was
    referenced by the menu grid but had never been defined. */
-.rail,.category-rail{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-padding-inline:1rem}
-
+.rail,
+.category-rail {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 1rem;
+}
 
 /* --- Menu controls and badges ---------------------------------------------
    Bestseller/New used to be plain orange text under the dish name, where they
    read as part of the description. On the image they behave like the labels
    they are, and they survive the eye scanning the grid vertically. */
-.dish-badge{border-radius:999px;padding:.2rem .55rem;font-size:.68rem;font-weight:900;letter-spacing:.02em;text-transform:uppercase;backdrop-filter:blur(4px);box-shadow:0 2px 8px rgb(20 23 31 / .18)}
-.dish-badge--hot{background:var(--primary);color:var(--on-primary)}
-.dish-badge--new{background:var(--success);color:#fff}
+.dish-badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgb(20 23 31 / 0.18);
+}
+.dish-badge--hot {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.dish-badge--new {
+  background: var(--success);
+  color: #fff;
+}
 
-.filter-toggle{display:inline-flex;align-items:center;gap:.45rem;min-height:48px;white-space:nowrap;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 1rem;font-weight:700;font-size:.9rem;cursor:pointer;transition:border-color .16s,background .16s,color .16s}
-.filter-toggle:hover{border-color:color-mix(in srgb,var(--success) 50%,var(--border))}
-.filter-toggle[data-on="true"]{border-color:var(--success);background:color-mix(in srgb,var(--success) 12%,var(--surface));color:var(--success)}
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 48px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 1rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    color 0.16s;
+}
+.filter-toggle:hover {
+  border-color: color-mix(in srgb, var(--success) 50%, var(--border));
+}
+.filter-toggle[data-on="true"] {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  color: var(--success);
+}
 
-.sort-select{display:inline-flex;align-items:center;gap:.45rem;min-height:48px;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem 0 1rem}
-.sort-select select{border:0;background:transparent;color:var(--text);font-weight:700;font-size:.9rem;cursor:pointer;padding-right:.25rem}
-.sort-select select:focus-visible{outline:2px solid var(--primary);outline-offset:4px;border-radius:.25rem}
+.sort-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.85rem 0 1rem;
+}
+.sort-select select {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding-right: 0.25rem;
+}
+.sort-select select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+  border-radius: 0.25rem;
+}
 
-.dish-card{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
-.dish-card:hover{border-color:color-mix(in srgb,var(--primary) 30%,var(--border));box-shadow:0 2px 4px rgb(20 23 31 / .05),0 14px 30px -16px rgb(20 23 31 / .28);transform:translateY(-2px)}
-.dark .dish-card:hover{box-shadow:0 2px 4px rgb(0 0 0 / .3),0 14px 30px -16px rgb(0 0 0 / .7)}
+.dish-card {
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+.dish-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  box-shadow:
+    0 2px 4px rgb(20 23 31 / 0.05),
+    0 14px 30px -16px rgb(20 23 31 / 0.28);
+  transform: translateY(-2px);
+}
+.dark .dish-card:hover {
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.3),
+    0 14px 30px -16px rgb(0 0 0 / 0.7);
+}
 
 /* --- Order tracking --------------------------------------------------------
    A horizontal rail reads as progress at a glance; the vertical checklist it
    replaces needed reading top to bottom to answer "where is my food". */
-.track{display:grid;gap:.5rem}
-.track-bar{position:relative;height:4px;border-radius:999px;background:var(--surface-alt)}
-.track-fill{position:absolute;inset-block:0;left:0;border-radius:999px;background:var(--success);transition:width .6s cubic-bezier(.4,0,.2,1)}
-.track-steps{display:grid;gap:.5rem}
-.track-dot{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:2px solid var(--border);background:var(--surface);color:var(--muted);flex-shrink:0}
-.track-dot[data-state="done"]{border-color:var(--success);background:var(--success);color:#fff}
-.track-dot[data-state="current"]{border-color:var(--primary);background:var(--primary);color:var(--on-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 22%,transparent)}
-@keyframes track-pulse{0%,100%{box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 22%,transparent)}50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--primary) 6%,transparent)}}
-.track-dot[data-state="current"]{animation:track-pulse 2.2s ease-in-out infinite}
+.track {
+  display: grid;
+  gap: 0.5rem;
+}
+.track-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+}
+.track-fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: 999px;
+  background: var(--success);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.track-steps {
+  display: grid;
+  gap: 0.5rem;
+}
+.track-dot {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.track-dot[data-state="done"] {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+.track-dot[data-state="current"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+@keyframes track-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--primary) 6%, transparent);
+  }
+}
+.track-dot[data-state="current"] {
+  animation: track-pulse 2.2s ease-in-out infinite;
+}
 
-.status-chip{display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;padding:.3rem .7rem;font-size:.7rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase}
+/* On the list the bar stands alone, without the step names beneath it, so it
+   carries tick marks: a fifth-full bar reads as "1 of 5" instead of "barely
+   started". The ticks are painted by ::after so they sit over the fill. */
+.track-bar--segmented {
+  overflow: hidden;
+}
+.track-bar--segmented:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(20% - 3px),
+    var(--surface) calc(20% - 3px) 20%
+  );
+  pointer-events: none;
+}
+.track-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.track-caption b {
+  color: var(--text);
+  text-transform: capitalize;
+}
 
+/* Vertical connector between step dots on the order page. Without it the
+   steps were five unrelated rows; with it the eye follows one line down. */
+.track-step {
+  position: relative;
+}
+.track-step:not(:last-child):before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 30px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+.track-step[data-state="done"]:not(:last-child):before {
+  background: var(--success);
+}
+.track-step[data-state="todo"] .track-label {
+  color: var(--muted);
+}
+.track-label {
+  display: block;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.track-blurb {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.track-step[data-state="current"] .track-blurb {
+  color: var(--text);
+}
+.track-step[data-state="todo"] {
+  opacity: 0.7;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.status-chip:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
 
 /* --- Branch picker ---------------------------------------------------------
    Replaces a native <select>. Which branch you order from sets the fee, the
    wait and whether the kitchen is open, so the menu shows all three. */
-.branch-trigger{display:flex;align-items:center;gap:.55rem;min-height:44px;max-width:15rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);padding:0 .85rem;font-size:.875rem;font-weight:700;cursor:pointer;transition:border-color .16s,box-shadow .16s}
-.branch-trigger:hover{border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
-.branch-trigger[data-state="open"]{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent)}
-.branch-trigger:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.branch-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 44px;
+  max-width: 15rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    box-shadow 0.16s;
+}
+.branch-trigger:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.branch-trigger[data-state="open"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.branch-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
-.branch-option{display:flex;align-items:flex-start;gap:.75rem;border-radius:calc(var(--radius) + 2px);padding:.65rem .7rem;cursor:pointer}
-.branch-option[data-selected="true"]{background:var(--primary-soft)}
+.branch-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: calc(var(--radius) + 2px);
+  padding: 0.65rem 0.7rem;
+  cursor: pointer;
+}
+.branch-option[data-selected="true"] {
+  background: var(--primary-soft);
+}
 
-.branch-pill{flex-shrink:0;border-radius:999px;padding:.1rem .45rem;font-size:.62rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase}
-.branch-pill--open{background:color-mix(in srgb,var(--success) 16%,var(--surface));color:var(--success)}
-.branch-pill--shut{background:color-mix(in srgb,var(--danger) 14%,var(--surface));color:var(--danger)}
-.branch-closed-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:var(--danger)}
-
+.branch-pill {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.branch-pill--open {
+  background: color-mix(in srgb, var(--success) 16%, var(--surface));
+  color: var(--success);
+}
+.branch-pill--shut {
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+  color: var(--danger);
+}
+.branch-closed-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
 
 /* Size and add-on rows on the dish page. They used to be bare bordered boxes
    with a tick that appeared beside the label, so the selected state was easy
    to miss; the control now carries the state itself. */
-.option-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;width:100%;min-height:52px;border:1px solid var(--border);border-radius:calc(var(--radius) + 2px);background:var(--surface);padding:0 1rem;text-align:left;cursor:pointer;transition:border-color .16s,background .16s}
-.option-row:hover{border-color:color-mix(in srgb,var(--primary) 40%,var(--border))}
-.option-row[data-on="true"]{border-color:var(--primary);background:var(--primary-soft)}
-.option-dot{display:grid;place-items:center;width:18px;height:18px;flex-shrink:0;border:2px solid var(--border);border-radius:50%;color:var(--on-primary);transition:border-color .16s,background .16s}
-.option-row[data-on="true"] .option-dot{border-color:var(--primary);background:var(--primary)}
-
+.option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface);
+  padding: 0 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.option-row:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+.option-row[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.option-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  color: var(--on-primary);
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.option-row[data-on="true"] .option-dot {
+  border-color: var(--primary);
+  background: var(--primary);
+}
 
 /* Payment method rows. Disabled is styled rather than merely dimmed, because a
    greyed-out control with no explanation reads as a broken app. */
-.pay-option{display:flex;align-items:center;gap:.85rem;width:100%;border:2px solid var(--border);border-radius:calc(var(--radius) + 4px);background:var(--surface);padding:1rem;text-align:left;cursor:pointer;transition:border-color .16s,background .16s}
-.pay-option:hover:not(:disabled){border-color:color-mix(in srgb,var(--primary) 45%,var(--border))}
-.pay-option[data-on="true"]{border-color:var(--primary);background:var(--primary-soft)}
-.pay-option:disabled{cursor:not-allowed;opacity:.6;background:var(--surface-alt)}
+.pay-option {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  border: 2px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--surface);
+  padding: 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.pay-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.pay-option[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.pay-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: var(--surface-alt);
+}
 
-@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *:before,
+  *:after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DishCard } from "@/components/bangkok/dish-card";
+import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
 import { ApiError, streamChatMessage, type ChatSuggestion } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
@@ -16,7 +17,10 @@ export const Route = createFileRoute("/concierge")({
   head: () => ({
     meta: [
       { title: "Food Concierge — Bangkok Bowl" },
-      { name: "description", content: "Tell our AI food concierge your mood and get Bangkok Bowl dish picks." },
+      {
+        name: "description",
+        content: "Tell our AI food concierge your mood and get Bangkok Bowl dish picks.",
+      },
       { property: "og:title", content: "Food Concierge — Bangkok Bowl" },
       { property: "og:type", content: "website" },
     ],
@@ -49,7 +53,11 @@ function suggestionToMenuItem(s: ChatSuggestion): MenuItem {
   };
 }
 
-const STARTERS = ["Something spicy and vegetarian", "A light lunch under $15", "Comfort food for a rainy day"];
+const STARTERS = [
+  "Something spicy and vegetarian",
+  "A light lunch under $15",
+  "Comfort food for a rainy day",
+];
 
 type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 
@@ -133,7 +141,11 @@ function ConciergePage() {
       );
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof ApiError ? err.message : "The concierge is unavailable right now. Please try again.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "The concierge is unavailable right now. Please try again.",
+      );
       setStatus("error");
     }
   }
@@ -151,41 +163,75 @@ function ConciergePage() {
       {!hasResult ? (
         <>
           <section className="relative min-h-[38svh] overflow-hidden">
-            <img src={heroImage} alt="Mango sticky rice at Bangkok Bowl" className="absolute inset-0 size-full object-cover" />
+            <img
+              src={heroImage}
+              alt="Mango sticky rice at Bangkok Bowl"
+              className="absolute inset-0 size-full object-cover"
+            />
             <div className="hero-overlay absolute inset-0" />
-            <div className="page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24 text-primary-foreground">
+            <div className="hero-copy page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24 text-primary-foreground">
               <Sparkles className="mb-4 size-10" />
-              <h1 className="font-display text-5xl font-black leading-[.98] sm:text-6xl">Ask the food concierge</h1>
-              <p className="mt-4 max-w-xl text-lg font-medium">Describe what you're craving and get real picks from the Bangkok Bowl menu.</p>
+              <h1 className="font-display text-5xl font-black leading-[.98] sm:text-6xl">
+                Ask the food concierge
+              </h1>
+              <p className="mt-4 max-w-xl text-lg font-medium">
+                Describe what you're craving and get real picks from the Bangkok Bowl menu.
+              </p>
             </div>
           </section>
           <div className="page-pad mx-auto max-w-5xl py-10">
             <div className="mb-8 flex flex-wrap gap-2">
-              {STARTERS.map((s) => (
-                <button key={s} onClick={() => sendQuery(s)} className="category-pill">
+              {STARTERS.map((s, i) => (
+                <button
+                  key={s}
+                  onClick={() => sendQuery(s)}
+                  className="category-pill rise-in"
+                  style={{ "--i": i } as React.CSSProperties}
+                >
                   {s}
                 </button>
               ))}
             </div>
-            <div className="surface-panel flex items-start gap-3 p-5">
+            <div
+              className="concierge-welcome elevated-panel rise-in p-5"
+              style={{ "--i": 3 } as React.CSSProperties}
+            >
               <span className="brand-mark shrink-0">BB</span>
-              <p className="pt-2 text-lg">Tell me your mood—spicy, comforting, light—and I'll point you to a bowl.</p>
+              <p className="pt-2 text-lg leading-relaxed">
+                Tell me your mood—spicy, comforting, light—and I'll point you to a bowl.
+              </p>
             </div>
           </div>
         </>
       ) : (
         <div className="page-pad mx-auto max-w-5xl py-10">
-          <button onClick={() => setStatus("idle")} className="mb-6 inline-flex items-center gap-1 text-sm font-bold text-muted hover:text-foreground">
+          <button onClick={() => setStatus("idle")} className="back-link mb-4">
             <ArrowLeft className="size-4" /> Ask something else
           </button>
 
-          <h1 className="font-display text-3xl font-black sm:text-4xl">Here's what we found for you</h1>
+          <h1 className="font-display text-3xl font-black sm:text-4xl">
+            Here's what we found for you
+          </h1>
 
-          {reply && <p className="mt-4 max-w-3xl text-lg text-muted">{stripMarkdown(reply)}{status === "streaming" && <span className="animate-pulse">▍</span>}</p>}
-          {status === "waiting" && <p className="mt-4 text-lg text-muted">Finding dishes for you…</p>}
+          {reply && (
+            <p className="concierge-reply mt-4 max-w-3xl text-lg text-muted" aria-live="polite">
+              {stripMarkdown(reply)}
+              {status === "streaming" && <span className="stream-caret" aria-hidden="true" />}
+            </p>
+          )}
+          {status === "waiting" && (
+            <p className="typing mt-4 text-lg" role="status">
+              <span className="typing-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              Finding dishes for you…
+            </p>
+          )}
 
           {error && (
-            <div className="mt-4 flex items-start gap-2 rounded-md border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger">
+            <div className="inline-error form-error mt-4" role="alert">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -194,14 +240,16 @@ function ConciergePage() {
           {status === "waiting" && suggestions.length === 0 ? (
             <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="dish-placeholder placeholder-a aspect-[4/3] animate-pulse rounded-lg" />
+                <DishSkeleton key={i} />
               ))}
             </div>
           ) : (
             suggestions.length > 0 && (
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {suggestions.map((s) => (
-                  <DishCard key={s.id} item={suggestionToMenuItem(s)} />
+              <div className="menu-grid mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {suggestions.map((s, i) => (
+                  <div className="rise-in" style={{ "--i": i } as React.CSSProperties} key={s.id}>
+                    <DishCard item={suggestionToMenuItem(s)} />
+                  </div>
                 ))}
               </div>
             )
@@ -209,15 +257,28 @@ function ConciergePage() {
 
           {suggestions.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button variant="outline" disabled={busy} onClick={() => sendQuery("Show me more")}>Show me more</Button>
-              <Button variant="outline" disabled={busy} onClick={() => sendQuery("Something cheaper")}>Something cheaper</Button>
-              <Button variant="ghost" asChild><Link to="/menu">Back to menu</Link></Button>
+              <Button variant="outline" disabled={busy} onClick={() => sendQuery("Show me more")}>
+                Show me more
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => sendQuery("Something cheaper")}
+              >
+                Something cheaper
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link to="/menu">Back to menu</Link>
+              </Button>
             </div>
           )}
         </div>
       )}
 
-      <form className="fixed inset-x-0 bottom-[58px] z-30 border-t border-border bg-surface p-3 lg:bottom-0" onSubmit={handleSubmit}>
+      <form
+        className="composer fixed inset-x-0 bottom-[58px] z-30 border-t border-border p-3 lg:bottom-0"
+        onSubmit={handleSubmit}
+      >
         <div className="mx-auto flex max-w-5xl gap-2 px-4 sm:px-6 lg:px-10">
           <Input
             value={draft}
@@ -225,7 +286,13 @@ function ConciergePage() {
             placeholder={hasResult ? "Refine your craving…" : "Something spicy and vegetarian…"}
             className="h-12 flex-1"
           />
-          <Button type="submit" size="icon" className="size-12" disabled={busy || !draft.trim()} aria-label="Send message">
+          <Button
+            type="submit"
+            size="icon"
+            className="size-12"
+            disabled={busy || !draft.trim()}
+            aria-label="Send message"
+          >
             <Send />
           </Button>
         </div>

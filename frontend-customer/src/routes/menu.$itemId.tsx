@@ -95,10 +95,18 @@ function DishPage() {
 
   if (itemQuery.isLoading) {
     return (
-      <div className="page-pad mx-auto max-w-7xl py-10">
+      <div className="page-pad mx-auto max-w-7xl py-10" aria-busy="true">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="dish-placeholder placeholder-a aspect-[16/10] animate-pulse rounded-2xl" />
-          <div className="dish-placeholder placeholder-b h-64 animate-pulse rounded-2xl" />
+          <div className="skeleton aspect-[16/10] !rounded-2xl" />
+          <div className="elevated-panel skeleton-panel p-5 sm:p-6">
+            <div className="skeleton skeleton-line skeleton-line--meta" />
+            <div className="skeleton h-9 w-4/5" />
+            <div className="skeleton skeleton-line" />
+            <div className="skeleton skeleton-line skeleton-line--short" />
+            <div className="skeleton mt-4 h-12" />
+            <div className="skeleton h-12" />
+            <div className="skeleton mt-4 h-12" />
+          </div>
         </div>
       </div>
     );
@@ -106,7 +114,7 @@ function DishPage() {
 
   if (itemQuery.isError || !item) {
     return (
-      <div className="page-pad mx-auto max-w-xl py-24 text-center">
+      <div className="state-panel page-pad mx-auto max-w-xl py-24 text-center">
         <h1 className="font-display text-3xl font-black">We couldn't find that dish</h1>
         <p className="mt-3 text-muted">It may have been taken off the menu.</p>
         <Button className="mt-7 h-12 px-6" asChild>
@@ -119,15 +127,12 @@ function DishPage() {
   return (
     <div className="pb-24">
       <div className="page-pad mx-auto max-w-7xl pt-6">
-        <Link
-          to="/menu"
-          className="inline-flex items-center gap-1.5 text-sm font-bold text-muted hover:text-foreground"
-        >
+        <Link to="/menu" className="back-link">
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
 
         <div className="mt-5 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="relative overflow-hidden rounded-2xl">
+          <div className="dish-hero relative overflow-hidden rounded-2xl">
             <DishImage src={item.image_url} name={item.name} className="aspect-[16/10]" priority />
             {(item.is_bestseller || item.is_new) && (
               <div className="absolute left-3 top-3 flex gap-1.5">
@@ -175,7 +180,7 @@ function DishPage() {
               </p>
             )}
 
-            <p className="mt-4 text-muted">{item.description}</p>
+            <p className="mt-4 leading-relaxed text-muted">{item.description}</p>
 
             {item.has_sizes && (
               <div className="mt-6">
@@ -265,7 +270,7 @@ function DishPage() {
               </div>
               <div className="text-right">
                 <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
-                <p className="money font-display text-3xl font-black leading-tight">
+                <p className="money total-figure font-display text-3xl font-black leading-tight">
                   {formatMoney(total)}
                 </p>
               </div>
@@ -276,8 +281,8 @@ function DishPage() {
                 beats refusing the dish, which is what made a concierge
                 suggestion feel like a dead end. */}
             {conflicts ? (
-              <div className="mt-5 rounded-xl border border-border bg-surface-alt p-4">
-                <p className="text-sm font-semibold">
+              <div className="added-note mt-5 rounded-xl border border-border bg-surface-alt p-4">
+                <p className="text-sm font-semibold leading-relaxed">
                   Your cart already has items from{" "}
                   {store.cartRestaurantName ?? "another restaurant"}. One order can only come from
                   one kitchen.
@@ -291,7 +296,7 @@ function DishPage() {
                 </Button>
               </div>
             ) : added ? (
-              <div className="mt-5 grid gap-2">
+              <div className="added-note mt-5 grid gap-2">
                 <p className="flex items-center justify-center gap-2 text-sm font-bold text-success">
                   <Check className="size-4" strokeWidth={3} /> Added to your cart
                 </p>
@@ -322,9 +327,11 @@ function DishPage() {
       {related.length > 0 && (
         <section className="page-pad section-pad mx-auto max-w-7xl">
           <h2 className="mb-6 font-display text-3xl font-black">Goes well with this</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {related.map((i) => (
-              <DishCard item={i} key={i.id} />
+          <div className="menu-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((dish, i) => (
+              <div className="rise-in" style={{ "--i": i } as React.CSSProperties} key={dish.id}>
+                <DishCard item={dish} />
+              </div>
             ))}
           </div>
         </section>

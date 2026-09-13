@@ -28,6 +28,60 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-13 (5) — Guest access, CAD, card-only Stripe, and a long UI pass
+
+**Goal:** everything the user hit while clicking through the app as a customer.
+
+**The bugs worth remembering, because each hid behind something that looked fine:**
+
+- The login redirect loop (`?redirect=%2Flogin%3Fredirect%3D…` to 4,000 chars)
+  came from six copies of the same guard listing the current href in their
+  effect dependencies. The guard's own navigate() changed the href, re-fired the
+  effect, and re-encoded the URL it had just produced. One hook now reads the
+  href through a ref at fire time.
+- Clicking a concierge suggestion from another restaurant 400'd at checkout
+  ("menu items were not found for this restaurant"). Cart scope is restaurant +
+  location and that rule is right; nothing carried the line's own restaurant.
+- `available_payment_methods()` returned COD unconditionally, so with no Stripe
+  keys an order still completed and went straight to PLACED. Nobody was ever
+  charged. That is what "place order skips payment" actually was.
+- `/payments/config` requires a token; the client called it without one. The 401
+  failed the query, checkout concluded card was off, and every order was refused
+  while Stripe was configured and working.
+- "rice" returned Pad Thai because the keyword SQL ORs name, category AND
+  description with equal weight, then ranks by popularity — a dish whose
+  description mentions rice outranked a dish that is rice.
+- "Do you have any customize item in Menu?" was read as a search for a dish
+  named "customize". Capability questions are answered from the schema now.
+- Fuzzy search only started working after realising the trigram matches were
+  being filtered against the same misspelled name they were correcting.
+
+**Changed:** `rag.py` (relevance, capability tier, fuzzy), payments registry +
+settings + orders (card-only), `frontend-customer` cart/checkout/menu/orders/
+dish pages, branch picker, scrollbars, currency to CAD everywhere. Migrations
+0053-0056.
+
+**Verified:** a real Stripe test card (4242) paid CAD 48.91, Stripe reported
+`succeeded`, a forged webhook signature was refused 400, the correctly signed
+event moved the order to PLACED/PAID, and a redelivery was ignored as duplicate.
+Backend 937/939 throughout.
+
+**Open:**
+- Webhooks need `stripe listen` locally; the Stripe CLI is not installed here,
+  so the last leg was proven with a self-signed event.
+- "do you deliver to X" and "what are your timings" still answer poorly — there
+  is no opening-hours or delivery-radius data to answer from.
+- Still no frontend tests. `docker-compose.yml` still builds a deleted
+  Dockerfile.
+
+**Learned:**
+- Measure before changing a heuristic. Both RAG guard rewrites this session were
+  justified by counts (42% false refusals; 16/20 typos), and both times the
+  count contradicted the intuition.
+- Two sources of truth for the same fact will drift: `cash_on_delivery_enabled`
+  was true on all 18 locations while the business took no cash, because nothing
+  outside the serializer read it.
+
 ## 2026-09-13 (4) — Ollama, the Lovable UI, discovery, and locking the concierge down
 
 **Goal:** real LLM answers instead of templates; replace `frontend-customer`

@@ -1,0 +1,629 @@
+/* --- Polish layer -----------------------------------------------------------
+   Motion, state and rhythm touch-ups shared across the customer app. Loaded
+   after styles.css so equal-specificity rules here win; every colour is a
+   token so light and dark both hold, and the global reduced-motion block in
+   styles.css already collapses every animation and transition declared here.
+
+   One easing and two durations, so a hover on a chip and a card lifting feel
+   like the same hand. The ease-out curve lands quickly and settles without
+   bounce, which is what "fast but smooth" reads as. */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.16s;
+  --dur: 0.24s;
+}
+
+/* --- Page entry ------------------------------------------------------------
+   Route components mount as the direct child of <main>, so a fade on that
+   child runs once per navigation with no router hook and no remount key.
+   Opacity only: a transform here would turn <main>'s child into the containing
+   block for the concierge's fixed composer and make it jump mid-animation. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+main > * {
+  animation: page-in var(--dur) ease-out both;
+}
+
+/* --- Header ----------------------------------------------------------------
+   The header is sticky and starts flush with the page; a shadow only appears
+   once content is scrolling beneath it. Scroll-driven animation does this in
+   CSS with no scroll listener, and browsers without it simply keep the flat
+   border, which is fine. */
+.site-header {
+  transition: box-shadow var(--dur) ease;
+}
+.brand-name {
+  white-space: nowrap;
+}
+/* Below sm the picker has its own row under the header, but the trigger's
+   unlayered display:flex outranked Tailwind's layered `hidden`, so phones got
+   it twice and the brand name wrapped to make room. */
+@media (max-width: 639.98px) {
+  .site-header .branch-trigger {
+    display: none;
+  }
+}
+@supports (animation-timeline: scroll()) {
+  @keyframes header-shadow {
+    from {
+      box-shadow: 0 1px 0 transparent;
+    }
+    to {
+      box-shadow:
+        0 1px 0 var(--border),
+        0 8px 24px -16px var(--overlay);
+    }
+  }
+  .site-header {
+    animation: header-shadow linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 80px;
+  }
+}
+
+/* Desktop nav: the current section gets a short primary bar under the label.
+   TanStack Link stamps data-status="active" on the matching route. */
+.nav-link {
+  position: relative;
+  font-weight: 700;
+  color: var(--muted);
+  transition:
+    color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+.nav-link:hover {
+  color: var(--text);
+}
+.nav-link:after {
+  content: "";
+  position: absolute;
+  left: 0.85rem;
+  right: 0.85rem;
+  bottom: 0.35rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform var(--dur) var(--ease-out);
+}
+.nav-link[data-status="active"] {
+  color: var(--text);
+}
+.nav-link[data-status="active"]:after {
+  transform: scaleX(1);
+}
+
+/* Theme toggle: the icon that replaces the other one spins in, so the switch
+   reads as a turn of a dial rather than a swap of glyphs. */
+@keyframes icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-40deg) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.theme-toggle svg {
+  animation: icon-in var(--dur) var(--ease-out) both;
+}
+
+/* The count badge re-mounts (keyed on the count) so this pop runs on change. */
+@keyframes badge-pop {
+  0% {
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.cart-count {
+  animation: badge-pop 0.32s var(--ease-out) both;
+}
+
+/* Mobile bottom nav: an icon over the label, primary when current, and room
+   for the home indicator on phones that have one. */
+.mobile-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  transition: color var(--dur-fast) ease;
+}
+.mobile-nav svg {
+  width: 20px;
+  height: 20px;
+  transition: transform var(--dur) var(--ease-out);
+}
+.mobile-nav[data-status="active"] {
+  color: var(--primary);
+}
+.mobile-nav[data-status="active"] svg {
+  transform: translateY(-1px);
+}
+.mobile-nav-bar {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* --- Press and focus -------------------------------------------------------
+   Every button gives a little under the pointer. The compound controls and
+   chips declare their own transition lists in styles.css, which would drop
+   transform; this selector outranks every single-class rule, so it is a superset of the
+   properties those rules transition; nothing loses its hover animation. */
+button:not(:disabled) {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    opacity var(--dur-fast) ease;
+}
+button:not(:disabled):active,
+.craving-chip:active,
+.offer-card:active {
+  transform: scale(0.97);
+}
+.qty-step:active {
+  transform: scale(0.9);
+}
+.category-pill:not(.active):hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--primary-soft);
+}
+
+/* Keyboard focus. The shadcn primitives ship a 1px ring that disappears on a
+   primary button; a two-ring halo survives every background. Written at a
+   specificity above the Tailwind utilities so it actually applies. */
+:is(button, a).inline-flex:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--primary);
+}
+input.flex:focus-visible,
+textarea.flex:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.category-pill:focus-visible,
+.craving-chip:focus-visible,
+.filter-toggle:focus-visible,
+.option-row:focus-visible,
+.pay-option:focus-visible,
+.mobile-nav:focus-visible,
+.offer-card:focus-visible,
+.dish-card a:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.dish-card a:focus-visible {
+  border-radius: 0.5rem;
+}
+
+/* --- Typography rhythm -----------------------------------------------------
+   Section eyebrows were 16px bold caps typed by hand, so they weighed as much
+   as the heading beneath. Small, tracked and lighter reads as a label. */
+.eyebrow {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.eyebrow--inherit {
+  color: inherit;
+  opacity: 0.9;
+}
+.eyebrow--muted {
+  color: var(--muted);
+}
+
+/* --- Hero ------------------------------------------------------------------
+   Copy rises in once on load, one line after another. The image stays put:
+   a slow zoom on a photo this large reads as a screensaver. */
+.hero-copy > * {
+  animation: rise-in 0.55s var(--ease-out) both;
+}
+.hero-copy > :nth-child(1) {
+  animation-delay: 60ms;
+}
+.hero-copy > :nth-child(2) {
+  animation-delay: 140ms;
+}
+.hero-copy > :nth-child(3) {
+  animation-delay: 220ms;
+}
+.hero-copy > :nth-child(4) {
+  animation-delay: 300ms;
+}
+.hero-copy > :nth-child(5) {
+  animation-delay: 380ms;
+}
+.hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.18);
+}
+
+/* --- Skeletons -------------------------------------------------------------
+   A single pulsing tinted rectangle told you something was loading but not
+   what. These are shaped like the card they stand in for — image, meta line,
+   title, description, price row — so the swap to real content is a crossfade
+   rather than a relayout. The sheen is the text colour at low alpha over the
+   alt surface, which works in both themes without a second palette. */
+@keyframes sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--surface-alt);
+}
+.skeleton:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: sheen 1.6s linear infinite;
+}
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+.skeleton-card .skeleton {
+  border-radius: 999px;
+}
+.skeleton-card .skeleton-img {
+  aspect-ratio: 16/10;
+  border-radius: 0;
+}
+.skeleton-card .skeleton-body {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+}
+.skeleton-line {
+  height: 0.8rem;
+}
+.skeleton-line--title {
+  height: 1.15rem;
+  width: 70%;
+}
+.skeleton-line--meta {
+  height: 0.7rem;
+  width: 35%;
+}
+.skeleton-line--short {
+  width: 55%;
+}
+.skeleton-card .skeleton-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+.skeleton-card .skeleton-price {
+  height: 1rem;
+  width: 3.5rem;
+}
+.skeleton-card .skeleton-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 0.5rem;
+}
+.skeleton-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* --- Cards -----------------------------------------------------------------
+   The grid wraps each card in a .rise-in div for the stagger; a block wrapper
+   left short cards sat above their row-mates' bottoms. Grid stretches them. */
+.menu-grid > .rise-in {
+  display: grid;
+}
+.dish-card {
+  border-radius: 0.75rem;
+}
+.dish-card .dish-title {
+  transition: color var(--dur-fast) ease;
+}
+.dish-card img {
+  background: var(--surface-alt);
+}
+/* The stepper replaces the + button the moment a dish is added; a soft pop
+   confirms the add without a toast. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dish-card .qty-pill {
+  animation: pop-in var(--dur) var(--ease-out) both;
+}
+.dish-card .qty-value {
+  min-width: 28px;
+}
+
+.offer-card {
+  border-radius: 0.75rem;
+}
+.offer-card:hover {
+  box-shadow:
+    0 2px 4px rgb(20 23 31 / 0.05),
+    0 14px 30px -16px rgb(20 23 31 / 0.28);
+}
+.dark .offer-card:hover {
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.3),
+    0 14px 30px -16px rgb(0 0 0 / 0.7);
+}
+.offer-card .offer-cta svg {
+  transition: transform var(--dur) var(--ease-out);
+}
+.offer-card:hover .offer-cta svg {
+  transform: translateX(3px);
+}
+.offer-rail {
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: clamp(1rem, 3vw, 3rem);
+  margin-inline: calc(-1 * clamp(1rem, 3vw, 3rem));
+  padding-inline: clamp(1rem, 3vw, 3rem);
+}
+.offer-rail > * {
+  scroll-snap-align: start;
+}
+
+/* --- Dish page -------------------------------------------------------------
+   The photo sits on a hairline ring and a soft drop so it reads as a plate on
+   the table rather than a rectangle pasted on the page. */
+.dish-hero {
+  border-radius: 1rem;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 20px 50px -30px var(--overlay);
+  background: var(--surface-alt);
+}
+.option-row:active {
+  transform: scale(0.99);
+}
+.option-dot svg {
+  animation: pop-in var(--dur-fast) var(--ease-out) both;
+}
+.total-figure {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.added-note {
+  animation: rise-in 0.35s var(--ease-out) both;
+}
+
+/* --- Concierge -------------------------------------------------------------
+   The composer floats over the page, so the page must show through its edge
+   or the bar reads as the end of the content. */
+.composer {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -8px 24px -16px var(--overlay);
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+.concierge-reply {
+  animation: rise-in 0.4s var(--ease-out) both;
+  line-height: 1.6;
+}
+/* A streaming reply ends in a caret that blinks like a cursor, not a pulse
+   that fades the whole glyph in and out. */
+@keyframes caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--primary);
+  animation: caret-blink 0.9s steps(1) infinite;
+}
+/* Three dots that lift in turn: the same "thinking" signal every chat app
+   uses, so nobody has to read "Finding dishes…" to know to wait. */
+@keyframes dot-lift {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.typing-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.typing-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: dot-lift 1.1s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.concierge-welcome {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.concierge-welcome .brand-mark {
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+
+/* --- Forms -----------------------------------------------------------------
+   Inline errors slide in rather than appear; a form that jumps feels broken
+   even when it is telling you exactly what is wrong. */
+.form-error {
+  animation: rise-in 0.3s var(--ease-out) both;
+}
+.auth-card {
+  animation: rise-in 0.5s var(--ease-out) both;
+  animation-delay: 80ms;
+}
+.auth-heading {
+  animation: rise-in 0.5s var(--ease-out) both;
+}
+.auth-sub {
+  animation: rise-in 0.5s var(--ease-out) both;
+  animation-delay: 40ms;
+}
+.auth-foot {
+  animation: rise-in 0.5s var(--ease-out) both;
+  animation-delay: 140ms;
+}
+.auth-link {
+  position: relative;
+  font-weight: 800;
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) ease;
+}
+.auth-link:hover {
+  text-decoration-color: currentColor;
+}
+.auth-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.pw-toggle {
+  border-radius: 0 0.375rem 0.375rem 0;
+  transition:
+    color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+.pw-toggle:hover {
+  background: var(--surface-alt);
+}
+
+/* --- Branch picker ---------------------------------------------------------
+   Keyboard highlight was invisible; the selected row and the highlighted row
+   now differ, so arrowing through the list is visible. */
+.branch-option {
+  transition: background-color var(--dur-fast) ease;
+}
+.branch-option[data-highlighted]:not([data-selected="true"]) {
+  background: var(--surface-alt);
+}
+.branch-option[data-selected="true"][data-highlighted] {
+  background: color-mix(in srgb, var(--primary) 20%, var(--surface));
+}
+
+/* --- Empty and error states ------------------------------------------------ */
+.state-panel {
+  animation: rise-in 0.4s var(--ease-out) both;
+}
+.inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* --- Menu page -------------------------------------------------------------
+   The search field is the first control on the page; it gets the same focus
+   treatment as the rest, and the results count re-fades when it changes so
+   filtering feels responsive even when the grid barely moves. */
+.result-count {
+  animation: page-in var(--dur) ease both;
+}
+.clear-filters {
+  font-weight: 700;
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) ease;
+}
+.clear-filters:hover {
+  text-decoration-color: currentColor;
+}
+.clear-filters:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}

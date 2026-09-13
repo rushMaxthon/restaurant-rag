@@ -24,6 +24,29 @@ function compare(sort: Sort, a: MenuItem, b: MenuItem): number {
   return Number(b.rating ?? 0) - Number(a.rating ?? 0);
 }
 
+/**
+ * Placeholder shaped like a DishCard — image, meta line, title, two lines of
+ * description, price and button — so the swap to real content is a crossfade
+ * rather than a jump from a tinted rectangle to a card twice its height.
+ */
+export function DishSkeleton() {
+  return (
+    <div className="skeleton-card" aria-hidden="true">
+      <div className="skeleton skeleton-img" />
+      <div className="skeleton-body">
+        <div className="skeleton skeleton-line skeleton-line--meta" />
+        <div className="skeleton skeleton-line skeleton-line--title" />
+        <div className="skeleton skeleton-line" />
+        <div className="skeleton skeleton-line skeleton-line--short" />
+        <div className="skeleton-row">
+          <div className="skeleton skeleton-price" />
+          <div className="skeleton skeleton-btn" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MenuGrid({ limit }: { limit?: number }) {
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
@@ -126,16 +149,12 @@ export function MenuGrid({ limit }: { limit?: number }) {
 
       {!loading && !menuQuery.isError && (
         <div className="mb-5 mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-semibold text-muted">
+          <p className="result-count text-sm font-semibold text-muted" key={shown.length}>
             {shown.length} {shown.length === 1 ? "dish" : "dishes"}
             {category !== "All" && ` in ${category}`}
           </p>
           {filtered && (
-            <button
-              type="button"
-              onClick={reset}
-              className="text-sm font-bold text-primary hover:underline"
-            >
+            <button type="button" onClick={reset} className="clear-filters text-sm">
               Clear filters
             </button>
           )}
@@ -145,18 +164,18 @@ export function MenuGrid({ limit }: { limit?: number }) {
       {loading && (
         <div className="menu-grid mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: limit ?? 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="dish-placeholder placeholder-a aspect-[16/10] animate-pulse rounded-xl"
-            />
+            <DishSkeleton key={i} />
           ))}
         </div>
       )}
 
       {!loading && menuQuery.isError && (
-        <p className="py-16 text-center text-muted">
-          We couldn't load the menu right now. Please try again shortly.
-        </p>
+        <div className="state-panel elevated-panel px-6 py-16 text-center">
+          <h3 className="font-display text-xl font-black">The menu didn't load</h3>
+          <p className="mx-auto mt-2 max-w-sm text-muted">
+            We couldn't load the menu right now. Please try again shortly.
+          </p>
+        </div>
       )}
 
       {!loading && !menuQuery.isError && shown.length > 0 && (
@@ -174,17 +193,13 @@ export function MenuGrid({ limit }: { limit?: number }) {
       )}
 
       {!loading && !menuQuery.isError && shown.length === 0 && (
-        <div className="elevated-panel px-6 py-20 text-center">
+        <div className="state-panel elevated-panel px-6 py-20 text-center">
           <h3 className="font-display text-2xl font-black">Nothing matches that</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
             Try a different word, or clear the filters to see the whole menu.
           </p>
           {filtered && (
-            <button
-              type="button"
-              onClick={reset}
-              className="mt-5 font-bold text-primary hover:underline"
-            >
+            <button type="button" onClick={reset} className="clear-filters mt-5">
               Clear filters
             </button>
           )}

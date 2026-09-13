@@ -51,20 +51,24 @@ function CartPage() {
   if (!s.cart.length) {
     return (
       <div className="page-pad mx-auto max-w-3xl pb-28 pt-16">
-        <div className="elevated-panel px-6 py-20 text-center">
-          <div className="mx-auto grid size-20 place-items-center rounded-full bg-primary-soft">
-            <ShoppingBag className="size-9 text-primary" />
+        <div className="elevated-panel empty-state">
+          <div className="empty-state-icon">
+            <ShoppingBag className="size-9" />
           </div>
-          <h1 className="mt-6 font-display text-3xl font-black sm:text-4xl">Your bowl is empty</h1>
+          <h1 className="mt-8 font-display text-3xl font-black tracking-tight sm:text-4xl">
+            Your bowl is empty
+          </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
             Add a curry, a bowl of noodles or a snack to get started — or let the concierge pick for
             you.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Button className="h-12 px-6" asChild>
-              <Link to="/menu">Browse the menu</Link>
+            <Button className="h-12 px-6 text-base font-bold" asChild>
+              <Link to="/menu">
+                Browse the menu <ArrowRight className="size-4" />
+              </Link>
             </Button>
-            <Button variant="outline" className="h-12 px-6" asChild>
+            <Button variant="outline" className="h-12 px-6 text-base font-bold" asChild>
               <Link to="/concierge">Ask the concierge</Link>
             </Button>
           </div>
@@ -75,9 +79,9 @@ function CartPage() {
 
   return (
     <div className="page-pad mx-auto max-w-7xl pb-32 pt-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-black sm:text-5xl">Your cart</h1>
+          <h1 className="font-display text-4xl font-black tracking-tight sm:text-5xl">Your cart</h1>
           <p className="mt-2 text-muted">
             {s.totalItems} {s.totalItems === 1 ? "item" : "items"} from{" "}
             <span className="font-semibold text-foreground">
@@ -87,9 +91,12 @@ function CartPage() {
             </span>
           </p>
         </div>
-        <Link to="/menu" className="text-sm font-bold text-primary hover:underline">
-          + Add more items
-        </Link>
+        <Button variant="outline" className="font-bold" asChild>
+          <Link to="/menu">
+            <Plus className="size-4" />
+            Add more items
+          </Link>
+        </Button>
       </header>
 
       <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
@@ -103,36 +110,29 @@ function CartPage() {
               <DishImage
                 src={line.image_url}
                 name={line.name}
-                className="aspect-square rounded-xl"
+                className="aspect-square rounded-xl text-xl ring-1 ring-border sm:text-2xl"
               />
               <div className="flex min-w-0 flex-col justify-between gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="truncate font-display text-lg font-bold leading-tight">
+                    <h2 className="truncate font-display text-lg font-bold leading-tight tracking-tight">
                       {line.name}
                     </h2>
                     {(line.sizeName || line.addOnNames.length > 0) && (
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {line.sizeName && (
-                          <span className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-semibold text-muted">
-                            {line.sizeName}
-                          </span>
-                        )}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {line.sizeName && <span className="tag-chip">{line.sizeName}</span>}
                         {line.addOnNames.map((name) => (
-                          <span
-                            className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-semibold text-muted"
-                            key={name}
-                          >
+                          <span className="tag-chip" key={name}>
                             + {name}
                           </span>
                         ))}
                       </div>
                     )}
-                    <p className="money mt-1.5 text-sm text-muted">
+                    <p className="money mt-2 text-sm text-muted">
                       {formatMoney(line.unitPrice)} each
                     </p>
                   </div>
-                  <b className="money shrink-0 text-lg">
+                  <b className="money shrink-0 text-lg font-extrabold leading-tight">
                     {formatMoney(line.unitPrice * line.quantity)}
                   </b>
                 </div>
@@ -162,7 +162,7 @@ function CartPage() {
                       meant six clicks to remove a quantity-six item. */}
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm font-semibold text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                    className="remove-btn"
                     aria-label={`Remove ${line.name}`}
                     onClick={() => s.changeQuantity(line.lineId, -line.quantity)}
                   >
@@ -175,7 +175,7 @@ function CartPage() {
           ))}
         </section>
 
-        <aside className="elevated-panel h-fit p-5 lg:sticky lg:top-24">
+        <aside className="elevated-panel h-fit p-5 sm:p-6 lg:sticky lg:top-24">
           <div className="segmented" data-active={s.fulfillment}>
             <span className="segmented-thumb" aria-hidden="true" />
             <button
@@ -198,46 +198,44 @@ function CartPage() {
 
           {eta != null && eta !== "" && (
             <p className="mt-4 flex items-center gap-2 text-sm font-semibold">
-              <Clock className="size-4 text-primary" />
+              <Clock className="size-4 shrink-0 text-primary" />
               {isDelivery ? "Arrives in" : "Ready in"} about {eta}{" "}
               {typeof eta === "number" ? "min" : ""}
             </p>
           )}
 
           {shortfall > 0 && (
-            <div className="mt-4 rounded-xl bg-primary-soft p-3">
-              <p className="text-sm font-semibold">
+            <div className="mt-4 rounded-xl bg-primary-soft p-3.5">
+              <p className="text-sm font-semibold leading-snug">
                 Add <b className="money">{formatMoney(shortfall)}</b> to reach the{" "}
                 {formatMoney(minimumOrder)} minimum.
               </p>
-              <div className="meter mt-2">
+              <div className="meter mt-2.5">
                 <div className="meter-fill" style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
 
-          <dl className="mt-5 space-y-2.5 text-sm">
+          <dl className="mt-6 space-y-2.5 text-sm">
             {[
               ["Subtotal", s.subtotal],
               [isDelivery ? "Delivery fee" : "Pickup", delivery],
               ["Tax", tax],
             ].map(([label, value]) => (
-              <div className="flex justify-between" key={String(label)}>
-                <dt className="text-muted">{label}</dt>
-                <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : formatMoney(Number(value))}
-                </dd>
+              <div className="sum-row" key={String(label)}>
+                <dt>{label}</dt>
+                <dd>{Number(value) === 0 ? "Free" : formatMoney(Number(value))}</dd>
               </div>
             ))}
           </dl>
 
-          <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
+          <div className="sum-total">
             <span className="text-lg font-black">Total</span>
-            <span className="font-display text-3xl font-black">{formatMoney(total)}</span>
+            <span className="sum-total-figure">{formatMoney(total)}</span>
           </div>
 
           <Button
-            className="mt-5 h-12 w-full text-base"
+            className="mt-5 h-12 w-full text-base font-bold"
             disabled={shortfall > 0}
             asChild={shortfall === 0}
           >
@@ -260,13 +258,16 @@ function CartPage() {
             </p>
           )}
 
-          <div className="mt-5 space-y-2 border-t border-border pt-4 text-sm text-muted">
-            <p className="flex items-center gap-2">
-              <ShieldCheck className="size-4 shrink-0 text-success" />
-              Pay on delivery or pickup — no card needed now.
+          <div className="mt-5 space-y-2.5 border-t border-border pt-4">
+            {/* Said "pay on delivery — no card needed now" for as long as COD
+                existed. It does not any more, and a cart promising cash before
+                a card-only checkout is the kind of small lie people notice. */}
+            <p className="sum-note" data-tone="success">
+              <ShieldCheck className="size-4" />
+              Card payment is handled by Stripe — we never see your details.
             </p>
-            <p className="flex items-center gap-2">
-              <BadgePercent className="size-4 shrink-0 text-primary" />
+            <p className="sum-note">
+              <BadgePercent className="size-4" />
               Offers are applied at checkout.
             </p>
           </div>

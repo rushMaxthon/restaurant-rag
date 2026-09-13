@@ -72,13 +72,15 @@ export function DishCard({ item }: { item: MenuItem }) {
           <Link
             to="/menu/$itemId"
             params={{ itemId: item.id }}
-            className="font-display text-lg font-bold leading-tight hover:text-primary"
+            className="dish-title font-display text-lg font-bold leading-tight hover:text-primary"
           >
             {item.name}
           </Link>
         </div>
 
-        <p className="line-clamp-2 min-h-10 text-sm text-muted">{item.description}</p>
+        <p className="line-clamp-2 min-h-10 text-sm leading-relaxed text-muted">
+          {item.description}
+        </p>
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">

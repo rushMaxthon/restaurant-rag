@@ -1,4 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MenuGrid } from "@/components/bangkok/menu-grid";
-export const Route=createFileRoute("/menu/")({head:()=>({meta:[{title:"Thai Menu — Bangkok Bowl"},{name:"description",content:"Browse Thai curries, noodles, rice bowls, starters, desserts and drinks."},{property:"og:title",content:"Thai Menu — Bangkok Bowl"},{property:"og:description",content:"Explore the complete Bangkok Bowl menu in Ahmedabad."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary"}]}),component:MenuPage});
-function MenuPage(){return <div className="page-pad pb-24 pt-10"><p className="font-bold text-primary">COOKED TO ORDER</p><h1 className="font-display text-4xl font-black sm:text-6xl">The Bangkok menu</h1><p className="mb-8 mt-3 max-w-2xl text-muted">Fragrant, punchy and made fresh. Pick a favourite or discover something new.</p><MenuGrid/></div>}
+export const Route = createFileRoute("/menu/")({
+  head: () => ({
+    meta: [
+      { title: "Thai Menu — Bangkok Bowl" },
+      {
+        name: "description",
+        content: "Browse Thai curries, noodles, rice bowls, starters, desserts and drinks.",
+      },
+      { property: "og:title", content: "Thai Menu — Bangkok Bowl" },
+      {
+        property: "og:description",
+        content: "Explore the complete Bangkok Bowl menu in Ahmedabad.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: MenuPage,
+});
+function MenuPage() {
+  return (
+    <div className="page-pad pb-24 pt-10">
+      <p className="eyebrow">Cooked to order</p>
+      <h1 className="font-display text-4xl font-black sm:text-6xl">The Bangkok menu</h1>
+      <p className="mb-8 mt-3 max-w-2xl text-muted">
+        Fragrant, punchy and made fresh. Pick a favourite or discover something new.
+      </p>
+      <MenuGrid />
+    </div>
+  );
+}

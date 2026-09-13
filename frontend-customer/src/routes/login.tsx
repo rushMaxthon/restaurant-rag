@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,45 +62,74 @@ function LoginPage() {
   return (
     <div className="grid lg:grid-cols-2">
       <div className="relative hidden lg:block lg:min-h-[calc(100svh-4rem)]">
-        <img src={heroImage} alt="Fresh Pad Thai from Bangkok Bowl" className="absolute inset-0 size-full object-cover" />
+        <img
+          src={heroImage}
+          alt="Fresh Pad Thai from Bangkok Bowl"
+          className="absolute inset-0 size-full object-cover"
+        />
         <div className="hero-overlay absolute inset-0" />
-        <div className="page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
+        <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
           <Sparkles className="mb-4 size-10" />
-          <p className="font-bold">BANGKOK BOWL</p>
-          <h1 className="mt-2 font-display text-5xl font-black leading-[.98] sm:text-6xl">Sign in for the full menu</h1>
-          <p className="mt-5 max-w-md text-lg font-medium">Save favourites, track live orders and reorder your go-to bowl in a tap.</p>
+          <p className="eyebrow eyebrow--inherit">Bangkok Bowl</p>
+          <h1 className="font-display text-5xl font-black leading-[.98] sm:text-6xl">
+            Sign in for the full menu
+          </h1>
+          <p className="mt-5 max-w-md text-lg font-medium">
+            Save favourites, track live orders and reorder your go-to bowl in a tap.
+          </p>
         </div>
       </div>
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
-          <h1 className="font-display text-5xl font-black sm:text-6xl">Welcome back</h1>
-          <p className="mt-3 text-lg text-muted">Sign in to order from Bangkok Bowl.</p>
-          <Card className="mt-8 border-border">
+          <h1 className="auth-heading font-display text-5xl font-black sm:text-6xl">
+            Welcome back
+          </h1>
+          <p className="auth-sub mt-3 text-lg text-muted">Sign in to order from Bangkok Bowl.</p>
+          <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">
               <form className="space-y-4" onSubmit={handleSubmit}>
                 {error && (
-                  <div className="flex items-start gap-2 rounded-md border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger">
+                  <div className="inline-error form-error" role="alert">
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span>{error}</span>
                   </div>
                 )}
                 <div className="space-y-1.5">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="h-12" />
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-12"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Password</Label>
-                  <PasswordInput id="password" autoComplete="current-password" value={password} onChange={setPassword} />
+                  <PasswordInput
+                    id="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={setPassword}
+                  />
                 </div>
                 <Button className="h-12 w-full text-base" type="submit" disabled={submitting}>
+                  {submitting && <Loader2 className="animate-spin" aria-hidden="true" />}
                   {submitting ? "Signing in…" : "Sign in"}
                 </Button>
               </form>
             </CardContent>
           </Card>
-          <p className="mt-6 text-center text-muted">
+          <p className="auth-foot mt-6 text-center text-muted">
             New here?{" "}
-            <Link to="/register" search={{ redirect: sanitizeRedirect(redirect) }} className="font-bold text-primary">
+            <Link
+              to="/register"
+              search={{ redirect: sanitizeRedirect(redirect) }}
+              className="auth-link"
+            >
               Create an account
             </Link>
           </p>

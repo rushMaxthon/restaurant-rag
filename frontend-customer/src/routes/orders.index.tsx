@@ -58,51 +58,55 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
       className="line-card elevated-panel rise-in p-4 sm:p-5"
       style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm">
             <span className={`status-chip ${tone}`}>{order.status.replaceAll("_", " ")}</span>
-            {order.restaurant && <span className="text-sm font-bold">{order.restaurant.name}</span>}
-            <span className="flex items-center gap-1 text-sm text-muted">
+            {order.restaurant && <span className="font-bold">{order.restaurant.name}</span>}
+            <span className="inline-flex items-center gap-1 text-muted">
               {isDelivery ? <Bike className="size-3.5" /> : <Store className="size-3.5" />}
               {isDelivery ? "Delivery" : "Pickup"}
             </span>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-display text-xl font-black">Order {orderCode(order)}</h2>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="font-display text-xl font-black leading-none tracking-tight">
+              Order {orderCode(order)}
+            </h2>
             {/* Neither the date nor the item list was shown before, which made
                 the history a wall of near-identical cards. */}
             <span className="text-sm text-muted">{placedAt(order.placed_at)}</span>
           </div>
 
-          <p className="mt-1.5 truncate text-sm text-muted">
-            {itemCount} {itemCount === 1 ? "item" : "items"} ·{" "}
-            {order.items.map((item) => `${item.quantity}× ${item.item_name_snapshot}`).join(", ")}
+          <p className="mt-2 truncate text-sm text-muted">
+            <span className="font-semibold text-foreground">
+              {itemCount} {itemCount === 1 ? "item" : "items"}
+            </span>{" "}
+            · {order.items.map((item) => `${item.quantity}× ${item.item_name_snapshot}`).join(", ")}
           </p>
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {order.items.slice(0, 4).map((item) => (
               <OrderItemThumb
                 key={item.id}
                 menuItemId={item.menu_item_id}
                 name={item.item_name_snapshot}
-                className="size-12 rounded-lg"
+                className="size-12 rounded-lg text-sm ring-1 ring-border"
               />
             ))}
             {order.items.length > 4 && (
-              <span className="flex size-12 items-center justify-center rounded-lg bg-surface-alt text-xs font-bold text-muted">
+              <span className="grid size-12 place-items-center rounded-lg bg-surface-alt text-xs font-extrabold text-muted">
                 +{order.items.length - 4}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-3">
-          <b className="money font-display text-2xl font-black">
+        <div className="flex shrink-0 flex-col items-end gap-3 sm:min-w-36">
+          <b className="money font-display text-2xl font-black leading-none tracking-tight">
             {formatMoney(order.total_amount)}
           </b>
-          <Button variant={live ? "default" : "outline"} size="sm" asChild>
+          <Button variant={live ? "default" : "outline"} className="font-bold" asChild>
             <Link to="/orders/$orderId" params={{ orderId: order.id }}>
               {live ? "Track order" : "View order"} <ArrowRight className="size-4" />
             </Link>
@@ -111,12 +115,16 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
       </div>
 
       {live && (
-        <div className="track mt-4">
-          <div className="track-bar">
+        <div className="track mt-5 border-t border-border pt-4">
+          <div className="track-bar track-bar--segmented">
             <div className="track-fill" style={{ width: `${progress}%` }} />
           </div>
-          <p className="text-xs font-bold text-muted">
-            Step {step + 1} of {FLOW.length} · {FLOW[step]?.replaceAll("_", " ").toLowerCase()}
+          <p className="track-caption">
+            <span>
+              Step {step + 1} of {FLOW.length}
+            </span>
+            <span aria-hidden="true">·</span>
+            <b>{FLOW[step]?.replaceAll("_", " ").toLowerCase()}</b>
           </p>
         </div>
       )}
@@ -141,8 +149,14 @@ function Orders() {
     <div className="page-pad mx-auto max-w-6xl pb-24 pt-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-black sm:text-5xl">Your orders</h1>
-          {user && <p className="mt-2 text-muted">Signed in as {user.full_name}</p>}
+          <h1 className="font-display text-4xl font-black tracking-tight sm:text-5xl">
+            Your orders
+          </h1>
+          {user && (
+            <p className="mt-2 text-muted">
+              Signed in as <span className="font-semibold text-foreground">{user.full_name}</span>
+            </p>
+          )}
         </div>
         <Button
           variant="outline"
@@ -165,32 +179,37 @@ function Orders() {
       )}
 
       {ordersQuery.isError && (
-        <p className="mt-10 text-muted">We couldn't load your orders right now.</p>
+        <p className="elevated-panel mt-10 px-6 py-10 text-center text-muted">
+          We couldn't load your orders right now.
+        </p>
       )}
 
       {!ordersQuery.isLoading && !ordersQuery.isError && orders.length === 0 && (
-        <div className="elevated-panel mt-10 px-6 py-20 text-center">
-          <div className="mx-auto grid size-20 place-items-center rounded-full bg-primary-soft">
-            <ReceiptText className="size-9 text-primary" />
+        <div className="elevated-panel empty-state mt-10">
+          <div className="empty-state-icon">
+            <ReceiptText className="size-9" />
           </div>
-          <h2 className="mt-6 font-display text-3xl font-black">No orders yet</h2>
+          <h2 className="mt-8 font-display text-3xl font-black tracking-tight">No orders yet</h2>
           <p className="mx-auto mt-3 max-w-sm text-muted">
             Your order history will show up here once you place one.
           </p>
-          <Button className="mt-7 h-12 px-6" asChild>
-            <Link to="/menu">Browse the menu</Link>
+          <Button className="mt-8 h-12 px-6 text-base font-bold" asChild>
+            <Link to="/menu">
+              Browse the menu <ArrowRight className="size-4" />
+            </Link>
           </Button>
         </div>
       )}
 
       {live.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 flex items-center gap-2 font-display text-xl font-black">
+        <section className="mt-10">
+          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
             <span className="relative flex size-2.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-70" />
               <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
             </span>
             In progress
+            <span className="section-count">{live.length}</span>
           </h2>
           <div className="grid gap-4">
             {live.map((order, i) => (
@@ -201,8 +220,11 @@ function Orders() {
       )}
 
       {past.length > 0 && (
-        <section className="mt-10">
-          <h2 className="mb-3 font-display text-xl font-black">Past orders</h2>
+        <section className="mt-12">
+          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
+            Past orders
+            <span className="section-count">{past.length}</span>
+          </h2>
           <div className="grid gap-4">
             {past.map((order, i) => (
               <OrderRow order={order} index={i} key={order.id} />

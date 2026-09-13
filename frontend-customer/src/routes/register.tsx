@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,53 +64,101 @@ function RegisterPage() {
   return (
     <div className="grid lg:grid-cols-2">
       <div className="relative hidden lg:block lg:min-h-[calc(100svh-4rem)]">
-        <img src={heroImage} alt="Bangkok Bowl green curry" className="absolute inset-0 size-full object-cover" />
+        <img
+          src={heroImage}
+          alt="Bangkok Bowl green curry"
+          className="absolute inset-0 size-full object-cover"
+        />
         <div className="hero-overlay absolute inset-0" />
-        <div className="page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
+        <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
           <Sparkles className="mb-4 size-10" />
-          <p className="font-bold">BANGKOK BOWL</p>
-          <h1 className="mt-2 font-display text-5xl font-black leading-[.98] sm:text-6xl">Join Bangkok Bowl</h1>
-          <p className="mt-5 max-w-md text-lg font-medium">Create an account to order Thai favourites across three Ahmedabad branches.</p>
+          <p className="eyebrow eyebrow--inherit">Bangkok Bowl</p>
+          <h1 className="font-display text-5xl font-black leading-[.98] sm:text-6xl">
+            Join Bangkok Bowl
+          </h1>
+          <p className="mt-5 max-w-md text-lg font-medium">
+            Create an account to order Thai favourites across three Ahmedabad branches.
+          </p>
         </div>
       </div>
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
-          <h1 className="font-display text-5xl font-black sm:text-6xl">Create your account</h1>
-          <p className="mt-3 text-lg text-muted">Order Thai favourites from Bangkok Bowl in minutes.</p>
-          <Card className="mt-8 border-border">
+          <h1 className="auth-heading font-display text-5xl font-black sm:text-6xl">
+            Create your account
+          </h1>
+          <p className="auth-sub mt-3 text-lg text-muted">
+            Order Thai favourites from Bangkok Bowl in minutes.
+          </p>
+          <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">
               <form className="space-y-4" onSubmit={handleSubmit}>
                 {error && (
-                  <div className="flex items-start gap-2 rounded-md border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger">
+                  <div className="inline-error form-error" role="alert">
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span>{error}</span>
                   </div>
                 )}
                 <div className="space-y-1.5">
                   <Label htmlFor="full_name">Full name</Label>
-                  <Input id="full_name" required minLength={2} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your name" className="h-12" />
+                  <Input
+                    id="full_name"
+                    required
+                    minLength={2}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Your name"
+                    className="h-12"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="h-12" />
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-12"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="phone">Phone number</Label>
-                  <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" className="h-12" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="Optional"
+                    className="h-12"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Password</Label>
-                  <PasswordInput id="password" autoComplete="new-password" minLength={8} value={password} onChange={setPassword} placeholder="At least 8 characters" />
+                  <PasswordInput
+                    id="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={password}
+                    onChange={setPassword}
+                    placeholder="At least 8 characters"
+                  />
                 </div>
                 <Button className="h-12 w-full text-base" type="submit" disabled={submitting}>
+                  {submitting && <Loader2 className="animate-spin" aria-hidden="true" />}
                   {submitting ? "Creating account…" : "Create account"}
                 </Button>
               </form>
             </CardContent>
           </Card>
-          <p className="mt-6 text-center text-muted">
+          <p className="auth-foot mt-6 text-center text-muted">
             Already have an account?{" "}
-            <Link to="/login" search={{ redirect: sanitizeRedirect(redirect) }} className="font-bold text-primary">
+            <Link
+              to="/login"
+              search={{ redirect: sanitizeRedirect(redirect) }}
+              className="auth-link"
+            >
               Sign in
             </Link>
           </p>

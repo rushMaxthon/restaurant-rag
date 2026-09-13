@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import polishCss from "../polish.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { BangkokStoreProvider } from "@/lib/bangkok-store";
 import { AuthProvider } from "@/lib/auth";
@@ -81,10 +82,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Bangkok Bowl — Thai Food in Ahmedabad" },
-      { name: "description", content: "Order fresh Thai curries, noodles and bowls from Bangkok Bowl across Ahmedabad." },
+      {
+        name: "description",
+        content: "Order fresh Thai curries, noodles and bowls from Bangkok Bowl across Ahmedabad.",
+      },
       { name: "author", content: "Bangkok Bowl" },
       { property: "og:title", content: "Bangkok Bowl — Thai Food in Ahmedabad" },
-      { property: "og:description", content: "Order fresh Thai curries, noodles and bowls from three Ahmedabad branches." },
+      {
+        property: "og:description",
+        content: "Order fresh Thai curries, noodles and bowls from three Ahmedabad branches.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -93,6 +100,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "stylesheet", href: polishCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
@@ -122,7 +130,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BangkokStoreProvider><AppShell><Outlet /></AppShell></BangkokStoreProvider>
+        <BangkokStoreProvider>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        </BangkokStoreProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
