@@ -74,6 +74,15 @@ export type ChatResponse = {
   suggestions: ChatSuggestion[];
 };
 
+export type ChatStreamMeta = {
+  session_id: string;
+  suggestions: ChatSuggestion[];
+  combo_suggestions: unknown[];
+  offer_suggestions: unknown[];
+};
+
+export type ChatStreamDone = ChatStreamMeta & { reply: string };
+
 export type OrderCreateItem = {
   menu_item_id: string;
   menu_item_size_id?: string | null;
@@ -155,7 +164,7 @@ export function clearSession() {
 
 const DEFAULT_TIMEOUT_MS = 12000;
 
-function extractErrorMessage(body: unknown, fallback: string): string {
+export function extractErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
   const detail = (body as { detail?: unknown }).detail;
   if (typeof detail === "string") return detail;
@@ -279,3 +288,96 @@ export const api = {
 
   getPersonalizedOffers: () => request<unknown[]>("/personalized-offers", { auth: true }),
 };
+
+type ChatStreamPayload = {
+  message: string;
+  session_id?: string | null;
+  restaurant_id?: string | null;
+  restaurant_location_id?: string | null;
+};
+
+type ChatStreamHandlers = {
+  onMeta?: (meta: ChatStreamMeta) => void;
+  onToken?: (text: string) => void;
+  onDone?: (done: ChatStreamDone) => void;
+};
+
+/**
+ * Streams a concierge reply over Server-Sent Events. Uses fetch + a manual
+ * ReadableStream reader rather than EventSource because EventSource cannot
+ * send an Authorization header, and this endpoint requires the Bearer token.
+ *
+ * Frames are separated by a blank line, each with an `event:` and `data:`
+ * line: `meta` arrives first (already carrying the full suggestions array),
+ * then a stream of `token` frames with partial reply text, then `done` with
+ * the full reply.
+ */
+export async function streamChatMessage(
+  payload: ChatStreamPayload,
+  handlers: ChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    const init: RequestInit = { method: "POST", headers, body: JSON.stringify(payload) };
+    if (signal) init.signal = signal;
+    response = await fetch(`${API_BASE_URL}/chat/message/stream`, init);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError("Could not reach the server. Check your connection and try again.", 0);
+  }
+
+  if (!response.ok || !response.body) {
+    let message = `Request failed (${response.status}).`;
+    try {
+      const text = await response.text();
+      if (text) message = extractErrorMessage(JSON.parse(text), message);
+    } catch {
+      // keep fallback message
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  function handleFrame(frame: string) {
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) return;
+    let data: unknown;
+    try {
+      data = JSON.parse(dataLines.join("\n"));
+    } catch {
+      return;
+    }
+    if (event === "meta") handlers.onMeta?.(data as ChatStreamMeta);
+    else if (event === "token") handlers.onToken?.((data as { text: string }).text);
+    else if (event === "done") handlers.onDone?.(data as ChatStreamDone);
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sepIndex: number;
+    while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sepIndex);
+      buffer = buffer.slice(sepIndex + 2);
+      if (frame.trim()) handleFrame(frame);
+    }
+  }
+  if (buffer.trim()) handleFrame(buffer);
+}
