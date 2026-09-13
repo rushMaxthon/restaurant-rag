@@ -28,6 +28,35 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-13 (3) — Moved the database to Supabase
+
+**Goal:** replace local Postgres with Supabase as the app database, via the MCP server.
+
+**Result:** done. Project `restaurant-rag` (`eeorvcsfpndaovhvgyom`, org Foodie,
+ap-south-1), pgvector 0.8.2, migrated to `0049`, seeded (15 users, 6 restaurants,
+6 app clients, 18 locations, 189 menu items). Backend runs against it; the
+customer home page renders real Supabase data. Latency: restaurants ~0.09s,
+login ~0.35s, health ~0.06s.
+
+**Changed:** `backend/.env` only (gitignored). No application code needed
+changing — `DATABASE_URL` already overrode `POSTGRES_*`, and
+`normalize_database_url` already rewrote the scheme for psycopg 3.
+
+**What cost the most time, so it is not repeated:**
+- The password was being pasted into `POSTGRES_PASSWORD` (the local fallback
+  block) instead of into `DATABASE_URL`. The file saved every time; the edit
+  landed on a line nothing reads. Four failed rounds. My `.env` layout invited
+  it — the fallback block is now commented to say it is ignored.
+- The direct host `db.<ref>.supabase.co` is IPv6-only, and retrying failed auth
+  against it got this machine's IPv6 address BANNED by Supabase. Use the session
+  pooler (IPv4) and never retry auth in a loop.
+- Pooler username must be `postgres.<project-ref>`.
+- The Supabase MCP role is not superuser, so `ALTER USER … PASSWORD` is refused.
+
+**Open:** Section 1 of the UI work (webfont + tokens) is still not started — the
+same item carried over from the previous entry. Home/Cart still untouched.
+The Supabase DB password is in this session's transcript and should be rotated.
+
 ## 2026-09-13 (2) — Full local stack running; seed.py bug fixed
 
 **Goal:** run backend + frontend-admin + frontend-customer locally and check them together.

@@ -165,7 +165,25 @@ Working as of 2026-09-13. No Docker, Redis or Ollama here — none are required.
   (`StrEnum` needs 3.11+). A 3.11.9 venv lives at `backend/.venv`, built with
   `py -3.11 -m venv .venv`. Always invoke `backend/.venv/Scripts/python.exe`,
   never bare `python`.
-- **Postgres**: PostgreSQL 15 runs as service `postgresql-x64-15` from
+- **Database**: the app points at **Supabase** (project `restaurant-rag`, ref
+  `eeorvcsfpndaovhvgyom`, org Foodie, ap-south-1), via `DATABASE_URL` in
+  `backend/.env`. Migrated to `0049` and seeded. Measured from here: restaurants
+  ~0.09s, login ~0.35s.
+  - Use the **session pooler** host `aws-0-ap-south-1.pooler.supabase.com:5432`,
+    not `db.<ref>.supabase.co`. The direct host is IPv6-only, and repeated failed
+    auth there got this machine's IPv6 address **banned** by Supabase (dashboard
+    → Database → Settings → Network bans → Unban IP). Do not retry auth in a loop.
+  - The pooler username is `postgres.<project-ref>`, not `postgres`; the plain
+    form answers `ENOTFOUND tenant/user`.
+  - Port 5432 (session mode) only. psycopg 3 uses prepared statements, which the
+    transaction pooler on 6543 breaks, failing Alembic DDL.
+  - `POSTGRES_*` in `.env` are the LOCAL fallback and are ignored entirely while
+    `DATABASE_URL` is set. Putting a Supabase password in `POSTGRES_PASSWORD`
+    does nothing — that mistake cost four debugging rounds.
+  - The Supabase MCP role is **not** superuser: `ALTER USER postgres WITH
+    PASSWORD` fails with "permission denied to alter role". Password changes
+    must go through the dashboard.
+- **Local Postgres (fallback)**: PostgreSQL 15 runs as service `postgresql-x64-15` from
   `C:\Program Files\PostgreSQL\15`, on 127.0.0.1:5432 as `postgres/postgres`.
   Its `bin/` is NOT on PATH, so call `psql.exe` by full path. Database
   `restaurant_rag` exists, migrated to `0049` and seeded.
