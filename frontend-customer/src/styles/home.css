@@ -74,10 +74,13 @@
    gutter, the picture at the middle — and shrank the food to a sidebar.
    ========================================================================= */
 
+/* The hero used to fill a viewport before a single dish appeared, which on a
+   food app is a screen of brand where the customer wanted a menu. It keeps the
+   headline, the real branch chips and the search bar; it loses the height. */
 .home .home-hero {
   position: relative;
   display: block;
-  min-height: 440px;
+  min-height: 176px;
   /* Flush to the header and to both edges. `.screen--flush` hands its children
      the gutter as padding, which the copy block takes over below — the banner
      itself wants none of it. The negative top cancels the screen's own 12px so
@@ -167,7 +170,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 40px var(--space-screen) 34px;
+  padding: 16px var(--space-screen) 14px;
 }
 
 .home .home-hero__greeting {
@@ -1021,7 +1024,7 @@
     width: 100vw;
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
-    min-height: 620px;
+    min-height: 248px;
     display: flex;
     align-items: center;
     /* Cancels the screen's 36px top padding, the desktop counterpart of the
@@ -1035,7 +1038,7 @@
     width: 100%;
     max-width: calc(var(--site-width) + var(--site-gutter) * 2);
     margin: 0 auto;
-    padding: 72px var(--site-gutter);
+    padding: 29px var(--site-gutter);
   }
 
   .home .home-hero__greeting {

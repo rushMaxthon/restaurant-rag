@@ -2160,3 +2160,36 @@
     padding: 24px;
   }
 }
+
+/* =========================================================================
+   9. The category rail — `RestaurantPage`
+   ========================================================================= */
+
+/* Sticky, because on a hundred-dish menu the alternative is scrolling all the
+   way back up to change category — the single most irritating thing in the
+   current browse flow. Offset by the header so it parks below it, not under
+   it.
+
+   Declared after `.restaurant-page__section--chips` above (and after that
+   rule's own desktop override), so this wins the properties both share:
+   `top: 0` on the phone put the chip row exactly where the sticky app header
+   also lands, and the two — same offset, different z-index — fought over the
+   same 56px rather than stacking. */
+.restaurant-page .category-rail {
+  position: sticky;
+  top: var(--app-header-height);
+  z-index: 5;
+  background: var(--bg);
+}
+
+@media (min-width: 960px) {
+  /* `--app-header-height` sizes the phone's fixed `.app-header`, which is
+     hidden above this breakpoint. `.site-header` replaces it and stands
+     taller (two rows of brand + nav vs. one), so the phone token under-clears
+     it by about 15px — confirmed by measuring the rendered header, not
+     guessed — and the rail's top edge sat behind it. Matches the site
+     header's own measured height, same as the offset this rule replaces. */
+  .restaurant-page .category-rail {
+    top: 71px;
+  }
+}

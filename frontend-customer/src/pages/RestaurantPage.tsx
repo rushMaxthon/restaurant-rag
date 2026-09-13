@@ -618,7 +618,7 @@ export function RestaurantPage({
         </div>
       ) : null}
 
-      <section className="section-card restaurant-page__section restaurant-page__section--chips">
+      <section className="section-card restaurant-page__section restaurant-page__section--chips category-rail">
         <div className="restaurant-page__tabs restaurant-page__tabs--floating">
           {categories.map((category) => (
             <button

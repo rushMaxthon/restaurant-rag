@@ -11,6 +11,7 @@ import { GeneratedComboCard } from '../components/home/GeneratedComboCard';
 import { ItemCard } from '../components/home/ItemCard';
 import { OfferCard } from '../components/home/OfferCard';
 import { useAppStore } from '../hooks/useAppStore';
+import { useRevealOnScroll } from '../hooks/useRevealOnScroll';
 import { useAppConfig } from '../store/useAppConfig';
 import type {
   AppliedPersonalizedOffer,
@@ -435,6 +436,18 @@ export const HomePage = memo(function HomePage({
   const recentOrders = orders.slice(0, 3);
   const hasPicks = recommendations.length > 0;
 
+  // One observer per section rather than one for the whole feed: a single
+  // shared ref would fire the instant the first section entered the
+  // viewport and reveal everything below it at once. Called unconditionally,
+  // every render, regardless of whether the section they attach to renders
+  // this pass — a combo or offer rail can appear or vanish as the feed
+  // reloads, and a hook cannot become conditional along with it.
+  const exploreMenuRevealRef = useRevealOnScroll<HTMLElement>();
+  const aiPromptRevealRef = useRevealOnScroll<HTMLElement>();
+  const personalizedPicksRevealRef = useRevealOnScroll<HTMLElement>();
+  const combosRevealRef = useRevealOnScroll<HTMLElement>();
+  const offersRevealRef = useRevealOnScroll<HTMLElement>();
+
   return (
     <div className="screen screen--flush home">
       {/* --- hero -----------------------------------------------------------
@@ -518,7 +531,7 @@ export const HomePage = memo(function HomePage({
       ) : null}
 
       {/* --- the kitchen's menu -------------------------------------------- */}
-      <section className="section">
+      <section className="section reveal" ref={exploreMenuRevealRef}>
         <SectionHeader
           actionLabel={menuItems.length > 0 ? 'See full menu' : undefined}
           onAction={menuItems.length > 0 ? () => onNavigate('/menu') : undefined}
@@ -567,11 +580,19 @@ export const HomePage = memo(function HomePage({
         )}
       </section>
 
-      {/* --- ask AI --------------------------------------------------------- */}
-      <AiPromptCard onPress={() => onNavigate('/chat')} />
+      {/* --- ask AI ---------------------------------------------------------
+          `AiPromptCard` renders its own `button.ai-card` as the direct flush
+          child that `.screen--flush` gives its side gutter to; wrapping it in
+          a `<div>` here would move that padding onto the wrapper instead. A
+          bare `<section>` is used so the ref stays typed as `HTMLElement`
+          like every other reveal target on this page, and it adds nothing of
+          its own to the layout. */}
+      <section className="reveal" ref={aiPromptRevealRef}>
+        <AiPromptCard onPress={() => onNavigate('/chat')} />
+      </section>
 
       {/* --- personalized picks --------------------------------------------- */}
-      <section className="section">
+      <section className="section reveal" ref={personalizedPicksRevealRef}>
         <SectionHeader
           actionLabel={hasPicks ? 'See all' : 'Tune picks'}
           onAction={() => onNavigate(hasPicks ? '/picks' : '/profile/preferences')}
@@ -611,7 +632,7 @@ export const HomePage = memo(function HomePage({
 
       {/* --- combos ---------------------------------------------------------- */}
       {combos.length > 0 ? (
-        <section className="section">
+        <section className="section reveal" ref={combosRevealRef}>
           <SectionHeader
             subtitle="Auto-generated bundles built from real completed orders."
             title="Frequently Ordered Together"
@@ -631,7 +652,7 @@ export const HomePage = memo(function HomePage({
 
       {/* --- offers ---------------------------------------------------------- */}
       {token && offers.length > 0 ? (
-        <section className="section">
+        <section className="section reveal" ref={offersRevealRef}>
           <SectionHeader
             subtitle="Unlocked automatically the moment your cart qualifies."
             title="Offers"
