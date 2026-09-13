@@ -465,6 +465,13 @@ class Settings(BaseSettings):
     # has to agree — a Stripe intent in another currency would show the
     # customer one number on the checkout screen and bill them a different one.
     payment_currency: str = "cad"
+    # Whether this deployment takes cash on delivery at all. Off: this product
+    # is card-only, and an always-available COD meant "Place order" completed
+    # without any payment step, which read as the payment being skipped.
+    # Turning it on is a business decision, not a fallback for missing keys —
+    # if Stripe is unconfigured the honest outcome is "card unavailable", not a
+    # silent switch to taking cash.
+    enable_cash_on_delivery: bool = False
     # How long an unpaid card order survives before the reaper cancels it.
     payment_intent_ttl_minutes: int = 30
     razorpay_key_id: str = "rzp_test_mock"

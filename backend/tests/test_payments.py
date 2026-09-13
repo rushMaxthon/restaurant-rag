@@ -264,19 +264,32 @@ class PaymentRegistryTests(unittest.TestCase):
             resolve_provider(PaymentMethod.RAZORPAY)
 
     def test_card_drops_out_when_stripe_is_unconfigured(self) -> None:
+        # COD is no longer an automatic consolation for missing Stripe keys.
+        # It used to be unconditional, which meant a deployment with no keys
+        # quietly accepted orders that nobody was ever charged for — the
+        # customer pressed "Place order" and the order went straight to PLACED.
+        # Taking cash is a business decision now, so it is its own setting.
         with patch(
             "app.services.payments.registry.get_stripe_provider",
             return_value=FakeProvider(configured=False),
         ):
-            self.assertEqual(available_payment_methods(), [PaymentMethod.COD])
+            self.assertEqual(available_payment_methods(), [])
         with patch(
             "app.services.payments.registry.get_stripe_provider",
             return_value=FakeProvider(configured=True),
         ):
-            self.assertEqual(
-                available_payment_methods(),
-                [PaymentMethod.CARD, PaymentMethod.COD],
-            )
+            self.assertEqual(available_payment_methods(), [PaymentMethod.CARD])
+
+    def test_cash_on_delivery_appears_only_when_the_deployment_enables_it(self) -> None:
+        with (
+            patch(
+                "app.services.payments.registry.get_stripe_provider",
+                return_value=FakeProvider(configured=False),
+            ),
+            patch("app.services.payments.registry.get_settings") as settings_mock,
+        ):
+            settings_mock.return_value.enable_cash_on_delivery = True
+            self.assertEqual(available_payment_methods(), [PaymentMethod.COD])
 
 
 class StripeAmountConversionTests(unittest.TestCase):

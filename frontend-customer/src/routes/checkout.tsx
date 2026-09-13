@@ -12,11 +12,11 @@ import {
   ShieldCheck,
   Store,
   User,
-  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CardPayment } from "@/components/bangkok/card-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
@@ -78,8 +78,20 @@ function Checkout() {
   const [error, setError] = useState<string | null>(null);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrderNumber, setPlacedOrderNumber] = useState<string | null>(null);
-  const [method, setMethod] = useState<"COD" | "CARD">("COD");
+  // Card only: this product does not take cash. The method still comes from
+  // the server's `supported_methods` so an unconfigured Stripe shows as
+  // "unavailable" rather than silently letting an order through unpaid.
   const [payingCard, setPayingCard] = useState(false);
+  const method = "CARD" as const;
+  // Set once the order and its intent exist; swaps the form for Stripe's
+  // Payment Element. The cart is deliberately still full at this point — a
+  // cancelled payment must leave the basket intact.
+  const [pending, setPending] = useState<{
+    orderId: string;
+    orderNumber: string;
+    clientSecret: string;
+    publishableKey: string;
+  } | null>(null);
 
   // Which methods this deployment can actually take. Card stays unavailable
   // until a Stripe key is configured, and saying so beats offering a button
@@ -95,6 +107,33 @@ function Checkout() {
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
+
+  // Once the intent exists the page becomes the payment sheet. Nothing else on
+  // the checkout form can still change the amount at this point, so showing it
+  // alongside an editable form would only invite a mismatch.
+  if (pending) {
+    return (
+      <div className="page-pad mx-auto max-w-xl py-12">
+        <div className="mt-4">
+          <StepRail step={2} />
+        </div>
+        <h1 className="mt-5 font-display text-4xl font-black">Pay for your order</h1>
+        <p className="mt-2 text-muted">
+          Order {pending.orderNumber} is held for you. It reaches the kitchen once this payment
+          clears.
+        </p>
+        <div className="elevated-panel mt-6 p-5 sm:p-6">
+          <CardPayment
+            publishableKey={pending.publishableKey}
+            clientSecret={pending.clientSecret}
+            amount={total}
+            returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
+            onCancel={abandonPayment}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (placedOrderId) {
     return (
@@ -173,34 +212,32 @@ function Checkout() {
       await validateOrder.mutateAsync(payload);
       const order = await createOrder.mutateAsync(payload);
 
-      if (method === "CARD") {
-        // The order exists but is PAYMENT_PENDING. Hand off to Stripe with the
-        // intent the backend creates; the cart is only cleared once the money
-        // is actually committed, so a dismissed payment sheet leaves the order
-        // retryable rather than losing the basket.
-        setPayingCard(true);
-        const intent = await api.createPaymentIntent(order.id);
-        const { loadStripe } = await import("@stripe/stripe-js");
-        const stripe = await loadStripe(intent.publishable_key);
-        if (!stripe) throw new ApiError("We couldn't reach the payment provider.", 502);
-        const result = await stripe.confirmPayment({
-          clientSecret: intent.client_secret,
-          confirmParams: { return_url: `${window.location.origin}/orders/${order.id}` },
-        });
-        if (result.error) {
-          await api.cancelPayment(order.id).catch(() => undefined);
-          throw new ApiError(result.error.message ?? "That payment didn't go through.", 402);
-        }
-      }
-
-      s.clearCart();
-      setPlacedOrderId(order.id);
-      setPlacedOrderNumber(orderCode(order));
+      // The order exists but is PAYMENT_PENDING, and stays out of the kitchen
+      // queue until a verified webhook says the money moved. This step only
+      // fetches the intent; the card itself is typed into Stripe's own iframe,
+      // so no card data ever reaches this app or its server.
+      setPayingCard(true);
+      const intent = await api.createPaymentIntent(order.id);
+      setPending({
+        orderId: order.id,
+        orderNumber: orderCode(order),
+        clientSecret: intent.client_secret,
+        publishableKey: intent.publishable_key,
+      });
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "We couldn't place your order. Please try again.",
       );
+    } finally {
+      setPayingCard(false);
     }
+  }
+
+  /** Customer backed out of the payment sheet: the order stays retryable. */
+  async function abandonPayment() {
+    if (!pending) return;
+    await api.cancelPayment(pending.orderId).catch(() => undefined);
+    setPending(null);
   }
 
   const submitting = validateOrder.isPending || createOrder.isPending || payingCard;
@@ -305,54 +342,37 @@ function Checkout() {
 
           <section className="elevated-panel p-5 sm:p-6">
             <h2 className="font-display text-xl font-black">Payment</h2>
-            <p className="mt-1 text-sm text-muted">Choose how you'd like to pay for this order.</p>
+            <p className="mt-1 text-sm text-muted">
+              Paid securely by card before your order reaches the kitchen.
+            </p>
 
-            <div className="mt-4 grid gap-2.5">
-              <button
-                type="button"
-                className="pay-option"
-                data-on={method === "COD"}
-                onClick={() => setMethod("COD")}
-              >
-                <Wallet className="size-5 shrink-0 text-primary" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-bold">
-                    Pay on {isDelivery ? "delivery" : "pickup"}
-                  </span>
-                  <span className="block text-sm text-muted">
-                    Cash or UPI when your order arrives.
-                  </span>
+            <div className="mt-4 pay-option" data-on={cardAvailable}>
+              <CreditCard className="size-5 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">Pay by card</span>
+                <span className="block text-sm text-muted">
+                  Visa, Mastercard and Amex, handled by Stripe.
                 </span>
-                {method === "COD" && <BadgeCheck className="size-5 shrink-0 text-primary" />}
-              </button>
-
-              <button
-                type="button"
-                className="pay-option"
-                data-on={method === "CARD"}
-                disabled={!cardAvailable}
-                onClick={() => setMethod("CARD")}
-              >
-                <CreditCard className="size-5 shrink-0 text-primary" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-bold">Pay by card</span>
-                  <span className="block text-sm text-muted">
-                    {/* Said plainly rather than hidden: a greyed-out button with
-                        no reason is worse than an absent one. */}
-                    {cardAvailable
-                      ? "Secure card payment, handled by Stripe."
-                      : "Not switched on for this restaurant yet."}
-                  </span>
-                </span>
-                {method === "CARD" && <BadgeCheck className="size-5 shrink-0 text-primary" />}
-              </button>
+              </span>
+              {cardAvailable && <BadgeCheck className="size-5 shrink-0 text-primary" />}
             </div>
+
+            {!cardAvailable && (
+              <div
+                className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
+                role="alert"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  Card payments aren't switched on for this restaurant yet, so orders can't be
+                  placed. Please try again shortly.
+                </span>
+              </div>
+            )}
 
             <p className="mt-3 flex items-center gap-2 text-sm text-muted">
               <ShieldCheck className="size-4 shrink-0 text-success" />
-              {method === "CARD"
-                ? "Your order is only confirmed once the payment clears."
-                : "No card details are collected now."}
+              Your card details go straight to Stripe — this app never sees them.
             </p>
           </section>
         </div>
@@ -417,16 +437,14 @@ function Checkout() {
 
           <Button
             className="mt-5 hidden h-12 w-full text-base lg:flex"
-            disabled={!s.cart.length || submitting}
+            disabled={!s.cart.length || submitting || !cardAvailable}
             type="submit"
           >
             {submitting
               ? payingCard
                 ? "Opening payment…"
-                : "Placing order…"
-              : method === "CARD"
-                ? `Pay ${formatMoney(total)}`
-                : `Place order · ${formatMoney(total)}`}
+                : "Preparing your order…"
+              : `Pay ${formatMoney(total)}`}
           </Button>
         </aside>
       </div>
@@ -444,10 +462,10 @@ function Checkout() {
           </div>
           <Button
             className="h-13 flex-1 text-base"
-            disabled={!s.cart.length || submitting}
+            disabled={!s.cart.length || submitting || !cardAvailable}
             type="submit"
           >
-            {submitting ? "Placing order…" : method === "CARD" ? "Pay now" : "Place order"}
+            {submitting ? "Working…" : "Pay now"}
           </Button>
         </div>
       </div>

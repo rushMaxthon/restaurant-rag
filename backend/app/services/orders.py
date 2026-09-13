@@ -350,15 +350,17 @@ def _prepare_order_draft(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This payment method is not supported.",
         )
-    if (
-        require_payment_validation
-        and payload.payment_method == PaymentMethod.CARD
-        and PaymentMethod.CARD not in available_payment_methods()
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Card payments are not available right now.",
+    # Both directions, not just card. COD used to be unconditionally available,
+    # so an order could be placed with no payment step whenever Stripe was
+    # unconfigured — the client asked for cash, the server agreed, and nobody
+    # was ever charged.
+    if require_payment_validation and payload.payment_method not in available_payment_methods():
+        detail = (
+            "Card payments are not available right now."
+            if payload.payment_method == PaymentMethod.CARD
+            else "That payment method is not accepted here."
         )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
     menu_items = fetch_menu_items_for_customized_order(
         db,
         restaurant_id=restaurant.id,

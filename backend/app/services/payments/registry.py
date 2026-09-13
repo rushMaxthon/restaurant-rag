@@ -7,6 +7,7 @@ the API boundary so a client cannot smuggle in an unimplemented gateway.
 
 from __future__ import annotations
 
+from app.config import get_settings
 from app.models.enums import PaymentMethod
 from app.services.payments.base import PaymentProvider
 from app.services.payments.stripe_provider import PROVIDER_NAME as STRIPE_PROVIDER_NAME
@@ -56,10 +57,15 @@ def available_payment_methods() -> list[PaymentMethod]:
     """Supported methods that are actually usable right now.
 
     CARD drops out when Stripe is unconfigured, so a deployment without keys
-    offers COD only instead of showing a card button that cannot work.
+    reports card as unavailable rather than showing a button that cannot work.
+    COD is a business decision (`enable_cash_on_delivery`) and is off by
+    default: it used to be unconditional, which meant an order could complete
+    with no payment step at all whenever Stripe was not set up.
     """
 
-    methods = [PaymentMethod.COD]
+    methods: list[PaymentMethod] = []
     if get_stripe_provider().is_configured():
-        methods.insert(0, PaymentMethod.CARD)
+        methods.append(PaymentMethod.CARD)
+    if get_settings().enable_cash_on_delivery:
+        methods.append(PaymentMethod.COD)
     return methods
