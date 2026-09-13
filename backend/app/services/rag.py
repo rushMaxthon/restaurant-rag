@@ -123,9 +123,18 @@ Selling rules:
 - close every reply with a next step: a question that narrows the choice
   ("spicy or mild?", "eating alone or sharing?"), or an invitation to go ahead.
   A reply that ends in a full stop ends the conversation.
-- when the context contains something that naturally goes with the pick — a
-  drink, a side, a dessert, a combo — offer it once, as a suggestion. Offer it
-  once only; a second ask is pressure, and pressure is not appetite.
+- you may offer a pairing ONLY by naming another item that appears in the menu
+  context by name — a drink, a side, a dessert, a combo. Offer it once only; a
+  second ask is pressure, and pressure is not appetite. If nothing in context
+  pairs with the pick, ask a question instead and offer nothing.
+  Never describe what a dish "comes with", "is served with" or "is topped with"
+  unless those exact words are in its description. Measured: this rule as
+  originally written ("when the context contains something that naturally goes
+  with the pick") produced "with the spicy chutney" on a dish that has none,
+  "a cooling raita" that exists only inside another combo, and "tangy lime
+  rice" that is not on the menu at all. Every word was a real menu word
+  attached to the wrong dish, so nothing read as invented — and a guest ordered
+  expecting a side the kitchen could not serve.
 - price is a selling point when it is good. State it from context, never round
   it, never call it a deal unless the context says it is one.
 
@@ -3663,6 +3672,84 @@ def ungrounded_menu_terms(reply: str, context_block: str, vocabulary: frozenset[
     return (_terms(reply) & vocabulary) - _terms(context_block)
 
 
+# Narrowing the signal to the thing that actually goes wrong.
+#
+# `ungrounded_menu_terms` flags every distinctive menu word the reply used but
+# the context did not supply, and measured over eight questions that is mostly
+# adjectives: crispy, tender, golden, smoky, refreshing. Those are the model
+# describing the dish it was given, which is its job. Enforcing on that signal
+# would suppress good answers to prevent flourish.
+#
+# The defect is narrower and worse: naming an ACCOMPANIMENT the kitchen cannot
+# serve — "with the spicy chutney" on a dish that has none, "served with rice"
+# when nothing said so. A guest orders expecting a side that does not exist.
+# That construction is recognisable, so the check looks only inside it.
+ACCOMPANIMENT_PATTERNS = (
+    r"\b(?:served|comes|paired|pairs|topped|finished|drizzled)\s+with\s+",
+    r"\bwith\s+(?:a|an|the|some|our)\s+",
+    r"\b(?:side|scoop|glass|bowl|portion)\s+of\s+",
+    r"\balongside\s+(?:a|an|the|some|our)?\s*",
+    r"\badd\s+(?:a|an|the|some|our)\s+",
+)
+
+# Words after "with" that describe rather than name a dish.
+_ACCOMPANIMENT_STOP = frozenset(
+    {"side", "sides", "extra", "little", "touch", "hint", "bit", "lot", "choice", "option"}
+)
+
+
+def ungrounded_accompaniments(
+    reply: str,
+    context_block: str,
+    vocabulary: frozenset[str],
+) -> set[str]:
+    """Food the reply offers ALONGSIDE the pick that its context never mentioned.
+
+    Deliberately narrower than `ungrounded_menu_terms`: this is the signal worth
+    acting on, because it is the one a guest can order and be disappointed by.
+    """
+
+    if not vocabulary:
+        return set()
+    context_terms = _terms(context_block)
+    offered: set[str] = set()
+    lowered = (reply or "").lower()
+    for pattern in ACCOMPANIMENT_PATTERNS:
+        for match in re.finditer(pattern, lowered):
+            tail = lowered[match.end() : match.end() + 40]
+            # The first few words after the phrase carry the thing being offered.
+            for word in re.findall(r"[a-z]+", tail)[:3]:
+                if len(word) < _VOCABULARY_MIN_TERM_LENGTH or word in _ACCOMPANIMENT_STOP:
+                    continue
+                if word in vocabulary and word not in context_terms:
+                    offered.add(word)
+    return offered
+
+
+def drop_ungrounded_accompaniments(reply: str, offered: set[str]) -> str:
+    """Remove the sentences that offer food the context never supplied.
+
+    Surgical rather than wholesale: the rest of the reply is a good answer built
+    from real retrieval, and throwing it away to delete one clause would replace
+    a mostly-true recommendation with a template. If removing the offending
+    sentences leaves nothing usable the caller falls back, which is the safe
+    direction — saying less is always available, and a promise the kitchen
+    cannot keep is not.
+    """
+
+    if not offered:
+        return reply
+    sentences = re.split(r"(?<=[.!?])\s+", reply.strip())
+    kept = [
+        sentence
+        for sentence in sentences
+        if not (set(re.findall(r"[a-z]+", sentence.lower())) & offered)
+    ]
+    cleaned = " ".join(kept).strip()
+    # A reply that is now a fragment is worse than the fallback.
+    return cleaned if len(cleaned) >= 40 else ""
+
+
 def _log_ungrounded_terms(
     db: Session,
     *,
@@ -3678,15 +3765,25 @@ def _log_ungrounded_terms(
     """
 
     try:
-        ungrounded = ungrounded_menu_terms(reply, context_block, _menu_vocabulary(db))
+        vocabulary = _menu_vocabulary(db)
+        ungrounded = ungrounded_menu_terms(reply, context_block, vocabulary)
+        offered = ungrounded_accompaniments(reply, context_block, vocabulary)
     except Exception:  # pragma: no cover - a checker must not break the answer
         logger.exception("Grounding check failed; reply returned unchecked")
         return set()
 
     if ungrounded:
-        logger.warning(
+        # Informational. Mostly adjectives, and not worth acting on by itself.
+        logger.info(
             "Chat reply used menu terms absent from its context: %s | question=%r",
             sorted(ungrounded),
+            _trim_text(message, 80),
+        )
+    if offered:
+        # This one is a promise the kitchen has to keep.
+        logger.warning(
+            "Chat reply offered accompaniments absent from its context: %s | question=%r",
+            sorted(offered),
             _trim_text(message, 80),
         )
     return ungrounded
@@ -5929,6 +6026,22 @@ def handle_chat_message(
                 context_block=prepared.context_block,
                 message=message,
             )
+            # Enforced, not just logged. The prompt rule was tightened first and
+            # measurably helped — 4 of 6 replies down to 1 of 4 — but a prompt
+            # cannot close this, because the model is not aware of breaking a
+            # rule. An empty result here falls through to the deterministic
+            # reply below.
+            grounded_reply = drop_ungrounded_accompaniments(
+                raw_reply,
+                ungrounded_accompaniments(raw_reply, prepared.context_block, _menu_vocabulary(db)),
+            )
+            if grounded_reply != raw_reply:
+                logger.warning(
+                    "Chat reply trimmed for offering food absent from its context | question=%r",
+                    _trim_text(message, 80),
+                )
+                llm_strategy = "generated_trimmed"
+            raw_reply = grounded_reply
         except HTTPException:
             llm_strategy = "fallback_after_llm_failure"
         prepared.timings.llm_ms = round((perf_counter() - llm_started_at) * 1000, 2)

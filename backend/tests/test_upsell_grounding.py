@@ -33,7 +33,11 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.main import app  # noqa: F401 - imported first to settle import order
-from app.services.rag import ungrounded_menu_terms
+from app.services.rag import (
+    drop_ungrounded_accompaniments,
+    ungrounded_accompaniments,
+    ungrounded_menu_terms,
+)
 
 
 # Stands in for the learned vocabulary: distinctive dish words, none of them
@@ -98,6 +102,62 @@ class UngroundedTermTests(unittest.TestCase):
 
         reply = "Would you like them with the spicy chutney on the side?"
         self.assertEqual(ungrounded_menu_terms(reply, MOMO_CONTEXT, frozenset()), set())
+
+
+class AccompanimentTests(unittest.TestCase):
+    """The narrower signal, and the only one it is safe to act on.
+
+    `ungrounded_menu_terms` flags every distinctive menu word the context did
+    not supply, and measured over eight live questions that is mostly
+    adjectives — crispy, tender, golden, smoky, refreshing. Those are the model
+    describing the dish it was given, which is its job; suppressing a reply for
+    them would cost a good answer to prevent flourish.
+
+    What a guest can actually be disappointed by is an ACCOMPANIMENT the
+    kitchen cannot serve. That construction is recognisable, so the check looks
+    only inside it.
+    """
+
+    def test_the_chutney_is_still_caught(self) -> None:
+        reply = "The Paneer Chilli Momos are a standout, served with the spicy chutney on the side."
+        self.assertEqual(ungrounded_accompaniments(reply, MOMO_CONTEXT, VOCABULARY), {"chutney"})
+
+    def test_describing_the_dish_is_not_an_accompaniment(self) -> None:
+        # The whole reason for this second detector: these must not fire.
+        reply = "Crispy, tender momos tossed in a golden, smoky sauce — refreshing and light."
+        vocabulary = VOCABULARY | {"crispy", "tender", "golden", "smoky", "refreshing"}
+        self.assertEqual(ungrounded_accompaniments(reply, MOMO_CONTEXT, vocabulary), set())
+
+    def test_an_accompaniment_that_is_in_context_is_fine(self) -> None:
+        reply = "Served with paneer, exactly as described."
+        self.assertEqual(ungrounded_accompaniments(reply, MOMO_CONTEXT, VOCABULARY), set())
+
+    def test_offering_a_drink_generically_is_not_a_claim(self) -> None:
+        reply = "Fancy something to drink with that?"
+        self.assertEqual(ungrounded_accompaniments(reply, MOMO_CONTEXT, VOCABULARY), set())
+
+
+class TrimmingTests(unittest.TestCase):
+    def test_only_the_offending_sentence_goes(self) -> None:
+        reply = (
+            "The Paneer Chilli Momos are a fiery standout. "
+            "They come served with the spicy chutney on the side. "
+            "Fancy something to drink with that?"
+        )
+        trimmed = drop_ungrounded_accompaniments(reply, {"chutney"})
+        self.assertNotIn("chutney", trimmed)
+        # The pitch and the closing question are the reply's value; keep them.
+        self.assertIn("fiery standout", trimmed)
+        self.assertIn("drink with that?", trimmed)
+
+    def test_a_reply_that_is_only_the_claim_falls_back(self) -> None:
+        # Empty tells the caller to use the deterministic reply. Saying less is
+        # always available; a promise the kitchen cannot keep is not.
+        self.assertEqual(drop_ungrounded_accompaniments("Try it with raita.", {"raita"}), "")
+
+    def test_a_clean_reply_is_returned_untouched(self) -> None:
+        reply = "The Paneer Chilli Momos are a fiery standout. Fancy a drink?"
+        self.assertEqual(drop_ungrounded_accompaniments(reply, set()), reply)
 
 
 if __name__ == "__main__":
