@@ -15,8 +15,23 @@ const SRC = join(__dirname, '..');
 const PUBLIC_DIR = join(SRC, '..', 'public');
 
 const FONT_CSS = join(SRC, 'styles/fonts.css');
+const MAIN_TSX = join(SRC, 'main.tsx');
 
 describe('@font-face declarations', () => {
+  /**
+   * `fonts.css` can pass every check above and still never take effect: an
+   * `@font-face` block that no entry point imports registers nothing, and the
+   * page silently renders in the fallback stack. That is the exact failure
+   * this file exists to catch, so the chain has to be verified end to end —
+   * not just that the file is well-formed, but that something actually pulls
+   * it in. `main.tsx` is that entry point today.
+   */
+  it('is imported by the app entry point', () => {
+    const entry = readFileSync(MAIN_TSX, 'utf8');
+
+    expect(entry).toContain("./styles/fonts.css");
+  });
+
   it('declares at least one face', () => {
     const css = readFileSync(FONT_CSS, 'utf8');
 
