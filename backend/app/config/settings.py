@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     default_app_client_key: str = "marketplace"
 
     backend_cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8081"
+        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081"
     )
 
     # A managed provider hands out ONE connection string rather than the five
