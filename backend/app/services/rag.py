@@ -438,6 +438,24 @@ UNSUPPORTED_QUERY_PATTERNS = (
     r"^do you know\b",
     r"^tell me about\b",
     r"^explain\b",
+    # Named off-topic asks. These carry no override phrasing, so
+    # `_is_role_override_attempt` does not see them, and no general-knowledge
+    # question shape, so the patterns above miss them — "tell me a joke" and
+    # "write me python code" both reached the model and were answered.
+    #
+    # Anchored with `search` semantics in mind but written to match the request
+    # itself rather than the noun: "joke" alone must not match, because
+    # "something to joke about over dinner" is a customer, and the words "code"
+    # and "story" appear in dish descriptions.
+    r"\b(?:tell|say)\s+(?:me\s+)?(?:a|another|one)\s+(?:joke|story|poem|riddle)",
+    # Up to three words may sit between the verb and the noun — "write me
+    # PYTHON code", "write me AN essay" — which a noun-immediately-after pattern
+    # missed, measured. Non-greedy so it stops at the first matching noun.
+    r"\b(?:write|generate|create)\s+(?:me\s+)?(?:\w+\s+){0,3}?"
+    r"(?:code|script|program|essay|poem|song|story|email|homework)\b",
+    r"\b(?:translate|summarise|summarize)\s+(?:this|that|the following)\b",
+    r"^(?:calculate|solve)\b",
+    r"\bdo\s+my\s+(?:homework|assignment|essay)\b",
 )
 
 FOLLOW_UP_MESSAGE_MARKERS = (
@@ -921,6 +939,14 @@ def _has_food_domain_signal(message: str) -> bool:
         return True
     if any(f" {cuisine_key} " in f" {normalized} " for cuisine_key in CUISINE_SIGNAL_KEYS):
         return True
+    # Mood is matched against the NORMALISED TEXT, not the token list, because
+    # `_query_tokens` strips exactly these words as stopwords: measured,
+    # "what do you recommend" tokenises to [] and so could never match a
+    # token-set lookup, which left one of the most common customer sentences
+    # answered with "I didn't quite catch that".
+    padded = f" {normalized} "
+    if any(f" {keyword} " in padded for keyword in MOOD_DOMAIN_KEYWORDS):
+        return True
     tokens = set(_query_tokens(message))
     # Mood counts as a food signal: "I'm starving" and "something comforting"
     # are orders waiting to happen, and refusing them to keep the domain tight
@@ -999,6 +1025,13 @@ def _is_invalid_or_spam_message(message: str) -> bool:
         return True
     if _is_small_talk_message(message) or _is_out_of_domain_message(message):
         return False
+    # A message carrying a food, mood or superlative signal is never spam, even
+    # when tokenising leaves nothing behind. Measured: "what do you recommend"
+    # reached this guard and was answered "I didn't quite catch that", because
+    # every word in it is a stopword and the token check below then fired. That
+    # is one of the most common things a customer types.
+    if _has_food_domain_signal(message):
+        return False
     if re.fullmatch(r"[\W_]+", stripped):
         return True
     if re.search(r"(.)\1{5,}", normalized):
@@ -1064,25 +1097,32 @@ def _is_out_of_domain_message(message: str) -> bool:
         return False
     if _is_menu_question_message(message):
         return False
-    if any(re.match(pattern, normalized) for pattern in UNSUPPORTED_QUERY_PATTERNS):
-        return True
-
-    # Everything above is an escape hatch; anything still here matched no food
-    # word, no mood word, no cuisine, no budget, no follow-up, no menu question,
-    # no greeting and no small talk. Refuse it.
+    # Deliberately a blocklist, and this was measured rather than assumed.
     #
-    # This inverts the previous default. It used to allow anything that did not
-    # match an explicit general-knowledge pattern, which meant a blocklist: safe
-    # only against phrasings someone had already thought of. An allowlist cannot
-    # be bypassed by novel phrasing, which is the whole point.
+    # An allowlist was tried here — refuse anything not matching a food word, a
+    # mood word, a cuisine, a budget, a follow-up or a menu question. It is the
+    # intuitive choice, because a blocklist can only stop phrasings someone
+    # already thought of. Against 66 ordinary customer sentences it refused 28
+    # of them: "I am allergic to peanuts", "is anything halal", "what do you
+    # recommend", "how long will delivery take", "no pork", "bestsellers",
+    # "main course options", "around 300".
     #
-    # The cost is real and worth stating: a legitimate customer whose wording
-    # matches nothing gets refused. That is why MOOD_DOMAIN_KEYWORDS exists and
-    # why the hatches above are checked first — measured false-refusal rate on
-    # the phrasings tested was 0, but "tested" is not "all customers", and this
-    # gate is the first place to look if people report the assistant being
-    # unhelpful.
-    return True
+    # A 42% false-refusal rate on buying intent is far worse for this business
+    # than an occasional off-topic answer, and no keyword list will ever cover
+    # how many ways English asks for dinner. Role-override attempts — the one
+    # thing a blocklist genuinely could not catch — are handled deterministically
+    # by `_is_role_override_attempt` above, so the gap that motivated the
+    # allowlist is closed without refusing customers to do it.
+    #
+    # Only explicit general-knowledge shapes are refused. An earlier
+    # any-question-mark heuristic rejected legitimate ordering questions like
+    # "whats good here?" or "what does Luigi's have?".
+    #
+    # `search`, not `match`: the named off-topic asks added to this tuple appear
+    # mid-sentence ("ok now write me python code"), while the original
+    # question-shape patterns are all `^`-anchored and so behave identically
+    # either way.
+    return any(re.search(pattern, normalized) for pattern in UNSUPPORTED_QUERY_PATTERNS)
 
 
 def _message_requests_new_items(message: str) -> bool:
