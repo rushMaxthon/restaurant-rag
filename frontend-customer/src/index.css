@@ -129,15 +129,22 @@
   --shadow-lg: 0 10px 24px var(--shadow-color);
   --shadow-xl: 0 16px 38px var(--shadow-color);
 
-  /* --- radii, the app's scale ------------------------------------------- */
-  --radius-xl: 26px;
-  --radius-pill: 20px;
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-card: 12px;
-  --radius-sm: 12px;
-  --radius-xs: 10px;
-  --radius-button: 8px;
+  /* --- radii, the app's scale ---------------------------------------------
+     Roughly halved at the top end. The old scale peaked at 26px, which reads
+     as soft and consumer-friendly; this direction wants the opposite, and a
+     dense grid of large-radius cards wastes real estate at every corner.
+
+     `--radius-pill` is deliberately NOT reduced: on a chip or a status badge
+     the full round is the signal that the thing is a tag rather than a button,
+     so flattening it would remove meaning rather than decoration. */
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-card: 8px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --radius-button: 6px;
 
   /* --- spacing, the app's scale ----------------------------------------- */
   --space-xs: 8px;
