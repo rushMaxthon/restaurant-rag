@@ -6390,6 +6390,35 @@ def stream_chat_message(
         )
         if not raw_reply:
             yield _sse_frame("token", {"text": reply})
+
+        # Grounding, on the path customers actually use. Enforcement was wired
+        # into the non-streaming handler first, and the concierge streams — so
+        # for real users it was never running. Tokens already sent cannot be
+        # recalled, but the client replaces the streamed text with `done.reply`,
+        # so correcting `reply` here is what reaches the screen. Worth the brief
+        # flicker: the alternative is offering a side the kitchen cannot serve.
+        try:
+            offered = ungrounded_accompaniments(
+                reply, prepared.context_block, _menu_vocabulary(db)
+            )
+            if offered:
+                trimmed = drop_ungrounded_accompaniments(reply, offered)
+                logger.warning(
+                    "Streamed reply offered accompaniments absent from its context: %s | question=%r",
+                    sorted(offered),
+                    _trim_text(message, 80),
+                )
+                reply = trimmed or _build_safe_reply(
+                    message,
+                    prepared.suggestions,
+                    prepared.retrieval_source,
+                    extracted_intent=prepared.extracted_intent,
+                    is_follow_up=prepared.is_follow_up,
+                    follow_up_base_message=prepared.effective_message,
+                )
+        except Exception:  # pragma: no cover - a checker must not break the answer
+            logger.exception("Streamed grounding check failed; reply returned unchecked")
+
     if cacheable_response:
         cache_set_json(
             response_cache_key,
