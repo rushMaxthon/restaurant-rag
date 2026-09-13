@@ -11,6 +11,7 @@ import {
   Palette,
   ReceiptText,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Store,
   TicketPercent,
@@ -62,6 +63,7 @@ const sidebarSections: SidebarSection[] = [
       { path: "/offers", label: "Offers", icon: TicketPercent },
       { path: "/generated-combos", label: "Generated Combos", icon: Layers3 },
       { path: "/users", label: "Users", icon: Users },
+      { path: "/preferences", label: "Preferences", icon: SlidersHorizontal },
     ],
   },
   {
@@ -85,6 +87,7 @@ const ownerVisiblePaths = new Set([
   "/users",
   "/reports",
   "/ai-manager",
+  "/preferences",
   "/settings",
 ]);
 
@@ -98,6 +101,7 @@ const adminVisiblePaths = new Set([
   "/reports",
   "/ai-manager",
   "/notifications",
+  "/preferences",
   "/settings",
 ]);
 

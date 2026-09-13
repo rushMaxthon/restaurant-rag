@@ -316,3 +316,31 @@ class PushNotificationEventType(StrEnum):
     DELIVERED = "DELIVERED"
     OPENED = "OPENED"
     FAILED = "FAILED"
+
+
+class PreferenceInputType(StrEnum):
+    SINGLE_SELECT = "SINGLE_SELECT"
+    MULTI_SELECT = "MULTI_SELECT"
+
+
+class PreferenceSignalRole(StrEnum):
+    """What the recommender is allowed to do with a question's answers.
+
+    The questionnaire's structure is data, but its meaning is not: the scoring
+    engine treats a diet answer differently from a spice answer, and it cannot
+    infer that from a prompt string. This is the declaration that connects one
+    to the other.
+
+    `NONE` is the important value. A question carrying it is collected, stored
+    and returned like any other, and contributes nothing to ranking - which is
+    what lets an owner add a question today without anyone re-tuning the
+    weights, and what a future taste vector will read from.
+    """
+
+    CUISINE = "CUISINE"
+    DISLIKED_CUISINE = "DISLIKED_CUISINE"
+    DIET = "DIET"
+    SPICE = "SPICE"
+    BUDGET = "BUDGET"
+    FAVORITE_ITEM = "FAVORITE_ITEM"
+    NONE = "NONE"

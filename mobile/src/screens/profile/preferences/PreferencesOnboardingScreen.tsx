@@ -1,9 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+/**
+ * Onboarding, rendered from whatever the restaurant configured.
+ *
+ * There are no steps in this file. The wizard asks `/preferences/schema` what to
+ * ask, renders one step per question, and validates each from the question's own
+ * `input_type`, `is_required`, `min_selections`, `max_selections` and
+ * `allows_free_text`. An owner adding a question, withdrawing an option or
+ * hiding an inherited question changes this screen with no release.
+ *
+ * The one thing it still hardcodes is a fallback questionnaire, used only when
+ * the schema cannot be fetched. Onboarding gates the whole app, so a dead
+ * network has to produce a questionnaire rather than a dead end.
+ */
+
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import Animated, {
   FadeInLeft,
   FadeInRight,
@@ -15,108 +33,44 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useAppActions, usePreferences } from '@hooks/useAppStore';
+import {useAppActions, usePreferences, useSession} from '@hooks/useAppStore';
+import {api} from '@services/api';
 import type {
-  BudgetTier,
-  DietPreference,
-  SpiceLevel,
+  PreferenceQuestion,
+  PreferenceSchema,
   UserPreferences,
 } from '@/types/app';
-import { useTheme, useThemedStyles } from '@/theme';
-import { createStyles } from './wizardStyles';
+import {useTheme, useThemedStyles} from '@/theme';
+import {FALLBACK_PREFERENCE_SCHEMA} from '@/data/preferenceFallbackSchema';
+import {
+  EMPTY_SELECTION,
+  addFreeText,
+  buildSelections,
+  describeSelection,
+  isAtCapacity,
+  removeFreeText,
+  selectionCount,
+  selectionsToLegacy,
+  toSubmissions,
+  toggleOption,
+  validateQuestion,
+  type SelectionMap,
+} from '@utils/preferenceForm';
+import {createStyles} from './wizardStyles';
 
 const AnimatedText = Animated.createAnimatedComponent(Text);
-
-const CUISINE_OPTIONS = [
-  'Pizza',
-  'Burgers',
-  'Chinese',
-  'Healthy',
-  'Desserts',
-  'Biryani',
-  'South Indian',
-  'North Indian',
-  'Italian',
-];
-
-const FAVORITE_ITEM_OPTIONS = [
-  'Margherita Pizza',
-  'Paneer Tikka',
-  'Chicken Biryani',
-  'Veg Burger',
-  'Pasta',
-  'Momos',
-  'Salad Bowl',
-  'Ice Cream',
-];
-
-const DIET_OPTIONS: Array<{ label: string; value: DietPreference }> = [
-  { label: 'Veg', value: 'VEG' },
-  { label: 'Non-Veg', value: 'NON_VEG' },
-];
-
-const SPICE_OPTIONS: Array<{ label: string; value: SpiceLevel }> = [
-  { label: 'Low', value: 'LOW' },
-  { label: 'Medium', value: 'MEDIUM' },
-  { label: 'High', value: 'HIGH' },
-];
-
-const BUDGET_OPTIONS: Array<{ label: string; value: BudgetTier }> = [
-  { label: 'Low', value: 'LOW' },
-  { label: 'Mid', value: 'MID' },
-  { label: 'High', value: 'HIGH' },
-];
-
-type WizardStep = {
-  key: string;
-  eyebrow: string;
-  title: string;
-  description: string;
-};
-
-const STEPS: WizardStep[] = [
-  {
-    key: 'cuisines',
-    eyebrow: 'Step 1 of 5',
-    title: 'Pick your favorite cuisines',
-    description:
-      'Choose a few tastes you want us to prioritize from the start.',
-  },
-  {
-    key: 'diet',
-    eyebrow: 'Step 2 of 5',
-    title: 'What diet should we prefer?',
-    description: 'We will use this to avoid irrelevant recommendations.',
-  },
-  {
-    key: 'spice',
-    eyebrow: 'Step 3 of 5',
-    title: 'How spicy do you like it?',
-    description: 'We will bias recommendations toward your comfort zone.',
-  },
-  {
-    key: 'budget',
-    eyebrow: 'Step 4 of 5',
-    title: 'Set your typical budget',
-    description: 'This helps us keep early suggestions realistic and useful.',
-  },
-  {
-    key: 'items',
-    eyebrow: 'Step 5 of 5',
-    title: 'Any favorite items?',
-    description: 'Optional, but helpful for faster personalization.',
-  },
-];
 
 type SelectionChipProps = {
   active: boolean;
   label: string;
+  disabled?: boolean;
   onPress: () => void;
 };
 
 function SelectionChip({
   active,
   label,
+  disabled = false,
   onPress,
 }: SelectionChipProps): React.JSX.Element {
   const theme = useTheme();
@@ -125,11 +79,8 @@ function SelectionChip({
   const scale = useSharedValue(active ? 1.02 : 1);
 
   useEffect(() => {
-    progress.value = withTiming(active ? 1 : 0, { duration: 180 });
-    scale.value = withSpring(active ? 1.02 : 1, {
-      damping: 15,
-      stiffness: 180,
-    });
+    progress.value = withTiming(active ? 1 : 0, {duration: 180});
+    scale.value = withSpring(active ? 1.02 : 1, {damping: 15, stiffness: 180});
   }, [active, progress, scale]);
 
   const containerStyle = useAnimatedStyle(() => ({
@@ -143,7 +94,7 @@ function SelectionChip({
       [0, 1],
       [theme.colors.border, theme.colors.primary],
     ),
-    transform: [{ scale: scale.value }],
+    transform: [{scale: scale.value}],
   }));
 
   const textStyle = useAnimatedStyle(() => ({
@@ -155,251 +106,228 @@ function SelectionChip({
   }));
 
   return (
-    <Animated.View style={[styles.chip, containerStyle]}>
-      <Pressable onPress={onPress} style={styles.chipPressable}>
-        <AnimatedText style={[styles.chipText, textStyle]}>
-          {label}
-        </AnimatedText>
+    <Animated.View
+      style={[styles.chip, containerStyle, disabled ? {opacity: 0.45} : null]}
+    >
+      <Pressable disabled={disabled} onPress={onPress} style={styles.chipPressable}>
+        <AnimatedText style={[styles.chipText, textStyle]}>{label}</AnimatedText>
       </Pressable>
     </Animated.View>
   );
 }
 
-function normalizePreferences(
-  preferences: UserPreferences | null,
-): UserPreferences {
-  return {
-    cuisines: preferences?.cuisines ?? [],
-    diet: preferences?.diet ?? null,
-    spice_level: preferences?.spice_level ?? null,
-    budget: preferences?.budget ?? null,
-    favorite_items: preferences?.favorite_items ?? [],
-    updated_at: preferences?.updated_at ?? null,
-  };
-}
-
 export function PreferencesOnboardingScreen(): React.JSX.Element {
+  const theme = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { preferences } = usePreferences();
-  const { savePreferences, skipPreferencesOnboarding, pushToast } =
-    useAppActions();
   const insets = useSafeAreaInsets();
-  const initialPreferences = useMemo(
-    () => normalizePreferences(preferences),
-    [preferences],
-  );
+  const {savePreferences, skipPreferencesOnboarding, pushToast} = useAppActions();
+  const {preferences} = usePreferences();
+  const {token} = useSession();
 
+  const [schema, setSchema] = useState<PreferenceSchema | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [selections, setSelections] = useState<SelectionMap>({});
   const [stepIndex, setStepIndex] = useState(0);
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [submitting, setSubmitting] = useState(false);
-  const [cuisines, setCuisines] = useState(initialPreferences.cuisines);
-  const [diet, setDiet] = useState<DietPreference | null>(
-    initialPreferences.diet,
-  );
-  const [spiceLevel, setSpiceLevel] = useState<SpiceLevel | null>(
-    initialPreferences.spice_level,
-  );
-  const [budget, setBudget] = useState<BudgetTier | null>(
-    initialPreferences.budget,
-  );
-  const [favoriteItems, setFavoriteItems] = useState(
-    initialPreferences.favorite_items,
-  );
+  const [touched, setTouched] = useState(false);
+  const [draftText, setDraftText] = useState('');
   const [progressTrackWidth, setProgressTrackWidth] = useState(0);
-  const progressWidth = useSharedValue(0);
-
-  const currentStep = STEPS[stepIndex];
-  const progress = (stepIndex + 1) / STEPS.length;
 
   useEffect(() => {
-    if (progressTrackWidth <= 0) {
-      return;
-    }
-    progressWidth.value = withTiming(progressTrackWidth * progress, {
-      duration: 220,
-    });
-  }, [progress, progressTrackWidth, progressWidth]);
+    let active = true;
 
+    async function load() {
+      let resolved: PreferenceSchema;
+      let fallback = false;
+      try {
+        resolved = await api.getPreferenceSchema();
+        // An owner who hid everything would otherwise strand the customer on an
+        // empty wizard with nothing to press.
+        if (resolved.questions.length === 0) {
+          resolved = FALLBACK_PREFERENCE_SCHEMA;
+          fallback = true;
+        }
+      } catch {
+        resolved = FALLBACK_PREFERENCE_SCHEMA;
+        fallback = true;
+      }
+      if (!active) {
+        return;
+      }
+
+      let initial = buildSelections(resolved, []);
+      // Someone re-running onboarding keeps what they already chose.
+      if (token && !fallback) {
+        try {
+          const existing = await api.getPreferenceAnswers(token);
+          if (active) {
+            initial = buildSelections(resolved, existing.answers);
+          }
+        } catch {
+          // Not fatal - they simply start from a blank questionnaire.
+        }
+      }
+
+      if (!active) {
+        return;
+      }
+      setSchema(resolved);
+      setUsingFallback(fallback);
+      setSelections(initial);
+      setLoading(false);
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  const questions = schema?.questions ?? [];
+  const currentQuestion: PreferenceQuestion | undefined = questions[stepIndex];
+  const currentSelection = currentQuestion
+    ? selections[currentQuestion.id] ?? EMPTY_SELECTION
+    : EMPTY_SELECTION;
+  const currentError = currentQuestion
+    ? validateQuestion(currentQuestion, currentSelection)
+    : null;
+
+  const progress = questions.length > 0 ? (stepIndex + 1) / questions.length : 0;
   const progressBarStyle = useAnimatedStyle(() => ({
-    width: progressWidth.value,
+    width: progressTrackWidth * progress,
   }));
 
-  const enteringAnimation =
-    direction === 'forward'
-      ? FadeInRight.duration(220)
-      : FadeInLeft.duration(220);
-  const exitingAnimation =
-    direction === 'forward'
-      ? FadeOutLeft.duration(180)
-      : FadeOutRight.duration(180);
+  const setSelection = useCallback(
+    (questionId: string, next: ReturnType<typeof toggleOption>) => {
+      setSelections(current => ({...current, [questionId]: next}));
+    },
+    [],
+  );
 
-  function toggleListValue(
-    currentValues: string[],
-    value: string,
-    nextSetter: (next: string[]) => void,
-  ) {
-    if (currentValues.includes(value)) {
-      nextSetter(currentValues.filter(entry => entry !== value));
-      return;
-    }
-    nextSetter([...currentValues, value]);
-  }
-
-  function handleBack() {
+  const handleBack = () => {
     if (stepIndex === 0) {
       return;
     }
+    setTouched(false);
+    setDraftText('');
     setDirection('backward');
     setStepIndex(current => current - 1);
-  }
+  };
 
-  async function handleNext() {
-    if (stepIndex < STEPS.length - 1) {
+  const handleNext = async () => {
+    if (!schema || !currentQuestion) {
+      return;
+    }
+    if (currentError) {
+      setTouched(true);
+      return;
+    }
+
+    if (stepIndex < questions.length - 1) {
+      setTouched(false);
+      setDraftText('');
       setDirection('forward');
       setStepIndex(current => current + 1);
       return;
     }
 
     setSubmitting(true);
-    const nextPreferences: UserPreferences = {
-      cuisines,
-      diet,
-      spice_level: spiceLevel,
-      budget,
-      favorite_items: favoriteItems,
-      updated_at: new Date().toISOString(),
-    };
-
     try {
-      await savePreferences(nextPreferences, {
-        sync: true,
-        markOnboardingCompleted: true,
-      });
+      if (usingFallback || !token) {
+        // No account yet, or the schema came from the offline fallback where the
+        // ids mean nothing to the server. Either way the answers are projected
+        // here and kept locally, so the first home feed is still personalised.
+        const legacy = selectionsToLegacy(schema, selections);
+        await savePreferences(
+          {...legacy, updated_at: preferences?.updated_at ?? null} as UserPreferences,
+          {sync: Boolean(token)},
+        );
+      } else {
+        const saved = await api.savePreferenceAnswers(
+          token,
+          toSubmissions(schema, selections),
+        );
+        // The server already persisted this; storing the projection locally
+        // without re-syncing keeps the ranked feed consistent immediately.
+        await savePreferences(saved.legacy, {sync: false});
+      }
+    } catch (error) {
       pushToast(
-        'Preferences saved',
-        'Your home feed is ready with smarter starting recommendations.',
-        'success',
+        'Preferences not saved',
+        error instanceof Error
+          ? error.message
+          : 'Unable to save your preferences right now.',
+        'error',
       );
-    } catch {
-      // The store already surfaces the sync error and keeps the local preference state.
-    } finally {
       setSubmitting(false);
+      return;
     }
-  }
+    setSubmitting(false);
+  };
 
-  function handleSkip() {
-    skipPreferencesOnboarding();
-    pushToast(
-      'Skipped for now',
-      'We will start with highly rated and popular picks.',
-      'info',
+  const enteringAnimation = direction === 'forward' ? FadeInRight : FadeInLeft;
+  const exitingAnimation = direction === 'forward' ? FadeOutLeft : FadeOutRight;
+
+  const capacityHint = useMemo(() => {
+    if (!currentQuestion) {
+      return null;
+    }
+    const parts: string[] = [];
+    if (currentQuestion.max_selections != null) {
+      parts.push(`Choose up to ${currentQuestion.max_selections}`);
+    }
+    if (currentQuestion.is_required) {
+      parts.push('Required');
+    } else {
+      parts.push('Optional');
+    }
+    return parts.join(' · ');
+  }, [currentQuestion]);
+
+  if (loading) {
+    return (
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Setting up your taste profile…</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  function renderStepContent() {
-    switch (currentStep.key) {
-      case 'cuisines':
-        return (
-          <View style={styles.optionGrid}>
-            {CUISINE_OPTIONS.map(option => (
-              <SelectionChip
-                key={option}
-                active={cuisines.includes(option)}
-                label={option}
-                onPress={() =>
-                  toggleListValue(cuisines, option, next => setCuisines(next))
-                }
-              />
-            ))}
-          </View>
-        );
-      case 'diet':
-        return (
-          <View style={styles.optionGrid}>
-            {DIET_OPTIONS.map(option => (
-              <SelectionChip
-                key={option.value}
-                active={diet === option.value}
-                label={option.label}
-                onPress={() =>
-                  setDiet(current =>
-                    current === option.value ? null : option.value,
-                  )
-                }
-              />
-            ))}
-          </View>
-        );
-      case 'spice':
-        return (
-          <View style={styles.optionGrid}>
-            {SPICE_OPTIONS.map(option => (
-              <SelectionChip
-                key={option.value}
-                active={spiceLevel === option.value}
-                label={option.label}
-                onPress={() =>
-                  setSpiceLevel(current =>
-                    current === option.value ? null : option.value,
-                  )
-                }
-              />
-            ))}
-          </View>
-        );
-      case 'budget':
-        return (
-          <View style={styles.optionGrid}>
-            {BUDGET_OPTIONS.map(option => (
-              <SelectionChip
-                key={option.value}
-                active={budget === option.value}
-                label={option.label}
-                onPress={() =>
-                  setBudget(current =>
-                    current === option.value ? null : option.value,
-                  )
-                }
-              />
-            ))}
-          </View>
-        );
-      case 'items':
-        return (
-          <View style={styles.optionGrid}>
-            {FAVORITE_ITEM_OPTIONS.map(option => (
-              <SelectionChip
-                key={option}
-                active={favoriteItems.includes(option)}
-                label={option}
-                onPress={() =>
-                  toggleListValue(favoriteItems, option, next =>
-                    setFavoriteItems(next),
-                  )
-                }
-              />
-            ))}
-          </View>
-        );
-      default:
-        return null;
-    }
+  if (!schema || !currentQuestion) {
+    // Reachable only if the fallback itself were emptied. Skipping is the one
+    // sane exit, since onboarding gates the rest of the app.
+    return (
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>
+            No preference questions are set up right now.
+          </Text>
+          <Pressable onPress={skipPreferencesOnboarding} style={styles.nextButton}>
+            <Text style={styles.nextButtonText}>Continue</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <View style={styles.screen}>
         <View style={styles.topSection}>
           <View style={styles.progressMetaRow}>
-            <Text style={styles.progressLabel}>{currentStep.eyebrow}</Text>
-            <Pressable onPress={handleSkip} style={styles.skipButton}>
+            <Text style={styles.progressLabel}>
+              Step {stepIndex + 1} of {questions.length}
+            </Text>
+            <Pressable onPress={skipPreferencesOnboarding} style={styles.skipButton}>
               <Text style={styles.skipButtonText}>Skip</Text>
             </Pressable>
           </View>
           <View
-            onLayout={event =>
-              setProgressTrackWidth(event.nativeEvent.layout.width)
-            }
+            onLayout={event => setProgressTrackWidth(event.nativeEvent.layout.width)}
             style={styles.progressTrack}
           >
             <Animated.View style={[styles.progressFill, progressBarStyle]} />
@@ -416,27 +344,110 @@ export function PreferencesOnboardingScreen(): React.JSX.Element {
             Build your first recommendation feed.
           </Text>
           <Text style={styles.heroSubtitle}>
-            Five quick steps. No pressure. You can edit everything later from
-            Profile.
+            {questions.length} quick {questions.length === 1 ? 'step' : 'steps'}. No
+            pressure. You can edit everything later from Profile.
           </Text>
         </View>
 
         <ScrollView
           contentContainerStyle={styles.stepContentWrap}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.stepCard}>
             <Animated.View
               entering={enteringAnimation}
               exiting={exitingAnimation}
-              key={currentStep.key}
+              key={currentQuestion.id}
               style={styles.stepInner}
             >
-              <Text style={styles.stepTitle}>{currentStep.title}</Text>
-              <Text style={styles.stepDescription}>
-                {currentStep.description}
-              </Text>
-              {renderStepContent()}
+              <Text style={styles.stepTitle}>{currentQuestion.prompt}</Text>
+              {currentQuestion.help_text ? (
+                <Text style={styles.stepDescription}>{currentQuestion.help_text}</Text>
+              ) : null}
+
+              <View style={styles.optionGrid}>
+                {currentQuestion.options.map(option => {
+                  const active = currentSelection.optionIds.includes(option.id);
+                  return (
+                    <SelectionChip
+                      active={active}
+                      disabled={!active && isAtCapacity(currentQuestion, currentSelection)}
+                      key={option.id}
+                      label={option.label}
+                      onPress={() =>
+                        setSelection(
+                          currentQuestion.id,
+                          toggleOption(currentQuestion, currentSelection, option.id),
+                        )
+                      }
+                    />
+                  );
+                })}
+
+                {currentSelection.freeText.map(value => (
+                  <Pressable
+                    key={`typed:${value}`}
+                    onPress={() =>
+                      setSelection(
+                        currentQuestion.id,
+                        removeFreeText(currentSelection, value),
+                      )
+                    }
+                    style={styles.typedChip}
+                  >
+                    <Text style={styles.typedChipText}>{value}</Text>
+                    <Text style={styles.typedChipRemove}>×</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {currentQuestion.allows_free_text ? (
+                <View style={styles.freeTextRow}>
+                  <TextInput
+                    onChangeText={setDraftText}
+                    onSubmitEditing={() => {
+                      setSelection(
+                        currentQuestion.id,
+                        addFreeText(currentQuestion, currentSelection, draftText),
+                      );
+                      setDraftText('');
+                    }}
+                    placeholder="Add your own"
+                    placeholderTextColor={theme.colors.hint}
+                    returnKeyType="done"
+                    style={styles.freeTextInput}
+                    value={draftText}
+                  />
+                  <Pressable
+                    disabled={!draftText.trim()}
+                    onPress={() => {
+                      setSelection(
+                        currentQuestion.id,
+                        addFreeText(currentQuestion, currentSelection, draftText),
+                      );
+                      setDraftText('');
+                    }}
+                    style={[
+                      styles.freeTextAdd,
+                      !draftText.trim() ? {opacity: 0.5} : null,
+                    ]}
+                  >
+                    <Text style={styles.freeTextAddLabel}>Add</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {touched && currentError ? (
+                <Text style={styles.errorText}>{currentError}</Text>
+              ) : (
+                <Text style={styles.helperText}>
+                  {capacityHint}
+                  {selectionCount(currentSelection) > 0
+                    ? ` · ${describeSelection(currentQuestion, currentSelection)}`
+                    : ''}
+                </Text>
+              )}
             </Animated.View>
           </View>
         </ScrollView>
@@ -444,7 +455,7 @@ export function PreferencesOnboardingScreen(): React.JSX.Element {
         <View
           style={[
             styles.footerBar,
-            { paddingBottom: Math.max(insets.bottom + 8, 18) },
+            {paddingBottom: Math.max(insets.bottom + 8, 18)},
           ]}
         >
           <View style={styles.footerButtons}>
@@ -458,15 +469,12 @@ export function PreferencesOnboardingScreen(): React.JSX.Element {
             <Pressable
               disabled={submitting}
               onPress={handleNext}
-              style={[
-                styles.nextButton,
-                submitting ? styles.nextButtonDisabled : null,
-              ]}
+              style={[styles.nextButton, submitting ? styles.nextButtonDisabled : null]}
             >
               <Text style={styles.nextButtonText}>
                 {submitting
-                  ? 'Saving...'
-                  : stepIndex === STEPS.length - 1
+                  ? 'Saving…'
+                  : stepIndex === questions.length - 1
                   ? 'Finish'
                   : 'Next'}
               </Text>

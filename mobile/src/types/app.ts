@@ -793,3 +793,78 @@ export interface AppConfig {
   minimum_supported_version: string;
   bundle_id: string;
 }
+
+/**
+ * The onboarding questionnaire, resolved from `/preferences/schema`.
+ *
+ * Nothing about the questions is known at build time. The app renders whatever
+ * the restaurant's owner has configured, which is why the wizard has no
+ * hardcoded steps and no hardcoded option lists.
+ */
+export type PreferenceInputType = 'SINGLE_SELECT' | 'MULTI_SELECT';
+
+/** What the recommender does with a question's answers. */
+export type PreferenceSignalRole =
+  | 'CUISINE'
+  | 'DISLIKED_CUISINE'
+  | 'DIET'
+  | 'SPICE'
+  | 'BUDGET'
+  | 'FAVORITE_ITEM'
+  | 'NONE';
+
+export interface PreferenceOption {
+  id: string;
+  value: string;
+  label: string;
+  help_text?: string | null;
+  display_order: number;
+}
+
+export interface PreferenceQuestion {
+  id: string;
+  key: string;
+  prompt: string;
+  help_text?: string | null;
+  input_type: PreferenceInputType;
+  is_required: boolean;
+  min_selections: number;
+  max_selections?: number | null;
+  allows_free_text: boolean;
+  signal_role: PreferenceSignalRole;
+  display_order: number;
+  is_inherited?: boolean;
+  options: PreferenceOption[];
+}
+
+export interface PreferenceSchema {
+  restaurant_id: string | null;
+  questions: PreferenceQuestion[];
+}
+
+/** One question's answer, as the customer has it now. */
+export interface PreferenceAnswer {
+  question_id: string;
+  question_key: string;
+  option_ids: string[];
+  free_text: string[];
+  labels: string[];
+  /**
+   * The stored answer points at a question or option that is no longer active.
+   * Shown so the customer can see and remove it, rather than having their past
+   * choice disappear without explanation.
+   */
+  has_stale_selection: boolean;
+}
+
+export interface PreferenceAnswersResponse {
+  answers: PreferenceAnswer[];
+  /** The projected legacy shape, which is what recommendations still read. */
+  legacy: UserPreferences;
+}
+
+export interface PreferenceAnswerSubmission {
+  question_id: string;
+  option_ids: string[];
+  free_text: string[];
+}

@@ -1,172 +1,186 @@
-import {useEffect, useMemo, useState} from 'react';
-import type {
-  BudgetTier,
-  DietPreference,
-  SpiceLevel,
-  UserPreferences,
-} from '../types/app';
-import {useAppStore} from '../hooks/useAppStore';
+/**
+ * Onboarding and preference editing, rendered from the restaurant's own schema.
+ *
+ * There are no steps in this file. It asks `/preferences/schema` what to ask and
+ * validates each answer from the question's own `input_type`, `is_required`,
+ * `min_selections`, `max_selections` and `allows_free_text`, so a question an
+ * owner adds or hides changes this screen with no release.
+ *
+ * `mode` is what makes the same component serve both jobs: `onboarding` gates a
+ * new customer and offers a skip; `edit` is Profile → Taste preferences, seeded
+ * with what they already chose.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../services/api';
+import { useAppStore } from '../hooks/useAppStore';
+import { useAppConfig } from '../store/useAppConfig';
+import type { PreferenceSchema, UserPreferences } from '../types/app';
+import { FALLBACK_PREFERENCE_SCHEMA } from '../data/preferenceFallbackSchema';
+import {
+  EMPTY_SELECTION,
+  addFreeText,
+  buildSelections,
+  describeSelection,
+  isAtCapacity,
+  removeFreeText,
+  selectionCount,
+  selectionsToLegacy,
+  toSubmissions,
+  toggleOption,
+  validateQuestion,
+  type SelectionMap,
+} from '../utils/preferenceForm';
 
 interface PreferencesOnboardingPageProps {
   mode?: 'onboarding' | 'edit';
   onNavigate: (path: string) => void;
 }
 
-const CUISINE_OPTIONS = [
-  'Pizza',
-  'Burgers',
-  'Chinese',
-  'Healthy',
-  'Desserts',
-  'Biryani',
-  'South Indian',
-  'North Indian',
-  'Italian',
-];
-
-const FAVORITE_ITEM_OPTIONS = [
-  'Margherita Pizza',
-  'Paneer Tikka',
-  'Chicken Biryani',
-  'Veg Burger',
-  'Pasta',
-  'Momos',
-  'Salad Bowl',
-  'Ice Cream',
-];
-
-const DIET_OPTIONS: Array<{label: string; value: DietPreference}> = [
-  {label: 'Veg', value: 'VEG'},
-  {label: 'Non-Veg', value: 'NON_VEG'},
-];
-
-const SPICE_OPTIONS: Array<{label: string; value: SpiceLevel}> = [
-  {label: 'Low', value: 'LOW'},
-  {label: 'Medium', value: 'MEDIUM'},
-  {label: 'High', value: 'HIGH'},
-];
-
-const BUDGET_OPTIONS: Array<{label: string; value: BudgetTier}> = [
-  {label: 'Low', value: 'LOW'},
-  {label: 'Mid', value: 'MID'},
-  {label: 'High', value: 'HIGH'},
-];
-
-const STEPS = [
-  {
-    key: 'cuisines',
-    title: 'Pick your favorite cuisines',
-    subtitle: 'Choose a few tastes you want us to prioritize from the start.',
-  },
-  {
-    key: 'diet',
-    title: 'What diet should we prefer?',
-    subtitle: 'We will use this to avoid irrelevant recommendations.',
-  },
-  {
-    key: 'spice',
-    title: 'How spicy do you like it?',
-    subtitle: 'We will bias recommendations toward your comfort zone.',
-  },
-  {
-    key: 'budget',
-    title: 'Set your typical budget',
-    subtitle: 'This helps us keep early suggestions realistic and useful.',
-  },
-  {
-    key: 'items',
-    title: 'Any favorite items?',
-    subtitle: 'Optional, but helpful for faster personalization.',
-  },
-] as const;
-
-function normalizePreferences(preferences: UserPreferences | null): UserPreferences {
-  return {
-    cuisines: preferences?.cuisines ?? [],
-    diet: preferences?.diet ?? null,
-    spice_level: preferences?.spice_level ?? null,
-    budget: preferences?.budget ?? null,
-    favorite_items: preferences?.favorite_items ?? [],
-    updated_at: preferences?.updated_at ?? null,
-  };
-}
-
 export function PreferencesOnboardingPage({
   mode = 'onboarding',
   onNavigate,
 }: PreferencesOnboardingPageProps) {
-  const {
-    preferences,
-    savePreferences,
-    skipPreferencesOnboarding,
-    pushToast,
-  } = useAppStore();
-  const initialPreferences = useMemo(
-    () => normalizePreferences(preferences),
-    [preferences],
-  );
+  const { savePreferences, skipPreferencesOnboarding, pushToast, token } = useAppStore();
+  const { restaurantId } = useAppConfig();
+
+  const [schema, setSchema] = useState<PreferenceSchema | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [selections, setSelections] = useState<SelectionMap>({});
   const [stepIndex, setStepIndex] = useState(0);
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [submitting, setSubmitting] = useState(false);
-  const [cuisines, setCuisines] = useState(initialPreferences.cuisines);
-  const [diet, setDiet] = useState<DietPreference | null>(initialPreferences.diet);
-  const [spiceLevel, setSpiceLevel] = useState<SpiceLevel | null>(initialPreferences.spice_level);
-  const [budget, setBudget] = useState<BudgetTier | null>(initialPreferences.budget);
-  const [favoriteItems, setFavoriteItems] = useState(initialPreferences.favorite_items);
-  const currentStep = STEPS[stepIndex];
-  const progress = ((stepIndex + 1) / STEPS.length) * 100;
+  const [touched, setTouched] = useState(false);
+  const [draftText, setDraftText] = useState('');
 
   useEffect(() => {
-    window.scrollTo({top: 0, behavior: 'smooth'});
+    let active = true;
+
+    async function load() {
+      let resolved: PreferenceSchema;
+      let fallback = false;
+      try {
+        resolved = await api.getPreferenceSchema(restaurantId);
+        // An owner who hid every question would otherwise strand the customer on
+        // an empty wizard with nothing to press.
+        if (resolved.questions.length === 0) {
+          resolved = FALLBACK_PREFERENCE_SCHEMA;
+          fallback = true;
+        }
+      } catch {
+        resolved = FALLBACK_PREFERENCE_SCHEMA;
+        fallback = true;
+      }
+      if (!active) {
+        return;
+      }
+
+      let initial = buildSelections(resolved, []);
+      if (token && !fallback) {
+        try {
+          const existing = await api.getPreferenceAnswers(token, restaurantId);
+          if (active) {
+            initial = buildSelections(resolved, existing.answers);
+          }
+        } catch {
+          // Not fatal — they start from a blank questionnaire.
+        }
+      }
+
+      if (!active) {
+        return;
+      }
+      setSchema(resolved);
+      setUsingFallback(fallback);
+      setSelections(initial);
+      setLoading(false);
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [restaurantId, token]);
+
+  const questions = schema?.questions ?? [];
+  const currentQuestion = questions[stepIndex];
+  const currentSelection = currentQuestion
+    ? selections[currentQuestion.id] ?? EMPTY_SELECTION
+    : EMPTY_SELECTION;
+  const currentError = currentQuestion
+    ? validateQuestion(currentQuestion, currentSelection)
+    : null;
+  const progress = questions.length > 0 ? ((stepIndex + 1) / questions.length) * 100 : 0;
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [stepIndex]);
 
-  const toggleListValue = (
-    currentValues: string[],
-    value: string,
-    setter: (next: string[]) => void,
-  ) => {
-    if (currentValues.includes(value)) {
-      setter(currentValues.filter((entry) => entry !== value));
-      return;
-    }
-    setter([...currentValues, value]);
+  const setSelection = useCallback(
+    (questionId: string, next: ReturnType<typeof toggleOption>) => {
+      setSelections((current) => ({ ...current, [questionId]: next }));
+    },
+    [],
+  );
+
+  const handleSkip = () => {
+    skipPreferencesOnboarding();
+    onNavigate('/');
   };
 
   const handleBack = () => {
     if (stepIndex === 0) {
       return;
     }
+    setTouched(false);
+    setDraftText('');
     setDirection('backward');
     setStepIndex((current) => current - 1);
   };
 
-  const handleSkip = () => {
-    skipPreferencesOnboarding();
-    pushToast(
-      'Skipped for now',
-      'We will start with highly rated and popular picks.',
-      'info',
-    );
-    onNavigate('/');
-  };
+  const handleNext = async () => {
+    if (!schema || !currentQuestion) {
+      return;
+    }
+    if (currentError) {
+      setTouched(true);
+      return;
+    }
+    if (stepIndex < questions.length - 1) {
+      setTouched(false);
+      setDraftText('');
+      setDirection('forward');
+      setStepIndex((current) => current + 1);
+      return;
+    }
 
-  const handleFinish = async () => {
     setSubmitting(true);
     try {
-      await savePreferences(
-        {
-          cuisines,
-          diet,
-          spice_level: spiceLevel,
-          budget,
-          favorite_items: favoriteItems,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          sync: true,
+      if (usingFallback || !token) {
+        // No account yet, or the schema came from the offline fallback where the
+        // ids mean nothing to the server. Either way the answers are projected
+        // here and kept locally, so the first home feed is still personalised;
+        // `savePreferences` syncs through the value-based legacy endpoint when a
+        // token exists.
+        const legacy = selectionsToLegacy(schema, selections);
+        await savePreferences(
+          { ...legacy, updated_at: new Date().toISOString() } as UserPreferences,
+          { sync: Boolean(token), markOnboardingCompleted: true },
+        );
+      } else {
+        const saved = await api.savePreferenceAnswers(
+          token,
+          toSubmissions(schema, selections),
+          restaurantId,
+        );
+        // Already persisted server-side; storing the projection locally without
+        // re-syncing keeps the ranked feed consistent immediately.
+        await savePreferences(saved.legacy, {
+          sync: false,
           markOnboardingCompleted: true,
-        },
-      );
+        });
+      }
       pushToast(
         'Preferences saved',
         mode === 'onboarding'
@@ -175,138 +189,71 @@ export function PreferencesOnboardingPage({
         'success',
       );
       onNavigate(mode === 'onboarding' ? '/' : '/profile');
-    } catch {
-      // The store already surfaced the sync failure and kept the local preference state.
+    } catch (error) {
+      pushToast(
+        'Preferences not saved',
+        error instanceof Error
+          ? error.message
+          : 'Unable to save your preferences right now.',
+        'error',
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleNext = async () => {
-    if (stepIndex < STEPS.length - 1) {
-      setDirection('forward');
-      setStepIndex((current) => current + 1);
-      return;
+  const capacityHint = useMemo(() => {
+    if (!currentQuestion) {
+      return '';
     }
-    await handleFinish();
-  };
+    const parts: string[] = [];
+    if (currentQuestion.max_selections != null) {
+      parts.push(`Choose up to ${currentQuestion.max_selections}`);
+    }
+    parts.push(currentQuestion.is_required ? 'Required' : 'Optional');
+    return parts.join(' · ');
+  }, [currentQuestion]);
 
-  const renderOptions = () => {
-    switch (currentStep.key) {
-      case 'cuisines':
-        return (
-          <div className="preference-chip-grid">
-            {CUISINE_OPTIONS.map((option) => (
-              <button
-                key={option}
-                className={
-                  cuisines.includes(option)
-                    ? 'preference-chip preference-chip--active'
-                    : 'preference-chip'
-                }
-                onClick={() => toggleListValue(cuisines, option, setCuisines)}
-                type="button"
-              >
-                {option}
-              </button>
-            ))}
+  if (loading) {
+    return (
+      <div className="page-stack">
+        <section className="preferences-wizard">
+          <div className="preferences-wizard__hero">
+            <span className="micro-chip">Taste Profile</span>
+            <h1>Setting up your taste profile…</h1>
           </div>
-        );
-      case 'diet':
-        return (
-          <div className="preference-chip-grid">
-            {DIET_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                className={
-                  diet === option.value
-                    ? 'preference-chip preference-chip--active'
-                    : 'preference-chip'
-                }
-                onClick={() =>
-                  setDiet((current) => (current === option.value ? null : option.value))
-                }
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
+        </section>
+      </div>
+    );
+  }
+
+  if (!schema || !currentQuestion) {
+    // Reachable only if the fallback itself were emptied. Continuing is the one
+    // sane exit, since onboarding gates the rest of the app.
+    return (
+      <div className="page-stack">
+        <section className="preferences-wizard">
+          <div className="preferences-wizard__hero">
+            <span className="micro-chip">Taste Profile</span>
+            <h1>No preference questions are set up right now.</h1>
+            <p>You can start browsing and set these later from your profile.</p>
           </div>
-        );
-      case 'spice':
-        return (
-          <div className="preference-chip-grid">
-            {SPICE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                className={
-                  spiceLevel === option.value
-                    ? 'preference-chip preference-chip--active'
-                    : 'preference-chip'
-                }
-                onClick={() =>
-                  setSpiceLevel((current) => (current === option.value ? null : option.value))
-                }
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="preferences-wizard__footer-actions">
+            <button className="primary-button" onClick={handleSkip} type="button">
+              Continue
+            </button>
           </div>
-        );
-      case 'budget':
-        return (
-          <div className="preference-chip-grid">
-            {BUDGET_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                className={
-                  budget === option.value
-                    ? 'preference-chip preference-chip--active'
-                    : 'preference-chip'
-                }
-                onClick={() =>
-                  setBudget((current) => (current === option.value ? null : option.value))
-                }
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        );
-      case 'items':
-        return (
-          <div className="preference-chip-grid">
-            {FAVORITE_ITEM_OPTIONS.map((option) => (
-              <button
-                key={option}
-                className={
-                  favoriteItems.includes(option)
-                    ? 'preference-chip preference-chip--active'
-                    : 'preference-chip'
-                }
-                onClick={() =>
-                  toggleListValue(favoriteItems, option, setFavoriteItems)
-                }
-                type="button"
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="page-stack">
       <section className="preferences-wizard">
         <div className="preferences-wizard__meta">
           <span className="eyebrow">
-            Step {stepIndex + 1}/{STEPS.length}
+            Step {stepIndex + 1}/{questions.length}
           </span>
           {mode === 'onboarding' ? (
             <button className="text-link" onClick={handleSkip} type="button">
@@ -317,7 +264,7 @@ export function PreferencesOnboardingPage({
         <div className="preferences-wizard__progress">
           <div
             className="preferences-wizard__progress-fill"
-            style={{width: `${progress}%`}}
+            style={{ width: `${progress}%` }}
           />
         </div>
 
@@ -330,8 +277,10 @@ export function PreferencesOnboardingPage({
           </h1>
           <p>
             {mode === 'onboarding'
-              ? 'Five quick steps. No pressure. You can edit everything later from Profile.'
-              : 'Update cuisines, spice, budget, and favorites to keep recommendations fresh.'}
+              ? `${questions.length} quick ${
+                  questions.length === 1 ? 'step' : 'steps'
+                }. No pressure. You can edit everything later from Profile.`
+              : 'Update what you like to keep recommendations fresh.'}
           </p>
         </div>
 
@@ -342,11 +291,89 @@ export function PreferencesOnboardingPage({
                 ? 'preferences-wizard__step preferences-wizard__step--forward'
                 : 'preferences-wizard__step preferences-wizard__step--backward'
             }
-            key={currentStep.key}
+            key={currentQuestion.id}
           >
-            <h2>{currentStep.title}</h2>
-            <p>{currentStep.subtitle}</p>
-            {renderOptions()}
+            <h2>{currentQuestion.prompt}</h2>
+            {currentQuestion.help_text ? <p>{currentQuestion.help_text}</p> : null}
+
+            <div className="preference-chip-grid">
+              {currentQuestion.options.map((option) => {
+                const active = currentSelection.optionIds.includes(option.id);
+                const blocked = !active && isAtCapacity(currentQuestion, currentSelection);
+                return (
+                  <button
+                    key={option.id}
+                    aria-pressed={active}
+                    className={
+                      active ? 'preference-chip preference-chip--active' : 'preference-chip'
+                    }
+                    disabled={blocked}
+                    onClick={() =>
+                      setSelection(
+                        currentQuestion.id,
+                        toggleOption(currentQuestion, currentSelection, option.id),
+                      )
+                    }
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+
+              {currentSelection.freeText.map((value) => (
+                <button
+                  key={`typed:${value}`}
+                  className="preference-chip preference-chip--active preference-chip--typed"
+                  onClick={() =>
+                    setSelection(currentQuestion.id, removeFreeText(currentSelection, value))
+                  }
+                  title="Remove"
+                  type="button"
+                >
+                  {value} <span aria-hidden="true">×</span>
+                </button>
+              ))}
+            </div>
+
+            {currentQuestion.allows_free_text ? (
+              <form
+                className="preference-free-text"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setSelection(
+                    currentQuestion.id,
+                    addFreeText(currentQuestion, currentSelection, draftText),
+                  );
+                  setDraftText('');
+                }}
+              >
+                <input
+                  aria-label={`Add your own answer for ${currentQuestion.prompt}`}
+                  onChange={(event) => setDraftText(event.target.value)}
+                  placeholder="Add your own"
+                  value={draftText}
+                />
+                <button
+                  className="secondary-button"
+                  disabled={!draftText.trim()}
+                  type="submit"
+                >
+                  Add
+                </button>
+              </form>
+            ) : null}
+
+            {touched && currentError ? (
+              <p className="preference-error">{currentError}</p>
+            ) : (
+              <p className="preference-hint">
+                {capacityHint}
+                {selectionCount(currentSelection) > 0
+                  ? ` · ${describeSelection(currentQuestion, currentSelection)}`
+                  : ''}
+              </p>
+            )}
           </div>
         </div>
 
@@ -357,7 +384,7 @@ export function PreferencesOnboardingPage({
                 Back
               </button>
             ) : (
-              <div />
+              <span />
             )}
             <button
               className="primary-button"
@@ -366,9 +393,11 @@ export function PreferencesOnboardingPage({
               type="button"
             >
               {submitting
-                ? 'Saving...'
-                : stepIndex === STEPS.length - 1
-                  ? 'Finish'
+                ? 'Saving…'
+                : stepIndex === questions.length - 1
+                  ? mode === 'onboarding'
+                    ? 'Finish'
+                    : 'Save changes'
                   : 'Next'}
             </button>
           </div>

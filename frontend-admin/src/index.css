@@ -9514,3 +9514,499 @@ summary:focus-visible,
     max-width: 320px;
   }
 }
+
+/* =========================================================================
+   Preference questionnaire
+   =========================================================================
+   Rows rather than a table: a question carries a prompt, a set of option
+   chips, a state and a count, which a table would either truncate or stretch.
+   Every colour below is a token, so the page follows the panel's theme.
+   ========================================================================= */
+
+.pref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pref-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  padding: 18px 20px;
+  border-radius: var(--radius-5);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.pref-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+/* Hidden is a state, not an error: dimmed and striped, still fully readable. */
+.pref-row--hidden {
+  background: var(--card-muted);
+  box-shadow: none;
+}
+
+.pref-row--hidden .pref-row__title h3 {
+  color: var(--muted);
+}
+
+.pref-row--skeleton {
+  height: 132px;
+  border-color: transparent;
+  background: var(--card-muted);
+  box-shadow: none;
+  animation: pref-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pref-pulse {
+  50% { opacity: 0.55; }
+}
+
+/* --- the order control --- */
+
+.pref-row__rank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.pref-row__step {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--card-muted);
+}
+
+.pref-row__rank button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-2);
+  color: var(--hint);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.pref-row__rank button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-muted);
+}
+
+.pref-row__rank button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+/* --- the body --- */
+
+.pref-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pref-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.pref-row__title h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.pref-row__help {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The facts line: dot-separated so it reads as one sentence of metadata
+   rather than a row of competing badges. */
+.pref-row__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.pref-row__facts li {
+  position: relative;
+}
+
+.pref-row__facts li + li::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+  transform: translateY(-50%);
+}
+
+.pref-row__fact--signal {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.pref-row__fact--muted {
+  opacity: 0.75;
+}
+
+.pref-row__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.pref-chip {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card-muted);
+  border: 1px solid var(--border);
+}
+
+.pref-chip--off {
+  color: var(--hint);
+  background: transparent;
+  border-style: dashed;
+}
+
+.pref-chip--count {
+  color: var(--muted);
+  background: transparent;
+}
+
+/* The count is the point of showing it: retiring a question customers have
+   answered is a different decision from retiring an unused one. */
+.pref-row__answers {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 0.76rem;
+  color: var(--hint);
+}
+
+/* --- tags --- */
+
+.pref-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--card-muted);
+  border: 1px solid var(--border);
+}
+
+.pref-tag--own {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.pref-tag--off {
+  color: #8a6100;
+  background: var(--warning-soft);
+  border-color: transparent;
+}
+
+/* --- row actions --- */
+
+.pref-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pref-row__actions .secondary-button {
+  /* `.secondary-button` is not a flex container globally, so its `gap` alone
+     would leave the icon welded to the label. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding-inline: 12px;
+  font-size: 0.82rem;
+}
+
+.pref-row__retire {
+  padding-inline: 10px;
+  color: var(--danger);
+}
+
+.pref-row__retire:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+}
+
+/* =========================================================================
+   Question editor
+   ========================================================================= */
+
+.pref-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Sections separated by a rule rather than boxed: the dialog is already a box,
+   and nesting cards inside it flattens the hierarchy. */
+.pref-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-block: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pref-editor__section:first-child {
+  padding-top: 4px;
+}
+
+.pref-editor__section:last-child {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.pref-editor__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hint);
+}
+
+.pref-editor__legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pref-editor__count {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--card-muted);
+  letter-spacing: 0;
+}
+
+.pref-editor__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+
+.pref-editor__note {
+  margin: -4px 0 0;
+  font-size: 0.79rem;
+  line-height: 1.5;
+  color: var(--hint);
+}
+
+/* --- toggles --- */
+
+.pref-editor__toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.pref-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: var(--radius-4);
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.pref-toggle:hover {
+  border-color: var(--border-strong);
+}
+
+.pref-toggle--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pref-toggle__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--hint);
+}
+
+.pref-toggle--on .pref-toggle__mark {
+  color: var(--accent);
+}
+
+.pref-toggle__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pref-toggle__copy strong {
+  font-size: 0.87rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pref-toggle__copy small {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* --- option rows --- */
+
+.pref-editor__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pref-editor__option {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.pref-editor__option-index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--hint);
+  background: var(--card-muted);
+}
+
+.pref-editor__option input {
+  width: 100%;
+  min-height: 40px;
+}
+
+.pref-editor__option-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pref-editor__option-controls button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-2);
+  color: var(--hint);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.pref-editor__option-controls button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--card-muted);
+}
+
+.pref-editor__option-controls button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.pref-editor__option-remove:hover:not(:disabled) {
+  color: var(--danger) !important;
+  background: var(--danger-soft) !important;
+}
+
+/* The footer is a sibling of the scrolling body, so Save is always reachable
+   however many options the question has. */
+.pref-editor__actions {
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--card-muted);
+}
+
+@media (max-width: 860px) {
+  .pref-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .pref-row__actions {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+  }
+}

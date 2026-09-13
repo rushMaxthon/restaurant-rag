@@ -40,6 +40,9 @@ import type {
   Restaurant,
   RestaurantLocation,
   SpiceLevel,
+  PreferenceAnswerSubmission,
+  PreferenceAnswersResponse,
+  PreferenceSchema,
   UserPreferences,
 } from '@/types/app';
 
@@ -1450,6 +1453,54 @@ export const api = {
         },
       );
       // Recommendations are ranked from these preferences.
+      invalidateRequestCache('recommendations:');
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+
+  /**
+   * The questionnaire this build should ask.
+   *
+   * Unauthenticated on purpose: onboarding runs before anyone has an account.
+   * The restaurant is resolved from the bundle-id header the client already
+   * sends, so a branded build gets its own questions.
+   */
+  async getPreferenceSchema(signal?: AbortSignal): Promise<PreferenceSchema> {
+    try {
+      const response = await client.get<PreferenceSchema>('/preferences/schema', {
+        signal,
+      });
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+
+  async getPreferenceAnswers(token: string): Promise<PreferenceAnswersResponse> {
+    try {
+      const response = await client.get<PreferenceAnswersResponse>(
+        '/preferences/me/answers',
+        { headers: withToken(token) },
+      );
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+
+  async savePreferenceAnswers(
+    token: string,
+    answers: PreferenceAnswerSubmission[],
+  ): Promise<PreferenceAnswersResponse> {
+    try {
+      const response = await client.put<PreferenceAnswersResponse>(
+        '/preferences/me/answers',
+        { answers },
+        { headers: withToken(token) },
+      );
+      // Same reason as the legacy save: the ranking reads what this changed.
       invalidateRequestCache('recommendations:');
       return response.data;
     } catch (error) {
