@@ -10,7 +10,11 @@ import { useSendChatMessage } from "@/lib/queries";
 import { ApiError, type ChatSuggestion } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
 
+type ConciergeSearch = { q?: string };
+
 export const Route = createFileRoute("/concierge")({
+  validateSearch: (search: Record<string, unknown>): ConciergeSearch =>
+    typeof search["q"] === "string" ? { q: search["q"] as string } : {},
   head: () => ({
     meta: [
       { title: "Food Concierge — Bangkok Bowl" },
@@ -55,15 +59,29 @@ function ConciergePage() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.href });
+  const search = Route.useSearch();
   const sendMessage = useSendChatMessage();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
   }, [isAuthenticated, navigate, pathname]);
+
+  // A craving chip on the home screen deep-links here with ?q=... — send it
+  // immediately rather than just dropping it in the box, then drop the param
+  // so a back-navigation or refresh doesn't resend it.
+  useEffect(() => {
+    if (!isAuthenticated || !search.q || autoSentRef.current) return;
+    autoSentRef.current = true;
+    const message = search.q;
+    navigate({ to: "/concierge", search: {}, replace: true });
+    void sendText(message);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, search.q]);
 
   if (!isAuthenticated) return null;
 
