@@ -28,6 +28,48 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-13 (2) — Full local stack running; seed.py bug fixed
+
+**Goal:** run backend + frontend-admin + frontend-customer locally and check them together.
+
+**Branch:** `chore/local-dev-setup-and-seed-fix`, commit `84656ce`.
+
+**Changed:**
+- `backend/seed.py` — real bug fix. `LOCATION_SEED_ONLY_KEYS` named once and
+  applied at both call sites; `ensure_primary_location` now computes the
+  filtered dict once instead of repeating the comprehension four times.
+- `.gitignore` — added `.venv/`, `venv/`, `__pycache__/`, `*.pyc`.
+- `CLAUDE.md` — replaced the "backend can't run here" note with the real local
+  setup, now that it does run.
+
+**Verified:** backend `/health` → 200; `/api/restaurants` → real seeded rows;
+admin login → JWT with role ADMIN; browser check of both UIs, and the admin
+dashboard rendered real data (6 orders, ₹121.62, Dragon Wok activity) after a
+UI login as admin@example.com. All 47 migrations to 0049, seed.py to completion
+(18 locations, 189 menu items).
+
+**Environment discovered (the useful part):** no Docker/Redis/Ollama, but
+PostgreSQL 15 was ALREADY installed and running on 127.0.0.1:5432 with
+postgres/postgres — just absent from PATH, so it first looked missing. Only
+pgvector was genuinely absent; built from source with the MSVC 14.50 already on
+the box. Details in CLAUDE.md under "Running it locally on this machine".
+
+**Open:**
+- Not merged to `main` yet — that was the stated plan.
+- ~283 `*.cpython-313.pyc` files are tracked from an earlier commit. The new
+  ignore rule stops more being added but does not untrack those; needs a
+  `git rm -r --cached` decision.
+- `readme.md` still cross-links absolute macOS paths.
+- Unrelated, found while checking Supabase: `public.offer_packs` in the DEV-SP
+  project has RLS disabled. Reported to the user; not acted on.
+
+**Learned:**
+- Seeding is append-style, so a partly-failed run leaves committed rows behind —
+  the retry reported "Restaurants created this run: 0" because the failed first
+  run had already committed them.
+- `passlib` logs `AttributeError: module 'bcrypt' has no attribute '__about__'`
+  with bcrypt 4.x. Noisy but harmless; hashing works.
+
 ## 2026-09-13 — Repo onboarding, persistent context set up
 
 **Goal:** read the codebase end to end, then create files so future sessions do

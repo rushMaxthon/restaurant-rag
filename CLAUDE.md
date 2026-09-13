@@ -157,12 +157,43 @@ for both webs, `tsc --noEmit` for mobile.
 
 ---
 
-## Known rough edges in this checkout
+## Running it locally on this machine
 
-- **Local Python is 3.10.11; the backend needs 3.11+** (`StrEnum` in
-  `app/models/enums.py`). There is no `backend/.venv`. Backend code cannot be
-  run or tested here without a 3.11+ interpreter — `compileall` will also fail.
-  Use Docker, or say so rather than claiming tests pass.
+Working as of 2026-09-13. No Docker, Redis or Ollama here — none are required.
+
+- **Python**: the default `python` is 3.10.11 and **cannot** run this backend
+  (`StrEnum` needs 3.11+). A 3.11.9 venv lives at `backend/.venv`, built with
+  `py -3.11 -m venv .venv`. Always invoke `backend/.venv/Scripts/python.exe`,
+  never bare `python`.
+- **Postgres**: PostgreSQL 15 runs as service `postgresql-x64-15` from
+  `C:\Program Files\PostgreSQL\15`, on 127.0.0.1:5432 as `postgres/postgres`.
+  Its `bin/` is NOT on PATH, so call `psql.exe` by full path. Database
+  `restaurant_rag` exists, migrated to `0049` and seeded.
+- **pgvector**: 0.8.0, built from source with MSVC 14.50 against PG15. To
+  rebuild: clone `pgvector v0.8.0`, run `vcvars64.bat`, set `PGROOT` to the PG15
+  directory, `nmake /F Makefile.win`, then copy `vector.dll`, `vector.control`
+  and `sql/vector--*.sql` into `lib/` and `share/extension/` **elevated** — the
+  install step needs admin rights and otherwise fails with "Access is denied".
+- **Redis**: not installed, not needed for the API. Every op in
+  `services/cache.py` catches `RedisError` and degrades to a miss. Celery
+  workers do need it.
+- **Ollama**: not installed. Every AI flag defaults off and every AI path falls
+  back to deterministic templates, so the apps work — generated prose does not.
+
+Start the three services, each in its own shell:
+
+```bash
+cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd frontend-customer && npm run dev -- --port 5173 --strictPort
+cd frontend-admin && npm run dev -- --port 5174 --strictPort
+```
+
+The ports are not arbitrary: both web apps hardcode `http://localhost:8000/api`
+for dev, and 5173/5174 are both in the backend's default CORS list. Seeded
+logins are `admin@example.com` and `customer1@example.com`, password
+`password123`.
+
+## Known rough edges in this checkout
 - `readme.md` and several docs cross-link with absolute macOS paths
   (`/Users/imac/Desktop/restaurant-rag/...`), broken on this Windows checkout.
 - Migration numbering skips `0033`-`0035` (jumps `0032` to `0036`). Intentional
