@@ -21,6 +21,7 @@ from app.config import get_settings
 from app.models.chat_history import ChatHistory
 from app.models.enums import ChatMessageRole
 from app.models.menu_embedding import MenuEmbedding
+from app.services.chat_principal import ChatPrincipal, is_guest
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
@@ -2257,7 +2258,7 @@ def _fetch_recent_history_messages_from_db(
 
 def get_chat_history(
     db: Session,
-    user: User,
+    user: ChatPrincipal,
     session_id: uuid.UUID | None = None,
     *,
     restaurant_id: uuid.UUID | None = None,
@@ -2297,7 +2298,7 @@ def get_chat_history(
 def clear_chat_history(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     session_id: uuid.UUID | None = None,
     restaurant_id: uuid.UUID | None = None,
 ) -> int:
@@ -3518,10 +3519,15 @@ def _suggestion_items(
 
 def _attach_suggestion_favorites(
     db: Session,
-    user: User,
+    user: ChatPrincipal,
     suggestions: list[ChatSuggestionItem],
 ) -> list[ChatSuggestionItem]:
     if not suggestions:
+        return suggestions
+    # Favourites belong to a real account. A guest has none, and asking the
+    # favorites service would hand it a principal with no `.role` — everything
+    # downstream of here reads only `.id`, this was the one exception.
+    if is_guest(user):
         return suggestions
     favorite_ids = get_user_favorite_ids(db, user, menu_item_ids=[item.id for item in suggestions])
     if not favorite_ids:
@@ -4116,7 +4122,7 @@ def _save_message(
 def _prepare_cached_response_turn(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     message: str,
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
@@ -4209,7 +4215,7 @@ def _prepare_instant_reply_turn(
 def _prepare_safe_fallback_turn(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     message: str,
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
@@ -4304,7 +4310,7 @@ def _prepare_safe_fallback_turn(
 def _prepare_chat_turn(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     message: str,
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
@@ -4923,7 +4929,7 @@ def _prepare_chat_turn(
 def _persist_chat_exchange(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     prepared: PreparedChatTurn,
     raw_reply: str,
     reply: str,
@@ -5000,24 +5006,29 @@ def _persist_chat_exchange(
         "llm_strategy": llm_strategy,
     }
 
-    _save_message(
-        db,
-        user_id=user.id,
-        restaurant_id=prepared.restaurant_id,
-        session_id=prepared.active_session_id,
-        role=ChatMessageRole.USER,
-        message=prepared.message,
-        context_payload=user_context,
-    )
-    _save_message(
-        db,
-        user_id=user.id,
-        restaurant_id=prepared.restaurant_id,
-        session_id=prepared.active_session_id,
-        role=ChatMessageRole.ASSISTANT,
-        message=reply,
-        context_payload=assistant_context,
-    )
+    # A guest has no `users` row, and `chat_history.user_id` is NOT NULL with an
+    # FK to it — persisting here would raise. Their turn still reaches Redis
+    # session memory below, which is what keeps the conversation coherent; the
+    # transcript is simply not kept once the session expires.
+    if not is_guest(user):
+        _save_message(
+            db,
+            user_id=user.id,
+            restaurant_id=prepared.restaurant_id,
+            session_id=prepared.active_session_id,
+            role=ChatMessageRole.USER,
+            message=prepared.message,
+            context_payload=user_context,
+        )
+        _save_message(
+            db,
+            user_id=user.id,
+            restaurant_id=prepared.restaurant_id,
+            session_id=prepared.active_session_id,
+            role=ChatMessageRole.ASSISTANT,
+            message=reply,
+            context_payload=assistant_context,
+        )
     db_commit_started_at = perf_counter()
     db.commit()
     prepared.timings.db_commit_ms = round((perf_counter() - db_commit_started_at) * 1000, 2)
@@ -5044,7 +5055,7 @@ def _persist_chat_exchange(
     )
 
 
-def _log_rag_timings(user: User, prepared: PreparedChatTurn) -> None:
+def _log_rag_timings(user: ChatPrincipal, prepared: PreparedChatTurn) -> None:
     logger.info(
         "RAG timings user_id=%s session_id=%s total=%.2fms cache=%.2fms session=%.2fms intent=%.2fms prefs=%.2fms history=%.2fms keyword=%.2fms db_filter=%.2fms embed=%.2fms vector=%.2fms prompt=%.2fms llm=%.2fms commit=%.2fms source=%s intent=%s candidates=%d vector_rows=%d",
         user.id,
@@ -5076,7 +5087,7 @@ def _sse_frame(event: str, payload: dict[str, Any]) -> str:
 def handle_chat_message(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     message: str,
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
@@ -5334,7 +5345,7 @@ def handle_chat_message(
 def stream_chat_message(
     db: Session,
     *,
-    user: User,
+    user: ChatPrincipal,
     message: str,
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,

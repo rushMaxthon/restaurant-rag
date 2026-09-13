@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
@@ -23,15 +22,9 @@ export const Route = createFileRoute("/cart")({
 
 function CartPage() {
   const s = useBangkokStore();
+  // The cart itself is guest-visible; it lives in localStorage and belongs to
+  // the browser, not the account. The account is only needed to place the order.
   const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-  const pathname = useRouterState({ select: (st) => st.location.href });
-
-  useEffect(() => {
-    if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
-  }, [isAuthenticated, navigate, pathname]);
-
-  if (!isAuthenticated) return null;
 
   const delivery = s.fulfillment === "DELIVERY" ? Number(s.currentLocation?.delivery_fee ?? 45) : 0;
   const tax = s.subtotal * 0.05;
@@ -96,8 +89,17 @@ function CartPage() {
               <span>{formatINR(total)}</span>
             </div>
             <Button className="mt-6 w-full" asChild>
-              <Link to="/checkout">Continue to checkout</Link>
+              {isAuthenticated ? (
+                <Link to="/checkout">Continue to checkout</Link>
+              ) : (
+                <Link to="/login" search={{ redirect: "/checkout" }}>
+                  Sign in to checkout
+                </Link>
+              )}
             </Button>
+            {!isAuthenticated && (
+              <p className="mt-3 text-center text-sm text-muted">Your cart is saved — signing in takes a moment.</p>
+            )}
           </aside>
         </div>
       )}

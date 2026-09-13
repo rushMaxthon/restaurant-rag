@@ -13,7 +13,8 @@ from app.api.deps import AppScopeDep, ensure_restaurant_writable
 from app.config.database import get_db
 from app.models.user import User
 from app.schemas.chat import ChatClearResponse, ChatHistoryItemResponse, ChatMessageRequest, ChatMessageResponse
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, get_current_user_optional
+from app.services.chat_principal import ChatPrincipal, guest_principal_for_session
 from app.services.rag import clear_chat_history, get_chat_history, handle_chat_message, stream_chat_message
 
 logger = logging.getLogger(__name__)
@@ -38,18 +39,37 @@ def _resolve_chat_restaurant_id(app_scope, requested_restaurant_id):
 
 
 
+def _resolve_principal(
+    current_user: User | None,
+    session_id: uuid.UUID | None,
+) -> tuple[ChatPrincipal, uuid.UUID | None]:
+    """Signed-in customer, or a guest pinned to this conversation.
+
+    The session id is resolved HERE for guests rather than deeper in the RAG
+    pipeline, because a guest's identity is derived from it: let the pipeline
+    mint its own and turn 1 writes its memory under a key turn 2 never reads.
+    Signed-in users keep the existing behaviour, None and all.
+    """
+
+    if current_user is not None:
+        return current_user, session_id
+    resolved = session_id or uuid.uuid4()
+    return guest_principal_for_session(resolved), resolved
+
+
 @router.post("/message", response_model=ChatMessageResponse)
 def send_chat_message(
     payload: ChatMessageRequest,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)],
     app_scope: AppScopeDep,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     scoped_restaurant_id = _resolve_chat_restaurant_id(app_scope, payload.restaurant_id)
+    principal, session_id = _resolve_principal(current_user, payload.session_id)
     logger.info(
         "Chat API request: user_id=%s restaurant_id=%s restaurant_location_id=%s session_id=%s message=%s",
-        current_user.id,
+        principal.id,
         scoped_restaurant_id,
         payload.restaurant_location_id,
         payload.session_id,
@@ -57,15 +77,15 @@ def send_chat_message(
     )
     response = handle_chat_message(
         db,
-        user=current_user,
+        user=principal,
         message=payload.message,
-        session_id=payload.session_id,
+        session_id=session_id,
         restaurant_id=scoped_restaurant_id,
         restaurant_location_id=payload.restaurant_location_id,
     )
     logger.info(
         "Chat API response: user_id=%s session_id=%s suggestions=%d total=%.2fms",
-        current_user.id,
+        principal.id,
         response.session_id,
         len(response.suggestions),
         (perf_counter() - started_at) * 1000,
@@ -77,13 +97,14 @@ def send_chat_message(
 def stream_chat_message_route(
     payload: ChatMessageRequest,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User | None, Depends(get_current_user_optional)],
     app_scope: AppScopeDep,
 ) -> StreamingResponse:
     scoped_restaurant_id = _resolve_chat_restaurant_id(app_scope, payload.restaurant_id)
+    principal, session_id = _resolve_principal(current_user, payload.session_id)
     logger.info(
         "Chat stream request: user_id=%s restaurant_id=%s restaurant_location_id=%s session_id=%s message=%s",
-        current_user.id,
+        principal.id,
         scoped_restaurant_id,
         payload.restaurant_location_id,
         payload.session_id,
@@ -92,9 +113,9 @@ def stream_chat_message_route(
     return StreamingResponse(
         stream_chat_message(
             db,
-            user=current_user,
+            user=principal,
             message=payload.message,
-            session_id=payload.session_id,
+            session_id=session_id,
             restaurant_id=scoped_restaurant_id,
             restaurant_location_id=payload.restaurant_location_id,
         ),

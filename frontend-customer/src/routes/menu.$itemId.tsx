@@ -7,7 +7,6 @@ import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { formatINR } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { useAuth } from "@/lib/auth";
 import { useMenuItem, useMenuItems } from "@/lib/queries";
 
 export const Route = createFileRoute("/menu/$itemId")({
@@ -26,9 +25,7 @@ export const Route = createFileRoute("/menu/$itemId")({
 function DishPage() {
   const { itemId } = Route.useParams();
   const { addItem, restaurantId, branchId } = useBangkokStore();
-  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.href });
   const itemQuery = useMenuItem(itemId);
   const relatedQuery = useMenuItems(restaurantId, branchId || undefined);
   const item = itemQuery.data;
@@ -48,10 +45,6 @@ function DishPage() {
 
   function handleAdd() {
     if (!item) return;
-    if (!isAuthenticated) {
-      navigate({ to: "/login", search: { redirect: pathname } });
-      return;
-    }
     addItem(item, {
       unitPrice: total,
       sizeId: chosenSize?.id,

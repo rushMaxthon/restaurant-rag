@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import heroImage from "@/assets/pad-thai.jpg";
 import { useAuth } from "@/lib/auth";
+import { PasswordInput } from "@/components/bangkok/password-input";
+import { sanitizeRedirect } from "@/lib/require-auth";
 import { ApiError } from "@/lib/api";
 
 type LoginSearch = { redirect: string | undefined };
@@ -27,7 +29,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
   const [email, setEmail] = useState("");
@@ -35,13 +37,21 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Someone who is already signed in has no business on this form — bounce
+  // them to where they were headed. `replace` keeps it out of history, so Back
+  // does not land them right back here.
+  const target = sanitizeRedirect(redirect) ?? "/";
+  useEffect(() => {
+    if (isAuthenticated) navigate({ to: target, replace: true });
+  }, [isAuthenticated, navigate, target]);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate({ to: redirect || "/" });
+      navigate({ to: target });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -80,7 +90,7 @@ function LoginPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="h-12" />
+                  <PasswordInput id="password" autoComplete="current-password" value={password} onChange={setPassword} />
                 </div>
                 <Button className="h-12 w-full text-base" type="submit" disabled={submitting}>
                   {submitting ? "Signing in…" : "Sign in"}
@@ -90,7 +100,7 @@ function LoginPage() {
           </Card>
           <p className="mt-6 text-center text-muted">
             New here?{" "}
-            <Link to="/register" search={{ redirect }} className="font-bold text-primary">
+            <Link to="/register" search={{ redirect: sanitizeRedirect(redirect) }} className="font-bold text-primary">
               Create an account
             </Link>
           </p>

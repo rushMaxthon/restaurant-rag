@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, ChevronLeft, Circle, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { formatINR, orderCode } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder } from "@/lib/queries";
 
 const steps = ["PLACED", "ACCEPTED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"];
@@ -26,14 +27,10 @@ export const Route = createFileRoute("/orders/$orderId")({
 
 function OrderDetail() {
   const { orderId } = Route.useParams();
-  const { isAuthenticated } = useAuth();
+  const isAuthenticated = useRequireAuth();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.href });
   const orderQuery = useOrder(orderId, isAuthenticated);
 
-  useEffect(() => {
-    if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
-  }, [isAuthenticated, navigate, pathname]);
 
   if (!isAuthenticated) return null;
   if (orderQuery.isLoading) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, MapPin, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { DishImage } from "@/components/bangkok/dish-image";
 import { formatINR, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, useValidateOrder } from "@/lib/queries";
 import { ApiError, type OrderCreateRequest } from "@/lib/api";
 
@@ -28,9 +29,8 @@ export const Route = createFileRoute("/checkout")({
 
 function Checkout() {
   const s = useBangkokStore();
-  const { isAuthenticated } = useAuth();
+  const isAuthenticated = useRequireAuth();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (st) => st.location.href });
   const validateOrder = useValidateOrder();
   const createOrder = useCreateOrder();
 
@@ -41,9 +41,6 @@ function Checkout() {
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrderNumber, setPlacedOrderNumber] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
-  }, [isAuthenticated, navigate, pathname]);
 
   if (!isAuthenticated) return null;
 

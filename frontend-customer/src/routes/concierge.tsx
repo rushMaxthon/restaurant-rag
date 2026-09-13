@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DishCard } from "@/components/bangkok/dish-card";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
-import { useAuth } from "@/lib/auth";
 import { ApiError, streamChatMessage, type ChatSuggestion } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
 
@@ -54,10 +53,24 @@ const STARTERS = ["Something spicy and vegetarian", "A light lunch under 300 rup
 
 type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 
+/**
+ * Strip the markdown the model insists on emitting.
+ *
+ * Qwen bolds dish names with ** whether or not the prompt asks it to, and this
+ * surface renders the reply as plain text — so the visitor reads
+ * "the **Paneer Chilli Momos** from Momo Mountain", asterisks and all. Dropping
+ * the markers beats pulling in a markdown renderer for one paragraph of prose,
+ * and beats fighting the model in the prompt, which we already tried.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(^|\s)\*(\S(?:.*?\S)?)\*(?=\s|[.,!?]|$)/g, "$1$2")
+    .replace(/`([^`]+)`/g, "$1");
+}
+
 function ConciergePage() {
-  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.href });
   const search = Route.useSearch();
 
   const [status, setStatus] = useState<Status>("idle");
@@ -70,25 +83,19 @@ function ConciergePage() {
   const abortRef = useRef<AbortController | null>(null);
   const autoSentRef = useRef(false);
 
-  useEffect(() => {
-    if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
-  }, [isAuthenticated, navigate, pathname]);
-
   // A craving chip on the home screen deep-links here with ?q=... — send it
   // immediately rather than just dropping it in the box, then drop the param
   // so a back-navigation or refresh doesn't resend it.
   useEffect(() => {
-    if (!isAuthenticated || !search.q || autoSentRef.current) return;
+    if (!search.q || autoSentRef.current) return;
     autoSentRef.current = true;
     const message = search.q;
     navigate({ to: "/concierge", search: {}, replace: true });
     void sendQuery(message);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, search.q]);
+  }, [search.q]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
-
-  if (!isAuthenticated) return null;
 
   async function sendQuery(message: string) {
     const text = message.trim();
@@ -174,7 +181,7 @@ function ConciergePage() {
 
           <h1 className="font-display text-3xl font-black sm:text-4xl">Here's what we found for you</h1>
 
-          {reply && <p className="mt-4 max-w-3xl text-lg text-muted">{reply}{status === "streaming" && <span className="animate-pulse">▍</span>}</p>}
+          {reply && <p className="mt-4 max-w-3xl text-lg text-muted">{stripMarkdown(reply)}{status === "streaming" && <span className="animate-pulse">▍</span>}</p>}
           {status === "waiting" && <p className="mt-4 text-lg text-muted">Finding dishes for you…</p>}
 
           {error && (

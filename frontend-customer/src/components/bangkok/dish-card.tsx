@@ -1,21 +1,15 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Plus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
 import { formatINR, type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { useAuth } from "@/lib/auth";
 export function DishCard({ item }: { item: MenuItem }) {
  const { addItem } = useBangkokStore();
- const { isAuthenticated } = useAuth();
- const navigate = useNavigate();
- const pathname = useRouterState({ select: (s) => s.location.href });
+ // The cart lives in localStorage, so a guest can fill one without an account.
+ // Sign-in is asked for once, at checkout, where it actually buys something.
  function handleAdd() {
-  if (!isAuthenticated) {
-   navigate({ to: "/login", search: { redirect: pathname } });
-   return;
-  }
   addItem(item);
  }
  return <article className="dish-card group overflow-hidden rounded-lg border border-border bg-surface">

@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { Link, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, LogOut, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { formatINR, orderCode } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
+import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
 
 export const Route = createFileRoute("/orders/")({
@@ -28,14 +29,11 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 function Orders() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const isAuthenticated = useRequireAuth();
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.href });
   const ordersQuery = useOrders(isAuthenticated);
 
-  useEffect(() => {
-    if (!isAuthenticated) navigate({ to: "/login", search: { redirect: pathname } });
-  }, [isAuthenticated, navigate, pathname]);
 
   if (!isAuthenticated) return null;
 
