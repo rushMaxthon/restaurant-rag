@@ -172,13 +172,21 @@ export function RestaurantPage({
         setSelectedLocationId(defaultLocation?.id ?? null);
 
         const [items, recommendationRows, comboRows] = await Promise.all([
-          api.getMenuItems(restaurantId, token, controller.signal, defaultLocation?.id ?? null),
+          withTimeout(
+            api.getMenuItems(restaurantId, token, controller.signal, defaultLocation?.id ?? null),
+            SECTION_TIMEOUT_MS,
+            'menu',
+          ),
           withTimeout(
             api.getRecommendationsForContext({ token, preferences: preferencesRef.current }),
             SECTION_TIMEOUT_MS,
             'recommendations',
           ).catch(() => []),
-          api.getRestaurantGeneratedCombos(restaurantId, 8, defaultLocation?.id ?? null).catch(() => []),
+          withTimeout(
+            api.getRestaurantGeneratedCombos(restaurantId, 8, defaultLocation?.id ?? null),
+            SECTION_TIMEOUT_MS,
+            'combos',
+          ).catch(() => []),
         ]);
         if (controller.signal.aborted) {
           return;
@@ -224,13 +232,21 @@ export function RestaurantPage({
       }
       try {
         const [items, recommendationRows, comboRows] = await Promise.all([
-          api.getMenuItems(restaurant.id, token, controller.signal, selectedLocation.id),
+          withTimeout(
+            api.getMenuItems(restaurant.id, token, controller.signal, selectedLocation.id),
+            SECTION_TIMEOUT_MS,
+            'menu',
+          ),
           withTimeout(
             api.getRecommendationsForContext({ token, preferences: preferencesRef.current }),
             SECTION_TIMEOUT_MS,
             'recommendations',
           ).catch(() => []),
-          api.getRestaurantGeneratedCombos(restaurant.id, 8, selectedLocation.id).catch(() => []),
+          withTimeout(
+            api.getRestaurantGeneratedCombos(restaurant.id, 8, selectedLocation.id),
+            SECTION_TIMEOUT_MS,
+            'combos',
+          ).catch(() => []),
         ]);
         if (controller.signal.aborted) {
           return;

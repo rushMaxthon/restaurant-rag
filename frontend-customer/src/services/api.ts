@@ -98,13 +98,46 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }, timeoutMs);
 
   let response: Response;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors response.json()'s own Promise<any>
+  let payload: any;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal,
-    });
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (timedOut) {
+        throw new ApiError('The request took too long. Please try again.', 408);
+      }
+      throw error;
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    // The deadline used to end here, at the `finally` right below — which
+    // covered the connect-and-headers phase and nothing after it. A server
+    // that sends headers and then stalls the body (buffering proxy, a
+    // half-closed upstream, a chunked response that never sends its final
+    // chunk) hit a `response.json()` with no deadline left on it and hung
+    // past the abort forever. The body read has to sit inside the same
+    // try/finally as the fetch so one AbortController timeout covers both.
+    try {
+      payload = await response.json();
+    } catch (jsonError) {
+      // An aborted body read rejects `response.json()` too (aborting a fetch
+      // aborts its in-flight body stream), and that rejection must still read
+      // as a timeout below rather than being swallowed into `{}` here — an
+      // empty payload on a 200 would look like a genuine, if odd, success.
+      if (timedOut) {
+        throw jsonError;
+      }
+      payload = {};
+    }
   } catch (error) {
     if (timedOut) {
       throw new ApiError('The request took too long. Please try again.', 408);
@@ -117,11 +150,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     }
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail =
       typeof payload.detail === 'string'
