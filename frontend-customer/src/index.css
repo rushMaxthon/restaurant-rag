@@ -106,6 +106,25 @@
     system-ui, -apple-system, sans-serif;
   --font-display: var(--font-ui);
 
+  /* --- type scale --------------------------------------------------------
+     A 1.2 ratio (minor third), which is tight enough that adjacent steps stay
+     distinguishable without any one step dominating a dense screen. A 1.25 or
+     1.333 scale pushes the top of the range past 40px, and a page whose
+     headline is 40px cannot also show six dishes above the fold.
+
+     Headings additionally get `--leading-tight`: at display sizes the default
+     line height opens gaps that read as unintentional spacing. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 26px;
+  --text-3xl: 31px;
+
+  --leading-tight: 1.15;
+  --leading-normal: 1.5;
+
   /* --- inked surfaces ----------------------------------------------------
      The brand mixed into near black. Every dark surface in the app — the home
      banner, the AI panel, the menu hero, a primary action on a card — is one

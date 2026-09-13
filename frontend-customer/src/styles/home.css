@@ -37,9 +37,10 @@
 
 .home .section-header__title {
   font-family: var(--font-display);
-  font-size: 25px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   letter-spacing: -0.2px;
+  line-height: var(--leading-tight);
 }
 
 .home .section-header__subtitle {
@@ -116,9 +117,10 @@
   height: 100%;
   color: var(--on-ink);
   font-family: var(--font-display);
-  font-size: 108px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   letter-spacing: 4px;
+  line-height: var(--leading-tight);
   opacity: 0.22;
   background: linear-gradient(135deg, var(--ink-lift), var(--ink));
 }
@@ -707,9 +709,10 @@
 .home .ai-card__title {
   color: var(--on-ink);
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: var(--text-xl);
   font-weight: 700;
   letter-spacing: -0.4px;
+  line-height: var(--leading-tight);
 }
 
 .home .ai-card__subtitle {
@@ -989,7 +992,7 @@
 
 .home .empty-state__title {
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 

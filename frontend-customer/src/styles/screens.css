@@ -1062,9 +1062,10 @@
 .price-row--total span,
 .price-row--total strong {
   font-family: var(--font-display);
-  font-size: 21px;
+  font-size: var(--text-xl);
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
 }
 
 /* The one action the whole screen exists for. */
@@ -1880,7 +1881,7 @@
 
 .profile-stat strong {
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: var(--text-xl);
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
