@@ -30,12 +30,16 @@ BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from datetime import time  # noqa: E402
+
 from app.services.rag import (  # noqa: E402
     KEYWORD_MATCH_CATEGORY,
     KEYWORD_MATCH_NAME,
     KEYWORD_MATCH_WEAK,
     _customization_reply,
+    _format_clock,
     _is_customization_query,
+    _is_hours_query,
     _keyword_match_strength,
 )
 
@@ -116,6 +120,44 @@ class KeywordRelevanceTests(unittest.TestCase):
     def test_strength_ordering_is_name_then_category_then_weak(self) -> None:
         self.assertGreater(KEYWORD_MATCH_NAME, KEYWORD_MATCH_CATEGORY)
         self.assertGreater(KEYWORD_MATCH_CATEGORY, KEYWORD_MATCH_WEAK)
+
+
+class OpeningHoursQuestionTests(unittest.TestCase):
+    """"What are your timings?" was refused as off-topic.
+
+    Doubly wrong: it is squarely a restaurant question, and the answer was
+    already in the database — all 18 locations have rows in
+    `location_fulfillment_slots`, and nothing in the chat pipeline had ever read
+    them. The concierge said "that's outside my kitchen" about its own hours.
+    """
+
+    def test_the_ways_people_ask_about_hours(self) -> None:
+        for message in (
+            "what are your timings",
+            "are you open right now",
+            "when do you close",
+            "how late are you open",
+            "opening hours?",
+            "still open?",
+            "what time do you open",
+        ):
+            with self.subTest(message=message):
+                self.assertTrue(_is_hours_query(message))
+
+    def test_dish_requests_are_not_mistaken_for_hours(self) -> None:
+        # This guard runs ahead of dish retrieval, so a false positive costs a
+        # customer their actual search.
+        for message in ("i want pizza", "show me rice", "something spicy", "open sandwich"):
+            with self.subTest(message=message):
+                self.assertFalse(_is_hours_query(message))
+
+    def test_times_read_the_way_people_say_them(self) -> None:
+        # "18:00:00" is what the column holds; nobody says a restaurant shuts at
+        # eighteen hundred.
+        self.assertEqual(_format_clock(time(9, 0)), "9 am")
+        self.assertEqual(_format_clock(time(12, 0)), "12 pm")
+        self.assertEqual(_format_clock(time(21, 30)), "9:30 pm")
+        self.assertEqual(_format_clock(time(0, 0)), "12 am")
 
 
 if __name__ == "__main__":

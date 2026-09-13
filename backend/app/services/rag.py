@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
@@ -20,10 +20,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.chat_history import ChatHistory
 from app.models.enums import ChatMessageRole
+from app.models.enums import LocationDayOfWeek
 from app.models.menu_embedding import MenuEmbedding
 from app.services.chat_principal import ChatPrincipal, is_guest
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
+from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
@@ -1097,6 +1099,13 @@ def _is_out_of_domain_message(message: str) -> bool:
     if _is_follow_up_recommendation_message(message):
         return False
     if _is_menu_question_message(message):
+        return False
+    # Hours and customisation are restaurant questions with real answers waiting
+    # in the database. Both were being refused as "outside my kitchen" — "what
+    # are your timings" matches the general-knowledge shape `^what are`, and
+    # neither carries a food word — so the guard turned the app down about its
+    # own opening times.
+    if _is_hours_query(message) or _is_customization_query(message):
         return False
     # Deliberately a blocklist, and this was measured rather than assumed.
     #
@@ -2575,6 +2584,99 @@ def _keyword_match_strength(candidate: RetrievedMenuCandidate, tokens: set[str])
     if any(token in category for token in tokens):
         return KEYWORD_MATCH_CATEGORY
     return KEYWORD_MATCH_WEAK
+
+
+# "What are your timings?" — answered from the branch's own opening hours.
+#
+# This was refused as off-topic, which was doubly wrong: it is squarely a
+# restaurant question, and the answer was already in the database. Every one of
+# the 18 locations has rows in `location_fulfillment_slots`; nothing in the chat
+# pipeline had ever read them, so the concierge said "that is outside my
+# kitchen" about its own opening hours.
+HOURS_QUERY_PATTERNS = (
+    r"\btiming(s)?\b",
+    r"\bopening hours?\b",
+    r"\bwhat time\b.*\b(open|close|shut|deliver)",
+    r"\bwhen (do|does|are) (you|they|u)\b.*\b(open|close|shut|start|deliver)",
+    r"\b(are|r) (you|u) open\b",
+    r"\bhow late\b",
+    r"\b(open|close|closing|opening) (time|hours?)\b",
+    r"\bstill open\b",
+)
+
+_DAY_BY_WEEKDAY = (
+    LocationDayOfWeek.MONDAY,
+    LocationDayOfWeek.TUESDAY,
+    LocationDayOfWeek.WEDNESDAY,
+    LocationDayOfWeek.THURSDAY,
+    LocationDayOfWeek.FRIDAY,
+    LocationDayOfWeek.SATURDAY,
+    LocationDayOfWeek.SUNDAY,
+)
+
+
+def _is_hours_query(message: str) -> bool:
+    normalized = _normalize_text(message)
+    if not normalized:
+        return False
+    return any(re.search(pattern, normalized) for pattern in HOURS_QUERY_PATTERNS)
+
+
+def _format_clock(value: time) -> str:
+    """6:00 pm, not 18:00:00 — nobody says a restaurant shuts at eighteen hundred."""
+
+    hour = value.hour % 12 or 12
+    suffix = "am" if value.hour < 12 else "pm"
+    return f"{hour}:{value.minute:02d} {suffix}" if value.minute else f"{hour} {suffix}"
+
+
+def _todays_hours_reply(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> str | None:
+    """Today's opening window for the branch in question, or None if unknown."""
+
+    now = datetime.now(settings.business_timezone_info)
+    today = _DAY_BY_WEEKDAY[now.weekday()]
+
+    query = (
+        select(LocationFulfillmentSlot, RestaurantLocation)
+        .join(RestaurantLocation, LocationFulfillmentSlot.location_id == RestaurantLocation.id)
+        .where(
+            LocationFulfillmentSlot.day_of_week == today,
+            LocationFulfillmentSlot.is_active.is_(True),
+            RestaurantLocation.is_active.is_(True),
+        )
+        .order_by(LocationFulfillmentSlot.start_time)
+    )
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+    elif restaurant_id is not None:
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
+
+    rows = db.execute(query).all()
+    if not rows:
+        return None
+
+    branch_name = rows[0][1].branch_name
+    opens = min(slot.start_time for slot, _ in rows)
+    closes = max(slot.end_time for slot, _ in rows)
+    open_now = opens <= now.time() <= closes
+
+    window = f"{_format_clock(opens)} to {_format_clock(closes)}"
+    if open_now:
+        return (
+            f"We're open now 🍳 {branch_name} takes orders today from {window}. "
+            "Want me to find you something?"
+        )
+    if now.time() < opens:
+        return f"{branch_name} opens at {_format_clock(opens)} today, and takes orders until {_format_clock(closes)}."
+    return (
+        f"We've closed for today — {branch_name} was open {window}. "
+        "Tell me what you're after and I'll have it ready for you tomorrow."
+    )
 
 
 # Questions about what the MENU SUPPORTS, as opposed to what dishes it sells.
@@ -4706,6 +4808,49 @@ def _prepare_chat_turn(
             fallback_reply=_build_small_talk_reply(),
         )
 
+    # Opening hours, from the branch's own slot rows. Deterministic for the same
+    # reason as the customisation answer: telling someone the wrong closing time
+    # costs them a wasted trip, and a model has no business guessing it.
+    if _is_hours_query(message):
+        hours_reply = _todays_hours_reply(
+            db,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+        )
+        if hours_reply is not None:
+            logger.info("RAG hours query user_id=%s message=%s", user.id, message)
+            return PreparedChatTurn(
+                active_session_id=active_session_id,
+                message=message,
+                # `effective_message` (the follow-up-resolved query) is not
+                # computed until later in this function, and an hours question
+                # is never a follow-up on a previous dish anyway.
+                effective_message=message,
+                restaurant_id=restaurant_id,
+                retrieval_source="hours_query",
+                is_greeting=False,
+                is_follow_up=is_follow_up,
+                uses_personal_context=False,
+                should_bypass_llm=True,
+                suggestion_limit=0,
+                vector_result_count=0,
+                extracted_intent=resolved_intent,
+                session_state=session_state,
+                final_candidates=[],
+                suggestions=[],
+                history_messages=session_history_messages,
+                history_block=_build_history_block(session_history_messages),
+                context_block="",
+                prompt="",
+                timings=timings,
+                fallback_reply=hours_reply,
+            )
+
+    # Placed ABOVE the instant domain reply on purpose. The LLM intent
+    # extractor classifies "what are your timings" as unsupported_domain — it is
+    # not a dish request and carries no food word — and that refusal fires
+    # before any tier below it. The deterministic guard was already exempting
+    # this phrasing; the model's opinion was the one that mattered.
     instant_domain_reply = _instant_reply_for_intent(resolved_intent, message)
     if instant_domain_reply is not None:
         logger.info(
