@@ -157,6 +157,44 @@ DISH_IMAGE_URLS: dict[str, str] = {
 }
 
 
+# Every dish that has no photograph of its own falls back to one for its
+# category, so the menu shows food rather than a grid of two-letter tiles. The
+# same images the 0057 migration applies to an already-seeded database, kept
+# here so a fresh environment does not start out looking broken.
+CATEGORY_IMAGE_URLS: dict[str, str] = {
+    "Beverages": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=800&q=80",
+    "Main Course": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80",
+    # A spread, not a pizza. Combo shared the Pizza image at first, so a Thai
+    # combo box rendered as a pizza — a wrong picture is worse than a generic
+    # one, because the customer believes it.
+    "Combo": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80",
+    "Appetizer": "https://images.unsplash.com/photo-1541014741259-de529411b96a?w=800&q=80",
+    "Momos": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=800&q=80",
+    "Burger": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80",
+    "Pizza": "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=80",
+    "Rice": "https://images.unsplash.com/photo-1596797038530-2c107229654b?w=800&q=80",
+    "Pasta": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=800&q=80",
+    "Noodles": "https://images.unsplash.com/photo-1585032226651-759b368d7246?w=800&q=80",
+    "Soup": "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=800&q=80",
+    "Curry": "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=800&q=80",
+    "Dessert": "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80",
+    "Breads": "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&q=80",
+    "Sides": "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=800&q=80",
+    "Dim Sum": "https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=800&q=80",
+    "Non-Veg": "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=800&q=80",
+    "Bao": "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&q=80",
+    "Rolls": "https://images.unsplash.com/photo-1562967914-608f82629710?w=800&q=80",
+    "Healthy Bowls": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80",
+    "Salads": "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&q=80",
+}
+
+# Two dishes are deliberately left without any image. The placeholder is a real
+# state — a restaurant adds a dish long before it photographs it — and a seeded
+# menu where every single item has a picture would never exercise it. This used
+# to be 172 of 189 items, which is not coverage, it is a broken menu.
+DISHES_WITHOUT_IMAGES = frozenset({"Veg Momos (8 pcs)", "Masala Chai"})
+
+
 RESTAURANT_SEED_DATA = [
     {
         "name": "Spice Route Indian Kitchen",
@@ -1424,6 +1462,14 @@ def seed_rating(popularity_score: float) -> float:
     return round(min(4.9, max(3.6, base + RNG.uniform(-0.15, 0.15))), 1)
 
 
+def _dish_image_for(item: dict) -> str | None:
+    """A dish's own photo, else one for its category, else nothing on purpose."""
+
+    if item["name"] in DISHES_WITHOUT_IMAGES:
+        return None
+    return DISH_IMAGE_URLS.get(item["name"]) or CATEGORY_IMAGE_URLS.get(item.get("category", ""))
+
+
 def build_branch_menu_items(
     base_menu: list[dict],
     branch_config: dict,
@@ -1437,11 +1483,7 @@ def build_branch_menu_items(
         if base_item["name"] in excluded:
             continue
         next_item = dict(base_item)
-        # Left as None when the map has no entry. That is deliberate coverage,
-        # not an oversight: a seeded menu where EVERY dish has a photograph
-        # would never exercise the placeholder state, which is the state a real
-        # menu spends much of its life in.
-        image_url = DISH_IMAGE_URLS.get(base_item["name"])
+        image_url = _dish_image_for(base_item)
         if image_url:
             next_item["image_url"] = image_url
         next_item["price"] = (base_item["price"] + price_delta).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
