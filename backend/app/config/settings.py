@@ -162,7 +162,21 @@ class Settings(BaseSettings):
     # away; anything slower is already a failure, so waiting longer only makes
     # the request slower before it misses anyway.
     redis_socket_connect_timeout_seconds: float = 0.25
+    # `redis_socket_timeout_seconds` is a per-COMMAND deadline, not just connect,
+    # and 0.5s is tuned for a GET: too short and a read never finishes, but a
+    # read that times out just costs one query — the request falls through to
+    # the database and answers correctly, if a bit slower. A SCAN/DELETE that
+    # times out is not a symmetric failure: `cache_delete_pattern` walks
+    # `scan_iter`, one slow round trip against a large keyspace raises
+    # `RedisError`, the handler swallows it and returns 0, and the keys already
+    # matched are never deleted. Nothing else invalidates them, so a menu or
+    # offer edit then serves the stale cached copy for the full
+    # `redis_cache_ttl_seconds` (three days) instead of failing loudly or
+    # falling through. The invalidation path gets its own, longer budget so a
+    # slow round trip fails the read timeout it would have anyway rather than
+    # abandoning a delete already in progress.
     redis_socket_timeout_seconds: float = 0.5
+    redis_delete_socket_timeout_seconds: float = 3.0
     redis_cache_ttl_seconds: int = 259200
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
