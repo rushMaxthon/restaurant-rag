@@ -29,12 +29,19 @@ reason `ENABLE ROW LEVEL SECURITY` is safe to run twice: Postgres treats
 enabling (or disabling) it on a table where it is already enabled (or
 disabled) as a no-op, so re-running this migration, or running it after RLS
 was already turned on by hand, changes nothing.
+
+Renumbered from 0050 to 0052 before it was ever applied. Another branch landed
+its own `0050_dynamic_preferences` and `0051_seed_preference_questionnaire`
+against the same `0049` parent, which left Alembic with two heads and made
+`upgrade head` fail for everyone. This migration had not been stamped anywhere,
+so re-pointing it after theirs was the safe way to make the chain linear again
+rather than asking either side to rewrite applied history.
 """
 
 from alembic import op
 
-revision = "0050_enable_row_level_security"
-down_revision = "0049_menu_item_rating"
+revision = "0052_enable_row_level_security"
+down_revision = "0051_seed_preference_questionnaire"
 branch_labels = None
 depends_on = None
 
