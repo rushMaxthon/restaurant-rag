@@ -1,6 +1,5 @@
-import { useState } from 'react';
-
 import { AppIcon } from '../AppIcon';
+import { DishMedia } from './DishMedia';
 import { FavoriteButton } from '../FavoriteButton';
 import { DishRating } from './DishRating';
 import { formatCurrency } from '../../services/api';
@@ -50,9 +49,6 @@ export function DishRow({
   onToggleFavorite?: (item: MenuItem) => void;
   variant?: 'grid' | 'compact';
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const showFallbackArt = !item.image_url || imageFailed;
-
   const classNames = ['dish-row', `dish-row--${variant}`];
   if (!item.is_available) {
     classNames.push('dish-row--out');
@@ -66,34 +62,16 @@ export function DishRow({
         onClick={() => onOpen(item.id)}
         type="button"
       >
-        {showFallbackArt ? (
-          <span className="dish-row__fallback">
-            <AppIcon filled name="bag" size={variant === 'compact' ? 22 : 36} />
-          </span>
-        ) : (
-          <img
-            alt=""
-            decoding="async"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            src={item.image_url ?? undefined}
-          />
-        )}
+        <DishMedia
+          imageUrl={item.image_url ?? null}
+          name={item.name}
+          variant={variant === 'compact' ? 'compact' : 'grid'}
+        />
         <span aria-hidden="true" className="dish-row__scrim" />
         <span
           className={item.is_veg ? 'diet-badge diet-badge--veg' : 'diet-badge'}
           title={item.is_veg ? 'Vegetarian' : 'Non-vegetarian'}
         />
-        {/* At most one badge. Two stacked labels stop being a signal and start
-            being noise, and "new" is the more perishable of the two — worth
-            saying only while it is still true. */}
-        <span className="dish-row__badges">
-          {item.is_new ? (
-            <span className="dish-row__badge dish-row__badge--new">New</span>
-          ) : item.is_bestseller ? (
-            <span className="dish-row__badge">Popular</span>
-          ) : null}
-        </span>
       </button>
 
       {onToggleFavorite ? (
@@ -116,6 +94,14 @@ export function DishRow({
           <span className="dish-row__name">{item.name}</span>
           <span className="dish-row__meta">
             {item.category ? <span>{item.category}</span> : null}
+            {/* At most one badge. Two stacked labels stop being a signal and start
+                being noise, and "new" is the more perishable of the two — worth
+                saying only while it is still true. */}
+            {item.is_new ? (
+              <span className="dish-row__badge dish-row__badge--new">New</span>
+            ) : item.is_bestseller ? (
+              <span className="dish-row__badge">Popular</span>
+            ) : null}
             <DishRating item={item} />
             {hasOfferAvailable ? <span className="chip chip--offer">Offer</span> : null}
           </span>

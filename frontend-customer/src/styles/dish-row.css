@@ -20,16 +20,20 @@
    and two-thirds empty gutter. Sizing from the track instead means the phone
    still gets two and a desktop gets as many as fit.
 */
+/* 260px, up from 190px. A photograph at 190px is a stamp rather than an
+   appetite cue, and this design makes the picture do the selling. The cost is
+   fewer dishes above the fold — roughly five across instead of seven at
+   1568px — which is the deliberate trade of density for calm. */
 .dish-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   align-items: start;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .home .dish-grid {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: var(--space-sm);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-md);
 }
 
 /* --- shared ---------------------------------------------------------------- */
@@ -66,28 +70,35 @@
   display: block;
 }
 
-/* The seeded menu carries no photography, so the empty state is a designed
-   state rather than a gap: a centred mark on the tinted surface, which reads as
-   deliberate where a blank grey box reads as broken. */
-.dish-row__fallback {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  background: linear-gradient(160deg, var(--tint-08), transparent 70%);
+/* `DishMedia` owns every image state — photo, branded placeholder, and the
+   failed-load fallback — so this wrapper only sizes and clips the box it sits
+   in. Two components independently tracking image failure was the drift this
+   refactor exists to end. */
+.dish-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+}
+
+.dish-media--grid {
+  aspect-ratio: 4 / 3;
+}
+
+.dish-media--compact {
+  width: 88px;
+  height: 88px;
+}
+
+.dish-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .dish-row__scrim {
   display: none;
-}
-
-.dish-row__badges {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  display: flex;
-  gap: 4px;
 }
 
 .dish-row__badge {
@@ -251,6 +262,8 @@
 .dish-row--grid {
   flex-direction: column;
   overflow: hidden;
+  transition: transform var(--motion-base) var(--ease-out),
+              box-shadow var(--motion-base) var(--ease-out);
 }
 
 .dish-row--grid .dish-row__media {
@@ -261,7 +274,7 @@
 .dish-row--grid .dish-row__body {
   flex-direction: column;
   gap: var(--space-xs);
-  padding: 10px;
+  padding: 14px;
 }
 
 .dish-row--grid .dish-row__name {
@@ -280,6 +293,21 @@
   font-size: 15px;
 }
 
+.dish-row--grid:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* The photograph scales inside its clipped box while the card stays put, so
+   the image breathes without the layout moving a pixel. `.dish-row__media`
+   already clips (see the shared rule above); this just documents why. */
+.dish-row--grid .dish-media img {
+  transition: transform var(--motion-slow) var(--ease-out);
+}
+.dish-row--grid:hover .dish-media img { transform: scale(1.03); }
+
+.dish-row--grid:active { transform: scale(0.98); }
+
 /* --- compact variant ---------------------------------------------------------
    The scannable list row. Price and add control sit at a fixed trailing edge so
    the eye runs down a single column of numbers rather than a ragged one, which
@@ -291,16 +319,13 @@
   padding: 10px;
 }
 
+/* 88px to match `.dish-media--compact` — the wrapper and the image it clips
+   must agree on size or the photo either crops wrong or leaves a gap. */
 .dish-row--compact .dish-row__media {
   flex: 0 0 auto;
-  width: 76px;
-  height: 76px;
+  width: 88px;
+  height: 88px;
   border-radius: var(--radius-xs);
-}
-
-.dish-row--compact .dish-row__badges {
-  top: 4px;
-  left: 4px;
 }
 
 .dish-row--compact .dish-row__favorite {
@@ -364,8 +389,8 @@
 /* The compact list row is short and full-width, not portrait — the 4/5 ratio
    above is sized for the browse grid's tiles and would stretch a list-row
    skeleton far taller than the `.dish-row--compact` it stands in for. Height
-   matches that row exactly: 76px media plus 10px padding on each side. */
+   matches that row exactly: 88px media plus 10px padding on each side. */
 .dish-row--compact.dish-row--skeleton {
   aspect-ratio: auto;
-  height: 96px;
+  height: 108px;
 }
