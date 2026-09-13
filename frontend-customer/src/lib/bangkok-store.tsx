@@ -47,23 +47,28 @@ const initial: AppState = { branchId: "", cart: [], fulfillment: "DELIVERY", dar
 const STORAGE_KEY = "bangkok-bowl-state";
 const AppStore = createContext<Store | null>(null);
 
+function loadInitialState(): AppState {
+  if (typeof window === "undefined") return initial;
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved) return { ...initial, ...(JSON.parse(saved) as Partial<AppState>) };
+  } catch {
+    // ignore corrupt storage
+  }
+  return initial;
+}
+
 export function BangkokStoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>(initial);
+  // Read localStorage synchronously at mount (lazy initializer) rather than in
+  // a useEffect: a load-effect racing against the persist-effect below would,
+  // on every fresh mount, have the persist-effect's first run write back the
+  // still-unloaded `initial` state and clobber whatever was just saved (e.g.
+  // the cart) before the load-effect's setState ever lands.
+  const [state, setState] = useState<AppState>(loadInitialState);
 
   const appConfigQuery = useAppConfig();
   const restaurantQuery = useRestaurant(appConfigQuery.data?.restaurant_id);
   const locations = restaurantQuery.data?.locations ?? [];
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        setState((s) => ({ ...s, ...(JSON.parse(saved) as Partial<AppState>) }));
-      } catch {
-        // ignore corrupt storage
-      }
-    }
-  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
