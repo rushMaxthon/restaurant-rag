@@ -28,6 +28,86 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (2) — A dry run as a customer, and what it turned up
+
+**Goal:** walk the whole flow as a real user, on a real phone size, and fix
+what is broken on either side. Two Fable subagents reviewed the backend and the
+frontend in parallel while I drove the app.
+
+**Fixed, in rough order of how badly it hurt a customer:**
+- **Checkout was ZOOMED OUT on a phone.** On a 393px screen it laid out at
+  551px and Chromium shrank the page to fit, so everything was ~29% smaller
+  than designed and the page panned sideways. Cause: the two-column grid
+  declared `lg:grid-cols-[...]` and nothing at the base breakpoint, so the
+  mobile column was the implicit `auto` and sized to its widest content — the
+  horizontally scrolling `.day-rail`. Nothing OVERFLOWED, so an overflow check
+  could never see it; the tell is `window.innerWidth` diverging from
+  `documentElement.clientWidth`. Five grids shared the shape.
+- **Hydration failed on every route.** AuthProvider and the cart store both
+  read localStorage in a `useState` initializer, so the server rendered
+  `href="/login"`/"Cart (0)" and the client's first render disagreed. React
+  discarded and rebuilt the whole tree on every page. Auth now starts empty and
+  restores in a layout effect; the guard waits for a new `ready` flag before
+  redirecting, or it would throw a signed-in customer out of checkout.
+- **Typing before hydration was silently discarded** — controlled inputs assert
+  React's empty state over whatever the server-rendered input already held.
+  Lost the whole email on one login run in four. `ui/input.tsx` now replays the
+  DOM value through `onChange`. This also fixes password-manager autofill.
+- **The sticky header ate taps.** 65px at z-50 with no `scroll-padding-top`, so
+  anything scrolled to the top landed under it — measured on a phone, a
+  quantity stepper was covered by the header's own cart button.
+- **The basket survived its own payment.** `clearCart` had NO call site
+  anywhere. The clear must write through to storage itself: the payment flow
+  navigates the whole page immediately and beats the passive persist effect.
+- **The order page said "Card payment confirming…" forever.** `GET /orders/{id}`
+  reports the DB; only `GET /orders/{id}/payment-status` asks Stripe and
+  promotes the order, and nothing called it. Now polled while unpaid.
+- **A vegetarian asking for vegetarian food was offered chicken.** The
+  deterministic extractor never set `diet` and took the dietary word for a dish
+  name — "what vegetarian dishes do you have" searched for a dish called
+  "vegetarian". The `is_veg` filter downstream was fine; nothing ever handed it
+  a diet. Non-veg must be tested BEFORE veg (`veg` matches inside `non veg`).
+- **"How much is delivery?" was answered "we don't offer delivery on the
+  menu"** while delivery was enabled at CAD 1.99. Same shape: service words
+  captured as dish names. Added a stop list plus a deterministic service-info
+  tier beside the hours tier.
+- **Every owner's email was public.** `GET /restaurants/{id}` served the owner
+  block to anonymous callers.
+- Unpaid orders counted as "In progress" with a progress bar (40 of them on the
+  seeded account); scheduled orders never showed their booked time again after
+  checkout; a pickup customer was told "Your rider is moving"; the cart
+  announced a **$45.00** delivery fee while the branch loaded (a leftover rupee
+  fallback); checkout blamed the restaurant in red while the payment config was
+  still in flight.
+
+**Verified:** 1010 backend tests, 61 frontend unit tests, 25 Playwright across
+desktop and mobile, typecheck and build clean, zero hydration errors on six
+routes. Payment proven end to end: Stripe `succeeded` at 48.91 CAD, a
+self-signed webhook accepted, order → PLACED/PAID.
+
+**Learned — do not re-derive:**
+- **The ``-in-a-heredoc trap bit twice more.** `bytes([8])` is what lands in
+  the file. Even `b"\b"` inside a QUOTED heredoc did not survive. The
+  reliable move: write the patch as a FILE, and spell a backslash `"\"`.
+- **A dev server started without `--reload` does not pick up backend edits.**
+  Two verification rounds were wasted curling a stale process. Verify backend
+  changes in-process (`SessionLocal()` + call the function) instead of killing
+  the user's server.
+- The `V2` branch has other sessions pushing to it. Two merges were needed this
+  session, one with a real conflict in `auth.tsx`. Fetch before assuming a push
+  will land, and note that `git push ... | tail` hides a failed exit code.
+
+**Open:** the cart and checkout price against `currentLocation`, not the cart's
+own branch — harmless single-restaurant, wrong the moment a cart comes from
+another brand via the concierge. Menu item SIZE prices are added to the base
+price in the UI while the backend treats them as replacing it (latent: no
+seeded sizes). No 401 handling, so an expired token leaves someone "signed in"
+while everything fails. No resume-payment path for an unpaid order. Previous
+entry's items still stand, and the Supabase password and Stripe test keys are
+still in transcripts and should be rotated.
+
+---
+
 ## 2026-09-14 — Scheduling as the answer to "why can't I order yet?"
 
 **Goal:** cover mobile properly, make it obvious to a customer why they cannot
