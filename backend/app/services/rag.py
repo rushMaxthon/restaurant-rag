@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
+import math
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from app.config import get_settings
 from app.models.chat_history import ChatHistory
 from app.models.enums import ChatMessageRole
 from app.models.enums import LocationDayOfWeek
+from app.models.enums import OrderFulfillmentType
 from app.models.menu_embedding import MenuEmbedding
 from app.services.chat_principal import ChatPrincipal, is_guest
 from app.models.menu_item import MenuItem
@@ -3190,6 +3192,9 @@ HOURS_QUERY_PATTERNS = (
     r"\bhow late\b",
     r"\b(open|close|closing|opening) (time|hours?)\b",
     r"\bstill open\b",
+    # "till when can i order" — asks the same thing without naming open, close
+    # or hours, so none of the patterns above reach it.
+    r"\b(till|until|upto|up to) (when|what time)\b",
 )
 
 _DAY_BY_WEEKDAY = (
@@ -3225,6 +3230,17 @@ def _todays_hours_reply(
     restaurant_location_id: uuid.UUID | None,
 ) -> str | None:
     """Today's opening window for the branch in question, or None if unknown."""
+
+    # No branch resolvable. Without this the query below runs unfiltered: it
+    # returns slots for EVERY branch of every restaurant, names rows[0]'s branch
+    # arbitrarily, and reports min(opens) to max(closes) across all 18 — a real
+    # branch name attached to the union of everyone's hours. Same gap 6141109
+    # closed in the service-info tier, in its sibling.
+    if restaurant_location_id is None and restaurant_id is None:
+        return (
+            "Opening hours are set per branch, so it depends which one you order "
+            "from. Pick a branch and I'll tell you exactly when it's open."
+        )
 
     now = datetime.now(settings.business_timezone_info)
     today = _DAY_BY_WEEKDAY[now.weekday()]
@@ -3285,6 +3301,272 @@ SERVICE_INFO_QUERY_PATTERNS = (
     r"\b(free|charge for)\s+delivery\b",
     r"\bdelivery\s+(available|possible)\b",
 )
+
+
+# --- ordering windows -------------------------------------------------------
+#
+# A customer could hold a whole conversation, be recommended three dishes, fill
+# a cart, and only learn at checkout that the kitchen was shut. The enforcement
+# was never missing — `_load_location_for_order` refuses an out-of-window order
+# before anything is created — it was simply the last thing they met instead of
+# the first.
+#
+# The chat TELLS; it does not block. Checkout stays the only gate, because the
+# chat creates no orders and cannot be one. A closed branch still gets
+# recommendations: someone browsing at midnight for tomorrow's lunch is a
+# customer, not an error.
+#
+# Spec: docs/superpowers/specs/2026-09-14-chat-ordering-windows-design.md
+
+# A few ways of asking the same thing, used as reference points rather than as
+# a list to match against. The question is compared to their MEANING, so a
+# phrasing none of them uses still lands.
+HOURS_QUESTION_ANCHORS = (
+    "what time do you open",
+    "are you open right now",
+    "when do you close today",
+    "what are your opening hours",
+)
+
+# Measured over twenty-one phrasings with nomic-embed-text:
+#
+#   availability questions   0.087 - 0.464
+#   everything else          0.518 - 0.660   (nearest: "do you have pizza")
+#
+# 0.49 sits in that gap. The numbers belong to THIS embedding model; switching
+# `embedding_provider` to Gemini requires re-measuring, and nothing here will
+# complain if they quietly stop being right.
+HOURS_QUESTION_MAX_DISTANCE = 0.49
+
+_HOURS_ANCHOR_VECTORS: list[list[float]] | None = None
+
+
+def _cosine_distance(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 1.0
+    return 1.0 - (dot / (na * nb))
+
+
+def looks_like_hours_question(message: str) -> bool:
+    """Is this asking when we are open, in words nobody listed?
+
+    Reported: "What is windows time for today?" was answered "That one's outside
+    my kitchen". No pattern covers "window time", so it fell through to the
+    intent extractor, which classifies an hours question as unsupported_domain —
+    it names no dish and carries no food word — and refused.
+
+    Adding "window" to the pattern list fixes that phrasing and leaves the next
+    one broken. This compares the question to a few canonical ones instead.
+
+    NOT a replacement for the patterns. They are exact, free and need no
+    embedding; this is the fallback for what they miss, and the margin here is
+    thin enough (0.062) that it is only safe where the alternative is already a
+    refusal. False on any failure — a missing embedding must leave behaviour
+    exactly as it is, not turn every refusal into an hours answer.
+    """
+
+    global _HOURS_ANCHOR_VECTORS
+
+    vector = _embed_query(message)
+    if vector is None:
+        return False
+
+    try:
+        if _HOURS_ANCHOR_VECTORS is None:
+            anchors = [_embed_query(text) for text in HOURS_QUESTION_ANCHORS]
+            if any(a is None for a in anchors):
+                return False
+            _HOURS_ANCHOR_VECTORS = [a for a in anchors if a is not None]
+        nearest = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+    except Exception:  # pragma: no cover - a recogniser must not break a reply
+        logger.exception("Hours-question similarity failed; leaving the turn unchanged")
+        return False
+
+    return nearest < HOURS_QUESTION_MAX_DISTANCE
+
+
+@dataclass(frozen=True)
+class BranchAvailability:
+    """What one branch can do right now, read the way ORDERING reads it.
+
+    Two sources of hours exist in this schema and they disagree:
+    `RestaurantLocation.opening_time`/`closing_time`, and the per-day
+    `LocationFulfillmentSlot` rows. `_get_current_window_end_for_fulfillment`
+    resolves it with slots winning where a branch has them, and 252 slot rows
+    across 18 branches means the simple pair is not the answer for most.
+
+    So this is built from `get_location_fulfillment_status` and the schedule
+    options, never from the raw columns. A chat reading `opening_time` directly
+    would announce a branch is open while checkout refused the order — worse
+    than the silence it replaces, because it is confidently wrong rather than
+    merely quiet.
+    """
+
+    branch_name: str
+    is_open: bool
+    reason: str | None
+    # The next time an order would actually be ACCEPTED, which is not the same
+    # as when the doors open: a branch opening at 10:00 that needs 15 minutes to
+    # cook cannot take a 10:00 order.
+    next_slot_label: str | None
+
+
+# Turns where a closed kitchen is worth mentioning. A greeting, small talk, an
+# hours question (which already says it) and the service-info answer do not need
+# it — and a notice repeated every turn reads as nagging and stops being read.
+MATERIAL_FOR_CLOSED_NOTICE = frozenset(
+    {
+        "vector",
+        "keyword_intent",
+        "keyword_follow_up",
+        "popular_fallback",
+        "emergency_db_fallback",
+        "new_item_fast_path",
+        "no_more_matches",
+    }
+)
+
+
+def _closed_notice(availability: "BranchAvailability | None", *, is_material: bool) -> str | None:
+    """One line to lead with, or nothing.
+
+    `is_material` keeps it off greetings and small talk. A warning repeated on
+    every turn reads as nagging and stops being read, so it belongs only where
+    the customer is heading towards an order.
+
+    An unknown branch says nothing. Absent data is not "closed": a missing
+    notice costs a warning, a wrong one contradicts checkout.
+    """
+
+    if availability is None or availability.is_open or not is_material:
+        return None
+
+    if availability.next_slot_label:
+        return (
+            f"We're closed right now — {availability.branch_name} can take orders "
+            f"again from {availability.next_slot_label}."
+        )
+    return f"We're closed right now at {availability.branch_name}."
+
+
+def _with_closed_notice(
+    db: Session,
+    *,
+    reply: str,
+    prepared: "PreparedChatTurn",
+    restaurant_location_id: uuid.UUID | None,
+) -> str:
+    """Lead with the kitchen being shut, where it matters.
+
+    Wrapped whole and never raising: a customer losing a warning is a small
+    cost, and an exception here would cost them the answer they asked for.
+    """
+
+    try:
+        if prepared.retrieval_source not in MATERIAL_FOR_CLOSED_NOTICE:
+            return reply
+        availability = branch_availability(
+            db,
+            restaurant_id=prepared.restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+        )
+        notice = _closed_notice(availability, is_material=True)
+        if not notice:
+            return reply
+        logger.info(
+            "Closed-branch notice added branch=%s source=%s",
+            availability.branch_name if availability else "?",
+            prepared.retrieval_source,
+        )
+        return f"{notice} {reply}".strip()
+    except Exception:  # pragma: no cover - a notice must not cost the answer
+        logger.exception("Closed-branch notice failed; returning the reply unchanged")
+        return reply
+
+
+def branch_availability(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> BranchAvailability | None:
+    """Read one branch's current state through the ordering path.
+
+    Deliberately calls `get_location_fulfillment_status` and
+    `list_available_schedule_options` rather than reading `opening_time` or the
+    slot rows itself. Those two already resolve slots-over-simple-pair and
+    already subtract prep time from the window end (b2edad6), so anything this
+    reports is what checkout will also conclude. Reimplementing the rule here is
+    how the chat and the order path start disagreeing.
+
+    Returns None when no branch can be resolved — the caller says hours are per
+    branch and asks which, rather than guessing one.
+    """
+
+    if restaurant_location_id is None and restaurant_id is None:
+        return None
+
+    from app.services.restaurant_locations import (
+        get_location_fulfillment_status,
+        list_available_schedule_options,
+    )
+
+    query = select(RestaurantLocation).where(RestaurantLocation.is_active.is_(True))
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+    else:
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
+
+    location = db.scalars(query.limit(1)).first()
+    if location is None:
+        return None
+
+    fulfillment = (
+        OrderFulfillmentType.DELIVERY
+        if location.delivery_enabled
+        else OrderFulfillmentType.PICKUP
+    )
+
+    try:
+        is_open, reason = get_location_fulfillment_status(
+            location,
+            fulfillment_type=fulfillment,
+        )
+    except Exception:  # pragma: no cover - a notice must not break a reply
+        logger.exception("Branch availability lookup failed; answering without it")
+        return None
+
+    next_slot_label: str | None = None
+    try:
+        options = list_available_schedule_options(
+            location,
+            restaurant_id=location.restaurant_id,
+            fulfillment_type=fulfillment,
+        )
+        # `.groups`, not `.days` — LocationScheduleOptionsResponse names it
+        # groups. Reading the wrong attribute raised AttributeError, which the
+        # broad except below swallowed into "no times known", so the notice and
+        # the closing time silently went missing while everything looked fine.
+        for group in options.groups:
+            if group.slots:
+                next_slot_label = group.slots[0].label
+                break
+        # Deliberately NOT deriving a closing time here. The last bookable
+        # slot has prep time subtracted, so it lands earlier than the hours tier
+        # reports — 9:00 PM against 10 PM for Bodakdev. Two tiers quoting
+        # different closing times is worse than one quoting none.
+    except Exception:  # pragma: no cover
+        logger.exception("Schedule options lookup failed; omitting times")
+
+    return BranchAvailability(
+        branch_name=location.branch_name or "This branch",
+        is_open=is_open,
+        reason=reason,
+        next_slot_label=next_slot_label,
+    )
 
 
 def _is_service_info_query(message: str) -> bool:
@@ -5828,7 +6110,22 @@ def _prepare_chat_turn(
     # Opening hours, from the branch's own slot rows. Deterministic for the same
     # reason as the customisation answer: telling someone the wrong closing time
     # costs them a wasted trip, and a model has no business guessing it.
-    if _is_hours_query(message):
+    # Patterns first, then meaning. The patterns are exact, free and need no
+    # embedding; the similarity check covers what nobody listed a word for.
+    #
+    # It ran only on turns already heading for a refusal when the margin looked
+    # like 0.062. A wider measurement moved it: asking when you can order —
+    # "when can I order", "is the kitchen open", "can I order now" — matched no
+    # pattern, was NOT refused, and went to dish search instead. Those returned
+    # six, six and one dish recommendation to someone asking about availability.
+    #
+    # Measured across eleven phrasings including the common dish requests:
+    #
+    #   availability questions   0.281 - 0.444
+    #   dish requests            0.518 - 0.660   (nearest: "do you have pizza")
+    #
+    # 0.49 sits nearly centred in that 0.074 gap, so the gate is gone.
+    if _is_hours_query(message) or looks_like_hours_question(message):
         hours_reply = _todays_hours_reply(
             db,
             restaurant_id=restaurant_id,
@@ -6898,6 +7195,20 @@ def handle_chat_message(
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
     prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+
+    # Prepended AFTER generation, not built into the reply. Three reasons, and
+    # the third is the binding one:
+    #   - it survives whichever path produced the reply: generated, templated or
+    #     served from cache
+    #   - it cannot be talked out of the model, because the model never saw it
+    #   - a cached body must never carry a time-sensitive claim. "We're closed"
+    #     baked into a cached reply would still be served at lunchtime tomorrow.
+    reply = _with_closed_notice(
+        db,
+        reply=reply,
+        prepared=prepared,
+        restaurant_location_id=restaurant_location_id,
+    )
 
     return ChatMessageResponse(
         reply=reply,
