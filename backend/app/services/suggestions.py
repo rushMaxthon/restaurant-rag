@@ -147,6 +147,39 @@ def choose_category_default(
 
 
 @dataclass(frozen=True)
+class CategoryFallbackItem:
+    """A candidate for the category-default rung's own fallback.
+
+    Carries price and name only because those are what the ordering below
+    needs to break ties — the DB read that produces these lives in the
+    orchestrator, not here.
+    """
+
+    menu_item_id: uuid.UUID
+    price: Decimal
+    name: str
+
+
+def order_category_fallback(items: list[CategoryFallbackItem]) -> list[uuid.UUID]:
+    """A total, stable order for offering something from a category that has
+    no bestseller yet.
+
+    `record_offer`/`is_suppressed` key suppression memory on the id this list
+    hands to `choose_category_default` first, so the same cart must produce
+    the same leading candidate on every call — a tie-break that could vary
+    between calls (dict/set iteration order, an unstable sort) would let the
+    "same" cart quietly offer a different item each time, which breaks the
+    decline-limit bookkeeping instead of genuinely exhausting it. Cheapest
+    item first, since this rung exists for a low-friction nudge rather than
+    the highest ticket; name then id break any remaining ties so two
+    identically-priced items still sort the same way every time.
+    """
+
+    ordered = sorted(items, key=lambda item: (item.price, item.name, item.menu_item_id))
+    return [item.menu_item_id for item in ordered]
+
+
+@dataclass(frozen=True)
 class CartLineFacts:
     menu_item_id: uuid.UUID
     size_id: uuid.UUID | None
@@ -575,6 +608,26 @@ def _bestsellers_by_category(
     location_id: uuid.UUID,
     menu_items: dict[uuid.UUID, MenuItem],
 ) -> dict[str, list[uuid.UUID]]:
+    """Real bestseller ids per category first; the branch's own menu beneath that.
+
+    `bestseller_min_valid_orders` (25 orders in the trailing
+    `bestseller_window_days`) is a volume floor calibrated for the admin's
+    "bestseller" badge elsewhere — a claim worth making only once a branch has
+    real traffic behind it. This rung was built to rescue thin mined pairing
+    evidence, then wired straight to that badge's source, which carries a
+    HIGHER floor than the thing it exists to rescue: a branch with fewer than
+    25 qualifying orders (a new launch, or just a quiet one) gets an empty
+    bestseller set here, and with it silence from every suggestion path at
+    once — the exact case this rung exists for. Falling through to the
+    category's own available items, deterministically ordered (see
+    `order_category_fallback`), keeps the rung able to speak without touching
+    `bestseller_min_valid_orders` itself, which other surfaces (menu badges)
+    also read and which should not move just to make this feature visible.
+    The `category_default` basis was already a claim about the CATEGORY, not
+    about any specific item, so which item wins here changes nothing about
+    what the label promises.
+    """
+
     bestseller_ids = get_dynamic_bestseller_ids_by_location(db, [location_id]).get(location_id, set())
     grouped: dict[str, list[uuid.UUID]] = {}
     for item_id in bestseller_ids:
@@ -582,4 +635,17 @@ def _bestsellers_by_category(
         if item is None or not item.category:
             continue
         grouped.setdefault(item.category, []).append(item_id)
+
+    # Only categories with no bestseller at all fall through — where real
+    # popularity data exists it still wins, unconditionally.
+    fallback_candidates: dict[str, list[CategoryFallbackItem]] = {}
+    for item in menu_items.values():
+        if not item.category or item.category in grouped:
+            continue
+        fallback_candidates.setdefault(item.category, []).append(
+            CategoryFallbackItem(menu_item_id=item.id, price=item.price, name=item.name)
+        )
+    for category, candidates in fallback_candidates.items():
+        grouped[category] = order_category_fallback(candidates)
+
     return grouped

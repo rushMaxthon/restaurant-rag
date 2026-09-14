@@ -23,12 +23,14 @@ from app.services.suggestions import (
     AddOnOption,
     CandidateItem,
     CartLineFacts,
+    CategoryFallbackItem,
     ComboUpgrade,
     PairingPattern,
     SizeOption,
     choose_category_default,
     choose_pairing,
     choose_upsell,
+    order_category_fallback,
 )
 
 CURRY = uuid.UUID("00000000-0000-0000-0000-0000000000c1")
@@ -193,6 +195,55 @@ class CategoryFallbackTests(unittest.TestCase):
                 diet=None,
             )
         )
+
+
+class CategoryFallbackOrderingTests(unittest.TestCase):
+    """The order `_bestsellers_by_category` falls back to when a category has
+    no real bestseller yet.
+
+    Suppression memory keys on whichever id this order puts first, so the
+    same set of candidates must sort the same way on every call — that is
+    what each test below is actually checking, not just "is it cheapest".
+    """
+
+    def test_the_cheapest_item_sorts_first(self) -> None:
+        cheap = CategoryFallbackItem(menu_item_id=TEA, price=Decimal("30"), name="Tea")
+        pricey = CategoryFallbackItem(menu_item_id=RICE, price=Decimal("90"), name="Mango Lassi")
+
+        self.assertEqual(order_category_fallback([pricey, cheap]), [TEA, RICE])
+
+    def test_equal_price_breaks_the_tie_on_name(self) -> None:
+        later_name = CategoryFallbackItem(menu_item_id=RICE, price=Decimal("50"), name="Soda")
+        earlier_name = CategoryFallbackItem(menu_item_id=TEA, price=Decimal("50"), name="Lemonade")
+
+        self.assertEqual(order_category_fallback([later_name, earlier_name]), [TEA, RICE])
+
+    def test_equal_price_and_name_breaks_the_tie_on_id(self) -> None:
+        lower_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        higher_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
+        first = CategoryFallbackItem(menu_item_id=higher_id, price=Decimal("50"), name="Soda")
+        second = CategoryFallbackItem(menu_item_id=lower_id, price=Decimal("50"), name="Soda")
+
+        self.assertEqual(order_category_fallback([first, second]), [lower_id, higher_id])
+
+    def test_the_order_is_stable_across_repeated_calls(self) -> None:
+        """Guards the actual defect: a non-deterministic order would let the
+        same cart offer a different item on retry and defeat DECLINE_LIMIT."""
+
+        items = [
+            CategoryFallbackItem(menu_item_id=TEA, price=Decimal("30"), name="Tea"),
+            CategoryFallbackItem(menu_item_id=RICE, price=Decimal("30"), name="Cola"),
+            CategoryFallbackItem(menu_item_id=CURRY, price=Decimal("90"), name="Cake"),
+        ]
+
+        first_call = order_category_fallback(list(items))
+        second_call = order_category_fallback(list(reversed(items)))
+
+        self.assertEqual(first_call, second_call)
+        self.assertEqual(first_call, [RICE, TEA, CURRY])
+
+    def test_an_empty_category_yields_an_empty_order(self) -> None:
+        self.assertEqual(order_category_fallback([]), [])
 
 
 class UpsellLadderTests(unittest.TestCase):
