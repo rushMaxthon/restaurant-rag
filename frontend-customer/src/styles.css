@@ -1236,3 +1236,34 @@ html {
   font-size: var(--text-xs, 0.75rem);
   font-weight: 700;
 }
+
+/* --- Scroll lock vs. the reserved gutter ------------------------------------
+   Radix menus (the sort dropdown, dialogs) lock scrolling through
+   react-remove-scroll, which hides the page scrollbar and pads the body by the
+   scrollbar's width to make up for the space it just freed.
+
+   This page already reserves that space permanently: `html` sets
+   scrollbar-gutter: stable a few rules above, so navigating between a short and
+   a tall page does not shift the layout. The gutter never goes away, so the
+   compensation is applied on top of it and the content narrows by the
+   scrollbar's width the instant a dropdown opens — which reads as the whole
+   screen resizing.
+
+   Keep the reserved gutter, drop the second correction. `html` is in the
+   selector purely to beat the specificity of the rule react-remove-scroll
+   injects at runtime, which carries !important and lands later in the head. */
+html body[data-scroll-locked] {
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Dropdown rows big enough for a thumb.
+   The shared Select ships py-1.5, which measures 31px on a phone — under the
+   44px both Apple and Google publish, and under what every other control in
+   this app already uses. Applied on coarse pointers only, so the desktop list
+   keeps its tighter proportions. */
+@media (pointer: coarse) {
+  [role="option"] {
+    min-height: 44px;
+  }
+}
