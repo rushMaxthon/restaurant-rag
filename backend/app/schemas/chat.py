@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import ChatMessageRole
 from app.schemas.generated_combo import GeneratedComboResponse
 from app.schemas.personalized_offer import PersonalizedOfferCardResponse
+from app.schemas.suggestions import CartLinePayload, SellSuggestionResponse
 
 
 class ChatSuggestionItem(BaseModel):
@@ -65,6 +66,9 @@ class ChatMessageRequest(BaseModel):
     restaurant_location_id: uuid.UUID | None = None
     session_id: uuid.UUID | None = None
     guest_preferences: GuestPreferencePayload | None = None
+    # Both selling rules are functions of the cart, and the cart lives in the
+    # browser. Untrusted: every id is re-resolved against the branch.
+    cart: list[CartLinePayload] = Field(default_factory=list)
 
 
 class ChatMessageResponse(BaseModel):
@@ -76,6 +80,11 @@ class ChatMessageResponse(BaseModel):
     # What this turn learned about the visitor, for a guest's browser to keep.
     # Empty for an authenticated user: their traits already have a home.
     inferred_preferences: dict[str, str] = Field(default_factory=dict)
+    # Same contract as `GET /api/suggestions`: one waiter, one nudge, one
+    # suppression memory, regardless of which surface asked. None on every
+    # short-circuit reply (acknowledgement, greeting, a cache hit) — see
+    # `handle_chat_message` for why only the fully-assembled turn computes one.
+    suggestion: SellSuggestionResponse | None = None
 
 
 class ChatHistoryItemResponse(BaseModel):
