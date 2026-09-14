@@ -23,11 +23,36 @@ export async function resetApp(page: Page): Promise<void> {
       localStorage.removeItem(tokenKey!);
       localStorage.removeItem(userKey!);
       const raw = localStorage.getItem(stateKey!);
-      if (raw) {
-        const state = JSON.parse(raw);
-        state.cart = [];
-        localStorage.setItem(stateKey!, JSON.stringify(state));
-      }
+      const state = raw ? JSON.parse(raw) : {};
+      state.cart = [];
+      // A returning customer who has already picked a branch.
+      //
+      // The branch gate is a modal over everything until a branch is chosen, so
+      // without this every test that touches the menu stops at a dialog it was
+      // never about. Seeded rather than clicked through: the gate deserves its
+      // own test (below in order-flow) rather than four extra clicks in each of
+      // thirty-five, and seeding keeps them testing the thing they name.
+      state.branchChosen = true;
+      localStorage.setItem(stateKey!, JSON.stringify(state));
+    },
+    [STORAGE_STATE, STORAGE_TOKEN, STORAGE_USER],
+  );
+  await page.reload();
+}
+
+/**
+ * Start from a truly first-time visitor: no account, no cart, no branch picked.
+ *
+ * `resetApp` deliberately pre-answers the branch gate; this is for the tests
+ * that are about meeting it.
+ */
+export async function resetAppFirstVisit(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.evaluate(
+    ([stateKey, tokenKey, userKey]) => {
+      localStorage.removeItem(tokenKey!);
+      localStorage.removeItem(userKey!);
+      localStorage.removeItem(stateKey!);
     },
     [STORAGE_STATE, STORAGE_TOKEN, STORAGE_USER],
   );

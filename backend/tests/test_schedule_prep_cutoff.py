@@ -148,6 +148,17 @@ class SchedulingTooCloseToClosingTests(unittest.TestCase):
             reference_dt=now,
         )
 
+    def test_the_advice_names_a_time_that_can_actually_be_picked(self) -> None:
+        # 23:00 minus a 29 minute buffer is 22:31, which is not on a 30-minute
+        # grid. Saying "the latest time is 10:31 PM" names a slot the interval
+        # check would then reject, sending the customer round again.
+        location = build_location(prep_minutes=29, eta_minutes=29, interval=30, closes=time(23, 0))
+        ok, reason = self._check(location, at(23, 0), now=at(9, 0))
+        self.assertFalse(ok)
+        assert reason is not None
+        self.assertIn("10:30 PM", reason)
+        self.assertNotIn("10:31", reason)
+
     def test_the_closing_minute_is_refused(self) -> None:
         location = build_location(prep_minutes=15, eta_minutes=15, interval=15, closes=time(23, 0))
         ok, reason = self._check(location, at(23, 0), now=at(9, 0))

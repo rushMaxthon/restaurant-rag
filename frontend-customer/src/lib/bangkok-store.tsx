@@ -94,6 +94,8 @@ type Store = AppState & {
   /** False until the customer has actually picked a branch themselves. */
   branchChosen: boolean;
   isRestaurantLoading: boolean;
+  /** The restaurant or app config could not be fetched at all. */
+  isRestaurantError: boolean;
   setBranchId: (id: string) => void;
   /** The restaurant the cart belongs to, or undefined while it is empty. */
   cartRestaurantId: string | undefined;
@@ -119,7 +121,26 @@ const initial: AppState = {
   dark: false,
 };
 const STORAGE_KEY = "bangkok-bowl-state";
-const AppStore = createContext<Store | null>(null);
+/**
+ * The context, pinned so its identity survives a hot update.
+ *
+ * Vite's Fast Refresh re-evaluates this whole module on every edit to it. A
+ * bare `createContext(...)` at module scope would therefore mint a NEW context
+ * object, while the already-mounted AppShell still holds a reference to the old
+ * one — so `useContext` returns null and the app dies with "Bangkok store is
+ * unavailable" until someone hard-reloads. Nothing is wrong with the code at
+ * that point; a cold load is always fine, which is what makes it confusing.
+ *
+ * `globalThis` outlives module re-evaluation, so the same context object is
+ * handed back after each refresh and mounted consumers keep working. In a
+ * production build this module is evaluated once and the lookup simply misses,
+ * so this costs one property read at startup.
+ */
+const CONTEXT_KEY = "__bangkokStoreContext__";
+type ContextCache = { [CONTEXT_KEY]?: React.Context<Store | null> };
+const cache = globalThis as unknown as ContextCache;
+const AppStore: React.Context<Store | null> =
+  cache[CONTEXT_KEY] ?? (cache[CONTEXT_KEY] = createContext<Store | null>(null));
 
 function loadInitialState(): AppState {
   if (typeof window === "undefined") return initial;
@@ -296,6 +317,10 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
         locations.find((l) => l.id === state.branchId),
       branchChosen: state.branchChosen,
       isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
+      // Distinguished from "loading" and from "empty": a menu screen that
+      // says "nothing matches that" because the server was unreachable is
+      // telling the customer something false about the restaurant.
+      isRestaurantError: appConfigQuery.isError || restaurantQuery.isError,
       setBranchId,
       cartRestaurantId: state.cart[0]?.restaurantId,
       cartRestaurantName: state.cart[0]?.restaurantName,
@@ -321,6 +346,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       clearCart,
       appConfigQuery.isLoading,
       restaurantQuery.isLoading,
+      appConfigQuery.isError,
+      restaurantQuery.isError,
     ],
   );
 

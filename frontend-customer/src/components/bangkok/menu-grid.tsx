@@ -53,7 +53,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
   const [vegOnly, setVegOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
 
-  const { restaurantId, branchId, isRestaurantLoading } = useBangkokStore();
+  const { restaurantId, branchId, isRestaurantLoading, isRestaurantError } = useBangkokStore();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   // `?? []` alone builds a fresh array on every render, so both memos below
   // would recompute every time and the memoisation would buy nothing.
@@ -79,6 +79,11 @@ export function MenuGrid({ limit }: { limit?: number }) {
   }, [items, category, query, vegOnly, sort, limit]);
 
   const loading = isRestaurantLoading || menuQuery.isLoading;
+  // A request that never happened is not an empty menu. When /app-config fails
+  // the menu query is disabled, so it reports neither loading nor error and the
+  // screen used to say "Nothing matches that" — telling the customer something
+  // false about the restaurant instead of that we could not reach it.
+  const failed = isRestaurantError || menuQuery.isError;
   const filtered = category !== "All" || vegOnly || query.trim().length > 0;
 
   function reset() {
@@ -147,7 +152,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
         ))}
       </div>
 
-      {!loading && !menuQuery.isError && (
+      {!loading && !failed && (
         <div className="mb-5 mt-3 flex flex-wrap items-center gap-3">
           <p className="result-count text-sm font-semibold text-muted" key={shown.length}>
             {shown.length} {shown.length === 1 ? "dish" : "dishes"}
@@ -169,7 +174,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
         </div>
       )}
 
-      {!loading && menuQuery.isError && (
+      {!loading && failed && (
         <div className="state-panel elevated-panel px-6 py-16 text-center">
           <h3 className="font-display text-xl font-black">The menu didn't load</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
@@ -178,7 +183,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
         </div>
       )}
 
-      {!loading && !menuQuery.isError && shown.length > 0 && (
+      {!loading && !failed && shown.length > 0 && (
         <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {shown.map((item, i) => (
             <div
@@ -192,7 +197,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
         </div>
       )}
 
-      {!loading && !menuQuery.isError && shown.length === 0 && (
+      {!loading && !failed && shown.length === 0 && (
         <div className="state-panel elevated-panel px-6 py-20 text-center">
           <h3 className="font-display text-2xl font-black">Nothing matches that</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">

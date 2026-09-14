@@ -6,6 +6,7 @@ import {
   forceBranchClosed,
   payWithTestCard,
   resetApp,
+  resetAppFirstVisit,
   signIn,
 } from "./helpers";
 
@@ -18,6 +19,41 @@ import {
  * step at all. None of them would have been caught by a unit test, because each
  * was a failure of wiring rather than of logic.
  */
+
+test.describe("choosing a branch", () => {
+  test("a first-time visitor picks a branch before seeing a menu", async ({ page }) => {
+    await resetAppFirstVisit(page);
+
+    // Branches of one restaurant do not carry the same food, so the app asks
+    // rather than choosing silently. It is a modal, which means it also has to
+    // be dismissible in one tap or it is a wall in front of the whole product.
+    const gate = page.getByRole("dialog");
+    await expect(gate).toBeVisible();
+    await expect(gate.getByRole("heading", { name: /which branch/i })).toBeVisible();
+
+    const options = gate.locator(".branch-gate__option");
+    await expect(options.first()).toBeVisible();
+    const branchName = (await options.first().locator(".branch-gate__name").innerText()).trim();
+    await options.first().click();
+
+    // Gone, and the branch it was told about is the one the header now shows.
+    await expect(gate).toHaveCount(0);
+    await expect(page.getByText(branchName.slice(0, 12)).first()).toBeVisible();
+
+    // And it stays gone: a gate that reappears on every visit is a tax.
+    await page.reload();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("the menu is reachable once a branch is chosen", async ({ page }) => {
+    await resetAppFirstVisit(page);
+    await page.getByRole("dialog").locator(".branch-gate__option").first().click();
+    await page.goto("/menu");
+    await expect(page.getByRole("button", { name: /^Add / }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+});
 
 test.describe("browsing without an account", () => {
   test("a guest can use the menu and the cart without being asked to sign in", async ({ page }) => {
