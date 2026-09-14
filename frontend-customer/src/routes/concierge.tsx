@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
+import { useBangkokStore } from "@/lib/bangkok-store";
 
 type ConciergeSearch = { q?: string };
 
@@ -143,6 +144,7 @@ function stripMarkdown(text: string): string {
 function ConciergePage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const store = useBangkokStore();
 
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -239,6 +241,13 @@ function ConciergePage() {
         {
           message: text,
           session_id: sessionIdRef.current,
+          // The branch the customer chose. Without it the concierge answers
+          // across every restaurant in the marketplace — it recommended Penne
+          // Arrabbiata to someone asking for Thai noodles — and can suggest a
+          // dish this kitchen does not make. The backend has filtered on this
+          // all along; nothing was sending it.
+          restaurant_id: store.restaurantId,
+          restaurant_location_id: store.currentLocation?.id,
           // Undefined for a signed-in customer and for a guest who has said
           // nothing yet. The backend ignores it outright for an account, so
           // sending it would be harmless — but not sending what cannot be used

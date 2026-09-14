@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -201,6 +202,44 @@ class SessionHistoryIsNotGloballyCacheableTests(unittest.TestCase):
         self.assertTrue(
             rag.may_cache_globally(cacheable=True, history_messages=[], session_summary="none")
         )
+
+
+class LocationScopedCacheTests(unittest.TestCase):
+    """Two branches of one restaurant do not serve the same menu.
+
+    Measured on the seeded data: Bangkok Bowl carries 13, 13 and 12 items across
+    its three branches — 17 distinct dishes over 38 rows, where carrying
+    everything everywhere would be 51. Momo Mountain runs 8, 9, 9.
+
+    The key scoped by restaurant and not by branch, so Bodakdev and Science City
+    shared cached replies while stocking different dishes. Harmless while the
+    concierge answered across the whole marketplace and nothing was scoped;
+    live the moment a customer picks a branch, and the failure is a customer
+    being offered something their branch cannot make.
+    """
+
+    MESSAGE = "what desserts do you have"
+    RESTAURANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    BODAKDEV = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    SCIENCE_CITY = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+    def test_two_branches_do_not_share_an_entry(self) -> None:
+        a = rag._response_cache_key(self.MESSAGE, self.RESTAURANT, restaurant_location_id=self.BODAKDEV)
+        b = rag._response_cache_key(self.MESSAGE, self.RESTAURANT, restaurant_location_id=self.SCIENCE_CITY)
+        self.assertNotEqual(a, b)
+
+    def test_a_branch_does_not_read_the_unscoped_entry(self) -> None:
+        """A reply computed across the whole restaurant is not an answer for one
+        branch of it."""
+
+        whole = rag._response_cache_key(self.MESSAGE, self.RESTAURANT)
+        branch = rag._response_cache_key(self.MESSAGE, self.RESTAURANT, restaurant_location_id=self.BODAKDEV)
+        self.assertNotEqual(whole, branch)
+
+    def test_the_same_branch_still_shares_an_entry(self) -> None:
+        a = rag._response_cache_key(self.MESSAGE, self.RESTAURANT, restaurant_location_id=self.BODAKDEV)
+        b = rag._response_cache_key(self.MESSAGE, self.RESTAURANT, restaurant_location_id=self.BODAKDEV)
+        self.assertEqual(a, b)
 
 
 if __name__ == "__main__":

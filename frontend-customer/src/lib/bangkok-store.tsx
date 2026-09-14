@@ -56,6 +56,17 @@ export function cartConflictsWith(
 
 type AppState = {
   branchId: string;
+  /**
+   * Whether the CUSTOMER picked this branch, as opposed to the app defaulting.
+   *
+   * Separate from `branchId` because the two mean different things and the app
+   * needs both. Branches of one restaurant do not carry the same menu — Bangkok
+   * Bowl runs 13, 13 and 12 items across three branches — so a silent default
+   * shows a menu the customer may not be able to order from, and they are never
+   * told which kitchen they are looking at. The default still happens, to give
+   * the picker something to pre-select; it just no longer counts as an answer.
+   */
+  branchChosen: boolean;
   cart: CartLine[];
   fulfillment: "DELIVERY" | "PICKUP";
   dark: boolean;
@@ -80,6 +91,8 @@ type Store = AppState & {
   currentLocation: RestaurantLocation | undefined;
   /** The branch the order will actually be placed against. */
   orderLocation: RestaurantLocation | undefined;
+  /** False until the customer has actually picked a branch themselves. */
+  branchChosen: boolean;
   isRestaurantLoading: boolean;
   setBranchId: (id: string) => void;
   /** The restaurant the cart belongs to, or undefined while it is empty. */
@@ -98,7 +111,13 @@ type Store = AppState & {
   subtotal: number;
 };
 
-const initial: AppState = { branchId: "", cart: [], fulfillment: "DELIVERY", dark: false };
+const initial: AppState = {
+  branchId: "",
+  branchChosen: false,
+  cart: [],
+  fulfillment: "DELIVERY",
+  dark: false,
+};
 const STORAGE_KEY = "bangkok-bowl-state";
 const AppStore = createContext<Store | null>(null);
 
@@ -149,7 +168,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state, hydrated]);
 
-  // Default to an open branch once the restaurant loads, if none is chosen yet.
+  // Pre-select an open branch once the restaurant loads. This is a suggestion
+  // for the gate to highlight, NOT a choice — `branchChosen` stays false.
   useEffect(() => {
     if (!locations.length) return;
     setState((s) => {
@@ -182,7 +202,13 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const setBranchId = useCallback((branchId: string) => setState((s) => ({ ...s, branchId })), []);
+  // Every route into this is a deliberate act — the gate, or the header
+  // picker — so choosing is recorded here rather than at each call site, where
+  // a future caller would have to remember to.
+  const setBranchId = useCallback(
+    (branchId: string) => setState((s) => ({ ...s, branchId, branchChosen: true })),
+    [],
+  );
 
   const addItem = useCallback(
     (item: MenuItem, options?: AddItemOptions) =>
@@ -268,6 +294,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       orderLocation:
         locations.find((l) => l.id === (state.cart[0]?.restaurantLocationId ?? state.branchId)) ??
         locations.find((l) => l.id === state.branchId),
+      branchChosen: state.branchChosen,
       isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
       setBranchId,
       cartRestaurantId: state.cart[0]?.restaurantId,
