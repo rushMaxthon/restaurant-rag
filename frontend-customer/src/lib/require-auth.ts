@@ -33,14 +33,17 @@ export function sanitizeRedirect(href: string | undefined): string | undefined {
  * Reading it at fire time keeps the target correct without re-triggering.
  */
 export function useRequireAuth(): boolean {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, ready } = useAuth();
   const navigate = useNavigate();
   const href = useRouterState({ select: (s) => s.location.href });
   const hrefRef = useRef(href);
   hrefRef.current = href;
 
   useEffect(() => {
-    if (isAuthenticated) return;
+    // `ready` first: until the stored session has been read, "not signed in" is
+    // simply "not known yet", and redirecting on it would bounce a signed-in
+    // customer out of checkout on every page load.
+    if (!ready || isAuthenticated) return;
     navigate({
       to: "/login",
       search: { redirect: sanitizeRedirect(hrefRef.current) },
@@ -48,7 +51,7 @@ export function useRequireAuth(): boolean {
       // rather than re-entering the guard and bouncing again.
       replace: true,
     });
-  }, [isAuthenticated, navigate]);
+  }, [ready, isAuthenticated, navigate]);
 
   return isAuthenticated;
 }

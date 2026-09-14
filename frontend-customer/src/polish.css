@@ -852,3 +852,18 @@ textarea.flex:focus-visible {
     min-height: 44px;
   }
 }
+
+/* --- Sticky header vs. scrolled-to content ----------------------------------
+   The header is sticky and 65px tall, so anything scrolled to the top of the
+   viewport lands underneath it. That is not only a cosmetic overlap: the
+   header sits at z-50 and swallows the tap. Measured on a phone, a quantity
+   stepper that had just been scrolled to the top was covered by the header's
+   own cart button, so "add another" added nothing and hit the cart instead.
+
+   It applies to every way content gets scrolled to the top that the app does
+   not control: in-page anchors, keyboard focus moving down a long form, and
+   the browser restoring a scroll position on back. scroll-padding-top keeps
+   the header's height out of the scrollport so that content settles below it. */
+html {
+  scroll-padding-top: 5rem;
+}

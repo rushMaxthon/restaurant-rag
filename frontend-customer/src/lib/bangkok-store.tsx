@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -10,6 +11,9 @@ import {
 import type { MenuItem, RestaurantLocation } from "@/lib/bangkok-data";
 import { useAppConfig, useRestaurant, pickDefaultLocation } from "@/lib/queries";
 import { applyBrandColor } from "@/lib/theme";
+
+/** See the note in auth.tsx: layout on the client, no-op effect on the server. */
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export type CartLine = {
   lineId: string;
@@ -106,12 +110,22 @@ function loadInitialState(): AppState {
 }
 
 export function BangkokStoreProvider({ children }: { children: ReactNode }) {
-  // Read localStorage synchronously at mount (lazy initializer) rather than in
-  // a useEffect: a load-effect racing against the persist-effect below would,
-  // on every fresh mount, have the persist-effect's first run write back the
-  // still-unloaded `initial` state and clobber whatever was just saved (e.g.
-  // the cart) before the load-effect's setState ever lands.
-  const [state, setState] = useState<AppState>(loadInitialState);
+  // Starts at `initial` so the first client render matches the server's.
+  //
+  // This used to be a lazy initializer reading localStorage, to stop the
+  // persist-effect below from writing an empty `initial` over a saved cart
+  // before the load landed. That race is real, but the initializer bought the
+  // fix at the price of a hydration mismatch: the server rendered "Cart (0)"
+  // and the client rendered "Cart (3)", so React discarded the whole tree and
+  // rebuilt it on every route. The race is now closed by gating the persist on
+  // `hydrated` instead, which costs nothing and keeps the markup agreeing.
+  const [state, setState] = useState<AppState>(initial);
+  const [hydrated, setHydrated] = useState(false);
+
+  useIsomorphicLayoutEffect(() => {
+    setState(loadInitialState());
+    setHydrated(true);
+  }, []);
 
   const appConfigQuery = useAppConfig();
   const restaurantQuery = useRestaurant(appConfigQuery.data?.restaurant_id);
@@ -119,10 +133,17 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
   // the context value both re-run on every render regardless of the data.
   const locations = useMemo(() => restaurantQuery.data?.locations ?? [], [restaurantQuery.data]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Theme before paint, so someone on dark mode never gets a white flash.
+  useIsomorphicLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", state.dark);
-  }, [state]);
+  }, [state.dark]);
+
+  // Never persist before the restore has happened — this effect's first run
+  // would otherwise write the empty `initial` straight over the saved cart.
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state, hydrated]);
 
   // Default to an open branch once the restaurant loads, if none is chosen yet.
   useEffect(() => {
