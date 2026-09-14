@@ -124,7 +124,7 @@ function OrderDetail() {
         </div>
       </header>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="elevated-panel p-5 sm:p-7">
           {cancelled ? (
             <div className="flex items-start gap-3 rounded-xl bg-danger/10 p-4">
