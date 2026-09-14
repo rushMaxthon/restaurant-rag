@@ -22,11 +22,9 @@ import { CardPayment } from "@/components/bangkok/card-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
   activeSlots,
   availabilityNow,
-  clockValue,
   bookableDays,
   bookableTimes,
   dateInputValue,
@@ -38,11 +36,9 @@ import {
   formatSlotRange,
   formatTimeOfDay,
   groupByPartOfDay,
-  isBookableTime,
   isSameDay,
   lastBookableDay,
   nextBookableTime,
-  snapToInterval,
   nextOpening,
 } from "@/lib/branch-hours";
 import {
@@ -197,8 +193,6 @@ function Checkout() {
   const [chosenSlot, setChosenSlot] = useState<Date | null>(null);
   const [chosenDay, setChosenDay] = useState<Date | null>(null);
   const [wantsLater, setWantsLater] = useState(false);
-  const [showAllTimes, setShowAllTimes] = useState(false);
-  const [customTimeError, setCustomTimeError] = useState<string | null>(null);
   // Pinned once per render pass so the day list, the slot list and the
   // validity check cannot disagree about what "now" is.
   const now = new Date();
@@ -301,13 +295,15 @@ function Checkout() {
   // of twenty-four chips buries it.
   const earliest = nextBookableTime(branch, fulfillment, now, tz);
   const interval = Math.max(Number(branch?.slot_interval_minutes ?? 30), 5);
-  // A shortlist by default; the full day is a tap away. Showing every slot was
-  // the thing that made this screen feel like a timetable.
-  const upcoming = slotTimes.slice(0, 6);
-  const visibleTimes = showAllTimes ? slotTimes : upcoming;
-  const visibleGroups = groupByPartOfDay(visibleTimes, tz);
-  const dayFirst = slotTimes[0];
-  const dayLast = slotTimes[slotTimes.length - 1];
+  // Every time this branch can actually take, grouped by part of day.
+  //
+  // There was a free-text time field here as well, and it was the wrong answer
+  // to the right question: it let someone ask for a minute the branch does not
+  // serve, which then had to be caught and explained. The slots ARE the
+  // location's timings, so offering them and nothing else cannot be wrong.
+  // A shortlist was dropped at the same time — with the week's hours table
+  // gone there is room for the day, and the headings make it scannable.
+  const slotGroups = groupByPartOfDay(slotTimes, tz);
 
   // Once the intent exists the page becomes the payment sheet. Nothing else on
   // the checkout form can still change the amount at this point, so showing it
@@ -758,8 +754,12 @@ function Checkout() {
                       {/* The window the times come from. Without it a short
                           list reads as "barely any availability" rather than
                           "this branch closes at 3". */}
+                      {/* The only statement of opening hours on this screen
+                          now, so it carries the clock icon and full weight
+                          rather than reading as a footnote. */}
                       {todaysWindows.length > 0 && (
-                        <p className="text-xs font-semibold text-muted">
+                        <p className="day-hours">
+                          <Clock className="size-3.5 shrink-0" />
                           Open {todaysWindows.map((w) => formatSlotRange(w)).join(", ")}
                         </p>
                       )}
@@ -782,7 +782,6 @@ function Checkout() {
                             onClick={() => {
                               setChosenDay(earliest);
                               setChosenSlot(earliest);
-                              setCustomTimeError(null);
                             }}
                           >
                             <Zap className="size-4 shrink-0 text-primary" />
@@ -795,10 +794,10 @@ function Checkout() {
                           </button>
                         )}
 
-                        {visibleGroups.map((group) => (
+                        {slotGroups.map((group) => (
                           <div className="mt-3" key={group.label}>
                             {/* One heading is noise; three are a map. */}
-                            {visibleGroups.length > 1 && (
+                            {slotGroups.length > 1 && (
                               <p className="slot-group-label">{group.label}</p>
                             )}
                             <div className="slot-grid mt-2">
@@ -810,7 +809,6 @@ function Checkout() {
                                   data-on={chosenSlot?.toISOString() === time.toISOString()}
                                   onClick={() => {
                                     setChosenSlot(time);
-                                    setCustomTimeError(null);
                                   }}
                                 >
                                   {formatTimeOfDay(time, tz)}
@@ -819,67 +817,6 @@ function Checkout() {
                             </div>
                           </div>
                         ))}
-
-                        {slotTimes.length > upcoming.length && (
-                          <button
-                            type="button"
-                            className="link-button mt-3"
-                            onClick={() => setShowAllTimes((open) => !open)}
-                          >
-                            {showAllTimes
-                              ? "Show fewer times"
-                              : `Show all ${slotTimes.length} times`}
-                          </button>
-                        )}
-
-                        {/* A time of their own. The native control gives the
-                            platform's own wheel, with minutes and am/pm, which
-                            beats anything hand-built here and is already
-                            accessible. Bounded to the day's first and last
-                            bookable time, and snapped onto the interval before
-                            it is accepted, because the server refuses a minute
-                            off the grid. */}
-                        {dayFirst && dayLast && (
-                          <div className="mt-4 border-t border-border pt-4">
-                            <p className="picker-label">Or pick your own time</p>
-                            <label className="time-field mt-2">
-                              {/* No leading icon: the native control draws its
-                                  own picker indicator, and two clocks side by
-                                  side read as clutter. */}
-                              <span className="sr-only">Choose a time</span>
-                              <input
-                                type="time"
-                                step={interval * 60}
-                                min={clockValue(dayFirst, tz)}
-                                max={clockValue(dayLast, tz)}
-                                onChange={(event) => {
-                                  const [hh, mm] = event.target.value.split(":");
-                                  if (hh === undefined || mm === undefined) return;
-                                  const base = new Date(selectedDay ?? now);
-                                  base.setHours(Number(hh), Number(mm), 0, 0);
-                                  const snapped = snapToInterval(base, interval, tz);
-                                  if (!isBookableTime(branch, fulfillment, snapped, now, tz)) {
-                                    setChosenSlot(null);
-                                    setCustomTimeError(
-                                      `That time is not available. Pick between ${formatTimeOfDay(dayFirst, tz)} and ${formatTimeOfDay(dayLast, tz)}.`,
-                                    );
-                                    return;
-                                  }
-                                  setCustomTimeError(null);
-                                  setChosenSlot(snapped);
-                                }}
-                              />
-                              <span className="shrink-0 text-xs text-muted">
-                                {formatTimeOfDay(dayFirst, tz)} – {formatTimeOfDay(dayLast, tz)}
-                              </span>
-                            </label>
-                            {customTimeError && (
-                              <p className="mt-2 text-sm font-semibold text-danger" role="alert">
-                                {customTimeError}
-                              </p>
-                            )}
-                          </div>
-                        )}
                       </>
                     )}
 
@@ -902,11 +839,13 @@ function Checkout() {
                 </>
               ))}
 
-            <BranchHours
-              location={branch}
-              fulfillment={fulfillment}
-              className="mt-6 border-t border-border pt-5"
-            />
+            {/* The week's table used to sit here and it said nothing new. The
+                day rail already lists only the days this branch can be booked
+                for, and the line above the times states the selected day's own
+                window — so seven rows repeated that and pushed the Pay button
+                a screen further down on a phone. The cart keeps the full week
+                behind a disclosure, where there is no day picker to read it
+                from. */}
           </section>
 
           <section className="elevated-panel p-5 sm:p-6">

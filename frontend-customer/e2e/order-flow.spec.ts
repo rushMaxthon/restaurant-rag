@@ -240,31 +240,30 @@ test.describe("choosing when the order arrives", () => {
     await expect(page.getByText(/(arriving|ready) (today|tomorrow|\w{3},)/i)).toBeVisible();
   });
 
-  test("a custom time can be typed, and a closed-hours one is refused", async ({ page }) => {
+  test("every slot the branch can serve is offered, and nothing else", async ({ page }) => {
     await resetApp(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");
     const later = page.getByRole("button", { name: /schedule for later/i });
     if (await later.count()) await later.click();
 
-    const field = page.locator('.time-field input[type="time"]');
-    await expect(field).toBeVisible();
+    const times = page.locator(".slot-grid .slot-chip");
+    await times.first().waitFor({ state: "visible", timeout: 20_000 });
 
-    // The bounds come from the branch's own window minus its prep time, so a
-    // time the kitchen could not cook by is outside min/max by construction.
-    const min = await field.getAttribute("min");
-    const max = await field.getAttribute("max");
-    expect(min).toMatch(/^\d{2}:\d{2}$/);
-    expect(max).toMatch(/^\d{2}:\d{2}$/);
-    expect(max! > min!).toBe(true);
+    // There was a free-text time field here, and it was the wrong answer to the
+    // right question: it let someone ask for a minute the branch does not
+    // serve, which then had to be caught and explained. The slots ARE the
+    // location's timings.
+    await expect(page.locator('.time-field input[type="time"]')).toHaveCount(0);
+    await expect(page.getByText(/pick your own time/i)).toHaveCount(0);
 
-    await field.fill(max!);
-    await expect(page.getByText(/(arriving|ready) /i)).toBeVisible();
+    // The whole day is offered, not a shortlist behind a "show all".
+    await expect(page.getByRole("button", { name: /show all \d+ times/i })).toHaveCount(0);
+    expect(await times.count()).toBeGreaterThan(1);
 
-    // Midnight is never inside a window here; the picker must say so itself
-    // rather than let the server reject it after payment details are entered.
-    await field.fill("00:00");
-    await expect(page.getByText(/that time is not available/i)).toBeVisible();
+    // And the day's own window is stated next to them, so a short list reads
+    // as "this branch closes early" rather than "barely any availability".
+    await expect(page.locator(".day-hours")).toBeVisible();
   });
 
   test("the date field books a day the chips do not reach", async ({ page }) => {

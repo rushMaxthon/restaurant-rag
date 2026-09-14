@@ -1315,3 +1315,17 @@ html body[data-scroll-locked] {
   font-weight: 600;
   color: var(--danger);
 }
+
+/* The selected day's opening window, beside the times it explains. */
+.day-hours {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.day-hours svg {
+  color: var(--primary);
+}

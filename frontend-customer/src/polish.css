@@ -755,6 +755,27 @@ textarea.flex:focus-visible {
   scroll-snap-align: start;
 }
 
+/* A hint that there are more days off the edge.
+   The rail scrolls, but the last chip simply ran out of room mid-word with
+   nothing to say so — which reads as a rendering fault rather than as "swipe".
+   A mask fades the trailing edge only while there is actually more to reach,
+   so a rail that already fits shows no phantom gradient. */
+@supports (animation-timeline: scroll(self inline)) {
+  .day-rail {
+    animation: day-rail-fade linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: contain;
+  }
+  @keyframes day-rail-fade {
+    from {
+      mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+    }
+    to {
+      mask-image: linear-gradient(to right, transparent 0%, #000 18%);
+    }
+  }
+}
+
 /* --- Scheduling picker ------------------------------------------------------
    A label on the left, context on the right: the day's actual opening window
    next to the times, and the date field next to the day chips. Both wrap on a
@@ -894,56 +915,4 @@ html {
 .earliest-row[data-on="true"] {
   border-color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
-}
-
-/* The native time control, dressed like the date one beside it. Native so a
-   phone opens its own wheel, which gives minutes and am/pm for free and is
-   already accessible. */
-.time-field {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  padding: 0 0.9rem;
-  cursor: pointer;
-}
-.time-field:focus-within {
-  border-color: var(--primary);
-}
-.time-field input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: inherit;
-  cursor: pointer;
-}
-.time-field input::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  opacity: 0.6;
-}
-
-/* A text button that reads as a link without being one — it changes what this
-   panel shows, it does not navigate. */
-.link-button {
-  min-height: 40px;
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: var(--primary);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-@media (pointer: coarse) {
-  .link-button {
-    min-height: 44px;
-  }
 }
