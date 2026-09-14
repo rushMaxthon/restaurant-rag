@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, orderCode } from "./bangkok-data";
+import { formatMoney, orderCode, scheduledFor } from "./bangkok-data";
 
 /**
  * Money, in one place.
@@ -38,5 +38,50 @@ describe("formatMoney", () => {
 describe("orderCode", () => {
   it("shortens a uuid into something a customer can read back on the phone", () => {
     expect(orderCode({ id: "6373b312-6d34-4c3f-8742-0b27b6336061" })).toBe("#6373B312");
+  });
+});
+
+describe("scheduledFor", () => {
+  const order = (overrides: Record<string, unknown>) =>
+    ({ schedule_type: "SCHEDULED", ...overrides }) as Parameters<typeof scheduledFor>[0];
+
+  it("says nothing about an ASAP order", () => {
+    // Rendering "scheduled for" over something being cooked right now is worse
+    // than rendering nothing.
+    expect(scheduledFor(order({ schedule_type: "ASAP", scheduled_at: null }))).toBeNull();
+    expect(scheduledFor(order({ scheduled_at: null }))).toBeNull();
+  });
+
+  it("names today and tomorrow rather than a date", () => {
+    const today = new Date();
+    today.setHours(19, 0, 0, 0);
+    expect(scheduledFor(order({ scheduled_at: today.toISOString() }))).toMatch(/^Today at /);
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(19, 0, 0, 0);
+    expect(scheduledFor(order({ scheduled_at: tomorrow.toISOString() }))).toMatch(/^Tomorrow at /);
+  });
+
+  it("falls back to a weekday and date further out", () => {
+    const later = new Date();
+    later.setDate(later.getDate() + 4);
+    later.setHours(12, 30, 0, 0);
+    const text = scheduledFor(order({ scheduled_at: later.toISOString() }));
+    expect(text).not.toMatch(/Today|Tomorrow/);
+    expect(text).toMatch(/ at /);
+  });
+
+  it("reads the stored UTC instant in local time", () => {
+    // The API returns Z-suffixed UTC. A 19:00 local booking must read back as
+    // 7 in the evening, not whatever that instant is in UTC.
+    const evening = new Date();
+    evening.setDate(evening.getDate() + 1);
+    evening.setHours(19, 0, 0, 0);
+    expect(scheduledFor(order({ scheduled_at: evening.toISOString() }))).toContain("7:00");
+  });
+
+  it("ignores a value it cannot parse instead of printing Invalid Date", () => {
+    expect(scheduledFor(order({ scheduled_at: "not-a-date" }))).toBeNull();
   });
 });

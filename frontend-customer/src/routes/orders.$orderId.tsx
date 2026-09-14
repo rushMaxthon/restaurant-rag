@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   Banknote,
   Bike,
+  CalendarClock,
   Check,
   ChevronLeft,
   Clock,
@@ -12,17 +13,30 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, orderCode } from "@/lib/bangkok-data";
+import { formatMoney, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
 
-const STEPS = [
-  { key: "PLACED", label: "Placed", blurb: "We have your order" },
-  { key: "ACCEPTED", label: "Accepted", blurb: "The kitchen confirmed it" },
-  { key: "PREPARING", label: "Preparing", blurb: "Being cooked fresh" },
-  { key: "OUT_FOR_DELIVERY", label: "On the way", blurb: "Your rider is moving" },
-  { key: "DELIVERED", label: "Delivered", blurb: "Enjoy" },
-];
+/**
+ * The tracker, worded for how the food actually reaches the customer.
+ *
+ * The backend runs one linear flow for both, so a pickup order passes through
+ * OUT_FOR_DELIVERY and DELIVERED too — and someone who chose to collect their
+ * own food was told "Your rider is moving".
+ */
+function stepsFor(isDelivery: boolean) {
+  return [
+    { key: "PLACED", label: "Placed", blurb: "We have your order" },
+    { key: "ACCEPTED", label: "Accepted", blurb: "The kitchen confirmed it" },
+    { key: "PREPARING", label: "Preparing", blurb: "Being cooked fresh" },
+    isDelivery
+      ? { key: "OUT_FOR_DELIVERY", label: "On the way", blurb: "Your rider is moving" }
+      : { key: "OUT_FOR_DELIVERY", label: "Ready", blurb: "Waiting at the counter" },
+    isDelivery
+      ? { key: "DELIVERED", label: "Delivered", blurb: "Enjoy" }
+      : { key: "DELIVERED", label: "Collected", blurb: "Enjoy" },
+  ];
+}
 
 export const Route = createFileRoute("/orders/$orderId")({
   head: () => ({
@@ -99,10 +113,12 @@ function OrderDetail() {
   // PAYMENT_PENDING is not in STEPS, so findIndex returns -1 and the old
   // Math.max(..., 0) turned "not paid for yet" into "Placed — we have your
   // order" at 20%. An unpaid order has not started, so it shows no progress.
+  const isDelivery = o.fulfillment_type === "DELIVERY";
+  const STEPS = stepsFor(isDelivery);
+  const booked = scheduledFor(o);
   const stepIndex = STEPS.findIndex((s) => s.key === o.status);
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
-  const isDelivery = o.fulfillment_type === "DELIVERY";
   const discount = Number(o.discount_amount ?? 0);
 
   return (
@@ -130,6 +146,15 @@ function OrderDetail() {
               {isDelivery ? <Bike className="size-4" /> : <Store className="size-4" />}
               {isDelivery ? "Delivery" : "Pickup"}
             </span>
+            {/* The time they booked. Shown next to "Placed" rather than instead
+                of it: when the order was made and when it is due are different
+                facts, and a scheduled order needs both. */}
+            {booked && (
+              <span className="inline-flex items-center gap-1.5 font-bold text-primary">
+                <CalendarClock className="size-4" />
+                {isDelivery ? "Arriving" : "Ready"} {booked}
+              </span>
+            )}
           </p>
         </div>
       </header>

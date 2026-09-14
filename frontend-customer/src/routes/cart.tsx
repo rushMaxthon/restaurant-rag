@@ -45,7 +45,10 @@ function CartPage() {
   const { isAuthenticated } = useAuth();
 
   const isDelivery = s.fulfillment === "DELIVERY";
-  const delivery = isDelivery ? Number(s.currentLocation?.delivery_fee ?? 45) : 0;
+  // Falls back to 0, not 45. The branch's real fee is around three dollars, so
+  // while it loaded the summary announced a $45.00 delivery charge and a total
+  // to match — the single most alarming number the app could invent.
+  const delivery = isDelivery ? Number(s.currentLocation?.delivery_fee ?? 0) : 0;
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
 
@@ -72,6 +75,11 @@ function CartPage() {
   // ever reached it. A branch with a bookable window ahead of it gets a way
   // through; one with no windows at all keeps the honest dead end.
   const canSchedule = blocked && bookableDays(s.currentLocation, fulfillment).length > 0;
+
+  // "Closed" and "we have not loaded the branch yet" are different things, and
+  // availabilityNow(undefined) returns the first for the second. Until the
+  // restaurant arrives the honest answer is that we do not know yet.
+  const loadingBranch = s.isRestaurantLoading || !s.currentLocation;
 
   if (!s.cart.length) {
     return (
@@ -259,7 +267,7 @@ function CartPage() {
             <span className="sum-total-figure">{formatMoney(total)}</span>
           </div>
 
-          {blocked && (
+          {blocked && !loadingBranch && (
             <div className="closed-notice mt-5" data-tone="soft">
               <Clock className="mt-0.5 size-5 shrink-0 text-primary" />
               <div className="min-w-0">
@@ -298,10 +306,12 @@ function CartPage() {
 
           <Button
             className="mt-5 h-12 w-full text-base font-bold"
-            disabled={shortfall > 0 || (blocked && !canSchedule)}
-            asChild={shortfall === 0 && !(blocked && !canSchedule)}
+            disabled={loadingBranch || shortfall > 0 || (blocked && !canSchedule)}
+            asChild={!loadingBranch && shortfall === 0 && !(blocked && !canSchedule)}
           >
-            {blocked && !canSchedule ? (
+            {loadingBranch ? (
+              <span>Checking the kitchen…</span>
+            ) : blocked && !canSchedule ? (
               <span>Closed right now</span>
             ) : shortfall > 0 ? (
               <span>Minimum {formatMoney(minimumOrder)} to order</span>

@@ -122,12 +122,19 @@ function Checkout() {
   // that dead-ends.
   const paymentConfig = usePaymentConfig(isAuthenticated);
   const cardAvailable = Boolean(paymentConfig.data?.stripe_enabled);
+  // Three different situations, not two. While the config is in flight, and if
+  // the request fails, `stripe_enabled` is falsy too — and the page used to
+  // blame the restaurant for both, in red, on every single load.
+  const paymentConfigPending = paymentConfig.isPending;
+  const paymentConfigFailed = paymentConfig.isError;
 
   if (!isAuthenticated) return null;
 
   const branch = s.currentLocation;
   const isDelivery = s.fulfillment === "DELIVERY";
-  const delivery = isDelivery ? Number(branch?.delivery_fee ?? 45) : 0;
+  // 0, not 45 — see the note in cart.tsx. An invented $45 delivery fee is
+  // the worst thing to show someone one second before they pay.
+  const delivery = isDelivery ? Number(branch?.delivery_fee ?? 0) : 0;
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
@@ -608,15 +615,20 @@ function Checkout() {
               {cardAvailable && <BadgeCheck className="size-5 shrink-0 text-primary" />}
             </div>
 
-            {!cardAvailable && (
+            {paymentConfigPending && (
+              <p className="mt-3 text-sm text-muted">Checking payment options…</p>
+            )}
+
+            {!paymentConfigPending && !cardAvailable && (
               <div
                 className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
                 role="alert"
               >
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  Card payments aren't switched on for this restaurant yet, so orders can't be
-                  placed. Please try again shortly.
+                  {paymentConfigFailed
+                    ? "We couldn't check the payment options just now. Check your connection and try again."
+                    : "Card payments aren't switched on for this restaurant yet, so orders can't be placed. Please try again shortly."}
                 </span>
               </div>
             )}
