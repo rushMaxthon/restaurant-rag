@@ -29,7 +29,7 @@ function RestaurantCardComponent({
   const compact = variant === 'compact';
   const etaMinutes = 18 + (restaurant.name.length % 18);
   const priceBand =
-    toNumber(restaurant.minimum_order_amount) > 300 ? '₹₹₹' : '₹₹';
+    toNumber(restaurant.minimum_order_amount) > 300 ? '$$$' : '$$';
 
   return (
     <Pressable

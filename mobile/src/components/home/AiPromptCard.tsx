@@ -45,7 +45,7 @@ function AiPromptCardComponent({
             <Text style={styles.hintText}>Spicy</Text>
           </View>
           <View style={styles.hintPill}>
-            <Text style={styles.hintText}>Under Rs. 250</Text>
+            <Text style={styles.hintText}>Under $250</Text>
           </View>
         </View>
 

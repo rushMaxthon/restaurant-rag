@@ -1123,12 +1123,38 @@ export function toNumber(value: number | string): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
+/**
+ * The single place this dashboard decides what money looks like.
+ *
+ * CAD, and it has to stay CAD: `payment_currency` on the backend is what Stripe
+ * actually charges, so an owner reading revenue here has to be reading the same
+ * unit their customers were billed in. `en-CA` groups in threes - the locale is
+ * carrying the grouping rule, not the symbol, which is why it stays even though
+ * the currency changed.
+ */
 export function formatCurrency(value: number | string): string {
   return new Intl.NumberFormat('en-CA', {
     style: 'currency',
-    currency: 'INR',
+    currency: 'CAD',
     maximumFractionDigits: 2,
   }).format(toNumber(value));
+}
+
+/**
+ * Money for a stat tile, where the column is narrow and the exact cent is not
+ * the point: "$1.2K" rather than "$1,234.56".
+ *
+ * Lived twice, verbatim, in the dashboard and the reports page. One definition
+ * so a currency change is one edit rather than a hunt.
+ */
+export function formatCompactCurrency(value: number | string): string {
+  const numeric = toNumber(value);
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    notation: 'compact',
+    maximumFractionDigits: numeric >= 1000 ? 1 : 0,
+  }).format(numeric);
 }
 
 export function formatDate(value: string): string {

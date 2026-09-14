@@ -22,6 +22,7 @@ import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
   api,
+  formatCompactCurrency,
   formatCurrency,
   formatDate,
   toNumber,
@@ -96,15 +97,6 @@ function formatTrend(current: number, previous: number): string {
   const percentage = ((current - previous) / previous) * 100;
   const sign = percentage >= 0 ? "+" : "";
   return `${sign}${percentage.toFixed(1)}% vs previous period`;
-}
-
-function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "INR",
-    notation: "compact",
-    maximumFractionDigits: value >= 1000 ? 1 : 0,
-  }).format(value);
 }
 
 function DashboardHeader({

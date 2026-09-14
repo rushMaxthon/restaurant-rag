@@ -1529,10 +1529,18 @@ export function toNumber(value: DecimalValue): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
+/**
+ * The single place the app decides what money looks like.
+ *
+ * CAD, and it has to stay CAD: `payment_currency` on the backend is what Stripe
+ * actually charges, so a formatter disagreeing with it would show a customer
+ * one number at checkout and bill them another. Nothing else in the app may
+ * hand-roll a currency string.
+ */
 export function formatCurrency(value: DecimalValue): string {
-  return new Intl.NumberFormat('en-IN', {
+  return new Intl.NumberFormat('en-CA', {
     style: 'currency',
-    currency: 'INR',
+    currency: 'CAD',
     maximumFractionDigits: 2,
   }).format(toNumber(value));
 }
