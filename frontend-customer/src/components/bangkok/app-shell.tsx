@@ -54,8 +54,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {/* Keyed so the incoming icon mounts fresh and its entrance runs. */}
             {store.dark ? <Sun key="sun" /> : <Moon key="moon" />}
           </Button>
-          <Button variant="ghost" size="icon" asChild aria-label="Account">
-            <Link to={isAuthenticated ? "/orders" : "/login"}>
+          {/* Signed in, this went to /orders — which already has its own link in
+              both navs, so the account button led nowhere new. Preferences has
+              no other entry point, and "account" is where people look for it. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            aria-label={isAuthenticated ? "Your preferences" : "Sign in"}
+          >
+            <Link to={isAuthenticated ? "/preferences" : "/login"}>
               <UserRound />
             </Link>
           </Button>

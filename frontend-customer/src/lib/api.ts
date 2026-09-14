@@ -137,10 +137,22 @@ export async function getMyPreferences(): Promise<UserPreferencesResponse | null
   }
 }
 
-export async function putMyPreferences(payload: {
-  diet?: string | null;
-  spice_level?: string | null;
-}): Promise<void> {
+export type UserPreferencesPayload = {
+  cuisines: string[];
+  diet: string | null;
+  spice_level: string | null;
+  budget: string | null;
+  favorite_items: string[];
+};
+
+/**
+ * Replaces the whole profile, so every field must be sent.
+ *
+ * `upsert_user_preferences` assigns each column from the payload rather than
+ * patching, so omitting `cuisines` clears them. The screen therefore sends what
+ * it loaded, edited — never a partial.
+ */
+export async function putMyPreferences(payload: Partial<UserPreferencesPayload>): Promise<void> {
   await request("/preferences/me", { method: "PUT", auth: true, body: payload });
 }
 

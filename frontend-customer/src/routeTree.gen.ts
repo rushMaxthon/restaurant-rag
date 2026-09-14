@@ -16,6 +16,7 @@ import { Route as ConciergeRouteImport } from './routes/concierge'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MenuRouteImport } from './routes/menu'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as PreferencesRouteImport } from './routes/preferences'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as MenuIndexRouteImport } from './routes/menu.index'
 import { Route as MenuItemIdRouteImport } from './routes/menu.$itemId'
@@ -57,6 +58,11 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreferencesRoute = PreferencesRouteImport.update({
+  id: '/preferences',
+  path: '/preferences',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/menu': typeof MenuRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
+  '/preferences': typeof PreferencesRoute
   '/register': typeof RegisterRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/checkout': typeof CheckoutRoute
   '/concierge': typeof ConciergeRoute
   '/login': typeof LoginRoute
+  '/preferences': typeof PreferencesRoute
   '/register': typeof RegisterRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/menu': typeof MenuRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
+  '/preferences': typeof PreferencesRoute
   '/register': typeof RegisterRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/menu'
     | '/orders'
+    | '/preferences'
     | '/register'
     | '/menu/$itemId'
     | '/orders/$orderId'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/concierge'
     | '/login'
+    | '/preferences'
     | '/register'
     | '/menu/$itemId'
     | '/orders/$orderId'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/menu'
     | '/orders'
+    | '/preferences'
     | '/register'
     | '/menu/$itemId'
     | '/orders/$orderId'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   MenuRoute: typeof MenuRouteWithChildren
   OrdersRoute: typeof OrdersRouteWithChildren
+  PreferencesRoute: typeof PreferencesRoute
   RegisterRoute: typeof RegisterRoute
 }
 
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/orders'
       fullPath: '/orders'
       preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preferences': {
+      id: '/preferences'
+      path: '/preferences'
+      fullPath: '/preferences'
+      preLoaderRoute: typeof PreferencesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -300,6 +320,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   MenuRoute: MenuRouteWithChildren,
   OrdersRoute: OrdersRouteWithChildren,
+  PreferencesRoute: PreferencesRoute,
   RegisterRoute: RegisterRoute,
 }
 export const routeTree = rootRouteImport
