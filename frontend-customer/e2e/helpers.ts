@@ -71,7 +71,18 @@ export async function resetAppFirstVisit(page: Page): Promise<void> {
  * `fill` on its own would pass and leave the form empty, so the value is
  * asserted and retyped once if it did not stick.
  */
-export async function fillField(page: Page, label: string, value: string): Promise<void> {
+export async function fillField(
+  page: Page,
+  label: string,
+  value: string,
+  /**
+   * What the field should read once React has it, when that differs from what
+   * was typed. The phone field groups digits as you type, so "4155550132"
+   * becomes "(415) 555-0132" — asserting the raw value would fail on a field
+   * that is working correctly.
+   */
+  expected = value,
+): Promise<void> {
   const field = page.getByLabel(label, { exact: true });
   await field.waitFor({ state: "visible" });
 
@@ -85,9 +96,9 @@ export async function fillField(page: Page, label: string, value: string): Promi
     await field.clear();
     await field.pressSequentially(value, { delay: 15 });
     await page.waitForTimeout(400);
-    if ((await field.inputValue()) === value) return;
+    if ((await field.inputValue()) === expected) return;
   }
-  await expect(field).toHaveValue(value);
+  await expect(field).toHaveValue(expected);
 }
 
 /**
@@ -144,6 +155,28 @@ export async function signIn(page: Page, redirectTo?: string): Promise<void> {
   await fillField(page, "Password", CUSTOMER.password);
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+}
+
+/**
+ * Fill the checkout contact block: name, phone and the structured address.
+ *
+ * One helper because every spec that reaches checkout needs all of it, and
+ * because the address became six fields rather than one — a change that would
+ * otherwise be copied into five specs and drift.
+ */
+export async function fillCheckoutContact(page: Page): Promise<void> {
+  await fillField(page, "Full name", "Playwright Tester");
+  // Typed as digits; the field groups them as you type.
+  await fillField(page, "Phone number", "4155550132", "(415) 555-0132");
+
+  // Delivery only; a pickup order has nowhere to deliver to.
+  const line1 = page.getByLabel("Address line 1", { exact: true });
+  if (!(await line1.isVisible().catch(() => false))) return;
+
+  await fillField(page, "Address line 1", "1600 Pennsylvania Avenue NW");
+  await fillField(page, "City", "Washington");
+  await fillField(page, "State", "DC");
+  await fillField(page, "ZIP code", "20500");
 }
 
 /**

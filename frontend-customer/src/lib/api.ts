@@ -67,6 +67,9 @@ export type ChatSuggestion = {
   image_url: string | null;
   is_new?: boolean;
   is_favorite?: boolean;
+  /** Whether the dish needs a size or options chosen before it can be ordered. */
+  has_sizes?: boolean;
+  has_customizations?: boolean;
   similarity_score: number;
 };
 
@@ -198,6 +201,8 @@ export type OrderCreateRequest = {
   fulfillment_type: "DELIVERY" | "PICKUP";
   items: OrderCreateItem[];
   delivery_address: string;
+  contact_name?: string;
+  contact_phone?: string;
   special_instructions?: string | null;
   payment_method?: string;
   // The server has accepted these since the beginning and validates

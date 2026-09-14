@@ -807,19 +807,29 @@ html {
   background: var(--surface);
   padding: 0 0.85rem 0 1rem;
 }
-.sort-select select {
-  border: 0;
-  background: transparent;
+/* The trigger is now a button, not a <select>, so the rules that used to dress
+   the inner control move onto the pill itself. */
+.sort-select {
   color: var(--text);
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
-  padding-right: 0.25rem;
+  white-space: nowrap;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
 }
-.sort-select select:focus-visible {
+.sort-select:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.sort-select:focus-visible {
   outline: 2px solid var(--primary);
-  outline-offset: 4px;
-  border-radius: 0.25rem;
+  outline-offset: 2px;
+}
+/* Radix marks the trigger while its list is open; without this the pill gives
+   no sign that the menu below belongs to it. */
+.sort-select[data-state="open"] {
+  border-color: var(--primary);
 }
 
 .dish-card {
@@ -1188,7 +1198,9 @@ html {
   border-radius: var(--radius, 0.75rem);
   background: var(--background);
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .branch-gate__option:hover,
@@ -1223,4 +1235,83 @@ html {
   color: var(--primary);
   font-size: var(--text-xs, 0.75rem);
   font-weight: 700;
+}
+
+/* --- Scroll lock vs. the reserved gutter ------------------------------------
+   Radix menus (the sort dropdown, dialogs) lock scrolling through
+   react-remove-scroll, which hides the page scrollbar and pads the body by the
+   scrollbar's width to make up for the space it just freed.
+
+   This page already reserves that space permanently: `html` sets
+   scrollbar-gutter: stable a few rules above, so navigating between a short and
+   a tall page does not shift the layout. The gutter never goes away, so the
+   compensation is applied on top of it and the content narrows by the
+   scrollbar's width the instant a dropdown opens — which reads as the whole
+   screen resizing.
+
+   Keep the reserved gutter, drop the second correction. `html` is in the
+   selector purely to beat the specificity of the rule react-remove-scroll
+   injects at runtime, which carries !important and lands later in the head. */
+html body[data-scroll-locked] {
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Dropdown rows big enough for a thumb.
+   The shared Select ships py-1.5, which measures 31px on a phone — under the
+   44px both Apple and Google publish, and under what every other control in
+   this app already uses. Applied on coarse pointers only, so the desktop list
+   keeps its tighter proportions. */
+@media (pointer: coarse) {
+  [role="option"] {
+    min-height: 44px;
+  }
+}
+
+/* --- Checkout address form --------------------------------------------------
+   A field without an icon must not keep the icon's indent, or every box in the
+   grid starts at a different place. The padding belongs to the icon, not to
+   the wrapper. */
+.field-wrap:not(:has(> svg)):not(:has(> .country-code)) input {
+  padding-left: 0.9rem;
+}
+
+/* The dialling code is shown, not typed: a customer entering a local number
+   should not have to know the deployment's country, and a free-text "+1" is
+   one more thing to mistype. It sits inside the field so it reads as part of
+   the number rather than as a separate control. */
+.country-code {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.field-wrap:has(> .country-code) input {
+  padding-left: 2.8rem;
+}
+.field-wrap:focus-within > .country-code {
+  color: var(--primary);
+}
+
+/* A field the customer needs to come back to. Marked on the wrapper so the
+   border, the icon and the message all agree; `aria-invalid` on the input
+   carries the same fact to a screen reader. */
+.field-wrap[data-invalid="true"] input {
+  border-color: var(--danger);
+}
+.field-wrap[data-invalid="true"] > svg,
+.field-wrap[data-invalid="true"] > .country-code {
+  color: var(--danger);
+}
+.field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--danger);
 }

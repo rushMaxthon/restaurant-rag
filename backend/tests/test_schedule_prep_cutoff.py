@@ -108,26 +108,31 @@ class LastSlotLeavesTimeToCookTests(unittest.TestCase):
         return [option.label for option in today[0].slots] if today else []
 
     def test_the_last_slot_is_prep_time_before_closing(self) -> None:
-        # The reported example: closes 11pm, needs 15 minutes to cook.
+        # The reported example: closes 11pm, needs 15 minutes to cook, 15 to
+        # deliver. The buffer is prep + travel, so the last bookable slot is
+        # 10:30 PM — cook from 10:30, out the door by 10:45, delivered by 11:00.
         location = build_location(prep_minutes=15, eta_minutes=15, interval=15, closes=time(23, 0))
         labels = self._todays_labels(location, now=at(9, 0))
         self.assertTrue(labels)
-        self.assertEqual(labels[-1], "10:45 PM")
+        self.assertEqual(labels[-1], "10:30 PM")
         self.assertNotIn("11:00 PM", labels)
+        self.assertNotIn("10:45 PM", labels)
 
     def test_a_longer_delivery_eta_pulls_the_last_slot_further_back(self) -> None:
-        # The buffer is max(prep, eta), so a 45 minute delivery ETA wins.
+        # 15 to cook plus 45 to drive is an hour, so 10:00 PM is the last slot
+        # that still lands before an 11pm close.
         location = build_location(prep_minutes=15, eta_minutes=45, interval=15, closes=time(23, 0))
         labels = self._todays_labels(location, now=at(9, 0))
-        self.assertEqual(labels[-1], "10:15 PM")
+        self.assertEqual(labels[-1], "10:00 PM")
 
     def test_the_cutoff_lands_on_the_interval_grid(self) -> None:
-        # 23:00 minus a 20 minute buffer is 22:40, which is not a 30-minute grid
-        # point. Offering it would be refused by the interval check, so the last
-        # slot has to be the grid point at or before the cutoff.
+        # 23:00 minus a 40 minute buffer (20 to cook, 20 to travel) is 22:20,
+        # which is not a 30-minute grid point. Offering it would be refused by
+        # the interval check, so the last slot has to be the grid point at or
+        # before the cutoff.
         location = build_location(prep_minutes=20, eta_minutes=20, interval=30, closes=time(23, 0))
         labels = self._todays_labels(location, now=at(9, 0))
-        self.assertEqual(labels[-1], "10:30 PM")
+        self.assertEqual(labels[-1], "10:00 PM")
 
     def test_a_window_shorter_than_the_prep_time_offers_nothing(self) -> None:
         # Open 10:00 to 10:10 with a 15 minute buffer: there is no honest slot
@@ -149,15 +154,16 @@ class SchedulingTooCloseToClosingTests(unittest.TestCase):
         )
 
     def test_the_advice_names_a_time_that_can_actually_be_picked(self) -> None:
-        # 23:00 minus a 29 minute buffer is 22:31, which is not on a 30-minute
-        # grid. Saying "the latest time is 10:31 PM" names a slot the interval
-        # check would then reject, sending the customer round again.
+        # 23:00 minus a 58 minute buffer (29 to cook, 29 to travel) is 22:02,
+        # which is not on a 30-minute grid. Saying "the latest time is 10:02 PM"
+        # names a slot the interval check would then reject, sending the
+        # customer round again.
         location = build_location(prep_minutes=29, eta_minutes=29, interval=30, closes=time(23, 0))
         ok, reason = self._check(location, at(23, 0), now=at(9, 0))
         self.assertFalse(ok)
         assert reason is not None
-        self.assertIn("10:30 PM", reason)
-        self.assertNotIn("10:31", reason)
+        self.assertIn("10:00 PM", reason)
+        self.assertNotIn("10:02", reason)
 
     def test_the_closing_minute_is_refused(self) -> None:
         location = build_location(prep_minutes=15, eta_minutes=15, interval=15, closes=time(23, 0))
@@ -172,8 +178,12 @@ class SchedulingTooCloseToClosingTests(unittest.TestCase):
 
     def test_the_last_honest_slot_is_accepted(self) -> None:
         location = build_location(prep_minutes=15, eta_minutes=15, interval=15, closes=time(23, 0))
-        ok, reason = self._check(location, at(22, 45), now=at(9, 0))
+        ok, reason = self._check(location, at(22, 30), now=at(9, 0))
         self.assertTrue(ok, reason)
+        # And the one after it is not: 10:45 leaves 15 minutes for a job that
+        # needs 30.
+        ok, _ = self._check(location, at(22, 45), now=at(9, 0))
+        self.assertFalse(ok)
 
     def test_an_ordinary_midday_slot_is_untouched(self) -> None:
         # The cutoff must not cost anyone a slot in the middle of the day.
@@ -185,7 +195,7 @@ class SchedulingTooCloseToClosingTests(unittest.TestCase):
         location = build_location(prep_minutes=15, eta_minutes=15, interval=15, closes=time(23, 0))
         ok, _ = self._check(location, at(23, 0, days_ahead=1), now=at(9, 0))
         self.assertFalse(ok)
-        ok, reason = self._check(location, at(22, 45, days_ahead=1), now=at(9, 0))
+        ok, reason = self._check(location, at(22, 30, days_ahead=1), now=at(9, 0))
         self.assertTrue(ok, reason)
 
 

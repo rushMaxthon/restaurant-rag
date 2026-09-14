@@ -10,7 +10,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, orderCode, scheduledFor, type Order } from "@/lib/bangkok-data";
+import {
+  formatMoney,
+  lineSelections,
+  orderCode,
+  scheduledFor,
+  type Order,
+} from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
@@ -102,7 +108,15 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
             <span className="font-semibold text-foreground">
               {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>{" "}
-            · {order.items.map((item) => `${item.quantity}× ${item.item_name_snapshot}`).join(", ")}
+            ·{" "}
+            {order.items
+              .map((item) => {
+                // The chosen size and options, so two lines of the same dish
+                // read as the different things they are.
+                const chosen = lineSelections(item);
+                return `${item.quantity}× ${item.item_name_snapshot}${chosen ? ` (${chosen})` : ""}`;
+              })
+              .join(", ")}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">

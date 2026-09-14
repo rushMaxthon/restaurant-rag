@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   clickFixed,
   fillCart,
+  fillCheckoutContact,
   fillField,
   forceBranchClosed,
   payWithTestCard,
@@ -127,11 +128,7 @@ test.describe("placing and paying for an order", () => {
     await signIn(page, "/checkout");
     await expect(page).toHaveURL(/\/checkout/);
 
-    await fillField(page, "Full name", "Playwright Tester");
-    await fillField(page, "Phone number", "9876543210");
-    if (await page.getByLabel("Delivery address", { exact: true }).isVisible()) {
-      await fillField(page, "Delivery address", "B-402 Riverside, Bodakdev, Ahmedabad");
-    }
+    await fillCheckoutContact(page);
 
     // Outside opening hours the branch cannot take an ASAP order, so the UI
     // offers its next bookable window instead of letting the request fail at

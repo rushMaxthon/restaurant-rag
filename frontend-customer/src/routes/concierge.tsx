@@ -54,8 +54,12 @@ function suggestionToMenuItem(s: ChatSuggestion): MenuItem {
     rating_count: 0,
     is_new: s.is_new ?? false,
     is_favorite: s.is_favorite ?? false,
-    has_sizes: false,
-    has_customizations: false,
+    // From the suggestion, not hardcoded. A sized or customisable dish was
+    // being added straight to the cart at its base price with no size and no
+    // required options, and the server refused the order at checkout after
+    // everything else had been filled in.
+    has_sizes: s.has_sizes ?? false,
+    has_customizations: s.has_customizations ?? false,
     sizes: [],
     customization_groups: [],
   };
