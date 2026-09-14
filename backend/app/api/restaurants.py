@@ -123,9 +123,19 @@ def _detail_response(
     restaurant: Restaurant,
     *,
     locations: list[RestaurantLocation],
+    include_owner: bool = True,
 ) -> RestaurantDetailResponse:
+    """Serialise a restaurant, with the owner block only for staff.
+
+    `include_owner` is not cosmetic. The owner summary holds a name and an
+    email address, and the detail route answers unauthenticated callers, so
+    leaving it in made every owner's email readable by anyone who could guess
+    or enumerate a restaurant id.
+    """
     response = RestaurantDetailResponse.model_validate(restaurant)
     response.locations = [build_location_response(location) for location in locations]
+    if not include_owner:
+        response.owner = None
     return response
 
 
@@ -264,6 +274,7 @@ def get_restaurant_detail(
         return _detail_response(
             restaurant,
             locations=list_restaurant_locations(db, restaurant_id=restaurant.id, include_inactive=False),
+            include_owner=False,
         )
 
     if current_user.role not in {UserRole.ADMIN, UserRole.OWNER}:
