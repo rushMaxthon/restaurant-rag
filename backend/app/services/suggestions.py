@@ -17,6 +17,15 @@ import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from app.models.generated_combo import GeneratedCombo
+from app.models.menu_item import MenuItem
+from app.models.menu_item_customization_group import MenuItemCustomizationGroup
+from app.models.menu_item_customization_option import MenuItemCustomizationOption
+from app.models.menu_item_size import MenuItemSize
+from app.services.bestsellers import get_dynamic_bestseller_ids_by_location
 from app.services.cache import cache_get_json, cache_set_json
 
 logger = logging.getLogger(__name__)
@@ -352,3 +361,210 @@ def store_memory(
         },
         ttl_seconds=SUGGESTION_MEMORY_TTL_SECONDS,
     )
+
+
+# `MenuItem.category` is a plain string column, and a null or blank value is
+# indistinguishable from "no categories" if we simply omit it when building
+# cart_categories. choose_category_default's contract (see its docstring)
+# treats an empty set as "the cart is empty" — so an uncategorised item must
+# still occupy a slot in the set, under a value that can never collide with a
+# real category or appear in COMPLEMENT_CATEGORIES.
+UNCATEGORISED = "\x00uncategorised"
+
+
+def _load_visible_combos(db: Session, location_id: uuid.UUID) -> list[GeneratedCombo]:
+    return list(
+        db.scalars(
+            select(GeneratedCombo)
+            .where(
+                GeneratedCombo.restaurant_location_id == location_id,
+                GeneratedCombo.is_active.is_(True),
+                GeneratedCombo.is_customer_visible.is_(True),
+            )
+            .options(selectinload(GeneratedCombo.combo_items))
+        ).all()
+    )
+
+
+def suggestion_for_cart(
+    db: Session,
+    *,
+    cart_lines: list[CartLineFacts],
+    restaurant_location_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    diet: str | None,
+) -> SellSuggestion | None:
+    """The single suggestion this cart earns, or nothing.
+
+    Nothing is a perfectly good answer and the common one early on: mined
+    evidence is thin, and the alternative to silence is inventing a reason.
+    """
+
+    if restaurant_location_id is None or not cart_lines:
+        return None
+
+    memory = load_memory(user_id, session_id)
+    if memory.decline_count >= DECLINE_LIMIT:
+        return None
+
+    cart_item_ids = {line.menu_item_id for line in cart_lines}
+    combos = _load_visible_combos(db, restaurant_location_id)
+
+    # Every candidate the rules may look at, loaded once and scoped to the
+    # branch. An id that does not resolve HERE is simply absent, which is what
+    # makes an untrusted cart payload safe to accept.
+    menu_items = {
+        item.id: item
+        for item in db.scalars(
+            select(MenuItem).where(
+                MenuItem.restaurant_location_id == restaurant_location_id,
+                MenuItem.is_available.is_(True),
+            )
+        ).all()
+    }
+    candidates = {
+        item_id: CandidateItem(
+            menu_item_id=item.id,
+            category=item.category,
+            is_veg=item.is_veg,
+            is_available=item.is_available,
+        )
+        for item_id, item in menu_items.items()
+    }
+
+    patterns = [
+        PairingPattern(
+            item_ids=tuple(entry.menu_item_id for entry in combo.combo_items),
+            confidence_score=combo.confidence_score,
+        )
+        for combo in combos
+    ]
+
+    sizes = _larger_sizes(db, cart_lines)
+    add_ons = _unchosen_add_ons(db, cart_lines)
+
+    cart_categories = {
+        menu_items[item_id].category or UNCATEGORISED
+        for item_id in cart_item_ids
+        if item_id in menu_items
+    }
+    bestsellers_by_category = _bestsellers_by_category(db, restaurant_location_id, menu_items)
+
+    # Order matters: an upgrade to something already in the cart is more
+    # relevant than a new item, and mined evidence outranks a category guess.
+    #
+    # combos=[] here (not the branch's loaded combos): choose_upsell's first
+    # rung would return a combo_upgrade carrying only a combo_id, but this
+    # phase's client resolves suggestion names through a menu-item lookup and
+    # has no typed way to fetch a combo by id. Passing the combos through would
+    # record the offer as made while the client rendered nothing. Temporary —
+    # Phase 3 adds the combo renderer, and this becomes `combos=upgrades`
+    # again once it exists. The pairing and category-default rungs below still
+    # see every loaded combo, since those paths only ever need a menu_item_id.
+    for candidate in (
+        choose_upsell(cart_lines, combos=[], sizes=sizes, add_ons=add_ons),
+        choose_pairing(patterns, cart_item_ids, candidates=candidates, diet=diet),
+        choose_category_default(
+            cart_categories,
+            bestsellers=bestsellers_by_category,
+            candidates=candidates,
+            diet=diet,
+        ),
+    ):
+        if candidate is None:
+            continue
+        if is_suppressed(candidate, memory=memory, cart_item_ids=cart_item_ids):
+            continue
+        store_memory(user_id, session_id, record_offer(memory, candidate))
+        return candidate
+
+    return None
+
+
+def _larger_sizes(db: Session, cart_lines: list[CartLineFacts]) -> list[SizeOption]:
+    """The next size up for any line not already on the largest."""
+
+    item_ids = {line.menu_item_id for line in cart_lines}
+    if not item_ids:
+        return []
+    rows = list(
+        db.scalars(
+            select(MenuItemSize)
+            .where(MenuItemSize.menu_item_id.in_(item_ids), MenuItemSize.is_active.is_(True))
+            .order_by(MenuItemSize.menu_item_id, MenuItemSize.price)
+        ).all()
+    )
+    by_item: dict[uuid.UUID, list[MenuItemSize]] = {}
+    for row in rows:
+        by_item.setdefault(row.menu_item_id, []).append(row)
+
+    options: list[SizeOption] = []
+    for line in cart_lines:
+        sizes = by_item.get(line.menu_item_id, [])
+        if len(sizes) < 2 or line.size_id is None:
+            continue
+        current = next((index for index, row in enumerate(sizes) if row.id == line.size_id), None)
+        if current is None or current == len(sizes) - 1:
+            continue
+        nxt = sizes[current + 1]
+        options.append(
+            SizeOption(
+                menu_item_id=line.menu_item_id,
+                size_id=nxt.id,
+                extra_cost=nxt.price - sizes[current].price,
+            )
+        )
+    return options
+
+
+def _unchosen_add_ons(db: Session, cart_lines: list[CartLineFacts]) -> list[AddOnOption]:
+    """Paid options in groups the line has not filled, in the owner's order.
+
+    Ranked by `sort_order` because how often each option is actually chosen is
+    not recorded yet. When it is, this ordering should become popularity — the
+    owner's preferred order is a stand-in, not the intended answer.
+    """
+
+    item_ids = {line.menu_item_id for line in cart_lines}
+    if not item_ids:
+        return []
+    rows = list(
+        db.scalars(
+            select(MenuItemCustomizationOption)
+            .join(
+                MenuItemCustomizationGroup,
+                MenuItemCustomizationOption.group_id == MenuItemCustomizationGroup.id,
+            )
+            .where(
+                MenuItemCustomizationGroup.menu_item_id.in_(item_ids),
+                MenuItemCustomizationOption.is_active.is_(True),
+                MenuItemCustomizationOption.extra_price > 0,
+            )
+            .options(selectinload(MenuItemCustomizationOption.group))
+            .order_by(MenuItemCustomizationOption.sort_order)
+        ).all()
+    )
+    return [
+        AddOnOption(
+            menu_item_id=row.group.menu_item_id,
+            option_id=row.id,
+            extra_cost=row.extra_price,
+        )
+        for row in rows
+    ]
+
+
+def _bestsellers_by_category(
+    db: Session,
+    location_id: uuid.UUID,
+    menu_items: dict[uuid.UUID, MenuItem],
+) -> dict[str, list[uuid.UUID]]:
+    bestseller_ids = get_dynamic_bestseller_ids_by_location(db, [location_id]).get(location_id, set())
+    grouped: dict[str, list[uuid.UUID]] = {}
+    for item_id in bestseller_ids:
+        item = menu_items.get(item_id)
+        if item is None or not item.category:
+            continue
+        grouped.setdefault(item.category, []).append(item_id)
+    return grouped
