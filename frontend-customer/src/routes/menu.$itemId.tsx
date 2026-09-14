@@ -126,7 +126,7 @@ function DishPage() {
   if (itemQuery.isLoading) {
     return (
       <div className="page-pad mx-auto max-w-7xl py-10" aria-busy="true">
-        <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="skeleton aspect-[16/10] !rounded-2xl" />
           <div className="elevated-panel skeleton-panel p-5 sm:p-6">
             <div className="skeleton skeleton-line skeleton-line--meta" />
@@ -161,75 +161,100 @@ function DishPage() {
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
 
-        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="dish-hero relative overflow-hidden rounded-2xl">
-            <DishImage src={item.image_url} name={item.name} className="aspect-[16/10]" priority />
-            {(item.is_bestseller || item.is_new) && (
-              <div className="absolute left-3 top-3 flex gap-1.5">
-                {item.is_bestseller && (
-                  <span className="dish-badge dish-badge--hot">Bestseller</span>
-                )}
-                {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
-              </div>
-            )}
-            {!item.is_available && (
-              <div className="absolute inset-0 grid place-items-center bg-overlay">
-                <span className="rounded-full bg-surface px-4 py-2 font-black uppercase tracking-wide">
-                  Unavailable
-                </span>
-              </div>
-            )}
-          </div>
-
-          <aside className="elevated-panel p-5 sm:p-6 lg:sticky lg:top-24">
-            <div className="flex flex-wrap items-center gap-3">
-              <VegMark veg={item.is_veg} />
-              {item.rating && (
-                <span className="flex items-center gap-1 font-semibold">
-                  <Star className="size-4 fill-primary text-primary" />
-                  {item.rating}
-                  {item.rating_count > 0 && (
-                    <span className="text-sm text-muted">({item.rating_count})</span>
+        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
+          {/* The picture and what the dish IS travel together, and stay put
+              while the choices scroll beside them. Before this the left column
+              held only the image while the right one ran to three screens, so
+              anyone past the first group was choosing toppings alongside a
+              screen and a half of empty background. */}
+          <div className="dish-lede lg:sticky lg:top-24">
+            <div className="dish-hero relative overflow-hidden rounded-2xl">
+              <DishImage
+                src={item.image_url}
+                name={item.name}
+                className="aspect-[16/10]"
+                priority
+              />
+              {(item.is_bestseller || item.is_new) && (
+                <div className="absolute left-3 top-3 flex gap-1.5">
+                  {item.is_bestseller && (
+                    <span className="dish-badge dish-badge--hot">Bestseller</span>
                   )}
-                </span>
+                  {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
+                </div>
               )}
-              <span className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-bold text-muted">
-                {item.category}
-              </span>
+              {!item.is_available && (
+                <div className="absolute inset-0 grid place-items-center bg-overlay">
+                  <span className="rounded-full bg-surface px-4 py-2 font-black uppercase tracking-wide">
+                    Unavailable
+                  </span>
+                </div>
+              )}
             </div>
 
-            <h1 className="mt-3 font-display text-4xl font-black leading-[1.05]">{item.name}</h1>
-
-            {(dishRestaurant.data?.name || item.cuisine_type) && (
-              <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
-                <Store className="size-3.5 shrink-0 text-primary" />
-                {dishRestaurant.data?.name ?? item.cuisine_type}
-                {dishRestaurant.data?.name && item.cuisine_type && (
-                  <span className="font-medium">· {item.cuisine_type}</span>
+            <div className="dish-lede__body">
+              <div className="flex flex-wrap items-center gap-3">
+                <VegMark veg={item.is_veg} />
+                {item.rating && (
+                  <span className="flex items-center gap-1 font-semibold">
+                    <Star className="size-4 fill-primary text-primary" />
+                    {item.rating}
+                    {item.rating_count > 0 && (
+                      <span className="text-sm text-muted">({item.rating_count})</span>
+                    )}
+                  </span>
                 )}
-              </p>
-            )}
+                <span className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-bold text-muted">
+                  {item.category}
+                </span>
+              </div>
 
-            <p className="mt-4 leading-relaxed text-muted">{item.description}</p>
+              <h1 className="mt-3 font-display text-4xl font-black leading-[1.05]">{item.name}</h1>
 
-            {/* "From $12" rather than a single price the customer may not end
-                up paying. Only for sized items; a simple dish has one price and
-                saying "from" about it would be evasive. */}
-            {sizes.length > 0 && (
-              <div className="mt-4">
-                <p className="money font-display text-3xl font-black">
-                  From{" "}
-                  {formatMoney(
-                    sizes.reduce(
-                      (low, s) => (Number(s.price) < Number(low.price) ? s : low),
-                      sizes[0]!,
-                    ).price,
+              {(dishRestaurant.data?.name || item.cuisine_type) && (
+                <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
+                  <Store className="size-3.5 shrink-0 text-primary" />
+                  {dishRestaurant.data?.name ?? item.cuisine_type}
+                  {dishRestaurant.data?.name && item.cuisine_type && (
+                    <span className="font-medium">· {item.cuisine_type}</span>
                   )}
                 </p>
-                <p className="text-sm text-muted">Final price depends on the size you pick</p>
-              </div>
-            )}
+              )}
 
+              <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+
+              {/* "From $12" until a size is picked, because that is the only
+                  honest single number then. Once one IS picked the guess is
+                  replaced by what that size actually costs — leaving "From"
+                  up there asks the customer to keep discounting the headline. */}
+              {sizes.length > 0 && (
+                <div className="dish-lede__price">
+                  <p className="money font-display text-3xl font-black">
+                    {chosenSize ? (
+                      formatMoney(chosenSize.price)
+                    ) : (
+                      <>
+                        From{" "}
+                        {formatMoney(
+                          sizes.reduce(
+                            (low, s) => (Number(s.price) < Number(low.price) ? s : low),
+                            sizes[0]!,
+                          ).price,
+                        )}
+                      </>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted">
+                    {chosenSize
+                      ? `${chosenSize.name} · extras are charged on top`
+                      : "Final price depends on the size you pick"}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="elevated-panel dish-choices">
             {sizes.length > 0 && (
               <section className="choice-card mt-6">
                 <header className="choice-card__head">
@@ -409,87 +434,93 @@ function DishPage() {
               </div>
             )}
 
-            <div className="mt-7 flex items-center justify-between gap-4 border-t border-border pt-5">
-              <div className="qty-pill">
-                <button
-                  type="button"
-                  className="qty-step"
-                  aria-label="Reduce quantity"
-                  disabled={quantity <= 1}
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                >
-                  <Minus className="size-4" />
-                </button>
-                <span className="qty-value">{quantity}</span>
-                <button
-                  type="button"
-                  className="qty-step"
-                  aria-label="Increase quantity"
-                  onClick={() => setQuantity((q) => q + 1)}
-                >
-                  <Plus className="size-4" />
-                </button>
+            {/* Quantity, total and Add stay on screen while the choices
+                scroll under them. A dish with a size, a glaze and four topping
+                groups is taller than any phone and taller than most desktops,
+                and the button that ends the task sat below all of it. */}
+            <div className="dish-actions">
+              <div className="flex items-center justify-between gap-4">
+                <div className="qty-pill">
+                  <button
+                    type="button"
+                    className="qty-step"
+                    aria-label="Reduce quantity"
+                    disabled={quantity <= 1}
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <span className="qty-value">{quantity}</span>
+                  <button
+                    type="button"
+                    className="qty-step"
+                    aria-label="Increase quantity"
+                    onClick={() => setQuantity((q) => q + 1)}
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
+                  <p className="money total-figure font-display text-3xl font-black leading-tight">
+                    {formatMoney(total)}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
-                <p className="money total-figure font-display text-3xl font-black leading-tight">
-                  {formatMoney(total)}
-                </p>
-              </div>
-            </div>
 
-            {/* Cart scope is restaurant + location, so a dish from another
+              {/* Cart scope is restaurant + location, so a dish from another
                 kitchen cannot join this order. Offering to start a fresh cart
                 beats refusing the dish, which is what made a concierge
                 suggestion feel like a dead end. */}
-            {conflicts ? (
-              <div className="added-note mt-5 rounded-xl border border-border bg-surface-alt p-4">
-                <p className="text-sm font-semibold leading-relaxed">
-                  Your cart already has items from{" "}
-                  {store.cartRestaurantName ?? "another restaurant"}. One order can only come from
-                  one kitchen.
-                </p>
-                <Button
-                  className="mt-3 h-12 w-full"
-                  disabled={!valid || !item.is_available}
-                  onClick={() => handleAdd(true)}
-                >
-                  Start a new cart with this
-                </Button>
-              </div>
-            ) : added ? (
-              <div className="added-note mt-5 grid gap-2">
-                <p className="flex items-center justify-center gap-2 text-sm font-bold text-success">
-                  <Check className="size-4" strokeWidth={3} /> Added to your cart
-                </p>
-                <Button className="h-12 w-full" asChild>
-                  <Link to="/cart">
-                    <ShoppingBag className="size-4" /> Go to cart
-                  </Link>
-                </Button>
-                <Button variant="outline" className="h-12 w-full" onClick={() => setAdded(false)}>
-                  Add another
-                </Button>
-              </div>
-            ) : (
-              <>
-                <Button
-                  className="mt-5 h-12 w-full text-base"
-                  disabled={!valid || !item.is_available}
-                  onClick={() => handleAdd(false)}
-                >
-                  {item.is_available
-                    ? `Add to cart · ${formatMoney(total)}`
-                    : "Currently unavailable"}
-                </Button>
-                {/* Say what is missing. A greyed-out button with no reason is
+              {conflicts ? (
+                <div className="added-note mt-5 rounded-xl border border-border bg-surface-alt p-4">
+                  <p className="text-sm font-semibold leading-relaxed">
+                    Your cart already has items from{" "}
+                    {store.cartRestaurantName ?? "another restaurant"}. One order can only come from
+                    one kitchen.
+                  </p>
+                  <Button
+                    className="mt-3 h-12 w-full"
+                    disabled={!valid || !item.is_available}
+                    onClick={() => handleAdd(true)}
+                  >
+                    Start a new cart with this
+                  </Button>
+                </div>
+              ) : added ? (
+                <div className="added-note mt-5 grid gap-2">
+                  <p className="flex items-center justify-center gap-2 text-sm font-bold text-success">
+                    <Check className="size-4" strokeWidth={3} /> Added to your cart
+                  </p>
+                  <Button className="h-12 w-full" asChild>
+                    <Link to="/cart">
+                      <ShoppingBag className="size-4" /> Go to cart
+                    </Link>
+                  </Button>
+                  <Button variant="outline" className="h-12 w-full" onClick={() => setAdded(false)}>
+                    Add another
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    className="mt-5 h-12 w-full text-base"
+                    disabled={!valid || !item.is_available}
+                    onClick={() => handleAdd(false)}
+                  >
+                    {item.is_available
+                      ? `Add to cart · ${formatMoney(total)}`
+                      : "Currently unavailable"}
+                  </Button>
+                  {/* Say what is missing. A greyed-out button with no reason is
                     the dead end this app keeps producing; the customer has to
                     hunt the page for whichever group is unanswered. */}
-                {item.is_available && problem && (
-                  <p className="mt-2 text-center text-sm font-semibold text-muted">{problem}</p>
-                )}
-              </>
-            )}
+                  {item.is_available && problem && (
+                    <p className="mt-2 text-center text-sm font-semibold text-muted">{problem}</p>
+                  )}
+                </>
+              )}
+            </div>
           </aside>
         </div>
       </div>

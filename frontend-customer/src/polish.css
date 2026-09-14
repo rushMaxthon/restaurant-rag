@@ -156,6 +156,7 @@ main > * {
   transform: translateY(-1px);
 }
 .mobile-nav-bar {
+  min-height: var(--mobile-nav-h);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -1151,4 +1152,64 @@ html {
 /* Three sizes should read as three, not two and a stray. */
 .size-tiles {
   grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+}
+
+/* --- The dish page's two columns -------------------------------------------
+   Left: the picture and what the dish is. Right: every decision, and nothing
+   else. They used to be split picture / everything-else, which made one column
+   460px tall and the other three screens, and the gap between them was the
+   first thing anyone saw. */
+.dish-lede {
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+}
+.dish-lede__price {
+  border-top: 1px solid var(--border);
+  padding-top: 0.9rem;
+}
+
+/* Padding lives here rather than in utility classes so the action block below
+   can reach back out to the panel's edges with one variable. */
+.dish-choices {
+  --panel-pad: 1.25rem;
+  padding: var(--panel-pad);
+}
+@media (min-width: 640px) {
+  .dish-choices {
+    --panel-pad: 1.5rem;
+  }
+}
+
+/* Pinned to the bottom of the rail, full-bleed to the panel edge so nothing
+   scrolls through a transparent gap beside it. The top border is the seam;
+   the shadow above it says there is more underneath. */
+.dish-actions {
+  position: sticky;
+  /* Above the tab bar, not under it. At `bottom: 0` on a phone the Add button
+     landed behind the four nav icons — pinned, visible, and untappable. */
+  bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+  z-index: 2;
+  margin: 1.5rem calc(var(--panel-pad) * -1) calc(var(--panel-pad) * -1);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 calc(var(--radius) + 6px) calc(var(--radius) + 6px);
+  background: var(--surface);
+  padding: 0.9rem var(--panel-pad) var(--panel-pad);
+  box-shadow: 0 -12px 24px -18px var(--overlay);
+}
+/* A short fade above the seam, so the card the bar is covering reads as
+   continuing underneath rather than as having been sliced through. */
+.dish-actions::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: 1.75rem;
+  background: linear-gradient(to top, var(--surface), transparent);
+  pointer-events: none;
+}
+/* The tab bar is a phone thing; on a desktop the rail reaches the bottom. */
+@media (min-width: 1024px) {
+  .dish-actions {
+    bottom: 0;
+  }
 }

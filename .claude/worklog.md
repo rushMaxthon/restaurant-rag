@@ -28,6 +28,48 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (5) — The dish page's two columns
+
+**Goal:** reported from a screenshot — the dish page looked wrong on a
+desktop.
+
+**What was actually wrong:** the columns were split picture / everything-else.
+The left column held one 460px image; the right held the name, the description,
+the price, every choice, the total and the button, and ran to three screens. So
+the first thing anyone saw was a wide black rectangle of nothing, and the
+button that ends the task was below all of it — on a 1900x916 display the Add
+button was not on screen at any point until you scrolled past the toppings.
+
+**Now:** the picture and what the dish IS travel together on the left and stay
+put (`position: sticky`) while the decisions scroll beside them; the rail holds
+only decisions. Quantity, total and Add are pinned to the bottom of the rail,
+so the price and the button are on screen the whole time, and so is the line
+saying which group is still unanswered.
+
+**Learned — do not re-derive:**
+- **`bottom: 0` is wrong on a phone.** The pinned block landed behind the
+  four-icon tab bar: visible, and untappable. It offsets by `--mobile-nav-h`
+  (a new token in `styles.css`, with a matching `min-height` on
+  `.mobile-nav-bar` so the number is true rather than guessed) and drops back
+  to `0` at `lg`, where there is no tab bar.
+- **Sticky only buys what the taller column lends it.** The lede sticks for
+  `row height - lede height` and no further, so on a short dish (wings: 672 vs
+  993) it barely moves. That is fine — the balance is what fixed the hole, and
+  the stickiness pays on a long dish.
+- **Screenshotting the app needs `http://localhost:5173`, not
+  `127.0.0.1:5173`.** Only `localhost` is in the backend's CORS list, so on the
+  IP every fetch fails and the page sits on its skeleton forever — which looks
+  exactly like a hung query. Ten minutes went into that.
+- `"From $11.99"` now becomes the chosen size's real price once a size is
+  picked. Leaving "From" up asks the customer to keep discounting the headline
+  against a number they have already chosen.
+
+**Open:** the pinned block takes ~190px of an 851px phone, which is the usual
+shape for this pattern but is a lot on a small screen. Not tuned further
+without someone actually using it.
+
+---
+
 ## 2026-09-14 (4) — Customization correctness, and half-and-half
 
 **Goal:** a long list of reported customization bugs, then a new feature —
