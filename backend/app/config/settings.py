@@ -40,6 +40,14 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081"
     )
 
+    # A phone or a second laptop on the same wifi reaches the dev servers by this
+    # machine's LAN address, not `localhost`, so every such origin is a CORS
+    # miss against the list above — and the address is DHCP-assigned, so pinning
+    # it in the list means re-editing .env whenever the lease changes. A regex
+    # covers the whole private range instead. Empty by default: this exists for
+    # local device testing, and production must keep naming its origins exactly.
+    backend_cors_origin_regex: str = ""
+
     # A managed provider hands out ONE connection string rather than the five
     # discrete parts below — Render injects `DATABASE_URL` from the database it
     # provisions, and its host, password and database name are all generated, so
