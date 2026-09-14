@@ -28,6 +28,61 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 — Scheduling as the answer to "why can't I order yet?"
+
+**Goal:** cover mobile properly, make it obvious to a customer why they cannot
+order yet, and give them the branch's opening times and a custom future
+date/time picker.
+
+**Did:**
+- `frontend-customer/src/routes/cart.tsx` — a closed branch no longer ends the
+  journey. The CTA reads "Schedule for later" and links to checkout whenever
+  `bookableDays` is non-empty; only a branch with no windows at all keeps the
+  disabled button. Opening hours fold behind a `<details>` disclosure.
+- `frontend-customer/src/routes/checkout.tsx` — date field beside the day chips
+  (bounded by `max_future_days`), times grouped morning/afternoon/evening, the
+  day's real opening window shown beside them, and "Pick a time to continue"
+  where the Pay button is disabled for want of a slot.
+- `frontend-customer/src/lib/branch-hours.ts` — `dateInputValue`,
+  `dayFromInputValue`, `lastBookableDay`, `groupByPartOfDay`, with tests.
+- `frontend-customer/e2e/mobile-layout.spec.ts` (new) — measures the phone
+  layout: nothing past the viewport, no tap target under 44px.
+
+**Verified:** `tsc --noEmit` clean, `npm run build` clean, 53 vitest, 20
+Playwright across desktop and mobile (the 2 skips are the desktop runs of the
+mobile-only suite).
+
+**Learned — three things that cost time and are worth not re-deriving:**
+- **The mobile Pay button was never covered.** A previous session skipped the
+  mobile payment test after probing `elementFromPoint` at the centre of the
+  fixed BAR — which lands in the gap between the price block and the button,
+  so it never tested the button. Hit-testing the BUTTON's centre shows nothing
+  covers it. The real cause is `locator.click()`'s `scrollIntoViewIfNeeded`:
+  a fixed element never "arrives", so Chromium scrolls the page and then blames
+  whatever slid under the stale hit point. `clickFixed()` in `e2e/helpers.ts`
+  clicks real coordinates after asserting the point resolves inside the target.
+- **Under Pixel 5 emulation, checkout reports `innerWidth` 551 against
+  `documentElement.clientWidth` 393.** This predates all of this work and is
+  NOT caused by the app: removing Stripe's injected
+  `__privateStripeMetricsController` iframe changes nothing, and the gap is
+  identical with `src/` stashed. Stripe does set `min-width: 100% !important`
+  INLINE on that iframe (so no stylesheet rule can override it), but it is a
+  symptom, not the cause. `overflow-x: clip` on `html` does not help either —
+  a `position: fixed` element is not clipped by an ancestor's overflow. Left
+  unfixed and unexplained rather than papered over; the mobile-layout suite
+  measures app elements against `innerWidth` so it still catches real overflow.
+- **Inter is shipped here as a latin-only subset**, so geometric glyphs like
+  U+25BE (▾) are not in the font and fall back per platform — it rendered as a
+  stray dot on Windows. Use a lucide icon, not a character, for UI marks.
+
+**Open:** unchanged from the previous entry (`docker-compose.yml` builds a
+deleted Dockerfile; migration `0001` IVFFlat ordering; the SSR hydration warning
+that also discards fast typing; no FAQ/policy/promotion content; delivery-radius
+data absent). The Supabase password and the Stripe test keys are in transcripts
+and should still be rotated.
+
+---
+
 ## 2026-09-13 (5) — Guest access, CAD, card-only Stripe, and a long UI pass
 
 **Goal:** everything the user hit while clicking through the app as a customer.
