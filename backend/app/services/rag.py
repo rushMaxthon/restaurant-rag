@@ -10,7 +10,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Literal, Sequence
 
 import httpx
 from fastapi import HTTPException, status
@@ -2625,6 +2625,145 @@ def _fetch_recent_history_messages(
     rows = _fetch_recent_history_messages_from_db(db, user_id=user_id, session_id=session_id)
     cache_set_json(_session_cache_key(user_id, session_id), _serialize_history_entries(rows))
     return rows
+
+
+# --- dish-name guardrail ----------------------------------------------------
+#
+# The dish extractors decide by ELIMINATION: strip the words known not to be
+# food, and assume whatever survives is a dish. `_canonicalize_topic`,
+# `_extract_bare_topic_hint` and `_extract_direct_item_hint` contain no
+# reference to MenuItem, to a query, or to a session — they never look at the
+# menu at all.
+#
+# That has produced the same bug four times, each fixed by adding a word to a
+# stop list:
+#
+#   "What is menu for today?"  -> "We don't have a specific 'today' menu..."
+#   "whats special"            -> "We don't have a 'special' item..."
+#   "Which item are trending?" -> "We don't have a 'special' item..."
+#   "how much is delivery?"    -> "We don't offer delivery on the menu..."
+#
+# The list cannot converge. What people say that is NOT a dish name is
+# unbounded; what IS one is 189 rows in Postgres.
+#
+# So decide by recognition instead. `_retrieve_candidates` already measures
+# cosine distance to every menu embedding on each turn and the nearest one is
+# thrown away — it answers exactly "is anything on this menu close to what they
+# said". No word is named anywhere below, which is the point: "today" is
+# rejected because nothing resembles it, and so is every word nobody has thought
+# of yet.
+#
+# Spec: docs/superpowers/specs/2026-09-14-dish-name-guardrail-design.md
+
+# Measured over 39 phrases, nomic-embed-text, against the seeded 189-item menu:
+#
+#   dish on the menu        0.135 - 0.271
+#   dish, misspelled        0.210 - 0.376   <- must stay recognised
+#   craving, no dish named  0.372 - 0.569
+#   generic word, not food  0.446 - 0.555
+#   not food at all         0.522 - 0.574
+#
+# 0.38 sits in the gap. Misspellings land on the dish side, which matters
+# because 0055_menu_item_trigram_search exists for exactly that case.
+#
+# These numbers belong to THIS embedding model and THIS menu. Switching
+# `embedding_provider` to Gemini requires re-measuring, and nothing here will
+# complain if they quietly stop being right.
+DISH_NAME_MAX_DISTANCE = 0.38
+
+DishReference = Literal["named", "absent", "unknown"]
+
+
+def classify_dish_reference(distance: float | None) -> DishReference:
+    """Whether the customer named a dish, judged by what the menu contains.
+
+    `unknown` when there is no distance to judge by — no embedding, or an empty
+    retrieval. An empty retrieval is NOT evidence that no dish was named; it is
+    the absence of evidence either way, and treating it as `absent` would let a
+    failed lookup quietly rewrite the question.
+    """
+
+    if distance is None:
+        return "unknown"
+    return "named" if distance < DISH_NAME_MAX_DISTANCE else "absent"
+
+
+def apply_dish_name_guardrail(
+    intent: "ExtractedIntent",
+    candidates: list[RetrievedMenuCandidate],
+    *,
+    message: str,
+    db: Session | None = None,
+    query_embedding: list[float] | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+) -> DishReference:
+    """Drop a dish name the menu does not recognise.
+
+    Returns the verdict for logging. Enforces only when
+    `enable_dish_name_guardrail` is set: shipped dark on purpose, because a
+    threshold that is slightly wrong refuses REAL orders — someone asking for
+    pad thai told we have no such thing — which is worse than the bug it fixes.
+    The log is the evidence for whether enforcing is safe, the same way the
+    upsell grounding detector earns its promotion.
+
+    Clearing the dish is all that is needed. "No dish named" is an existing,
+    working path that routes to a general recommendation — which is the answer
+    "which item are trending" should have produced all along. The bug was never
+    that the system mishandles "no dish"; it is that it never concludes there
+    is not one.
+    """
+
+    if not intent.dish:
+        return "unknown"
+
+    # Only a VECTOR candidate's distance means anything here. The keyword and
+    # popularity tiers stamp a synthetic constant — 0.25 and 0.5 — so reading
+    # those would score every keyword hit as a confident dish match and the
+    # guardrail would never fire on the path it is most needed.
+    distance = next(
+        (candidate.distance for candidate in candidates if candidate.source == "vector"),
+        None,
+    )
+
+    # No vector candidate survived. That is not the absence of evidence it looks
+    # like — it is usually the opposite, and it is the shape the reported bugs
+    # take: "whats special" extracts dish="special", the vector tier finds
+    # nothing usable, retrieval falls through to popular_fallback, and the
+    # remaining candidates carry the synthetic 0.5 that tier stamps. Reading
+    # only the surviving candidates makes the guardrail silent on exactly the
+    # turns it exists for.
+    #
+    # So measure directly, bounded to this case: `intent.dish` is set AND
+    # nothing vector-derived reached here. One indexed ANN query on a small
+    # minority of turns, and none at all when the embedding is unavailable —
+    # which stays genuinely `unknown`, because then no vector search ever ran.
+    if distance is None and db is not None and query_embedding is not None:
+        nearest = _retrieve_candidates(
+            db,
+            query_embedding,
+            restaurant_id,
+            restaurant_location_id,
+            limit=1,
+        )
+        distance = nearest[0].distance if nearest else None
+
+    verdict = classify_dish_reference(distance)
+    if verdict != "absent":
+        return verdict
+
+    logger.info(
+        "Dish-name guardrail: %r is not on this menu (nearest %.3f >= %.2f) enforcing=%s question=%r",
+        intent.dish,
+        distance,
+        DISH_NAME_MAX_DISTANCE,
+        settings.enable_dish_name_guardrail,
+        _trim_text(message, 80),
+    )
+    if settings.enable_dish_name_guardrail:
+        intent.dish = None
+        intent.items = None
+    return verdict
 
 
 def _fetch_user_preferences(db: Session, user_id: uuid.UUID) -> UserPreferences | None:
@@ -6094,6 +6233,9 @@ def _prepare_chat_turn(
         )
 
         db_filter_started_at = perf_counter()
+        # Bound before the branch: the keyword path never computes one, and the
+        # guardrail below reads it on every route.
+        query_embedding: list[float] | None = None
         if filtered_keyword_candidates and (
             _intent_prefers_keyword_first(resolved_intent, effective_message)
             or _has_strong_keyword_signal(filtered_keyword_candidates)
@@ -6141,6 +6283,18 @@ def _prepare_chat_turn(
             _normalize_text(effective_message),
             _candidate_name_summary(final_candidates),
         )
+
+    # After retrieval, because the verdict comes from what the menu turned out to
+    # contain; before filtering and ranking, which both trust `intent.dish`.
+    apply_dish_name_guardrail(
+        resolved_intent,
+        final_candidates,
+        message=message,
+        db=db,
+        query_embedding=query_embedding,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+    )
 
     if resolved_intent.new_only and final_candidates and retrieval_source != "new_item_fast_path":
         final_candidates = _sort_new_item_candidates(
