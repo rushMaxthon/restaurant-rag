@@ -7,6 +7,14 @@ import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import {
+  activeOptions,
+  activeSizes,
+  requiresChoosing,
+  selectionProblem,
+  unitPriceFor,
+  visibleGroups,
+} from "@/lib/customization";
 import { useMenuItem, useMenuItems, useRestaurant } from "@/lib/queries";
 
 export const Route = createFileRoute("/menu/$itemId")({
@@ -45,22 +53,23 @@ function DishPage() {
     [relatedQuery.data, itemId],
   );
 
-  const chosenSize = item?.sizes.find((s) => s.id === (size || item.sizes[0]?.id));
-  const addons =
-    item?.customization_groups.flatMap((g) =>
-      g.options.filter((o) => selected[g.id]?.includes(o.id)),
-    ) ?? [];
-  const unitPrice = item
-    ? Number(item.price) +
-      Number(chosenSize?.price ?? 0) +
-      addons.reduce((n, o) => n + Number(o.extra_price), 0)
-    : 0;
+  // Sizes and options the owner switched off are not offered, and a group that
+  // belongs to another size is not shown. All of it mirrors the server; see
+  // lib/customization.ts for what went wrong when it did not.
+  const sizes = activeSizes(item);
+  const chosenSize = sizes.find((s) => s.id === (size || sizes[0]?.id));
+  const groups = visibleGroups(item, chosenSize);
+  const chosenOptionIds = groups.flatMap((g) => selected[g.id] ?? []);
+  const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds);
   const total = unitPrice * quantity;
-  const valid = item
-    ? item.customization_groups.every(
-        (g) => !g.is_required || (selected[g.id]?.length ?? 0) >= g.min_selection,
-      )
-    : false;
+  const problem = selectionProblem(item, chosenSize, selected);
+  const valid = problem === null;
+  // The options the customer can actually see and has actually chosen. Derived
+  // from the same visible set as the price, so what is charged, what is shown
+  // and what is stored on the line can never drift apart.
+  const addons = groups
+    .flatMap((g) => activeOptions(g))
+    .filter((o) => chosenOptionIds.includes(o.id));
 
   const conflicts = item ? store.conflictsWithCart(item) : false;
 
@@ -182,14 +191,14 @@ function DishPage() {
 
             <p className="mt-4 leading-relaxed text-muted">{item.description}</p>
 
-            {item.has_sizes && (
+            {sizes.length > 0 && (
               <div className="mt-6">
                 <h2 className="text-sm font-black uppercase tracking-wide text-muted">
                   Choose a size
                 </h2>
                 <div className="mt-3 grid gap-2">
-                  {item.sizes.map((s) => {
-                    const active = (size || item.sizes[0]?.id) === s.id;
+                  {sizes.map((s) => {
+                    const active = chosenSize?.id === s.id;
                     return (
                       <button
                         type="button"
@@ -202,7 +211,10 @@ function DishPage() {
                           <span className="option-dot" data-on={active} />
                           {s.name}
                         </span>
-                        <span className="money text-sm font-bold">+{formatMoney(s.price)}</span>
+                        {/* The absolute price, not "+". A size REPLACES the
+                            base price, so a plus sign said the opposite of what
+                            the customer would be charged. */}
+                        <span className="money text-sm font-bold">{formatMoney(s.price)}</span>
                       </button>
                     );
                   })}
@@ -210,18 +222,26 @@ function DishPage() {
               </div>
             )}
 
-            {item.customization_groups.map((g) => (
+            {groups.map((g) => (
               <div className="mt-6" key={g.id}>
                 <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-muted">
                   {g.title}
-                  {g.is_required && (
+                  {/* Labelled from the same rule the server enforces: a group
+                      marked "not required" with a minimum of one IS required,
+                      and showing it as optional only defers the surprise. */}
+                  {requiresChoosing(g) && (
                     <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[0.6rem] text-primary">
-                      Required
+                      {g.min_selection > 1 ? `Choose ${g.min_selection}` : "Required"}
+                    </span>
+                  )}
+                  {g.selection_type === "MULTI" && g.max_selection > 0 && (
+                    <span className="text-[0.6rem] font-bold text-muted">
+                      up to {g.max_selection}
                     </span>
                   )}
                 </h2>
                 <div className="mt-3 grid gap-2">
-                  {g.options.map((o) => {
+                  {activeOptions(g).map((o) => {
                     const active = Boolean(selected[g.id]?.includes(o.id));
                     return (
                       <button
@@ -310,15 +330,23 @@ function DishPage() {
                 </Button>
               </div>
             ) : (
-              <Button
-                className="mt-5 h-12 w-full text-base"
-                disabled={!valid || !item.is_available}
-                onClick={() => handleAdd(false)}
-              >
-                {item.is_available
-                  ? `Add to cart · ${formatMoney(total)}`
-                  : "Currently unavailable"}
-              </Button>
+              <>
+                <Button
+                  className="mt-5 h-12 w-full text-base"
+                  disabled={!valid || !item.is_available}
+                  onClick={() => handleAdd(false)}
+                >
+                  {item.is_available
+                    ? `Add to cart · ${formatMoney(total)}`
+                    : "Currently unavailable"}
+                </Button>
+                {/* Say what is missing. A greyed-out button with no reason is
+                    the dead end this app keeps producing; the customer has to
+                    hunt the page for whichever group is unanswered. */}
+                {item.is_available && problem && (
+                  <p className="mt-2 text-center text-sm font-semibold text-muted">{problem}</p>
+                )}
+              </>
             )}
           </aside>
         </div>

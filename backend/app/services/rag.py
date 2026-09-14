@@ -4753,6 +4753,11 @@ def _suggestion_items(
                 recommendation_label=recommendation_label,
                 recommendation_reason=recommendation_reason,
                 new_item_reason=new_item_reason,
+                # So a chat card can tell "add this" from "this needs choices".
+                # Hardcoded false on the client before, which let a sized dish
+                # be added with no size and refused at checkout.
+                has_sizes=bool(candidate.menu_item.has_sizes),
+                has_customizations=bool(candidate.menu_item.has_customizations),
                 similarity_score=round(similarity_score, 4),
             )
         )

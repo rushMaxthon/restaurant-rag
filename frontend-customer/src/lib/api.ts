@@ -67,6 +67,9 @@ export type ChatSuggestion = {
   image_url: string | null;
   is_new?: boolean;
   is_favorite?: boolean;
+  /** Whether the dish needs a size or options chosen before it can be ordered. */
+  has_sizes?: boolean;
+  has_customizations?: boolean;
   similarity_score: number;
 };
 

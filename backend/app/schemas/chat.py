@@ -34,6 +34,15 @@ class ChatSuggestionItem(BaseModel):
     recommendation_reason: str | None = None
     new_item_reason: str | None = None
     is_favorite: bool = False
+    # Whether this dish needs choices before it can be ordered.
+    #
+    # The customer app decides between a one-tap "+" and a "Choose" that opens
+    # the dish, and a chat card had no way to know: it hardcoded both to false,
+    # so a sized or customisable dish was added at its base price with no size
+    # and no required options, and the server refused the order at checkout
+    # ("Select a size for X") after everything else had been filled in.
+    has_sizes: bool = False
+    has_customizations: bool = False
     similarity_score: float
 
 

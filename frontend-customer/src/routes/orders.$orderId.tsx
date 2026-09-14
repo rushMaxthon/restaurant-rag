@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, orderCode, scheduledFor } from "@/lib/bangkok-data";
+import { formatMoney, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
 
@@ -231,6 +231,11 @@ function OrderDetail() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold leading-snug">{item.item_name_snapshot}</p>
+                  {/* The size and options that made up this price. Without them
+                      a past order gave no way to see why it cost what it did. */}
+                  {lineSelections(item) && (
+                    <p className="mt-0.5 text-sm text-muted">{lineSelections(item)}</p>
+                  )}
                   <p className="money mt-0.5 text-sm text-muted">
                     {item.quantity} × {formatMoney(item.unit_price)}
                   </p>

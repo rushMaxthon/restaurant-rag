@@ -1,6 +1,13 @@
 import { useMemo, useState } from "react";
 import { Leaf, Search, SlidersHorizontal, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { deriveCategories, type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItems } from "@/lib/queries";
@@ -126,17 +133,26 @@ export function MenuGrid({ limit }: { limit?: number }) {
             <Leaf className="size-4" />
             Veg only
           </button>
-          <label className="sort-select">
-            <SlidersHorizontal className="size-4 shrink-0 text-muted" />
-            <span className="sr-only">Sort dishes</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+          {/* A styled listbox rather than a bare <select>.
+              The native control opens the operating system's own menu, which on
+              Windows is a grey list in a different typeface, different radius
+              and different colours to everything around it — the one place the
+              app stopped looking like itself. Radix renders the list in the
+              page, so it inherits the design, and it keeps the keyboard and
+              screen-reader behaviour a hand-rolled menu would lose. */}
+          <Select value={sort} onValueChange={(value) => setSort(value as Sort)}>
+            <SelectTrigger className="sort-select" aria-label="Sort dishes">
+              <SlidersHorizontal className="size-4 shrink-0 text-muted" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
               {SORTS.map((s) => (
-                <option value={s.value} key={s.value}>
+                <SelectItem value={s.value} key={s.value}>
                   {s.label}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </label>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

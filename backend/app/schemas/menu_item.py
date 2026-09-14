@@ -29,17 +29,47 @@ class MenuItemCustomizationGroupPayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_group(self) -> "MenuItemCustomizationGroupPayload":
+        if not self.options:
+            raise ValueError("Each customization group must include at least one option.")
+
+        # A MULTI group that was never told a maximum allows every option.
+        #
+        # The field default of 1 quietly turned a toppings group into a single
+        # choice: the owner adds five toppings, the customer may pick one, and
+        # nothing on either screen says why. Only the DEFAULT is changed here,
+        # detected through `model_fields_set` — an owner who deliberately says
+        # "at most 2", or "at most 1", still gets exactly that.
+        if (
+            self.selection_type == MenuItemCustomizationSelectionType.MULTI
+            and "max_selection" not in self.model_fields_set
+        ):
+            self.max_selection = len(self.options)
+
         if self.selection_type == MenuItemCustomizationSelectionType.SINGLE:
             if self.max_selection != 1:
                 raise ValueError("Single select groups must use a max selection of 1.")
             if self.min_selection > 1:
                 raise ValueError("Single select groups cannot require more than one selection.")
+
+        # A minimum nobody can reach makes the item unorderable, and the
+        # ordering flow has no way to explain that to the customer: they are
+        # told to choose three from a list of two and can never finish.
+        if self.min_selection > len(self.options):
+            raise ValueError(
+                "Min selection cannot be greater than the number of options in the group."
+            )
+
         if self.max_selection < self.min_selection:
             raise ValueError("Max selection cannot be less than min selection.")
+
+        # "Not required" with a minimum of one is a contradiction the customer
+        # pays for: the minimum is what the order endpoint enforces, so the
+        # group behaves as required while the flag says otherwise and the screen
+        # labels it optional. The minimum wins, and the flag is made to agree.
+        if self.min_selection >= 1:
+            self.is_required = True
         if self.is_required and self.min_selection < 1:
             raise ValueError("Required groups must enforce at least one selection.")
-        if not self.options:
-            raise ValueError("Each customization group must include at least one option.")
         return self
 
 

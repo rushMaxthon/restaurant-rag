@@ -807,19 +807,29 @@ html {
   background: var(--surface);
   padding: 0 0.85rem 0 1rem;
 }
-.sort-select select {
-  border: 0;
-  background: transparent;
+/* The trigger is now a button, not a <select>, so the rules that used to dress
+   the inner control move onto the pill itself. */
+.sort-select {
   color: var(--text);
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
-  padding-right: 0.25rem;
+  white-space: nowrap;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
 }
-.sort-select select:focus-visible {
+.sort-select:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.sort-select:focus-visible {
   outline: 2px solid var(--primary);
-  outline-offset: 4px;
-  border-radius: 0.25rem;
+  outline-offset: 2px;
+}
+/* Radix marks the trigger while its list is open; without this the pill gives
+   no sign that the menu below belongs to it. */
+.sort-select[data-state="open"] {
+  border-color: var(--primary);
 }
 
 .dish-card {
@@ -1188,7 +1198,9 @@ html {
   border-radius: var(--radius, 0.75rem);
   background: var(--background);
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .branch-gate__option:hover,

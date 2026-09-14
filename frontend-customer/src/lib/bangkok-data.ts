@@ -1,18 +1,38 @@
 export type Money = string;
-export type MenuSize = { id: string; name: string; price: Money; is_active: boolean };
+export type MenuSize = {
+  id: string;
+  name: string;
+  price: Money;
+  is_active: boolean;
+  /** Groups that exist only for this size. See lib/customization.ts. */
+  customization_groups?: CustomizationGroup[];
+};
 export type CustomizationOption = {
   id: string;
   name: string;
   extra_price: Money;
   is_countable: boolean;
+  /**
+   * The API has always sent this; the type simply omitted it, so an option the
+   * owner had switched off was still rendered and still selectable.
+   */
+  is_active: boolean;
 };
 export type CustomizationGroup = {
   id: string;
+  /**
+   * Set when the group belongs to ONE size rather than the whole item.
+   *
+   * Also omitted from this type before, so every size-scoped group was shown
+   * against every size — which is what made groups look duplicated.
+   */
+  menu_item_size_id?: string | null;
   title: string;
   selection_type: "SINGLE" | "MULTI";
   is_required: boolean;
   min_selection: number;
   max_selection: number;
+  is_active: boolean;
   options: CustomizationOption[];
 };
 export type MenuItem = {
@@ -121,6 +141,22 @@ export type Order = {
     quantity: number;
     unit_price: Money;
     total_price: Money;
+    /**
+     * What the customer actually chose, frozen at order time.
+     *
+     * The API has always sent both; the type omitted them, so a past order
+     * showed "Pad Thai" with no hint of the Large or the extra prawns that
+     * made up its price — and someone checking why an order cost what it did
+     * had nothing to look at.
+     */
+    size_name_snapshot?: string | null;
+    selected_options_snapshot?: {
+      group_title: string;
+      option_name: string;
+      extra_price: Money;
+      quantity: number;
+      is_countable: boolean;
+    }[];
   }[];
 };
 /** Orders have no human-readable number from the API — build a short display code from the id. */
@@ -172,4 +208,24 @@ export function scheduledFor(order: Pick<Order, "schedule_type" | "scheduled_at"
     month: "short",
   }).format(at);
   return `${day} at ${time}`;
+}
+
+/**
+ * "Large · Extra prawns, No peanuts" for one order line, or null.
+ *
+ * Reads the snapshot rather than today's menu on purpose: the point of a past
+ * order is what was bought then, and the dish may have been re-priced or its
+ * options renamed since.
+ */
+export function lineSelections(line: Order["items"][number]): string | null {
+  const parts: string[] = [];
+  if (line.size_name_snapshot) parts.push(line.size_name_snapshot);
+  for (const option of line.selected_options_snapshot ?? []) {
+    parts.push(
+      option.is_countable && option.quantity > 1
+        ? `${option.option_name} ×${option.quantity}`
+        : option.option_name,
+    );
+  }
+  return parts.length ? parts.join(" · ") : null;
 }
