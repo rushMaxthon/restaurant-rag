@@ -44,6 +44,7 @@ from app.services.rag import (  # noqa: E402
     _fallback_extract_intent,
     _is_hours_query,
     _is_service_info_query,
+    _service_info_reply,
     _keyword_match_strength,
 )
 
@@ -323,3 +324,35 @@ class DietaryQuestionsTests(unittest.TestCase):
         intent = self._intent("veg biryani")
         self.assertEqual(intent.diet, "veg")
         self.assertIsNotNone(intent.dish)
+
+
+class ServiceInfoWithoutABranchTests(unittest.TestCase):
+    """A service question must never be answered by denying the service.
+
+    With a restaurant selected the tier reads the branch row and answers
+    exactly. Without one - a guest on the marketplace surface who has not
+    picked a restaurant yet — it used to return None and hand the question to
+    the model, which answered:
+
+        Q: how much is delivery?
+        A: We don't offer delivery through our app — but the Thai Combo Box...
+
+    That is the same false statement the tier was built to stop, arriving by a
+    different route. With no branch to quote, the honest answer is that it
+    depends on the branch, not that delivery does not exist.
+    """
+
+    def test_no_branch_still_gets_a_grounded_answer(self) -> None:
+        reply = _service_info_reply(None, restaurant_id=None, restaurant_location_id=None)
+        self.assertIsNotNone(reply)
+        assert reply is not None
+        lowered = reply.lower()
+        # It must not deny the service, and it must not invent a number.
+        self.assertNotIn("don't offer", lowered)
+        self.assertNotIn("do not offer", lowered)
+        self.assertNotIn("cad", lowered)
+        self.assertIn("branch", lowered)
+
+    def test_the_db_is_not_touched_when_there_is_no_branch(self) -> None:
+        # Passing None for the session proves it: a DB call would raise.
+        _service_info_reply(None, restaurant_id=None, restaurant_location_id=None)

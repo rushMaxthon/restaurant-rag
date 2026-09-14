@@ -3149,13 +3149,23 @@ def _service_info_reply(
 ) -> str | None:
     """What this branch charges and requires, read off its own row."""
 
+    # No branch chosen yet — a guest on a multi-restaurant surface. Returning
+    # None here handed the question back to the model, which answered "we don't
+    # offer delivery through our app": the exact false statement this tier
+    # exists to prevent, arriving by a different route. Fees differ per branch,
+    # so the honest answer names that rather than inventing a number.
+    if restaurant_location_id is None and restaurant_id is None:
+        return (
+            "Delivery and pickup are set per branch, so the fee and the minimum "
+            "order depend on which one you order from. Pick a restaurant and I'll "
+            "give you its exact fee and timings."
+        )
+
     query = select(RestaurantLocation).where(RestaurantLocation.is_active.is_(True))
     if restaurant_location_id is not None:
         query = query.where(RestaurantLocation.id == restaurant_location_id)
-    elif restaurant_id is not None:
-        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
     else:
-        return None
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
 
     location = db.scalars(query.limit(1)).first()
     if location is None:
