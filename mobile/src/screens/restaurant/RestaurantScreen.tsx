@@ -42,7 +42,12 @@ import {
   useSession,
 } from '@hooks/useAppStore';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
-import { ApiError, api, placeholderImage } from '@services/api';
+import {
+  ApiError,
+  api,
+  formatCurrency as formatMoney,
+  placeholderImage,
+} from '@services/api';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import { getOfferPalette } from '@components/offers/offerPalette';
 import { getRestaurantScopedOffers } from '@components/offers/offerScope';
@@ -72,12 +77,14 @@ import { buildPreferencesKey } from '@utils/preferencesKey';
 
 type RestaurantRoute = RouteProp<RootStackParamList, 'Restaurant'>;
 
+/**
+ * Nullable wrapper over the shared formatter. Fees and minimums are read off a
+ * location that may not have resolved yet, and an absent one should read as
+ * zero rather than "NaN" - but the currency itself is decided in one place.
+ */
 function formatCurrency(value: string | number | null | undefined): string {
   const numeric = Number(value);
-  if (Number.isFinite(numeric)) {
-    return `₹${numeric.toFixed(2)}`;
-  }
-  return `₹${value ?? '0.00'}`;
+  return formatMoney(Number.isFinite(numeric) ? numeric : 0);
 }
 
 function getLocationAvailabilityLabel(location: RestaurantLocation): string {

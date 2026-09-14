@@ -25,7 +25,12 @@ import {
 import { EmptyPanel } from "../components/EmptyPanel";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
-import { ApiError, api, formatCurrency } from "../services/api";
+import {
+  ApiError,
+  api,
+  formatCompactCurrency,
+  formatCurrency,
+} from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import {
@@ -105,15 +110,6 @@ function formatDateRange(dateFrom: string, dateTo: string): string {
     return `${dateFrom} → ${dateTo}`;
   }
   return "All time";
-}
-
-function formatCompactCurrency(value: number) {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "INR",
-    notation: "compact",
-    maximumFractionDigits: value >= 1000 ? 1 : 0,
-  }).format(value);
 }
 
 function formatCompactNumber(value: number) {

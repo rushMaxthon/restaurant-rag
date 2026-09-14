@@ -26,7 +26,7 @@ function SearchPromptBarComponent({
   onSuggestionPress,
   onPress,
   readOnly = false,
-  placeholder = 'Try: spicy Chinese under ₹200',
+  placeholder = 'Try: spicy Chinese under $200',
 }: SearchPromptBarProps): React.JSX.Element {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);

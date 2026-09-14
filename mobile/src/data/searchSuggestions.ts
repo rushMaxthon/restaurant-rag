@@ -1,5 +1,5 @@
 export const searchSuggestions = [
-  'spicy Chinese under ₹200',
+  'spicy Chinese under $200',
   'healthy high-protein lunch',
   'best biryani near me',
   'quick snacks in 20 mins',
