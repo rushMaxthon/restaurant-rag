@@ -12,9 +12,14 @@ present a guess as a measurement.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+
+from app.services.cache import cache_get_json, cache_set_json
+
+logger = logging.getLogger(__name__)
 
 # A pairing must leave exactly one item unaccounted for. Two missing items is a
 # menu, not a nudge, and the customer cannot act on it with one tap.
@@ -214,3 +219,136 @@ def choose_upsell(
             )
 
     return None
+
+
+# Two noes is the whole budget. A third ask does not convert; it teaches the
+# customer that the prompts are noise and costs every future suggestion.
+DECLINE_LIMIT = 2
+
+# Long enough to outlive a browsing session, short enough that tomorrow is a
+# fresh conversation.
+SUGGESTION_MEMORY_TTL_SECONDS = 60 * 60 * 6
+
+
+@dataclass(frozen=True)
+class SuggestionMemory:
+    offered_item_ids: frozenset[uuid.UUID] = frozenset()
+    declined_item_ids: frozenset[uuid.UUID] = frozenset()
+    decline_count: int = 0
+
+
+def _suggestion_identity(suggestion: SellSuggestion) -> uuid.UUID | None:
+    """The one field that names this suggestion, for suppression purposes.
+
+    menu_item_id is not set on every suggestion: combo_upgrade carries only
+    combo_id, because a combo is several items, not one. Falling through
+    menu_item_id -> combo_id -> customization_option_id means a combo is
+    still remembered by combo_id even though it has no menu_item_id.
+    is_suppressed and record_offer both call this so the two can never
+    disagree about what "the same suggestion" means.
+
+    menu_item_id wins whenever it is set, which includes add_on suggestions
+    (they carry both menu_item_id and customization_option_id). Two different
+    add-ons offered on the same item therefore collide under one identity —
+    the same missed-suggestion-over-wrong-suggestion trade-off choose_upsell
+    already accepts for pooling add-on options across cart lines.
+    """
+
+    return suggestion.menu_item_id or suggestion.combo_id or suggestion.customization_option_id
+
+
+def is_suppressed(
+    suggestion: SellSuggestion,
+    *,
+    memory: SuggestionMemory,
+    cart_item_ids: set[uuid.UUID],
+) -> bool:
+    if memory.decline_count >= DECLINE_LIMIT:
+        return True
+
+    # Only cross-sell offers a genuinely new item, so only cross-sell can be
+    # made redundant by something already sitting in the cart. up_sell's two
+    # rungs (size_upgrade, add_on) set menu_item_id to the item being
+    # upgraded, which is in the cart by definition — applying this check to
+    # them would suppress every up-sell choose_upsell could ever produce.
+    if suggestion.kind == "cross_sell" and suggestion.menu_item_id in cart_item_ids:
+        return True
+
+    identity = _suggestion_identity(suggestion)
+    if identity is None:
+        return False
+    return identity in memory.offered_item_ids or identity in memory.declined_item_ids
+
+
+def record_offer(memory: SuggestionMemory, suggestion: SellSuggestion) -> SuggestionMemory:
+    identity = _suggestion_identity(suggestion)
+    if identity is None:
+        # Nothing to key the memory on, so this offer cannot be recognised
+        # again later. It is offered once and forgotten rather than raising —
+        # a suggestion the rules produced is still worth showing even if this
+        # module can't yet remember it.
+        return memory
+    return SuggestionMemory(
+        offered_item_ids=memory.offered_item_ids | {identity},
+        declined_item_ids=memory.declined_item_ids,
+        decline_count=memory.decline_count,
+    )
+
+
+def record_decline(memory: SuggestionMemory, menu_item_id: uuid.UUID) -> SuggestionMemory:
+    return SuggestionMemory(
+        offered_item_ids=memory.offered_item_ids,
+        declined_item_ids=memory.declined_item_ids | {menu_item_id},
+        decline_count=memory.decline_count + 1,
+    )
+
+
+def _memory_cache_key(user_id: uuid.UUID, session_id: uuid.UUID) -> str:
+    return f"suggestions:memory:{user_id}:{session_id}"
+
+
+def load_memory(user_id: uuid.UUID, session_id: uuid.UUID | None) -> SuggestionMemory:
+    """Owned here rather than riding on the RAG session state.
+
+    `GET /api/suggestions` must work with no conversation at all, and reaching
+    into `rag.py` for its dataclass would couple a page render to the whole
+    retrieval module — and make the import cycle real once rag.py calls this
+    service.
+    """
+
+    if session_id is None:
+        return SuggestionMemory()
+    payload = cache_get_json(_memory_cache_key(user_id, session_id))
+    if not isinstance(payload, dict):
+        return SuggestionMemory()
+    try:
+        return SuggestionMemory(
+            offered_item_ids=frozenset(
+                uuid.UUID(value) for value in payload.get("offered", []) if isinstance(value, str)
+            ),
+            declined_item_ids=frozenset(
+                uuid.UUID(value) for value in payload.get("declined", []) if isinstance(value, str)
+            ),
+            decline_count=int(payload.get("decline_count", 0)),
+        )
+    except (TypeError, ValueError):
+        logger.warning("Suggestion memory payload validation failed; starting fresh")
+        return SuggestionMemory()
+
+
+def store_memory(
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    memory: SuggestionMemory,
+) -> None:
+    if session_id is None:
+        return
+    cache_set_json(
+        _memory_cache_key(user_id, session_id),
+        {
+            "offered": sorted(str(value) for value in memory.offered_item_ids),
+            "declined": sorted(str(value) for value in memory.declined_item_ids),
+            "decline_count": memory.decline_count,
+        },
+        ttl_seconds=SUGGESTION_MEMORY_TTL_SECONDS,
+    )
