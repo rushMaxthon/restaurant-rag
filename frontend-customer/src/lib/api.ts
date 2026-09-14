@@ -467,16 +467,14 @@ export const api = {
     restaurantLocationId: string;
     sessionId: string;
     cart: CartLineRequest[];
-  }) => {
-    const query = new URLSearchParams({
-      restaurant_location_id: params.restaurantLocationId,
-      session_id: params.sessionId,
-      cart: JSON.stringify(params.cart),
-    });
-    return request<{ suggestion: SellSuggestion | null }>(
-      `/suggestions?${query.toString()}`,
-    ).then((envelope) => envelope.suggestion);
-  },
+  }) =>
+    request<{ suggestion: SellSuggestion | null }>("/suggestions", {
+      query: {
+        restaurant_location_id: params.restaurantLocationId,
+        session_id: params.sessionId,
+        cart: JSON.stringify(params.cart),
+      },
+    }).then((envelope) => envelope.suggestion),
 
   declineSuggestion: (sessionId: string, menuItemId: string) =>
     request("/suggestions/decline", {
