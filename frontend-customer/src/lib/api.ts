@@ -1,4 +1,5 @@
 import type { Restaurant, RestaurantLocation, MenuItem, Order, Money } from "@/lib/bangkok-data";
+import type { GuestPreferences } from "@/lib/guest-preferences";
 
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
@@ -73,6 +74,10 @@ export type ChatStreamMeta = {
   suggestions: ChatSuggestion[];
   combo_suggestions: unknown[];
   offer_suggestions: unknown[];
+  // Empty for a signed-in customer: their traits already live in a row, and
+  // echoing them to a client that may not assert them would invite exactly the
+  // round-trip the backend's trust boundary refuses.
+  inferred_preferences?: GuestPreferences;
 };
 
 export type ChatStreamDone = ChatStreamMeta & { reply: string };
@@ -100,6 +105,33 @@ export async function getChatHistory(sessionId?: string | null): Promise<ChatHis
     auth: true,
     query: sessionId ? { session_id: sessionId, limit: 50 } : { limit: 50 },
   });
+}
+
+export type UserPreferencesResponse = {
+  cuisines: string[];
+  diet: string | null;
+  spice_level: string | null;
+  budget: string | null;
+  favorite_items: string[];
+};
+
+export async function getMyPreferences(): Promise<UserPreferencesResponse | null> {
+  try {
+    return await request<UserPreferencesResponse>("/preferences/me", { auth: true });
+  } catch {
+    // A customer with no preferences row is the case this feature exists for,
+    // and it is indistinguishable from a transport failure at this layer. Both
+    // answers are "do not promote", which is the safe direction: the worst
+    // outcome is the guest's traits waiting for the next login.
+    return null;
+  }
+}
+
+export async function putMyPreferences(payload: {
+  diet?: string | null;
+  spice_level?: string | null;
+}): Promise<void> {
+  await request("/preferences/me", { method: "PUT", auth: true, body: payload });
 }
 
 export type PersonalizedOffer = {
@@ -397,6 +429,9 @@ export const api = {
   // NOTE: the real route is /offers/personalized (see backend app/api/personalized_offers.py) —
   // there is no top-level /personalized-offers path on this API.
   getPersonalizedOffers: () => request<PersonalizedOffer[]>("/offers/personalized", { auth: true }),
+
+  getMyPreferences,
+  putMyPreferences,
 };
 
 type ChatStreamPayload = {
@@ -404,6 +439,7 @@ type ChatStreamPayload = {
   session_id?: string | null;
   restaurant_id?: string | null;
   restaurant_location_id?: string | null;
+  guest_preferences?: GuestPreferences | undefined;
 };
 
 type ChatStreamHandlers = {

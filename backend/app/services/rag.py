@@ -60,6 +60,11 @@ logger = logging.getLogger(__name__)
 # retrieval stays on a local Ollama while the reply may be written in the cloud.
 # Both endpoints and both sets of auth headers come from the shared module.
 from app.services.embeddings import EmbeddingError, get_embedding
+
+# The same normalizers `PUT /preferences/me` runs, so a trait inferred from chat
+# and a trait a customer set by hand are stored in one vocabulary. Duplicating
+# the alias tables here would let the two drift and make "veg" mean two things.
+from app.services.recommendations import _normalize_diet_value, _normalize_spice_level
 from app.services.ollama_client import (
     think_option,
     EMBED_ENDPOINT,
@@ -87,6 +92,25 @@ SESSION_CACHE_PREFIX = "chat:session"
 SESSION_STATE_CACHE_PREFIX = "chat:session-state"
 EMBEDDING_CACHE_PREFIX = "rag:embedding"
 RESPONSE_CACHE_PREFIX = "rag:response"
+
+# BUMP THIS whenever a change alters what a reply is allowed to say.
+#
+# Cached replies never reach the code that shapes a reply — that is the point of
+# a cache, and it is also how this bites. 5212542 taught the concierge to stop
+# offering food the kitchen cannot serve, and the trim worked when called
+# directly, but the app went on offering "the spicy chutney" on a dish that has
+# none: every one of those replies was being served from an entry written under
+# the old behaviour. The version was not bumped, so nothing moved namespace.
+#
+# Two things hid it. The cache is written AFTER the trim, so new replies are
+# stored correctly and the code reads as if it works. And Redis only started
+# running locally in 6d8ecac; before that every cache operation degraded to a
+# miss, so this literal had never once had to do its job here.
+#
+# A prompt change, a grounding rule, a formatting change — anything a customer
+# would notice — needs a bump. Retrieval and ranking changes do not: they alter
+# which dishes are found, and the key already carries the query descriptor.
+RESPONSE_CACHE_VERSION = "v11"
 GREETING_RESPONSE_CACHE_PREFIX = "rag:response:greeting"
 
 SYSTEM_PROMPT = """You are the host of a restaurant ordering app, and you sell for a living.
@@ -1905,10 +1929,15 @@ def _infer_cache_query_descriptor(message: str) -> CacheQueryDescriptor:
     query_tokens = _query_tokens(message)
 
     diet: str | None = None
-    if "vegetarian" in normalized_message or re.search(r"\bveg\b", normalized_message):
-        diet = "veg"
-    elif "non veg" in normalized_message or "non-veg" in normalized_message:
+    # Non-veg is tested FIRST because it contains the word it must not be
+    # mistaken for. `\bveg\b` matches inside "non veg", so with the branches the
+    # other way round the elif was unreachable and "non veg please" classified as
+    # veg — the exact opposite of the request, in a value that keys the response
+    # cache.
+    if "non veg" in normalized_message or "non-veg" in normalized_message or "nonveg" in normalized_message:
         diet = "non_veg"
+    elif "vegetarian" in normalized_message or re.search(r"\bveg\b", normalized_message):
+        diet = "veg"
 
     spicy = True if ("spicy" in normalized_message or "chilli" in normalized_message) else None
 
@@ -2145,15 +2174,39 @@ def _response_cache_key(
     restaurant_id: uuid.UUID | None,
     *,
     descriptor: CacheQueryDescriptor | None = None,
+    preference_diet: str | None = None,
 ) -> str:
+    """The key a reply is stored under.
+
+    `preference_diet` is the diet that will actually be applied, which is not
+    always the one the message names. A guest who said "I am vegetarian" earlier
+    and now asks "I need spicy menu" gets a veg-filtered answer, but the
+    descriptor reads diet out of the MESSAGE and that message names none — so
+    without this every guest asking that question shared one entry regardless of
+    what they eat, and whoever asked first decided what the rest were served.
+    Reported from the app as "I said vegetarian and it showed me chicken".
+
+    Passing the diet that was named in the message changes nothing: the
+    descriptor already put it in the key, and both routes produce the same
+    string. Two vegetarians asking the same question still share an entry, so
+    the cache keeps earning its keep.
+    """
+
     scope = str(restaurant_id) if restaurant_id is not None else "global"
     descriptor = descriptor or _infer_cache_query_descriptor(message)
     topic_slug = re.sub(r"[^a-z0-9]+", "-", descriptor.topic or "general").strip("-") or "general"
-    key_parts = [RESPONSE_CACHE_PREFIX, scope, "v10", descriptor.cache_intent, topic_slug]
+    key_parts = [
+        RESPONSE_CACHE_PREFIX,
+        scope,
+        RESPONSE_CACHE_VERSION,
+        descriptor.cache_intent,
+        topic_slug,
+    ]
     if descriptor.budget is not None:
         key_parts.append(f"budget-{descriptor.budget.normalize()}")
-    if descriptor.diet is not None:
-        key_parts.append(descriptor.diet)
+    effective_diet = descriptor.diet or preference_diet
+    if effective_diet is not None:
+        key_parts.append(effective_diet)
     if descriptor.spicy:
         key_parts.append("spicy")
     if descriptor.new_only:
@@ -2459,6 +2512,176 @@ def _fetch_recent_history_messages(
 
 def _fetch_user_preferences(db: Session, user_id: uuid.UUID) -> UserPreferences | None:
     return db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
+
+
+# --- guest preferences ------------------------------------------------------
+#
+# The concierge is usable before login on purpose (see chat_principal.py), so a
+# visitor can say they are vegetarian twice and be recommended meat next visit:
+# a guest has no row in `users`, so there has never been anywhere to put it.
+#
+# Their browser is the only store available, which means the value arrives in
+# the request. That is exactly the shape CLAUDE.md warns about — "backend
+# enforces, UI only hides" — so it is accepted for a GUEST and ignored outright
+# for an authenticated user, whose row is the only source. See
+# `resolve_chat_preferences`.
+#
+# Spec: docs/superpowers/specs/2026-09-14-guest-preferences-design.md
+
+# Only these two are ever remembered. Cuisine and budget describe the meal
+# rather than the person — "something cheap tonight" is not a claim about how
+# this customer always eats, and storing it would turn one cheap lunch into a
+# permanent budget tier.
+DURABLE_TRAIT_FIELDS = ("diet", "spice_level")
+
+
+@dataclass(frozen=True)
+class GuestPreferenceProfile:
+    """A guest's traits, shaped to travel the path a stored row travels.
+
+    `_normalized_preference_diet` and `_preference_spice_hint` read preferences
+    with `getattr`, so matching those two attribute names is the whole adapter —
+    retrieval cannot tell the difference and does not need to.
+    """
+
+    dietary_preferences: tuple[str, ...]
+    spice_level: str | None
+
+
+def durable_traits_from_intent(intent: "ExtractedIntent") -> dict[str, str]:
+    """The part of a request worth remembering about the person who made it.
+
+    Reuses the intent the turn already extracted rather than parsing the message
+    again: `diet` and `spicy` are computed for retrieval on every turn and then
+    thrown away.
+
+    `spicy=False` is deliberately a trait. "Nothing too spicy" says as much as
+    "extra spicy" does, and keeping only the positive case would remember the
+    customers who like heat and forget the ones who cannot take it.
+    """
+
+    traits: dict[str, str] = {}
+
+    diet = _normalize_diet_value([intent.diet]) if intent.diet else None
+    if diet:
+        traits["diet"] = diet
+
+    if intent.spicy is not None:
+        traits["spice_level"] = "HIGH" if intent.spicy else "LOW"
+
+    return traits
+
+
+def durable_traits_from_message(message: str, intent: "ExtractedIntent") -> dict[str, str]:
+    """What this turn learned, from whichever extractor actually saw it.
+
+    There are two, and neither is sufficient alone. `_fallback_extract_intent`
+    runs on the fast path and sets neither `diet` nor `spicy` for ANY phrasing —
+    "I am vegetarian", "veg food please" and "something vegetarian" all come back
+    empty — so building on the intent alone infers nothing on the path most
+    messages take. `_infer_cache_query_descriptor` does detect diet, reliably.
+
+    Spice is deliberately NOT taken from the descriptor. It is a substring test
+    for "spicy" or "chilli" with no negation handling, so "nothing too spicy"
+    reports `spicy=True`. Recording that would store HIGH for a customer who
+    just said the opposite, permanently and invisibly — the silent wrong
+    inference the spec calls out as the main risk of this feature. Spice is only
+    taken from `intent.spicy`, which the model sets and which understands the
+    sentence.
+    """
+
+    traits = durable_traits_from_intent(intent)
+
+    if "diet" not in traits:
+        descriptor_diet = _normalize_diet_value([_infer_cache_query_descriptor(message).diet])
+        if descriptor_diet:
+            traits["diet"] = descriptor_diet
+
+    return traits
+
+
+def guest_preference_profile(payload: object | None) -> GuestPreferenceProfile | None:
+    """Validate what a browser claims, or return None.
+
+    Anything unrecognised becomes None rather than reaching a query. The values
+    only ever steer ranking, so the worst a forged payload achieves is a guest
+    misleading themselves about their own diet.
+    """
+
+    if not isinstance(payload, dict) or not payload:
+        return None
+
+    diet = _normalize_diet_value([payload.get("diet")]) if payload.get("diet") else None
+    spice = _normalize_spice_level(payload.get("spice_level"))
+    if diet is None and spice is None:
+        return None
+
+    return GuestPreferenceProfile(
+        dietary_preferences=(diet,) if diet else (),
+        spice_level=spice,
+    )
+
+
+def seed_intent_from_preferences(
+    intent: "ExtractedIntent",
+    preferences: "UserPreferences | GuestPreferenceProfile | None",
+) -> None:
+    """Apply a remembered trait to a request that did not mention one.
+
+    This is how a stored preference reaches the results, and it is not where the
+    spec expected. `_normalized_preference_diet` and `_preference_spice_hint`
+    are read in exactly one place — `_new_item_sort_key`, as ranking bonuses —
+    so loading preferences more often would not have filtered anything. What
+    shapes retrieval is `intent.diet`: it goes into the effective query and into
+    the candidate filters. Seeding it reuses that whole path rather than running
+    a second one beside it.
+
+    The message always wins. A vegetarian ordering for someone else must be able
+    to say so, and a stored trait that overrode an explicit request would be
+    impossible to escape without editing an account setting mid-conversation.
+    Only an intent that is silent on a field gets filled.
+
+    Mutates in place, because the caller already holds the resolved intent and
+    threading a copy through would touch every path that reads it.
+    """
+
+    if preferences is None:
+        return
+
+    if intent.diet is None:
+        diet = _normalized_preference_diet(preferences)
+        if diet:
+            intent.diet = diet
+
+    if intent.spicy is None:
+        spice = _preference_spice_hint(preferences)
+        if spice == "high":
+            intent.spicy = True
+        elif spice == "low":
+            intent.spicy = False
+
+
+def resolve_chat_preferences(
+    *,
+    db: Session | None,
+    principal: ChatPrincipal,
+    guest_preferences: object | None = None,
+) -> UserPreferences | GuestPreferenceProfile | None:
+    """Whose preferences apply to this turn, and where they are allowed to come from.
+
+    The trust boundary. A guest has no server-side identity, so their browser is
+    the only place their traits can live and the request is the only way to send
+    them. An authenticated user has a row, and a client must never be able to
+    speak over it: `guest_preferences` is not merged, not used as a fallback,
+    and not logged as a conflict. It is treated as though it were never sent.
+    """
+
+    if is_guest(principal):
+        return guest_preference_profile(guest_preferences)
+
+    if db is None:
+        return None
+    return _fetch_user_preferences(db, principal.id)
 
 
 @lru_cache(maxsize=256)
@@ -3115,7 +3338,15 @@ def _normalized_preference_diet(preferences: UserPreferences | None) -> str | No
 def _preference_spice_hint(preferences: UserPreferences | None) -> str | None:
     if preferences is None:
         return None
-    value = _normalize_text(getattr(preferences, "spice_level", None))
+    # `spice_level` is nullable and NULL on most rows — 5 of 8 here. Passing None
+    # straight to `_normalize_text` raised AttributeError on `.strip()`. It never
+    # fired because preferences were loaded only for messages that sounded
+    # personal, and read only on the new-item ranking path; making them load
+    # every turn is what surfaced it.
+    raw = getattr(preferences, "spice_level", None)
+    if not isinstance(raw, str):
+        return None
+    value = _normalize_text(raw)
     if value in {"high", "medium", "low"}:
         return value
     return None
@@ -4276,6 +4507,39 @@ def _is_global_response_cacheable(
     return cacheable
 
 
+def preference_diet_for_cache(
+    db: Session | None,
+    principal: ChatPrincipal,
+    guest_preferences: object | None,
+) -> str | None:
+    """The diet that will shape this reply, resolved early enough to key it.
+
+    The cache is consulted before the turn is prepared, so the diet that
+    `seed_intent_from_preferences` will apply is not known yet — and a key that
+    does not know it lets one visitor's answer be served to another with the
+    opposite diet.
+
+    Free for a guest, whose traits arrive in the request. For a signed-in
+    customer this is one indexed lookup by user_id that `_prepare_chat_turn`
+    then repeats. Worth measuring before optimising: correctness here is the
+    difference between a vegetarian being shown chicken and not.
+    """
+
+    try:
+        preferences = resolve_chat_preferences(
+            db=db,
+            principal=principal,
+            guest_preferences=guest_preferences,
+        )
+        return _normalized_preference_diet(preferences)
+    except Exception:  # pragma: no cover - a cache key must not break a reply
+        # Reading the preference is wrapped too, not just fetching it. Keying
+        # without a diet costs a cache miss; raising from here would turn a
+        # cache-key detail into a failed answer.
+        logger.exception("Preference lookup for cache key failed; keying without it")
+        return None
+
+
 def _lookup_global_response_cache(
     *,
     message: str,
@@ -4283,10 +4547,16 @@ def _lookup_global_response_cache(
     is_greeting: bool,
     uses_personal_context: bool,
     is_follow_up: bool,
+    preference_diet: str | None = None,
 ) -> tuple[str, tuple[str, list[ChatSuggestionItem], str] | None, bool, str]:
     descriptor = _infer_cache_query_descriptor(message)
     normalized_query = descriptor.normalized_message
-    cache_key = _response_cache_key(message, restaurant_id, descriptor=descriptor)
+    cache_key = _response_cache_key(
+        message,
+        restaurant_id,
+        descriptor=descriptor,
+        preference_diet=preference_diet,
+    )
     cacheable, reason = _resolve_global_cacheability(
         message=message,
         restaurant_id=restaurant_id,
@@ -4967,6 +5237,7 @@ def _prepare_chat_turn(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None,
+    guest_preferences: object | None = None,
 ) -> PreparedChatTurn:
     active_session_id = session_id or uuid.uuid4()
     timings = RagStageTimings()
@@ -5248,12 +5519,31 @@ def _prepare_chat_turn(
         )
     uses_personal_context = _message_requests_personal_context(message) or is_follow_up
 
+    # Preferences load on EVERY turn, not only when the message sounds personal.
+    # `uses_personal_context` fires on "my", "for me", "my usual" and follow-ups
+    # — so a signed-in vegetarian asking "show me momos" used to get meat momos,
+    # because that phrasing never tripped the gate and their stored diet was
+    # never read. Diet and spice are hard constraints, not personalization
+    # flourishes: serving meat to a vegetarian is wrong, not a missed nicety.
+    #
+    # The gate still governs everything else — favourite cuisines, favourite
+    # items, budget, new-item ranking — which is where it was earning its keep.
+    # Cost is one indexed lookup by user_id per turn, and none for a guest,
+    # whose traits arrive in the request.
+    preferences_started_at = perf_counter()
+    preferences = resolve_chat_preferences(
+        db=db,
+        principal=user,
+        guest_preferences=guest_preferences,
+    )
+    timings.preferences_ms = round((perf_counter() - preferences_started_at) * 1000, 2)
+
+    # Before the effective query is built, because that is what the seeded diet
+    # has to reach. Seeding afterwards would set a field nothing downstream
+    # re-reads, which looks like it works and changes no results.
+    seed_intent_from_preferences(resolved_intent, preferences)
+
     effective_message = _build_effective_query_from_intent(message, resolved_intent, session_state)
-    preferences: UserPreferences | None = None
-    if uses_personal_context:
-        preferences_started_at = perf_counter()
-        preferences = _fetch_user_preferences(db, user.id)
-        timings.preferences_ms = round((perf_counter() - preferences_started_at) * 1000, 2)
 
     budget_limit = (
         resolved_intent.budget
@@ -5840,6 +6130,7 @@ def handle_chat_message(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
+    guest_preferences: object | None = None,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -5867,6 +6158,16 @@ def handle_chat_message(
             suggestions=[],
             combo_suggestions=[],
             offer_suggestions=[],
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     if _is_greeting_message(message):
@@ -5927,6 +6228,16 @@ def handle_chat_message(
             suggestions=prepared.suggestions,
             combo_suggestions=prepared.combo_suggestions,
             offer_suggestions=prepared.offer_suggestions,
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     cache_started_at = perf_counter()
@@ -5936,6 +6247,7 @@ def handle_chat_message(
         is_greeting=False,
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
+        preference_diet=preference_diet_for_cache(db, user, guest_preferences),
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:
@@ -5969,6 +6281,16 @@ def handle_chat_message(
             suggestions=prepared.suggestions,
             combo_suggestions=prepared.combo_suggestions,
             offer_suggestions=prepared.offer_suggestions,
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     try:
@@ -5979,6 +6301,7 @@ def handle_chat_message(
             session_id=session_id,
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
+            guest_preferences=guest_preferences,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -6109,6 +6432,13 @@ def handle_chat_message(
         suggestions=prepared.suggestions,
         combo_suggestions=prepared.combo_suggestions,
         offer_suggestions=prepared.offer_suggestions,
+        # Only a guest needs this back: their browser is the only place it can
+        # live. An authenticated customer's traits already have a row, and
+        # echoing them to a client that is not allowed to assert them would
+        # invite exactly the round-trip the trust boundary forbids.
+        inferred_preferences=(
+            durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+        ),
     )
 
 
@@ -6120,6 +6450,7 @@ def stream_chat_message(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
+    guest_preferences: object | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -6232,6 +6563,9 @@ def stream_chat_message(
                 "suggestions": [],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         return
@@ -6243,6 +6577,7 @@ def stream_chat_message(
         is_greeting=False,
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
+        preference_diet=preference_diet_for_cache(db, user, guest_preferences),
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:
@@ -6267,6 +6602,9 @@ def stream_chat_message(
                 "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         yield _sse_frame("token", {"text": reply})
@@ -6288,6 +6626,9 @@ def stream_chat_message(
                 "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         return
@@ -6300,6 +6641,7 @@ def stream_chat_message(
             session_id=session_id,
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
+            guest_preferences=guest_preferences,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(

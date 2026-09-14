@@ -82,6 +82,11 @@ def send_chat_message(
         session_id=session_id,
         restaurant_id=scoped_restaurant_id,
         restaurant_location_id=payload.restaurant_location_id,
+        # Honoured only for a guest; ignored outright for an authenticated user.
+        # See `resolve_chat_preferences`.
+        guest_preferences=(
+            payload.guest_preferences.model_dump() if payload.guest_preferences else None
+        ),
     )
     logger.info(
         "Chat API response: user_id=%s session_id=%s suggestions=%d total=%.2fms",
@@ -118,6 +123,12 @@ def stream_chat_message_route(
             session_id=session_id,
             restaurant_id=scoped_restaurant_id,
             restaurant_location_id=payload.restaurant_location_id,
+            # The surface the customer app actually uses. Wiring only the
+            # non-streaming endpoint would make this work in every curl and in
+            # no browser.
+            guest_preferences=(
+                payload.guest_preferences.model_dump() if payload.guest_preferences else None
+            ),
         ),
         media_type="text/event-stream",
         headers={

@@ -17,6 +17,7 @@ import {
   setSession,
   type AuthUser,
 } from "@/lib/api";
+import { clearGuestPreferences, readGuestPreferences } from "@/lib/guest-preferences";
 
 type AuthState = {
   user: AuthUser | null;
@@ -29,7 +30,7 @@ type AuthContextValue = AuthState & {
    * False until the stored session has been read on the client.
    *
    * Callers that would do something irreversible on "not signed in" — like
-   * redirecting to /login - must wait for this. During SSR and the first
+   * redirecting to /login — must wait for this. During SSR and the first
    * client render nobody is signed in yet, and acting on that would throw a
    * signed-in customer out of checkout.
    */
@@ -57,6 +58,47 @@ const ROLE_REJECTION_MESSAGE =
  * during SSR, where it is a no-op anyway.
  */
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * Move what this browser learned about a guest onto the account they just
+ * signed into — but only if that account has nothing of its own.
+ *
+ * The ACCOUNT WINS. A browser's inference must never overwrite something a
+ * person deliberately set: one session on a borrowed laptop would otherwise
+ * silently rewrite a long-standing profile, and they would never see it happen.
+ * So promotion only ever fires on the visit where an account first has no
+ * preferences, which is the new-signup case.
+ *
+ * Never throws, never awaited in a way that can block. A customer who cannot
+ * sign in because a preference promotion failed is a far worse outcome than one
+ * whose remembered diet takes another visit to stick — the local copy is left
+ * in place and the next login tries again.
+ *
+ * Goes through PUT /preferences/me rather than writing anything directly, so
+ * the server-side cache invalidation and recommendation refresh that endpoint
+ * performs come along with it.
+ */
+async function promoteGuestPreferences(): Promise<void> {
+  try {
+    const stored = readGuestPreferences();
+    if (Object.keys(stored).length === 0) return;
+
+    const existing = await api.getMyPreferences();
+    if (existing && (existing.diet || existing.spice_level)) {
+      // They already told us, properly. Drop the guess.
+      clearGuestPreferences();
+      return;
+    }
+
+    await api.putMyPreferences({
+      diet: stored.diet ?? null,
+      spice_level: stored.spice_level ?? null,
+    });
+    clearGuestPreferences();
+  } catch {
+    // Keep the local copy and try again next login.
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Deliberately NOT a lazy initializer reading localStorage.
@@ -87,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setSession(response.access_token, response.user);
     setState({ user: response.user, token: response.access_token });
+    await promoteGuestPreferences();
   }, []);
 
   const register = useCallback(
@@ -102,6 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(response.access_token, response.user);
       setState({ user: response.user, token: response.access_token });
+      // Registration too: a brand new account is precisely the one with nothing
+      // of its own, so it is the case promotion was written for.
+      await promoteGuestPreferences();
     },
     [],
   );

@@ -14,6 +14,7 @@ import {
   type ChatSuggestion,
 } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
+import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 
 type ConciergeSearch = { q?: string };
 
@@ -235,11 +236,21 @@ function ConciergePage() {
 
     try {
       await streamChatMessage(
-        { message: text, session_id: sessionIdRef.current },
+        {
+          message: text,
+          session_id: sessionIdRef.current,
+          // Undefined for a signed-in customer and for a guest who has said
+          // nothing yet. The backend ignores it outright for an account, so
+          // sending it would be harmless — but not sending what cannot be used
+          // keeps the request honest about who it is for.
+          guest_preferences: getToken() ? undefined : guestPreferencesForRequest(),
+        },
         {
           onMeta: (meta) => {
             sessionIdRef.current = meta.session_id;
             storeSession(meta.session_id);
+            // Only ever non-empty for a guest; see ChatStreamMeta.
+            mergeGuestPreferences(meta.inferred_preferences);
             patchAnswer((turn) => ({ ...turn, suggestions: meta.suggestions }));
             setStatus((s) => (s === "waiting" ? "streaming" : s));
           },
