@@ -867,3 +867,83 @@ textarea.flex:focus-visible {
 html {
   scroll-padding-top: 5rem;
 }
+
+/* --- Earliest-available row -------------------------------------------------
+   The soonest time the kitchen can actually manage, promoted out of the grid.
+   It is the answer most people scheduling ahead are looking for, and as one
+   chip among twenty-four it was invisible. */
+.earliest-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 56px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--primary-soft);
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.earliest-row:hover {
+  border-color: var(--primary);
+}
+.earliest-row[data-on="true"] {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+/* The native time control, dressed like the date one beside it. Native so a
+   phone opens its own wheel, which gives minutes and am/pm for free and is
+   already accessible. */
+.time-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.9rem;
+  cursor: pointer;
+}
+.time-field:focus-within {
+  border-color: var(--primary);
+}
+.time-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  cursor: pointer;
+}
+.time-field input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+/* A text button that reads as a link without being one — it changes what this
+   panel shows, it does not navigate. */
+.link-button {
+  min-height: 40px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (pointer: coarse) {
+  .link-button {
+    min-height: 44px;
+  }
+}
