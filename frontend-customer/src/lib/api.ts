@@ -1,5 +1,6 @@
 import type { Restaurant, RestaurantLocation, MenuItem, Order, Money } from "@/lib/bangkok-data";
 import type { GuestPreferences } from "@/lib/guest-preferences";
+import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
@@ -461,6 +462,27 @@ export const api = {
 
   getMyPreferences,
   putMyPreferences,
+
+  getSuggestion: (params: {
+    restaurantLocationId: string;
+    sessionId: string;
+    cart: CartLineRequest[];
+  }) => {
+    const query = new URLSearchParams({
+      restaurant_location_id: params.restaurantLocationId,
+      session_id: params.sessionId,
+      cart: JSON.stringify(params.cart),
+    });
+    return request<{ suggestion: SellSuggestion | null }>(
+      `/suggestions?${query.toString()}`,
+    ).then((envelope) => envelope.suggestion);
+  },
+
+  declineSuggestion: (sessionId: string, menuItemId: string) =>
+    request("/suggestions/decline", {
+      method: "POST",
+      body: { session_id: sessionId, menu_item_id: menuItemId },
+    }),
 };
 
 type ChatStreamPayload = {
