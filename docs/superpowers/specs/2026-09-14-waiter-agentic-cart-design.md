@@ -41,19 +41,72 @@ stay a visible wrong cart, never a charge.
 **Not an LLM planner.** Actions are produced deterministically. See "The tier-2
 seam".
 
+**Not a chat screen bolted onto the home page.** See the next section — this is
+the constraint most likely to be violated, because the easy build is a message
+thread on every route.
+
+---
+
+## The waiter speaks through the page, not in place of it
+
+A customer must feel guided without being handed a transcript. The home page
+keeps its hero, its picks and its categories; browsing stays browsing. What
+changes is that the existing components start saying something.
+
+**Guidance renders as in-place UI, anchored to the thing it is about:**
+
+| Where | How the waiter shows up |
+|---|---|
+| Home | one line under the hero — *"Veg and spicy, like last time?"* with `[Show me those]` / `[Something different]`. Tapping **filters the menu**; it does not open a conversation. |
+| Menu | a section heading that explains itself — *"Because you like it spicy"* — over the ordinary grid |
+| Dish page | after adding, the pairing appears as a card **on that page** |
+| Cart | *"Nothing to drink yet"* with one card, beside the items it refers to |
+| Docked bar | collapsed to a single line by default, on every route including home |
+
+**Rules that keep it from becoming a chat:**
+
+- The docked bar **never auto-expands**, and never on arrival. Expanding is
+  always the customer's tap.
+- Nothing renders a transcript outside `/concierge`. In-page guidance is one
+  prompt with buttons — no history, no scrollback, no typing indicator.
+- At most one in-page prompt visible at a time, per the suppression rules.
+- Every prompt is dismissible, and dismissal counts as a decline.
+- If the customer never taps anything, the site behaves exactly as it does
+  today. Guidance is additive; it never gates a path.
+
+### What this requires: a non-chat suggestion endpoint
+
+A page cannot ask the chat endpoint for guidance — that endpoint needs a
+message, and there is no message here. So:
+
+```
+GET /api/suggestions?restaurant_location_id=...&cart=...
+```
+
+returns the same `SellSuggestion` the chat turn would embed, with no
+conversation involved. Same service, same suppression state, same `basis`
+labelling.
+
+This is what makes the principle cheap rather than a second implementation:
+**one suggestion contract, several renderers.** The backend does not know
+whether its answer will be drawn as a chat bubble, a strip under a hero, or a
+card in the cart, and must not care.
+
 ---
 
 ## Scope: three shippable phases
 
 | Phase | Ships | Depends on |
 |---|---|---|
-| 1 | `suggestions.py`, wired into the existing `/concierge` chat | — |
+| 1 | `suggestions.py`, the `GET /api/suggestions` endpoint, the in-page renderers (home strip, menu heading, cart nudge), and the same suggestion embedded in the existing `/concierge` chat | — |
 | 2 | Resolver, action contract, client applier — `/concierge` only | — |
-| 3 | The docked waiter bar on every page | 1, 2 |
+| 3 | The docked waiter bar on every route | 1, 2 |
 
-Phase 1 first: smallest, improves the chat that already exists, and carries no
-risk of putting a wrong item in a cart. Phase 2 is the risky one and lands on
-one screen before it lands on fourteen.
+Phase 1 first, and it is the phase that delivers "someone is guiding me": the
+site starts speaking through its own components, with no agentic behaviour and
+therefore no risk of putting a wrong item in a cart. Phase 2 is the risky one
+and lands on one screen before it lands on fourteen. Phase 3 only adds a way to
+*talk back* — by then the guidance already exists without it.
 
 ---
 
@@ -215,6 +268,13 @@ does not yet have, and is a later change, not a blocker.
 Decline state lives in the existing Redis `SessionConversationState`, so it
 costs no new storage and guests get it too.
 
+Both transports must key that state the same way, or a customer could dismiss a
+prompt on the home page and meet it again in the chat. `GET /api/suggestions`
+therefore takes the **same `session_id`** the chat uses — the client already
+stores one — and a dismissal recorded through either transport suppresses the
+item in both. A request without a `session_id` gets a suggestion but cannot
+have its declines remembered; the client is expected always to send one.
+
 ---
 
 ## Components
@@ -225,7 +285,9 @@ costs no new storage and guests get it too.
 | `suggestions.py: up_sell_candidate(db, cart_lines, location_id)` | the three-rung ladder | `GeneratedCombo`, `MenuItemSize`, customization options |
 | `suggestions.py: choose_suggestion(...)` | suppression, and picking the single winner | `SessionConversationState` |
 | `rag.py: resolve_cart_actions(intent, candidates, ...)` | intent → validated action list | `classify_dish_reference` |
-| `ChatMessageResponse.cart_actions` / `.suggestion` / `.turn_id` | transport | — |
+| `ChatMessageResponse.cart_actions` / `.suggestion` / `.turn_id` | transport, conversational | — |
+| `GET /api/suggestions` | transport, non-conversational — the same `SellSuggestion` without a message | `suggestions.py` |
+| `<WaiterPrompt>` | renders one `SellSuggestion` as in-page UI: home strip, cart nudge, dish-page card | — |
 | `bangkok-store.tsx: applyCartActions` | the only chat-driven mutation path | — |
 | the docked bar | render, send, show undo | existing concierge patterns |
 
@@ -293,6 +355,11 @@ deterministic tier is therefore never wasted work.
 - `applyCartActions` called twice with one `turn_id` applies once
 - an action naming an item absent from the loaded menu is dropped
 - undo restores the exact prior cart, including customizations
+- `GET /api/suggestions` and a chat turn with the same cart return the same
+  suggestion — one service, not two
+- dismissing an in-page prompt counts as a decline, and two dismissals silence
+  suggestions for the session
+- the docked bar renders collapsed on first paint of every route, home included
 
 ---
 
