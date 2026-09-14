@@ -1,0 +1,92 @@
+"""What the waiter offers next, and why it is allowed to.
+
+Every rule here is pure over plain dataclasses. The DB-backed orchestrator that
+loads those dataclasses lives at the bottom of the file, so a change to a
+selling rule never requires a database to re-check.
+
+The `basis` field on a suggestion is load-bearing, not decoration: it is what
+lets the client say "often ordered with your curry" for mined evidence and
+"most people add a drink" for a category default. Rendering them alike would
+present a guess as a measurement.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from decimal import Decimal
+
+# A pairing must leave exactly one item unaccounted for. Two missing items is a
+# menu, not a nudge, and the customer cannot act on it with one tap.
+PAIRING_MISSING_ITEM_COUNT = 1
+
+
+@dataclass(frozen=True)
+class PairingPattern:
+    """A set of items real customers ordered together, with its mined score."""
+
+    item_ids: tuple[uuid.UUID, ...]
+    confidence_score: Decimal
+
+
+@dataclass(frozen=True)
+class CandidateItem:
+    """The facts a selling rule is allowed to filter on."""
+
+    menu_item_id: uuid.UUID
+    category: str | None
+    is_veg: bool
+    is_available: bool
+
+
+@dataclass(frozen=True)
+class SellSuggestion:
+    kind: str
+    basis: str
+    menu_item_id: uuid.UUID | None = None
+    combo_id: uuid.UUID | None = None
+    size_id: uuid.UUID | None = None
+    customization_option_id: uuid.UUID | None = None
+    saving: Decimal | None = None
+    extra_cost: Decimal | None = None
+
+
+def _is_offerable(candidate: CandidateItem | None, *, diet: str | None) -> bool:
+    if candidate is None or not candidate.is_available:
+        return False
+    # A VEG customer being shown a non-veg pairing is the kind of mistake that
+    # loses the account, not just the order.
+    if diet == "VEG" and not candidate.is_veg:
+        return False
+    return True
+
+
+def choose_pairing(
+    patterns: list[PairingPattern],
+    cart_item_ids: set[uuid.UUID],
+    *,
+    candidates: dict[uuid.UUID, CandidateItem],
+    diet: str | None,
+) -> SellSuggestion | None:
+    """The strongest mined pattern this cart is one item short of."""
+
+    if not cart_item_ids:
+        return None
+
+    best: tuple[Decimal, uuid.UUID] | None = None
+    for pattern in patterns:
+        missing = [item_id for item_id in pattern.item_ids if item_id not in cart_item_ids]
+        if len(missing) != PAIRING_MISSING_ITEM_COUNT:
+            continue
+        if len(missing) == len(pattern.item_ids):
+            # Touches nothing in the cart; it is evidence about someone else's meal.
+            continue
+        candidate_id = missing[0]
+        if not _is_offerable(candidates.get(candidate_id), diet=diet):
+            continue
+        if best is None or pattern.confidence_score > best[0]:
+            best = (pattern.confidence_score, candidate_id)
+
+    if best is None:
+        return None
+    return SellSuggestion(kind="cross_sell", basis="co_occurrence", menu_item_id=best[1])
