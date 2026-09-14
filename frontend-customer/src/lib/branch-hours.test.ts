@@ -7,6 +7,9 @@ import {
   dateInputValue,
   dayFromInputValue,
   groupByPartOfDay,
+  isBookableTime,
+  nextBookableTime,
+  snapToInterval,
   lastBookableDay,
   leadMinutes,
   dayFromDate,
@@ -192,6 +195,24 @@ describe("bookableTimes", () => {
     expect(last!.getHours() * 60 + last!.getMinutes()).toBeLessThanOrEqual(21 * 60 + 30);
   });
 
+  it("leaves the kitchen time to cook before it shuts", () => {
+    // The window closes at 21:30 and the delivery ETA is 29 minutes, so the
+    // last honest slot is the grid point at or before 21:01, i.e. 21:00.
+    // Offering 21:30 meant booking food nobody could have made — the server
+    // rejects it, and the customer finds out after filling in the whole form.
+    const times = bookableTimes(branch(), "DELIVERY", "MONDAY", monday, SUNDAY_LATE);
+    const last = times[times.length - 1]!;
+    expect(last.getHours()).toBe(21);
+    expect(last.getMinutes()).toBe(0);
+  });
+
+  it("offers nothing when the window is shorter than the prep time", () => {
+    const tiny = branch({
+      fulfillment_slots: [slot("MONDAY", "DELIVERY", "11:00:00", "11:10:00")],
+    });
+    expect(bookableTimes(tiny, "DELIVERY", "MONDAY", monday, SUNDAY_LATE)).toHaveLength(0);
+  });
+
   it("offers nothing for a day the branch is shut", () => {
     const wednesday = new Date(2026, 8, 16, 0, 0);
     expect(bookableTimes(branch(), "DELIVERY", "WEDNESDAY", wednesday, SUNDAY_LATE)).toHaveLength(
@@ -373,5 +394,86 @@ describe("groupByPartOfDay", () => {
 
   it("has nothing to group when there are no times", () => {
     expect(groupByPartOfDay([])).toEqual([]);
+  });
+});
+
+describe("nextBookableTime", () => {
+  /**
+   * The soonest time this branch can actually have food ready.
+   *
+   * This is what the picker leads with, so it has to be a time the server
+   * would accept — not merely the next opening. A window that opens at 11:00
+   * cannot take an 11:00 order at 10:50 if the kitchen needs 20 minutes.
+   */
+  it("is the first slot on the first day that has one", () => {
+    const soon = nextBookableTime(branch(), "DELIVERY", SUNDAY_LATE);
+    expect(soon).not.toBeNull();
+    expect(soon!.getHours()).toBe(11);
+    expect(soon!.getMinutes()).toBe(0);
+  });
+
+  it("skips past today once today has nothing left", () => {
+    // Monday 21:20 — the window shuts at 21:30 and delivery needs 29 minutes,
+    // so nothing remains today and the answer must come from a later day.
+    const lateMonday = new Date(2026, 8, 14, 21, 20);
+    const soon = nextBookableTime(branch(), "DELIVERY", lateMonday);
+    expect(soon).not.toBeNull();
+    expect(soon!.getDate()).not.toBe(14);
+  });
+
+  it("is null when the branch has no bookable window at all", () => {
+    expect(nextBookableTime(branch({ fulfillment_slots: [] }), "DELIVERY", SUNDAY_LATE)).toBeNull();
+  });
+});
+
+describe("snapToInterval", () => {
+  /**
+   * A custom time has to land on the branch's grid, because the server rejects
+   * anything whose minute is not a multiple of the interval. Rounding UP, not
+   * to nearest: rounding down can land before the prep buffer.
+   */
+  it("rounds up to the next grid point", () => {
+    const snapped = snapToInterval(new Date(2026, 8, 14, 18, 7), 30);
+    expect(snapped.getHours()).toBe(18);
+    expect(snapped.getMinutes()).toBe(30);
+  });
+
+  it("leaves a time already on the grid alone", () => {
+    const snapped = snapToInterval(new Date(2026, 8, 14, 18, 30), 30);
+    expect(snapped.getMinutes()).toBe(30);
+  });
+
+  it("rolls into the next hour", () => {
+    const snapped = snapToInterval(new Date(2026, 8, 14, 18, 45), 30);
+    expect(snapped.getHours()).toBe(19);
+    expect(snapped.getMinutes()).toBe(0);
+  });
+});
+
+describe("isBookableTime", () => {
+  /**
+   * Guards the free-text time picker. Someone can type 11:59 pm into a time
+   * input; the picker must say no before the server does.
+   */
+  const monday = new Date(2026, 8, 14, 9, 0);
+
+  it("accepts a time inside the window with room to cook", () => {
+    expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 14, 19, 0), monday)).toBe(true);
+  });
+
+  it("refuses the closing minute", () => {
+    expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 14, 21, 30), monday)).toBe(false);
+  });
+
+  it("refuses a time before the branch opens", () => {
+    expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 14, 9, 30), monday)).toBe(false);
+  });
+
+  it("refuses a time off the interval grid", () => {
+    expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 14, 19, 7), monday)).toBe(false);
+  });
+
+  it("refuses a day the branch is shut", () => {
+    expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 16, 19, 0), monday)).toBe(false);
   });
 });

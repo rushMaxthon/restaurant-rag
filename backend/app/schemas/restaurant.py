@@ -402,7 +402,12 @@ class RestaurantResponse(RestaurantBase):
 
 
 class RestaurantDetailResponse(RestaurantResponse):
-    owner: RestaurantOwnerSummary
+    # Optional because this same model answers a PUBLIC endpoint. The owner
+    # block carries a real person's name and email address, and /restaurants/
+    # {id} is reachable with no credentials at all — so anyone could read the
+    # email of every owner on the platform, one id at a time. Staff still get
+    # it; customers and anonymous callers get None.
+    owner: RestaurantOwnerSummary | None = None
     locations: list[RestaurantLocationResponse] = []
 
 

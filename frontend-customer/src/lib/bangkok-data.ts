@@ -103,6 +103,15 @@ export type Order = {
   discount_amount: Money;
   total_amount: Money;
   placed_at: string;
+  /**
+   * Set when the customer booked a time instead of ordering for now.
+   *
+   * The API has always returned both; the type simply omitted them, so
+   * somebody who booked "Tomorrow at 7:00 p.m." was never shown it again
+   * anywhere after checkout.
+   */
+  schedule_type?: string | null;
+  scheduled_at?: string | null;
   delivery_address: string | null;
   restaurant?: { id: string; name: string };
   items: {
@@ -131,3 +140,36 @@ export const deriveCategories = (items: MenuItem[]) => [
   "All",
   ...Array.from(new Set(items.map((item) => item.category))),
 ];
+
+/**
+ * "Tomorrow at 7:00 p.m." for an order the customer booked ahead.
+ *
+ * Returns null for an ASAP order, so callers can render nothing rather than a
+ * misleading "scheduled for" line on something that is being made right now.
+ * en-CA throughout, matching every other time in the app.
+ */
+export function scheduledFor(order: Pick<Order, "schedule_type" | "scheduled_at">): string | null {
+  if (order.schedule_type !== "SCHEDULED" || !order.scheduled_at) return null;
+  const at = new Date(order.scheduled_at);
+  if (Number.isNaN(at.getTime())) return null;
+
+  const now = new Date();
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+
+  const time = new Intl.DateTimeFormat("en-CA", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(at);
+
+  if (sameDay(at, now)) return `Today at ${time}`;
+  if (sameDay(at, tomorrow)) return `Tomorrow at ${time}`;
+  const day = new Intl.DateTimeFormat("en-CA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(at);
+  return `${day} at ${time}`;
+}

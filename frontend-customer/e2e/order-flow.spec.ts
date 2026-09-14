@@ -170,6 +170,70 @@ test.describe("choosing when the order arrives", () => {
     await expect(page.getByText(/(arriving|ready) (today|tomorrow|\w{3},)/i)).toBeVisible();
   });
 
+  test("choosing Schedule for later will not quietly place an ASAP order", async ({ page }) => {
+    await resetApp(page);
+    await fillCart(page, 3);
+    await signIn(page, "/checkout");
+
+    const later = page.getByRole("button", { name: /schedule for later/i });
+    // Only meaningful while the branch is open; closed, scheduling is forced.
+    if (!(await later.count())) {
+      test.skip(true, "Branch is shut, so scheduling is already the only mode.");
+    }
+    await later.click();
+
+    // No time picked yet. The button used to stay live and the payload fell
+    // back to ASAP, so someone who asked for later was charged for now.
+    const pay = page.getByRole("button", { name: /^Pay (\$|now)/ }).first();
+    await expect(pay).toBeDisabled();
+    await expect(page.getByText(/pick a time to continue/i)).toBeVisible();
+
+    // And it comes back once a time exists.
+    await page.locator(".slot-grid .slot-chip").first().click();
+    await expect(pay).toBeEnabled();
+  });
+
+  test("the earliest slot is offered as one tap", async ({ page }) => {
+    await resetApp(page);
+    await fillCart(page, 3);
+    await signIn(page, "/checkout");
+    const later = page.getByRole("button", { name: /schedule for later/i });
+    if (await later.count()) await later.click();
+
+    // The soonest time the kitchen can manage, promoted out of the grid.
+    const earliest = page.getByRole("button", { name: /earliest available/i });
+    await expect(earliest).toBeVisible();
+    await earliest.click();
+    await expect(page.getByText(/(arriving|ready) (today|tomorrow|\w{3},)/i)).toBeVisible();
+  });
+
+  test("a custom time can be typed, and a closed-hours one is refused", async ({ page }) => {
+    await resetApp(page);
+    await fillCart(page, 3);
+    await signIn(page, "/checkout");
+    const later = page.getByRole("button", { name: /schedule for later/i });
+    if (await later.count()) await later.click();
+
+    const field = page.locator('.time-field input[type="time"]');
+    await expect(field).toBeVisible();
+
+    // The bounds come from the branch's own window minus its prep time, so a
+    // time the kitchen could not cook by is outside min/max by construction.
+    const min = await field.getAttribute("min");
+    const max = await field.getAttribute("max");
+    expect(min).toMatch(/^\d{2}:\d{2}$/);
+    expect(max).toMatch(/^\d{2}:\d{2}$/);
+    expect(max! > min!).toBe(true);
+
+    await field.fill(max!);
+    await expect(page.getByText(/(arriving|ready) /i)).toBeVisible();
+
+    // Midnight is never inside a window here; the picker must say so itself
+    // rather than let the server reject it after payment details are entered.
+    await field.fill("00:00");
+    await expect(page.getByText(/that time is not available/i)).toBeVisible();
+  });
+
   test("the date field books a day the chips do not reach", async ({ page }) => {
     await resetApp(page);
     await fillCart(page, 3);

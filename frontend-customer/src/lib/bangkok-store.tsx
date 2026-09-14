@@ -76,6 +76,8 @@ type Store = AppState & {
   restaurantName: string | undefined;
   locations: RestaurantLocation[];
   currentLocation: RestaurantLocation | undefined;
+  /** The branch the order will actually be placed against. */
+  orderLocation: RestaurantLocation | undefined;
   isRestaurantLoading: boolean;
   setBranchId: (id: string) => void;
   /** The restaurant the cart belongs to, or undefined while it is empty. */
@@ -251,6 +253,18 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       restaurantName: restaurantQuery.data?.name,
       locations,
       currentLocation: locations.find((l) => l.id === state.branchId),
+      // What the order is priced and scheduled against.
+      //
+      // `currentLocation` is whatever the branch picker is showing. The order
+      // is placed against `cart[0].restaurantLocationId`, and when a cart was
+      // filled at one branch and the picker later moved, those are different
+      // branches — so the customer read one branch's hours, fee and slots
+      // while the order went to another, and the server refused the slot.
+      // Every slot rule is per LOCATION, so it has to read the location the
+      // order actually names.
+      orderLocation:
+        locations.find((l) => l.id === (state.cart[0]?.restaurantLocationId ?? state.branchId)) ??
+        locations.find((l) => l.id === state.branchId),
       isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
       setBranchId,
       cartRestaurantId: state.cart[0]?.restaurantId,

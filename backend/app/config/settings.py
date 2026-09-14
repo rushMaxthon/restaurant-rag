@@ -217,6 +217,12 @@ class Settings(BaseSettings):
     personalized_offer_max_cards: int = 4
     enable_ai_offer_generation: bool = False
     enable_ai_recommendation_reranking: bool = False
+    # Drops a "dish name" the menu does not recognise — "today", "special",
+    # "trending", "delivery" — instead of searching for it and then reporting
+    # that it is not on the menu. OFF while the log is read: a threshold that is
+    # slightly wrong refuses real orders, which is worse than the bug it fixes.
+    # See docs/superpowers/specs/2026-09-14-dish-name-guardrail-design.md
+    enable_dish_name_guardrail: bool = False
     ai_offer_cron_enabled: bool = False
     ai_offer_batch_size: int = 50
     ai_offer_user_limit: int = 0

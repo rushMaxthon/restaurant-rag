@@ -1,8 +1,16 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Bike, LogOut, ReceiptText, Store } from "lucide-react";
+import {
+  ArrowRight,
+  Bike,
+  CalendarClock,
+  LogOut,
+  ReceiptText,
+  Store,
+  WalletCards,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, orderCode, type Order } from "@/lib/bangkok-data";
+import { formatMoney, orderCode, scheduledFor, type Order } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
@@ -47,11 +55,14 @@ function placedAt(iso: string): string {
 
 function OrderRow({ order, index }: { order: Order; index: number }) {
   const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary";
-  const live = !SETTLED.has(order.status);
+  // An unpaid order has not started, so it gets no pulse and no progress bar.
+  const unpaid = order.status === "PAYMENT_PENDING" && order.payment_status !== "COD";
+  const live = !SETTLED.has(order.status) && !unpaid;
   const step = Math.max(FLOW.indexOf(order.status), 0);
   const progress = ((step + 1) / FLOW.length) * 100;
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const isDelivery = order.fulfillment_type === "DELIVERY";
+  const booked = scheduledFor(order);
 
   return (
     <article
@@ -77,6 +88,15 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
                 the history a wall of near-identical cards. */}
             <span className="text-sm text-muted">{placedAt(order.placed_at)}</span>
           </div>
+
+          {/* A booked time is the single most important fact about a scheduled
+              order, and it was shown nowhere after checkout. */}
+          {booked && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+              <CalendarClock className="size-4 shrink-0" />
+              {isDelivery ? "Arriving" : "Ready"} {booked}
+            </p>
+          )}
 
           <p className="mt-2 truncate text-sm text-muted">
             <span className="font-semibold text-foreground">
@@ -141,8 +161,17 @@ function Orders() {
   if (!isAuthenticated) return null;
 
   const orders = ordersQuery.data ?? [];
-  // An order still in the kitchen is the only one anyone opens this screen for.
-  const live = orders.filter((o) => !SETTLED.has(o.status));
+  // Three groups, not two.
+  //
+  // PAYMENT_PENDING used to count as "in progress", so every abandoned
+  // checkout became a pulsing live order the kitchen had never seen. One
+  // seeded account had 34 of them ahead of its real ones. An order nobody
+  // has paid for is not on its way; it is waiting for the customer.
+  const unpaid = orders.filter((o) => o.status === "PAYMENT_PENDING" && o.payment_status !== "COD");
+  const live = orders.filter(
+    (o) =>
+      !SETTLED.has(o.status) && !(o.status === "PAYMENT_PENDING" && o.payment_status !== "COD"),
+  );
   const past = orders.filter((o) => SETTLED.has(o.status));
 
   return (
@@ -213,6 +242,25 @@ function Orders() {
           </h2>
           <div className="grid gap-4">
             {live.map((order, i) => (
+              <OrderRow order={order} index={i} key={order.id} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {unpaid.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-2 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
+            <WalletCards className="size-5 text-muted" />
+            Not paid for
+            <span className="section-count">{unpaid.length}</span>
+          </h2>
+          <p className="mb-4 text-sm text-muted">
+            These never reached the kitchen because the payment wasn't completed. Nothing has been
+            charged.
+          </p>
+          <div className="grid gap-4">
+            {unpaid.map((order, i) => (
               <OrderRow order={order} index={i} key={order.id} />
             ))}
           </div>

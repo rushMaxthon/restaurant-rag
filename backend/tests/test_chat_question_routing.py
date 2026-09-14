@@ -33,13 +33,18 @@ if str(BACKEND_ROOT) not in sys.path:
 from datetime import time  # noqa: E402
 
 from app.services.rag import (  # noqa: E402
+    SessionConversationState,
     KEYWORD_MATCH_CATEGORY,
     KEYWORD_MATCH_NAME,
     KEYWORD_MATCH_WEAK,
     _customization_reply,
     _format_clock,
     _is_customization_query,
+    _extract_menu_question_dish,
+    _fallback_extract_intent,
     _is_hours_query,
+    _is_service_info_query,
+    _service_info_reply,
     _keyword_match_strength,
 )
 
@@ -162,3 +167,192 @@ class OpeningHoursQuestionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServiceWordsAreNotDishesTests(unittest.TestCase):
+    """"How much is delivery?" is not a question about a dish called delivery.
+
+    Reported from real use. The price pattern in _extract_menu_question_dish
+    captures whatever noun follows "how much is", so "delivery", "pickup" and
+    "delivery fee" were all read as dish names, missed in the menu, and
+    answered with a flat denial of the service:
+
+        Q: how much is delivery?
+        A: We don't offer delivery on the menu — but the Penne Arrabbiata is a
+           crowd favourite...
+
+    Delivery was enabled at the time, with a fee of 2.79. Two things were wrong
+    at once: the customer's real question went unanswered, and the reply stated
+    the opposite of the truth about the branch.
+    """
+
+    def test_service_words_are_never_taken_for_a_dish(self) -> None:
+        for message in (
+            "how much is delivery",
+            "how much is delivery?",
+            "how much is the delivery fee",
+            "how much is pickup",
+            "how much is the minimum order",
+            "what is the delivery charge",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(_extract_menu_question_dish(message))
+
+    def test_real_dish_questions_still_extract_the_dish(self) -> None:
+        # The stop list must not cost a customer their actual question.
+        self.assertEqual(_extract_menu_question_dish("how much is the pad thai"), "pad thai")
+        self.assertEqual(
+            _extract_menu_question_dish("whats in the red curry tofu"), "red curry tofu"
+        )
+        self.assertEqual(_extract_menu_question_dish("is the pad thai veg"), "pad thai")
+
+    def test_a_dish_whose_name_contains_a_service_word_still_works(self) -> None:
+        # "Delivery Special" would be a legitimate dish name; only a bare
+        # service word is rejected, not any name that contains one.
+        self.assertEqual(
+            _extract_menu_question_dish("how much is the delivery special"), "delivery special"
+        )
+
+
+class ServiceInfoQueriesTests(unittest.TestCase):
+    """Delivery, pickup and minimum-order questions get their own tier.
+
+    These are answerable exactly from the branch row, so they are answered from
+    it rather than handed to a model that has no access to the number.
+    """
+
+    def test_service_questions_are_recognised(self) -> None:
+        for message in (
+            "how much is delivery",
+            "what is the delivery fee",
+            "do you deliver",
+            "is there a minimum order",
+            "whats the minimum order value",
+            "do you do pickup",
+            "how much is the delivery charge",
+        ):
+            with self.subTest(message=message):
+                self.assertTrue(_is_service_info_query(message))
+
+    def test_dish_requests_are_not_mistaken_for_service_questions(self) -> None:
+        # This runs ahead of dish retrieval, so a false positive costs a
+        # customer their actual search.
+        for message in (
+            "i want pizza",
+            "show me rice",
+            "something spicy",
+            "how much is the pad thai",
+            "whats in the red curry tofu",
+        ):
+            with self.subTest(message=message):
+                self.assertFalse(_is_service_info_query(message))
+
+
+class DietaryQuestionsTests(unittest.TestCase):
+    """A vegetarian asking for vegetarian food must not be offered meat.
+
+    Reported by walking the concierge:
+
+        Q: which dishes are vegetarian
+        A: We don't have any vegetarian options on the menu right now - but the
+           Calzone Classico is a great non-veg pick, with mozzarella and
+           chicken salami.
+
+    Both halves are wrong and the second is worse than wrong. The menu has
+    vegetarian dishes, and the reply pointed a self-identified vegetarian at
+    chicken.
+
+    The cause was the same shape as the delivery bug: the deterministic
+    extractor never set `diet` at all, and instead took the dietary word itself
+    for a dish name. "what vegetarian dishes do you have" searched for a dish
+    called "vegetarian"; "which dishes are vegetarian" searched for one called
+    "are". Neither exists, so the not-on-the-menu template fired and the model
+    filled the gap with whatever was popular.
+
+    There is a diet filter further down the pipeline
+    (`candidate.menu_item.is_veg`) and it works - it was simply never handed a
+    diet to filter on.
+    """
+
+    def _intent(self, message: str):
+        return _fallback_extract_intent(message, SessionConversationState())
+
+    def test_asking_for_vegetarian_food_sets_the_veg_diet(self) -> None:
+        for message in (
+            "which dishes are vegetarian",
+            "what vegetarian dishes do you have?",
+            "do you have vegetarian dishes",
+            "show me vegetarian food",
+            "i am vegetarian",
+            "veg options",
+            "any veg dishes",
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(self._intent(message).diet, "veg")
+
+    def test_non_veg_is_read_as_non_veg_and_never_as_veg(self) -> None:
+        # "veg" matches inside "non veg", so the order of these checks is
+        # load-bearing: get it wrong and "non veg please" asks for the opposite
+        # of what was said.
+        for message in ("non veg options", "show me non-veg dishes", "nonveg please"):
+            with self.subTest(message=message):
+                self.assertEqual(self._intent(message).diet, "non_veg")
+
+    def test_dietary_words_are_not_dish_names(self) -> None:
+        # Searching the menu for a dish called "vegetarian" is what produced
+        # "we don't have any vegetarian options".
+        for message in (
+            "which dishes are vegetarian",
+            "what vegetarian dishes do you have?",
+            "show me vegetarian food",
+            "any veg dishes",
+        ):
+            with self.subTest(message=message):
+                intent = self._intent(message)
+                self.assertIsNone(intent.dish)
+                self.assertIsNone(intent.items)
+
+    def test_a_real_dish_request_is_untouched(self) -> None:
+        # The stop list must not cost a customer their actual search, including
+        # dishes that are themselves vegetarian.
+        self.assertEqual(self._intent("show me paneer").dish, "paneer")
+        self.assertEqual(self._intent("i want pad thai").dish, "pad thai")
+
+    def test_a_veg_dish_request_keeps_both_the_dish_and_the_diet(self) -> None:
+        # "veg biryani" names a dish AND states a diet; losing either one
+        # answers a different question.
+        intent = self._intent("veg biryani")
+        self.assertEqual(intent.diet, "veg")
+        self.assertIsNotNone(intent.dish)
+
+
+class ServiceInfoWithoutABranchTests(unittest.TestCase):
+    """A service question must never be answered by denying the service.
+
+    With a restaurant selected the tier reads the branch row and answers
+    exactly. Without one - a guest on the marketplace surface who has not
+    picked a restaurant yet — it used to return None and hand the question to
+    the model, which answered:
+
+        Q: how much is delivery?
+        A: We don't offer delivery through our app — but the Thai Combo Box...
+
+    That is the same false statement the tier was built to stop, arriving by a
+    different route. With no branch to quote, the honest answer is that it
+    depends on the branch, not that delivery does not exist.
+    """
+
+    def test_no_branch_still_gets_a_grounded_answer(self) -> None:
+        reply = _service_info_reply(None, restaurant_id=None, restaurant_location_id=None)
+        self.assertIsNotNone(reply)
+        assert reply is not None
+        lowered = reply.lower()
+        # It must not deny the service, and it must not invent a number.
+        self.assertNotIn("don't offer", lowered)
+        self.assertNotIn("do not offer", lowered)
+        self.assertNotIn("cad", lowered)
+        self.assertIn("branch", lowered)
+
+    def test_the_db_is_not_touched_when_there_is_no_branch(self) -> None:
+        # Passing None for the session proves it: a DB call would raise.
+        _service_info_reply(None, restaurant_id=None, restaurant_location_id=None)

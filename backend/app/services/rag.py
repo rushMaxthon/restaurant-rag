@@ -10,7 +10,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal, Sequence
 
 import httpx
 from fastapi import HTTPException, status
@@ -982,6 +982,12 @@ def _extract_direct_item_hint(message: str) -> str | None:
     return _extract_bare_topic_hint(message)
 
 
+def _drop_non_dish_topics(topics: list[str]) -> list[str]:
+    """Strip diet words and bare verbs from anything headed for dish search."""
+
+    return [topic for topic in topics if not _is_diet_word_only(topic)]
+
+
 def _extract_multi_item_hints(message: str) -> list[str]:
     if _is_follow_up_recommendation_message(message):
         return []
@@ -1073,6 +1079,102 @@ def _is_menu_question_message(message: str) -> bool:
     return bool(set(_query_tokens(message)) & MENU_QUESTION_TOKENS)
 
 
+# Words that answer "how much is ___" without naming anything on the menu.
+#
+# The price pattern below captures whatever noun follows "how much is", so
+# "how much is delivery?" extracted a dish called "delivery", failed to find
+# it, and answered "We don't offer delivery on the menu" - which was both a
+# non-answer to the real question and the opposite of the truth about the
+# branch. Matched as the WHOLE captured phrase, never as a substring, so a
+# genuine "Delivery Special" on the menu is still a dish.
+SERVICE_WORD_TOPICS = frozenset(
+    {
+        "delivery",
+        "delivery fee",
+        "delivery charge",
+        "delivery cost",
+        "pickup",
+        "pick up",
+        "takeaway",
+        "collection",
+        "shipping",
+        "minimum",
+        "minimum order",
+        "minimum order value",
+        "minimum order amount",
+        "order minimum",
+        "packing",
+        "packing charge",
+        "service charge",
+        "tax",
+        "gst",
+        "tip",
+    }
+)
+
+
+# Words that state a DIET rather than name a dish.
+#
+# "what vegetarian dishes do you have" used to search the menu for a dish
+# called "vegetarian", miss, and answer "We don't have any vegetarian options
+# on the menu right now" before recommending a chicken calzone. The menu was
+# full of vegetarian food; the word had simply been taken for a dish name.
+DIET_WORD_TOPICS = frozenset(
+    {
+        "veg",
+        "vegetarian",
+        "veggie",
+        "pure veg",
+        "non veg",
+        "nonveg",
+        "non vegetarian",
+        "vegan",
+        "plant based",
+    }
+)
+
+# Bare verbs and articles a question can leave behind once the dish is gone.
+# "which dishes are vegetarian" reduced to a search for a dish called "are".
+NON_DISH_STOPWORDS = frozenset(
+    {"are", "is", "am", "do", "does", "have", "has", "there", "any", "some", "the", "a", "an"}
+)
+
+
+def _extract_diet(message: str) -> str | None:
+    """"veg", "non_veg", or None.
+
+    Non-veg is tested FIRST because it contains the word it must not be
+    mistaken for: `\bveg\b` matches inside "non veg", so with the branches the
+    other way round "non veg please" classifies as veg - the exact opposite of
+    what was asked.
+    """
+
+    normalized = _normalize_text(message)
+    if not normalized:
+        return None
+    if "non veg" in normalized or "non-veg" in normalized or "nonveg" in normalized:
+        return "non_veg"
+    if "non vegetarian" in normalized:
+        return "non_veg"
+    if "vegetarian" in normalized or "vegan" in normalized or re.search(r"\bveg\b", normalized):
+        return "veg"
+    return None
+
+
+def _is_diet_word_only(topic: str | None) -> bool:
+    """True when a captured "dish" is really just a diet or a leftover verb."""
+
+    if not topic:
+        return False
+    cleaned = " ".join(token for token in topic.split() if token)
+    if cleaned in DIET_WORD_TOPICS:
+        return True
+    tokens = set(cleaned.split())
+    if tokens and tokens <= (NON_DISH_STOPWORDS | DIET_WORD_TOPICS):
+        return True
+    return False
+
+
 def _extract_menu_question_dish(message: str) -> str | None:
     """The dish a menu question names, or None when it points at the
     conversation ("how much does it cost?")."""
@@ -1092,7 +1194,11 @@ def _extract_menu_question_dish(message: str) -> str | None:
         candidate_tokens = [token for token in candidate.split() if token]
         if not candidate_tokens or all(token in MENU_QUESTION_PRONOUNS for token in candidate_tokens):
             return None
+        if " ".join(candidate_tokens) in SERVICE_WORD_TOPICS:
+            return None
         canonical = _canonicalize_topic(candidate)
+        if canonical and canonical in SERVICE_WORD_TOPICS:
+            return None
         if canonical and not (set(canonical.split()) <= MENU_QUESTION_PRONOUNS):
             return canonical
         return None
@@ -1532,7 +1638,12 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
 
 
 def _fallback_extract_intent(message: str, session_state: SessionConversationState) -> ExtractedIntent:
-    multi_item_hints = _extract_multi_item_hints(message)
+    # Read once, applied to every branch below. The diet filter downstream
+    # (`candidate.menu_item.is_veg`) already worked; nothing was ever handing
+    # it a diet, so a vegetarian's request reached retrieval as an ordinary
+    # search for a dish that happened to be called "vegetarian".
+    message_diet = _extract_diet(message)
+    multi_item_hints = _drop_non_dish_topics(_extract_multi_item_hints(message))
     if _message_requests_new_items(message):
         overrides = _extract_new_query_overrides(message)
         return ExtractedIntent(
@@ -1592,6 +1703,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             intent="recommendation",
             items=multi_item_hints or None,
             budget=explicit_budget,
+            diet=message_diet,
             mood=next((term for term in ("dinner", "lunch", "breakfast", "meal", "snack") if term in normalized), None),
         )
 
@@ -1601,15 +1713,19 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             dish=multi_item_hints[0],
             items=multi_item_hints,
             budget=explicit_budget,
+            diet=message_diet,
         )
 
     direct_item_hint = _extract_direct_item_hint(message)
+    if _is_diet_word_only(direct_item_hint):
+        direct_item_hint = None
     if direct_item_hint is not None:
         return ExtractedIntent(
             intent="dish_recommendation",
             dish=direct_item_hint,
             items=[direct_item_hint],
             budget=explicit_budget,
+            diet=message_diet,
         )
 
     if _is_out_of_domain_message(message):
@@ -1619,6 +1735,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
         intent="show_more" if _is_follow_up_recommendation_message(message) else "recommendation",
         budget=explicit_budget,
         show_more=_is_follow_up_recommendation_message(message),
+        diet=message_diet,
     )
     if "restaurant" in normalized:
         fallback.intent = "restaurant_list"
@@ -2510,6 +2627,145 @@ def _fetch_recent_history_messages(
     return rows
 
 
+# --- dish-name guardrail ----------------------------------------------------
+#
+# The dish extractors decide by ELIMINATION: strip the words known not to be
+# food, and assume whatever survives is a dish. `_canonicalize_topic`,
+# `_extract_bare_topic_hint` and `_extract_direct_item_hint` contain no
+# reference to MenuItem, to a query, or to a session — they never look at the
+# menu at all.
+#
+# That has produced the same bug four times, each fixed by adding a word to a
+# stop list:
+#
+#   "What is menu for today?"  -> "We don't have a specific 'today' menu..."
+#   "whats special"            -> "We don't have a 'special' item..."
+#   "Which item are trending?" -> "We don't have a 'special' item..."
+#   "how much is delivery?"    -> "We don't offer delivery on the menu..."
+#
+# The list cannot converge. What people say that is NOT a dish name is
+# unbounded; what IS one is 189 rows in Postgres.
+#
+# So decide by recognition instead. `_retrieve_candidates` already measures
+# cosine distance to every menu embedding on each turn and the nearest one is
+# thrown away — it answers exactly "is anything on this menu close to what they
+# said". No word is named anywhere below, which is the point: "today" is
+# rejected because nothing resembles it, and so is every word nobody has thought
+# of yet.
+#
+# Spec: docs/superpowers/specs/2026-09-14-dish-name-guardrail-design.md
+
+# Measured over 39 phrases, nomic-embed-text, against the seeded 189-item menu:
+#
+#   dish on the menu        0.135 - 0.271
+#   dish, misspelled        0.210 - 0.376   <- must stay recognised
+#   craving, no dish named  0.372 - 0.569
+#   generic word, not food  0.446 - 0.555
+#   not food at all         0.522 - 0.574
+#
+# 0.38 sits in the gap. Misspellings land on the dish side, which matters
+# because 0055_menu_item_trigram_search exists for exactly that case.
+#
+# These numbers belong to THIS embedding model and THIS menu. Switching
+# `embedding_provider` to Gemini requires re-measuring, and nothing here will
+# complain if they quietly stop being right.
+DISH_NAME_MAX_DISTANCE = 0.38
+
+DishReference = Literal["named", "absent", "unknown"]
+
+
+def classify_dish_reference(distance: float | None) -> DishReference:
+    """Whether the customer named a dish, judged by what the menu contains.
+
+    `unknown` when there is no distance to judge by — no embedding, or an empty
+    retrieval. An empty retrieval is NOT evidence that no dish was named; it is
+    the absence of evidence either way, and treating it as `absent` would let a
+    failed lookup quietly rewrite the question.
+    """
+
+    if distance is None:
+        return "unknown"
+    return "named" if distance < DISH_NAME_MAX_DISTANCE else "absent"
+
+
+def apply_dish_name_guardrail(
+    intent: "ExtractedIntent",
+    candidates: list[RetrievedMenuCandidate],
+    *,
+    message: str,
+    db: Session | None = None,
+    query_embedding: list[float] | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+) -> DishReference:
+    """Drop a dish name the menu does not recognise.
+
+    Returns the verdict for logging. Enforces only when
+    `enable_dish_name_guardrail` is set: shipped dark on purpose, because a
+    threshold that is slightly wrong refuses REAL orders — someone asking for
+    pad thai told we have no such thing — which is worse than the bug it fixes.
+    The log is the evidence for whether enforcing is safe, the same way the
+    upsell grounding detector earns its promotion.
+
+    Clearing the dish is all that is needed. "No dish named" is an existing,
+    working path that routes to a general recommendation — which is the answer
+    "which item are trending" should have produced all along. The bug was never
+    that the system mishandles "no dish"; it is that it never concludes there
+    is not one.
+    """
+
+    if not intent.dish:
+        return "unknown"
+
+    # Only a VECTOR candidate's distance means anything here. The keyword and
+    # popularity tiers stamp a synthetic constant — 0.25 and 0.5 — so reading
+    # those would score every keyword hit as a confident dish match and the
+    # guardrail would never fire on the path it is most needed.
+    distance = next(
+        (candidate.distance for candidate in candidates if candidate.source == "vector"),
+        None,
+    )
+
+    # No vector candidate survived. That is not the absence of evidence it looks
+    # like — it is usually the opposite, and it is the shape the reported bugs
+    # take: "whats special" extracts dish="special", the vector tier finds
+    # nothing usable, retrieval falls through to popular_fallback, and the
+    # remaining candidates carry the synthetic 0.5 that tier stamps. Reading
+    # only the surviving candidates makes the guardrail silent on exactly the
+    # turns it exists for.
+    #
+    # So measure directly, bounded to this case: `intent.dish` is set AND
+    # nothing vector-derived reached here. One indexed ANN query on a small
+    # minority of turns, and none at all when the embedding is unavailable —
+    # which stays genuinely `unknown`, because then no vector search ever ran.
+    if distance is None and db is not None and query_embedding is not None:
+        nearest = _retrieve_candidates(
+            db,
+            query_embedding,
+            restaurant_id,
+            restaurant_location_id,
+            limit=1,
+        )
+        distance = nearest[0].distance if nearest else None
+
+    verdict = classify_dish_reference(distance)
+    if verdict != "absent":
+        return verdict
+
+    logger.info(
+        "Dish-name guardrail: %r is not on this menu (nearest %.3f >= %.2f) enforcing=%s question=%r",
+        intent.dish,
+        distance,
+        DISH_NAME_MAX_DISTANCE,
+        settings.enable_dish_name_guardrail,
+        _trim_text(message, 80),
+    )
+    if settings.enable_dish_name_guardrail:
+        intent.dish = None
+        intent.items = None
+    return verdict
+
+
 def _fetch_user_preferences(db: Session, user_id: uuid.UUID) -> UserPreferences | None:
     return db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
 
@@ -2995,6 +3251,95 @@ def _todays_hours_reply(
         f"We've closed for today — {branch_name} was open {window}. "
         "Tell me what you're after and I'll have it ready for you tomorrow."
     )
+
+
+# Delivery, pickup and minimum-order questions.
+#
+# Every one of these is answered exactly by a column on the branch row, so it
+# is answered from that row. Before this tier existed they fell into dish
+# retrieval and came back as denials of the service itself - "We don't offer
+# delivery on the menu" while delivery was enabled with a $2.79 fee. A model
+# cannot guess these numbers and must not try.
+SERVICE_INFO_QUERY_PATTERNS = (
+    r"\b(delivery|pickup|pick up|takeaway|collection)\s+(fee|charge|cost|price|rate)\b",
+    r"\bhow much\b.*\b(delivery|pickup|pick up|takeaway|shipping)\b",
+    r"\bwhat(s| is)\b.*\b(delivery|pickup)\s+(fee|charge|cost)\b",
+    r"\bdo (you|u|they)\b.*\b(deliver|delivery|pickup|pick up|takeaway)\b",
+    r"\bis there a\b.*\bminimum\b",
+    r"\bminimum\s+order\b",
+    r"\border\s+minimum\b",
+    r"\b(free|charge for)\s+delivery\b",
+    r"\bdelivery\s+(available|possible)\b",
+)
+
+
+def _is_service_info_query(message: str) -> bool:
+    normalized = _normalize_text(message)
+    if not normalized:
+        return False
+    return any(re.search(pattern, normalized) for pattern in SERVICE_INFO_QUERY_PATTERNS)
+
+
+def _service_info_reply(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> str | None:
+    """What this branch charges and requires, read off its own row."""
+
+    # No branch chosen yet — a guest on a multi-restaurant surface. Returning
+    # None here handed the question back to the model, which answered "we don't
+    # offer delivery through our app": the exact false statement this tier
+    # exists to prevent, arriving by a different route. Fees differ per branch,
+    # so the honest answer names that rather than inventing a number.
+    if restaurant_location_id is None and restaurant_id is None:
+        return (
+            "Delivery and pickup are set per branch, so the fee and the minimum "
+            "order depend on which one you order from. Pick a restaurant and I'll "
+            "give you its exact fee and timings."
+        )
+
+    query = select(RestaurantLocation).where(RestaurantLocation.is_active.is_(True))
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+    else:
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
+
+    location = db.scalars(query.limit(1)).first()
+    if location is None:
+        return None
+
+    currency = settings.payment_currency.upper()
+    parts: list[str] = []
+
+    if location.delivery_enabled:
+        fee = Decimal(str(location.delivery_fee or 0))
+        eta = location.estimated_delivery_time
+        if fee > 0:
+            line = f"Delivery is {currency} {fee:.2f}"
+        else:
+            line = "Delivery is free"
+        if eta:
+            line += f", about {eta} minutes"
+        parts.append(line)
+    else:
+        parts.append("We don't deliver from this branch")
+
+    if location.pickup_enabled:
+        eta = location.estimated_pickup_time
+        parts.append(f"pickup is free{f', ready in about {eta} minutes' if eta else ''}")
+
+    minimum = Decimal(str(location.minimum_order_amount or 0))
+    if minimum > 0:
+        parts.append(f"the minimum order is {currency} {minimum:.2f}")
+
+    if not parts:
+        return None
+
+    branch = location.branch_name or "This branch"
+    body = ", and ".join([", ".join(parts[:-1]), parts[-1]]) if len(parts) > 1 else parts[0]
+    return f"{branch}: {body}. Want me to find you something?"
 
 
 # Questions about what the MENU SUPPORTS, as opposed to what dishes it sells.
@@ -4540,6 +4885,52 @@ def preference_diet_for_cache(
         return None
 
 
+def may_cache_globally(
+    *,
+    cacheable: bool,
+    history_messages: Sequence[object],
+    session_summary: str = "none",
+) -> bool:
+    """Whether this reply may be shared with visitors who did not have this conversation.
+
+    `RECENT HISTORY` and `SESSION SUMMARY` go into every prompt, so any turn
+    after the first in a session is shaped by that session. The global cache is
+    keyed by topic and diet only — nothing about whose conversation it was — so
+    writing such a reply hands one person's context to strangers.
+
+    Observed: "Which item are trending?" answered "We don't have a 'special'
+    item on the menu today...". The customer had never said "special"; a
+    previous turn in someone ELSE's session had, and that reply was cached under
+    the trending key for every veg guest for the rest of its TTL.
+
+    `_resolve_global_cacheability` already refuses personal context, follow-ups,
+    contextual menu questions, greetings and restaurant scope. Having history is
+    none of those, which is how this slipped through.
+
+    It cannot be fixed by extending the key: the contaminating input is another
+    user's conversation, not a property of this request. The reply simply must
+    not be shared.
+
+    READING a cached entry is still allowed. Serving a generic cached answer to
+    someone mid-conversation costs that one person a little context; writing is
+    what harms everyone else.
+    """
+
+    if not cacheable:
+        return False
+    if history_messages:
+        return False
+    # Session state, checked separately, because for a GUEST it is the only
+    # vector. Guests get no `chat_history` rows — `chat_history.user_id` is NOT
+    # NULL with an FK to `users` — so `_fetch_recent_history_messages_from_db`
+    # always returns empty for them and RECENT HISTORY is always blank. Their
+    # conversation lives entirely in the Redis session state that feeds
+    # SESSION SUMMARY, which is what carried "special" into an answer about
+    # trending. Guarding only on history_messages would have looked correct and
+    # protected nobody who was not signed in.
+    return not session_summary or session_summary.strip().lower() == "none"
+
+
 def _lookup_global_response_cache(
     *,
     message: str,
@@ -5372,6 +5763,47 @@ def _prepare_chat_turn(
             fallback_reply=_build_small_talk_reply(),
         )
 
+    # Delivery fee, pickup and minimum order, read off the branch row.
+    #
+    # Sits beside the hours tier for the same reason: these are facts with
+    # exact values, and dish retrieval answered them by denying the service.
+    # "how much is delivery?" extracted a dish called "delivery", failed to
+    # find it, and replied "We don't offer delivery on the menu" while
+    # delivery was enabled at CAD 2.79.
+    if _is_service_info_query(message):
+        service_reply = _service_info_reply(
+            db,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+        )
+        if service_reply is not None:
+            logger.info("RAG service info query user_id=%s message=%s", user.id, message)
+            return PreparedChatTurn(
+                active_session_id=active_session_id,
+                message=message,
+                # As with hours: `effective_message` is not resolved this early,
+                # and "do you deliver" is never a follow-up about a dish.
+                effective_message=message,
+                restaurant_id=restaurant_id,
+                retrieval_source="service_info_query",
+                is_greeting=False,
+                is_follow_up=is_follow_up,
+                uses_personal_context=False,
+                should_bypass_llm=True,
+                suggestion_limit=0,
+                vector_result_count=0,
+                extracted_intent=resolved_intent,
+                session_state=session_state,
+                final_candidates=[],
+                suggestions=[],
+                history_messages=session_history_messages,
+                history_block=_build_history_block(session_history_messages),
+                context_block="",
+                prompt="",
+                timings=timings,
+                fallback_reply=service_reply,
+            )
+
     # Opening hours, from the branch's own slot rows. Deterministic for the same
     # reason as the customisation answer: telling someone the wrong closing time
     # costs them a wasted trip, and a model has no business guessing it.
@@ -5801,6 +6233,9 @@ def _prepare_chat_turn(
         )
 
         db_filter_started_at = perf_counter()
+        # Bound before the branch: the keyword path never computes one, and the
+        # guardrail below reads it on every route.
+        query_embedding: list[float] | None = None
         if filtered_keyword_candidates and (
             _intent_prefers_keyword_first(resolved_intent, effective_message)
             or _has_strong_keyword_signal(filtered_keyword_candidates)
@@ -5848,6 +6283,18 @@ def _prepare_chat_turn(
             _normalize_text(effective_message),
             _candidate_name_summary(final_candidates),
         )
+
+    # After retrieval, because the verdict comes from what the menu turned out to
+    # contain; before filtering and ranking, which both trust `intent.dish`.
+    apply_dish_name_guardrail(
+        resolved_intent,
+        final_candidates,
+        message=message,
+        db=db,
+        query_embedding=query_embedding,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+    )
 
     if resolved_intent.new_only and final_candidates and retrieval_source != "new_item_fast_path":
         final_candidates = _sort_new_item_candidates(
@@ -6392,7 +6839,11 @@ def handle_chat_message(
                 )
             )
         )
-    if cacheable_response:
+    if may_cache_globally(
+        cacheable=cacheable_response,
+        history_messages=prepared.history_messages,
+        session_summary=_session_state_prompt_summary(prepared.session_state),
+    ):
         cache_set_json(
             response_cache_key,
             _serialize_chat_response_cache_payload(
@@ -6761,7 +7212,11 @@ def stream_chat_message(
         except Exception:  # pragma: no cover - a checker must not break the answer
             logger.exception("Streamed grounding check failed; reply returned unchecked")
 
-    if cacheable_response:
+    if may_cache_globally(
+        cacheable=cacheable_response,
+        history_messages=prepared.history_messages,
+        session_summary=_session_state_prompt_summary(prepared.session_state),
+    ):
         cache_set_json(
             response_cache_key,
             _serialize_chat_response_cache_payload(

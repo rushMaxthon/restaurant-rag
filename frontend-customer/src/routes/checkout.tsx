@@ -12,6 +12,7 @@ import {
   Phone,
   ShieldCheck,
   Store,
+  Zap,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
   activeSlots,
   availabilityNow,
+  clockValue,
   bookableDays,
   bookableTimes,
   dateInputValue,
@@ -35,7 +37,11 @@ import {
   formatSlotRange,
   formatTimeOfDay,
   groupByPartOfDay,
+  isBookableTime,
+  isSameDay,
   lastBookableDay,
+  nextBookableTime,
+  snapToInterval,
   nextOpening,
 } from "@/lib/branch-hours";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -103,6 +109,8 @@ function Checkout() {
   const [chosenSlot, setChosenSlot] = useState<Date | null>(null);
   const [chosenDay, setChosenDay] = useState<Date | null>(null);
   const [wantsLater, setWantsLater] = useState(false);
+  const [showAllTimes, setShowAllTimes] = useState(false);
+  const [customTimeError, setCustomTimeError] = useState<string | null>(null);
   // Pinned once per render pass so the day list, the slot list and the
   // validity check cannot disagree about what "now" is.
   const now = new Date();
@@ -122,12 +130,22 @@ function Checkout() {
   // that dead-ends.
   const paymentConfig = usePaymentConfig(isAuthenticated);
   const cardAvailable = Boolean(paymentConfig.data?.stripe_enabled);
+  // Three different situations, not two. While the config is in flight, and if
+  // the request fails, `stripe_enabled` is falsy too — and the page used to
+  // blame the restaurant for both, in red, on every single load.
+  const paymentConfigPending = paymentConfig.isPending;
+  const paymentConfigFailed = paymentConfig.isError;
 
   if (!isAuthenticated) return null;
 
-  const branch = s.currentLocation;
+  // The branch the ORDER names, not the one the picker is showing. Slot rules,
+  // the delivery fee and the minimum are all per location, and the order is
+  // placed against the cart's location a few lines below.
+  const branch = s.orderLocation;
   const isDelivery = s.fulfillment === "DELIVERY";
-  const delivery = isDelivery ? Number(branch?.delivery_fee ?? 45) : 0;
+  // 0, not 45 — see the note in cart.tsx. An invented $45 delivery fee is
+  // the worst thing to show someone one second before they pay.
+  const delivery = isDelivery ? Number(branch?.delivery_fee ?? 0) : 0;
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
@@ -152,6 +170,10 @@ function Checkout() {
     : [];
   const mustSchedule = !canOrderNow;
   const scheduling = mustSchedule || wantsLater;
+  // Submitting is gated on `scheduling && !chosenSlot`, not on the branch
+  // being shut. Someone who switched an OPEN branch to "Schedule for later"
+  // and picked no time could still press Pay, and the payload quietly fell
+  // back to ASAP — they asked for later and got now.
 
   // A week of chips is enough for "tomorrow evening" and useless for "the 24th".
   // The date input covers the rest of the horizon without a second widget to
@@ -159,7 +181,7 @@ function Checkout() {
   // where it opens the platform's own date wheel.
   const firstDay = days[0];
   const lastDay = lastBookableDay(branch, now);
-  const slotGroups = groupByPartOfDay(slotTimes);
+
   const todaysWindows = selectedDay
     ? activeSlots(branch, fulfillment).filter((w) => w.day_of_week === dayFromDate(selectedDay))
     : [];
@@ -169,6 +191,19 @@ function Checkout() {
   // order for the wrong evening.
   const pickedEmptyDay =
     selectedDay && slotTimes.length === 0 ? dayChipLabel(selectedDay, now) : null;
+
+  // The soonest the kitchen can actually have it. Offered as one tap, because
+  // it is what most people scheduling ahead actually want, and because a wall
+  // of twenty-four chips buries it.
+  const earliest = nextBookableTime(branch, fulfillment, now);
+  const interval = Math.max(Number(branch?.slot_interval_minutes ?? 30), 5);
+  // A shortlist by default; the full day is a tap away. Showing every slot was
+  // the thing that made this screen feel like a timetable.
+  const upcoming = slotTimes.slice(0, 6);
+  const visibleTimes = showAllTimes ? slotTimes : upcoming;
+  const visibleGroups = groupByPartOfDay(visibleTimes);
+  const dayFirst = slotTimes[0];
+  const dayLast = slotTimes[slotTimes.length - 1];
 
   // Once the intent exists the page becomes the payment sheet. Nothing else on
   // the checkout form can still change the amount at this point, so showing it
@@ -542,27 +577,117 @@ function Checkout() {
                         Nothing left on {pickedEmptyDay}. Pick another day above.
                       </p>
                     ) : (
-                      slotGroups.map((group) => (
-                        <div className="mt-3" key={group.label}>
-                          {/* One heading is noise; three are a map. */}
-                          {slotGroups.length > 1 && (
-                            <p className="slot-group-label">{group.label}</p>
-                          )}
-                          <div className="slot-grid mt-2">
-                            {group.times.map((time) => (
-                              <button
-                                type="button"
-                                key={time.toISOString()}
-                                className="slot-chip"
-                                data-on={chosenSlot?.toISOString() === time.toISOString()}
-                                onClick={() => setChosenSlot(time)}
-                              >
-                                {formatTimeOfDay(time)}
-                              </button>
-                            ))}
+                      <>
+                        {/* The soonest the kitchen can have it, as one tap. It
+                            is what most people scheduling ahead are looking
+                            for, and a wall of chips buried it. */}
+                        {earliest && isSameDay(earliest, selectedDay ?? earliest) && (
+                          <button
+                            type="button"
+                            className="earliest-row mt-3"
+                            data-on={chosenSlot?.getTime() === earliest.getTime()}
+                            onClick={() => {
+                              setChosenDay(earliest);
+                              setChosenSlot(earliest);
+                              setCustomTimeError(null);
+                            }}
+                          >
+                            <Zap className="size-4 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1 text-left">
+                              <span className="block font-bold">Earliest available</span>
+                              <span className="block text-xs text-muted">
+                                {dayChipLabel(earliest, now)} at {formatTimeOfDay(earliest)}
+                              </span>
+                            </span>
+                          </button>
+                        )}
+
+                        {visibleGroups.map((group) => (
+                          <div className="mt-3" key={group.label}>
+                            {/* One heading is noise; three are a map. */}
+                            {visibleGroups.length > 1 && (
+                              <p className="slot-group-label">{group.label}</p>
+                            )}
+                            <div className="slot-grid mt-2">
+                              {group.times.map((time) => (
+                                <button
+                                  type="button"
+                                  key={time.toISOString()}
+                                  className="slot-chip"
+                                  data-on={chosenSlot?.toISOString() === time.toISOString()}
+                                  onClick={() => {
+                                    setChosenSlot(time);
+                                    setCustomTimeError(null);
+                                  }}
+                                >
+                                  {formatTimeOfDay(time)}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ))}
+
+                        {slotTimes.length > upcoming.length && (
+                          <button
+                            type="button"
+                            className="link-button mt-3"
+                            onClick={() => setShowAllTimes((open) => !open)}
+                          >
+                            {showAllTimes
+                              ? "Show fewer times"
+                              : `Show all ${slotTimes.length} times`}
+                          </button>
+                        )}
+
+                        {/* A time of their own. The native control gives the
+                            platform's own wheel, with minutes and am/pm, which
+                            beats anything hand-built here and is already
+                            accessible. Bounded to the day's first and last
+                            bookable time, and snapped onto the interval before
+                            it is accepted, because the server refuses a minute
+                            off the grid. */}
+                        {dayFirst && dayLast && (
+                          <div className="mt-4 border-t border-border pt-4">
+                            <p className="picker-label">Or pick your own time</p>
+                            <label className="time-field mt-2">
+                              {/* No leading icon: the native control draws its
+                                  own picker indicator, and two clocks side by
+                                  side read as clutter. */}
+                              <span className="sr-only">Choose a time</span>
+                              <input
+                                type="time"
+                                step={interval * 60}
+                                min={clockValue(dayFirst)}
+                                max={clockValue(dayLast)}
+                                onChange={(event) => {
+                                  const [hh, mm] = event.target.value.split(":");
+                                  if (hh === undefined || mm === undefined) return;
+                                  const base = new Date(selectedDay ?? now);
+                                  base.setHours(Number(hh), Number(mm), 0, 0);
+                                  const snapped = snapToInterval(base, interval);
+                                  if (!isBookableTime(branch, fulfillment, snapped, now)) {
+                                    setChosenSlot(null);
+                                    setCustomTimeError(
+                                      `That time is not available. Pick between ${formatTimeOfDay(dayFirst)} and ${formatTimeOfDay(dayLast)}.`,
+                                    );
+                                    return;
+                                  }
+                                  setCustomTimeError(null);
+                                  setChosenSlot(snapped);
+                                }}
+                              />
+                              <span className="shrink-0 text-xs text-muted">
+                                {formatTimeOfDay(dayFirst)} – {formatTimeOfDay(dayLast)}
+                              </span>
+                            </label>
+                            {customTimeError && (
+                              <p className="mt-2 text-sm font-semibold text-danger" role="alert">
+                                {customTimeError}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* No lowercasing and no trailing period: lowercasing turned
@@ -608,15 +733,20 @@ function Checkout() {
               {cardAvailable && <BadgeCheck className="size-5 shrink-0 text-primary" />}
             </div>
 
-            {!cardAvailable && (
+            {paymentConfigPending && (
+              <p className="mt-3 text-sm text-muted">Checking payment options…</p>
+            )}
+
+            {!paymentConfigPending && !cardAvailable && (
               <div
                 className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
                 role="alert"
               >
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  Card payments aren't switched on for this restaurant yet, so orders can't be
-                  placed. Please try again shortly.
+                  {paymentConfigFailed
+                    ? "We couldn't check the payment options just now. Check your connection and try again."
+                    : "Card payments aren't switched on for this restaurant yet, so orders can't be placed. Please try again shortly."}
                 </span>
               </div>
             )}
@@ -688,9 +818,7 @@ function Checkout() {
 
           <Button
             className="mt-5 hidden h-12 w-full text-base lg:flex"
-            disabled={
-              !s.cart.length || submitting || !cardAvailable || (!canOrderNow && !chosenSlot)
-            }
+            disabled={!s.cart.length || submitting || !cardAvailable || (scheduling && !chosenSlot)}
             type="submit"
           >
             {submitting
@@ -721,9 +849,7 @@ function Checkout() {
           </div>
           <Button
             className="h-13 flex-1 text-base"
-            disabled={
-              !s.cart.length || submitting || !cardAvailable || (!canOrderNow && !chosenSlot)
-            }
+            disabled={!s.cart.length || submitting || !cardAvailable || (scheduling && !chosenSlot)}
             type="submit"
           >
             {submitting ? "Working…" : "Pay now"}

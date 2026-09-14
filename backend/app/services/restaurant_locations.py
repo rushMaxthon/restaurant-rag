@@ -280,6 +280,13 @@ def schedule_slot_is_available(
     if scheduled_local.minute % interval != 0 or scheduled_local.second != 0 or scheduled_local.microsecond != 0:
         return False, f"Please select a valid {interval}-minute time slot."
 
+    # Enforced here as well as in the generator. The picker no longer offers a
+    # time the kitchen cannot cook by, but the picker is a UI and this is the
+    # rule: a request that names the closing minute directly has to be refused.
+    def _closes_too_soon(slot_end: time) -> bool:
+        end_dt = _combine_local_datetime(scheduled_local.date(), slot_end)
+        return scheduled_local > end_dt - timedelta(minutes=prep_buffer_minutes)
+
     if _slot_schedule_enabled(location, fulfillment_type):
         current_day = _weekday_for_datetime(scheduled_local)
         matching_slots = [
@@ -291,9 +298,30 @@ def schedule_slot_is_available(
         if not matching_slots:
             label = "delivery" if fulfillment_type == OrderFulfillmentType.DELIVERY else "pickup"
             return False, f"{label.capitalize()} is not available for the selected time."
+        # Inside a window, but with no room left to cook before it shuts. Said
+        # separately from "not available", because the two send the customer to
+        # different places: one means pick another day, this means pick earlier.
+        if all(_closes_too_soon(slot.end_time) for slot in matching_slots):
+            latest = min(
+                _combine_local_datetime(scheduled_local.date(), slot.end_time)
+                - timedelta(minutes=prep_buffer_minutes)
+                for slot in matching_slots
+            )
+            return False, (
+                f"The kitchen needs {prep_buffer_minutes} minutes, so the latest time "
+                f"that day is {latest.strftime('%I:%M %p').lstrip('0')}."
+            )
     elif location.opening_time is not None and location.closing_time is not None:
         if not _time_in_slot(scheduled_local.time(), location.opening_time, location.closing_time):
             return False, "The selected time is outside the branch operating hours."
+        if _closes_too_soon(location.closing_time):
+            latest = _combine_local_datetime(
+                scheduled_local.date(), location.closing_time
+            ) - timedelta(minutes=prep_buffer_minutes)
+            return False, (
+                f"The kitchen needs {prep_buffer_minutes} minutes, so the latest time "
+                f"that day is {latest.strftime('%I:%M %p').lstrip('0')}."
+            )
 
     return True, None
 
@@ -364,13 +392,20 @@ def list_available_schedule_options(
             for slot in day_slots:
                 slot_start = _combine_local_datetime(target_date, slot.start_time)
                 slot_end = _combine_local_datetime(target_date, slot.end_time)
+                # The kitchen has to still be open while it cooks. Offering the
+                # closing minute meant a branch shutting at 11pm with a 15
+                # minute prep time let someone book 11pm, which nobody could
+                # have made. The last honest slot is the last grid point at or
+                # before `closing - prep`; the loop below lands on it by
+                # stepping from a grid point, so no extra rounding is needed.
+                last_bookable = slot_end - timedelta(minutes=prep_buffer_minutes)
                 candidate = slot_start
                 if day_offset == 0 and candidate < earliest_slot_dt:
                     candidate = _interval_ceil(earliest_slot_dt, interval_minutes=interval)
                 else:
                     candidate = _interval_ceil(candidate, interval_minutes=interval)
 
-                while candidate <= slot_end:
+                while candidate <= last_bookable:
                     option_rows.append(
                         LocationScheduleOption(
                             scheduled_at=candidate.astimezone(BUSINESS_TIMEZONE),
