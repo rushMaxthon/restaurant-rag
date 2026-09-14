@@ -60,6 +60,11 @@ logger = logging.getLogger(__name__)
 # retrieval stays on a local Ollama while the reply may be written in the cloud.
 # Both endpoints and both sets of auth headers come from the shared module.
 from app.services.embeddings import EmbeddingError, get_embedding
+
+# The same normalizers `PUT /preferences/me` runs, so a trait inferred from chat
+# and a trait a customer set by hand are stored in one vocabulary. Duplicating
+# the alias tables here would let the two drift and make "veg" mean two things.
+from app.services.recommendations import _normalize_diet_value, _normalize_spice_level
 from app.services.ollama_client import (
     think_option,
     EMBED_ENDPOINT,
@@ -1924,10 +1929,15 @@ def _infer_cache_query_descriptor(message: str) -> CacheQueryDescriptor:
     query_tokens = _query_tokens(message)
 
     diet: str | None = None
-    if "vegetarian" in normalized_message or re.search(r"\bveg\b", normalized_message):
-        diet = "veg"
-    elif "non veg" in normalized_message or "non-veg" in normalized_message:
+    # Non-veg is tested FIRST because it contains the word it must not be
+    # mistaken for. `\bveg\b` matches inside "non veg", so with the branches the
+    # other way round the elif was unreachable and "non veg please" classified as
+    # veg — the exact opposite of the request, in a value that keys the response
+    # cache.
+    if "non veg" in normalized_message or "non-veg" in normalized_message or "nonveg" in normalized_message:
         diet = "non_veg"
+    elif "vegetarian" in normalized_message or re.search(r"\bveg\b", normalized_message):
+        diet = "veg"
 
     spicy = True if ("spicy" in normalized_message or "chilli" in normalized_message) else None
 
@@ -2484,6 +2494,176 @@ def _fetch_recent_history_messages(
 
 def _fetch_user_preferences(db: Session, user_id: uuid.UUID) -> UserPreferences | None:
     return db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
+
+
+# --- guest preferences ------------------------------------------------------
+#
+# The concierge is usable before login on purpose (see chat_principal.py), so a
+# visitor can say they are vegetarian twice and be recommended meat next visit:
+# a guest has no row in `users`, so there has never been anywhere to put it.
+#
+# Their browser is the only store available, which means the value arrives in
+# the request. That is exactly the shape CLAUDE.md warns about — "backend
+# enforces, UI only hides" — so it is accepted for a GUEST and ignored outright
+# for an authenticated user, whose row is the only source. See
+# `resolve_chat_preferences`.
+#
+# Spec: docs/superpowers/specs/2026-09-14-guest-preferences-design.md
+
+# Only these two are ever remembered. Cuisine and budget describe the meal
+# rather than the person — "something cheap tonight" is not a claim about how
+# this customer always eats, and storing it would turn one cheap lunch into a
+# permanent budget tier.
+DURABLE_TRAIT_FIELDS = ("diet", "spice_level")
+
+
+@dataclass(frozen=True)
+class GuestPreferenceProfile:
+    """A guest's traits, shaped to travel the path a stored row travels.
+
+    `_normalized_preference_diet` and `_preference_spice_hint` read preferences
+    with `getattr`, so matching those two attribute names is the whole adapter —
+    retrieval cannot tell the difference and does not need to.
+    """
+
+    dietary_preferences: tuple[str, ...]
+    spice_level: str | None
+
+
+def durable_traits_from_intent(intent: "ExtractedIntent") -> dict[str, str]:
+    """The part of a request worth remembering about the person who made it.
+
+    Reuses the intent the turn already extracted rather than parsing the message
+    again: `diet` and `spicy` are computed for retrieval on every turn and then
+    thrown away.
+
+    `spicy=False` is deliberately a trait. "Nothing too spicy" says as much as
+    "extra spicy" does, and keeping only the positive case would remember the
+    customers who like heat and forget the ones who cannot take it.
+    """
+
+    traits: dict[str, str] = {}
+
+    diet = _normalize_diet_value([intent.diet]) if intent.diet else None
+    if diet:
+        traits["diet"] = diet
+
+    if intent.spicy is not None:
+        traits["spice_level"] = "HIGH" if intent.spicy else "LOW"
+
+    return traits
+
+
+def durable_traits_from_message(message: str, intent: "ExtractedIntent") -> dict[str, str]:
+    """What this turn learned, from whichever extractor actually saw it.
+
+    There are two, and neither is sufficient alone. `_fallback_extract_intent`
+    runs on the fast path and sets neither `diet` nor `spicy` for ANY phrasing —
+    "I am vegetarian", "veg food please" and "something vegetarian" all come back
+    empty — so building on the intent alone infers nothing on the path most
+    messages take. `_infer_cache_query_descriptor` does detect diet, reliably.
+
+    Spice is deliberately NOT taken from the descriptor. It is a substring test
+    for "spicy" or "chilli" with no negation handling, so "nothing too spicy"
+    reports `spicy=True`. Recording that would store HIGH for a customer who
+    just said the opposite, permanently and invisibly — the silent wrong
+    inference the spec calls out as the main risk of this feature. Spice is only
+    taken from `intent.spicy`, which the model sets and which understands the
+    sentence.
+    """
+
+    traits = durable_traits_from_intent(intent)
+
+    if "diet" not in traits:
+        descriptor_diet = _normalize_diet_value([_infer_cache_query_descriptor(message).diet])
+        if descriptor_diet:
+            traits["diet"] = descriptor_diet
+
+    return traits
+
+
+def guest_preference_profile(payload: object | None) -> GuestPreferenceProfile | None:
+    """Validate what a browser claims, or return None.
+
+    Anything unrecognised becomes None rather than reaching a query. The values
+    only ever steer ranking, so the worst a forged payload achieves is a guest
+    misleading themselves about their own diet.
+    """
+
+    if not isinstance(payload, dict) or not payload:
+        return None
+
+    diet = _normalize_diet_value([payload.get("diet")]) if payload.get("diet") else None
+    spice = _normalize_spice_level(payload.get("spice_level"))
+    if diet is None and spice is None:
+        return None
+
+    return GuestPreferenceProfile(
+        dietary_preferences=(diet,) if diet else (),
+        spice_level=spice,
+    )
+
+
+def seed_intent_from_preferences(
+    intent: "ExtractedIntent",
+    preferences: "UserPreferences | GuestPreferenceProfile | None",
+) -> None:
+    """Apply a remembered trait to a request that did not mention one.
+
+    This is how a stored preference reaches the results, and it is not where the
+    spec expected. `_normalized_preference_diet` and `_preference_spice_hint`
+    are read in exactly one place — `_new_item_sort_key`, as ranking bonuses —
+    so loading preferences more often would not have filtered anything. What
+    shapes retrieval is `intent.diet`: it goes into the effective query and into
+    the candidate filters. Seeding it reuses that whole path rather than running
+    a second one beside it.
+
+    The message always wins. A vegetarian ordering for someone else must be able
+    to say so, and a stored trait that overrode an explicit request would be
+    impossible to escape without editing an account setting mid-conversation.
+    Only an intent that is silent on a field gets filled.
+
+    Mutates in place, because the caller already holds the resolved intent and
+    threading a copy through would touch every path that reads it.
+    """
+
+    if preferences is None:
+        return
+
+    if intent.diet is None:
+        diet = _normalized_preference_diet(preferences)
+        if diet:
+            intent.diet = diet
+
+    if intent.spicy is None:
+        spice = _preference_spice_hint(preferences)
+        if spice == "high":
+            intent.spicy = True
+        elif spice == "low":
+            intent.spicy = False
+
+
+def resolve_chat_preferences(
+    *,
+    db: Session | None,
+    principal: ChatPrincipal,
+    guest_preferences: object | None = None,
+) -> UserPreferences | GuestPreferenceProfile | None:
+    """Whose preferences apply to this turn, and where they are allowed to come from.
+
+    The trust boundary. A guest has no server-side identity, so their browser is
+    the only place their traits can live and the request is the only way to send
+    them. An authenticated user has a row, and a client must never be able to
+    speak over it: `guest_preferences` is not merged, not used as a fallback,
+    and not logged as a conflict. It is treated as though it were never sent.
+    """
+
+    if is_guest(principal):
+        return guest_preference_profile(guest_preferences)
+
+    if db is None:
+        return None
+    return _fetch_user_preferences(db, principal.id)
 
 
 @lru_cache(maxsize=256)
@@ -3140,7 +3320,15 @@ def _normalized_preference_diet(preferences: UserPreferences | None) -> str | No
 def _preference_spice_hint(preferences: UserPreferences | None) -> str | None:
     if preferences is None:
         return None
-    value = _normalize_text(getattr(preferences, "spice_level", None))
+    # `spice_level` is nullable and NULL on most rows — 5 of 8 here. Passing None
+    # straight to `_normalize_text` raised AttributeError on `.strip()`. It never
+    # fired because preferences were loaded only for messages that sounded
+    # personal, and read only on the new-item ranking path; making them load
+    # every turn is what surfaced it.
+    raw = getattr(preferences, "spice_level", None)
+    if not isinstance(raw, str):
+        return None
+    value = _normalize_text(raw)
     if value in {"high", "medium", "low"}:
         return value
     return None
@@ -4992,6 +5180,7 @@ def _prepare_chat_turn(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None,
+    guest_preferences: object | None = None,
 ) -> PreparedChatTurn:
     active_session_id = session_id or uuid.uuid4()
     timings = RagStageTimings()
@@ -5273,12 +5462,31 @@ def _prepare_chat_turn(
         )
     uses_personal_context = _message_requests_personal_context(message) or is_follow_up
 
+    # Preferences load on EVERY turn, not only when the message sounds personal.
+    # `uses_personal_context` fires on "my", "for me", "my usual" and follow-ups
+    # — so a signed-in vegetarian asking "show me momos" used to get meat momos,
+    # because that phrasing never tripped the gate and their stored diet was
+    # never read. Diet and spice are hard constraints, not personalization
+    # flourishes: serving meat to a vegetarian is wrong, not a missed nicety.
+    #
+    # The gate still governs everything else — favourite cuisines, favourite
+    # items, budget, new-item ranking — which is where it was earning its keep.
+    # Cost is one indexed lookup by user_id per turn, and none for a guest,
+    # whose traits arrive in the request.
+    preferences_started_at = perf_counter()
+    preferences = resolve_chat_preferences(
+        db=db,
+        principal=user,
+        guest_preferences=guest_preferences,
+    )
+    timings.preferences_ms = round((perf_counter() - preferences_started_at) * 1000, 2)
+
+    # Before the effective query is built, because that is what the seeded diet
+    # has to reach. Seeding afterwards would set a field nothing downstream
+    # re-reads, which looks like it works and changes no results.
+    seed_intent_from_preferences(resolved_intent, preferences)
+
     effective_message = _build_effective_query_from_intent(message, resolved_intent, session_state)
-    preferences: UserPreferences | None = None
-    if uses_personal_context:
-        preferences_started_at = perf_counter()
-        preferences = _fetch_user_preferences(db, user.id)
-        timings.preferences_ms = round((perf_counter() - preferences_started_at) * 1000, 2)
 
     budget_limit = (
         resolved_intent.budget
@@ -5865,6 +6073,7 @@ def handle_chat_message(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
+    guest_preferences: object | None = None,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -6004,6 +6213,7 @@ def handle_chat_message(
             session_id=session_id,
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
+            guest_preferences=guest_preferences,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -6134,6 +6344,13 @@ def handle_chat_message(
         suggestions=prepared.suggestions,
         combo_suggestions=prepared.combo_suggestions,
         offer_suggestions=prepared.offer_suggestions,
+        # Only a guest needs this back: their browser is the only place it can
+        # live. An authenticated customer's traits already have a row, and
+        # echoing them to a client that is not allowed to assert them would
+        # invite exactly the round-trip the trust boundary forbids.
+        inferred_preferences=(
+            durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+        ),
     )
 
 
@@ -6145,6 +6362,7 @@ def stream_chat_message(
     session_id: uuid.UUID | None,
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
+    guest_preferences: object | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -6257,6 +6475,9 @@ def stream_chat_message(
                 "suggestions": [],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         return
@@ -6292,6 +6513,9 @@ def stream_chat_message(
                 "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         yield _sse_frame("token", {"text": reply})
@@ -6313,6 +6537,9 @@ def stream_chat_message(
                 "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
                 "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
                 "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                "inferred_preferences": (
+                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                ),
             },
         )
         return
@@ -6325,6 +6552,7 @@ def stream_chat_message(
             session_id=session_id,
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
+            guest_preferences=guest_preferences,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(

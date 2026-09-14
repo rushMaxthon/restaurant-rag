@@ -37,11 +37,25 @@ class ChatSuggestionItem(BaseModel):
     similarity_score: float
 
 
+class GuestPreferencePayload(BaseModel):
+    """Durable traits a browser is carrying for a visitor with no account.
+
+    Honoured ONLY for a guest. For an authenticated user the database is the
+    only source and this is ignored outright — see `resolve_chat_preferences`.
+    Both values are re-normalised server-side, so anything unrecognised becomes
+    None rather than reaching a query.
+    """
+
+    diet: str | None = Field(default=None, max_length=32)
+    spice_level: str | None = Field(default=None, max_length=32)
+
+
 class ChatMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     restaurant_id: uuid.UUID | None = None
     restaurant_location_id: uuid.UUID | None = None
     session_id: uuid.UUID | None = None
+    guest_preferences: GuestPreferencePayload | None = None
 
 
 class ChatMessageResponse(BaseModel):
@@ -50,6 +64,9 @@ class ChatMessageResponse(BaseModel):
     suggestions: list[ChatSuggestionItem] = Field(default_factory=list)
     combo_suggestions: list[GeneratedComboResponse] = Field(default_factory=list)
     offer_suggestions: list[PersonalizedOfferCardResponse] = Field(default_factory=list)
+    # What this turn learned about the visitor, for a guest's browser to keep.
+    # Empty for an authenticated user: their traits already have a home.
+    inferred_preferences: dict[str, str] = Field(default_factory=dict)
 
 
 class ChatHistoryItemResponse(BaseModel):
