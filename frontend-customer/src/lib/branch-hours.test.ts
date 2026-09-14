@@ -184,13 +184,11 @@ describe("bookableTimes", () => {
   });
 
   it("never offers a time the kitchen cannot cook in", () => {
-    // 20 minutes to cook plus a 29 minute ride is 49, so at 10:50 the first
-    // time this branch can promise is 11:39 — and the grid's first point at
-    // or after that is 12:00.
+    // Preparation time is 20 minutes, so 11:00 is gone by 10:50.
     const nearOpening = new Date(2026, 8, 14, 10, 50);
     const times = bookableTimes(branch(), "DELIVERY", "MONDAY", monday, nearOpening);
-    expect(times[0]?.getHours()).toBe(12);
-    expect(times[0]?.getMinutes()).toBe(0);
+    expect(times[0]?.getHours()).toBe(11);
+    expect(times[0]?.getMinutes()).toBe(30);
   });
 
   it("stays inside the window", () => {
@@ -200,15 +198,14 @@ describe("bookableTimes", () => {
   });
 
   it("leaves the kitchen time to cook before it shuts", () => {
-    // The window closes at 21:30 and the branch needs 49 minutes (20 to cook,
-    // 29 to ride), so the last honest slot is the grid point at or before
-    // 20:41, i.e. 20:30. Offering 21:30 meant booking food nobody could have
-    // made — the server rejects it, and the customer finds out after filling
-    // in the whole form.
+    // The window closes at 21:30 and the kitchen needs 20 minutes, so the last
+    // honest slot is the grid point at or before 21:10, i.e. 21:00. Offering
+    // 21:30 meant booking food nobody could have made — the server rejects
+    // it, and the customer finds out after filling in the whole form.
     const times = bookableTimes(branch(), "DELIVERY", "MONDAY", monday, SUNDAY_LATE);
     const last = times[times.length - 1]!;
-    expect(last.getHours()).toBe(20);
-    expect(last.getMinutes()).toBe(30);
+    expect(last.getHours()).toBe(21);
+    expect(last.getMinutes()).toBe(0);
   });
 
   it("offers nothing when the window is shorter than the prep time", () => {
@@ -227,20 +224,21 @@ describe("bookableTimes", () => {
 });
 
 describe("leadMinutes", () => {
-  it("adds preparation time to the ETA, as the server does", () => {
-    // SUMMED, mirroring `_get_prep_buffer_minutes`: the ETA is travel time and
-    // cooking happens before it. Taking the larger of the two offered a slot
-    // 29 minutes out on a branch the server would not serve for 49, and the
-    // customer only found out after filling in the whole checkout form.
-    expect(leadMinutes(branch(), "DELIVERY")).toBe(49);
-    expect(leadMinutes(branch(), "PICKUP")).toBe(35);
+  it("counts preparation time, not travel, as the server does", () => {
+    // `preparation_minutes or eta_minutes` in `_get_prep_buffer_minutes`. The
+    // window is when the shop stops taking ORDERS, so what has to fit before
+    // it closes is cooking — a driver still out at 21:45 is not what the
+    // window exists to prevent. Prep is 20 here, whichever way the order goes.
+    expect(leadMinutes(branch(), "DELIVERY")).toBe(20);
+    expect(leadMinutes(branch(), "PICKUP")).toBe(20);
   });
 
-  it("leaves the ETA alone when the branch never set a prep time", () => {
-    // Most stored rows have none; a branch without one must not lose its
-    // buffer to a NaN.
+  it("falls back to the ETA when the branch never set a prep time", () => {
+    // Five of eight stored rows have none. Without the fallback those branches
+    // would take an order at the closing minute with nothing left to cook it.
     const noPrep = { ...branch(), preparation_time_minutes: null };
     expect(leadMinutes(noPrep, "DELIVERY")).toBe(29);
+    expect(leadMinutes(noPrep, "PICKUP")).toBe(15);
   });
 });
 
@@ -515,9 +513,8 @@ describe("a customer in another timezone", () => {
     expect(times.length).toBeGreaterThan(0);
 
     // The branch opens at 11:00 its time. Whatever zone this test runs in, the
-    // first slot 49 minutes after noon IST is 13:00 IST, which is one exact
-    // instant.
-    expect(times[0]!.toISOString()).toBe("2026-09-14T07:30:00.000Z");
+    // first slot after noon IST is 12:30 IST, which is one exact instant.
+    expect(times[0]!.toISOString()).toBe("2026-09-14T07:00:00.000Z");
   });
 
   it("shows the branch's clock to a customer anywhere", () => {
@@ -534,8 +531,8 @@ describe("a customer in another timezone", () => {
     for (const time of times) {
       const label = formatTimeOfDay(time, KOLKATA);
       expect(label).toMatch(/(a\.m\.|p\.m\.)/);
-      // Window is 11:00-21:30 and the branch needs 49 minutes, so nothing may
-      // land after 20:30 on the branch clock.
+      // Window is 11:00-21:30 with 20 minutes to cook, so nothing may land
+      // after 21:00 on the branch clock.
       const hour = Number(
         new Intl.DateTimeFormat("en-GB", {
           timeZone: KOLKATA,

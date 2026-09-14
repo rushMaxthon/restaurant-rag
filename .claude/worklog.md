@@ -83,8 +83,12 @@ normalises to WHOLE so the ticket reads "Pepperoni" once.
   `branch-hours.ts` still took the larger. The picker offered a slot 29 minutes
   out on a branch that would not serve it for 49, and the customer learned that
   from a red alert AFTER filling in the whole checkout form. Found by the
-  payment E2E, not by reading. Both sides of that rule have to move together —
-  the comment in `leadMinutes` now says so.
+  payment E2E, not by reading. Both sides of that rule have to move together
+  — the comment in `leadMinutes` now says so. Within the hour the same
+  session changed it AGAIN (`dc63f32`, prep only with the ETA as a fallback,
+  because the window is when the shop stops taking ORDERS); the picker
+  followed that too before pushing. Three different rules in one day is the
+  argument for the comment, not against it.
 
 **Open:** three seeded menu items are priced over $100 (a Margherita at $249)
 — leftover rupee values never converted, in the same area another session is

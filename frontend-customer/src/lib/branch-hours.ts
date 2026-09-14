@@ -166,15 +166,17 @@ export function nextOpening(
 /**
  * How soon this branch can realistically have an order ready.
  *
- * Mirrors `_get_prep_buffer_minutes` on the server: preparation time PLUS the
- * ETA for this fulfilment type. The ETA is travel; cooking happens before it,
- * so the two add up.
+ * Mirrors `_get_prep_buffer_minutes` on the server exactly: preparation time,
+ * falling back to the ETA when the branch never set one. Travel is NOT part of
+ * it — the window is when the shop stops taking orders, and what has to fit
+ * before it closes is cooking.
  *
- * This used to take the larger of the two, which is what the server did until
- * it started summing them. The picker went on offering the earlier time and
- * the server refused it — "Please choose a time at least 40 minutes from now",
- * after the customer had filled in the whole checkout form. Any change to the
- * server's buffer has to be made here in the same breath.
+ * This value has been all three things the server has been, and each time the
+ * picker was slower to follow than the rule was to change: while the server
+ * summed prep and travel, the picker still took the larger and offered a slot
+ * 29 minutes out that the server refused at 49 — "Please choose a time at
+ * least 40 minutes from now", shown after the whole checkout form was filled
+ * in. Any change to the server's buffer has to be made here in the same breath.
  */
 export function leadMinutes(location: RestaurantLocation | undefined, type: Fulfillment): number {
   if (!location) return 0;
@@ -182,9 +184,11 @@ export function leadMinutes(location: RestaurantLocation | undefined, type: Fulf
     type === "DELIVERY" ? location.estimated_delivery_time : location.estimated_pickup_time,
   );
   const prep = Number(location.preparation_time_minutes ?? 0);
-  // A branch that never set a prep time keeps its ETA rather than losing the
-  // whole buffer to a NaN; most stored rows have none.
-  return (Number.isFinite(prep) ? prep : 0) + (Number.isFinite(eta) ? eta : 0);
+  const safeEta = Number.isFinite(eta) ? eta : 0;
+  // `prep || eta` on the server. Most stored rows have no prep time, and a
+  // branch without one must keep some buffer rather than take an order at the
+  // closing minute with nothing left to cook it.
+  return Number.isFinite(prep) && prep > 0 ? prep : safeEta;
 }
 
 /** Midnight on `date`, so day arithmetic never inherits a time of day. */
