@@ -34,6 +34,7 @@ import { getRestaurantScopedOffers } from '@components/offers/offerScope';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
 import {
   useAppActions,
+  useBusinessTimeZone,
   useCart,
   useSelectedLocation,
   useSelectedOffer,
@@ -65,8 +66,10 @@ import type {
 import { checkAuthAndRedirect } from '@utils/authRedirect';
 import { buildMenuItemFromGeneratedComboItem } from '@utils/generatedComboCart';
 import {
+  etaClockTime,
   formatFulfillmentSelectionLabel,
   formatScheduledAtLabel,
+  getFulfillmentEtaMinutes,
   getScheduledSlotInvalidMessage,
   getFulfillmentEtaLabel,
   getFulfillmentUnavailableReason,
@@ -92,6 +95,9 @@ export function CartScreen(): React.JSX.Element {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useSession();
+  // The restaurant's clock. Undefined until /app-config lands, which every
+  // formatter below reads as "use the device's" - the old behaviour.
+  const timeZone = useBusinessTimeZone();
   const cart = useCart();
   const selectedLocation = useSelectedLocation();
   const selectedPersonalizedOffer = useSelectedOffer();
@@ -707,6 +713,7 @@ export function CartScreen(): React.JSX.Element {
   const fulfillmentChipLabel = formatFulfillmentSelectionLabel(
     restaurantLocation,
     fulfillmentSelection,
+    timeZone,
   );
   const deliveryEnabled = useMemo(
     () => isFulfillmentEnabled(restaurantLocation, 'DELIVERY'),
@@ -748,26 +755,34 @@ export function CartScreen(): React.JSX.Element {
   const timingLabel = useMemo(
     () =>
       cart.scheduleType === 'SCHEDULED'
-        ? formatScheduledAtLabel(cart.scheduledAt)
+        ? formatScheduledAtLabel(cart.scheduledAt, timeZone)
         : 'ASAP',
-    [cart.scheduleType, cart.scheduledAt],
+    [cart.scheduleType, cart.scheduledAt, timeZone],
   );
+  // The clock time the ETA lands on, on the restaurant's clock. Empty when the
+  // branch has not loaded: the fallback ETA is a RANGE ("25-35 mins"), and a
+  // range has no single arrival time to name.
+  const etaSuffix = useMemo(() => {
+    const at = etaClockTime(
+      getFulfillmentEtaMinutes(restaurantLocation, cart.fulfillmentType),
+      new Date(),
+      timeZone,
+    );
+    return at ? ` \u2022 by ${at}` : '';
+  }, [cart.fulfillmentType, restaurantLocation, timeZone]);
   const timingSupportingLabel = useMemo(
     () =>
       cart.scheduleType === 'SCHEDULED'
         ? cart.fulfillmentType === 'DELIVERY'
           ? 'Scheduled delivery slot'
           : 'Scheduled pickup slot'
-        : cart.fulfillmentType === 'DELIVERY'
-        ? `Arrives in about ${getFulfillmentEtaLabel(
+        : `${
+            cart.fulfillmentType === 'DELIVERY' ? 'Arrives' : 'Ready'
+          } in about ${getFulfillmentEtaLabel(
             restaurantLocation,
             cart.fulfillmentType,
-          )}`
-        : `Ready in about ${getFulfillmentEtaLabel(
-            restaurantLocation,
-            cart.fulfillmentType,
-          )}`,
-    [cart.fulfillmentType, cart.scheduleType, restaurantLocation],
+          )}${etaSuffix}`,
+    [cart.fulfillmentType, cart.scheduleType, etaSuffix, restaurantLocation],
   );
   const canPlaceOrder = useMemo(
     () =>

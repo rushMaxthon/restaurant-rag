@@ -24,6 +24,7 @@ import {
 } from '@stripe/stripe-react-native';
 import {
   useAppActions,
+  useBusinessTimeZone,
   useCart,
   useSelectedLocation,
   useSelectedOffer,
@@ -43,9 +44,11 @@ import type {
 } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import {
+  etaClockTime,
   formatFulfillmentSelectionLabel,
   formatScheduledAtLabel,
   getFulfillmentEtaLabel,
+  getFulfillmentEtaMinutes,
   getFulfillmentUnavailableReason,
   getScheduledSlotInvalidMessage,
   isFulfillmentAvailableNow,
@@ -156,6 +159,9 @@ export function PaymentScreen(): React.JSX.Element {
   const navigation = useNavigation<PaymentNav>();
   const route = useRoute<PaymentRoute>();
   const { token, user, appConfig } = useSession();
+  // The restaurant's clock; see the note in CartScreen. Undefined reads as
+  // "use the device's", so nothing here has to wait for /app-config.
+  const timeZone = useBusinessTimeZone();
   const cart = useCart();
   const selectedLocation = useSelectedLocation();
   const selectedPersonalizedOffer = useSelectedOffer();
@@ -263,9 +269,9 @@ export function PaymentScreen(): React.JSX.Element {
   const timingLabel = useMemo(
     () =>
       cart.scheduleType === 'SCHEDULED'
-        ? formatScheduledAtLabel(cart.scheduledAt)
+        ? formatScheduledAtLabel(cart.scheduledAt, timeZone)
         : 'ASAP',
-    [cart.scheduleType, cart.scheduledAt],
+    [cart.scheduleType, cart.scheduledAt, timeZone],
   );
   const fulfillmentSelection = useMemo<FulfillmentSelection>(
     () => ({
@@ -320,16 +326,24 @@ export function PaymentScreen(): React.JSX.Element {
     return formatFulfillmentSelectionLabel(
       restaurantLocation,
       fulfillmentSelection,
+      timeZone,
     );
-  }, [fulfillmentSelection, restaurantLocation]);
+  }, [fulfillmentSelection, restaurantLocation, timeZone]);
   const restaurantLocationName =
     cart.restaurantLocationName ??
     restaurantLocation?.branch_name ??
     'Main branch';
-  const etaLabel = useMemo(
-    () => getFulfillmentEtaLabel(restaurantLocation, cart.fulfillmentType),
-    [cart.fulfillmentType, restaurantLocation],
-  );
+  const etaLabel = useMemo(() => {
+    const label = getFulfillmentEtaLabel(restaurantLocation, cart.fulfillmentType);
+    const at = etaClockTime(
+      getFulfillmentEtaMinutes(restaurantLocation, cart.fulfillmentType),
+      new Date(),
+      timeZone,
+    );
+    // Same line as the cart shows, so the number does not change shape between
+    // the two screens someone compares before paying.
+    return at ? `${label} \u2022 by ${at}` : label;
+  }, [cart.fulfillmentType, restaurantLocation, timeZone]);
   const appliedOfferLabel = useMemo(() => {
     if (!activePersonalizedOffer || !activeOfferPreview?.eligible) {
       return null;

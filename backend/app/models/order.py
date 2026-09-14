@@ -115,7 +115,12 @@ class Order(TimestampMixin, Base):
     # Real orders stamp this from `payment_currency` at creation; the default
     # only covers inserts that forget to. It must match that setting, or a
     # forgotten stamp silently charges in a currency nobody displayed.
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="CAD", server_default="CAD")
+    #
+    # USD as of 0059. Existing CAD rows are left as they are on purpose — the
+    # Stripe intent is built from this column, so rewriting a settled order's
+    # currency would falsify what was actually charged. The table holding both
+    # is the point of the column.
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD", server_default="USD")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_address: Mapped[str] = mapped_column(Text, nullable=False)
     # Who to ring about THIS delivery. Not the account's own phone: someone

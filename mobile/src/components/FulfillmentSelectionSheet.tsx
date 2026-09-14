@@ -22,6 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
+import { useBusinessTimeZone } from '@hooks/useAppStore';
 import { api } from '@services/api';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
@@ -105,6 +106,7 @@ export function FulfillmentSelectionSheet({
 }: FulfillmentSelectionSheetProps): React.JSX.Element | null {
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
+  const timeZone = useBusinessTimeZone();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
@@ -416,11 +418,19 @@ export function FulfillmentSelectionSheet({
       ? 'ASAP gets the kitchen moving right away.'
       : 'Only valid branch slots are shown here.';
 
-  const currentSelectionLabel = formatFulfillmentSelectionLabel(location, {
-    fulfillmentType: selectedFulfillment,
-    scheduleType: selectedSchedule?.scheduleType ?? 'ASAP',
-    scheduledAt: selectedSchedule?.scheduledAt ?? null,
-  });
+  // The branch's clock, so the summary line at the top of the sheet says the
+  // same time as the slot chip the customer just tapped. Those chips are
+  // labelled by the SERVER, already on the restaurant's clock - re-deriving
+  // them here on the phone's is what made the two disagree.
+  const currentSelectionLabel = formatFulfillmentSelectionLabel(
+    location,
+    {
+      fulfillmentType: selectedFulfillment,
+      scheduleType: selectedSchedule?.scheduleType ?? 'ASAP',
+      scheduledAt: selectedSchedule?.scheduledAt ?? null,
+    },
+    timeZone,
+  );
   const asapAvailable = activeScheduleOptions?.asap_available ?? true;
   const asapUnavailableReason =
     activeScheduleOptions?.asap_unavailable_reason ??

@@ -35,6 +35,7 @@ import { SkeletonBlock } from '@components/SkeletonBlock';
 import { CategoryChips } from '@components/CategoryChips';
 import {
   useAppActions,
+  useBusinessTimeZone,
   useCart,
   useFavoritesState,
   usePreferences,
@@ -132,6 +133,8 @@ export function RestaurantScreen(): React.JSX.Element {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useSession();
+  // The restaurant's clock; see the note in CartScreen.
+  const timeZone = useBusinessTimeZone();
   const { preferences } = usePreferences();
   const { favoritesHydrated } = useFavoritesState();
   const customerLocation = useSelectedLocation();
@@ -1316,6 +1319,7 @@ export function RestaurantScreen(): React.JSX.Element {
                     ? formatFulfillmentSelectionLabel(
                         selectedLocation,
                         effectiveSelection,
+                        timeZone,
                       )
                     : 'Choose delivery or pickup'}
                 </Text>
@@ -1534,6 +1538,7 @@ export function RestaurantScreen(): React.JSX.Element {
       theme.colors.primary,
       theme.colors.secondaryText,
       theme.mode,
+      timeZone,
     ],
   );
 

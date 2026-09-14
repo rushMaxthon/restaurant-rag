@@ -7,7 +7,7 @@ import math
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
@@ -3265,10 +3265,26 @@ def _todays_hours_reply(
         return None
 
     branch_name = rows[0][1].branch_name
+    location = rows[0][1]
     opens = min(slot.start_time for slot, _ in rows)
     closes = max(slot.end_time for slot, _ in rows)
     open_now = opens <= now.time() <= closes
 
+    # The LAST TIME AN ORDER IS ACCEPTED, per fulfillment type — not the window
+    # ends unioned together.
+    #
+    # This used to say min(start) to max(end) across both delivery and pickup,
+    # so a branch running delivery 11:00-21:30 and pickup 10:30-22:00 was
+    # described as "10:30 am to 10 pm": a window true for neither, with the prep
+    # buffer dropped. A customer was told they could order two hours after
+    # delivery actually stops. Reported as "Can I place order at 9:50 PM?"
+    # answered with an implied yes.
+    cutoffs = _last_order_labels(location, reference_dt=now)
+    if open_now and cutoffs:
+        return (
+            f"We're open now 🍳 {branch_name} — {cutoffs}. "
+            "Want me to find you something?"
+        )
     window = f"{_format_clock(opens)} to {_format_clock(closes)}"
     if open_now:
         return (
@@ -3386,6 +3402,167 @@ def looks_like_hours_question(message: str) -> bool:
         return False
 
     return nearest < HOURS_QUESTION_MAX_DISTANCE
+
+
+# A clock time the customer named, as opposed to any other number in a message.
+# Anchored on "at" / "by" / "around" or an am/pm marker, because a bare "15" is
+# far more likely to be a budget than a time — "something under 15 dollars"
+# must not be read as a request for 3pm.
+REQUESTED_TIME_PATTERNS = (
+    r"\b(?:at|by|around|before|after)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+    r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b",
+    r"\b(?:at|by|around|before|after)\s+(\d{1,2}):(\d{2})\b()",
+)
+
+
+def _last_order_labels(location, *, reference_dt) -> str:
+    """"delivery until 8:30 PM, pickup until 9:00 PM", from the bookable slots.
+
+    Built from `list_available_schedule_options`, which is what the picker
+    offers and what checkout accepts — so the sentence cannot promise a time an
+    order would then be refused at. The prep buffer is already subtracted there.
+
+    Returns "" when the schedule cannot be read, and the caller keeps its old
+    wording rather than stating nothing.
+    """
+
+    from app.services.restaurant_locations import list_available_schedule_options
+
+    parts: list[str] = []
+    for fulfillment, label, enabled in (
+        (OrderFulfillmentType.DELIVERY, "delivery", location.delivery_enabled),
+        (OrderFulfillmentType.PICKUP, "pickup", location.pickup_enabled),
+    ):
+        if not enabled:
+            continue
+        try:
+            options = list_available_schedule_options(
+                location,
+                restaurant_id=location.restaurant_id,
+                fulfillment_type=fulfillment,
+                reference_dt=reference_dt,
+            )
+            today = options.groups[0] if options.groups else None
+            if today and today.slots:
+                parts.append(f"{label} until {today.slots[-1].label}")
+        except Exception:  # pragma: no cover - fall back to the plain window
+            logger.exception("Last-order lookup failed for %s", label)
+
+    return ", ".join(parts)
+
+
+def parse_requested_time(message: str) -> "time | None":
+    """The clock time a message names, or None.
+
+    Returns None for anything that is not unambiguously a time. A price, a
+    quantity and a duration all contain digits, and reading one as a time would
+    have the assistant validate a question nobody asked.
+    """
+
+    normalized = _normalize_text(message)
+    for pattern in REQUESTED_TIME_PATTERNS:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        hour = int(match.group(1))
+        minute = int(match.group(2) or 0)
+        meridiem = (match.group(3) or "").strip()
+
+        if meridiem == "pm" and hour < 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            # Midnight. The one case where a naive +12 is wrong in the other
+            # direction, and 12 pm is the other.
+            hour = 0
+
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return time(hour, minute)
+        return None
+    return None
+
+
+def requested_time_reply(
+    db: Session,
+    *,
+    message: str,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> str | None:
+    """Answer "can I order at 9:50 PM?" with what checkout would actually say.
+
+    Asks `schedule_slot_is_available` — the same function that refuses the order
+    — rather than reasoning about windows here. It already handles the prep
+    buffer, the interval grid and the per-fulfillment schedule, and it already
+    returns the sentence explaining itself.
+
+    A time that works for pickup but not delivery says so: they are separate
+    schedules with separate buffers, and a branch often stops delivering before
+    it stops handing food over the counter.
+
+    None when no time was named or no branch is resolvable, so the caller falls
+    through to the general hours answer.
+    """
+
+    requested = parse_requested_time(message)
+    if requested is None:
+        return None
+
+    from app.services.restaurant_locations import (
+        BUSINESS_TIMEZONE,
+        schedule_slot_is_available,
+    )
+
+    query = select(RestaurantLocation).where(RestaurantLocation.is_active.is_(True))
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+    elif restaurant_id is not None:
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
+    else:
+        return None
+
+    location = db.scalars(query.limit(1)).first()
+    if location is None:
+        return None
+
+    now = datetime.now(BUSINESS_TIMEZONE)
+    target = datetime.combine(now.date(), requested, tzinfo=BUSINESS_TIMEZONE)
+    # A time already past today is asking about tomorrow, not about a moment
+    # that cannot be reached.
+    if target < now:
+        target += timedelta(days=1)
+
+    label = _format_clock(requested)
+    accepted: list[str] = []
+    for fulfillment, name, enabled in (
+        (OrderFulfillmentType.DELIVERY, "delivery", location.delivery_enabled),
+        (OrderFulfillmentType.PICKUP, "pickup", location.pickup_enabled),
+    ):
+        if not enabled:
+            continue
+        try:
+            ok, _ = schedule_slot_is_available(
+                location,
+                fulfillment_type=fulfillment,
+                scheduled_at=target,
+                reference_dt=now,
+            )
+        except Exception:  # pragma: no cover - fall through to general hours
+            logger.exception("Requested-time check failed for %s", name)
+            return None
+        if ok:
+            accepted.append(name)
+
+    branch = location.branch_name or "This branch"
+    if accepted:
+        return (
+            f"Yes — {branch} can take a {' and '.join(accepted)} order at {label}. "
+            "Want me to find you something?"
+        )
+
+    cutoffs = _last_order_labels(location, reference_dt=now)
+    if cutoffs:
+        return f"Not at {label} — {branch} takes {cutoffs}. Shall I find you something before then?"
+    return f"Not at {label} — that is outside what {branch} can take today."
 
 
 @dataclass(frozen=True)
@@ -6126,7 +6303,15 @@ def _prepare_chat_turn(
     #
     # 0.49 sits nearly centred in that 0.074 gap, so the gate is gone.
     if _is_hours_query(message) or looks_like_hours_question(message):
-        hours_reply = _todays_hours_reply(
+        # A NAMED time is answered about that time. "Can I place order at
+        # 9:50 PM?" used to get the general hours, which implied yes when the
+        # answer was no — past the delivery cutoff and not on the slot grid.
+        hours_reply = requested_time_reply(
+            db,
+            message=message,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+        ) or _todays_hours_reply(
             db,
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
