@@ -166,10 +166,15 @@ export function nextOpening(
 /**
  * How soon this branch can realistically have an order ready.
  *
- * Mirrors the server: `max(preparation_time_minutes, the ETA for this
- * fulfilment type)`. Using preparation time alone offers slots the server then
- * rejects — delivery prep is ~16 minutes here but the ETA is ~29, and the
- * server enforces the larger.
+ * Mirrors `_get_prep_buffer_minutes` on the server: preparation time PLUS the
+ * ETA for this fulfilment type. The ETA is travel; cooking happens before it,
+ * so the two add up.
+ *
+ * This used to take the larger of the two, which is what the server did until
+ * it started summing them. The picker went on offering the earlier time and
+ * the server refused it — "Please choose a time at least 40 minutes from now",
+ * after the customer had filled in the whole checkout form. Any change to the
+ * server's buffer has to be made here in the same breath.
  */
 export function leadMinutes(location: RestaurantLocation | undefined, type: Fulfillment): number {
   if (!location) return 0;
@@ -177,7 +182,9 @@ export function leadMinutes(location: RestaurantLocation | undefined, type: Fulf
     type === "DELIVERY" ? location.estimated_delivery_time : location.estimated_pickup_time,
   );
   const prep = Number(location.preparation_time_minutes ?? 0);
-  return Math.max(Number.isFinite(prep) ? prep : 0, Number.isFinite(eta) ? eta : 0);
+  // A branch that never set a prep time keeps its ETA rather than losing the
+  // whole buffer to a NaN; most stored rows have none.
+  return (Number.isFinite(prep) ? prep : 0) + (Number.isFinite(eta) ? eta : 0);
 }
 
 /** Midnight on `date`, so day arithmetic never inherits a time of day. */

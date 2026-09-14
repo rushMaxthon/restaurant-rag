@@ -28,6 +28,72 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (4) — Customization correctness, and half-and-half
+
+**Goal:** a long list of reported customization bugs, then a new feature —
+half-and-half toppings — plus a checkout address form and assorted UI work.
+
+**The through-line:** the customer app kept its OWN copy of rules the backend
+already owned, and the two disagreed. `MENU_ITEM_CUSTOMIZATION_FLOW.md` says a
+selected size price REPLACES the base; the app ADDED it, so a $12 bowl with a
+$15 Large read $27 through the cart and on the Pay button while Stripe charged
+$15. `lib/customization.ts` now holds those rules once, mirroring
+`services/menu_item_customizations.py`.
+
+**Fixed:** size pricing (and therefore the checkout-total mismatch — one bug,
+not two); inactive sizes and options rendered and selectable (the client types
+did not even carry `is_active`); size-scoped groups shown under every size
+(`menu_item_size_id` likewise missing); "not required" with `min_selection: 1`
+labelled optional; concierge cards hardcoding `has_sizes: false` so a sized dish
+was added at base price and refused at checkout; past orders showing no size or
+options (the API always sent the snapshot); and three admin-side data states the
+schema allowed — `min_selection` above the option count, the required/minimum
+contradiction, and MULTI groups defaulting to `max_selection: 1`.
+
+**Half-and-half:** `menu_item_customization_groups.supports_halves` (0060) plus
+`portion: WHOLE|LEFT|RIGHT` on each selected option. No new entity and no "half
+pizza" product: it is a flag the owner sets in admin, and the customer UI offers
+the split only where that flag is on. A half costs HALF the option's extra
+price — a product decision, documented; the same option on both halves
+normalises to WHOLE so the ticket reads "Pepperoni" once.
+
+**Learned — do not re-derive:**
+- **I was wrong that the size bugs were unreachable.** I said "seed.py creates
+  no sizes, so this is latent". `seed.py` indeed has none, but the DATABASE has
+  **63 items with sizes, 140 with customizations, 261 groups** — the data came
+  from somewhere else. The $27-shown / $15-charged bug was live on real data,
+  not latent. Survey before concluding something is unreachable.
+- **Two columns of options is worse than one.** Tried it to save height: option
+  names wrapped to three lines and the PRICE was clipped to "+$1.7". A price
+  that lies is not a saving. One column, a tighter row, and a foldable group
+  (which returns ~640px) is the answer.
+- **Hardcoding anything about the menu in a test is a trap.** The half-and-half
+  spec was pinned first to an item id, then to topping names; both broke,
+  because which item is splittable is admin data. It now asks the API which
+  item carries the flag and drives whatever it finds.
+- **The menu-items LIST endpoint is location-filtered.** 516 items exist but
+  only ~166 appear across the six restaurants' lists. An item flagged on the
+  wrong location is invisible to the customer app — which is exactly what
+  happened on the first attempt at test data.
+- The list response already carries each item's `customization_groups`, so
+  discovery needs one request per restaurant, not one per dish.
+- **The picker's lead time drifted away from the server's.** Another session
+  changed `_get_prep_buffer_minutes` to SUM preparation time and the ETA
+  (commit `384aa7a`) where it had taken the larger; `leadMinutes` in
+  `branch-hours.ts` still took the larger. The picker offered a slot 29 minutes
+  out on a branch that would not serve it for 49, and the customer learned that
+  from a red alert AFTER filling in the whole checkout form. Found by the
+  payment E2E, not by reading. Both sides of that rule have to move together —
+  the comment in `leadMinutes` now says so.
+
+**Open:** three seeded menu items are priced over $100 (a Margherita at $249)
+— leftover rupee values never converted, in the same area another session is
+actively changing. Not touched. The business timezone is still one global
+setting. `frontend-admin` has no UI for `supports_halves` yet: the column and
+the API accept it, but an owner cannot tick it from the dashboard.
+
+---
+
 ## 2026-09-14 (3) — Prep-time cutoffs, and the restaurant's clock
 
 **Goal:** two asks from the product side. Show the exact arrival time next to

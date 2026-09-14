@@ -101,7 +101,8 @@ export type RestaurantLocation = {
   pickup_unavailable_reason?: string | null;
   temporary_closed_reason?: string | null;
   fulfillment_slots?: FulfillmentSlot[];
-  preparation_time_minutes?: number;
+  // Nullable on the server, and null on most stored rows — five of eight.
+  preparation_time_minutes?: number | null;
   slot_interval_minutes?: number;
   future_order_enabled?: boolean;
   max_future_days?: number;
