@@ -626,6 +626,11 @@ TOPIC_STOPWORDS = QUERY_STOPWORDS | {
     "option",
     "options",
     "something",
+    # "thing" belongs with "something" and "anything", and its absence had a
+    # cost: "some spicy thing" searched for the literal word "thing" and matched
+    # "Choose the size, the crust and everything on top of it".
+    "thing",
+    "things",
     "whats",
     # When a customer asks "what is menu for today?", the meta words above drop
     # out and the LAST token standing becomes the dish. Without these that token
@@ -1673,12 +1678,46 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
     )
 
 
+def _extract_spice_preference(message: str) -> bool | None:
+    """True for "spicy", False for "not spicy", None when unmentioned.
+
+    `_extract_bare_topic_hint` strips "spicy" so it cannot become a dish name —
+    correctly, since no dish is called that — but nothing then SET the filter,
+    so the requirement was simply deleted. "some spicy thing" reached retrieval
+    as spicy=None and returned whatever matched the leftover word.
+
+    Negation is checked BEFORE the positive reading. "nothing too spicy"
+    contains "spicy" and means the opposite; a substring test would serve the
+    customer the one thing they ruled out. This is the same flaw
+    `_infer_cache_query_descriptor` still has, which is why durable preferences
+    do not take spice from there.
+    """
+
+    normalized = _normalize_match_text(message)
+    if not normalized:
+        return None
+
+    heat = r"(spicy|chilli|chili|hot|fiery)"
+    if re.search(rf"\b(not|no|nothing|without|avoid|less|mild|non)\b[^.]{{0,24}}\b{heat}\b", normalized):
+        return False
+    if re.search(rf"\b{heat}\b[^.]{{0,12}}\b(free|less)\b", normalized):
+        return False
+    if re.search(rf"\b{heat}\b", normalized):
+        return True
+    if re.search(r"\bmild\b", normalized):
+        return False
+    return None
+
+
 def _fallback_extract_intent(message: str, session_state: SessionConversationState) -> ExtractedIntent:
     # Read once, applied to every branch below. The diet filter downstream
     # (`candidate.menu_item.is_veg`) already worked; nothing was ever handing
     # it a diet, so a vegetarian's request reached retrieval as an ordinary
     # search for a dish that happened to be called "vegetarian".
     message_diet = _extract_diet(message)
+    # Same reasoning as the diet above: the spice filter downstream already
+    # works, nothing was handing it a value.
+    message_spicy = _extract_spice_preference(message)
     multi_item_hints = _drop_non_dish_topics(_extract_multi_item_hints(message))
     if _message_requests_new_items(message):
         overrides = _extract_new_query_overrides(message)
@@ -1740,6 +1779,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=multi_item_hints or None,
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
             mood=next((term for term in ("dinner", "lunch", "breakfast", "meal", "snack") if term in normalized), None),
         )
 
@@ -1750,6 +1790,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=multi_item_hints,
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
         )
 
     direct_item_hint = _extract_direct_item_hint(message)
@@ -1762,6 +1803,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=[direct_item_hint],
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
         )
 
     if _is_out_of_domain_message(message):
@@ -1772,6 +1814,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
         budget=explicit_budget,
         show_more=_is_follow_up_recommendation_message(message),
         diet=message_diet,
+        spicy=message_spicy,
     )
     if "restaurant" in normalized:
         fallback.intent = "restaurant_list"

@@ -217,14 +217,28 @@ class InferenceFromMessageTests(unittest.TestCase):
         i = _fallback_extract_intent(phrase, SessionConversationState())
         self.assertEqual(durable_traits_from_message(phrase, i), {"diet": "NON_VEG"})
 
-    def test_negated_spice_is_never_stored_from_the_descriptor(self) -> None:
-        """"nothing too spicy" reports spicy=True there — a substring test with
-        no negation handling. Storing HIGH for someone who said the opposite is
-        the silent wrong inference this feature must not make."""
+    def test_negated_spice_is_stored_as_a_preference_for_mild(self) -> None:
+        """"nothing too spicy" is a statement about the person, stored as LOW.
+
+        This test previously asserted the opposite. It was written when the only
+        spice signal was `_infer_cache_query_descriptor`, a substring test with
+        no negation handling that reported spicy=True for this sentence — so
+        storing anything would have recorded the customer's exact opposite, and
+        refusing to store was the safe answer.
+
+        `_extract_spice_preference` reads the negation, so the signal is now
+        trustworthy and worth keeping. A customer who says they cannot take heat
+        has told us something durable.
+        """
 
         phrase = "nothing too spicy"
         i = _fallback_extract_intent(phrase, SessionConversationState())
-        self.assertNotIn("spice_level", durable_traits_from_message(phrase, i))
+        self.assertEqual(durable_traits_from_message(phrase, i).get("spice_level"), "LOW")
+
+    def test_asking_for_heat_is_stored_the_other_way(self) -> None:
+        phrase = "i want something spicy"
+        i = _fallback_extract_intent(phrase, SessionConversationState())
+        self.assertEqual(durable_traits_from_message(phrase, i).get("spice_level"), "HIGH")
 
     def test_a_neutral_message_learns_nothing(self) -> None:
         phrase = "show me momos"
