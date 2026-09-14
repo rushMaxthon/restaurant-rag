@@ -14,6 +14,9 @@ import type { FulfillmentSlot, LocationDayOfWeek, RestaurantLocation } from "@/l
  * here is for telling the customer BEFORE they get that far.
  */
 
+/** Used only when the location did not say; the server enforces the real limit. */
+const DEFAULT_FUTURE_DAYS = 7;
+
 export type Fulfillment = "DELIVERY" | "PICKUP";
 
 /** Monday-first, matching LocationDayOfWeek and the admin's own ordering. */
@@ -150,11 +153,71 @@ export function nextOpening(
 }
 
 /**
- * Bookable start times inside a slot, as real Date objects.
+ * How soon this branch can realistically have an order ready.
  *
- * Stepped by the branch's own `slot_interval_minutes`, and never earlier than
- * its preparation time from now — offering a pickup in five minutes that the
- * kitchen cannot make is worse than offering nothing.
+ * Mirrors the server: `max(preparation_time_minutes, the ETA for this
+ * fulfilment type)`. Using preparation time alone offers slots the server then
+ * rejects — delivery prep is ~16 minutes here but the ETA is ~29, and the
+ * server enforces the larger.
+ */
+export function leadMinutes(location: RestaurantLocation | undefined, type: Fulfillment): number {
+  if (!location) return 0;
+  const eta = Number(
+    type === "DELIVERY" ? location.estimated_delivery_time : location.estimated_pickup_time,
+  );
+  const prep = Number(location.preparation_time_minutes ?? 0);
+  return Math.max(Number.isFinite(prep) ? prep : 0, Number.isFinite(eta) ? eta : 0);
+}
+
+/** Midnight on `date`, so day arithmetic never inherits a time of day. */
+function startOfDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+export function isSameDay(a: Date, b: Date): boolean {
+  return startOfDay(a).getTime() === startOfDay(b).getTime();
+}
+
+/**
+ * The days this branch can be booked for, today first.
+ *
+ * Bounded by the branch's own `max_future_days`, and a day only appears if it
+ * has at least one time left on it — an empty day in the picker is a dead end
+ * the customer has to discover by tapping.
+ */
+export function bookableDays(
+  location: RestaurantLocation | undefined,
+  type: Fulfillment,
+  now = new Date(),
+): Date[] {
+  if (!location || location.future_order_enabled === false) return [];
+  // An unknown horizon is not a zero horizon. Defaulting to 0 hid every future
+  // slot the server would happily have accepted; when the field is missing the
+  // limit is simply left to the server, which enforces it anyway.
+  const horizon = Math.max(0, Number(location.max_future_days ?? DEFAULT_FUTURE_DAYS));
+  const days: Date[] = [];
+  for (let offset = 0; offset <= horizon; offset += 1) {
+    const day = startOfDay(now);
+    day.setDate(day.getDate() + offset);
+    if (bookableTimes(location, type, dayFromDate(day), day, now).length > 0) {
+      days.push(day);
+    }
+  }
+  return days;
+}
+
+/**
+ * Bookable start times on one day, as real Date objects.
+ *
+ * Aligned to the branch's `slot_interval_minutes` GRID rather than stepped from
+ * the window's start: the server rejects anything whose minute is not a
+ * multiple of the interval, so a window opening at 10:45 with a 30-minute
+ * interval must offer 11:00, not 10:45.
+ *
+ * Nothing is offered sooner than the branch can have it ready, and nothing
+ * beyond `max_future_days`.
  */
 export function bookableTimes(
   location: RestaurantLocation | undefined,
@@ -164,21 +227,37 @@ export function bookableTimes(
   now = new Date(),
 ): Date[] {
   if (!location) return [];
-  const step = Math.max(location.slot_interval_minutes ?? 30, 5);
-  const leadMinutes = location.preparation_time_minutes ?? 0;
-  const earliest = new Date(now.getTime() + leadMinutes * 60_000);
+  const step = Math.max(Number(location.slot_interval_minutes ?? 30), 5);
+  const earliest = new Date(now.getTime() + leadMinutes(location, type) * 60_000);
+
+  const horizon = new Date(now);
+  horizon.setDate(horizon.getDate() + Math.max(0, Number(location.max_future_days ?? DEFAULT_FUTURE_DAYS)));
 
   const times: Date[] = [];
   for (const slot of activeSlots(location, type).filter((s) => s.day_of_week === day)) {
     const start = minutesInto(slot.start_time);
     const end = minutesInto(slot.end_time);
-    for (let minute = start; minute <= end; minute += step) {
-      const at = new Date(dayDate);
+    // First grid point at or after the window opens.
+    for (let minute = Math.ceil(start / step) * step; minute <= end; minute += step) {
+      const at = startOfDay(dayDate);
       at.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-      if (at >= earliest) times.push(at);
+      if (at >= earliest && at <= horizon) times.push(at);
     }
   }
   return times.sort((a, b) => a.getTime() - b.getTime());
+}
+
+/** "Today", "Tomorrow", then the weekday and date. */
+export function dayChipLabel(date: Date, now = new Date()): string {
+  if (isSameDay(date, now)) return "Today";
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (isSameDay(date, tomorrow)) return "Tomorrow";
+  return new Intl.DateTimeFormat("en-CA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(date);
 }
 
 export function formatTimeOfDay(date: Date): string {
