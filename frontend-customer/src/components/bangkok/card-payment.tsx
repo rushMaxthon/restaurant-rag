@@ -34,12 +34,17 @@ type CardPaymentProps = {
   /** Where Stripe sends the customer back for redirect-based methods (3-D Secure). */
   returnUrl: string;
   onCancel: () => void;
+  /** Called once Stripe has confirmed the intent, before we leave the page. */
+  // `| undefined` explicitly: exactOptionalPropertyTypes is on, so passing
+  // the prop through as possibly-undefined is not the same as omitting it.
+  onPaid?: (() => void) | undefined;
 };
 
 function PayForm({
   amount,
   returnUrl,
   onCancel,
+  onPaid,
 }: Omit<CardPaymentProps, "publishableKey" | "clientSecret">) {
   const stripe = useStripe();
   const elements = useElements();
@@ -76,6 +81,11 @@ function PayForm({
     // No error and no redirect: the intent succeeded. The order is still moved
     // out of PAYMENT_PENDING by the webhook, not by this callback — a client
     // must never be the thing that says money arrived.
+    //
+    // The basket, though, is ours to empty, and it has to happen here. The
+    // cart was still full after a successful payment, so the header kept its
+    // badge and the same basket could be paid for a second time.
+    onPaid?.();
     window.location.assign(returnUrl);
   }
 
@@ -114,10 +124,11 @@ export function CardPayment({
   amount,
   returnUrl,
   onCancel,
+  onPaid,
 }: CardPaymentProps) {
   return (
     <Elements stripe={stripeFor(publishableKey)} options={{ clientSecret }}>
-      <PayForm amount={amount} returnUrl={returnUrl} onCancel={onCancel} />
+      <PayForm amount={amount} returnUrl={returnUrl} onCancel={onCancel} onPaid={onPaid} />
     </Elements>
   );
 }

@@ -191,6 +191,7 @@ function Checkout() {
             amount={total}
             returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
             onCancel={abandonPayment}
+            onPaid={s.clearCart}
           />
         </div>
       </div>

@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
-import { useOrder } from "@/lib/queries";
+import { useOrder, usePaymentReconciliation } from "@/lib/queries";
 
 const STEPS = [
   { key: "PLACED", label: "Placed", blurb: "We have your order" },
@@ -54,6 +54,14 @@ function OrderDetail() {
   const isAuthenticated = useRequireAuth();
   const orderQuery = useOrder(orderId, isAuthenticated);
 
+  // Stripe has taken the money by the time the customer lands here, but the
+  // order only moves once the webhook is verified. Locally that never arrives
+  // and in production it can be late, so this asks the reconciling endpoint
+  // until the answer changes. See usePaymentReconciliation.
+  const awaitingPayment =
+    orderQuery.data?.status === "PAYMENT_PENDING" && orderQuery.data?.payment_status !== "COD";
+  usePaymentReconciliation(orderId, isAuthenticated && Boolean(awaitingPayment));
+
   if (!isAuthenticated) return null;
 
   if (orderQuery.isLoading) {
@@ -87,11 +95,13 @@ function OrderDetail() {
 
   const o = orderQuery.data;
   const cancelled = o.status === "CANCELLED";
-  const active = Math.max(
-    STEPS.findIndex((s) => s.key === o.status),
-    0,
-  );
-  const progress = cancelled ? 0 : ((active + 1) / STEPS.length) * 100;
+  const confirmingPayment = o.status === "PAYMENT_PENDING" && o.payment_status !== "COD";
+  // PAYMENT_PENDING is not in STEPS, so findIndex returns -1 and the old
+  // Math.max(..., 0) turned "not paid for yet" into "Placed — we have your
+  // order" at 20%. An unpaid order has not started, so it shows no progress.
+  const stepIndex = STEPS.findIndex((s) => s.key === o.status);
+  const active = Math.max(stepIndex, 0);
+  const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
   const isDelivery = o.fulfillment_type === "DELIVERY";
   const discount = Number(o.discount_amount ?? 0);
 
@@ -242,11 +252,20 @@ function OrderDetail() {
             ) : (
               <CreditCard className="size-4" />
             )}
+            {/* Every PaymentStatus is named. CANCELLED and FAILED used to fall
+                through to "confirming", which left someone whose card was
+                declined watching a spinner that would never resolve. */}
             {o.payment_status === "PAID"
               ? "Paid by card"
               : o.payment_status === "COD"
                 ? `Pay by cash on ${isDelivery ? "delivery" : "pickup"}`
-                : "Card payment confirming…"}
+                : o.payment_status === "REFUNDED"
+                  ? "Refunded to your card"
+                  : o.payment_status === "FAILED"
+                    ? "That payment didn't go through"
+                    : o.payment_status === "CANCELLED"
+                      ? "Payment was not completed"
+                      : "Confirming your payment…"}
           </p>
 
           <Button variant="outline" className="mt-5 h-12 w-full font-bold" asChild>

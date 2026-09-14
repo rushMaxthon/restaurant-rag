@@ -159,6 +159,25 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     applyBrandColor(appConfigQuery.data?.branding.primary_color);
   }, [appConfigQuery.data?.branding.primary_color]);
 
+  /**
+   * Empty the basket and commit it to storage in the same tick.
+   *
+   * The persist effect below would normally handle the write, but the payment
+   * flow clears the cart and then navigates the whole page immediately, which
+   * beats a passive effect. The basket then survived its own payment: the
+   * header still showed the badge and the same food could be paid for twice.
+   */
+  const clearCart = useCallback(() => {
+    setState((s) => ({ ...s, cart: [] }));
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const saved = raw ? (JSON.parse(raw) as Partial<AppState>) : {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...saved, cart: [] }));
+    } catch {
+      // Storage can be unavailable; the effect will catch up if it is not.
+    }
+  }, []);
+
   const setBranchId = useCallback((branchId: string) => setState((s) => ({ ...s, branchId })), []);
 
   const addItem = useCallback(
@@ -240,7 +259,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       replaceCartWith,
       addItem,
       changeQuantity,
-      clearCart: () => setState((s) => ({ ...s, cart: [] })),
+      clearCart,
       setFulfillment: (fulfillment) => setState((s) => ({ ...s, fulfillment })),
       toggleTheme: () => setState((s) => ({ ...s, dark: !s.dark })),
       totalItems: state.cart.reduce((n, line) => n + line.quantity, 0),
@@ -255,6 +274,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       addItem,
       replaceCartWith,
       changeQuantity,
+      clearCart,
       appConfigQuery.isLoading,
       restaurantQuery.isLoading,
     ],

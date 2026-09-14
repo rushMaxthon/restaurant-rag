@@ -74,6 +74,39 @@ export function useOrder(orderId: string | undefined, enabled: boolean) {
   });
 }
 
+/**
+ * Reconcile a card order with Stripe while it is still unpaid.
+ *
+ * `GET /orders/{id}` reports what the database holds; only
+ * `GET /orders/{id}/payment-status` asks Stripe and promotes the order. The
+ * webhook normally does that, but it can be late, and locally it never
+ * arrives at all — so without this the customer who just paid sits on "Card
+ * payment confirming..." until they think to refresh.
+ *
+ * Polls only while the order is unpaid, and stops as soon as it is not.
+ */
+export function usePaymentReconciliation(orderId: string | undefined, unpaid: boolean) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ["payment-status", orderId ?? ""],
+    queryFn: async () => {
+      const status = await api.getPaymentStatus(orderId as string);
+      if (status.order_status !== "PAYMENT_PENDING") {
+        // The order row has just changed server-side; pull the real thing.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.order(orderId ?? "") });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      }
+      return status;
+    },
+    enabled: Boolean(orderId) && unpaid,
+    refetchInterval: (query) =>
+      query.state.data && query.state.data.order_status !== "PAYMENT_PENDING" ? false : 2500,
+    refetchOnWindowFocus: true,
+    // Nothing here is worth showing stale: the whole point is the newest answer.
+    staleTime: 0,
+  });
+}
+
 export function useValidateOrder() {
   return useMutation({ mutationFn: (payload: OrderCreateRequest) => api.validateOrder(payload) });
 }
