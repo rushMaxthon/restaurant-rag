@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
+import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { BranchHours } from "@/components/bangkok/branch-hours";
@@ -139,6 +140,8 @@ function CartPage() {
           </Link>
         </Button>
       </header>
+
+      <WaiterPrompt placement="cart" />
 
       <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_400px]">
         <section className="space-y-3">

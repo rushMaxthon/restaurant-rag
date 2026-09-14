@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
+import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
@@ -125,6 +126,8 @@ function Home() {
           </div>
         </div>
       </section>
+
+      <WaiterPrompt placement="home" />
 
       {isAuthenticated && offers.length > 0 && (
         <section className="page-pad section-pad !pb-0">

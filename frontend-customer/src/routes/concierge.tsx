@@ -14,6 +14,7 @@ import {
   type ChatSuggestion,
 } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
+import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
@@ -89,41 +90,6 @@ type Turn = {
   suggestions: ChatSuggestion[];
 };
 
-/**
- * The session this browser is continuing.
- *
- * Held in localStorage, not just a ref: the backend has always written every
- * turn to `chat_history` keyed by session, so the only thing standing between a
- * reload and the conversation coming back was the client forgetting which
- * session it had been in.
- */
-const SESSION_KEY = "bangkok-bowl-chat-session";
-
-function readStoredSession(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(SESSION_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function storeSession(sessionId: string): void {
-  try {
-    window.localStorage.setItem(SESSION_KEY, sessionId);
-  } catch {
-    // A browser refusing storage costs continuity across reloads, nothing more.
-  }
-}
-
-function clearStoredSession(): void {
-  try {
-    window.localStorage.removeItem(SESSION_KEY);
-  } catch {
-    // Same as above: losing the reset is cosmetic, throwing here would not be.
-  }
-}
-
 let turnSeq = 0;
 function nextTurnId(prefix: string): string {
   turnSeq += 1;
@@ -193,7 +159,7 @@ function ConciergePage() {
         const latest = history[history.length - 1];
         if (latest?.session_id) {
           sessionIdRef.current = latest.session_id;
-          storeSession(latest.session_id);
+          storeChatSession(latest.session_id);
         }
 
         // Suggestions are not persisted with a turn, so replayed assistant
@@ -283,7 +249,7 @@ function ConciergePage() {
         {
           onMeta: (meta) => {
             sessionIdRef.current = meta.session_id;
-            storeSession(meta.session_id);
+            storeChatSession(meta.session_id);
             // Only ever non-empty for a guest; see ChatStreamMeta.
             mergeGuestPreferences(meta.inferred_preferences);
             patchAnswer((turn) => ({ ...turn, suggestions: meta.suggestions }));
@@ -294,7 +260,7 @@ function ConciergePage() {
           },
           onDone: (done) => {
             sessionIdRef.current = done.session_id;
-            storeSession(done.session_id);
+            storeChatSession(done.session_id);
             patchAnswer((turn) => ({ ...turn, text: done.reply, suggestions: done.suggestions }));
             setStatus("done");
           },
@@ -335,7 +301,7 @@ function ConciergePage() {
   function startNewConversation() {
     abortRef.current?.abort();
     sessionIdRef.current = null;
-    clearStoredSession();
+    clearChatSession();
     setTurns([]);
     setError(null);
     setDraft("");

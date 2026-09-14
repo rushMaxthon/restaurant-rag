@@ -161,6 +161,44 @@
   background: var(--primary);
   color: var(--on-primary);
 }
+/*
+ * The waiter's one line. Never a transcript: one prompt, one action, one
+ * dismiss, laid out so the actions sit flush right and the copy truncates
+ * rather than wrap into something that reads like a chat bubble.
+ */
+.waiter-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--primary-soft);
+  padding: 0.85rem 1.1rem;
+}
+.waiter-prompt__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.waiter-prompt__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* Under the hero, above "Your personalised picks" — inside the same
+   page gutter the sections around it already use. */
+.waiter-prompt--home {
+  margin: 1.5rem clamp(1rem, 3vw, 3rem) 0;
+}
+/* Above the order summary card it sits beside on desktop. */
+.waiter-prompt--cart {
+  margin-top: 1.5rem;
+}
 .dish-card {
   box-shadow: 0 1px 0 var(--border);
 }
