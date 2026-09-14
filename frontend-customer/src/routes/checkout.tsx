@@ -34,6 +34,7 @@ import {
   dayFromDate,
   dayFromInputValue,
   dayLabel,
+  etaClockTime,
   formatSlotRange,
   formatTimeOfDay,
   groupByPartOfDay,
@@ -142,6 +143,10 @@ function Checkout() {
   // the delivery fee and the minimum are all per location, and the order is
   // placed against the cart's location a few lines below.
   const branch = s.orderLocation;
+  // Every opening hour, slot and cutoff below is on the RESTAURANT's clock,
+  // not the device's. Undefined until /app-config lands, which the helpers
+  // read as "use the device zone" — the old behaviour, and harmless.
+  const tz = s.timeZone;
   const isDelivery = s.fulfillment === "DELIVERY";
   // 0, not 45 — see the note in cart.tsx. An invented $45 delivery fee is
   // the worst thing to show someone one second before they pay.
@@ -149,24 +154,26 @@ function Checkout() {
   const tax = s.subtotal * 0.05;
   const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
+  // The clock time that ETA lands on, on the branch's clock.
+  const etaAt = etaClockTime(eta, now, tz);
 
   // Orders have carried schedule_type/scheduled_at since the beginning and the
   // server validates a scheduled time against the branch's own slots. The app
   // only ever sent ASAP, so outside opening hours there was nothing to do but
   // fail. Now a closed branch can still take an order for its next window.
   const fulfillment = isDelivery ? "DELIVERY" : "PICKUP";
-  const availability = availabilityNow(branch, fulfillment);
-  const reopens = availability.available ? null : nextOpening(branch, fulfillment);
+  const availability = availabilityNow(branch, fulfillment, now, tz);
+  const reopens = availability.available ? null : nextOpening(branch, fulfillment, now, tz);
   const canOrderNow = availability.available;
 
   // Scheduling is offered whether or not the branch is open. Closed, it is the
   // only way to order at all; open, it is someone ordering dinner from their
   // desk at 3pm. The days come from the branch's own `max_future_days`, and a
   // day with nothing left on it is left out rather than offered as a dead end.
-  const days = bookableDays(branch, fulfillment, now);
+  const days = bookableDays(branch, fulfillment, now, tz);
   const selectedDay = chosenDay ?? days[0] ?? null;
   const slotTimes = selectedDay
-    ? bookableTimes(branch, fulfillment, dayFromDate(selectedDay), selectedDay, now)
+    ? bookableTimes(branch, fulfillment, dayFromDate(selectedDay, tz), selectedDay, now, tz)
     : [];
   const mustSchedule = !canOrderNow;
   const scheduling = mustSchedule || wantsLater;
@@ -180,28 +187,28 @@ function Checkout() {
   // build — and it is the control people already know how to use on a phone,
   // where it opens the platform's own date wheel.
   const firstDay = days[0];
-  const lastDay = lastBookableDay(branch, now);
+  const lastDay = lastBookableDay(branch, now, tz);
 
   const todaysWindows = selectedDay
-    ? activeSlots(branch, fulfillment).filter((w) => w.day_of_week === dayFromDate(selectedDay))
+    ? activeSlots(branch, fulfillment).filter((w) => w.day_of_week === dayFromDate(selectedDay, tz))
     : [];
 
   // A date the branch does not serve is worth saying out loud. Silently
   // snapping back to a day the customer did not pick is how you end up with an
   // order for the wrong evening.
   const pickedEmptyDay =
-    selectedDay && slotTimes.length === 0 ? dayChipLabel(selectedDay, now) : null;
+    selectedDay && slotTimes.length === 0 ? dayChipLabel(selectedDay, now, tz) : null;
 
   // The soonest the kitchen can actually have it. Offered as one tap, because
   // it is what most people scheduling ahead actually want, and because a wall
   // of twenty-four chips buries it.
-  const earliest = nextBookableTime(branch, fulfillment, now);
+  const earliest = nextBookableTime(branch, fulfillment, now, tz);
   const interval = Math.max(Number(branch?.slot_interval_minutes ?? 30), 5);
   // A shortlist by default; the full day is a tap away. Showing every slot was
   // the thing that made this screen feel like a timetable.
   const upcoming = slotTimes.slice(0, 6);
   const visibleTimes = showAllTimes ? slotTimes : upcoming;
-  const visibleGroups = groupByPartOfDay(visibleTimes);
+  const visibleGroups = groupByPartOfDay(visibleTimes, tz);
   const dayFirst = slotTimes[0];
   const dayLast = slotTimes[slotTimes.length - 1];
 
@@ -250,6 +257,7 @@ function Checkout() {
               <Clock className="size-4 text-primary" />
               {isDelivery ? "Arriving in" : "Ready in"} about {eta}{" "}
               {typeof eta === "number" ? "min" : ""}
+              {etaAt && <span className="text-muted">· by {etaAt}</span>}
             </p>
           )}
           <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -491,7 +499,11 @@ function Checkout() {
             {!scheduling && (
               <p className="mt-4 flex items-center gap-2 text-sm font-semibold">
                 <Clock className="size-4 shrink-0 text-primary" />
-                Ready in about {eta} {typeof eta === "number" ? "min" : ""}.
+                {isDelivery ? "Arriving in" : "Ready in"} about {eta}{" "}
+                {typeof eta === "number" ? "min" : ""}
+                {/* See cart.tsx: the duration alone leaves the customer doing
+                    the sum themselves. */}
+                {etaAt && <span className="text-muted">· by {etaAt}</span>}
               </p>
             )}
 
@@ -521,11 +533,11 @@ function Checkout() {
                         <span className="sr-only">Pick a date</span>
                         <input
                           type="date"
-                          value={selectedDay ? dateInputValue(selectedDay) : ""}
-                          min={dateInputValue(firstDay ?? now)}
-                          max={dateInputValue(lastDay)}
+                          value={selectedDay ? dateInputValue(selectedDay, tz) : ""}
+                          min={dateInputValue(firstDay ?? now, tz)}
+                          max={dateInputValue(lastDay, tz)}
                           onChange={(event) => {
-                            const picked = dayFromInputValue(event.target.value);
+                            const picked = dayFromInputValue(event.target.value, tz);
                             if (!picked) return;
                             setChosenDay(picked);
                             setChosenSlot(null);
@@ -550,7 +562,7 @@ function Checkout() {
                               setChosenSlot(null);
                             }}
                           >
-                            {dayChipLabel(day, now)}
+                            {dayChipLabel(day, now, tz)}
                           </button>
                         ))}
                       </div>
@@ -560,7 +572,7 @@ function Checkout() {
                   <div className="mt-4">
                     <div className="picker-head">
                       <p className="picker-label">
-                        {selectedDay ? dayChipLabel(selectedDay, now) : "Time"}
+                        {selectedDay ? dayChipLabel(selectedDay, now, tz) : "Time"}
                       </p>
                       {/* The window the times come from. Without it a short
                           list reads as "barely any availability" rather than
@@ -581,7 +593,7 @@ function Checkout() {
                         {/* The soonest the kitchen can have it, as one tap. It
                             is what most people scheduling ahead are looking
                             for, and a wall of chips buried it. */}
-                        {earliest && isSameDay(earliest, selectedDay ?? earliest) && (
+                        {earliest && isSameDay(earliest, selectedDay ?? earliest, tz) && (
                           <button
                             type="button"
                             className="earliest-row mt-3"
@@ -596,7 +608,7 @@ function Checkout() {
                             <span className="min-w-0 flex-1 text-left">
                               <span className="block font-bold">Earliest available</span>
                               <span className="block text-xs text-muted">
-                                {dayChipLabel(earliest, now)} at {formatTimeOfDay(earliest)}
+                                {dayChipLabel(earliest, now, tz)} at {formatTimeOfDay(earliest, tz)}
                               </span>
                             </span>
                           </button>
@@ -620,7 +632,7 @@ function Checkout() {
                                     setCustomTimeError(null);
                                   }}
                                 >
-                                  {formatTimeOfDay(time)}
+                                  {formatTimeOfDay(time, tz)}
                                 </button>
                               ))}
                             </div>
@@ -657,18 +669,18 @@ function Checkout() {
                               <input
                                 type="time"
                                 step={interval * 60}
-                                min={clockValue(dayFirst)}
-                                max={clockValue(dayLast)}
+                                min={clockValue(dayFirst, tz)}
+                                max={clockValue(dayLast, tz)}
                                 onChange={(event) => {
                                   const [hh, mm] = event.target.value.split(":");
                                   if (hh === undefined || mm === undefined) return;
                                   const base = new Date(selectedDay ?? now);
                                   base.setHours(Number(hh), Number(mm), 0, 0);
-                                  const snapped = snapToInterval(base, interval);
-                                  if (!isBookableTime(branch, fulfillment, snapped, now)) {
+                                  const snapped = snapToInterval(base, interval, tz);
+                                  if (!isBookableTime(branch, fulfillment, snapped, now, tz)) {
                                     setChosenSlot(null);
                                     setCustomTimeError(
-                                      `That time is not available. Pick between ${formatTimeOfDay(dayFirst)} and ${formatTimeOfDay(dayLast)}.`,
+                                      `That time is not available. Pick between ${formatTimeOfDay(dayFirst, tz)} and ${formatTimeOfDay(dayLast, tz)}.`,
                                     );
                                     return;
                                   }
@@ -677,7 +689,7 @@ function Checkout() {
                                 }}
                               />
                               <span className="shrink-0 text-xs text-muted">
-                                {formatTimeOfDay(dayFirst)} – {formatTimeOfDay(dayLast)}
+                                {formatTimeOfDay(dayFirst, tz)} – {formatTimeOfDay(dayLast, tz)}
                               </span>
                             </label>
                             {customTimeError && (
@@ -696,8 +708,8 @@ function Checkout() {
                     {chosenSlot ? (
                       <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-success">
                         <CheckCircle2 className="size-4 shrink-0" />
-                        {isDelivery ? "Arriving" : "Ready"} {dayChipLabel(chosenSlot, now)} at{" "}
-                        {formatTimeOfDay(chosenSlot)}
+                        {isDelivery ? "Arriving" : "Ready"} {dayChipLabel(chosenSlot, now, tz)} at{" "}
+                        {formatTimeOfDay(chosenSlot, tz)}
                       </p>
                     ) : (
                       // The Pay button is disabled until a time exists. Saying
@@ -768,6 +780,7 @@ function Checkout() {
             <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold">
               <Clock className="size-3.5 shrink-0 text-primary" />
               About {eta} {typeof eta === "number" ? "min" : ""}
+              {etaAt && <span className="text-muted">· by {etaAt}</span>}
             </p>
           )}
 

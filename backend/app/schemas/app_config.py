@@ -24,3 +24,10 @@ class AppConfigResponse(BaseModel):
     order_prefix: str
     minimum_supported_version: str
     bundle_id: str
+    # The clock every opening hour, slot and cutoff in this system is written
+    # in. Sent because the client cannot guess it: a browser builds dates in
+    # the DEVICE's zone, so a customer in Toronto reading a branch in Ahmedabad
+    # would turn the branch's 7pm window into their own 7pm, send an instant
+    # nine and a half hours off, and be refused by a server that was right.
+    # An IANA name rather than an offset, so DST is the platform's problem.
+    business_timezone: str

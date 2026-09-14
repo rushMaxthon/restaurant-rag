@@ -704,6 +704,7 @@ def build_app_config_response(app_client: AppClient, *, bundle_id: str) -> AppCo
             app_client.minimum_supported_version or DEFAULT_MINIMUM_SUPPORTED_VERSION
         ),
         bundle_id=bundle_id.strip(),
+        business_timezone=get_settings().business_timezone,
     )
 
 

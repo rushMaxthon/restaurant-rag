@@ -4,6 +4,8 @@ import {
   bookableDays,
   bookableTimes,
   dayChipLabel,
+  etaClockTime,
+  formatTimeOfDay,
   dateInputValue,
   dayFromInputValue,
   groupByPartOfDay,
@@ -221,7 +223,6 @@ describe("bookableTimes", () => {
   });
 });
 
-
 describe("leadMinutes", () => {
   it("uses the larger of preparation time and the ETA, as the server does", () => {
     // The server's buffer is max(preparation_time_minutes, ETA). Using prep
@@ -253,7 +254,9 @@ describe("bookableDays", () => {
   });
 
   it("offers nothing when the branch does not take future orders", () => {
-    expect(bookableDays(branch({ future_order_enabled: false }), "DELIVERY", SUNDAY_LATE)).toEqual([]);
+    expect(bookableDays(branch({ future_order_enabled: false }), "DELIVERY", SUNDAY_LATE)).toEqual(
+      [],
+    );
   });
 
   it("stays within max_future_days", () => {
@@ -475,5 +478,102 @@ describe("isBookableTime", () => {
 
   it("refuses a day the branch is shut", () => {
     expect(isBookableTime(branch(), "DELIVERY", new Date(2026, 8, 16, 19, 0), monday)).toBe(false);
+  });
+});
+
+describe("a customer in another timezone", () => {
+  /**
+   * The branch keeps one clock; the customer may be on another.
+   *
+   * Slot rows store a wall-clock time for the BRANCH ("11:00:00"), and the
+   * server validates against that same clock. The app used to build those with
+   * `setHours`, which reads the DEVICE clock, so someone in Toronto ordering
+   * from a branch in Ahmedabad turned the branch's 11am into their own 11am
+   * and sent an instant nine and a half hours out. The server refused it, and
+   * was right to.
+   *
+   * Asserted on absolute instants and on text formatted in a named zone, so
+   * these hold wherever the machine running them happens to be.
+   */
+  const KOLKATA = "Asia/Kolkata";
+  const monday = new Date("2026-09-14T00:00:00+05:30");
+
+  it("builds slots on the branch's clock, not the device's", () => {
+    const noonIST = new Date("2026-09-14T06:30:00Z"); // 12:00 in Kolkata
+    const times = bookableTimes(branch(), "DELIVERY", "MONDAY", monday, noonIST, KOLKATA);
+    expect(times.length).toBeGreaterThan(0);
+
+    // The branch opens at 11:00 its time. Whatever zone this test runs in, the
+    // first slot after noon IST is 12:30 IST, which is one exact instant.
+    expect(times[0]!.toISOString()).toBe("2026-09-14T07:00:00.000Z");
+  });
+
+  it("shows the branch's clock to a customer anywhere", () => {
+    const slot = new Date("2026-09-14T13:30:00Z");
+    expect(formatTimeOfDay(slot, KOLKATA)).toContain("7:00");
+    // The same instant is mid-morning in Toronto; the picker must not say that,
+    // because the kitchen is not open mid-morning Toronto time.
+    expect(formatTimeOfDay(slot, "America/Toronto")).toContain("9:30");
+  });
+
+  it("never offers a slot outside the branch's window, whatever the device says", () => {
+    const noonIST = new Date("2026-09-14T06:30:00Z");
+    const times = bookableTimes(branch(), "DELIVERY", "MONDAY", monday, noonIST, KOLKATA);
+    for (const time of times) {
+      const label = formatTimeOfDay(time, KOLKATA);
+      expect(label).toMatch(/(a\.m\.|p\.m\.)/);
+      // Window is 11:00-21:30 with a 29 minute ETA, so nothing may land after
+      // 21:00 on the branch clock.
+      const hour = Number(
+        new Intl.DateTimeFormat("en-GB", {
+          timeZone: KOLKATA,
+          hour: "2-digit",
+          hour12: false,
+        }).format(time),
+      );
+      expect(hour).toBeGreaterThanOrEqual(11);
+      expect(hour).toBeLessThanOrEqual(21);
+    }
+  });
+
+  it("reads the branch's weekday, which can be tomorrow already", () => {
+    // 20:00 UTC Monday is 01:30 Tuesday in Kolkata.
+    const lateUtc = new Date("2026-09-14T20:00:00Z");
+    expect(dayFromDate(lateUtc, KOLKATA)).toBe("TUESDAY");
+    expect(dayFromDate(lateUtc, "America/Toronto")).toBe("MONDAY");
+  });
+});
+
+describe("etaClockTime", () => {
+  /**
+   * "Arrives in about 29 min" leaves the customer doing arithmetic while
+   * deciding whether to order. The clock time is the thing they are actually
+   * asking for, and it has to be the BRANCH's clock for the same reason every
+   * slot is.
+   */
+  const KOLKATA = "Asia/Kolkata";
+
+  it("adds the ETA to now and reads it on the branch clock", () => {
+    const noonIST = new Date("2026-09-14T06:30:00Z"); // 12:00 in Kolkata
+    expect(etaClockTime(30, noonIST, KOLKATA)).toContain("12:30");
+  });
+
+  it("rolls past the hour", () => {
+    const noonIST = new Date("2026-09-14T06:30:00Z");
+    expect(etaClockTime(45, noonIST, KOLKATA)).toContain("12:45");
+    expect(etaClockTime(90, noonIST, KOLKATA)).toContain("1:30");
+  });
+
+  it("is null when there is no usable ETA, so callers render nothing", () => {
+    const now = new Date("2026-09-14T06:30:00Z");
+    expect(etaClockTime(undefined, now, KOLKATA)).toBeNull();
+    expect(etaClockTime(null, now, KOLKATA)).toBeNull();
+    expect(etaClockTime(0, now, KOLKATA)).toBeNull();
+    expect(etaClockTime("soon" as unknown as number, now, KOLKATA)).toBeNull();
+  });
+
+  it("reads the same instant differently in another zone", () => {
+    const noonIST = new Date("2026-09-14T06:30:00Z");
+    expect(etaClockTime(30, noonIST, "America/Toronto")).toContain("3:00");
   });
 });
