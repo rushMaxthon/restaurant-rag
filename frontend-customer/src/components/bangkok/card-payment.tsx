@@ -48,7 +48,14 @@ function PayForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!stripe || !elements) return;
+    // Silently returning here made the Pay button do nothing at all — no error,
+    // no spinner, no navigation — whenever Stripe.js had not finished loading.
+    // A dead button with no feedback is the worst possible failure on a payment
+    // screen: the customer presses it again, and again.
+    if (!stripe || !elements) {
+      setError("The payment form is still loading. Give it a moment and try again.");
+      return;
+    }
     setBusy(true);
     setError(null);
 
@@ -86,7 +93,11 @@ function PayForm({
         </div>
       )}
 
-      <Button type="submit" className="h-12 w-full text-base" disabled={!stripe || busy}>
+      <Button
+        type="submit"
+        className="h-12 w-full text-base"
+        disabled={!stripe || !elements || busy}
+      >
         <Lock className="size-4" />
         {busy ? "Confirming…" : `Pay ${formatMoney(amount)}`}
       </Button>

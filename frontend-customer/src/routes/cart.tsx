@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
   BadgePercent,
+  ChevronDown,
   Clock,
   Minus,
   Plus,
@@ -13,7 +14,14 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { availabilityNow, dayLabel, formatSlotTime, nextOpening } from "@/lib/branch-hours";
+import { BranchHours } from "@/components/bangkok/branch-hours";
+import {
+  availabilityNow,
+  bookableDays,
+  dayLabel,
+  formatSlotTime,
+  nextOpening,
+} from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/cart")({
@@ -57,6 +65,13 @@ function CartPage() {
   const availability = availabilityNow(s.currentLocation, fulfillment);
   const reopens = availability.available ? null : nextOpening(s.currentLocation, fulfillment);
   const blocked = !availability.available;
+
+  // Closed is not the same as unorderable. The server has always accepted a
+  // scheduled order, and checkout has offered one since the slot picker landed
+  // — but the cart still ended the journey with a disabled button, so nobody
+  // ever reached it. A branch with a bookable window ahead of it gets a way
+  // through; one with no windows at all keeps the honest dead end.
+  const canSchedule = blocked && bookableDays(s.currentLocation, fulfillment).length > 0;
 
   if (!s.cart.length) {
     return (
@@ -245,9 +260,9 @@ function CartPage() {
           </div>
 
           {blocked && (
-            <div className="closed-notice mt-5">
-              <Clock className="mt-0.5 size-5 shrink-0 text-danger" />
-              <div>
+            <div className="closed-notice mt-5" data-tone="soft">
+              <Clock className="mt-0.5 size-5 shrink-0 text-primary" />
+              <div className="min-w-0">
                 <p className="font-bold">
                   {isDelivery ? "Delivery" : "Pickup"} is closed right now
                 </p>
@@ -256,31 +271,49 @@ function CartPage() {
                   {reopens && (
                     <>
                       {" "}
-                      Opens again {reopens.isToday ? "today" : dayLabel(reopens.day)} at{" "}
+                      It opens again {reopens.isToday ? "today" : dayLabel(reopens.day)} at{" "}
                       <b className="text-foreground">{formatSlotTime(reopens.slot.start_time)}</b>.
                     </>
                   )}
                 </p>
+                {canSchedule && (
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    You can still order now and choose when you want it.
+                  </p>
+                )}
+                <details className="hours-disclosure mt-3">
+                  <summary>
+                    See opening hours
+                    <ChevronDown className="size-3.5" />
+                  </summary>
+                  <BranchHours
+                    className="mt-3"
+                    location={s.currentLocation}
+                    fulfillment={fulfillment}
+                  />
+                </details>
               </div>
             </div>
           )}
 
           <Button
             className="mt-5 h-12 w-full text-base font-bold"
-            disabled={shortfall > 0 || blocked}
-            asChild={shortfall === 0 && !blocked}
+            disabled={shortfall > 0 || (blocked && !canSchedule)}
+            asChild={shortfall === 0 && !(blocked && !canSchedule)}
           >
-            {blocked ? (
+            {blocked && !canSchedule ? (
               <span>Closed right now</span>
             ) : shortfall > 0 ? (
               <span>Minimum {formatMoney(minimumOrder)} to order</span>
             ) : isAuthenticated ? (
               <Link to="/checkout">
-                Continue to checkout <ArrowRight className="size-4" />
+                {canSchedule ? "Schedule for later" : "Continue to checkout"}{" "}
+                <ArrowRight className="size-4" />
               </Link>
             ) : (
               <Link to="/login" search={{ redirect: "/checkout" }}>
-                Sign in to checkout <ArrowRight className="size-4" />
+                {canSchedule ? "Sign in to schedule" : "Sign in to checkout"}{" "}
+                <ArrowRight className="size-4" />
               </Link>
             )}
           </Button>

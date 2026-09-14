@@ -14,6 +14,9 @@ import type { FulfillmentSlot, LocationDayOfWeek, RestaurantLocation } from "@/l
  * here is for telling the customer BEFORE they get that far.
  */
 
+/** Used only when the location did not say; the server enforces the real limit. */
+const DEFAULT_FUTURE_DAYS = 7;
+
 export type Fulfillment = "DELIVERY" | "PICKUP";
 
 /** Monday-first, matching LocationDayOfWeek and the admin's own ordering. */
@@ -150,11 +153,71 @@ export function nextOpening(
 }
 
 /**
- * Bookable start times inside a slot, as real Date objects.
+ * How soon this branch can realistically have an order ready.
  *
- * Stepped by the branch's own `slot_interval_minutes`, and never earlier than
- * its preparation time from now — offering a pickup in five minutes that the
- * kitchen cannot make is worse than offering nothing.
+ * Mirrors the server: `max(preparation_time_minutes, the ETA for this
+ * fulfilment type)`. Using preparation time alone offers slots the server then
+ * rejects — delivery prep is ~16 minutes here but the ETA is ~29, and the
+ * server enforces the larger.
+ */
+export function leadMinutes(location: RestaurantLocation | undefined, type: Fulfillment): number {
+  if (!location) return 0;
+  const eta = Number(
+    type === "DELIVERY" ? location.estimated_delivery_time : location.estimated_pickup_time,
+  );
+  const prep = Number(location.preparation_time_minutes ?? 0);
+  return Math.max(Number.isFinite(prep) ? prep : 0, Number.isFinite(eta) ? eta : 0);
+}
+
+/** Midnight on `date`, so day arithmetic never inherits a time of day. */
+function startOfDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+export function isSameDay(a: Date, b: Date): boolean {
+  return startOfDay(a).getTime() === startOfDay(b).getTime();
+}
+
+/**
+ * The days this branch can be booked for, today first.
+ *
+ * Bounded by the branch's own `max_future_days`, and a day only appears if it
+ * has at least one time left on it — an empty day in the picker is a dead end
+ * the customer has to discover by tapping.
+ */
+export function bookableDays(
+  location: RestaurantLocation | undefined,
+  type: Fulfillment,
+  now = new Date(),
+): Date[] {
+  if (!location || location.future_order_enabled === false) return [];
+  // An unknown horizon is not a zero horizon. Defaulting to 0 hid every future
+  // slot the server would happily have accepted; when the field is missing the
+  // limit is simply left to the server, which enforces it anyway.
+  const horizon = Math.max(0, Number(location.max_future_days ?? DEFAULT_FUTURE_DAYS));
+  const days: Date[] = [];
+  for (let offset = 0; offset <= horizon; offset += 1) {
+    const day = startOfDay(now);
+    day.setDate(day.getDate() + offset);
+    if (bookableTimes(location, type, dayFromDate(day), day, now).length > 0) {
+      days.push(day);
+    }
+  }
+  return days;
+}
+
+/**
+ * Bookable start times on one day, as real Date objects.
+ *
+ * Aligned to the branch's `slot_interval_minutes` GRID rather than stepped from
+ * the window's start: the server rejects anything whose minute is not a
+ * multiple of the interval, so a window opening at 10:45 with a 30-minute
+ * interval must offer 11:00, not 10:45.
+ *
+ * Nothing is offered sooner than the branch can have it ready, and nothing
+ * beyond `max_future_days`.
  */
 export function bookableTimes(
   location: RestaurantLocation | undefined,
@@ -164,21 +227,37 @@ export function bookableTimes(
   now = new Date(),
 ): Date[] {
   if (!location) return [];
-  const step = Math.max(location.slot_interval_minutes ?? 30, 5);
-  const leadMinutes = location.preparation_time_minutes ?? 0;
-  const earliest = new Date(now.getTime() + leadMinutes * 60_000);
+  const step = Math.max(Number(location.slot_interval_minutes ?? 30), 5);
+  const earliest = new Date(now.getTime() + leadMinutes(location, type) * 60_000);
+
+  const horizon = new Date(now);
+  horizon.setDate(horizon.getDate() + Math.max(0, Number(location.max_future_days ?? DEFAULT_FUTURE_DAYS)));
 
   const times: Date[] = [];
   for (const slot of activeSlots(location, type).filter((s) => s.day_of_week === day)) {
     const start = minutesInto(slot.start_time);
     const end = minutesInto(slot.end_time);
-    for (let minute = start; minute <= end; minute += step) {
-      const at = new Date(dayDate);
+    // First grid point at or after the window opens.
+    for (let minute = Math.ceil(start / step) * step; minute <= end; minute += step) {
+      const at = startOfDay(dayDate);
       at.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-      if (at >= earliest) times.push(at);
+      if (at >= earliest && at <= horizon) times.push(at);
     }
   }
   return times.sort((a, b) => a.getTime() - b.getTime());
+}
+
+/** "Today", "Tomorrow", then the weekday and date. */
+export function dayChipLabel(date: Date, now = new Date()): string {
+  if (isSameDay(date, now)) return "Today";
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (isSameDay(date, tomorrow)) return "Tomorrow";
+  return new Intl.DateTimeFormat("en-CA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(date);
 }
 
 export function formatTimeOfDay(date: Date): string {
@@ -187,4 +266,69 @@ export function formatTimeOfDay(date: Date): string {
     minute: "2-digit",
     hour12: true,
   }).format(date);
+}
+
+/**
+ * A Date as the `yyyy-mm-dd` an `<input type="date">` expects.
+ *
+ * Deliberately not `toISOString().slice(0, 10)`. That converts to UTC first,
+ * so an evening in any negative offset reports tomorrow's date and the
+ * customer books a day they did not choose. Read off the local calendar
+ * instead, which is the calendar the branch's opening hours are written in.
+ */
+export function dateInputValue(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The other half of that round trip.
+ *
+ * `new Date("2026-09-17")` is parsed as UTC midnight by spec, which is the
+ * 16th in the Americas — the same off-by-one day, arriving from the other
+ * direction. Building the date from its parts keeps it local.
+ *
+ * Returns null rather than an Invalid Date: the input is empty while someone
+ * is still typing into it, and an Invalid Date propagates silently into the
+ * slot maths instead of failing where it happened.
+ */
+export function dayFromInputValue(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** The furthest day the branch will accept, for the date input's `max`. */
+export function lastBookableDay(location: RestaurantLocation | undefined, now = new Date()): Date {
+  const horizon = Math.max(0, Number(location?.max_future_days ?? DEFAULT_FUTURE_DAYS));
+  const last = startOfDay(now);
+  last.setDate(last.getDate() + (Number.isFinite(horizon) ? horizon : DEFAULT_FUTURE_DAYS));
+  return last;
+}
+
+/**
+ * Times split into morning, afternoon and evening.
+ *
+ * A branch open 10:30 to 22:00 on a 30-minute grid offers 24 chips. As one
+ * undifferentiated block on a phone that is a wall to scroll past; under three
+ * headings it is three short lists, and "evening" is what someone is actually
+ * looking for. Empty parts are dropped rather than shown as empty headings.
+ */
+export function groupByPartOfDay(times: Date[]): { label: string; times: Date[] }[] {
+  // Noon is afternoon and 5pm is evening: dinner service is the common case
+  // and putting it under "Afternoon" reads as wrong to anyone booking it.
+  const parts: { label: string; until: number }[] = [
+    { label: "Morning", until: 12 },
+    { label: "Afternoon", until: 17 },
+    { label: "Evening", until: 24 },
+  ];
+  return parts
+    .map(({ label, until }, i) => ({
+      label,
+      times: times.filter((t) => t.getHours() < until && t.getHours() >= (parts[i - 1]?.until ?? 0)),
+    }))
+    .filter((group) => group.times.length > 0);
 }

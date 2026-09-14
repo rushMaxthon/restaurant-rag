@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   availabilityNow,
+  bookableDays,
   bookableTimes,
+  dayChipLabel,
+  dateInputValue,
+  dayFromInputValue,
+  groupByPartOfDay,
+  lastBookableDay,
+  leadMinutes,
   dayFromDate,
   formatSlotTime,
   nextOpening,
@@ -54,6 +61,8 @@ function branch(overrides: Partial<RestaurantLocation> = {}): RestaurantLocation
     is_active: true,
     slot_interval_minutes: 30,
     preparation_time_minutes: 20,
+    future_order_enabled: true,
+    max_future_days: 7,
     fulfillment_slots: [
       slot("MONDAY", "DELIVERY", "11:00:00", "21:30:00"),
       slot("MONDAY", "PICKUP", "10:30:00", "22:00:00"),
@@ -188,5 +197,181 @@ describe("bookableTimes", () => {
     expect(bookableTimes(branch(), "DELIVERY", "WEDNESDAY", wednesday, SUNDAY_LATE)).toHaveLength(
       0,
     );
+  });
+});
+
+
+describe("leadMinutes", () => {
+  it("uses the larger of preparation time and the ETA, as the server does", () => {
+    // The server's buffer is max(preparation_time_minutes, ETA). Using prep
+    // alone offered 11:00 when the branch could not have it there until 11:19,
+    // and the order was then rejected for being too soon.
+    expect(leadMinutes(branch(), "DELIVERY")).toBe(29);
+    expect(leadMinutes(branch(), "PICKUP")).toBe(20);
+  });
+});
+
+describe("bookableDays", () => {
+  it("offers today plus the branch's own horizon, today first", () => {
+    const days = bookableDays(branch(), "DELIVERY", SUNDAY_LATE);
+    expect(days.length).toBeGreaterThan(0);
+    expect(days[0]!.getTime()).toBeLessThan(days[days.length - 1]!.getTime());
+  });
+
+  it("leaves out days with nothing left on them", () => {
+    // Wednesday has no delivery window at all; a chip for it would be a dead
+    // end the customer discovers by tapping.
+    const days = bookableDays(branch(), "DELIVERY", SUNDAY_LATE);
+    expect(days.some((d) => d.getDay() === 3)).toBe(false);
+  });
+
+  it("drops today once its last window has passed", () => {
+    // Sunday 23:12 — the 10:30-21:00 window is over.
+    const days = bookableDays(branch(), "DELIVERY", SUNDAY_LATE);
+    expect(days.some((d) => isSameDayAs(d, SUNDAY_LATE))).toBe(false);
+  });
+
+  it("offers nothing when the branch does not take future orders", () => {
+    expect(bookableDays(branch({ future_order_enabled: false }), "DELIVERY", SUNDAY_LATE)).toEqual([]);
+  });
+
+  it("stays within max_future_days", () => {
+    const days = bookableDays(branch({ max_future_days: 2 }), "DELIVERY", SUNDAY_LATE);
+    const last = days[days.length - 1]!;
+    const limit = new Date(SUNDAY_LATE);
+    limit.setDate(limit.getDate() + 2);
+    expect(last.getTime()).toBeLessThanOrEqual(limit.getTime());
+  });
+});
+
+describe("slot alignment", () => {
+  it("puts times on the interval grid, not on the window's start", () => {
+    // The server rejects any minute that is not a multiple of the interval, so
+    // a window opening at 10:45 with a 30-minute interval must offer 11:00.
+    const odd = branch({
+      fulfillment_slots: [
+        {
+          id: "odd",
+          day_of_week: "MONDAY",
+          fulfillment_type: "DELIVERY",
+          start_time: "10:45:00",
+          end_time: "14:00:00",
+          is_active: true,
+        },
+      ],
+    });
+    const monday = new Date(2026, 8, 14, 0, 0);
+    const times = bookableTimes(odd, "DELIVERY", "MONDAY", monday, SUNDAY_LATE);
+    expect(times[0]?.getMinutes()).toBe(0);
+    expect(times[0]?.getHours()).toBe(11);
+    for (const time of times) expect(time.getMinutes() % 30).toBe(0);
+  });
+});
+
+describe("dayChipLabel", () => {
+  it("says Today and Tomorrow before it resorts to a date", () => {
+    const tomorrow = new Date(SUNDAY_LATE);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const later = new Date(SUNDAY_LATE);
+    later.setDate(later.getDate() + 3);
+    expect(dayChipLabel(SUNDAY_LATE, SUNDAY_LATE)).toBe("Today");
+    expect(dayChipLabel(tomorrow, SUNDAY_LATE)).toBe("Tomorrow");
+    expect(dayChipLabel(later, SUNDAY_LATE)).toMatch(/\w{3}/);
+  });
+});
+
+function isSameDayAs(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
+}
+
+describe("dateInputValue", () => {
+  /**
+   * The obvious implementation is `date.toISOString().slice(0, 10)`, and it is
+   * wrong for half the planet. `toISOString` converts to UTC first, so any
+   * local time whose UTC equivalent falls on another date comes back as the
+   * wrong day — and the customer books dinner for Tuesday and is handed
+   * Monday. Pinned to the two edges where that actually bites.
+   */
+  it("keeps the local calendar day just before midnight", () => {
+    expect(dateInputValue(new Date(2026, 8, 17, 23, 30))).toBe("2026-09-17");
+  });
+
+  it("keeps the local calendar day just after midnight", () => {
+    expect(dateInputValue(new Date(2026, 8, 17, 0, 15))).toBe("2026-09-17");
+  });
+
+  it("pads single-digit months and days", () => {
+    expect(dateInputValue(new Date(2026, 0, 5, 12, 0))).toBe("2026-01-05");
+  });
+});
+
+describe("dayFromInputValue", () => {
+  /**
+   * `new Date("2026-09-17")` parses as UTC midnight, which in any negative
+   * offset is the 16th locally. The round trip has to survive, or the date
+   * input silently moves the order a day earlier every time.
+   */
+  it("round-trips with dateInputValue", () => {
+    const original = new Date(2026, 8, 17, 19, 45);
+    const back = dayFromInputValue(dateInputValue(original));
+    expect(back).not.toBeNull();
+    expect(back!.getFullYear()).toBe(2026);
+    expect(back!.getMonth()).toBe(8);
+    expect(back!.getDate()).toBe(17);
+  });
+
+  it("returns local midnight, not UTC midnight", () => {
+    const day = dayFromInputValue("2026-09-17")!;
+    expect(day.getHours()).toBe(0);
+    expect(day.getDate()).toBe(17);
+  });
+
+  it("rejects a blank or malformed value rather than returning Invalid Date", () => {
+    expect(dayFromInputValue("")).toBeNull();
+    expect(dayFromInputValue("not-a-date")).toBeNull();
+  });
+});
+
+describe("lastBookableDay", () => {
+  it("is today plus the branch horizon", () => {
+    const now = new Date(2026, 8, 14, 12, 0);
+    const last = lastBookableDay(branch({ max_future_days: 3 }), now);
+    expect(dateInputValue(last)).toBe("2026-09-17");
+  });
+
+  // The read schema always sends max_future_days, but the TS type marks it
+  // optional, so the missing case is undefined rather than null.
+  it("falls back to the default horizon when the branch does not say", () => {
+    const now = new Date(2026, 8, 14, 12, 0);
+    // The key is omitted, not set to undefined: exactOptionalPropertyTypes
+    // makes those two different things, and absent is the one that can happen.
+    const { max_future_days: _horizon, ...noHorizon } = branch();
+    expect(dateInputValue(lastBookableDay(noHorizon, now))).toBe("2026-09-21");
+  });
+});
+
+describe("groupByPartOfDay", () => {
+  const at = (h: number, m = 0) => new Date(2026, 8, 17, h, m);
+
+  it("splits a long list into morning, afternoon and evening", () => {
+    const groups = groupByPartOfDay([at(9), at(11, 30), at(13), at(17), at(19, 30)]);
+    expect(groups.map((g) => g.label)).toEqual(["Morning", "Afternoon", "Evening"]);
+    expect(groups[0]!.times).toHaveLength(2); // 9:00, 11:30
+    expect(groups[1]!.times).toHaveLength(1); // 13:00
+    expect(groups[2]!.times).toHaveLength(2); // 17:00, 19:30
+  });
+
+  it("leaves out a part of the day with nothing in it", () => {
+    const groups = groupByPartOfDay([at(19), at(20)]);
+    expect(groups.map((g) => g.label)).toEqual(["Evening"]);
+  });
+
+  it("puts noon in the afternoon and 5pm in the evening", () => {
+    expect(groupByPartOfDay([at(12)])[0]!.label).toBe("Afternoon");
+    expect(groupByPartOfDay([at(17)])[0]!.label).toBe("Evening");
+  });
+
+  it("has nothing to group when there are no times", () => {
+    expect(groupByPartOfDay([])).toEqual([]);
   });
 });
