@@ -408,7 +408,6 @@ def suggestion_for_cart(
     if memory.decline_count >= DECLINE_LIMIT:
         return None
 
-    cart_item_ids = {line.menu_item_id for line in cart_lines}
     combos = _load_visible_combos(db, restaurant_location_id)
 
     # Every candidate the rules may look at, loaded once and scoped to the
@@ -423,6 +422,22 @@ def suggestion_for_cart(
             )
         ).all()
     }
+
+    # cart_lines is the browser's word about its own cart, not a query result —
+    # nothing stops a request from naming a menu_item_id that belongs to a
+    # different restaurant or a different branch of this one. The cross-sell
+    # rules already can't be fooled by that: they only ever propose ids drawn
+    # from `candidates`, which is scoped to this branch. The up-sell ladder is
+    # different — it reads sizes and add-ons keyed off the *cart's* ids, so an
+    # unresolved line would otherwise earn a real offer for a dish this
+    # kitchen doesn't serve. Dropping unresolved lines here, before anything
+    # downstream sees them, closes that gap at the one place it can be closed
+    # for good instead of trusting every future caller to have done it first.
+    cart_lines = [line for line in cart_lines if line.menu_item_id in menu_items]
+    if not cart_lines:
+        return None
+
+    cart_item_ids = {line.menu_item_id for line in cart_lines}
     candidates = {
         item_id: CandidateItem(
             menu_item_id=item.id,
