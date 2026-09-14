@@ -22,6 +22,7 @@ from app.main import app  # noqa: F401 - imported first to settle import order
 from app.services.suggestions import (
     CandidateItem,
     PairingPattern,
+    choose_category_default,
     choose_pairing,
 )
 
@@ -120,6 +121,71 @@ class PairingRuleTests(unittest.TestCase):
 
         self.assertIsNone(
             choose_pairing([pattern], set(), candidates={TEA: _candidate(TEA)}, diet=None)
+        )
+
+
+class CategoryFallbackTests(unittest.TestCase):
+    """The honest gap-filler.
+
+    Measured on 2026-09-14: 7 visible combos mined from 17 multi-item delivered
+    orders. Six pairs cannot cover a 117-item menu, so without this the
+    evidence-backed rule is silent nearly always. It earns its place ONLY
+    because `basis` forces the copy to admit which one fired.
+    """
+
+    def test_a_cart_with_no_drink_is_offered_the_bestselling_drink(self) -> None:
+        result = choose_category_default(
+            {"Main Course"},
+            bestsellers={"Beverages": [TEA]},
+            candidates={TEA: _candidate(TEA)},
+            diet=None,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.menu_item_id, TEA)
+        self.assertEqual(result.basis, "category_default")
+        self.assertEqual(result.kind, "cross_sell")
+
+    def test_a_category_the_cart_already_has_is_not_offered(self) -> None:
+        self.assertIsNone(
+            choose_category_default(
+                {"Main Course", "Beverages"},
+                bestsellers={"Beverages": [TEA]},
+                candidates={TEA: _candidate(TEA)},
+                diet=None,
+            )
+        )
+
+    def test_the_diet_filter_applies_to_the_fallback_too(self) -> None:
+        self.assertIsNone(
+            choose_category_default(
+                {"Main Course"},
+                bestsellers={"Beverages": [TEA]},
+                candidates={TEA: _candidate(TEA, is_veg=False)},
+                diet="VEG",
+            )
+        )
+
+    def test_no_bestseller_for_the_missing_category_yields_silence(self) -> None:
+        self.assertIsNone(
+            choose_category_default(
+                {"Main Course"},
+                bestsellers={},
+                candidates={},
+                diet=None,
+            )
+        )
+
+    def test_an_empty_cart_yields_nothing(self) -> None:
+        """Nothing in the cart means nothing is missing from it."""
+
+        self.assertIsNone(
+            choose_category_default(
+                set(),
+                bestsellers={"Beverages": [TEA]},
+                candidates={TEA: _candidate(TEA)},
+                diet=None,
+            )
         )
 
 

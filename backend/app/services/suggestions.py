@@ -90,3 +90,39 @@ def choose_pairing(
     if best is None:
         return None
     return SellSuggestion(kind="cross_sell", basis="co_occurrence", menu_item_id=best[1])
+
+
+# Ordered by how naturally a waiter raises them. A drink is a normal thing to
+# offer with a main; a soup is not, which is why this list is short rather than
+# "every category the branch sells".
+COMPLEMENT_CATEGORIES = ("Beverages", "Dessert")
+
+
+def choose_category_default(
+    cart_categories: set[str],
+    *,
+    bestsellers: dict[str, list[uuid.UUID]],
+    candidates: dict[uuid.UUID, CandidateItem],
+    diet: str | None,
+) -> SellSuggestion | None:
+    """The branch bestseller from a category this cart has nothing from.
+
+    Weaker than a mined pairing and labelled as such. It exists because mined
+    evidence is thin until order volume grows, and a waiter who says nothing
+    for the first thousand orders is not a waiter.
+    """
+
+    if not cart_categories:
+        return None
+
+    for category in COMPLEMENT_CATEGORIES:
+        if category in cart_categories:
+            continue
+        for candidate_id in bestsellers.get(category, []):
+            if _is_offerable(candidates.get(candidate_id), diet=diet):
+                return SellSuggestion(
+                    kind="cross_sell",
+                    basis="category_default",
+                    menu_item_id=candidate_id,
+                )
+    return None
