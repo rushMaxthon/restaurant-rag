@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
+import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
   ApiError,
@@ -454,6 +455,12 @@ function ConciergePage() {
               </Button>
             </div>
           )}
+
+          {/* Below the thread, not inside a turn: the suggestion describes the
+              current cart, not the reply above it, so it does not belong to
+              any one bubble. Same component as home/cart — one Add/Choose
+              decision, one decline path, one wording per `basis`. */}
+          <WaiterPrompt placement="chat" />
 
           <div ref={bottomRef} />
         </div>

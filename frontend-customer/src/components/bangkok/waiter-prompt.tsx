@@ -25,7 +25,7 @@ import {
  * Dismissing counts as a decline, and two declines silence suggestions for the
  * session — which is why the dismiss button posts rather than only hiding.
  */
-export function WaiterPrompt({ placement }: { placement: "home" | "cart" }) {
+export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat" }) {
   const store = useBangkokStore();
   const [suggestion, setSuggestion] = useState<SellSuggestion | null>(null);
 

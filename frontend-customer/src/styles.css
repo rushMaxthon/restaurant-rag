@@ -199,6 +199,11 @@
 .waiter-prompt--cart {
   margin-top: 1.5rem;
 }
+/* Below the transcript, above the fixed composer bar — never between turns,
+   because the suggestion describes the cart, not a particular reply. */
+.waiter-prompt--chat {
+  margin-top: 2rem;
+}
 .dish-card {
   box-shadow: 0 1px 0 var(--border);
 }
