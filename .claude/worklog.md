@@ -28,6 +28,83 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (3) — Prep-time cutoffs, and the restaurant's clock
+
+**Goal:** two asks from the product side. Show the exact arrival time next to
+the ETA, and make every time in the app belong to the RESTAURANT's timezone
+rather than the device's. Plus: slots must leave the kitchen time to cook, and
+must come from the branch the order is actually placed against.
+
+**Fixed:**
+- **The picker offered the closing minute.** A branch closing at 11pm with a 15
+  minute prep time let someone book 11pm. ASAP ordering already refused this
+  (`get_location_fulfillment_status`); SCHEDULED did not — both the generator
+  and the validator used `<= slot_end`. The last bookable slot is now the last
+  grid point at or before `closing - max(prep, eta)`. Measured on the seed:
+  closes 22:00, 24 minute buffer, last slot was 10:00 PM, now 9:30 PM.
+  Enforced in `list_available_schedule_options` AND `schedule_slot_is_available`,
+  with a distinct message ("the latest time that day is ...") because "too late
+  to cook" and "not available" send the customer somewhere different.
+- **Checkout priced and scheduled against the wrong branch.** It read
+  `currentLocation` (the branch picker's selection) while placing the order
+  against `cart[0].restaurantLocationId`. Store now exposes `orderLocation`.
+- **Every time in the app was built on the DEVICE clock.** See below.
+- **"Schedule for later" with no time picked silently placed an ASAP order.**
+  The Pay button was gated on the branch being shut, not on scheduling being
+  chosen. They asked for later and would have been charged for now.
+- The picker was a timetable: now leads with "Earliest available", shows six
+  upcoming times with the rest behind "Show all N", and has a native time field
+  (minutes + am/pm from the platform's own wheel) bounded to the day's first and
+  last bookable time and snapped onto the branch's interval.
+- ETA now reads "Arrives in about 29 min · by 2:57 p.m." on cart, checkout and
+  the order summary.
+
+**The timezone work, which is the part worth reading:**
+- `business_timezone` ("Asia/Kolkata") already existed on the backend as the one
+  clock everything is computed in. It never reached the client. It now rides on
+  `/app-config`, so changing that single setting moves the whole app — nothing
+  hardcodes a zone or an offset.
+- `frontend-customer/src/lib/timezone.ts` (new) does the arithmetic with `Intl`.
+  No library and no stored offsets: America/Toronto is -04:00 in July and -05:00
+  in January, and a table goes stale. `zonedTimeToUtc` runs TWO passes — guess
+  the offset from the naive instant, then re-read it at the corrected one —
+  which is what makes the hour either side of a DST change come out right.
+- Every `branch-hours` helper takes an optional trailing `timeZone` that falls
+  back to the device's. The refactor therefore changed no behaviour until the
+  routes started passing the branch's, which kept the existing tests meaningful.
+- Two things only became visible once the zone was real: the branch's WEEKDAY
+  can differ from the device's (20:00 UTC Monday is already Tuesday in Kolkata,
+  and the slot table is keyed by weekday), and snapping a custom time to the
+  interval must use the BRANCH's minutes, because a half-hour offset means the
+  two clocks disagree about minutes past the hour.
+
+**Verified:** 1027 backend tests, 98 frontend unit tests, 35 E2E. The decisive
+one is `e2e/timezone.spec.ts`: a Playwright context pinned to America/Toronto
+picks a slot and the SERVER accepts it, and the same page in Toronto and in
+Kolkata lists identical times.
+
+**Learned — do not re-derive:**
+- **This machine is in Asia/Calcutta, the same zone as the seeded business.**
+  That is why the timezone bug survived every previous pass: locally the device
+  clock and the branch clock are the same moment. Any future time work must be
+  checked with `test.use({ timezoneId: ... })`, not by looking at the screen.
+- **The `--reload` trap bit again**, and the cross-zone test caught it: the new
+  `business_timezone` field was in the code and in the tests but the running
+  server predated it, so the client saw `undefined` and silently used the device
+  zone. Restart the backend after ANY backend change before believing a
+  browser-level result.
+- The `\b`-in-a-heredoc trap and shell quoting cost several rounds again.
+  Writing the patch as a FILE (Write tool, then run it) avoids both; inside one,
+  spell a literal backslash `"\x5c"`.
+
+**Open:** unchanged from the previous entry, minus the items fixed above. The
+business timezone is still GLOBAL — one setting for every restaurant and branch.
+The moment two branches sit in different zones it needs to move onto
+`RestaurantLocation` (a column, a migration and an admin field); everything on
+the client already takes the zone as a parameter, so only the source changes.
+
+---
+
 ## 2026-09-14 (2) — A dry run as a customer, and what it turned up
 
 **Goal:** walk the whole flow as a real user, on a real phone size, and fix
