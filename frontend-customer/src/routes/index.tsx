@@ -16,6 +16,7 @@ import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
 
@@ -49,7 +50,8 @@ const CRAVING_CHIPS = [
 ];
 
 function Home() {
-  const { restaurantId, branchId, locations } = useBangkokStore();
+  const store = useBangkokStore();
+  const { restaurantId, branchId, locations } = store;
   const { isAuthenticated } = useAuth();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   const offersQuery = usePersonalizedOffers(isAuthenticated);
@@ -58,6 +60,17 @@ function Home() {
     items.filter((i) => i.is_bestseller).length ? items.filter((i) => i.is_bestseller) : items
   ).slice(0, 8);
   const offers = offersQuery.data ?? [];
+
+  // Everything the hero says about this restaurant comes from the branch row
+  // the admin filled in. It used to assert "Open now" whether or not it was,
+  // invent "3 branches" while the list loaded, name a city in a literal, and
+  // promise 35 minutes regardless of the branch's own ETA. A customer cannot
+  // tell an invented fact from a real one, which is what makes them expensive.
+  const branch = store.orderLocation ?? store.currentLocation;
+  const openNow = availabilityNow(branch, store.fulfillment, new Date(), store.timeZone);
+  const city = branch?.city;
+  const heroEta = Number(branch?.estimated_delivery_time);
+  const branchCount = locations.length;
 
   return (
     <div className="pb-20 lg:pb-0">
@@ -72,14 +85,27 @@ function Home() {
         <div className="hero-overlay absolute inset-0" />
         <div className="hero-copy page-pad relative flex min-h-[70svh] max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16">
           <div className="mb-5 flex flex-wrap gap-2">
-            <span className="hero-chip bg-surface text-foreground">
-              <MapPin className="size-4 text-primary" />
-              {locations.length || 3} branches in Ahmedabad
-            </span>
-            <span className="hero-chip bg-success text-primary-foreground">Open now</span>
+            {/* Nothing is claimed until it is known: no branch count before the
+                list arrives, and no city that is not this branch's. */}
+            {branchCount > 0 && (
+              <span className="hero-chip bg-surface text-foreground">
+                <MapPin className="size-4 text-primary" />
+                {branchCount} {branchCount === 1 ? "branch" : "branches"}
+                {city ? ` in ${city}` : ""}
+              </span>
+            )}
+            {branch && (
+              <span
+                className={`hero-chip text-primary-foreground ${
+                  openNow.available ? "bg-success" : "bg-muted"
+                }`}
+              >
+                {openNow.available ? "Open now" : "Closed right now"}
+              </span>
+            )}
           </div>
           <h1 className="font-display text-5xl font-black leading-[.98] sm:text-7xl">
-            Bangkok Bowl
+            {store.restaurantName ?? "Bangkok Bowl"}
           </h1>
           <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">
             Wok-fired noodles, velvety curries and bold Bangkok street flavours—made fresh for you.
@@ -189,7 +215,9 @@ function Home() {
           <Clock3 className="mb-5 size-10" />
           <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
           <h2 className="font-display text-4xl font-black">
-            Dinner from wok to door in about 35 minutes.
+            {Number.isFinite(heroEta) && heroEta > 0
+              ? `Dinner from wok to door in about ${heroEta} minutes.`
+              : "Dinner from wok to door, cooked fresh to order."}
           </h2>
           <div className="mt-7 flex flex-wrap gap-3">
             {locations.map((l) => (

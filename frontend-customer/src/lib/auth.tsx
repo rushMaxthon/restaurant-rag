@@ -45,7 +45,18 @@ type AuthContextValue = AuthState & {
   logout: () => void;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+/**
+ * Pinned across hot updates, for the reason spelled out in bangkok-store.tsx:
+ * Fast Refresh re-evaluates this module on every edit, and a fresh context
+ * object here leaves mounted consumers reading null and throwing. Evaluated
+ * once in a production build, so the lookup just misses.
+ */
+const AUTH_CONTEXT_KEY = "__bangkokAuthContext__";
+type AuthContextCache = { [AUTH_CONTEXT_KEY]?: React.Context<AuthContextValue | null> };
+const authCache = globalThis as unknown as AuthContextCache;
+const AuthContext: React.Context<AuthContextValue | null> =
+  authCache[AUTH_CONTEXT_KEY] ??
+  (authCache[AUTH_CONTEXT_KEY] = createContext<AuthContextValue | null>(null));
 
 const ROLE_REJECTION_MESSAGE =
   "This app is for customers only. Staff and admin accounts can't sign in here.";

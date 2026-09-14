@@ -1144,3 +1144,83 @@ html {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Branch gate — the one screen before any food.
+   Sits over everything because the branch decides what the menu, the concierge
+   and the cart are talking about; browsing behind it would show a menu the
+   customer has not chosen. */
+.branch-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+}
+
+.branch-gate__panel {
+  width: 100%;
+  max-width: 32rem;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 1rem);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.branch-gate__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.branch-gate__option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 0.75rem);
+  background: var(--background);
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.branch-gate__option:hover,
+.branch-gate__option:focus-visible {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+}
+
+.branch-gate__option.is-suggested {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.branch-gate__name {
+  display: block;
+  font-weight: 700;
+}
+
+.branch-gate__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--muted);
+}
+
+.branch-gate__hint {
+  flex-shrink: 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 700;
+}

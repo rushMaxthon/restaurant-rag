@@ -56,6 +56,17 @@ export function cartConflictsWith(
 
 type AppState = {
   branchId: string;
+  /**
+   * Whether the CUSTOMER picked this branch, as opposed to the app defaulting.
+   *
+   * Separate from `branchId` because the two mean different things and the app
+   * needs both. Branches of one restaurant do not carry the same menu — Bangkok
+   * Bowl runs 13, 13 and 12 items across three branches — so a silent default
+   * shows a menu the customer may not be able to order from, and they are never
+   * told which kitchen they are looking at. The default still happens, to give
+   * the picker something to pre-select; it just no longer counts as an answer.
+   */
+  branchChosen: boolean;
   cart: CartLine[];
   fulfillment: "DELIVERY" | "PICKUP";
   dark: boolean;
@@ -75,10 +86,16 @@ type Store = AppState & {
   restaurantId: string | undefined;
   restaurantName: string | undefined;
   locations: RestaurantLocation[];
+  /** The restaurant's own clock; undefined falls back to the device's. */
+  timeZone: string | undefined;
   currentLocation: RestaurantLocation | undefined;
   /** The branch the order will actually be placed against. */
   orderLocation: RestaurantLocation | undefined;
+  /** False until the customer has actually picked a branch themselves. */
+  branchChosen: boolean;
   isRestaurantLoading: boolean;
+  /** The restaurant or app config could not be fetched at all. */
+  isRestaurantError: boolean;
   setBranchId: (id: string) => void;
   /** The restaurant the cart belongs to, or undefined while it is empty. */
   cartRestaurantId: string | undefined;
@@ -96,9 +113,34 @@ type Store = AppState & {
   subtotal: number;
 };
 
-const initial: AppState = { branchId: "", cart: [], fulfillment: "DELIVERY", dark: false };
+const initial: AppState = {
+  branchId: "",
+  branchChosen: false,
+  cart: [],
+  fulfillment: "DELIVERY",
+  dark: false,
+};
 const STORAGE_KEY = "bangkok-bowl-state";
-const AppStore = createContext<Store | null>(null);
+/**
+ * The context, pinned so its identity survives a hot update.
+ *
+ * Vite's Fast Refresh re-evaluates this whole module on every edit to it. A
+ * bare `createContext(...)` at module scope would therefore mint a NEW context
+ * object, while the already-mounted AppShell still holds a reference to the old
+ * one — so `useContext` returns null and the app dies with "Bangkok store is
+ * unavailable" until someone hard-reloads. Nothing is wrong with the code at
+ * that point; a cold load is always fine, which is what makes it confusing.
+ *
+ * `globalThis` outlives module re-evaluation, so the same context object is
+ * handed back after each refresh and mounted consumers keep working. In a
+ * production build this module is evaluated once and the lookup simply misses,
+ * so this costs one property read at startup.
+ */
+const CONTEXT_KEY = "__bangkokStoreContext__";
+type ContextCache = { [CONTEXT_KEY]?: React.Context<Store | null> };
+const cache = globalThis as unknown as ContextCache;
+const AppStore: React.Context<Store | null> =
+  cache[CONTEXT_KEY] ?? (cache[CONTEXT_KEY] = createContext<Store | null>(null));
 
 function loadInitialState(): AppState {
   if (typeof window === "undefined") return initial;
@@ -147,7 +189,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state, hydrated]);
 
-  // Default to an open branch once the restaurant loads, if none is chosen yet.
+  // Pre-select an open branch once the restaurant loads. This is a suggestion
+  // for the gate to highlight, NOT a choice — `branchChosen` stays false.
   useEffect(() => {
     if (!locations.length) return;
     setState((s) => {
@@ -180,7 +223,13 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const setBranchId = useCallback((branchId: string) => setState((s) => ({ ...s, branchId })), []);
+  // Every route into this is a deliberate act — the gate, or the header
+  // picker — so choosing is recorded here rather than at each call site, where
+  // a future caller would have to remember to.
+  const setBranchId = useCallback(
+    (branchId: string) => setState((s) => ({ ...s, branchId, branchChosen: true })),
+    [],
+  );
 
   const addItem = useCallback(
     (item: MenuItem, options?: AddItemOptions) =>
@@ -251,6 +300,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       ...state,
       restaurantId: appConfigQuery.data?.restaurant_id,
       restaurantName: restaurantQuery.data?.name,
+      timeZone: appConfigQuery.data?.business_timezone,
       locations,
       currentLocation: locations.find((l) => l.id === state.branchId),
       // What the order is priced and scheduled against.
@@ -265,7 +315,12 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       orderLocation:
         locations.find((l) => l.id === (state.cart[0]?.restaurantLocationId ?? state.branchId)) ??
         locations.find((l) => l.id === state.branchId),
+      branchChosen: state.branchChosen,
       isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
+      // Distinguished from "loading" and from "empty": a menu screen that
+      // says "nothing matches that" because the server was unreachable is
+      // telling the customer something false about the restaurant.
+      isRestaurantError: appConfigQuery.isError || restaurantQuery.isError,
       setBranchId,
       cartRestaurantId: state.cart[0]?.restaurantId,
       cartRestaurantName: state.cart[0]?.restaurantName,
@@ -291,6 +346,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       clearCart,
       appConfigQuery.isLoading,
       restaurantQuery.isLoading,
+      appConfigQuery.isError,
+      restaurantQuery.isError,
     ],
   );
 

@@ -2292,6 +2292,7 @@ def _response_cache_key(
     *,
     descriptor: CacheQueryDescriptor | None = None,
     preference_diet: str | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
 ) -> str:
     """The key a reply is stored under.
 
@@ -2309,7 +2310,20 @@ def _response_cache_key(
     the cache keeps earning its keep.
     """
 
-    scope = str(restaurant_id) if restaurant_id is not None else "global"
+    # Scoped to the BRANCH, not just the restaurant. Branches of one restaurant
+    # do not carry the same menu — measured on the seeded data, Bangkok Bowl
+    # runs 13/13/12 items across three branches, 17 distinct dishes over 38
+    # rows where carrying everything everywhere would be 51. Keying by
+    # restaurant alone let Bodakdev and Science City share replies while
+    # stocking different dishes, so a customer could be offered something their
+    # branch cannot make. Harmless while the concierge answered across the whole
+    # marketplace; live the moment a customer picks a branch.
+    if restaurant_location_id is not None:
+        scope = f"{restaurant_id or 'any'}:{restaurant_location_id}"
+    elif restaurant_id is not None:
+        scope = str(restaurant_id)
+    else:
+        scope = "global"
     descriptor = descriptor or _infer_cache_query_descriptor(message)
     topic_slug = re.sub(r"[^a-z0-9]+", "-", descriptor.topic or "general").strip("-") or "general"
     key_parts = [
@@ -4939,6 +4953,7 @@ def _lookup_global_response_cache(
     uses_personal_context: bool,
     is_follow_up: bool,
     preference_diet: str | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
 ) -> tuple[str, tuple[str, list[ChatSuggestionItem], str] | None, bool, str]:
     descriptor = _infer_cache_query_descriptor(message)
     normalized_query = descriptor.normalized_message
@@ -4947,6 +4962,7 @@ def _lookup_global_response_cache(
         restaurant_id,
         descriptor=descriptor,
         preference_diet=preference_diet,
+        restaurant_location_id=restaurant_location_id,
     )
     cacheable, reason = _resolve_global_cacheability(
         message=message,
@@ -6695,6 +6711,7 @@ def handle_chat_message(
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
         preference_diet=preference_diet_for_cache(db, user, guest_preferences),
+        restaurant_location_id=restaurant_location_id,
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:
@@ -7029,6 +7046,7 @@ def stream_chat_message(
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
         preference_diet=preference_diet_for_cache(db, user, guest_preferences),
+        restaurant_location_id=restaurant_location_id,
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:

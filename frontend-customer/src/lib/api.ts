@@ -40,6 +40,13 @@ export type AppConfig = {
   order_prefix: string;
   minimum_supported_version: string;
   bundle_id: string;
+  /**
+   * The clock the restaurant's hours, slots and cutoffs are written in.
+   *
+   * Sent because the device cannot guess it. Optional on the type so an older
+   * backend degrades to the device's zone rather than crashing the app.
+   */
+  business_timezone?: string;
 };
 
 export type ChatSuggestion = {
@@ -437,8 +444,8 @@ export const api = {
 type ChatStreamPayload = {
   message: string;
   session_id?: string | null;
-  restaurant_id?: string | null;
-  restaurant_location_id?: string | null;
+  restaurant_id?: string | null | undefined;
+  restaurant_location_id?: string | null | undefined;
   guest_preferences?: GuestPreferences | undefined;
 };
 

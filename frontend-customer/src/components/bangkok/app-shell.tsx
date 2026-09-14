@@ -11,12 +11,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { BranchPicker } from "./branch-picker";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { BranchGate } from "@/components/bangkok/branch-gate";
 import { useAuth } from "@/lib/auth";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const store = useBangkokStore();
   const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Before the header and everything under it: the branch decides what the
+          menu, the concierge and the cart are even talking about. */}
+      <BranchGate />
       <header className="site-header sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur">
         <div className="flex min-h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link to="/" className="mr-auto flex items-center gap-2" aria-label="Bangkok Bowl home">

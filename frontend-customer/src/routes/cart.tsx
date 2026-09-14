@@ -17,6 +17,7 @@ import { useBangkokStore } from "@/lib/bangkok-store";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
   availabilityNow,
+  etaClockTime,
   bookableDays,
   dayLabel,
   formatSlotTime,
@@ -65,8 +66,14 @@ function CartPage() {
   // then be told the branch was closed. Said here instead, where the decision
   // to continue is actually made.
   const fulfillment = isDelivery ? "DELIVERY" : "PICKUP";
-  const availability = availabilityNow(s.orderLocation, fulfillment);
-  const reopens = availability.available ? null : nextOpening(s.orderLocation, fulfillment);
+  // The branch's clock; see the note in checkout.tsx.
+  const tz = s.timeZone;
+  // The clock time the ETA lands on, on the branch's clock.
+  const etaAt = etaClockTime(eta, new Date(), tz);
+  const availability = availabilityNow(s.orderLocation, fulfillment, new Date(), tz);
+  const reopens = availability.available
+    ? null
+    : nextOpening(s.orderLocation, fulfillment, new Date(), tz);
   const blocked = !availability.available;
 
   // Closed is not the same as unorderable. The server has always accepted a
@@ -74,7 +81,8 @@ function CartPage() {
   // — but the cart still ended the journey with a disabled button, so nobody
   // ever reached it. A branch with a bookable window ahead of it gets a way
   // through; one with no windows at all keeps the honest dead end.
-  const canSchedule = blocked && bookableDays(s.orderLocation, fulfillment).length > 0;
+  const canSchedule =
+    blocked && bookableDays(s.orderLocation, fulfillment, new Date(), tz).length > 0;
 
   // "Closed" and "we have not loaded the branch yet" are different things, and
   // availabilityNow(undefined) returns the first for the second. Until the
@@ -234,6 +242,10 @@ function CartPage() {
               <Clock className="size-4 shrink-0 text-primary" />
               {isDelivery ? "Arrives in" : "Ready in"} about {eta}{" "}
               {typeof eta === "number" ? "min" : ""}
+              {/* The clock time as well as the duration. "about 29 min" asks
+                  someone to do arithmetic at the moment they are deciding
+                  whether to order. */}
+              {etaAt && <span className="text-muted">· by {etaAt}</span>}
             </p>
           )}
 

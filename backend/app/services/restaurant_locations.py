@@ -106,6 +106,21 @@ def _localize_reference_datetime(reference_dt: datetime | None = None) -> dateti
     return current_dt.astimezone(BUSINESS_TIMEZONE)
 
 
+def _interval_floor(reference_dt: datetime, *, interval_minutes: int) -> datetime:
+    """The grid point at or before `reference_dt`.
+
+    Used for the LATEST bookable time in a message. `closing - prep` is rarely
+    on the grid (21:30 minus 29 minutes is 21:01), and telling the customer
+    "the latest time is 9:01 PM" names a slot the interval check would then
+    reject. The last one they can actually pick is 9:00 PM.
+    """
+
+    if interval_minutes <= 0:
+        return reference_dt.replace(second=0, microsecond=0)
+    normalized = reference_dt.replace(second=0, microsecond=0)
+    return normalized - timedelta(minutes=normalized.minute % interval_minutes)
+
+
 def _interval_ceil(reference_dt: datetime, *, interval_minutes: int) -> datetime:
     if interval_minutes <= 0:
         return reference_dt.replace(second=0, microsecond=0)
@@ -302,11 +317,14 @@ def schedule_slot_is_available(
         # separately from "not available", because the two send the customer to
         # different places: one means pick another day, this means pick earlier.
         if all(_closes_too_soon(slot.end_time) for slot in matching_slots):
-            latest = min(
+            # max, not min: with more than one window the useful advice is the
+            # latest time still open to them, not the earliest cutoff.
+            latest = max(
                 _combine_local_datetime(scheduled_local.date(), slot.end_time)
                 - timedelta(minutes=prep_buffer_minutes)
                 for slot in matching_slots
             )
+            latest = _interval_floor(latest, interval_minutes=interval)
             return False, (
                 f"The kitchen needs {prep_buffer_minutes} minutes, so the latest time "
                 f"that day is {latest.strftime('%I:%M %p').lstrip('0')}."
@@ -315,9 +333,11 @@ def schedule_slot_is_available(
         if not _time_in_slot(scheduled_local.time(), location.opening_time, location.closing_time):
             return False, "The selected time is outside the branch operating hours."
         if _closes_too_soon(location.closing_time):
-            latest = _combine_local_datetime(
-                scheduled_local.date(), location.closing_time
-            ) - timedelta(minutes=prep_buffer_minutes)
+            latest = _interval_floor(
+                _combine_local_datetime(scheduled_local.date(), location.closing_time)
+                - timedelta(minutes=prep_buffer_minutes),
+                interval_minutes=interval,
+            )
             return False, (
                 f"The kitchen needs {prep_buffer_minutes} minutes, so the latest time "
                 f"that day is {latest.strftime('%I:%M %p').lstrip('0')}."
