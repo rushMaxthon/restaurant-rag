@@ -10,7 +10,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 import httpx
 from fastapi import HTTPException, status
@@ -4736,6 +4736,52 @@ def preference_diet_for_cache(
         return None
 
 
+def may_cache_globally(
+    *,
+    cacheable: bool,
+    history_messages: Sequence[object],
+    session_summary: str = "none",
+) -> bool:
+    """Whether this reply may be shared with visitors who did not have this conversation.
+
+    `RECENT HISTORY` and `SESSION SUMMARY` go into every prompt, so any turn
+    after the first in a session is shaped by that session. The global cache is
+    keyed by topic and diet only — nothing about whose conversation it was — so
+    writing such a reply hands one person's context to strangers.
+
+    Observed: "Which item are trending?" answered "We don't have a 'special'
+    item on the menu today...". The customer had never said "special"; a
+    previous turn in someone ELSE's session had, and that reply was cached under
+    the trending key for every veg guest for the rest of its TTL.
+
+    `_resolve_global_cacheability` already refuses personal context, follow-ups,
+    contextual menu questions, greetings and restaurant scope. Having history is
+    none of those, which is how this slipped through.
+
+    It cannot be fixed by extending the key: the contaminating input is another
+    user's conversation, not a property of this request. The reply simply must
+    not be shared.
+
+    READING a cached entry is still allowed. Serving a generic cached answer to
+    someone mid-conversation costs that one person a little context; writing is
+    what harms everyone else.
+    """
+
+    if not cacheable:
+        return False
+    if history_messages:
+        return False
+    # Session state, checked separately, because for a GUEST it is the only
+    # vector. Guests get no `chat_history` rows — `chat_history.user_id` is NOT
+    # NULL with an FK to `users` — so `_fetch_recent_history_messages_from_db`
+    # always returns empty for them and RECENT HISTORY is always blank. Their
+    # conversation lives entirely in the Redis session state that feeds
+    # SESSION SUMMARY, which is what carried "special" into an answer about
+    # trending. Guarding only on history_messages would have looked correct and
+    # protected nobody who was not signed in.
+    return not session_summary or session_summary.strip().lower() == "none"
+
+
 def _lookup_global_response_cache(
     *,
     message: str,
@@ -6629,7 +6675,11 @@ def handle_chat_message(
                 )
             )
         )
-    if cacheable_response:
+    if may_cache_globally(
+        cacheable=cacheable_response,
+        history_messages=prepared.history_messages,
+        session_summary=_session_state_prompt_summary(prepared.session_state),
+    ):
         cache_set_json(
             response_cache_key,
             _serialize_chat_response_cache_payload(
@@ -6998,7 +7048,11 @@ def stream_chat_message(
         except Exception:  # pragma: no cover - a checker must not break the answer
             logger.exception("Streamed grounding check failed; reply returned unchecked")
 
-    if cacheable_response:
+    if may_cache_globally(
+        cacheable=cacheable_response,
+        history_messages=prepared.history_messages,
+        session_summary=_session_state_prompt_summary(prepared.session_state),
+    ):
         cache_set_json(
             response_cache_key,
             _serialize_chat_response_cache_payload(

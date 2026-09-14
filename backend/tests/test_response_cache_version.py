@@ -132,5 +132,76 @@ class PreferenceInTheKeyTests(unittest.TestCase):
         self.assertEqual(first, second)
 
 
+class SessionHistoryIsNotGloballyCacheableTests(unittest.TestCase):
+    """One conversation's context must not become everyone's answer.
+
+    Reported: "Which item are trending?" replied "We don't have a 'special' item
+    on the menu today — but the Penne Arrabbiata...". The customer had never
+    mentioned "special". It was sitting in Redis under
+
+        rag:response:global:v11:recommendation:are-trending:veg
+
+    so it was a cache hit, and the key was correct for the question. The stored
+    CONTENT was shaped by somebody else's conversation: RECENT HISTORY and
+    SESSION SUMMARY go into every prompt, a previous turn in that session had
+    been about "special", and the model opened by denying it.
+
+    `_resolve_global_cacheability` refuses `personal_context`, `follow_up`,
+    `contextual_menu_question`, greetings and restaurant scope. Having
+    conversation history is none of those — so every turn after the first in a
+    session was eligible to be written to a cache shared with strangers.
+
+    This cannot be fixed by putting history in the key: the missing input is
+    another user's conversation, which is not a property of this request. The
+    only correct answer is not to share the reply at all.
+
+    Reading stays allowed. A cached generic answer served mid-conversation
+    merely loses a little context for that one person; writing is what harms
+    everybody else.
+    """
+
+    def test_a_turn_with_history_is_not_written_to_the_global_cache(self) -> None:
+        self.assertFalse(rag.may_cache_globally(cacheable=True, history_messages=[object()]))
+
+    def test_a_first_turn_still_caches(self) -> None:
+        """The cache must keep earning its keep. First-turn questions — "what is
+        popular", "show me pizza" — are the bulk of repeat traffic and have no
+        history to contaminate them."""
+
+        self.assertTrue(rag.may_cache_globally(cacheable=True, history_messages=[]))
+
+    def test_an_already_uncacheable_turn_stays_uncacheable(self) -> None:
+        self.assertFalse(rag.may_cache_globally(cacheable=False, history_messages=[]))
+
+    def test_a_guest_is_protected_by_session_state_not_history(self) -> None:
+        """The vector that actually caused the reported bug.
+
+        A guest gets NO chat_history rows — that table's user_id is NOT NULL
+        with an FK to `users` — so `history_messages` is always empty for them
+        and RECENT HISTORY is always blank. Their whole conversation lives in
+        the Redis session state behind SESSION SUMMARY.
+
+        Guarding on history alone passed its tests, looked right, and protected
+        nobody who was not signed in. Found by running the flow: the trending
+        key was still written.
+        """
+
+        self.assertFalse(
+            rag.may_cache_globally(
+                cacheable=True,
+                history_messages=[],
+                session_summary="topic=special; intent=dish_search",
+            )
+        )
+
+    def test_the_literal_none_summary_is_not_treated_as_context(self) -> None:
+        """`_session_state_prompt_summary` returns the STRING "none" for a fresh
+        session, so a naive truthiness check would refuse to cache anything."""
+
+        self.assertTrue(
+            rag.may_cache_globally(cacheable=True, history_messages=[], session_summary="none")
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
