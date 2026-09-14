@@ -76,10 +76,10 @@ def choose_pairing(
     best: tuple[Decimal, uuid.UUID] | None = None
     for pattern in patterns:
         missing = [item_id for item_id in pattern.item_ids if item_id not in cart_item_ids]
+        # A pairing must leave exactly one item unaccounted for. Two or more missing
+        # means the pattern is mostly about a meal this cart is not having; zero means
+        # the cart already covers it.
         if len(missing) != PAIRING_MISSING_ITEM_COUNT:
-            continue
-        if len(missing) == len(pattern.item_ids):
-            # Touches nothing in the cart; it is evidence about someone else's meal.
             continue
         candidate_id = missing[0]
         if not _is_offerable(candidates.get(candidate_id), diet=diet):
