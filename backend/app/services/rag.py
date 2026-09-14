@@ -982,6 +982,12 @@ def _extract_direct_item_hint(message: str) -> str | None:
     return _extract_bare_topic_hint(message)
 
 
+def _drop_non_dish_topics(topics: list[str]) -> list[str]:
+    """Strip diet words and bare verbs from anything headed for dish search."""
+
+    return [topic for topic in topics if not _is_diet_word_only(topic)]
+
+
 def _extract_multi_item_hints(message: str) -> list[str]:
     if _is_follow_up_recommendation_message(message):
         return []
@@ -1105,6 +1111,68 @@ SERVICE_WORD_TOPICS = frozenset(
         "tip",
     }
 )
+
+
+# Words that state a DIET rather than name a dish.
+#
+# "what vegetarian dishes do you have" used to search the menu for a dish
+# called "vegetarian", miss, and answer "We don't have any vegetarian options
+# on the menu right now" before recommending a chicken calzone. The menu was
+# full of vegetarian food; the word had simply been taken for a dish name.
+DIET_WORD_TOPICS = frozenset(
+    {
+        "veg",
+        "vegetarian",
+        "veggie",
+        "pure veg",
+        "non veg",
+        "nonveg",
+        "non vegetarian",
+        "vegan",
+        "plant based",
+    }
+)
+
+# Bare verbs and articles a question can leave behind once the dish is gone.
+# "which dishes are vegetarian" reduced to a search for a dish called "are".
+NON_DISH_STOPWORDS = frozenset(
+    {"are", "is", "am", "do", "does", "have", "has", "there", "any", "some", "the", "a", "an"}
+)
+
+
+def _extract_diet(message: str) -> str | None:
+    """"veg", "non_veg", or None.
+
+    Non-veg is tested FIRST because it contains the word it must not be
+    mistaken for: `\bveg\b` matches inside "non veg", so with the branches the
+    other way round "non veg please" classifies as veg - the exact opposite of
+    what was asked.
+    """
+
+    normalized = _normalize_text(message)
+    if not normalized:
+        return None
+    if "non veg" in normalized or "non-veg" in normalized or "nonveg" in normalized:
+        return "non_veg"
+    if "non vegetarian" in normalized:
+        return "non_veg"
+    if "vegetarian" in normalized or "vegan" in normalized or re.search(r"\bveg\b", normalized):
+        return "veg"
+    return None
+
+
+def _is_diet_word_only(topic: str | None) -> bool:
+    """True when a captured "dish" is really just a diet or a leftover verb."""
+
+    if not topic:
+        return False
+    cleaned = " ".join(token for token in topic.split() if token)
+    if cleaned in DIET_WORD_TOPICS:
+        return True
+    tokens = set(cleaned.split())
+    if tokens and tokens <= (NON_DISH_STOPWORDS | DIET_WORD_TOPICS):
+        return True
+    return False
 
 
 def _extract_menu_question_dish(message: str) -> str | None:
@@ -1570,7 +1638,12 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
 
 
 def _fallback_extract_intent(message: str, session_state: SessionConversationState) -> ExtractedIntent:
-    multi_item_hints = _extract_multi_item_hints(message)
+    # Read once, applied to every branch below. The diet filter downstream
+    # (`candidate.menu_item.is_veg`) already worked; nothing was ever handing
+    # it a diet, so a vegetarian's request reached retrieval as an ordinary
+    # search for a dish that happened to be called "vegetarian".
+    message_diet = _extract_diet(message)
+    multi_item_hints = _drop_non_dish_topics(_extract_multi_item_hints(message))
     if _message_requests_new_items(message):
         overrides = _extract_new_query_overrides(message)
         return ExtractedIntent(
@@ -1630,6 +1703,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             intent="recommendation",
             items=multi_item_hints or None,
             budget=explicit_budget,
+            diet=message_diet,
             mood=next((term for term in ("dinner", "lunch", "breakfast", "meal", "snack") if term in normalized), None),
         )
 
@@ -1639,15 +1713,19 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             dish=multi_item_hints[0],
             items=multi_item_hints,
             budget=explicit_budget,
+            diet=message_diet,
         )
 
     direct_item_hint = _extract_direct_item_hint(message)
+    if _is_diet_word_only(direct_item_hint):
+        direct_item_hint = None
     if direct_item_hint is not None:
         return ExtractedIntent(
             intent="dish_recommendation",
             dish=direct_item_hint,
             items=[direct_item_hint],
             budget=explicit_budget,
+            diet=message_diet,
         )
 
     if _is_out_of_domain_message(message):
@@ -1657,6 +1735,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
         intent="show_more" if _is_follow_up_recommendation_message(message) else "recommendation",
         budget=explicit_budget,
         show_more=_is_follow_up_recommendation_message(message),
+        diet=message_diet,
     )
     if "restaurant" in normalized:
         fallback.intent = "restaurant_list"
