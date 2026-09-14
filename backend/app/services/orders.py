@@ -194,6 +194,8 @@ def _serialize_order(order: Order) -> OrderResponse:
         currency=order.currency,
         special_instructions=order.special_instructions,
         delivery_address=order.delivery_address,
+        contact_name=order.contact_name,
+        contact_phone=order.contact_phone,
         placed_at=order.placed_at,
         created_at=order.created_at,
         updated_at=order.updated_at,
@@ -571,6 +573,10 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         currency=settings.payment_currency.upper(),
         special_instructions=payload.special_instructions,
         delivery_address=payload.delivery_address,
+        # Who to ring about this delivery. Asked for at checkout since the
+        # beginning and thrown away until 0058.
+        contact_name=payload.contact_name,
+        contact_phone=payload.contact_phone,
         items=draft.order_items,
         # Credit the offer that produced this order. The draft has already
         # validated it, so this only records what was applied — pricing and

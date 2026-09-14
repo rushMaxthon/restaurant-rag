@@ -1267,3 +1267,51 @@ html body[data-scroll-locked] {
     min-height: 44px;
   }
 }
+
+/* --- Checkout address form --------------------------------------------------
+   A field without an icon must not keep the icon's indent, or every box in the
+   grid starts at a different place. The padding belongs to the icon, not to
+   the wrapper. */
+.field-wrap:not(:has(> svg)):not(:has(> .country-code)) input {
+  padding-left: 0.9rem;
+}
+
+/* The dialling code is shown, not typed: a customer entering a local number
+   should not have to know the deployment's country, and a free-text "+1" is
+   one more thing to mistype. It sits inside the field so it reads as part of
+   the number rather than as a separate control. */
+.country-code {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.field-wrap:has(> .country-code) input {
+  padding-left: 2.8rem;
+}
+.field-wrap:focus-within > .country-code {
+  color: var(--primary);
+}
+
+/* A field the customer needs to come back to. Marked on the wrapper so the
+   border, the icon and the message all agree; `aria-invalid` on the input
+   carries the same fact to a screen reader. */
+.field-wrap[data-invalid="true"] input {
+  border-color: var(--danger);
+}
+.field-wrap[data-invalid="true"] > svg,
+.field-wrap[data-invalid="true"] > .country-code {
+  color: var(--danger);
+}
+.field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--danger);
+}

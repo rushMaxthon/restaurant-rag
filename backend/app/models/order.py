@@ -118,6 +118,12 @@ class Order(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="CAD", server_default="CAD")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_address: Mapped[str] = mapped_column(Text, nullable=False)
+    # Who to ring about THIS delivery. Not the account's own phone: someone
+    # ordering for a parent, or to an office, gives the number that should
+    # actually ring. Nullable because every order placed before 0058 has none
+    # and there is nothing honest to backfill.
+    contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     placed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

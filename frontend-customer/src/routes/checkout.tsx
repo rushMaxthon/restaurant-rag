@@ -45,9 +45,19 @@ import {
   snapToInterval,
   nextOpening,
 } from "@/lib/branch-hours";
+import {
+  composeDeliveryAddress,
+  formatPhoneAsTyped,
+  validateAddress,
+  validatePhone,
+  type AddressFields,
+} from "@/lib/delivery-address";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
+
+/** Shown beside the phone field; matches the backend's own default. */
+const PHONE_COUNTRY_CODE = "+1";
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
@@ -91,6 +101,71 @@ function StepRail({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
+/**
+ * One labelled, validated address box.
+ *
+ * Declared at module scope on purpose. Defined inside Checkout it would be a
+ * NEW component type on every render, so React would unmount and remount the
+ * input on each keystroke — focus lost, and only the first character kept.
+ * Everything it needs arrives as props instead.
+ */
+function AddressField({
+  id,
+  label,
+  placeholder,
+  autoComplete,
+  hint,
+  className,
+  icon,
+  inputMode,
+  value,
+  problem,
+  onChange,
+  onBlur,
+}: {
+  id: keyof AddressFields;
+  label: string;
+  placeholder: string;
+  autoComplete: string;
+  hint?: string;
+  className?: string;
+  icon?: React.ReactNode;
+  inputMode?: "text" | "numeric" | "tel";
+  value: string;
+  problem?: string | undefined;
+  onChange: (next: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <div className={`space-y-1.5 ${className ?? ""}`}>
+      <Label htmlFor={id}>
+        {label}
+        {hint && <span className="ml-1.5 text-xs font-medium text-muted">{hint}</span>}
+      </Label>
+      <div className="field-wrap" data-invalid={Boolean(problem)}>
+        {icon}
+        <Input
+          id={id}
+          value={value}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          {...(inputMode ? { inputMode } : {})}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          aria-invalid={Boolean(problem)}
+          aria-describedby={problem ? `${id}-error` : undefined}
+          className="h-12"
+        />
+      </div>
+      {problem && (
+        <p className="field-error" id={`${id}-error`}>
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Checkout() {
   const s = useBangkokStore();
   const isAuthenticated = useRequireAuth();
@@ -99,7 +174,19 @@ function Checkout() {
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState<AddressFields>({
+    line1: "",
+    line2: "",
+    landmark: "",
+    city: "",
+    state: "",
+    zip: "",
+  });
+  // Errors appear once a field has been left, not while it is being typed in.
+  // Marking a half-typed ZIP wrong is the fastest way to make a form feel
+  // hostile; saying nothing until submit is the slowest way to fix it.
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrderNumber, setPlacedOrderNumber] = useState<string | null>(null);
@@ -156,6 +243,16 @@ function Checkout() {
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
   // The clock time that ETA lands on, on the branch's clock.
   const etaAt = etaClockTime(eta, now, tz);
+
+  // Validation lives in lib/delivery-address.ts so the form and the submit
+  // handler cannot disagree about what "valid" means.
+  const addressProblems = isDelivery ? validateAddress(address) : {};
+  const phoneProblem = validatePhone(phone);
+  const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
+  const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
+  // Shown once the field has been left, or once submit has been attempted.
+  const show = (field: keyof AddressFields | "phone" | "name") =>
+    Boolean(touched[field] || submitted);
 
   // Orders have carried schedule_type/scheduled_at since the beginning and the
   // server validates a scheduled time against the branch's own slots. The app
@@ -289,12 +386,20 @@ function Checkout() {
       setError("We couldn't determine your branch. Please pick a branch and try again.");
       return;
     }
-    const deliveryAddress =
-      s.fulfillment === "DELIVERY" ? address : branch?.address_line_1 || address || "Pickup order";
-    if (s.fulfillment === "DELIVERY" && deliveryAddress.trim().length < 5) {
-      setError("Please enter a delivery address.");
+    // Reveal every problem at once rather than one per attempt.
+    setSubmitted(true);
+    if (!contactReady) {
+      setError("Please check the highlighted details and try again.");
       return;
     }
+
+    // The server stores one line, so the parts are joined into something a
+    // rider can read at the door. For pickup there is nothing to deliver to,
+    // and the branch's own address is the honest value.
+    const deliveryAddress =
+      s.fulfillment === "DELIVERY"
+        ? composeDeliveryAddress(address)
+        : `${branch?.branch_name ?? "Pickup"} — ${branch?.address_line_1 ?? "Pickup order"}`;
 
     const payload: OrderCreateRequest = {
       restaurant_id: orderRestaurantId,
@@ -307,6 +412,11 @@ function Checkout() {
         ? { schedule_type: "SCHEDULED" as const, scheduled_at: chosenSlot.toISOString() }
         : {}),
       delivery_address: deliveryAddress,
+      // Collected since the beginning and thrown away until migration 0058:
+      // the form demanded a name and phone, said they were how the rider would
+      // reach you, and sent neither.
+      contact_name: fullName.trim(),
+      contact_phone: phone.trim(),
       // Previously never sent, so the backend defaulted every order to COD and
       // marked it PLACED immediately — which is why "Place order" looked like
       // it skipped payment. A CARD order is created PAYMENT_PENDING instead and
@@ -406,36 +516,107 @@ function Checkout() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="phone">Phone number</Label>
-                <div className="field-wrap">
-                  <Phone className="size-4" />
+                <div className="field-wrap" data-invalid={Boolean(show("phone") && phoneProblem)}>
+                  {/* The country code is shown, not typed. A customer entering
+                      a local number should not have to know the deployment's
+                      country, and a free-text "+1" is one more thing to get
+                      wrong. */}
+                  <span className="country-code">{PHONE_COUNTRY_CODE}</span>
                   <Input
                     id="phone"
                     required
                     type="tel"
-                    autoComplete="tel"
-                    placeholder="10-digit mobile"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    placeholder="(555) 000-0000"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(formatPhoneAsTyped(e.target.value))}
+                    onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+                    aria-invalid={Boolean(show("phone") && phoneProblem)}
+                    aria-describedby={show("phone") && phoneProblem ? "phone-error" : undefined}
                     className="h-12"
                   />
                 </div>
+                {show("phone") && phoneProblem && (
+                  <p className="field-error" id="phone-error">
+                    {phoneProblem}
+                  </p>
+                )}
               </div>
               {isDelivery && (
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="address">Delivery address</Label>
-                  <div className="field-wrap">
-                    <MapPin className="size-4" />
-                    <Input
-                      id="address"
-                      required
-                      autoComplete="street-address"
-                      placeholder="Flat, street, area"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="h-12"
-                    />
-                  </div>
-                </div>
+                <>
+                  <AddressField
+                    id="line1"
+                    label="Address line 1"
+                    placeholder="Street address"
+                    autoComplete="address-line1"
+                    className="sm:col-span-2"
+                    icon={<MapPin className="size-4" />}
+                    value={address.line1}
+                    problem={show("line1") ? addressProblems.line1 : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, line1: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
+                  />
+                  <AddressField
+                    id="line2"
+                    label="Address line 2"
+                    hint="Optional"
+                    placeholder="Apartment, suite, floor"
+                    autoComplete="address-line2"
+                    className="sm:col-span-2"
+
+                    value={address.line2}
+                    problem={show("line2") ? addressProblems.line2 : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, line2: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, line2: true }))}
+                  />
+                  <AddressField
+                    id="landmark"
+                    label="Landmark"
+                    hint="Optional"
+                    placeholder="Opposite the park"
+                    autoComplete="off"
+                    className="sm:col-span-2"
+
+                    value={address.landmark}
+                    problem={show("landmark") ? addressProblems.landmark : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, landmark: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, landmark: true }))}
+                  />
+                  <AddressField
+                    id="city"
+                    label="City"
+                    placeholder="City"
+                    autoComplete="address-level2"
+                    value={address.city}
+                    problem={show("city") ? addressProblems.city : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, city: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, city: true }))}
+                  />
+                  <AddressField
+                    id="state"
+                    label="State"
+                    placeholder="State"
+                    autoComplete="address-level1"
+
+                    value={address.state}
+                    problem={show("state") ? addressProblems.state : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, state: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, state: true }))}
+                  />
+                  <AddressField
+                    id="zip"
+                    label="ZIP code"
+                    placeholder="00000"
+                    autoComplete="postal-code"
+                    inputMode="numeric"
+
+                    value={address.zip}
+                    problem={show("zip") ? addressProblems.zip : undefined}
+                    onChange={(next) => setAddress((a) => ({ ...a, zip: next }))}
+                    onBlur={() => setTouched((t) => ({ ...t, zip: true }))}
+                  />
+                </>
               )}
             </div>
 

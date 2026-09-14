@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { clickFixed, fillCart, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
+import {
+  clickFixed,
+  fillCart,
+  fillCheckoutContact,
+  fillField,
+  payWithTestCard,
+  resetApp,
+  signIn,
+} from "./helpers";
 
 /**
  * What happens AFTER the card is accepted.
@@ -15,11 +23,7 @@ test("a paid order empties the cart and settles without a refresh", async ({ pag
   await fillCart(page, 3);
   await signIn(page, "/checkout");
 
-  await fillField(page, "Full name", "Settle Tester");
-  await fillField(page, "Phone number", "9876543210");
-  if (await page.getByLabel("Delivery address", { exact: true }).isVisible()) {
-    await fillField(page, "Delivery address", "B-402 Riverside, Bodakdev");
-  }
+  await fillCheckoutContact(page);
   const later = page.getByRole("button", { name: /schedule for later/i });
   if (await later.count()) await later.click();
   const times = page.locator(".slot-grid .slot-chip");

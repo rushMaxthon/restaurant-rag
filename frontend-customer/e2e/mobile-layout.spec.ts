@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { clickFixed, fillCart, fillField, forceBranchClosed, resetApp, signIn } from "./helpers";
+import {
+  clickFixed,
+  fillCart,
+  fillCheckoutContact,
+  fillField,
+  forceBranchClosed,
+  resetApp,
+  signIn,
+} from "./helpers";
 
 /**
  * The phone layout, measured rather than eyeballed.
@@ -19,6 +27,7 @@ import { clickFixed, fillCart, fillField, forceBranchClosed, resetApp, signIn } 
  */ test.describe("mobile layout", () => {
   // The conditional form only receives fixtures, not testInfo, so the project
   // check goes in a beforeEach where testInfo is a real argument.
+  // eslint-disable-next-line no-empty-pattern -- testInfo is the second arg
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "phone-sized screens only");
   });
@@ -139,11 +148,7 @@ import { clickFixed, fillCart, fillField, forceBranchClosed, resetApp, signIn } 
     await fillCart(page, 3);
     await signIn(page, "/checkout");
 
-    await fillField(page, "Full name", "Playwright Tester");
-    await fillField(page, "Phone number", "9876543210");
-    if (await page.getByLabel("Delivery address", { exact: true }).isVisible()) {
-      await fillField(page, "Delivery address", "B-402 Riverside, Bodakdev, Ahmedabad");
-    }
+    await fillCheckoutContact(page);
     const later = page.getByRole("button", { name: /schedule for later/i });
     if (await later.count()) await later.click();
     const times = page.locator(".slot-grid .slot-chip");

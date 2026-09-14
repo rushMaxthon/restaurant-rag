@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     debug: bool = True
     api_v1_prefix: str = "/api"
     business_timezone: str = "Asia/Kolkata"
+    # Dialling code assumed when a customer types a bare local number at
+    # checkout. Settable per deployment for the same reason the timezone is:
+    # nothing here should hardcode one country.
+    default_phone_country_code: str = "+1"
+    # How many digits a local number has once the country code is stripped.
+    # US and Canada are 10; a deployment elsewhere changes this rather than
+    # editing a validator.
+    default_phone_national_digits: int = 10
     # App client that owns customers who arrive without a bundle id
     # (the customer web app), and the fallback identity scope.
     default_app_client_key: str = "marketplace"

@@ -4,8 +4,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.config import get_settings
 from app.models.enums import (
     OrderFulfillmentType,
     OrderScheduleType,
@@ -76,7 +77,62 @@ class OrderCreateRequest(BaseModel):
     scheduled_at: datetime | None = None
     items: list[OrderCreateItem] = Field(min_length=1, max_length=50)
     delivery_address: str = Field(min_length=5, max_length=2000)
+    # Who to ring about this delivery. Optional so the mobile client, which
+    # does not send them yet, keeps working; the web checkout requires them.
+    contact_name: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=32)
     special_instructions: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("contact_name")
+    @classmethod
+    def clean_contact_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("contact_phone")
+    @classmethod
+    def normalize_contact_phone(cls, value: str | None) -> str | None:
+        """One number, one shape.
+
+        The same phone typed as "(415) 555-0132", "415-555-0132" and
+        "+1 415 555 0132" must reach the kitchen identically, or two identical
+        numbers look like two different people and nobody can search for one.
+
+        Country code and national length come from settings rather than being
+        written in here, so a deployment outside North America changes a
+        setting instead of editing a validator.
+        """
+
+        if value is None:
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+
+        had_plus = raw.startswith("+")
+        digits = "".join(character for character in raw if character.isdigit())
+        if not digits:
+            raise ValueError("Enter a phone number using digits.")
+
+        settings = get_settings()
+        national_length = int(settings.default_phone_national_digits)
+        country_code = settings.default_phone_country_code.lstrip("+")
+
+        if had_plus:
+            if len(digits) < 8 or len(digits) > 15:
+                raise ValueError("Enter a valid phone number, including the country code.")
+            return f"+{digits}"
+
+        if len(digits) == national_length:
+            return f"+{country_code}{digits}"
+        # Typed with the country code but no plus, e.g. "1 415 555 0132".
+        if len(digits) == national_length + len(country_code) and digits.startswith(country_code):
+            return f"+{digits}"
+        raise ValueError(
+            f"Enter a {national_length}-digit phone number, or include the country code."
+        )
     payment_method: PaymentMethod = PaymentMethod.COD
     # Accepted for backwards compatibility with older clients and IGNORED. The
     # provider is derived from the method, and the reference is written only by
@@ -152,6 +208,8 @@ class OrderResponse(BaseModel):
     currency: str
     special_instructions: str | None
     delivery_address: str
+    contact_name: str | None = None
+    contact_phone: str | None = None
     placed_at: datetime
     created_at: datetime
     updated_at: datetime
