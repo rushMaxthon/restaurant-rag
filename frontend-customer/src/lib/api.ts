@@ -468,18 +468,27 @@ export const api = {
     sessionId: string;
     cart: CartLineRequest[];
   }) =>
+    // auth: true so a signed-in customer's diet reaches `_is_offerable` —
+    // without it every call is anonymous, `get_current_user_optional` returns
+    // None, and a VEG customer's non-negotiable filter never runs. Degrades
+    // to no header for a guest (see `request`), so this still works signed out.
     request<{ suggestion: SellSuggestion | null }>("/suggestions", {
       query: {
         restaurant_location_id: params.restaurantLocationId,
         session_id: params.sessionId,
         cart: JSON.stringify(params.cart),
       },
+      auth: true,
     }).then((envelope) => envelope.suggestion),
 
   declineSuggestion: (sessionId: string, menuItemId: string) =>
     request("/suggestions/decline", {
       method: "POST",
       body: { session_id: sessionId, menu_item_id: menuItemId },
+      // Same identity as getSuggestion — a decline must land under the same
+      // principal (real user id, not the guest uuid5) or the memory it writes
+      // suppresses nothing the next authenticated call reads.
+      auth: true,
     }),
 };
 

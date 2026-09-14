@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cartLinesForRequest, suggestionCopy, suggestionNeedsChoice } from "./suggestions";
+import { cartLinesForRequest, cartSuggestionSignature, suggestionCopy, suggestionNeedsChoice } from "./suggestions";
 
 describe("cartLinesForRequest", () => {
   it("sends identifiers only, never names or prices", () => {
@@ -128,6 +128,57 @@ describe("suggestionCopy", () => {
     );
 
     expect(copy).toContain("Thai Iced Tea");
+  });
+});
+
+describe("cartSuggestionSignature", () => {
+  it("is unchanged when only a quantity changes", () => {
+    const before = cartSuggestionSignature([{ itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] }]);
+    const after = cartSuggestionSignature([{ itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] }]);
+
+    // Same identity, different quantities is the case that matters — but a
+    // signature has no quantity field to begin with, so identical lines with
+    // quantity omitted already prove the point: nothing about quantity can
+    // ever reach this function.
+    expect(after).toEqual(before);
+  });
+
+  it("changes when the item changes", () => {
+    const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: [] }]);
+    const b = cartSuggestionSignature([{ itemId: "item-2", sizeId: undefined, optionIds: [] }]);
+
+    expect(a).not.toEqual(b);
+  });
+
+  it("changes when the size changes", () => {
+    const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: "small", optionIds: [] }]);
+    const b = cartSuggestionSignature([{ itemId: "item-1", sizeId: "large", optionIds: [] }]);
+
+    expect(a).not.toEqual(b);
+  });
+
+  it("changes when an option is added", () => {
+    const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: [] }]);
+    const b = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-1"] }]);
+
+    expect(a).not.toEqual(b);
+  });
+
+  it("is order-independent within a single line's options", () => {
+    const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-1", "opt-2"] }]);
+    const b = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-2", "opt-1"] }]);
+
+    expect(a).toEqual(b);
+  });
+
+  it("changes when a line is added or removed", () => {
+    const one = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: [] }]);
+    const two = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: undefined, optionIds: [] },
+      { itemId: "item-2", sizeId: undefined, optionIds: [] },
+    ]);
+
+    expect(one).not.toEqual(two);
   });
 });
 

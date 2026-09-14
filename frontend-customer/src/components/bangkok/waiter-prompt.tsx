@@ -8,6 +8,7 @@ import { readChatSession, storeChatSession } from "@/lib/chat-session";
 import { useMenuItem } from "@/lib/queries";
 import {
   cartLinesForRequest,
+  cartSuggestionSignature,
   suggestionCopy,
   suggestionNeedsChoice,
   type SellSuggestion,
@@ -44,6 +45,14 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
     return minted;
   }, []);
 
+  // What actually affects the answer (item, size, option ids) — NOT
+  // `store.cart` itself. `changeQuantity` returns a new array on every tap,
+  // and `CartLineFacts` on the backend has no quantity field, so keying this
+  // effect on the array would refire on a change guaranteed not to change the
+  // result — burning a `record_offer` + `store_memory` call, and on the cart
+  // page draining the session's two-decline suppression budget, for nothing.
+  const cartSignature = useMemo(() => cartSuggestionSignature(store.cart), [store.cart]);
+
   useEffect(() => {
     if (!locationId || !sessionId) return;
     let cancelled = false;
@@ -64,7 +73,11 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
     return () => {
       cancelled = true;
     };
-  }, [locationId, sessionId, store.cart]);
+    // store.cart is read inside (for the request payload) but deliberately
+    // absent here — cartSignature is the derived value that should trigger a
+    // refetch; see its docstring in suggestions.ts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationId, sessionId, cartSignature]);
 
   // The name, category and price come from the client's OWN menu data, never
   // from the suggestion — one price path, so this can never contradict the

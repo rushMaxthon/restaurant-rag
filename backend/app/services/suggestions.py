@@ -406,6 +406,20 @@ UNCATEGORISED = "\x00uncategorised"
 
 
 def _load_visible_combos(db: Session, location_id: uuid.UUID) -> list[GeneratedCombo]:
+    """Combos this branch can show — AND mined from real orders.
+
+    `choose_pairing`'s `co_occurrence` basis says "Often ordered with what
+    you've got", which is only true because every row reaching it today
+    happens to have been mined from order history — the single construction
+    site (`generated_combos.py`) hardcodes `generated_from_orders=True`. That
+    is an accident of what exists, not a rule this query enforces, and
+    `GeneratedCombo.generated_from_orders` exists precisely to distinguish
+    mined rows from an owner-authored one. Filtering on it here makes the
+    claim true by construction: the day a hand-built combo lands with the
+    flag correctly set to False, this query — not luck — is what keeps it out
+    of a sentence that says people ordered it together.
+    """
+
     return list(
         db.scalars(
             select(GeneratedCombo)
@@ -413,6 +427,7 @@ def _load_visible_combos(db: Session, location_id: uuid.UUID) -> list[GeneratedC
                 GeneratedCombo.restaurant_location_id == location_id,
                 GeneratedCombo.is_active.is_(True),
                 GeneratedCombo.is_customer_visible.is_(True),
+                GeneratedCombo.generated_from_orders.is_(True),
             )
             .options(selectinload(GeneratedCombo.combo_items))
         ).all()
@@ -489,9 +504,6 @@ def suggestion_for_cart(
         for combo in combos
     ]
 
-    sizes = _larger_sizes(db, cart_lines)
-    add_ons = _unchosen_add_ons(db, cart_lines)
-
     cart_categories = {
         menu_items[item_id].category or UNCATEGORISED
         for item_id in cart_item_ids
@@ -502,16 +514,36 @@ def suggestion_for_cart(
     # Order matters: an upgrade to something already in the cart is more
     # relevant than a new item, and mined evidence outranks a category guess.
     #
-    # combos=[] here (not the branch's loaded combos): choose_upsell's first
-    # rung would return a combo_upgrade carrying only a combo_id, but this
-    # phase's client resolves suggestion names through a menu-item lookup and
-    # has no typed way to fetch a combo by id. Passing the combos through would
-    # record the offer as made while the client rendered nothing. Temporary —
-    # Phase 3 adds the combo renderer, and this becomes `combos=upgrades`
-    # again once it exists. The pairing and category-default rungs below still
-    # see every loaded combo, since those paths only ever need a menu_item_id.
+    # combos=[], sizes=[], add_ons=[] here (not the branch's loaded combos,
+    # sizes and add-ons): every rung of choose_upsell answers with something
+    # this phase's renderer cannot honour.
+    #
+    #   - combo_upgrade carries only a combo_id, and the client resolves
+    #     suggestion names through a menu-item lookup with no typed way to
+    #     fetch a combo by id.
+    #   - size_upgrade names the cart's OWN menu_item_id as the subject (the
+    #     suggestion IS the size change), but Phase 1 has no way to mutate an
+    #     existing cart line — "Choose" lands on the dish page, where adding
+    #     produces a second, separate line beside the one already there. The
+    #     prompt would promise an upgrade and deliver a duplicate.
+    #   - add_on names the cart's OWN menu_item_id too, while the actual
+    #     subject is a customization_option_id the client has no typed way to
+    #     resolve to a name — so a cart holding a dish with an unselected
+    #     paid extra would render "Add <dish already in the cart>?" next to a
+    #     button that cannot add the extra.
+    #
+    # For combos, passing them through would record the offer as made while
+    # the client rendered nothing — a wasted rung. For sizes and add-ons the
+    # failure is worse: the client CAN render something, just something that
+    # names the wrong subject or promises a mutation it cannot perform, and a
+    # confidently wrong prompt is worse than a silent one. All three rungs are
+    # disabled for the same reason, one of them just costs more to leave on.
+    # Temporary — Phase 2 adds cart-line mutation and Phase 3 adds the combo
+    # renderer, and each becomes real again once its client-side counterpart
+    # exists. The pairing and category-default rungs below still see every
+    # loaded combo, since those paths only ever need a menu_item_id.
     for candidate in (
-        choose_upsell(cart_lines, combos=[], sizes=sizes, add_ons=add_ons),
+        choose_upsell(cart_lines, combos=[], sizes=[], add_ons=[]),
         choose_pairing(patterns, cart_item_ids, candidates=candidates, diet=diet),
         choose_category_default(
             cart_categories,

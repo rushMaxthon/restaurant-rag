@@ -16,9 +16,12 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import AppScopeDep, ensure_restaurant_readable
 from app.config.database import get_db
+from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.suggestions import (
     CartLinePayload,
@@ -49,6 +52,25 @@ router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 # this endpoint must answer like every other malformed value: 200, no
 # suggestion.
 MAX_CART_QUERY_LENGTH = 4096
+
+
+def _restaurant_id_for_location(db: Session, restaurant_location_id: uuid.UUID) -> uuid.UUID | None:
+    """Resolve the owning restaurant so the scope guard has something to check.
+
+    This endpoint only ever receives a `restaurant_location_id`, not the
+    `restaurant_id` `ensure_restaurant_readable` expects — every sibling
+    customer-facing read (`generated_combos.py`, `menu_items.py`, `chat.py`)
+    already has the restaurant id in hand. A location id that does not exist
+    resolves to None, which `AppScope.allows_restaurant` treats as out of
+    scope for a single-restaurant app (matching a real cross-restaurant id)
+    and as allowed for the unscoped marketplace scope — either way nothing
+    downstream can leak, since the menu-item query below is scoped to the
+    same (possibly nonexistent) location regardless.
+    """
+
+    return db.scalar(
+        select(RestaurantLocation.restaurant_id).where(RestaurantLocation.id == restaurant_location_id)
+    )
 
 
 def _principal_id(current_user: User | None, session_id: uuid.UUID) -> uuid.UUID:
@@ -120,6 +142,7 @@ def _parse_cart(cart: str | None) -> list[CartLineFacts]:
 def get_suggestion(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User | None, Depends(get_current_user_optional)],
+    app_scope: AppScopeDep,
     restaurant_location_id: uuid.UUID,
     session_id: uuid.UUID,
     cart: Annotated[
@@ -139,6 +162,15 @@ def get_suggestion(
     page — not an error, so it always answers 200 with `suggestion: null`
     rather than 4xx.
     """
+
+    # Same guard every sibling customer-facing read applies (see
+    # `generated_combos.py`'s `/cart/upsell-suggestions`): without it, an
+    # unauthenticated caller could name any restaurant_location_id on the
+    # platform and get back an item id and a price delta from a restaurant
+    # their app client has no business seeing. 404, not 403 — same reasoning
+    # as `ensure_restaurant_readable` itself: a single-restaurant app must not
+    # be able to use this to probe which locations exist elsewhere.
+    ensure_restaurant_readable(app_scope, _restaurant_id_for_location(db, restaurant_location_id))
 
     lines = _parse_cart(cart)
 
@@ -162,6 +194,7 @@ def get_suggestion(
 def decline_suggestion(
     payload: SuggestionDeclineRequest,
     current_user: Annotated[User | None, Depends(get_current_user_optional)],
+    app_scope: AppScopeDep,
 ) -> SuggestionEnvelope:
     """Dismissing a prompt is a decline wherever it happened.
 
@@ -172,6 +205,13 @@ def decline_suggestion(
     site even though the suppression key it stores can also be a combo id or a
     customization option id (see `_suggestion_identity` in
     `services/suggestions.py`).
+
+    `app_scope` is declared (matching `get_suggestion`) so a suspended app is
+    refused here too, but there is no `ensure_restaurant_readable` call to go
+    with it: this endpoint never reads a restaurant-scoped row — it only
+    mutates the caller's OWN suppression memory, keyed by their own principal
+    id, and `menu_item_id` is stored opaquely, never resolved against the DB.
+    There is nothing here for a scoped app to see that it does not already own.
     """
 
     user_id = _principal_id(current_user, payload.session_id)

@@ -80,10 +80,21 @@ class ChatMessageResponse(BaseModel):
     # What this turn learned about the visitor, for a guest's browser to keep.
     # Empty for an authenticated user: their traits already have a home.
     inferred_preferences: dict[str, str] = Field(default_factory=dict)
-    # Same contract as `GET /api/suggestions`: one waiter, one nudge, one
-    # suppression memory, regardless of which surface asked. None on every
-    # short-circuit reply (acknowledgement, greeting, a cache hit) — see
-    # `handle_chat_message` for why only the fully-assembled turn computes one.
+    # Same rules and the same suppression memory as `GET /api/suggestions`,
+    # but populated only on THIS route (`POST /chat/message`), and only once
+    # `handle_chat_message` reaches the fully-assembled turn — every
+    # short-circuit reply (acknowledgement, greeting, a cache hit) leaves it
+    # null. `POST /chat/message/stream`, which is the route the web concierge
+    # and mobile actually call, never computes a suggestion at all — its SSE
+    # `meta` frame carries `suggestions`/`combo_suggestions`/`offer_suggestions`
+    # only, so this field is always null on that path. In practice this field
+    # is always null today for another reason too: `cart` above is populated
+    # by no shipped client, so even a `/chat/message` caller earns nothing to
+    # suggest against. The concierge UI gets its suggestion by mounting
+    # `WaiterPrompt` alongside the transcript instead, which calls
+    # `GET /api/suggestions` directly. Kept, not dead: Phase 2 is expected to
+    # start sending `cart` on this route, at which point this stops being
+    # theoretical.
     suggestion: SellSuggestionResponse | None = None
 
 

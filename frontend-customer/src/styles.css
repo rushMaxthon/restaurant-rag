@@ -163,8 +163,12 @@
 }
 /*
  * The waiter's one line. Never a transcript: one prompt, one action, one
- * dismiss, laid out so the actions sit flush right and the copy truncates
- * rather than wrap into something that reads like a chat bubble.
+ * dismiss. The copy wraps rather than truncates — on a narrow phone,
+ * ellipsis-truncation cut the one word the customer actually needs (the item
+ * name, which always comes last: "Often ordered with what you've got —
+ * Coconut Cooler?"). Two lines max keeps it reading as one compact prompt
+ * instead of a paragraph; `align-items: center` on the row still centers a
+ * wrapped two-line block against the actions beside it.
  */
 .waiter-prompt {
   display: flex;
@@ -180,8 +184,10 @@
 .waiter-prompt__text {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   font-weight: 700;
 }
 .waiter-prompt__actions {

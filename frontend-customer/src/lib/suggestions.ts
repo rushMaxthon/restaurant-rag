@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/bangkok-data";
 import type { CartLine } from "@/lib/bangkok-store";
 
 export type SellSuggestion = {
@@ -32,6 +33,33 @@ export function cartLinesForRequest(cart: CartLine[]): CartLineRequest[] {
     size_id: line.sizeId,
     customization_option_ids: line.optionIds,
   }));
+}
+
+/** The only fields of a cart line that can change what `suggestion_for_cart` answers. */
+type SignatureLine = Pick<CartLine, "itemId" | "sizeId" | "optionIds">;
+
+/**
+ * A stable fingerprint of the parts of the cart that can change the answer.
+ *
+ * `suggestion_for_cart` resolves entirely from item, size and customization
+ * option ids — `CartLineFacts` on the backend has no `quantity` field, so a
+ * quantity change can never change which suggestion comes back. Keying
+ * `WaiterPrompt`'s fetch effect on `store.cart` itself re-fires on every
+ * quantity tap anyway, because `changeQuantity` returns a new array — and
+ * each refire calls `record_offer` + `store_memory` on the backend, draining
+ * the session's two-decline suppression budget for a call guaranteed to
+ * repeat the same answer. Keying on this signature instead means the effect
+ * only re-fires when the cart changed in a way that could actually change
+ * what comes back.
+ *
+ * A pure function rather than inlined in the component because vitest here
+ * runs in node with no jsdom (see `suggestions.test.ts`) — this is the part
+ * of that effect a unit test can actually reach.
+ */
+export function cartSuggestionSignature(cart: SignatureLine[]): string {
+  return cart
+    .map((line) => `${line.itemId}:${line.sizeId ?? ""}:${[...line.optionIds].sort().join(",")}`)
+    .join("|");
 }
 
 /**
@@ -76,11 +104,17 @@ export function suggestionCopy(
     }
     case "combo_upgrade": {
       const saving = suggestion.saving?.trim();
-      return saving ? `Make it the ${itemName} and save ${saving}.` : `Make it the ${itemName}.`;
+      // Every other price on the site goes through `formatMoney` (see
+      // `bangkok-data.ts`) and shows "CA$2.50" — interpolating the raw
+      // decimal string here would be the one place on the site that showed
+      // a bare, currency-less number.
+      return saving ? `Make it the ${itemName} and save ${formatMoney(saving)}.` : `Make it the ${itemName}.`;
     }
     case "size_upgrade": {
       const cost = suggestion.extra_cost?.trim();
-      return cost ? `Would you like a bigger size? ${cost} more for the ${itemName}.` : `Would you like a bigger size of the ${itemName}?`;
+      return cost
+        ? `Would you like a bigger size? ${formatMoney(cost)} more for the ${itemName}.`
+        : `Would you like a bigger size of the ${itemName}?`;
     }
     case "add_on":
       return `Add ${itemName}?`;
