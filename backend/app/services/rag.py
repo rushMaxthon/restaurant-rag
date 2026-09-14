@@ -3328,13 +3328,14 @@ HOURS_QUESTION_ANCHORS = (
     "what are your opening hours",
 )
 
-# Measured over ten phrases with nomic-embed-text:
+# Measured over twenty-one phrasings with nomic-embed-text:
 #
-#   hours questions   0.087 - 0.464   ("ordering window today" is the far end)
-#   everything else   0.526 - 0.601   ("what desserts do you have" is the near end)
+#   availability questions   0.087 - 0.464
+#   everything else          0.518 - 0.660   (nearest: "do you have pizza")
 #
-# 0.49 sits in a 0.062 gap — narrower than the 0.101 the dish guardrail enjoys,
-# which is why this is not allowed to run on its own. See the caller.
+# 0.49 sits in that gap. The numbers belong to THIS embedding model; switching
+# `embedding_provider` to Gemini requires re-measuring, and nothing here will
+# complain if they quietly stop being right.
 HOURS_QUESTION_MAX_DISTANCE = 0.49
 
 _HOURS_ANCHOR_VECTORS: list[list[float]] | None = None
@@ -6110,19 +6111,21 @@ def _prepare_chat_turn(
     # reason as the customisation answer: telling someone the wrong closing time
     # costs them a wasted trip, and a model has no business guessing it.
     # Patterns first, then meaning. The patterns are exact, free and need no
-    # embedding, so they answer the common phrasings; the similarity check is
-    # the fallback for what nobody listed a word for — "What is windows time for
-    # today?" named no dish, matched no pattern, and was refused as outside the
-    # kitchen.
+    # embedding; the similarity check covers what nobody listed a word for.
     #
-    # The fallback is gated on the turn ALREADY heading for a refusal
-    # (`_instant_reply_for_intent` returning something). Its margin is 0.062,
-    # thin enough that a false positive would otherwise answer a food question
-    # with opening times; confined here, a false positive costs an hours answer
-    # instead of "that's outside my kitchen", which is strictly better than what
-    # it replaces.
-    would_be_refused = _instant_reply_for_intent(resolved_intent, message) is not None
-    if _is_hours_query(message) or (would_be_refused and looks_like_hours_question(message)):
+    # It ran only on turns already heading for a refusal when the margin looked
+    # like 0.062. A wider measurement moved it: asking when you can order —
+    # "when can I order", "is the kitchen open", "can I order now" — matched no
+    # pattern, was NOT refused, and went to dish search instead. Those returned
+    # six, six and one dish recommendation to someone asking about availability.
+    #
+    # Measured across eleven phrasings including the common dish requests:
+    #
+    #   availability questions   0.281 - 0.444
+    #   dish requests            0.518 - 0.660   (nearest: "do you have pizza")
+    #
+    # 0.49 sits nearly centred in that 0.074 gap, so the gate is gone.
+    if _is_hours_query(message) or looks_like_hours_question(message):
         hours_reply = _todays_hours_reply(
             db,
             restaurant_id=restaurant_id,

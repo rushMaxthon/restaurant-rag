@@ -123,12 +123,32 @@ class SemanticHoursFallbackTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertTrue(looks_like_hours_question(phrase))
 
+    def test_asking_when_you_can_order_is_an_hours_question(self) -> None:
+        """Reported: these were answered with dish recommendations.
+
+        "when can I order" returned six dishes, "is the kitchen open" six, and
+        "can I order now" recommended Build Your Own Curry. They ask about
+        availability, not food, and none matched a pattern.
+        """
+
+        for phrase in (
+            "when can I order",
+            "what time can I place order",
+            "is the kitchen open",
+            "can I order now",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(looks_like_hours_question(phrase))
+
     def test_a_food_question_is_not_an_hours_question(self) -> None:
         for phrase in (
             "i want pad thai",
             "what desserts do you have",
             "how much is delivery",
             "show me something spicy",
+            "do you have pizza",
+            "recommend me something",
+            "something cheap",
         ):
             with self.subTest(phrase=phrase):
                 self.assertFalse(looks_like_hours_question(phrase))
