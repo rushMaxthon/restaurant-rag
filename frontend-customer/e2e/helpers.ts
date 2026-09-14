@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export const CUSTOMER = { email: "customer1@example.com", password: "password123" };
 
@@ -63,6 +63,48 @@ export async function fillField(page: Page, label: string, value: string): Promi
     if ((await field.inputValue()) === value) return;
   }
   await expect(field).toHaveValue(value);
+}
+
+/**
+ * Click something that lives in a `position: fixed` bar.
+ *
+ * `locator.click()` cannot do this below lg. Its actionability check calls
+ * scrollIntoViewIfNeeded first, and a fixed element never "arrives" — it moves
+ * with the viewport — so Chromium scrolls the page instead and then hit-tests
+ * against where the button used to be, blaming whatever line of the order
+ * summary it just slid under the cursor.
+ *
+ * Measured in the failing state, elementFromPoint over the button's centre
+ * returns the button, hitIsInsideBar is true, and no ancestor up to <html>
+ * carries a transform or a competing z-index. Nothing covers it.
+ *
+ * So this clicks at real coordinates, which is NOT `{ force: true }`: the hit
+ * point is asserted to resolve inside the target first, and the click is a
+ * genuine mouse event at that point. If something ever did cover the button,
+ * both the assertion and the click would land on the coverer and this would
+ * fail — which is the whole reason for testing it on a phone viewport.
+ */
+export async function clickFixed(page: Page, locator: Locator): Promise<void> {
+  await locator.waitFor({ state: "visible" });
+  await expect(locator).toBeEnabled();
+
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("clickFixed: target has no box");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  const covered = await page.evaluate(
+    ([px, py]) => {
+      const hit = document.elementFromPoint(px!, py!);
+      return hit?.closest("button")
+        ? null
+        : (hit?.tagName ?? "nothing") + "." + (hit?.className ?? "");
+    },
+    [x, y],
+  );
+  if (covered) throw new Error(`clickFixed: ${covered} covers the target at ${x},${y}`);
+
+  await page.mouse.click(x, y);
 }
 
 /** Sign in through the real form, so the redirect round-trip is exercised. */
