@@ -6101,6 +6101,16 @@ def handle_chat_message(
             suggestions=[],
             combo_suggestions=[],
             offer_suggestions=[],
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     if _is_greeting_message(message):
@@ -6161,6 +6171,16 @@ def handle_chat_message(
             suggestions=prepared.suggestions,
             combo_suggestions=prepared.combo_suggestions,
             offer_suggestions=prepared.offer_suggestions,
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     cache_started_at = perf_counter()
@@ -6203,6 +6223,16 @@ def handle_chat_message(
             suggestions=prepared.suggestions,
             combo_suggestions=prepared.combo_suggestions,
             offer_suggestions=prepared.offer_suggestions,
+            # Also on the early-return paths. Inference depends on the MESSAGE,
+            # not on how the reply was produced — a cached or templated answer
+            # still carries what this turn revealed about the visitor, and
+            # dropping it here meant a guest's diet was learned only on the
+            # turns that happened to miss the cache.
+            inferred_preferences=(
+                durable_traits_from_message(message, prepared.extracted_intent)
+                if is_guest(user)
+                else {}
+            ),
         )
 
     try:
