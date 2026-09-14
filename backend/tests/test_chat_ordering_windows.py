@@ -25,6 +25,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = ROOT / "backend"
@@ -36,6 +37,7 @@ from app.services.rag import (
     BranchAvailability,
     _closed_notice,
     _is_hours_query,
+    looks_like_hours_question,
 )
 
 OPEN = BranchAvailability(
@@ -85,6 +87,58 @@ class HoursQuestionRecognitionTests(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertFalse(_is_hours_query(phrase))
+
+
+class SemanticHoursFallbackTests(unittest.TestCase):
+    """Recognising an hours question nobody listed a word for.
+
+    Reported: "What is windows time for today?" answered "That one's outside my
+    kitchen". No pattern covers "window time", so it fell through to the intent
+    extractor, which classifies an hours question as unsupported_domain — it
+    names no dish and carries no food word — and refused.
+
+    Adding "window" to the pattern list would fix that phrasing and leave the
+    next one broken. This measures the question against a few canonical hours
+    phrasings instead, so a wording nobody anticipated still lands.
+
+    Measured over ten phrases with nomic-embed-text:
+
+        hours questions   0.087 - 0.464
+        everything else   0.526 - 0.601
+
+    A 0.062 gap, against 0.101 for the dish guardrail — narrower, and a false
+    positive here answers a food question with opening times. So this runs ONLY
+    where the alternative is a refusal: patterns first, and this only when they
+    miss AND the turn was heading for "outside my kitchen". A false positive
+    then costs an hours answer instead of a refusal, which is strictly better
+    than what it replaces.
+    """
+
+    def test_the_reported_phrasing_is_recognised(self) -> None:
+        for phrase in (
+            "What is windows time for today?",
+            "what is the window time",
+            "ordering window today",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(looks_like_hours_question(phrase))
+
+    def test_a_food_question_is_not_an_hours_question(self) -> None:
+        for phrase in (
+            "i want pad thai",
+            "what desserts do you have",
+            "how much is delivery",
+            "show me something spicy",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertFalse(looks_like_hours_question(phrase))
+
+    def test_no_embedding_decides_nothing(self) -> None:
+        """Ollama down must leave behaviour exactly as it is today, not turn
+        every refusal into an hours answer."""
+
+        with patch("app.services.rag._embed_query", return_value=None):
+            self.assertFalse(looks_like_hours_question("what is the window time"))
 
 
 class ClosedNoticeTests(unittest.TestCase):

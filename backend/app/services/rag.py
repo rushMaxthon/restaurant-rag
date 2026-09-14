@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
+import math
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -3317,6 +3318,75 @@ SERVICE_INFO_QUERY_PATTERNS = (
 #
 # Spec: docs/superpowers/specs/2026-09-14-chat-ordering-windows-design.md
 
+# A few ways of asking the same thing, used as reference points rather than as
+# a list to match against. The question is compared to their MEANING, so a
+# phrasing none of them uses still lands.
+HOURS_QUESTION_ANCHORS = (
+    "what time do you open",
+    "are you open right now",
+    "when do you close today",
+    "what are your opening hours",
+)
+
+# Measured over ten phrases with nomic-embed-text:
+#
+#   hours questions   0.087 - 0.464   ("ordering window today" is the far end)
+#   everything else   0.526 - 0.601   ("what desserts do you have" is the near end)
+#
+# 0.49 sits in a 0.062 gap — narrower than the 0.101 the dish guardrail enjoys,
+# which is why this is not allowed to run on its own. See the caller.
+HOURS_QUESTION_MAX_DISTANCE = 0.49
+
+_HOURS_ANCHOR_VECTORS: list[list[float]] | None = None
+
+
+def _cosine_distance(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 1.0
+    return 1.0 - (dot / (na * nb))
+
+
+def looks_like_hours_question(message: str) -> bool:
+    """Is this asking when we are open, in words nobody listed?
+
+    Reported: "What is windows time for today?" was answered "That one's outside
+    my kitchen". No pattern covers "window time", so it fell through to the
+    intent extractor, which classifies an hours question as unsupported_domain —
+    it names no dish and carries no food word — and refused.
+
+    Adding "window" to the pattern list fixes that phrasing and leaves the next
+    one broken. This compares the question to a few canonical ones instead.
+
+    NOT a replacement for the patterns. They are exact, free and need no
+    embedding; this is the fallback for what they miss, and the margin here is
+    thin enough (0.062) that it is only safe where the alternative is already a
+    refusal. False on any failure — a missing embedding must leave behaviour
+    exactly as it is, not turn every refusal into an hours answer.
+    """
+
+    global _HOURS_ANCHOR_VECTORS
+
+    vector = _embed_query(message)
+    if vector is None:
+        return False
+
+    try:
+        if _HOURS_ANCHOR_VECTORS is None:
+            anchors = [_embed_query(text) for text in HOURS_QUESTION_ANCHORS]
+            if any(a is None for a in anchors):
+                return False
+            _HOURS_ANCHOR_VECTORS = [a for a in anchors if a is not None]
+        nearest = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+    except Exception:  # pragma: no cover - a recogniser must not break a reply
+        logger.exception("Hours-question similarity failed; leaving the turn unchanged")
+        return False
+
+    return nearest < HOURS_QUESTION_MAX_DISTANCE
+
+
 @dataclass(frozen=True)
 class BranchAvailability:
     """What one branch can do right now, read the way ORDERING reads it.
@@ -6039,7 +6109,20 @@ def _prepare_chat_turn(
     # Opening hours, from the branch's own slot rows. Deterministic for the same
     # reason as the customisation answer: telling someone the wrong closing time
     # costs them a wasted trip, and a model has no business guessing it.
-    if _is_hours_query(message):
+    # Patterns first, then meaning. The patterns are exact, free and need no
+    # embedding, so they answer the common phrasings; the similarity check is
+    # the fallback for what nobody listed a word for — "What is windows time for
+    # today?" named no dish, matched no pattern, and was refused as outside the
+    # kitchen.
+    #
+    # The fallback is gated on the turn ALREADY heading for a refusal
+    # (`_instant_reply_for_intent` returning something). Its margin is 0.062,
+    # thin enough that a false positive would otherwise answer a food question
+    # with opening times; confined here, a false positive costs an hours answer
+    # instead of "that's outside my kitchen", which is strictly better than what
+    # it replaces.
+    would_be_refused = _instant_reply_for_intent(resolved_intent, message) is not None
+    if _is_hours_query(message) or (would_be_refused and looks_like_hours_question(message)):
         hours_reply = _todays_hours_reply(
             db,
             restaurant_id=restaurant_id,
