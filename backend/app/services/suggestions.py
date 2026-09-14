@@ -167,7 +167,16 @@ def choose_upsell(
     sizes: list[SizeOption],
     add_ons: list[AddOnOption],
 ) -> SellSuggestion | None:
-    """First rung that fires wins, and the rungs descend in customer value."""
+    """First rung that fires wins, and the rungs descend in customer value.
+
+    Add-on options already chosen are pooled across every cart line, not tracked
+    per line. So a pizza ordered twice with different extras can lose an otherwise-
+    valid add-on offer on one of the lines. This is accepted: the failure direction
+    is a missed suggestion rather than a wrong one. A per-line answer would require
+    the suggestion to carry a line identity, which this phase's contract does not
+    have. Phase 2 introduces cart actions with line identity; that is the right
+    moment to revisit per-line tracking.
+    """
 
     if not lines:
         return None
