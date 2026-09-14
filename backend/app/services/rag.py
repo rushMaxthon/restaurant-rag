@@ -3426,7 +3426,10 @@ def _last_order_labels(location, *, reference_dt) -> str:
     wording rather than stating nothing.
     """
 
-    from app.services.restaurant_locations import list_available_schedule_options
+    from app.services.restaurant_locations import (
+        _get_prep_buffer_minutes,
+        _weekday_for_datetime,
+    )
 
     parts: list[str] = []
     for fulfillment, label, enabled in (
@@ -3436,15 +3439,32 @@ def _last_order_labels(location, *, reference_dt) -> str:
         if not enabled:
             continue
         try:
-            options = list_available_schedule_options(
-                location,
-                restaurant_id=location.restaurant_id,
-                fulfillment_type=fulfillment,
-                reference_dt=reference_dt,
+            # The window end minus prep, NOT the last bookable slot.
+            #
+            # Reading the last slot snapped the answer down to the interval
+            # grid: a 21:30 window with 20 minutes prep ends at 21:10, but the
+            # nearest 30-minute slot at or below that is 21:00, so the customer
+            # was told "until 9:00 PM" when 9:10 was fine. Combined with travel
+            # also being subtracted at the time, a 21:30 window was reported as
+            # 8:30 PM — two hours early.
+            #
+            # The grid is a constraint on SCHEDULING a slot, not on when the
+            # shop stops taking orders.
+            ends = [
+                slot.end_time
+                for slot in location.fulfillment_slots
+                if slot.is_active
+                and slot.fulfillment_type == fulfillment
+                and slot.day_of_week == _weekday_for_datetime(reference_dt)
+            ]
+            if not ends:
+                continue
+            window_end = max(ends)
+            buffer_minutes = _get_prep_buffer_minutes(location, fulfillment)
+            cutoff = datetime.combine(reference_dt.date(), window_end) - timedelta(
+                minutes=buffer_minutes
             )
-            today = options.groups[0] if options.groups else None
-            if today and today.slots:
-                parts.append(f"{label} until {today.slots[-1].label}")
+            parts.append(f"{label} until {_format_clock(cutoff.time())}")
         except Exception:  # pragma: no cover - fall back to the plain window
             logger.exception("Last-order lookup failed for %s", label)
 

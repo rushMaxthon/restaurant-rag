@@ -149,18 +149,24 @@ def _get_prep_buffer_minutes(
         else int(location.estimated_pickup_time)
     )
     preparation_minutes = int(location.preparation_time_minutes or 0)
-    # SUMMED, not max(). The ETA is travel time; cooking happens before it, so a
-    # branch needing 17 minutes to cook and 29 to deliver cannot take an order
-    # 30 minutes before it shuts.
+    # PREPARATION TIME ONLY. Travel is deliberately not subtracted.
     #
-    # Under max() prep time was dead weight everywhere: measured across all 18
-    # branches, prep runs 15-18 minutes against delivery ETAs of 21-33, so the
-    # ETA always won and `preparation_time_minutes` changed nothing an owner
-    # could observe. Raising it to 25 did nothing at all.
+    # The fulfillment window is when the shop stops taking orders, and what has
+    # to fit before then is cooking. A driver still out at 21:45 is not a
+    # problem the ordering window exists to prevent.
     #
-    # A NULL prep time still leaves the ETA alone — five of eight stored rows
-    # have none, and a branch that never set one must not lose its buffer.
-    return preparation_minutes + eta_minutes
+    # This has been all three things. `max(prep, eta)` meant prep never counted:
+    # across all 18 branches prep runs 15-20 minutes against ETAs of 20-33, so
+    # the ETA always won and `preparation_time_minutes` changed nothing an owner
+    # could observe. `prep + eta` then read the window end as the moment food
+    # must be in the customer's hands, which showed "delivery until 8:30 PM" for
+    # a branch whose window runs to 21:30 — reported, and the reason for this.
+    #
+    # NULL or zero prep falls back to the ETA rather than to nothing. Five of
+    # eight stored rows have no prep time, and without a fallback those branches
+    # would accept an order at the closing minute with nothing left to cook it.
+    # The fallback is protection, not a claim that travel counts.
+    return preparation_minutes or eta_minutes
 
 
 def _active_slots_for_fulfillment(
