@@ -46,6 +46,17 @@ export function useSession(): SessionValue {
   return useStoreSlice(SessionContext, 'useSession');
 }
 
+/**
+ * The restaurant's own clock, or undefined until `/app-config` has landed.
+ *
+ * Undefined is a real answer, not a missing one: every formatter that takes a
+ * zone reads it as "use the device's", which is what the app did before this
+ * existed. Screens therefore never have to gate rendering on it.
+ */
+export function useBusinessTimeZone(): string | undefined {
+  return useSession().appConfig?.business_timezone;
+}
+
 export function usePreferences(): PreferencesValue {
   return useStoreSlice(PreferencesContext, 'usePreferences');
 }

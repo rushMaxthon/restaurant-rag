@@ -792,6 +792,14 @@ export interface AppConfig {
   order_prefix: string;
   minimum_supported_version: string;
   bundle_id: string;
+  /**
+   * The clock the restaurant's hours, slots and cutoffs are written in.
+   *
+   * Sent because the phone cannot guess it. Optional on the type so a backend
+   * that predates the field degrades to the device's zone instead of crashing
+   * the app on a missing property.
+   */
+  business_timezone?: string;
 }
 
 /**
