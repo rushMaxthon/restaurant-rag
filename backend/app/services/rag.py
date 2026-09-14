@@ -1073,6 +1073,40 @@ def _is_menu_question_message(message: str) -> bool:
     return bool(set(_query_tokens(message)) & MENU_QUESTION_TOKENS)
 
 
+# Words that answer "how much is ___" without naming anything on the menu.
+#
+# The price pattern below captures whatever noun follows "how much is", so
+# "how much is delivery?" extracted a dish called "delivery", failed to find
+# it, and answered "We don't offer delivery on the menu" - which was both a
+# non-answer to the real question and the opposite of the truth about the
+# branch. Matched as the WHOLE captured phrase, never as a substring, so a
+# genuine "Delivery Special" on the menu is still a dish.
+SERVICE_WORD_TOPICS = frozenset(
+    {
+        "delivery",
+        "delivery fee",
+        "delivery charge",
+        "delivery cost",
+        "pickup",
+        "pick up",
+        "takeaway",
+        "collection",
+        "shipping",
+        "minimum",
+        "minimum order",
+        "minimum order value",
+        "minimum order amount",
+        "order minimum",
+        "packing",
+        "packing charge",
+        "service charge",
+        "tax",
+        "gst",
+        "tip",
+    }
+)
+
+
 def _extract_menu_question_dish(message: str) -> str | None:
     """The dish a menu question names, or None when it points at the
     conversation ("how much does it cost?")."""
@@ -1092,7 +1126,11 @@ def _extract_menu_question_dish(message: str) -> str | None:
         candidate_tokens = [token for token in candidate.split() if token]
         if not candidate_tokens or all(token in MENU_QUESTION_PRONOUNS for token in candidate_tokens):
             return None
+        if " ".join(candidate_tokens) in SERVICE_WORD_TOPICS:
+            return None
         canonical = _canonicalize_topic(candidate)
+        if canonical and canonical in SERVICE_WORD_TOPICS:
+            return None
         if canonical and not (set(canonical.split()) <= MENU_QUESTION_PRONOUNS):
             return canonical
         return None
@@ -2995,6 +3033,85 @@ def _todays_hours_reply(
         f"We've closed for today — {branch_name} was open {window}. "
         "Tell me what you're after and I'll have it ready for you tomorrow."
     )
+
+
+# Delivery, pickup and minimum-order questions.
+#
+# Every one of these is answered exactly by a column on the branch row, so it
+# is answered from that row. Before this tier existed they fell into dish
+# retrieval and came back as denials of the service itself - "We don't offer
+# delivery on the menu" while delivery was enabled with a $2.79 fee. A model
+# cannot guess these numbers and must not try.
+SERVICE_INFO_QUERY_PATTERNS = (
+    r"\b(delivery|pickup|pick up|takeaway|collection)\s+(fee|charge|cost|price|rate)\b",
+    r"\bhow much\b.*\b(delivery|pickup|pick up|takeaway|shipping)\b",
+    r"\bwhat(s| is)\b.*\b(delivery|pickup)\s+(fee|charge|cost)\b",
+    r"\bdo (you|u|they)\b.*\b(deliver|delivery|pickup|pick up|takeaway)\b",
+    r"\bis there a\b.*\bminimum\b",
+    r"\bminimum\s+order\b",
+    r"\border\s+minimum\b",
+    r"\b(free|charge for)\s+delivery\b",
+    r"\bdelivery\s+(available|possible)\b",
+)
+
+
+def _is_service_info_query(message: str) -> bool:
+    normalized = _normalize_text(message)
+    if not normalized:
+        return False
+    return any(re.search(pattern, normalized) for pattern in SERVICE_INFO_QUERY_PATTERNS)
+
+
+def _service_info_reply(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> str | None:
+    """What this branch charges and requires, read off its own row."""
+
+    query = select(RestaurantLocation).where(RestaurantLocation.is_active.is_(True))
+    if restaurant_location_id is not None:
+        query = query.where(RestaurantLocation.id == restaurant_location_id)
+    elif restaurant_id is not None:
+        query = query.where(RestaurantLocation.restaurant_id == restaurant_id)
+    else:
+        return None
+
+    location = db.scalars(query.limit(1)).first()
+    if location is None:
+        return None
+
+    currency = settings.payment_currency.upper()
+    parts: list[str] = []
+
+    if location.delivery_enabled:
+        fee = Decimal(str(location.delivery_fee or 0))
+        eta = location.estimated_delivery_time
+        if fee > 0:
+            line = f"Delivery is {currency} {fee:.2f}"
+        else:
+            line = "Delivery is free"
+        if eta:
+            line += f", about {eta} minutes"
+        parts.append(line)
+    else:
+        parts.append("We don't deliver from this branch")
+
+    if location.pickup_enabled:
+        eta = location.estimated_pickup_time
+        parts.append(f"pickup is free{f', ready in about {eta} minutes' if eta else ''}")
+
+    minimum = Decimal(str(location.minimum_order_amount or 0))
+    if minimum > 0:
+        parts.append(f"the minimum order is {currency} {minimum:.2f}")
+
+    if not parts:
+        return None
+
+    branch = location.branch_name or "This branch"
+    body = ", and ".join([", ".join(parts[:-1]), parts[-1]]) if len(parts) > 1 else parts[0]
+    return f"{branch}: {body}. Want me to find you something?"
 
 
 # Questions about what the MENU SUPPORTS, as opposed to what dishes it sells.
@@ -5371,6 +5488,47 @@ def _prepare_chat_turn(
             timings=timings,
             fallback_reply=_build_small_talk_reply(),
         )
+
+    # Delivery fee, pickup and minimum order, read off the branch row.
+    #
+    # Sits beside the hours tier for the same reason: these are facts with
+    # exact values, and dish retrieval answered them by denying the service.
+    # "how much is delivery?" extracted a dish called "delivery", failed to
+    # find it, and replied "We don't offer delivery on the menu" while
+    # delivery was enabled at CAD 2.79.
+    if _is_service_info_query(message):
+        service_reply = _service_info_reply(
+            db,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+        )
+        if service_reply is not None:
+            logger.info("RAG service info query user_id=%s message=%s", user.id, message)
+            return PreparedChatTurn(
+                active_session_id=active_session_id,
+                message=message,
+                # As with hours: `effective_message` is not resolved this early,
+                # and "do you deliver" is never a follow-up about a dish.
+                effective_message=message,
+                restaurant_id=restaurant_id,
+                retrieval_source="service_info_query",
+                is_greeting=False,
+                is_follow_up=is_follow_up,
+                uses_personal_context=False,
+                should_bypass_llm=True,
+                suggestion_limit=0,
+                vector_result_count=0,
+                extracted_intent=resolved_intent,
+                session_state=session_state,
+                final_candidates=[],
+                suggestions=[],
+                history_messages=session_history_messages,
+                history_block=_build_history_block(session_history_messages),
+                context_block="",
+                prompt="",
+                timings=timings,
+                fallback_reply=service_reply,
+            )
 
     # Opening hours, from the branch's own slot rows. Deterministic for the same
     # reason as the customisation answer: telling someone the wrong closing time

@@ -39,7 +39,9 @@ from app.services.rag import (  # noqa: E402
     _customization_reply,
     _format_clock,
     _is_customization_query,
+    _extract_menu_question_dish,
     _is_hours_query,
+    _is_service_info_query,
     _keyword_match_strength,
 )
 
@@ -162,3 +164,82 @@ class OpeningHoursQuestionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServiceWordsAreNotDishesTests(unittest.TestCase):
+    """"How much is delivery?" is not a question about a dish called delivery.
+
+    Reported from real use. The price pattern in _extract_menu_question_dish
+    captures whatever noun follows "how much is", so "delivery", "pickup" and
+    "delivery fee" were all read as dish names, missed in the menu, and
+    answered with a flat denial of the service:
+
+        Q: how much is delivery?
+        A: We don't offer delivery on the menu — but the Penne Arrabbiata is a
+           crowd favourite...
+
+    Delivery was enabled at the time, with a fee of 2.79. Two things were wrong
+    at once: the customer's real question went unanswered, and the reply stated
+    the opposite of the truth about the branch.
+    """
+
+    def test_service_words_are_never_taken_for_a_dish(self) -> None:
+        for message in (
+            "how much is delivery",
+            "how much is delivery?",
+            "how much is the delivery fee",
+            "how much is pickup",
+            "how much is the minimum order",
+            "what is the delivery charge",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(_extract_menu_question_dish(message))
+
+    def test_real_dish_questions_still_extract_the_dish(self) -> None:
+        # The stop list must not cost a customer their actual question.
+        self.assertEqual(_extract_menu_question_dish("how much is the pad thai"), "pad thai")
+        self.assertEqual(
+            _extract_menu_question_dish("whats in the red curry tofu"), "red curry tofu"
+        )
+        self.assertEqual(_extract_menu_question_dish("is the pad thai veg"), "pad thai")
+
+    def test_a_dish_whose_name_contains_a_service_word_still_works(self) -> None:
+        # "Delivery Special" would be a legitimate dish name; only a bare
+        # service word is rejected, not any name that contains one.
+        self.assertEqual(
+            _extract_menu_question_dish("how much is the delivery special"), "delivery special"
+        )
+
+
+class ServiceInfoQueriesTests(unittest.TestCase):
+    """Delivery, pickup and minimum-order questions get their own tier.
+
+    These are answerable exactly from the branch row, so they are answered from
+    it rather than handed to a model that has no access to the number.
+    """
+
+    def test_service_questions_are_recognised(self) -> None:
+        for message in (
+            "how much is delivery",
+            "what is the delivery fee",
+            "do you deliver",
+            "is there a minimum order",
+            "whats the minimum order value",
+            "do you do pickup",
+            "how much is the delivery charge",
+        ):
+            with self.subTest(message=message):
+                self.assertTrue(_is_service_info_query(message))
+
+    def test_dish_requests_are_not_mistaken_for_service_questions(self) -> None:
+        # This runs ahead of dish retrieval, so a false positive costs a
+        # customer their actual search.
+        for message in (
+            "i want pizza",
+            "show me rice",
+            "something spicy",
+            "how much is the pad thai",
+            "whats in the red curry tofu",
+        ):
+            with self.subTest(message=message):
+                self.assertFalse(_is_service_info_query(message))
