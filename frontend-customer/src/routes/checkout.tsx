@@ -4,6 +4,7 @@ import {
   AlertCircle,
   ArrowLeft,
   BadgeCheck,
+  CalendarDays,
   CreditCard,
   CheckCircle2,
   Clock,
@@ -22,13 +23,19 @@ import { formatMoney, orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
+  activeSlots,
   availabilityNow,
   bookableDays,
   bookableTimes,
+  dateInputValue,
   dayChipLabel,
   dayFromDate,
+  dayFromInputValue,
   dayLabel,
+  formatSlotRange,
   formatTimeOfDay,
+  groupByPartOfDay,
+  lastBookableDay,
   nextOpening,
 } from "@/lib/branch-hours";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -145,6 +152,23 @@ function Checkout() {
     : [];
   const mustSchedule = !canOrderNow;
   const scheduling = mustSchedule || wantsLater;
+
+  // A week of chips is enough for "tomorrow evening" and useless for "the 24th".
+  // The date input covers the rest of the horizon without a second widget to
+  // build — and it is the control people already know how to use on a phone,
+  // where it opens the platform's own date wheel.
+  const firstDay = days[0];
+  const lastDay = lastBookableDay(branch, now);
+  const slotGroups = groupByPartOfDay(slotTimes);
+  const todaysWindows = selectedDay
+    ? activeSlots(branch, fulfillment).filter((w) => w.day_of_week === dayFromDate(selectedDay))
+    : [];
+
+  // A date the branch does not serve is worth saying out loud. Silently
+  // snapping back to a day the customer did not pick is how you end up with an
+  // order for the wrong evening.
+  const pickedEmptyDay =
+    selectedDay && slotTimes.length === 0 ? dayChipLabel(selectedDay, now) : null;
 
   // Once the intent exists the page becomes the payment sheet. Nothing else on
   // the checkout form can still change the amount at this point, so showing it
@@ -437,17 +461,44 @@ function Checkout() {
 
             {scheduling &&
               (days.length === 0 ? (
-                <p className="mt-4 text-sm text-muted">
-                  This branch has no bookable times in the next {branch?.max_future_days ?? 0} days.
-                  Try pickup, or another branch.
-                </p>
+                <div className="closed-notice mt-4">
+                  <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" />
+                  <div>
+                    <p className="font-bold">No times available</p>
+                    <p className="mt-0.5 text-sm text-muted">
+                      This branch has nothing bookable in the next {branch?.max_future_days ?? 0}{" "}
+                      days. Try {isDelivery ? "pickup" : "delivery"}, or another branch.
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <>
-                  {/* A day picker is only worth showing when there is more than
-                      one day to pick; a single chip is furniture. */}
-                  {days.length > 1 && (
-                    <div className="mt-4">
-                      <p className="text-xs font-black uppercase tracking-wide text-muted">Day</p>
+                  <div className="mt-4">
+                    <div className="picker-head">
+                      <p className="picker-label">Day</p>
+                      {/* The chips cover the next few days; the date field
+                          covers the rest of the horizon. Bounded to what the
+                          branch actually accepts, so the picker cannot offer a
+                          date the server will refuse. */}
+                      <label className="date-field">
+                        <CalendarDays className="size-4 shrink-0 text-muted" />
+                        <span className="sr-only">Pick a date</span>
+                        <input
+                          type="date"
+                          value={selectedDay ? dateInputValue(selectedDay) : ""}
+                          min={dateInputValue(firstDay ?? now)}
+                          max={dateInputValue(lastDay)}
+                          onChange={(event) => {
+                            const picked = dayFromInputValue(event.target.value);
+                            if (!picked) return;
+                            setChosenDay(picked);
+                            setChosenSlot(null);
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {days.length > 1 && (
                       <div className="day-rail mt-2">
                         {days.map((day) => (
                           <button
@@ -467,33 +518,66 @@ function Checkout() {
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="mt-4">
-                    <p className="text-xs font-black uppercase tracking-wide text-muted">
-                      {selectedDay ? dayChipLabel(selectedDay, now) : "Time"}
-                    </p>
-                    <div className="slot-grid mt-2">
-                      {slotTimes.map((time) => (
-                        <button
-                          type="button"
-                          key={time.toISOString()}
-                          className="slot-chip"
-                          data-on={chosenSlot?.toISOString() === time.toISOString()}
-                          onClick={() => setChosenSlot(time)}
-                        >
-                          {formatTimeOfDay(time)}
-                        </button>
-                      ))}
+                    <div className="picker-head">
+                      <p className="picker-label">
+                        {selectedDay ? dayChipLabel(selectedDay, now) : "Time"}
+                      </p>
+                      {/* The window the times come from. Without it a short
+                          list reads as "barely any availability" rather than
+                          "this branch closes at 3". */}
+                      {todaysWindows.length > 0 && (
+                        <p className="text-xs font-semibold text-muted">
+                          Open {todaysWindows.map((w) => formatSlotRange(w)).join(", ")}
+                        </p>
+                      )}
                     </div>
+
+                    {pickedEmptyDay ? (
+                      <p className="mt-2 text-sm text-muted">
+                        Nothing left on {pickedEmptyDay}. Pick another day above.
+                      </p>
+                    ) : (
+                      slotGroups.map((group) => (
+                        <div className="mt-3" key={group.label}>
+                          {/* One heading is noise; three are a map. */}
+                          {slotGroups.length > 1 && (
+                            <p className="slot-group-label">{group.label}</p>
+                          )}
+                          <div className="slot-grid mt-2">
+                            {group.times.map((time) => (
+                              <button
+                                type="button"
+                                key={time.toISOString()}
+                                className="slot-chip"
+                                data-on={chosenSlot?.toISOString() === time.toISOString()}
+                                onClick={() => setChosenSlot(time)}
+                              >
+                                {formatTimeOfDay(time)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+
                     {/* No lowercasing and no trailing period: lowercasing turned
                         "Thu, Sep 17" into "thu, sep 17", and the formatted time
                         already ends in one ("7:00 p.m.."). */}
-                    {chosenSlot && (
-                      <p className="mt-3 text-sm font-semibold text-success">
-                        Arriving {dayChipLabel(chosenSlot, now)} at {formatTimeOfDay(chosenSlot)}
+                    {chosenSlot ? (
+                      <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-success">
+                        <CheckCircle2 className="size-4 shrink-0" />
+                        {isDelivery ? "Arriving" : "Ready"} {dayChipLabel(chosenSlot, now)} at{" "}
+                        {formatTimeOfDay(chosenSlot)}
                       </p>
+                    ) : (
+                      // The Pay button is disabled until a time exists. Saying
+                      // why beats leaving someone to work it out from a greyed
+                      // rectangle at the bottom of the screen.
+                      <p className="mt-4 text-sm text-muted">Pick a time to continue.</p>
                     )}
                   </div>
                 </>

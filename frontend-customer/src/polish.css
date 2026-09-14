@@ -754,3 +754,101 @@ textarea.flex:focus-visible {
   flex: 0 0 auto;
   scroll-snap-align: start;
 }
+
+/* --- Scheduling picker ------------------------------------------------------
+   A label on the left, context on the right: the day's actual opening window
+   next to the times, and the date field next to the day chips. Both wrap on a
+   phone rather than squeezing the window text to two characters a line. */
+.picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+.picker-label {
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* The native date control, dressed to match the chips around it. Native and
+   not a custom calendar: on a phone it opens the platform's own date wheel,
+   which is better than anything hand-built here and already accessible. */
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.16s;
+}
+.date-field:focus-within {
+  border-color: var(--primary);
+}
+.date-field input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  cursor: pointer;
+  /* Safari gives date inputs an intrinsic width that overflows the pill. */
+  min-width: 0;
+  max-width: 9.5rem;
+}
+.date-field input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.slot-group-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+/* The week's hours, folded away until asked for. Open by default it pushed the
+   checkout button off a phone screen; as a disclosure it stays one tap from
+   the person who wants to know when the branch actually opens. */
+.hours-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+}
+.hours-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+/* The caret is an inline SVG in the markup, not a glyph. Inter is shipped here
+   as a latin-only subset, so a geometric character like U+25BE is not in the
+   font and falls back per platform — it rendered as a stray dot on Windows. */
+.hours-disclosure > summary svg {
+  transition: transform 0.16s;
+}
+.hours-disclosure[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+@media (pointer: coarse) {
+  .date-field {
+    min-height: 44px;
+  }
+  .hours-disclosure > summary {
+    min-height: 44px;
+  }
+}

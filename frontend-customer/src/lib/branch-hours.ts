@@ -267,3 +267,68 @@ export function formatTimeOfDay(date: Date): string {
     hour12: true,
   }).format(date);
 }
+
+/**
+ * A Date as the `yyyy-mm-dd` an `<input type="date">` expects.
+ *
+ * Deliberately not `toISOString().slice(0, 10)`. That converts to UTC first,
+ * so an evening in any negative offset reports tomorrow's date and the
+ * customer books a day they did not choose. Read off the local calendar
+ * instead, which is the calendar the branch's opening hours are written in.
+ */
+export function dateInputValue(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The other half of that round trip.
+ *
+ * `new Date("2026-09-17")` is parsed as UTC midnight by spec, which is the
+ * 16th in the Americas — the same off-by-one day, arriving from the other
+ * direction. Building the date from its parts keeps it local.
+ *
+ * Returns null rather than an Invalid Date: the input is empty while someone
+ * is still typing into it, and an Invalid Date propagates silently into the
+ * slot maths instead of failing where it happened.
+ */
+export function dayFromInputValue(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** The furthest day the branch will accept, for the date input's `max`. */
+export function lastBookableDay(location: RestaurantLocation | undefined, now = new Date()): Date {
+  const horizon = Math.max(0, Number(location?.max_future_days ?? DEFAULT_FUTURE_DAYS));
+  const last = startOfDay(now);
+  last.setDate(last.getDate() + (Number.isFinite(horizon) ? horizon : DEFAULT_FUTURE_DAYS));
+  return last;
+}
+
+/**
+ * Times split into morning, afternoon and evening.
+ *
+ * A branch open 10:30 to 22:00 on a 30-minute grid offers 24 chips. As one
+ * undifferentiated block on a phone that is a wall to scroll past; under three
+ * headings it is three short lists, and "evening" is what someone is actually
+ * looking for. Empty parts are dropped rather than shown as empty headings.
+ */
+export function groupByPartOfDay(times: Date[]): { label: string; times: Date[] }[] {
+  // Noon is afternoon and 5pm is evening: dinner service is the common case
+  // and putting it under "Afternoon" reads as wrong to anyone booking it.
+  const parts: { label: string; until: number }[] = [
+    { label: "Morning", until: 12 },
+    { label: "Afternoon", until: 17 },
+    { label: "Evening", until: 24 },
+  ];
+  return parts
+    .map(({ label, until }, i) => ({
+      label,
+      times: times.filter((t) => t.getHours() < until && t.getHours() >= (parts[i - 1]?.until ?? 0)),
+    }))
+    .filter((group) => group.times.length > 0);
+}

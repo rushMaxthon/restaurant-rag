@@ -142,11 +142,32 @@ export async function fillCart(page: Page, times = 3): Promise<void> {
   }
 }
 
-/** Whether the branch can take an order right now, read from the cart screen. */
-export async function branchIsOpen(page: Page): Promise<boolean> {
-  await page.goto("/cart");
-  const closed = page.getByText(/is closed right now/i);
-  return (await closed.count()) === 0;
+/**
+ * Force the branch closed, whatever the clock says.
+ *
+ * The closed-branch path used to be tested by asking the live branch whether
+ * it was open and skipping when it was — so it ran only if the suite happened
+ * to be run late enough, which in practice meant it did not run. Since the
+ * whole point of it is the behaviour nobody sees during office hours, that is
+ * the wrong way round.
+ *
+ * Only the two availability flags are rewritten. The slots are left alone, so
+ * the app still computes a real next opening and a real set of bookable times
+ * from the branch's own hours — a fixture with invented hours would pass
+ * without proving the page can read the ones it will meet in production.
+ */
+export async function forceBranchClosed(page: Page): Promise<void> {
+  await page.route("**/api/restaurants/*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const location of body.locations ?? []) {
+      location.delivery_available_now = false;
+      location.pickup_available_now = false;
+      location.delivery_unavailable_reason = "Outside the branch's opening hours.";
+      location.pickup_unavailable_reason = "Outside the branch's opening hours.";
+    }
+    await route.fulfill({ response, json: body });
+  });
 }
 
 /**

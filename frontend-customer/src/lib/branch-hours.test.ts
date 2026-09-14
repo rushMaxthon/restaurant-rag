@@ -4,6 +4,10 @@ import {
   bookableDays,
   bookableTimes,
   dayChipLabel,
+  dateInputValue,
+  dayFromInputValue,
+  groupByPartOfDay,
+  lastBookableDay,
   leadMinutes,
   dayFromDate,
   formatSlotTime,
@@ -279,3 +283,95 @@ describe("dayChipLabel", () => {
 function isSameDayAs(a: Date, b: Date): boolean {
   return a.toDateString() === b.toDateString();
 }
+
+describe("dateInputValue", () => {
+  /**
+   * The obvious implementation is `date.toISOString().slice(0, 10)`, and it is
+   * wrong for half the planet. `toISOString` converts to UTC first, so any
+   * local time whose UTC equivalent falls on another date comes back as the
+   * wrong day — and the customer books dinner for Tuesday and is handed
+   * Monday. Pinned to the two edges where that actually bites.
+   */
+  it("keeps the local calendar day just before midnight", () => {
+    expect(dateInputValue(new Date(2026, 8, 17, 23, 30))).toBe("2026-09-17");
+  });
+
+  it("keeps the local calendar day just after midnight", () => {
+    expect(dateInputValue(new Date(2026, 8, 17, 0, 15))).toBe("2026-09-17");
+  });
+
+  it("pads single-digit months and days", () => {
+    expect(dateInputValue(new Date(2026, 0, 5, 12, 0))).toBe("2026-01-05");
+  });
+});
+
+describe("dayFromInputValue", () => {
+  /**
+   * `new Date("2026-09-17")` parses as UTC midnight, which in any negative
+   * offset is the 16th locally. The round trip has to survive, or the date
+   * input silently moves the order a day earlier every time.
+   */
+  it("round-trips with dateInputValue", () => {
+    const original = new Date(2026, 8, 17, 19, 45);
+    const back = dayFromInputValue(dateInputValue(original));
+    expect(back).not.toBeNull();
+    expect(back!.getFullYear()).toBe(2026);
+    expect(back!.getMonth()).toBe(8);
+    expect(back!.getDate()).toBe(17);
+  });
+
+  it("returns local midnight, not UTC midnight", () => {
+    const day = dayFromInputValue("2026-09-17")!;
+    expect(day.getHours()).toBe(0);
+    expect(day.getDate()).toBe(17);
+  });
+
+  it("rejects a blank or malformed value rather than returning Invalid Date", () => {
+    expect(dayFromInputValue("")).toBeNull();
+    expect(dayFromInputValue("not-a-date")).toBeNull();
+  });
+});
+
+describe("lastBookableDay", () => {
+  it("is today plus the branch horizon", () => {
+    const now = new Date(2026, 8, 14, 12, 0);
+    const last = lastBookableDay(branch({ max_future_days: 3 }), now);
+    expect(dateInputValue(last)).toBe("2026-09-17");
+  });
+
+  // The read schema always sends max_future_days, but the TS type marks it
+  // optional, so the missing case is undefined rather than null.
+  it("falls back to the default horizon when the branch does not say", () => {
+    const now = new Date(2026, 8, 14, 12, 0);
+    // The key is omitted, not set to undefined: exactOptionalPropertyTypes
+    // makes those two different things, and absent is the one that can happen.
+    const { max_future_days: _horizon, ...noHorizon } = branch();
+    expect(dateInputValue(lastBookableDay(noHorizon, now))).toBe("2026-09-21");
+  });
+});
+
+describe("groupByPartOfDay", () => {
+  const at = (h: number, m = 0) => new Date(2026, 8, 17, h, m);
+
+  it("splits a long list into morning, afternoon and evening", () => {
+    const groups = groupByPartOfDay([at(9), at(11, 30), at(13), at(17), at(19, 30)]);
+    expect(groups.map((g) => g.label)).toEqual(["Morning", "Afternoon", "Evening"]);
+    expect(groups[0]!.times).toHaveLength(2); // 9:00, 11:30
+    expect(groups[1]!.times).toHaveLength(1); // 13:00
+    expect(groups[2]!.times).toHaveLength(2); // 17:00, 19:30
+  });
+
+  it("leaves out a part of the day with nothing in it", () => {
+    const groups = groupByPartOfDay([at(19), at(20)]);
+    expect(groups.map((g) => g.label)).toEqual(["Evening"]);
+  });
+
+  it("puts noon in the afternoon and 5pm in the evening", () => {
+    expect(groupByPartOfDay([at(12)])[0]!.label).toBe("Afternoon");
+    expect(groupByPartOfDay([at(17)])[0]!.label).toBe("Evening");
+  });
+
+  it("has nothing to group when there are no times", () => {
+    expect(groupByPartOfDay([])).toEqual([]);
+  });
+});

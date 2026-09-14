@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
-  branchIsOpen,
   clickFixed,
   fillCart,
   fillField,
+  forceBranchClosed,
   payWithTestCard,
   resetApp,
   signIn,
@@ -148,19 +148,89 @@ test.describe("placing and paying for an order", () => {
   });
 });
 
+test.describe("choosing when the order arrives", () => {
+  test("a closed branch leads into scheduling instead of stopping the order", async ({ page }) => {
+    await resetApp(page);
+    await fillCart(page, 3);
+    await forceBranchClosed(page);
+    await signIn(page, "/cart");
+
+    // The whole point of the change: closed is a detour, not a wall.
+    await page.getByRole("link", { name: /schedule for later/i }).click();
+    await expect(page).toHaveURL(/\/checkout/);
+
+    // Closed, scheduling is the only mode, so there is no ASAP tab to dismiss.
+    await expect(page.getByText(/is closed right now/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /as soon as possible/i })).toHaveCount(0);
+
+    const times = page.locator(".slot-grid .slot-chip");
+    await times.first().waitFor({ state: "visible", timeout: 20_000 });
+    await expect(page.getByText(/pick a time to continue/i)).toBeVisible();
+    await times.first().click();
+    await expect(page.getByText(/(arriving|ready) (today|tomorrow|\w{3},)/i)).toBeVisible();
+  });
+
+  test("the date field books a day the chips do not reach", async ({ page }) => {
+    await resetApp(page);
+    await fillCart(page, 3);
+    await signIn(page, "/checkout");
+
+    const later = page.getByRole("button", { name: /schedule for later/i });
+    if (await later.count()) await later.click();
+
+    const date = page.locator('.date-field input[type="date"]');
+    await expect(date).toBeVisible();
+
+    // Six days out, which is past the visible chips and inside the branch's
+    // horizon. Typed as the value the input actually carries, so this fails if
+    // the yyyy-mm-dd round trip ever shifts a day across the UTC boundary -
+    // the bug that sends someone's dinner to the wrong evening.
+    const target = new Date();
+    target.setDate(target.getDate() + 6);
+    const yyyy = target.getFullYear();
+    const mm = String(target.getMonth() + 1).padStart(2, "0");
+    const dd = String(target.getDate()).padStart(2, "0");
+    await date.fill(`${yyyy}-${mm}-${dd}`);
+    await expect(date).toHaveValue(`${yyyy}-${mm}-${dd}`);
+
+    // The heading above the times names the day that was chosen, in words.
+    const expected = new Intl.DateTimeFormat("en-CA", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(target);
+    await expect(page.getByText(expected, { exact: false }).first()).toBeVisible();
+
+    const times = page.locator(".slot-grid .slot-chip");
+    await times.first().waitFor({ state: "visible", timeout: 20_000 });
+    await times.first().click();
+    await expect(page.getByText(expected, { exact: false }).first()).toBeVisible();
+  });
+});
+
 test.describe("branch opening hours", () => {
   test("a closed branch says when it opens instead of failing later", async ({ page }) => {
     await resetApp(page);
     await fillCart(page, 3);
+    await forceBranchClosed(page);
+    await page.goto("/cart");
 
-    if (await branchIsOpen(page)) {
-      test.skip(true, "Branch is open right now; the closed-branch path cannot be exercised.");
-    }
-
-    // What the customer used to get instead: a working Continue button, and a
-    // rejection from the server after they had filled in everything.
+    // Two things used to go wrong here, in opposite directions. First the
+    // Continue button worked and the server rejected the order after the
+    // customer had filled everything in. Then it was disabled, which was
+    // honest about "closed" and wrong about "cannot order" — the server takes
+    // scheduled orders and checkout offers them, so the cart was ending the
+    // journey in front of a door that was open.
     await expect(page.getByText(/is closed right now/i)).toBeVisible();
     await expect(page.getByText(/opens again/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /closed right now/i })).toBeDisabled();
+    await expect(page.getByText(/order now and choose when you want it/i)).toBeVisible();
+
+    // The hours are one tap away rather than a paragraph nobody reads.
+    await page.getByText(/see opening hours/i).click();
+    await expect(page.getByRole("heading", { name: /(delivery|pickup) hours/i })).toBeVisible();
+
+    // And the way forward is a real link into scheduling, not a dead button.
+    const ahead = page.getByRole("link", { name: /(schedule for later|sign in to schedule)/i });
+    await expect(ahead).toBeVisible();
   });
 });
