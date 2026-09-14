@@ -61,16 +61,32 @@ mobile-only suite).
   a fixed element never "arrives", so Chromium scrolls the page and then blames
   whatever slid under the stale hit point. `clickFixed()` in `e2e/helpers.ts`
   clicks real coordinates after asserting the point resolves inside the target.
-- **Under Pixel 5 emulation, checkout reports `innerWidth` 551 against
-  `documentElement.clientWidth` 393.** This predates all of this work and is
-  NOT caused by the app: removing Stripe's injected
-  `__privateStripeMetricsController` iframe changes nothing, and the gap is
-  identical with `src/` stashed. Stripe does set `min-width: 100% !important`
-  INLINE on that iframe (so no stylesheet rule can override it), but it is a
-  symptom, not the cause. `overflow-x: clip` on `html` does not help either —
-  a `position: fixed` element is not clipped by an ancestor's overflow. Left
-  unfixed and unexplained rather than papered over; the mobile-layout suite
-  measures app elements against `innerWidth` so it still catches real overflow.
+- **Checkout was ZOOMED OUT on a phone.** (This corrects the first version of
+  this entry, which called it an emulation artifact and not the app's doing.
+  It was the app's doing.) On a 393px screen checkout laid out at 551px and
+  Chromium zoomed the page out to fit, so every element was ~29% smaller than
+  designed and the page could be panned sideways. The two-column grid declared
+  `lg:grid-cols-[minmax(0,1fr)_420px]` and nothing at the base breakpoint, so
+  the mobile column was the implicit `auto`, which sizes to its widest content
+  instead of the container — and the widest content was the horizontally
+  scrolling `.day-rail`. Nothing OVERFLOWED (the rail scrolls, correctly), so
+  an overflow check could never see it; the giveaway is `window.innerWidth`
+  (551) diverging from `documentElement.clientWidth` (393). Fixed by adding
+  `grid-cols-[minmax(0,1fr)]` at the base on all five grids with that shape.
+  Stripe's `__privateStripeMetricsController` iframe (inline
+  `min-width: 100% !important`) is the widest node on the page and looks like
+  the culprit — it is not. Blocking js.stripe.com entirely leaves 551
+  unchanged. Bisect by hiding subtrees and watching `innerWidth`; that found it
+  in one pass after two wrong guesses.
+- **Payment is verified end to end, including the webhook.** Stripe shows
+  `succeeded` PaymentIntents at 48.91 CAD with real charge ids. Orders still
+  sit at PAYMENT_PENDING locally because no webhook can reach localhost and
+  there is no Stripe CLI here — that is environmental, not a bug. Confirmed by
+  building a `payment_intent.succeeded` event from a real PaymentIntent,
+  signing it with `STRIPE_WEBHOOK_SECRET` the way Stripe does
+  (`t=<ts>,v1=HMAC-SHA256(ts + "." + body)`) and POSTing it: the route returned
+  `{"status":"paid"}` and the order moved to PLACED / PAID with its scheduled
+  time intact.
 - **Inter is shipped here as a latin-only subset**, so geometric glyphs like
   U+25BE (▾) are not in the font and fall back per platform — it rendered as a
   stray dot on Windows. Use a lucide icon, not a character, for UI marks.
