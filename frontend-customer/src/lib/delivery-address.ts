@@ -114,3 +114,104 @@ export function composeDeliveryAddress(fields: AddressFields): string {
   const tail = [fields.state.trim(), fields.zip.trim()].filter(Boolean).join(" ");
   return [...head, tail].filter(Boolean).join(", ");
 }
+
+/**
+ * A saved address, as the form holds it.
+ *
+ * The server's saved addresses (`/profile/addresses`) carry exactly the parts
+ * this form asks for, so there is nothing to guess: the two shapes are the
+ * same shape under different names. Nulls become empty strings because a
+ * controlled input given null renders the word "null" and React then warns
+ * about the switch from uncontrolled.
+ */
+export type SavedAddressFields = {
+  address_line_1: string;
+  address_line_2?: string | null;
+  landmark?: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+};
+
+export function addressFromSaved(saved: SavedAddressFields): AddressFields {
+  return {
+    line1: saved.address_line_1 ?? "",
+    line2: saved.address_line_2 ?? "",
+    landmark: saved.landmark ?? "",
+    city: saved.city ?? "",
+    state: saved.state ?? "",
+    zip: saved.postal_code ?? "",
+  };
+}
+
+const EMPTY_ADDRESS: AddressFields = {
+  line1: "",
+  line2: "",
+  landmark: "",
+  city: "",
+  state: "",
+  zip: "",
+};
+
+/** A postal code as this form would accept one: digits, or digits-dash-digits. */
+function looksLikePostalCode(part: string): boolean {
+  return /^\d{4,10}(-\d{4})?$/.test(part);
+}
+
+/**
+ * A best guess at the parts of `users.default_address`, which is one free-text
+ * column and not a structured address.
+ *
+ * Deliberately timid. It fills the separate fields ONLY when the string has
+ * the shape this app has always written — comma-separated, ending in a
+ * postal code — and otherwise drops the whole thing on the first line for the
+ * customer to sort out. Spreading a wrong guess across five fields is worse
+ * than filling one: every wrong field is one the customer has to find, and
+ * a plausible-looking wrong city is the kind of mistake that reaches a rider.
+ */
+export function looseAddressFields(value: string | null | undefined): AddressFields {
+  const raw = (value ?? "").trim();
+  if (!raw) return { ...EMPTY_ADDRESS };
+
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  // "<line1>, [more...], <city>, <state>, <postal code>" is the only shape
+  // taken apart. Anything shorter cannot spare a part for each field.
+  const zip = parts.length >= 4 ? parts[parts.length - 1]! : "";
+  if (!looksLikePostalCode(zip)) return { ...EMPTY_ADDRESS, line1: raw };
+
+  const state = parts[parts.length - 2]!;
+  const city = parts[parts.length - 3]!;
+  const [line1, ...middle] = parts.slice(0, parts.length - 3);
+  return {
+    line1: line1 ?? "",
+    line2: middle.join(", "),
+    landmark: "",
+    city,
+    state,
+    zip,
+  };
+}
+
+/**
+ * Is the address in the form one the customer has already saved?
+ *
+ * Compared part by part, case-folded and trimmed, because "washington" and
+ * "Washington " are the same place. Without this, every order re-saves the
+ * address it was given and the picker fills up with copies of one street.
+ */
+export function isSameAddress(fields: AddressFields, saved: SavedAddressFields): boolean {
+  const same = (a: string | null | undefined, b: string | null | undefined) =>
+    (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+  return (
+    same(fields.line1, saved.address_line_1) &&
+    same(fields.line2, saved.address_line_2) &&
+    same(fields.landmark, saved.landmark) &&
+    same(fields.city, saved.city) &&
+    same(fields.state, saved.state) &&
+    same(fields.zip, saved.postal_code)
+  );
+}

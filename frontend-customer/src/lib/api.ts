@@ -20,6 +20,44 @@ export type AuthUser = {
   is_verified: boolean;
 };
 
+/**
+ * An address the customer has saved, as `/profile/addresses` returns it.
+ *
+ * The backend has had these since before this web app existed — the mobile
+ * app writes them — and the parts line up one for one with what checkout
+ * asks for. Nothing here is new server-side.
+ */
+export type SavedAddress = {
+  id: string;
+  label: "HOME" | "WORK" | "OTHER";
+  address_line_1: string;
+  address_line_2: string | null;
+  landmark: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone_number: string | null;
+  is_default: boolean;
+  formatted_address: string;
+};
+
+export type SavedAddressCreate = {
+  label?: "HOME" | "WORK" | "OTHER";
+  address_line_1: string;
+  address_line_2?: string | null;
+  landmark?: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  phone_number?: string | null;
+  is_default?: boolean;
+};
+
+export type ProfileSummary = {
+  user: AuthUser;
+  saved_addresses: SavedAddress[];
+};
+
 export type AuthResponse = {
   access_token: string;
   token_type: string;
@@ -396,6 +434,14 @@ export const api = {
     password: string;
     phone_number?: string | null;
   }) => request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
+
+  // The stored user is whatever login returned, which goes stale the moment
+  // the customer edits their details anywhere else. This is the live copy,
+  // and it carries the saved addresses in the same response.
+  getProfile: () => request<ProfileSummary>("/profile/me", { auth: true }),
+
+  createSavedAddress: (payload: SavedAddressCreate) =>
+    request<SavedAddress>("/profile/addresses", { method: "POST", body: payload, auth: true }),
 
   getOrders: () => request<Order[]>("/orders", { auth: true }),
 

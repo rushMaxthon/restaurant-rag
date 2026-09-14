@@ -9,6 +9,7 @@ export const queryKeys = {
     ["menu-items", restaurantId, locationId ?? "all"] as const,
   menuItem: (id: string) => ["menu-item", id] as const,
   orders: ["orders"] as const,
+  profile: ["profile"] as const,
   order: (id: string) => ["order", id] as const,
   combos: ["generated-combos"] as const,
   offers: ["personalized-offers"] as const,
@@ -19,6 +20,26 @@ export function useAppConfig() {
     queryKey: queryKeys.appConfig,
     queryFn: api.getAppConfig,
     staleTime: Infinity,
+  });
+}
+
+/**
+ * The signed-in customer's own details, for filling in what we already know.
+ *
+ * Guarded on `enabled` rather than on a thrown 401: an anonymous checkout is a
+ * normal thing, not an error to report. Kept fresh for a few minutes because
+ * nothing else in a checkout changes it.
+ */
+export function useProfile(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.profile,
+    queryFn: api.getProfile,
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    // A customer who has no profile row, or an account the endpoint refuses
+    // (it is customers-only), must not turn into a retry storm behind a
+    // checkout form that works perfectly well empty.
+    retry: false,
   });
 }
 

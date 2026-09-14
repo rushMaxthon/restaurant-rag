@@ -28,6 +28,58 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (6) — Checkout already knew who was ordering
+
+**Goal:** reported — a signed-in customer should not be asked for their name,
+number and address on every order.
+
+**What was already there:** all of it. `users` carries `full_name`,
+`phone_number` and a free-text `default_address`, and the backend has had
+`/profile/me` and a full structured **saved addresses** CRUD
+(`/profile/addresses`, with HOME/WORK/OTHER labels and an `is_default`) since
+before this web app existed — the mobile app writes them. The web app called
+none of it. No backend change was needed; this is four client files.
+
+**Now:** checkout fills the name and number from the account, and the address
+from the default saved address. Every field stays editable, and the form says
+where the answers came from rather than filling itself in silently. More than
+one saved address gets tiles to switch between them. A new address offers to
+save itself, so the second order is already filled in — without that the
+feature is dormant for anyone who has never used the mobile app.
+
+**Learned — do not re-derive:**
+- **The saved-address parts map one-for-one onto the checkout form.**
+  `address_line_1/2`, `landmark`, `city`, `state`, `postal_code` are exactly
+  the fields collected on 2026-09-14 (2). Nothing to translate, so
+  `addressFromSaved` is a rename and nothing more.
+- **`users.default_address` is ONE free-text column, not an address.** Parsing
+  it is a guess by shape: taken apart only when it is comma-separated and ends
+  in something postal-code-shaped, and otherwise dropped whole onto line 1.
+  Spreading a wrong guess over five fields is worse than filling one — every
+  wrong field is one the customer has to find, and a plausible wrong city
+  reaches a rider.
+- **Save on order creation, and dedupe.** Without the dedupe every e2e run
+  added another copy of the same street to the test account; with it the count
+  stayed at 1 across two runs (verified). An address typed into an abandoned
+  form is not one the customer asked to keep, so nothing is saved until the
+  order exists, and the save's failure is swallowed — "we could not save your
+  address" is not a thing to interrupt a payment with.
+- **A ref cannot be read for rendering.** The "filled in from your account"
+  note was first driven by the same `useRef` that guards the one-shot prefill;
+  changing a ref causes no render, so the note appeared only because unrelated
+  state happened to change in the same pass. It has its own state now.
+- Editing a prefilled address clears the "this is the saved one" link, so the
+  save box comes back. Otherwise a corrected flat number is typed, sent, and
+  forgotten by the next order.
+
+**Open:** the web app still has no screen for MANAGING saved addresses — they
+can be created from checkout and read anywhere, but renaming, relabelling and
+deleting are mobile-only. `phone_number` is stored formatted here ("(415)
+555-0132") and bare on `users`; both read back fine, but nothing normalises
+them to one shape.
+
+---
+
 ## 2026-09-14 (5) — The dish page's two columns
 
 **Goal:** reported from a screenshot — the dish page looked wrong on a

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -42,14 +42,17 @@ import {
   nextOpening,
 } from "@/lib/branch-hours";
 import {
+  addressFromSaved,
   composeDeliveryAddress,
+  isSameAddress,
   formatPhoneAsTyped,
+  looseAddressFields,
   validateAddress,
   validatePhone,
   type AddressFields,
 } from "@/lib/delivery-address";
 import { useRequireAuth } from "@/lib/require-auth";
-import { useCreateOrder, usePaymentConfig, useValidateOrder } from "@/lib/queries";
+import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 
 /** Shown beside the phone field; matches the backend's own default. */
@@ -193,6 +196,66 @@ function Checkout() {
   const [chosenSlot, setChosenSlot] = useState<Date | null>(null);
   const [chosenDay, setChosenDay] = useState<Date | null>(null);
   const [wantsLater, setWantsLater] = useState(false);
+  // Which saved address is in the form, so a customer with a home and a work
+  // address can switch between them.
+  const [addressId, setAddressId] = useState<string | null>(null);
+  const [saveAddress, setSaveAddress] = useState(true);
+  // Whether anything was actually filled in from the account. A ref cannot
+  // answer this for rendering, because changing one does not cause a render.
+  const [filledFromAccount, setFilledFromAccount] = useState(false);
+
+  // What we already know about whoever is signed in. The account carries a
+  // name, a number and, for anyone who has saved one, a full address — and
+  // checkout used to ask for all of it again every single time.
+  const profile = useProfile(isAuthenticated);
+  const savedAddresses = profile.data?.saved_addresses ?? [];
+  // Filled once. After that the form belongs to the customer: a late-arriving
+  // request must never reach in and rewrite what they are part way through
+  // typing.
+  const prefilled = useRef(false);
+
+  useEffect(() => {
+    const account = profile.data?.user;
+    if (!account || prefilled.current) return;
+    prefilled.current = true;
+
+    if (account.full_name) {
+      setFullName(account.full_name);
+      setFilledFromAccount(true);
+    }
+
+    const preferred = savedAddresses.find((entry) => entry.is_default) ?? savedAddresses[0] ?? null;
+    // The address's own number first: it is the one attached to the door the
+    // rider is going to.
+    const number = preferred?.phone_number ?? account.phone_number;
+    if (number) {
+      setPhone(formatPhoneAsTyped(number));
+      setFilledFromAccount(true);
+    }
+
+    if (preferred) {
+      setAddress(addressFromSaved(preferred));
+      setAddressId(preferred.id);
+      setSaveAddress(false);
+      setFilledFromAccount(true);
+    } else if (account.default_address) {
+      setAddress(looseAddressFields(account.default_address));
+      setFilledFromAccount(true);
+    }
+  }, [profile.data, savedAddresses]);
+
+  /** Put a saved address in the form, replacing whatever is there. */
+  const useSavedAddress = (id: string) => {
+    const picked = savedAddresses.find((entry) => entry.id === id);
+    if (!picked) return;
+    setAddress(addressFromSaved(picked));
+    setAddressId(id);
+    setSaveAddress(false);
+    if (picked.phone_number) setPhone(formatPhoneAsTyped(picked.phone_number));
+    // The new address has not been looked at yet, so nothing about it is
+    // "wrong" until the customer has had a chance to read it.
+    setTouched((t) => ({ ...t, line1: false, city: false, state: false, zip: false }));
+  };
   // Pinned once per render pass so the day list, the slot list and the
   // validity check cannot disagree about what "now" is.
   const now = new Date();
@@ -245,6 +308,22 @@ function Checkout() {
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
   const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
   // Shown once the field has been left, or once submit has been attempted.
+  /**
+   * Change one part of the address.
+   *
+   * Editing a saved address means the form no longer holds THAT address, so
+   * the chip stops claiming it does and the save box comes back — otherwise a
+   * corrected flat number would be typed, sent, and forgotten by the next
+   * order.
+   */
+  const editAddress = (part: keyof AddressFields, next: string) => {
+    setAddress((a) => ({ ...a, [part]: next }));
+    if (addressId) {
+      setAddressId(null);
+      setSaveAddress(true);
+    }
+  };
+
   const show = (field: keyof AddressFields | "phone" | "name") =>
     Boolean(touched[field] || submitted);
 
@@ -430,6 +509,28 @@ function Checkout() {
       await validateOrder.mutateAsync(payload);
       const order = await createOrder.mutateAsync(payload);
 
+      // Saved only now, with an order number against it: an address typed into
+      // a form the customer then abandoned is not one they have told us to
+      // keep. Failure here is silent on purpose — the order is placed, and
+      // "we could not save your address for next time" is not something to
+      // interrupt a payment with.
+      // Not one we already hold: an order placed to an address on file must
+      // not add a second copy of it, or the picker fills up with one street.
+      const alreadyKnown = savedAddresses.some((entry) => isSameAddress(address, entry));
+      if (isDelivery && saveAddress && !addressId && !alreadyKnown) {
+        api
+          .createSavedAddress({
+            address_line_1: address.line1.trim(),
+            address_line_2: address.line2.trim() || null,
+            landmark: address.landmark.trim() || null,
+            city: address.city.trim(),
+            state: address.state.trim(),
+            postal_code: address.zip.trim(),
+            phone_number: phone.trim() || null,
+          })
+          .catch(() => undefined);
+      }
+
       // The order exists but is PAYMENT_PENDING, and stays out of the kitchen
       // queue until a verified webhook says the money moved. This step only
       // fetches the intent; the card itself is typed into Stripe's own iframe,
@@ -494,6 +595,35 @@ function Checkout() {
               We use this to reach you if the rider needs directions.
             </p>
 
+            {/* Said out loud. Fields that fill themselves without a word read
+                as the form having got something wrong, and the customer
+                re-reads all of them looking for it. */}
+            {filledFromAccount && (
+              <p className="prefill-note mt-3">
+                <BadgeCheck className="size-4 shrink-0" />
+                Filled in from your account — change anything that has moved.
+              </p>
+            )}
+
+            {isDelivery && savedAddresses.length > 1 && (
+              <div className="saved-address-picker mt-4">
+                {savedAddresses.map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.id}
+                    className="saved-address"
+                    data-on={addressId === entry.id}
+                    onClick={() => useSavedAddress(entry.id)}
+                  >
+                    <span className="saved-address__label">
+                      {entry.label === "HOME" ? "Home" : entry.label === "WORK" ? "Work" : "Other"}
+                    </span>
+                    <span className="saved-address__line">{entry.formatted_address}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="full_name">Full name</Label>
@@ -550,7 +680,7 @@ function Checkout() {
                     icon={<MapPin className="size-4" />}
                     value={address.line1}
                     problem={show("line1") ? addressProblems.line1 : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, line1: next }))}
+                    onChange={(next) => editAddress("line1", next)}
                     onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
                   />
                   <AddressField
@@ -563,7 +693,7 @@ function Checkout() {
 
                     value={address.line2}
                     problem={show("line2") ? addressProblems.line2 : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, line2: next }))}
+                    onChange={(next) => editAddress("line2", next)}
                     onBlur={() => setTouched((t) => ({ ...t, line2: true }))}
                   />
                   <AddressField
@@ -576,7 +706,7 @@ function Checkout() {
 
                     value={address.landmark}
                     problem={show("landmark") ? addressProblems.landmark : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, landmark: next }))}
+                    onChange={(next) => editAddress("landmark", next)}
                     onBlur={() => setTouched((t) => ({ ...t, landmark: true }))}
                   />
                   <AddressField
@@ -586,7 +716,7 @@ function Checkout() {
                     autoComplete="address-level2"
                     value={address.city}
                     problem={show("city") ? addressProblems.city : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, city: next }))}
+                    onChange={(next) => editAddress("city", next)}
                     onBlur={() => setTouched((t) => ({ ...t, city: true }))}
                   />
                   <AddressField
@@ -597,7 +727,7 @@ function Checkout() {
 
                     value={address.state}
                     problem={show("state") ? addressProblems.state : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, state: next }))}
+                    onChange={(next) => editAddress("state", next)}
                     onBlur={() => setTouched((t) => ({ ...t, state: true }))}
                   />
                   <AddressField
@@ -609,12 +739,26 @@ function Checkout() {
 
                     value={address.zip}
                     problem={show("zip") ? addressProblems.zip : undefined}
-                    onChange={(next) => setAddress((a) => ({ ...a, zip: next }))}
+                    onChange={(next) => editAddress("zip", next)}
                     onBlur={() => setTouched((t) => ({ ...t, zip: true }))}
                   />
                 </>
               )}
             </div>
+
+            {/* Offered, not assumed, and only when this is a new address: the
+                prefill is worth nothing to a customer whose first order never
+                left anything behind to prefill FROM. */}
+            {isDelivery && isAuthenticated && !addressId && (
+              <label className="save-address mt-4">
+                <input
+                  type="checkbox"
+                  checked={saveAddress}
+                  onChange={(e) => setSaveAddress(e.target.checked)}
+                />
+                <span>Save this address to my account for next time</span>
+              </label>
+            )}
 
             {!isDelivery && branch && (
               <div className="mt-5 flex items-start gap-3 rounded-xl bg-surface-alt p-4">

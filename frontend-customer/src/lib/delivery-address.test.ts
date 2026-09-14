@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  addressFromSaved,
   composeDeliveryAddress,
+  isSameAddress,
+  looseAddressFields,
   formatPhoneAsTyped,
   validateAddress,
   validatePhone,
@@ -137,5 +140,134 @@ describe("composeDeliveryAddress", () => {
     expect(composeDeliveryAddress(fields({ line1: "  1 Main St  ", city: " Springfield " }))).toBe(
       "1 Main St, Springfield, DC 20500",
     );
+  });
+});
+
+describe("addressFromSaved", () => {
+  const saved = {
+    id: "a1",
+    label: "HOME" as const,
+    address_line_1: "1600 Pennsylvania Avenue NW",
+    address_line_2: "Apt 4B",
+    landmark: null,
+    city: "Washington",
+    state: "DC",
+    postal_code: "20500",
+    phone_number: "2025550143",
+    is_default: true,
+    formatted_address: "1600 Pennsylvania Avenue NW, Apt 4B, Washington, DC 20500",
+  };
+
+  it("fills every field the saved address has", () => {
+    expect(addressFromSaved(saved)).toEqual({
+      line1: "1600 Pennsylvania Avenue NW",
+      line2: "Apt 4B",
+      landmark: "",
+      city: "Washington",
+      state: "DC",
+      zip: "20500",
+    });
+  });
+
+  it("turns the nulls into empty strings the inputs can hold", () => {
+    // A controlled input given null renders "null" and React warns about the
+    // switch from uncontrolled; the form only ever holds strings.
+    const bare = { ...saved, address_line_2: null, landmark: null };
+    expect(addressFromSaved(bare).line2).toBe("");
+    expect(addressFromSaved(bare).landmark).toBe("");
+  });
+});
+
+describe("looseAddressFields", () => {
+  /**
+   * `users.default_address` is one free-text column, so this is a guess by
+   * shape, not a parser. It fills the form only when the shape is
+   * unmistakable, and every field stays editable either way.
+   */
+  it("reads the comma-separated shape the app has always written", () => {
+    expect(looseAddressFields("100 Main St, Springfield, IL, 62704")).toEqual({
+      line1: "100 Main St",
+      line2: "",
+      landmark: "",
+      city: "Springfield",
+      state: "IL",
+      zip: "62704",
+    });
+  });
+
+  it("keeps the extra parts as the second line", () => {
+    expect(looseAddressFields("100 Main St, Apt 2, Springfield, IL, 62704")).toMatchObject({
+      line1: "100 Main St",
+      line2: "Apt 2",
+      city: "Springfield",
+      zip: "62704",
+    });
+  });
+
+  it("puts an unrecognisable address on the first line and asks for the rest", () => {
+    // Better than spreading a wrong guess across five fields the customer then
+    // has to find and undo.
+    expect(looseAddressFields("behind the blue gate near the temple")).toEqual({
+      line1: "behind the blue gate near the temple",
+      line2: "",
+      landmark: "",
+      city: "",
+      state: "",
+      zip: "",
+    });
+  });
+
+  it("does not claim a postal code from a part that is not one", () => {
+    expect(looseAddressFields("100 Main St, Springfield, Illinois")).toMatchObject({
+      line1: "100 Main St, Springfield, Illinois",
+      city: "",
+      zip: "",
+    });
+  });
+
+  it("has nothing to say about nothing", () => {
+    expect(looseAddressFields(null)).toEqual({
+      line1: "",
+      line2: "",
+      landmark: "",
+      city: "",
+      state: "",
+      zip: "",
+    });
+  });
+});
+
+describe("isSameAddress", () => {
+  const saved = {
+    address_line_1: "1600 Pennsylvania Avenue NW",
+    address_line_2: "Apt 4B",
+    landmark: null,
+    city: "Washington",
+    state: "DC",
+    postal_code: "20500",
+  };
+  const typed = {
+    line1: "1600 Pennsylvania Avenue NW",
+    line2: "Apt 4B",
+    landmark: "",
+    city: "Washington",
+    state: "DC",
+    zip: "20500",
+  };
+
+  it("knows an address it already has", () => {
+    expect(isSameAddress(typed, saved)).toBe(true);
+  });
+
+  it("ignores case and stray spacing", () => {
+    // "washington" and "Washington  " are the same place, and saving a second
+    // copy of an address because of a capital letter is how a picker fills up
+    // with the same street five times.
+    expect(isSameAddress({ ...typed, city: "  washington " }, saved)).toBe(true);
+  });
+
+  it("treats a real change as a different address", () => {
+    expect(isSameAddress({ ...typed, line2: "Apt 5C" }, saved)).toBe(false);
+    expect(isSameAddress({ ...typed, zip: "20501" }, saved)).toBe(false);
   });
 });

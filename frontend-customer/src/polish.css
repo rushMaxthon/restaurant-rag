@@ -1213,3 +1213,83 @@ html {
     bottom: 0;
   }
 }
+
+/* --- What the account already knows ----------------------------------------
+   Checkout asked a signed-in customer for their name, their number and their
+   address on every single order, all of which the account already held. */
+.prefill-note {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  padding: 0.4rem 0.75rem;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* One tile per saved address, shown only when there is more than one — with
+   a single address there is nothing to choose between. */
+.saved-address-picker {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.saved-address {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface-alt);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.saved-address:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.saved-address[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.saved-address__label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+/* Two lines at most. A full address is longer than a tile, and a tile that
+   grows to fit one makes the other tiles grow with it. */
+.saved-address__line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.save-address {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.save-address input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
