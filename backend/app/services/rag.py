@@ -594,6 +594,14 @@ QUERY_STOPWORDS = {
     "suggest",
     "tell",
     "the",
+    # Grammar the list already covers in other persons and tenses — it has
+    # "is", "do", "have", "can", "would", "tell", "recommend", "suggest" — and
+    # these were simply missing. Each produced a topic: "which item are
+    # trending" searched for "are trending", "what is there for breakfast" for
+    # "there breakfast", "i want momos" for "want momo".
+    "are",
+    "there",
+    "want",
     "type",
     "types",
     "we",
@@ -920,10 +928,22 @@ def _query_tokens(message: str) -> list[str]:
 def _canonicalize_topic(value: str | None) -> str | None:
     if value is None:
         return None
+    # Filtered on BOTH the raw token and its singular.
+    #
+    # Filtering the raw form alone let every plural walk past a list naming its
+    # singular: "todays" is not a stopword, survived, was then stemmed to
+    # "today" — which IS one — and became the dish. "show me todays menu"
+    # answered "We don't have a dish called 'today' on the menu".
+    #
+    # Filtering the stem alone breaks the other direction: `_singularize_token`
+    # strips a trailing "s", so "this" becomes "thi" and escapes a list that
+    # names "this". Checking both catches the plural without inventing that
+    # hole, and needs no new words.
     tokens = [
         _singularize_token(token)
         for token in _query_tokens(value)
         if token not in TOPIC_STOPWORDS
+        and _singularize_token(token) not in TOPIC_STOPWORDS
     ]
     if not tokens:
         return None
@@ -940,10 +960,13 @@ def _extract_bare_topic_hint(message: str) -> str | None:
     if "restaurant" in normalized:
         return None
 
+    # Both forms checked, for the reason in `_canonicalize_topic`.
     candidate_tokens = [
         _singularize_token(token)
         for token in _query_tokens(message)
-        if not token.isdigit() and token not in BARE_TOPIC_STOPWORDS
+        if not token.isdigit()
+        and token not in BARE_TOPIC_STOPWORDS
+        and _singularize_token(token) not in BARE_TOPIC_STOPWORDS
     ]
     if not candidate_tokens or len(candidate_tokens) > 3:
         return None
@@ -978,9 +1001,20 @@ def _extract_direct_item_hint(message: str) -> str | None:
         canonical_candidate = _canonicalize_topic(candidate)
         if canonical_candidate:
             return canonical_candidate
-        candidate_tokens = _query_tokens(candidate)
+        # The fallback honours the same stopwords. Without this it rebuilt a
+        # topic from raw tokens whenever canonicalisation returned None —
+        # overriding the one conclusion that mattered, that the phrase names no
+        # dish. "show me todays menu" canonicalised to None and came back out of
+        # here as "today menu", which answered "We don't have a 'today menu'
+        # option".
+        candidate_tokens = [
+            _singularize_token(token)
+            for token in _query_tokens(candidate)
+            if token not in TOPIC_STOPWORDS
+            and _singularize_token(token) not in TOPIC_STOPWORDS
+        ]
         if candidate_tokens:
-            return " ".join(_singularize_token(token) for token in candidate_tokens)
+            return " ".join(candidate_tokens)
     return _extract_bare_topic_hint(message)
 
 
@@ -3344,15 +3378,34 @@ HOURS_QUESTION_ANCHORS = (
     "what are your opening hours",
 )
 
-# Measured over twenty-one phrasings with nomic-embed-text:
+# What a MENU question sounds like. The hours anchors alone were not enough:
+# "Tell me menu for today" measured 0.398 from them, inside any threshold that
+# still admitted "when can I order" at 0.438. The bands overlap completely and
+# no cutoff separates them, because "today" pulls a menu question toward
+# opening-hours language.
 #
-#   availability questions   0.087 - 0.464
-#   everything else          0.518 - 0.660   (nearest: "do you have pizza")
+# Comparing against both sides removes the threshold entirely — whichever
+# meaning is nearer wins. Measured over thirteen phrasings, 13/13 correct:
 #
-# 0.49 sits in that gap. The numbers belong to THIS embedding model; switching
-# `embedding_provider` to Gemini requires re-measuring, and nothing here will
-# complain if they quietly stop being right.
+#   "Tell me menu for today"   hours 0.398   menu 0.229  -> menu
+#   "what do you have today"   hours 0.371   menu 0.308  -> menu
+#   "when can I order"         hours 0.438   menu 0.510  -> hours
+#   "is the kitchen open"      hours 0.344   menu 0.499  -> hours
+# A question must be genuinely NEAR the hours anchors, not merely nearer to them
+# than to menu. "how much is delivery" sits 0.552 from hours and 0.564 from
+# menu: far from both, and hours wins by 0.012 of noise. It is a fee question,
+# answered by the service-info tier — but this must not call it an hours
+# question just because nothing else is closer.
 HOURS_QUESTION_MAX_DISTANCE = 0.49
+
+MENU_QUESTION_ANCHORS = (
+    "what is on the menu",
+    "show me the menu",
+    "what food do you have",
+    "what dishes do you serve",
+)
+
+_MENU_ANCHOR_VECTORS: list[list[float]] | None = None
 
 _HOURS_ANCHOR_VECTORS: list[list[float]] | None = None
 
@@ -3384,7 +3437,7 @@ def looks_like_hours_question(message: str) -> bool:
     exactly as it is, not turn every refusal into an hours answer.
     """
 
-    global _HOURS_ANCHOR_VECTORS
+    global _HOURS_ANCHOR_VECTORS, _MENU_ANCHOR_VECTORS
 
     vector = _embed_query(message)
     if vector is None:
@@ -3396,12 +3449,24 @@ def looks_like_hours_question(message: str) -> bool:
             if any(a is None for a in anchors):
                 return False
             _HOURS_ANCHOR_VECTORS = [a for a in anchors if a is not None]
-        nearest = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+        if _MENU_ANCHOR_VECTORS is None:
+            anchors = [_embed_query(text) for text in MENU_QUESTION_ANCHORS]
+            if any(a is None for a in anchors):
+                return False
+            _MENU_ANCHOR_VECTORS = [a for a in anchors if a is not None]
+
+        nearest_hours = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+        nearest_menu = min(_cosine_distance(vector, a) for a in _MENU_ANCHOR_VECTORS)
     except Exception:  # pragma: no cover - a recogniser must not break a reply
         logger.exception("Hours-question similarity failed; leaving the turn unchanged")
         return False
 
-    return nearest < HOURS_QUESTION_MAX_DISTANCE
+    # Both conditions. Nearer to hours than to menu settles the overlap that a
+    # threshold alone cannot ("Tell me menu for today" vs "when can I order");
+    # the distance floor rejects questions that are simply far from everything.
+    # A tie goes to menu: this assistant sells food, and answering a food
+    # question with opening times is the worse mistake.
+    return nearest_hours < nearest_menu and nearest_hours < HOURS_QUESTION_MAX_DISTANCE
 
 
 # A clock time the customer named, as opposed to any other number in a message.

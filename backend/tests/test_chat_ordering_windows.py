@@ -140,6 +140,28 @@ class SemanticHoursFallbackTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertTrue(looks_like_hours_question(phrase))
 
+    def test_a_menu_question_mentioning_today_is_not_an_hours_question(self) -> None:
+        """Reported: "Tell me menu for today" answered with opening times.
+
+        "today" pulls a menu question toward the hours anchors — it measured
+        0.398 against a 0.49 threshold, inside the hours band. And no threshold
+        fixes it: "when can I order" is a genuine hours question at 0.438,
+        FURTHER than every one of these. The bands overlap completely.
+
+        Comparing against menu anchors as well settles it without a threshold at
+        all: "Tell me menu for today" is 0.398 from hours and 0.229 from menu.
+        """
+
+        for phrase in (
+            "Tell me menu for today",
+            "what is on the menu today",
+            "show me todays menu",
+            "what do you have today",
+            "menu please",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertFalse(looks_like_hours_question(phrase))
+
     def test_a_food_question_is_not_an_hours_question(self) -> None:
         for phrase in (
             "i want pad thai",

@@ -97,5 +97,33 @@ class TimeWordTopicTests(unittest.TestCase):
         self.assertEqual(_canonicalize_topic("show me lunch"), "lunch")
 
 
+class PluralFormsAreFilteredTooTests(unittest.TestCase):
+    """A plural must not walk past a list that names the singular.
+
+    Reported: "show me todays menu" answered "We don't have a dish called
+    'today' on the menu". "today" IS a stopword; "todays" is not, and the filter
+    ran before the stemmer — so the plural survived, was then singularised to
+    "today", and became the dish.
+
+    Adding "todays" would fix that spelling and leave the next one. Singularising
+    BEFORE filtering fixes every plural at once, including ones nobody has
+    written down.
+    """
+
+    def test_a_possessive_is_filtered_like_its_singular(self) -> None:
+        self.assertIsNone(_canonicalize_topic("show me todays menu"))
+
+    def test_other_plural_stopwords_are_caught_too(self) -> None:
+        for phrase in ("menus for this week", "what are the options today"):
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(_canonicalize_topic(phrase))
+
+    def test_a_real_dish_still_survives_stemming(self) -> None:
+        """The filter must not start eating food. "momos" stems to "momo",
+        which is not a stopword and must remain the topic."""
+
+        self.assertIn("momo", _canonicalize_topic("i want momos") or "")
+
+
 if __name__ == "__main__":
     unittest.main()
