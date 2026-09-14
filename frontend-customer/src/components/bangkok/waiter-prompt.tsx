@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { readChatSession, storeChatSession } from "@/lib/chat-session";
 import { useMenuItem } from "@/lib/queries";
-import { cartLinesForRequest, suggestionCopy, type SellSuggestion } from "@/lib/suggestions";
+import {
+  cartLinesForRequest,
+  suggestionCopy,
+  suggestionNeedsChoice,
+  type SellSuggestion,
+} from "@/lib/suggestions";
 
 /**
  * One suggestion, rendered where the customer already is.
@@ -82,13 +88,31 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" }) {
     }
   }
 
+  // A one-line prompt has nothing to choose a size or an add-on with — the
+  // same reason `dish-card.tsx` sends a sized or customizable dish to its own
+  // page instead of adding it. `size_upgrade` and `add_on` are never a plain
+  // add at all (the item named is already in the cart; the change is the
+  // size or option, which only the dish page can collect), and a cross-sold
+  // item that itself has sizes or customizations hits the identical problem
+  // from the other direction. Routing to the dish page is the honest choice
+  // both times, not a limitation of the prompt.
+  const needsChoice = suggestionNeedsChoice(suggestion, item);
+
   return (
-    <aside className={`waiter-prompt waiter-prompt--${placement}`} role="note">
+    <aside className={`waiter-prompt waiter-prompt--${placement}`} role="note" aria-live="polite">
       <p className="waiter-prompt__text">{suggestionCopy(suggestion, item.name, item.category)}</p>
       <div className="waiter-prompt__actions">
-        <Button size="sm" onClick={() => store.addItem(item)}>
-          Add
-        </Button>
+        {needsChoice ? (
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/menu/$itemId" params={{ itemId: item.id }}>
+              Choose
+            </Link>
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => store.addItem(item)}>
+            Add
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={dismiss} aria-label="No thanks">
           <X />
         </Button>

@@ -90,3 +90,36 @@ export function suggestionCopy(
       return `${itemName}?`;
   }
 }
+
+/** The only two fields `suggestionNeedsChoice` needs from a menu item. */
+export type MenuItemChoiceFlags = {
+  has_sizes: boolean;
+  has_customizations: boolean;
+};
+
+/**
+ * Whether a one-line prompt can honour this suggestion with a plain "Add", or
+ * has to send the customer to the dish page instead.
+ *
+ * Two separate reasons land on the same answer, and both trace back to the
+ * rule `dish-card.tsx` already states: a card has nothing to choose a size or
+ * an add-on with, so adding blind means guessing, and a guess here is either
+ * wrong or a silent default the customer never agreed to.
+ *
+ *  - `size_upgrade` and `add_on` are not "add this item" at all — the item is
+ *    already in the cart, and the suggestion IS the size or the customization
+ *    option to change it to. Those live in `size_id` / `customization_option_id`
+ *    on the suggestion, not on a menu item `addItem` knows how to read, so
+ *    there is no blind `addItem` that could ever be correct for these bases.
+ *  - `co_occurrence` and `category_default` name a plain second item — but if
+ *    THAT item itself has sizes or customizations, adding it blind is the
+ *    exact same silent default `dish-card.tsx` refuses to make, just reached
+ *    from a different basis.
+ */
+export function suggestionNeedsChoice(
+  suggestion: Pick<SellSuggestion, "basis">,
+  item: MenuItemChoiceFlags,
+): boolean {
+  if (suggestion.basis === "size_upgrade" || suggestion.basis === "add_on") return true;
+  return item.has_sizes || item.has_customizations;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cartLinesForRequest, suggestionCopy } from "./suggestions";
+import { cartLinesForRequest, suggestionCopy, suggestionNeedsChoice } from "./suggestions";
 
 describe("cartLinesForRequest", () => {
   it("sends identifiers only, never names or prices", () => {
@@ -128,5 +128,46 @@ describe("suggestionCopy", () => {
     );
 
     expect(copy).toContain("Thai Iced Tea");
+  });
+});
+
+describe("suggestionNeedsChoice", () => {
+  const plain = { has_sizes: false, has_customizations: false };
+  const sized = { has_sizes: true, has_customizations: false };
+  const customizable = { has_sizes: false, has_customizations: true };
+
+  it("always routes size_upgrade to the dish page, regardless of the item", () => {
+    // The item named IS the one already in the cart; the change is the size,
+    // which addItem(item) has no way to apply. There is no plain-item case
+    // where a blind add would be correct for this basis.
+    expect(suggestionNeedsChoice({ basis: "size_upgrade" }, plain)).toBe(true);
+  });
+
+  it("always routes add_on to the dish page, regardless of the item", () => {
+    expect(suggestionNeedsChoice({ basis: "add_on" }, plain)).toBe(true);
+  });
+
+  it("allows a plain add for a cross-sold item with no choices to make", () => {
+    expect(suggestionNeedsChoice({ basis: "co_occurrence" }, plain)).toBe(false);
+    expect(suggestionNeedsChoice({ basis: "category_default" }, plain)).toBe(false);
+  });
+
+  it("routes a cross-sold item to the dish page when IT has sizes", () => {
+    // Same bug dish-card.tsx already refuses to make, reached from a
+    // different basis: a drink suggested by co_occurrence can still come in
+    // two sizes, and adding it blind picks one without asking.
+    expect(suggestionNeedsChoice({ basis: "co_occurrence" }, sized)).toBe(true);
+    expect(suggestionNeedsChoice({ basis: "category_default" }, sized)).toBe(true);
+  });
+
+  it("routes a cross-sold item to the dish page when IT has customizations", () => {
+    expect(suggestionNeedsChoice({ basis: "co_occurrence" }, customizable)).toBe(true);
+  });
+
+  it("still requires a choice for the up-sell bases even on a plain item", () => {
+    // Belt and braces: the basis check must not be short-circuited by the
+    // item's own flags — size_upgrade/add_on are never a blind add, full stop.
+    expect(suggestionNeedsChoice({ basis: "size_upgrade" }, customizable)).toBe(true);
+    expect(suggestionNeedsChoice({ basis: "add_on" }, sized)).toBe(true);
   });
 });
