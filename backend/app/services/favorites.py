@@ -74,6 +74,7 @@ def _serialize_menu_item_customization_group(
         is_required=group.is_required,
         min_selection=group.min_selection,
         max_selection=group.max_selection,
+        supports_halves=group.supports_halves,
         is_active=group.is_active,
         sort_order=group.sort_order,
         options=[

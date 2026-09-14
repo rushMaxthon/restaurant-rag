@@ -32,6 +32,14 @@ export type CustomizationGroup = {
   is_required: boolean;
   min_selection: number;
   max_selection: number;
+  /**
+   * Whether the kitchen can put these options on half the item.
+   *
+   * Half-and-half pizza: pepperoni one side, mushroom the other. Off for
+   * almost every group — a spice level or a crust has no halves — so the
+   * portion control only appears where the owner said it can.
+   */
+  supports_halves?: boolean;
   is_active: boolean;
   options: CustomizationOption[];
 };

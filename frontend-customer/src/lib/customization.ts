@@ -4,6 +4,7 @@ import type {
   MenuItem,
   MenuSize,
 } from "@/lib/bangkok-data";
+import type { OptionPortion } from "@/lib/bangkok-store";
 
 /**
  * The rules for sized and customisable items, in one place.
@@ -76,23 +77,85 @@ export function requiresChoosing(group: CustomizationGroup): boolean {
   return group.is_required || group.min_selection > 0;
 }
 
-/** The price of one unit, given a size and the chosen option ids. */
+/** Two decimal places, rounded the way the server rounds. */
+function money(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/** "Left half", for a customer rather than for a database. */
+export function portionLabel(portion: OptionPortion): string {
+  if (portion === "LEFT") return "Left half";
+  if (portion === "RIGHT") return "Right half";
+  return "Whole";
+}
+
+/**
+ * What one selected option costs, given which part of the item it covers.
+ *
+ * Mirrors `ResolvedCustomizationOption.charged_extra_price`: a half costs half,
+ * quantized to two places. The GROUP's flag decides, not the stored portion —
+ * a stale "LEFT" on a group the owner never made splittable must not quietly
+ * halve a topping the kitchen will apply in full.
+ */
+function chargedExtra(
+  group: CustomizationGroup,
+  option: CustomizationOption,
+  portion: OptionPortion,
+): number {
+  const listed = Number(option.extra_price ?? 0);
+  if (!Number.isFinite(listed)) return 0;
+  const split = group.supports_halves && portion !== "WHOLE";
+  return money(split ? listed / 2 : listed);
+}
+
+/** The price of one unit, given a size, the chosen options and their portions. */
 export function unitPriceFor(
   item: MenuItem | undefined,
   selectedSize: MenuSize | undefined,
   selectedOptionIds: string[],
+  portions: Record<string, OptionPortion> = {},
 ): number {
   if (!item) return 0;
   // The size price REPLACES the item price. Adding them is the bug.
   const base = Number(selectedSize?.price ?? item.price);
 
   const chosen = new Set(selectedOptionIds);
-  const extras = visibleGroups(item, selectedSize)
-    .flatMap((group) => activeOptions(group))
-    .filter((option) => chosen.has(option.id))
-    .reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0);
+  let extras = 0;
+  for (const group of visibleGroups(item, selectedSize)) {
+    for (const option of activeOptions(group)) {
+      if (!chosen.has(option.id)) continue;
+      extras += chargedExtra(group, option, portions[option.id] ?? "WHOLE");
+    }
+  }
 
-  return (Number.isFinite(base) ? base : 0) + extras;
+  return money((Number.isFinite(base) ? base : 0) + extras);
+}
+
+/**
+ * The pizza read back as two halves, so the customer can check it at a glance.
+ *
+ * Names rather than ids: this is for the screen and for the line in the cart,
+ * and "Left: Pepperoni · Right: Mushroom" is the thing someone is trying to
+ * confirm before paying.
+ */
+export function splitSummary(
+  item: MenuItem | undefined,
+  selectedSize: MenuSize | undefined,
+  selectedOptionIds: string[],
+  portions: Record<string, OptionPortion> = {},
+): { left: string[]; right: string[]; whole: string[] } {
+  const chosen = new Set(selectedOptionIds);
+  const out = { left: [] as string[], right: [] as string[], whole: [] as string[] };
+  for (const group of visibleGroups(item, selectedSize)) {
+    for (const option of activeOptions(group)) {
+      if (!chosen.has(option.id)) continue;
+      const portion = group.supports_halves ? (portions[option.id] ?? "WHOLE") : "WHOLE";
+      if (portion === "LEFT") out.left.push(option.name);
+      else if (portion === "RIGHT") out.right.push(option.name);
+      else out.whole.push(option.name);
+    }
+  }
+  return out;
 }
 
 /**

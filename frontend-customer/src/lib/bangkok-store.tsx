@@ -9,6 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import type { MenuItem, RestaurantLocation } from "@/lib/bangkok-data";
+
+/** Which part of an item a chosen option covers. Mirrors the server enum. */
+export type OptionPortion = "WHOLE" | "LEFT" | "RIGHT";
 import { useAppConfig, useRestaurant, pickDefaultLocation } from "@/lib/queries";
 import { applyBrandColor } from "@/lib/theme";
 
@@ -34,6 +37,15 @@ export type CartLine = {
   sizeName: string | undefined;
   optionIds: string[];
   addOnNames: string[];
+  /**
+   * Which half each chosen option goes on, keyed by option id.
+   *
+   * Added alongside `optionIds` rather than replacing it: carts already live
+   * in localStorage in the old shape, and a saved basket must not be lost to
+   * a type change. An option with no entry here is on the WHOLE item, which is
+   * what every existing line means.
+   */
+  optionPortions?: Record<string, OptionPortion>;
 };
 
 /**
@@ -80,6 +92,7 @@ type AddItemOptions = {
   sizeName: string | undefined;
   optionIds?: string[];
   addOnNames?: string[];
+  optionPortions?: Record<string, OptionPortion>;
 };
 
 type Store = AppState & {
@@ -236,7 +249,15 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       setState((s) => {
         const optionIds = options?.optionIds ?? [];
         const addOnNames = options?.addOnNames ?? [];
-        const signature = `${item.id}-${options?.sizeId ?? ""}-${optionIds.slice().sort().join("-")}`;
+        const optionPortions = options?.optionPortions ?? {};
+        // The portion is part of what makes a line distinct: half pepperoni and
+        // whole pepperoni are two different pizzas, and without it the second
+        // would silently increment the quantity of the first.
+        const signature = `${item.id}-${options?.sizeId ?? ""}-${optionIds
+          .slice()
+          .sort()
+          .map((id) => `${id}:${optionPortions[id] ?? "WHOLE"}`)
+          .join("-")}`;
         const found = s.cart.find((line) => line.lineId === signature);
         if (found) {
           return {
@@ -264,6 +285,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
               sizeName: options?.sizeName,
               optionIds,
               addOnNames,
+              optionPortions,
             },
           ],
         };

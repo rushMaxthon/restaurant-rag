@@ -365,6 +365,34 @@ Existing menu items remain valid because:
 - `has_sizes` and `has_customizations` default to `false`
 - old create/update payloads can still omit all customization fields
 - simple items still use the existing price and add-to-cart flow
+
+### Half-and-half options
+
+A customization group may be split across two halves of an item — half
+pepperoni, half mushroom. There is no separate "half pizza" product: it is a
+flag on the group, set by the owner in admin.
+
+- `menu_item_customization_groups.supports_halves: boolean` (default `false`)
+- each selected option on an order carries `portion: WHOLE | LEFT | RIGHT`
+- `LEFT` and `RIGHT` are refused unless the group sets `supports_halves`, so a
+  client cannot half-price a topping on an item the kitchen cannot split
+- a half costs HALF the option's `extra_price`, quantized the same way every
+  other amount is. This is a product decision, not a consequence of the schema:
+  charging full price for half coverage is defensible and some chains do it,
+  but "I only got it on half, so I pay half" needs no explaining on a receipt
+- the same option chosen for BOTH halves is normalised to `WHOLE` before
+  pricing — it costs the same either way, but the kitchen ticket then reads
+  "Pepperoni" rather than two half-lines, and a group with a maximum of one
+  still accepts it
+- each selection counts once towards `min_selection` / `max_selection`,
+  whichever half it is on
+- the snapshot on the order item records `portion`, and `extra_price` there is
+  the price CHARGED (halved where applicable), not the menu's list price — a
+  refund or a kitchen ticket needs the number that was actually billed
+
+The customer app shows the portion control only for a group whose flag is on,
+and only once the option is actually selected: a picker under an unchosen
+option is three controls asking about nothing.
 - cart/order/payment flows accept old payloads and only expand when size/options are present
 - recommendation, offer, chat, and bestseller flows continue reading the existing `menu_items` table
 

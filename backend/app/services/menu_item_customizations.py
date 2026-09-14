@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.enums import MenuItemPortion
 from app.models.menu_item import MenuItem
 from app.models.menu_item_customization_group import MenuItemCustomizationGroup
 from app.models.menu_item_customization_option import MenuItemCustomizationOption
@@ -34,6 +35,8 @@ def _safe_decimal(value: Decimal | int | float | None) -> Decimal:
 class SelectedCustomizationOptionInput:
     option_id: uuid.UUID
     quantity: int = 1
+    # WHOLE unless the customer split a group that allows it.
+    portion: MenuItemPortion = MenuItemPortion.WHOLE
 
 
 @dataclass(slots=True)
@@ -46,6 +49,9 @@ class ResolvedCustomizationOption:
     extra_price: Decimal
     quantity: int
     is_countable: bool
+    # Which part of the item this option covers. WHOLE for everything that is
+    # not a split group, which is almost everything.
+    portion: MenuItemPortion = MenuItemPortion.WHOLE
 
     def to_snapshot(self) -> dict[str, object]:
         return {
@@ -54,10 +60,28 @@ class ResolvedCustomizationOption:
             "selection_type": self.selection_type,
             "option_id": str(self.option_id),
             "option_name": self.option_name,
-            "extra_price": str(self.extra_price),
+            # The price this option was CHARGED at, which for a half is half the
+            # list price. A kitchen or a refund reading the snapshot needs the
+            # number that was actually billed, not the menu's.
+            "extra_price": str(self.charged_extra_price),
             "quantity": self.quantity,
             "is_countable": self.is_countable,
+            "portion": self.portion.value,
         }
+
+    @property
+    def charged_extra_price(self) -> Decimal:
+        """Half the list price for half the item.
+
+        A product decision, not a consequence of the schema: some chains charge
+        full price for a half topping. "I only got it on half, so I pay half"
+        is the one a customer is least likely to call wrong, and it needs no
+        explaining on the receipt.
+        """
+
+        if self.portion is MenuItemPortion.WHOLE:
+            return _quantize(self.extra_price)
+        return _quantize(self.extra_price / 2)
 
 
 @dataclass(slots=True)
@@ -203,15 +227,50 @@ def resolve_menu_item_selection(
 
     selected_by_group: dict[uuid.UUID, list[ResolvedCustomizationOption]] = {}
     customization_total = Decimal("0.00")
-    seen_option_ids: set[uuid.UUID] = set()
+    # Keyed by (option, portion), not by option alone: pepperoni on the left and
+    # pepperoni on the right are two legitimate choices, and keying by option
+    # would have rejected the whole point of a half-and-half pizza.
+    seen_selections: set[tuple[uuid.UUID, MenuItemPortion]] = set()
+
+    # Left AND right of the same topping is the same thing as the whole item, so
+    # it is collapsed before pricing. It costs the same either way; the point is
+    # that the ticket reads "Pepperoni" instead of two half-lines, and that a
+    # group with a max of one still accepts it.
+    both_halves = {
+        selection.option_id
+        for selection in selected_options
+        if selection.portion is MenuItemPortion.LEFT
+    } & {
+        selection.option_id
+        for selection in selected_options
+        if selection.portion is MenuItemPortion.RIGHT
+    }
+    normalized_options: list[SelectedCustomizationOptionInput] = []
+    collapsed: set[uuid.UUID] = set()
+    for selection in selected_options:
+        if selection.option_id in both_halves and selection.portion is not MenuItemPortion.WHOLE:
+            if selection.option_id in collapsed:
+                continue
+            collapsed.add(selection.option_id)
+            normalized_options.append(
+                SelectedCustomizationOptionInput(
+                    option_id=selection.option_id,
+                    quantity=selection.quantity,
+                    portion=MenuItemPortion.WHOLE,
+                )
+            )
+            continue
+        normalized_options.append(selection)
+    selected_options = normalized_options
 
     for selection in selected_options:
-        if selection.option_id in seen_option_ids:
+        key = (selection.option_id, selection.portion)
+        if key in seen_selections:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Duplicate customization choices were selected for {menu_item.name}.",
             )
-        seen_option_ids.add(selection.option_id)
+        seen_selections.add(key)
         resolved = active_options_by_id.get(selection.option_id)
         if resolved is None:
             raise HTTPException(
@@ -219,6 +278,11 @@ def resolve_menu_item_selection(
                 detail=f"An unavailable customization was selected for {menu_item.name}.",
             )
         group, option = resolved
+        if selection.portion is not MenuItemPortion.WHOLE and not group.supports_halves:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{group.title} cannot be applied to half of {menu_item.name}.",
+            )
         quantity = selection.quantity
         if quantity < 1:
             raise HTTPException(
@@ -239,9 +303,10 @@ def resolve_menu_item_selection(
             extra_price=_safe_decimal(option.extra_price),
             quantity=quantity,
             is_countable=option.is_countable,
+            portion=selection.portion,
         )
         selected_by_group.setdefault(group.id, []).append(selected_option)
-        customization_total += _quantize(selected_option.extra_price * quantity)
+        customization_total += _quantize(selected_option.charged_extra_price * quantity)
 
     logger.info(
         "Customization resolve payload menu_item_id=%s menu_item_name=%s selected_size_id=%s active_group_ids=%s selected_option_ids=%s selected_group_ids=%s",

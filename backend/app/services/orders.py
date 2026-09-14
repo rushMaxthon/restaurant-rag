@@ -395,6 +395,8 @@ def _prepare_order_draft(
                 SelectedCustomizationOptionInput(
                     option_id=selected_option.option_id,
                     quantity=selected_option.quantity,
+                    # Which half, for a group the owner marked splittable.
+                    portion=selected_option.portion,
                 )
                 for selected_option in cart_item.selected_options
             ],

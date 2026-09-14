@@ -94,6 +94,23 @@ class MenuItemCustomizationSelectionType(StrEnum):
     MULTI = "MULTI"
 
 
+class MenuItemPortion(StrEnum):
+    """Which part of the item a chosen option applies to.
+
+    Half-and-half toppings: pepperoni on one side, mushroom on the other. Only
+    groups the owner marks `supports_halves` may use LEFT or RIGHT, so a client
+    cannot half-price a topping on an item the kitchen cannot split.
+
+    LEFT and RIGHT are labels for two halves, not geometry — the kitchen reads
+    them off the ticket. Naming them is what lets an order say which topping
+    goes where at all.
+    """
+
+    WHOLE = "WHOLE"
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+
+
 class ChatMessageRole(StrEnum):
     USER = "USER"
     ASSISTANT = "ASSISTANT"

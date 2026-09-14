@@ -916,3 +916,239 @@ html {
   border-color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
 }
+
+/* --- Half and half ----------------------------------------------------------
+   Where a topping goes, for a group the owner marked splittable. Shown only
+   once the topping is actually on the item: a picker under an unchosen option
+   is three controls asking about nothing.
+
+   The glyph is a circle filled on the side the topping covers, so the choice
+   reads at a glance without needing the word. */
+.portion-picker {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.2rem 2.1rem;
+}
+.portion-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    color 0.16s;
+}
+.portion-option:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.portion-option[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.portion-glyph {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+.portion-glyph--left {
+  background: linear-gradient(to right, currentColor 50%, transparent 50%);
+}
+.portion-glyph--right {
+  background: linear-gradient(to left, currentColor 50%, transparent 50%);
+}
+.portion-glyph--whole {
+  background: currentColor;
+}
+
+/* The pizza read back before paying. */
+.half-summary {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--surface-alt);
+  padding: 0.85rem 1rem;
+}
+.half-summary__title {
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.half-summary__rows {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.half-summary__rows p {
+  display: grid;
+  grid-template-columns: 14px 5.2rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.half-summary__rows b {
+  font-weight: 800;
+}
+.half-summary__rows span:last-child {
+  color: var(--muted);
+  min-width: 0;
+}
+
+@media (pointer: coarse) {
+  .portion-option {
+    min-height: 44px;
+  }
+}
+
+/* --- Choice cards on the dish page ------------------------------------------
+   One card per decision, matching the mobile app: a title, a badge saying
+   whether it has to be answered, and a line saying what kind of choice it is.
+   Before this every group was a bare heading in one long column, so "single
+   choice" and "up to four" were only discoverable by tapping a second option
+   and watching what happened. */
+.choice-card {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--surface);
+  padding: 0.9rem 1rem 1rem;
+}
+.choice-card__head {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+}
+/* The whole header is the fold control, so the target is the width of the card
+   rather than a chevron a thumb has to find. */
+.choice-card__toggle {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.choice-card__chevron {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+.choice-card[data-folded="true"] .choice-card__chevron {
+  transform: rotate(-90deg);
+}
+/* Folded, the card is just its header: no trailing gap under nothing. */
+.choice-card[data-folded="true"] {
+  padding-bottom: 0.9rem;
+}
+.choice-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.choice-card__hint {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.choice-badge {
+  border-radius: 999px;
+  background: var(--surface-alt);
+  padding: 0.15rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+.choice-badge--required {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* Sizes side by side, because a size IS the price and the three are being
+   compared against each other rather than added to anything. */
+.size-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.size-tile {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 66px;
+  place-content: center;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface-alt);
+  padding: 0.6rem 0.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    color 0.16s;
+}
+.size-tile:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.size-tile[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.size-tile__name {
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+.size-tile__price {
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+/* --- Option list -----------------------------------------------------------
+   One option per row, deliberately. Two columns were tried first and were
+   worse: "Tom yum cream" and "Bird's eye chilli" wrapped to three lines, and
+   the price was clipped to "+$1.7". A price that lies is not a saving.
+
+   The height comes back through a tighter row and a group that can be folded
+   away once it has been answered. */
+.option-grid {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+.option-grid .option-row {
+  width: 100%;
+  min-height: 46px;
+}
+/* The price never shrinks and never wraps; the name yields instead. */
+.option-grid .option-row > :last-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.option-grid .option-row > :first-child {
+  min-width: 0;
+}
+.option-grid .portion-picker {
+  margin-left: 2.1rem;
+}
+
+/* Three sizes should read as three, not two and a stray. */
+.size-tiles {
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+}

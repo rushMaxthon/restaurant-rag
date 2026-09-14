@@ -159,6 +159,8 @@ def _build_customization_group(
         is_required=payload.is_required,
         min_selection=payload.min_selection,
         max_selection=payload.max_selection,
+        # Whether the kitchen can split these options across halves.
+        supports_halves=payload.supports_halves,
         is_active=payload.is_active,
         sort_order=payload.sort_order,
         options=[_build_customization_option(option) for option in payload.options],

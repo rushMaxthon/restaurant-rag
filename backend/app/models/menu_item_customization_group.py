@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,6 +45,12 @@ class MenuItemCustomizationGroup(TimestampMixin, Base):
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     min_selection: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     max_selection: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Whether this group's options may be applied to half the item.
+    #
+    # Off by default: most groups (spice level, crust) have no halves, and a
+    # kitchen that cannot split an item must not be sent an order that says it
+    # can. Turning it on is what unlocks "half pepperoni, half mushroom".
+    supports_halves: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 

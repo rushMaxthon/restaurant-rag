@@ -1,16 +1,27 @@
 import { useMemo, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Check, ChevronLeft, Minus, Plus, ShoppingBag, Star, Store } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Minus,
+  Plus,
+  ShoppingBag,
+  Star,
+  Store,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import type { OptionPortion } from "@/lib/bangkok-store";
 import {
   activeOptions,
   activeSizes,
   requiresChoosing,
+  splitSummary,
   selectionProblem,
   unitPriceFor,
   visibleGroups,
@@ -38,6 +49,14 @@ function DishPage() {
 
   const [size, setSize] = useState<string>("");
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  // Which half each chosen topping goes on, keyed by option id. Only groups the
+  // owner marked splittable ever put anything here.
+  const [portions, setPortions] = useState<Record<string, OptionPortion>>({});
+  // Groups the customer has folded away. Everything starts open — nothing is
+  // hidden from someone who has not asked for it - but a pizza with a sauce,
+  // seven toppings and a crust is a long scroll, and folding what is already
+  // answered brings the Add button back into reach.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -60,7 +79,8 @@ function DishPage() {
   const chosenSize = sizes.find((s) => s.id === (size || sizes[0]?.id));
   const groups = visibleGroups(item, chosenSize);
   const chosenOptionIds = groups.flatMap((g) => selected[g.id] ?? []);
-  const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds);
+  const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds, portions);
+  const halves = splitSummary(item, chosenSize, chosenOptionIds, portions);
   const total = unitPrice * quantity;
   const problem = selectionProblem(item, chosenSize, selected);
   const valid = problem === null;
@@ -93,6 +113,7 @@ function DishPage() {
       sizeName: chosenSize?.name,
       optionIds: addons.map((a) => a.id),
       addOnNames: addons.map((a) => a.name),
+      optionPortions: portions,
     };
     if (replace) store.replaceCartWith(item, options);
     else store.addItem(item, options);
@@ -191,81 +212,202 @@ function DishPage() {
 
             <p className="mt-4 leading-relaxed text-muted">{item.description}</p>
 
+            {/* "From $12" rather than a single price the customer may not end
+                up paying. Only for sized items; a simple dish has one price and
+                saying "from" about it would be evasive. */}
             {sizes.length > 0 && (
-              <div className="mt-6">
-                <h2 className="text-sm font-black uppercase tracking-wide text-muted">
-                  Choose a size
-                </h2>
-                <div className="mt-3 grid gap-2">
+              <div className="mt-4">
+                <p className="money font-display text-3xl font-black">
+                  From{" "}
+                  {formatMoney(
+                    sizes.reduce(
+                      (low, s) => (Number(s.price) < Number(low.price) ? s : low),
+                      sizes[0]!,
+                    ).price,
+                  )}
+                </p>
+                <p className="text-sm text-muted">Final price depends on the size you pick</p>
+              </div>
+            )}
+
+            {sizes.length > 0 && (
+              <section className="choice-card mt-6">
+                <header className="choice-card__head">
+                  <h2 className="choice-card__title">
+                    Choose a size
+                    <span className="choice-badge choice-badge--required">Required</span>
+                  </h2>
+                  <p className="choice-card__hint">Base price varies with size</p>
+                </header>
+                {/* Tiles, not a list. A size is the price of the pizza rather
+                    than an addition to it, so the three sit side by side to be
+                    compared — which is also how the mobile app shows them. */}
+                <div className="size-tiles">
                   {sizes.map((s) => {
                     const active = chosenSize?.id === s.id;
                     return (
                       <button
                         type="button"
-                        className="option-row"
+                        className="size-tile"
                         data-on={active}
                         onClick={() => setSize(s.id)}
                         key={s.id}
                       >
-                        <span className="flex items-center gap-2 font-semibold">
-                          <span className="option-dot" data-on={active} />
-                          {s.name}
-                        </span>
+                        <span className="size-tile__name">{s.name}</span>
                         {/* The absolute price, not "+". A size REPLACES the
                             base price, so a plus sign said the opposite of what
                             the customer would be charged. */}
-                        <span className="money text-sm font-bold">{formatMoney(s.price)}</span>
+                        <span className="money size-tile__price">{formatMoney(s.price)}</span>
                       </button>
                     );
                   })}
+                </div>
+              </section>
+            )}
+
+            {groups.map((g) => {
+              const chosenHere = activeOptions(g).filter((o) =>
+                (selected[g.id] ?? []).includes(o.id),
+              );
+              const isFolded = Boolean(folded[g.id]);
+              return (
+                <section className="choice-card mt-6" key={g.id} data-folded={isFolded}>
+                  <button
+                    type="button"
+                    className="choice-card__head choice-card__toggle"
+                    aria-expanded={!isFolded}
+                    onClick={() => setFolded((f) => ({ ...f, [g.id]: !f[g.id] }))}
+                  >
+                    <h2 className="choice-card__title">
+                      {g.title}
+                      {/* Labelled from the same rule the server enforces: a group
+                        marked "not required" with a minimum of one IS required,
+                        and showing it as optional only defers the surprise. */}
+                      {requiresChoosing(g) ? (
+                        <span className="choice-badge choice-badge--required">
+                          {g.min_selection > 1 ? `Choose ${g.min_selection}` : "Required"}
+                        </span>
+                      ) : (
+                        <span className="choice-badge">Optional</span>
+                      )}
+                      <ChevronDown className="choice-card__chevron size-4" />
+                    </h2>
+                    {/* What kind of choice this is, said once at the top rather
+                      than left for the customer to infer from how the controls
+                      behave when they tap a second one. */}
+                    {/* Folded, the card says what was chosen rather than what
+                        kind of choice it was — the question is answered, and the
+                        answer is the useful thing to show. */}
+                    <p className="choice-card__hint">
+                      {isFolded && chosenHere.length > 0
+                        ? chosenHere.map((o) => o.name).join(", ")
+                        : `${
+                            g.selection_type === "SINGLE"
+                              ? "Single choice"
+                              : g.max_selection > 0
+                                ? `Choose up to ${g.max_selection}`
+                                : "Choose any"
+                          }${g.supports_halves ? " · can be split across halves" : ""}`}
+                    </p>
+                  </button>
+                  {!isFolded && (
+                    <div className="option-grid">
+                      {activeOptions(g).map((o) => {
+                        const active = Boolean(selected[g.id]?.includes(o.id));
+                        const portion = portions[o.id] ?? "WHOLE";
+                        const half = g.supports_halves && portion !== "WHOLE";
+                        return (
+                          <div key={o.id}>
+                            <button
+                              type="button"
+                              onClick={() => toggle(g.id, o.id, g.selection_type === "SINGLE")}
+                              className="option-row w-full"
+                              data-on={active}
+                            >
+                              <span className="flex items-center gap-2 font-semibold">
+                                <span className="option-dot" data-on={active}>
+                                  {active && <Check className="size-3" strokeWidth={3} />}
+                                </span>
+                                {o.name}
+                              </span>
+                              <span className="money text-sm font-bold">
+                                {/* Half the topping, half the price — shown here so
+                                the number moves when the customer splits it,
+                                rather than only in the total. */}
+                                {Number(o.extra_price) > 0
+                                  ? `+${formatMoney(half ? Number(o.extra_price) / 2 : o.extra_price)}`
+                                  : "Free"}
+                              </span>
+                            </button>
+
+                            {/* Only for a group the owner marked splittable, and
+                            only once the topping is actually on the pizza. */}
+                            {active && g.supports_halves && (
+                              <div
+                                className="portion-picker"
+                                role="group"
+                                aria-label={`Where to put ${o.name}`}
+                              >
+                                {(["LEFT", "WHOLE", "RIGHT"] as OptionPortion[]).map((value) => (
+                                  <button
+                                    type="button"
+                                    key={value}
+                                    className="portion-option"
+                                    data-on={portion === value}
+                                    onClick={() =>
+                                      setPortions((current) => ({ ...current, [o.id]: value }))
+                                    }
+                                  >
+                                    <span
+                                      className={`portion-glyph portion-glyph--${value.toLowerCase()}`}
+                                      aria-hidden="true"
+                                    />
+                                    {value === "WHOLE"
+                                      ? "Whole"
+                                      : value === "LEFT"
+                                        ? "Left"
+                                        : "Right"}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {/* The pizza read back, so it can be checked before paying
+                rather than discovered at the door. */}
+            {(halves.left.length > 0 || halves.right.length > 0) && (
+              <div className="half-summary mt-6">
+                {/* The item's own name, not "Your pizza": a splittable group is a
+                    flag on a group, and nothing says the item is a pizza. */}
+                <p className="half-summary__title">How it is split</p>
+                <div className="half-summary__rows">
+                  <p>
+                    <span className="portion-glyph portion-glyph--left" aria-hidden="true" />
+                    <b>Left half</b>
+                    <span>{halves.left.length ? halves.left.join(", ") : "Nothing extra"}</span>
+                  </p>
+                  <p>
+                    <span className="portion-glyph portion-glyph--right" aria-hidden="true" />
+                    <b>Right half</b>
+                    <span>{halves.right.length ? halves.right.join(", ") : "Nothing extra"}</span>
+                  </p>
+                  {halves.whole.length > 0 && (
+                    <p>
+                      <span className="portion-glyph portion-glyph--whole" aria-hidden="true" />
+                      <b>Whole</b>
+                      <span>{halves.whole.join(", ")}</span>
+                    </p>
+                  )}
                 </div>
               </div>
             )}
-
-            {groups.map((g) => (
-              <div className="mt-6" key={g.id}>
-                <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-muted">
-                  {g.title}
-                  {/* Labelled from the same rule the server enforces: a group
-                      marked "not required" with a minimum of one IS required,
-                      and showing it as optional only defers the surprise. */}
-                  {requiresChoosing(g) && (
-                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[0.6rem] text-primary">
-                      {g.min_selection > 1 ? `Choose ${g.min_selection}` : "Required"}
-                    </span>
-                  )}
-                  {g.selection_type === "MULTI" && g.max_selection > 0 && (
-                    <span className="text-[0.6rem] font-bold text-muted">
-                      up to {g.max_selection}
-                    </span>
-                  )}
-                </h2>
-                <div className="mt-3 grid gap-2">
-                  {activeOptions(g).map((o) => {
-                    const active = Boolean(selected[g.id]?.includes(o.id));
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => toggle(g.id, o.id, g.selection_type === "SINGLE")}
-                        className="option-row"
-                        data-on={active}
-                        key={o.id}
-                      >
-                        <span className="flex items-center gap-2 font-semibold">
-                          <span className="option-dot" data-on={active}>
-                            {active && <Check className="size-3" strokeWidth={3} />}
-                          </span>
-                          {o.name}
-                        </span>
-                        <span className="money text-sm font-bold">
-                          +{formatMoney(o.extra_price)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
 
             <div className="mt-7 flex items-center justify-between gap-4 border-t border-border pt-5">
               <div className="qty-pill">

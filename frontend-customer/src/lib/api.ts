@@ -168,7 +168,12 @@ export type PersonalizedOffer = {
 export type OrderCreateItem = {
   menu_item_id: string;
   menu_item_size_id?: string | null;
-  selected_options?: { option_id: string; quantity?: number }[];
+  selected_options?: {
+    option_id: string;
+    quantity?: number;
+    /** Which half this option goes on; omitted means the whole item. */
+    portion?: "WHOLE" | "LEFT" | "RIGHT";
+  }[];
   quantity: number;
 };
 

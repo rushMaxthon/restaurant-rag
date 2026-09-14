@@ -23,6 +23,8 @@ class MenuItemCustomizationGroupPayload(BaseModel):
     is_required: bool = False
     min_selection: int = Field(default=0, ge=0)
     max_selection: int = Field(default=1, ge=1)
+    # Whether the kitchen can put these options on half the item.
+    supports_halves: bool = False
     is_active: bool = True
     sort_order: int = Field(default=0, ge=0)
     options: list[MenuItemCustomizationOptionPayload] = Field(default_factory=list)
@@ -102,6 +104,7 @@ class MenuItemCustomizationGroupResponse(BaseModel):
     is_required: bool
     min_selection: int
     max_selection: int
+    supports_halves: bool = False
     is_active: bool
     sort_order: int
     options: list[MenuItemCustomizationOptionResponse] = Field(default_factory=list)

@@ -4,6 +4,8 @@ import {
   activeSizes,
   requiresChoosing,
   selectionProblem,
+  portionLabel,
+  splitSummary,
   unitPriceFor,
   visibleGroups,
 } from "./customization";
@@ -48,6 +50,7 @@ function group(over: Partial<CustomizationGroup> = {}): CustomizationGroup {
     is_required: over.is_required ?? false,
     min_selection: over.min_selection ?? 0,
     max_selection: over.max_selection ?? 3,
+    supports_halves: over.supports_halves ?? false,
     is_active: over.is_active ?? true,
     options: over.options ?? [option()],
   };
@@ -245,5 +248,100 @@ describe("selectionProblem", () => {
     // Regular is selected, so Large's required group must not block the order.
     expect(selectionProblem(sized, regular, {})).toBeNull();
     expect(selectionProblem(sized, large, {})).toContain("Large extras");
+  });
+});
+
+describe("halves", () => {
+  /**
+   * Half-and-half: pepperoni one side, mushroom the other.
+   *
+   * Driven entirely by the group's `supports_halves` flag, which the owner sets
+   * in admin — there is no separate "half pizza" item. Pricing mirrors the
+   * server: a half costs half the option's extra price, rounded the same way.
+   */
+  const pepperoni = option({ id: "pep", name: "Pepperoni", extra_price: "3.00" });
+  const mushroom = option({ id: "mush", name: "Mushroom", extra_price: "2.50" });
+  const olives = option({ id: "oli", name: "Olives", extra_price: "1.25" });
+
+  const pizza = item({
+    price: "12.00",
+    has_customizations: true,
+    customization_groups: [
+      group({
+        id: "toppings",
+        title: "Toppings",
+        supports_halves: true,
+        options: [pepperoni, mushroom, olives],
+      }),
+    ],
+  });
+
+  it("charges full price for a whole topping", () => {
+    expect(unitPriceFor(pizza, undefined, ["pep"])).toBe(15);
+  });
+
+  it("charges half for half", () => {
+    expect(unitPriceFor(pizza, undefined, ["pep"], { pep: "LEFT" })).toBe(13.5);
+  });
+
+  it("prices two different halves independently", () => {
+    const price = unitPriceFor(pizza, undefined, ["pep", "mush"], {
+      pep: "LEFT",
+      mush: "RIGHT",
+    });
+    // 12 + 3/2 + 2.50/2
+    expect(price).toBe(14.75);
+  });
+
+  it("rounds a half the way the server does", () => {
+    // 1.25 / 2 is 0.625, which must land on 0.63 to match the server.
+    expect(unitPriceFor(pizza, undefined, ["oli"], { oli: "RIGHT" })).toBe(12.63);
+  });
+
+  it("ignores a portion on a group that cannot be split", () => {
+    // The flag is the authority. A stale portion on an ordinary group must not
+    // quietly halve the price of a topping the kitchen will apply in full.
+    const plain = item({
+      price: "12.00",
+      has_customizations: true,
+      customization_groups: [group({ id: "g", options: [pepperoni] })],
+    });
+    expect(unitPriceFor(plain, undefined, ["pep"], { pep: "LEFT" })).toBe(15);
+  });
+});
+
+describe("splitSummary", () => {
+  const pepperoni = option({ id: "pep", name: "Pepperoni" });
+  const mushroom = option({ id: "mush", name: "Mushroom" });
+  const pizza = item({
+    has_customizations: true,
+    customization_groups: [
+      group({ id: "t", supports_halves: true, options: [pepperoni, mushroom] }),
+    ],
+  });
+
+  it("reads the pizza back as two halves", () => {
+    const summary = splitSummary(pizza, undefined, ["pep", "mush"], {
+      pep: "LEFT",
+      mush: "RIGHT",
+    });
+    expect(summary).toEqual({ left: ["Pepperoni"], right: ["Mushroom"], whole: [] });
+  });
+
+  it("keeps a whole topping out of both halves", () => {
+    const summary = splitSummary(pizza, undefined, ["pep", "mush"], { pep: "LEFT" });
+    expect(summary).toEqual({ left: ["Pepperoni"], right: [], whole: ["Mushroom"] });
+  });
+
+  it("is empty when nothing is chosen", () => {
+    expect(splitSummary(pizza, undefined, [], {})).toEqual({ left: [], right: [], whole: [] });
+  });
+});
+
+describe("portionLabel", () => {
+  it("names a half the way a customer would say it", () => {
+    expect(portionLabel("LEFT")).toBe("Left half");
+    expect(portionLabel("RIGHT")).toBe("Right half");
+    expect(portionLabel("WHOLE")).toBe("Whole");
   });
 });

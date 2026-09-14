@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
 from app.models.enums import (
+    MenuItemPortion,
     OrderFulfillmentType,
     OrderScheduleType,
     OrderStatus,
@@ -57,6 +58,9 @@ class OrderCustomerSummary(BaseModel):
 class OrderCreateItemCustomizationOption(BaseModel):
     option_id: uuid.UUID
     quantity: int = Field(default=1, ge=1, le=99)
+    # Which half this topping goes on. WHOLE unless the customer split a group
+    # the owner marked splittable; the server refuses LEFT/RIGHT otherwise.
+    portion: MenuItemPortion = MenuItemPortion.WHOLE
 
 
 class OrderCreateItem(BaseModel):
