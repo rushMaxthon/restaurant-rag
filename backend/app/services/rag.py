@@ -594,6 +594,14 @@ QUERY_STOPWORDS = {
     "suggest",
     "tell",
     "the",
+    # Grammar the list already covers in other persons and tenses — it has
+    # "is", "do", "have", "can", "would", "tell", "recommend", "suggest" — and
+    # these were simply missing. Each produced a topic: "which item are
+    # trending" searched for "are trending", "what is there for breakfast" for
+    # "there breakfast", "i want momos" for "want momo".
+    "are",
+    "there",
+    "want",
     "type",
     "types",
     "we",
@@ -618,6 +626,11 @@ TOPIC_STOPWORDS = QUERY_STOPWORDS | {
     "option",
     "options",
     "something",
+    # "thing" belongs with "something" and "anything", and its absence had a
+    # cost: "some spicy thing" searched for the literal word "thing" and matched
+    # "Choose the size, the crust and everything on top of it".
+    "thing",
+    "things",
     "whats",
     # When a customer asks "what is menu for today?", the meta words above drop
     # out and the LAST token standing becomes the dish. Without these that token
@@ -920,10 +933,22 @@ def _query_tokens(message: str) -> list[str]:
 def _canonicalize_topic(value: str | None) -> str | None:
     if value is None:
         return None
+    # Filtered on BOTH the raw token and its singular.
+    #
+    # Filtering the raw form alone let every plural walk past a list naming its
+    # singular: "todays" is not a stopword, survived, was then stemmed to
+    # "today" — which IS one — and became the dish. "show me todays menu"
+    # answered "We don't have a dish called 'today' on the menu".
+    #
+    # Filtering the stem alone breaks the other direction: `_singularize_token`
+    # strips a trailing "s", so "this" becomes "thi" and escapes a list that
+    # names "this". Checking both catches the plural without inventing that
+    # hole, and needs no new words.
     tokens = [
         _singularize_token(token)
         for token in _query_tokens(value)
         if token not in TOPIC_STOPWORDS
+        and _singularize_token(token) not in TOPIC_STOPWORDS
     ]
     if not tokens:
         return None
@@ -940,10 +965,13 @@ def _extract_bare_topic_hint(message: str) -> str | None:
     if "restaurant" in normalized:
         return None
 
+    # Both forms checked, for the reason in `_canonicalize_topic`.
     candidate_tokens = [
         _singularize_token(token)
         for token in _query_tokens(message)
-        if not token.isdigit() and token not in BARE_TOPIC_STOPWORDS
+        if not token.isdigit()
+        and token not in BARE_TOPIC_STOPWORDS
+        and _singularize_token(token) not in BARE_TOPIC_STOPWORDS
     ]
     if not candidate_tokens or len(candidate_tokens) > 3:
         return None
@@ -978,9 +1006,20 @@ def _extract_direct_item_hint(message: str) -> str | None:
         canonical_candidate = _canonicalize_topic(candidate)
         if canonical_candidate:
             return canonical_candidate
-        candidate_tokens = _query_tokens(candidate)
+        # The fallback honours the same stopwords. Without this it rebuilt a
+        # topic from raw tokens whenever canonicalisation returned None —
+        # overriding the one conclusion that mattered, that the phrase names no
+        # dish. "show me todays menu" canonicalised to None and came back out of
+        # here as "today menu", which answered "We don't have a 'today menu'
+        # option".
+        candidate_tokens = [
+            _singularize_token(token)
+            for token in _query_tokens(candidate)
+            if token not in TOPIC_STOPWORDS
+            and _singularize_token(token) not in TOPIC_STOPWORDS
+        ]
         if candidate_tokens:
-            return " ".join(_singularize_token(token) for token in candidate_tokens)
+            return " ".join(candidate_tokens)
     return _extract_bare_topic_hint(message)
 
 
@@ -1639,12 +1678,46 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
     )
 
 
+def _extract_spice_preference(message: str) -> bool | None:
+    """True for "spicy", False for "not spicy", None when unmentioned.
+
+    `_extract_bare_topic_hint` strips "spicy" so it cannot become a dish name —
+    correctly, since no dish is called that — but nothing then SET the filter,
+    so the requirement was simply deleted. "some spicy thing" reached retrieval
+    as spicy=None and returned whatever matched the leftover word.
+
+    Negation is checked BEFORE the positive reading. "nothing too spicy"
+    contains "spicy" and means the opposite; a substring test would serve the
+    customer the one thing they ruled out. This is the same flaw
+    `_infer_cache_query_descriptor` still has, which is why durable preferences
+    do not take spice from there.
+    """
+
+    normalized = _normalize_match_text(message)
+    if not normalized:
+        return None
+
+    heat = r"(spicy|chilli|chili|hot|fiery)"
+    if re.search(rf"\b(not|no|nothing|without|avoid|less|mild|non)\b[^.]{{0,24}}\b{heat}\b", normalized):
+        return False
+    if re.search(rf"\b{heat}\b[^.]{{0,12}}\b(free|less)\b", normalized):
+        return False
+    if re.search(rf"\b{heat}\b", normalized):
+        return True
+    if re.search(r"\bmild\b", normalized):
+        return False
+    return None
+
+
 def _fallback_extract_intent(message: str, session_state: SessionConversationState) -> ExtractedIntent:
     # Read once, applied to every branch below. The diet filter downstream
     # (`candidate.menu_item.is_veg`) already worked; nothing was ever handing
     # it a diet, so a vegetarian's request reached retrieval as an ordinary
     # search for a dish that happened to be called "vegetarian".
     message_diet = _extract_diet(message)
+    # Same reasoning as the diet above: the spice filter downstream already
+    # works, nothing was handing it a value.
+    message_spicy = _extract_spice_preference(message)
     multi_item_hints = _drop_non_dish_topics(_extract_multi_item_hints(message))
     if _message_requests_new_items(message):
         overrides = _extract_new_query_overrides(message)
@@ -1706,6 +1779,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=multi_item_hints or None,
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
             mood=next((term for term in ("dinner", "lunch", "breakfast", "meal", "snack") if term in normalized), None),
         )
 
@@ -1716,6 +1790,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=multi_item_hints,
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
         )
 
     direct_item_hint = _extract_direct_item_hint(message)
@@ -1728,6 +1803,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
             items=[direct_item_hint],
             budget=explicit_budget,
             diet=message_diet,
+            spicy=message_spicy,
         )
 
     if _is_out_of_domain_message(message):
@@ -1738,6 +1814,7 @@ def _fallback_extract_intent(message: str, session_state: SessionConversationSta
         budget=explicit_budget,
         show_more=_is_follow_up_recommendation_message(message),
         diet=message_diet,
+        spicy=message_spicy,
     )
     if "restaurant" in normalized:
         fallback.intent = "restaurant_list"
@@ -3344,15 +3421,34 @@ HOURS_QUESTION_ANCHORS = (
     "what are your opening hours",
 )
 
-# Measured over twenty-one phrasings with nomic-embed-text:
+# What a MENU question sounds like. The hours anchors alone were not enough:
+# "Tell me menu for today" measured 0.398 from them, inside any threshold that
+# still admitted "when can I order" at 0.438. The bands overlap completely and
+# no cutoff separates them, because "today" pulls a menu question toward
+# opening-hours language.
 #
-#   availability questions   0.087 - 0.464
-#   everything else          0.518 - 0.660   (nearest: "do you have pizza")
+# Comparing against both sides removes the threshold entirely — whichever
+# meaning is nearer wins. Measured over thirteen phrasings, 13/13 correct:
 #
-# 0.49 sits in that gap. The numbers belong to THIS embedding model; switching
-# `embedding_provider` to Gemini requires re-measuring, and nothing here will
-# complain if they quietly stop being right.
+#   "Tell me menu for today"   hours 0.398   menu 0.229  -> menu
+#   "what do you have today"   hours 0.371   menu 0.308  -> menu
+#   "when can I order"         hours 0.438   menu 0.510  -> hours
+#   "is the kitchen open"      hours 0.344   menu 0.499  -> hours
+# A question must be genuinely NEAR the hours anchors, not merely nearer to them
+# than to menu. "how much is delivery" sits 0.552 from hours and 0.564 from
+# menu: far from both, and hours wins by 0.012 of noise. It is a fee question,
+# answered by the service-info tier — but this must not call it an hours
+# question just because nothing else is closer.
 HOURS_QUESTION_MAX_DISTANCE = 0.49
+
+MENU_QUESTION_ANCHORS = (
+    "what is on the menu",
+    "show me the menu",
+    "what food do you have",
+    "what dishes do you serve",
+)
+
+_MENU_ANCHOR_VECTORS: list[list[float]] | None = None
 
 _HOURS_ANCHOR_VECTORS: list[list[float]] | None = None
 
@@ -3384,7 +3480,7 @@ def looks_like_hours_question(message: str) -> bool:
     exactly as it is, not turn every refusal into an hours answer.
     """
 
-    global _HOURS_ANCHOR_VECTORS
+    global _HOURS_ANCHOR_VECTORS, _MENU_ANCHOR_VECTORS
 
     vector = _embed_query(message)
     if vector is None:
@@ -3396,12 +3492,24 @@ def looks_like_hours_question(message: str) -> bool:
             if any(a is None for a in anchors):
                 return False
             _HOURS_ANCHOR_VECTORS = [a for a in anchors if a is not None]
-        nearest = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+        if _MENU_ANCHOR_VECTORS is None:
+            anchors = [_embed_query(text) for text in MENU_QUESTION_ANCHORS]
+            if any(a is None for a in anchors):
+                return False
+            _MENU_ANCHOR_VECTORS = [a for a in anchors if a is not None]
+
+        nearest_hours = min(_cosine_distance(vector, a) for a in _HOURS_ANCHOR_VECTORS)
+        nearest_menu = min(_cosine_distance(vector, a) for a in _MENU_ANCHOR_VECTORS)
     except Exception:  # pragma: no cover - a recogniser must not break a reply
         logger.exception("Hours-question similarity failed; leaving the turn unchanged")
         return False
 
-    return nearest < HOURS_QUESTION_MAX_DISTANCE
+    # Both conditions. Nearer to hours than to menu settles the overlap that a
+    # threshold alone cannot ("Tell me menu for today" vs "when can I order");
+    # the distance floor rejects questions that are simply far from everything.
+    # A tie goes to menu: this assistant sells food, and answering a food
+    # question with opening times is the worse mistake.
+    return nearest_hours < nearest_menu and nearest_hours < HOURS_QUESTION_MAX_DISTANCE
 
 
 # A clock time the customer named, as opposed to any other number in a message.
@@ -3426,7 +3534,10 @@ def _last_order_labels(location, *, reference_dt) -> str:
     wording rather than stating nothing.
     """
 
-    from app.services.restaurant_locations import list_available_schedule_options
+    from app.services.restaurant_locations import (
+        _get_prep_buffer_minutes,
+        _weekday_for_datetime,
+    )
 
     parts: list[str] = []
     for fulfillment, label, enabled in (
@@ -3436,15 +3547,32 @@ def _last_order_labels(location, *, reference_dt) -> str:
         if not enabled:
             continue
         try:
-            options = list_available_schedule_options(
-                location,
-                restaurant_id=location.restaurant_id,
-                fulfillment_type=fulfillment,
-                reference_dt=reference_dt,
+            # The window end minus prep, NOT the last bookable slot.
+            #
+            # Reading the last slot snapped the answer down to the interval
+            # grid: a 21:30 window with 20 minutes prep ends at 21:10, but the
+            # nearest 30-minute slot at or below that is 21:00, so the customer
+            # was told "until 9:00 PM" when 9:10 was fine. Combined with travel
+            # also being subtracted at the time, a 21:30 window was reported as
+            # 8:30 PM — two hours early.
+            #
+            # The grid is a constraint on SCHEDULING a slot, not on when the
+            # shop stops taking orders.
+            ends = [
+                slot.end_time
+                for slot in location.fulfillment_slots
+                if slot.is_active
+                and slot.fulfillment_type == fulfillment
+                and slot.day_of_week == _weekday_for_datetime(reference_dt)
+            ]
+            if not ends:
+                continue
+            window_end = max(ends)
+            buffer_minutes = _get_prep_buffer_minutes(location, fulfillment)
+            cutoff = datetime.combine(reference_dt.date(), window_end) - timedelta(
+                minutes=buffer_minutes
             )
-            today = options.groups[0] if options.groups else None
-            if today and today.slots:
-                parts.append(f"{label} until {today.slots[-1].label}")
+            parts.append(f"{label} until {_format_clock(cutoff.time())}")
         except Exception:  # pragma: no cover - fall back to the plain window
             logger.exception("Last-order lookup failed for %s", label)
 

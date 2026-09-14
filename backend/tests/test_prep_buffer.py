@@ -1,23 +1,28 @@
 """How long the kitchen needs before the window shuts.
 
-`_get_prep_buffer_minutes` returned `max(preparation_time_minutes, eta)`, so
-prep time only mattered when it exceeded the ETA. It never did: measured across
-all 18 branches, prep runs 15-18 minutes and the delivery ETA 21-33, so
-`preparation_time_minutes` affected nothing anywhere in the product. An owner
-raising it to 25 would have seen no change at all.
+The ordering cutoff is the window end minus PREPARATION TIME. Travel is not
+subtracted.
 
-They are now summed. The decision is that the ETA is travel time, not
-cook-plus-travel — so a branch needing 17 minutes to cook and 29 to deliver
-cannot accept an order 30 minutes before it shuts.
+It has been all three things. Originally `max(prep, eta)`, which meant prep
+never counted — measured across all 18 branches, prep runs 15-20 minutes against
+ETAs of 20-33, so the ETA always won and `preparation_time_minutes` changed
+nothing an owner could observe. Then briefly `prep + eta`, which read the window
+end as the moment food must be in the customer's hands.
 
-Concretely, for Bangkok Bowl Bodakdev with a delivery window ending 21:30:
+Neither is what the window means. It is when the shop stops taking orders, and
+what has to fit before then is cooking. A driver still out at 21:45 is not a
+problem the ordering window exists to prevent.
 
-    before   buffer 29   last order 21:01
-    after    buffer 46   last order 20:44
+For Bangkok Bowl Bodakdev, delivery window ending 21:30, prep 20:
 
-The buffer feeds three things, so this moves all of them together: the ASAP
-cutoff, the minimum lead time on a scheduled order, and which slots the picker
-offers at all.
+    max(prep, eta)   buffer 20   last order 21:10
+    prep + eta       buffer 40   last order 20:50
+    prep only        buffer 20   last order 21:10   <- this
+
+A NULL prep falls back to the ETA rather than to zero. Five of eight stored rows
+have none, and the fallback is protection, not a claim about travel: without it
+those branches would accept an order at the closing minute with nothing left to
+cook it.
 """
 
 from __future__ import annotations
@@ -44,26 +49,43 @@ class FakeLocation:
 
 
 class PrepBufferTests(unittest.TestCase):
-    def test_prep_and_travel_are_added(self) -> None:
-        location = FakeLocation(prep=17, delivery_eta=29, pickup_eta=19)
+    def test_only_preparation_time_is_subtracted(self) -> None:
+        location = FakeLocation(prep=20, delivery_eta=29, pickup_eta=19)
         self.assertEqual(
             _get_prep_buffer_minutes(location, OrderFulfillmentType.DELIVERY),
-            46,
+            20,
         )
 
-    def test_pickup_adds_its_own_eta(self) -> None:
-        """Pickup still has a wait — the customer travels, not the food."""
+    def test_pickup_uses_the_same_prep_time(self) -> None:
+        """The kitchen does not cook faster because the customer collects."""
 
-        location = FakeLocation(prep=17, delivery_eta=29, pickup_eta=19)
+        location = FakeLocation(prep=20, delivery_eta=29, pickup_eta=19)
         self.assertEqual(
             _get_prep_buffer_minutes(location, OrderFulfillmentType.PICKUP),
-            36,
+            20,
         )
 
-    def test_no_prep_time_recorded_leaves_the_eta_alone(self) -> None:
-        """`preparation_time_minutes` is nullable and NULL on most rows — five
-        of eight when this was written. A branch that never set one must behave
-        exactly as it did before, not lose its buffer."""
+    def test_travel_time_does_not_shorten_the_window(self) -> None:
+        """A long delivery ETA must not pull the cutoff back.
+
+        The regression that produced "delivery until 8:30 PM" for a branch whose
+        window runs to 9:30.
+        """
+
+        near = FakeLocation(prep=20, delivery_eta=10, pickup_eta=10)
+        far = FakeLocation(prep=20, delivery_eta=45, pickup_eta=45)
+        self.assertEqual(
+            _get_prep_buffer_minutes(near, OrderFulfillmentType.DELIVERY),
+            _get_prep_buffer_minutes(far, OrderFulfillmentType.DELIVERY),
+        )
+
+    def test_no_prep_time_recorded_falls_back_to_the_eta(self) -> None:
+        """`preparation_time_minutes` is NULL on five of eight stored rows.
+
+        Falling back to zero would let those branches accept an order at the
+        closing minute with nothing left to cook it. The fallback is protection,
+        not a claim that travel counts.
+        """
 
         location = FakeLocation(prep=None, delivery_eta=29, pickup_eta=19)
         self.assertEqual(
@@ -71,16 +93,12 @@ class PrepBufferTests(unittest.TestCase):
             29,
         )
 
-    def test_the_old_max_behaviour_is_gone(self) -> None:
-        """The regression this file exists to prevent.
+    def test_a_zero_prep_time_is_treated_as_unset(self) -> None:
+        """Zero and NULL both mean "nobody told us", and neither should remove
+        the guard entirely."""
 
-        Under `max()` these two produced 29. Summing is the whole change, and a
-        revert would show up here rather than as an order the kitchen cannot
-        cook.
-        """
-
-        location = FakeLocation(prep=17, delivery_eta=29, pickup_eta=19)
-        self.assertNotEqual(
+        location = FakeLocation(prep=0, delivery_eta=29, pickup_eta=19)
+        self.assertEqual(
             _get_prep_buffer_minutes(location, OrderFulfillmentType.DELIVERY),
             29,
         )
