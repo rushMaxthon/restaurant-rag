@@ -2174,7 +2174,24 @@ def _response_cache_key(
     restaurant_id: uuid.UUID | None,
     *,
     descriptor: CacheQueryDescriptor | None = None,
+    preference_diet: str | None = None,
 ) -> str:
+    """The key a reply is stored under.
+
+    `preference_diet` is the diet that will actually be applied, which is not
+    always the one the message names. A guest who said "I am vegetarian" earlier
+    and now asks "I need spicy menu" gets a veg-filtered answer, but the
+    descriptor reads diet out of the MESSAGE and that message names none — so
+    without this every guest asking that question shared one entry regardless of
+    what they eat, and whoever asked first decided what the rest were served.
+    Reported from the app as "I said vegetarian and it showed me chicken".
+
+    Passing the diet that was named in the message changes nothing: the
+    descriptor already put it in the key, and both routes produce the same
+    string. Two vegetarians asking the same question still share an entry, so
+    the cache keeps earning its keep.
+    """
+
     scope = str(restaurant_id) if restaurant_id is not None else "global"
     descriptor = descriptor or _infer_cache_query_descriptor(message)
     topic_slug = re.sub(r"[^a-z0-9]+", "-", descriptor.topic or "general").strip("-") or "general"
@@ -2187,8 +2204,9 @@ def _response_cache_key(
     ]
     if descriptor.budget is not None:
         key_parts.append(f"budget-{descriptor.budget.normalize()}")
-    if descriptor.diet is not None:
-        key_parts.append(descriptor.diet)
+    effective_diet = descriptor.diet or preference_diet
+    if effective_diet is not None:
+        key_parts.append(effective_diet)
     if descriptor.spicy:
         key_parts.append("spicy")
     if descriptor.new_only:
@@ -4489,6 +4507,39 @@ def _is_global_response_cacheable(
     return cacheable
 
 
+def preference_diet_for_cache(
+    db: Session | None,
+    principal: ChatPrincipal,
+    guest_preferences: object | None,
+) -> str | None:
+    """The diet that will shape this reply, resolved early enough to key it.
+
+    The cache is consulted before the turn is prepared, so the diet that
+    `seed_intent_from_preferences` will apply is not known yet — and a key that
+    does not know it lets one visitor's answer be served to another with the
+    opposite diet.
+
+    Free for a guest, whose traits arrive in the request. For a signed-in
+    customer this is one indexed lookup by user_id that `_prepare_chat_turn`
+    then repeats. Worth measuring before optimising: correctness here is the
+    difference between a vegetarian being shown chicken and not.
+    """
+
+    try:
+        preferences = resolve_chat_preferences(
+            db=db,
+            principal=principal,
+            guest_preferences=guest_preferences,
+        )
+        return _normalized_preference_diet(preferences)
+    except Exception:  # pragma: no cover - a cache key must not break a reply
+        # Reading the preference is wrapped too, not just fetching it. Keying
+        # without a diet costs a cache miss; raising from here would turn a
+        # cache-key detail into a failed answer.
+        logger.exception("Preference lookup for cache key failed; keying without it")
+        return None
+
+
 def _lookup_global_response_cache(
     *,
     message: str,
@@ -4496,10 +4547,16 @@ def _lookup_global_response_cache(
     is_greeting: bool,
     uses_personal_context: bool,
     is_follow_up: bool,
+    preference_diet: str | None = None,
 ) -> tuple[str, tuple[str, list[ChatSuggestionItem], str] | None, bool, str]:
     descriptor = _infer_cache_query_descriptor(message)
     normalized_query = descriptor.normalized_message
-    cache_key = _response_cache_key(message, restaurant_id, descriptor=descriptor)
+    cache_key = _response_cache_key(
+        message,
+        restaurant_id,
+        descriptor=descriptor,
+        preference_diet=preference_diet,
+    )
     cacheable, reason = _resolve_global_cacheability(
         message=message,
         restaurant_id=restaurant_id,
@@ -6190,6 +6247,7 @@ def handle_chat_message(
         is_greeting=False,
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
+        preference_diet=preference_diet_for_cache(db, user, guest_preferences),
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:
@@ -6519,6 +6577,7 @@ def stream_chat_message(
         is_greeting=False,
         uses_personal_context=_message_requests_personal_context(message),
         is_follow_up=_is_follow_up_recommendation_message(message),
+        preference_diet=preference_diet_for_cache(db, user, guest_preferences),
     )
     cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
     if cached_response_payload is not None:

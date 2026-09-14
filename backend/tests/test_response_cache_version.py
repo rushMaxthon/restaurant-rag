@@ -77,5 +77,60 @@ class ResponseCacheVersionTests(unittest.TestCase):
         self.assertNotEqual(rag.RESPONSE_CACHE_VERSION, "v10")
 
 
+
+class PreferenceInTheKeyTests(unittest.TestCase):
+    """A cached reply must belong to the preferences that shaped it.
+
+    Reported from the app: a guest says "I am vegetarian", then asks "I need
+    spicy menu" and gets meat back. The preference was applied correctly — with
+    a phrasing nothing had cached, that request returns only veg — and then
+    thrown away, because the answer came from Redis.
+
+    `_infer_cache_query_descriptor` reads diet out of the MESSAGE, and "I need
+    spicy menu" names none. So the key carried no diet and every guest asking
+    that question shared one entry regardless of what they eat. Whoever asked
+    first populated it.
+
+    Same shape as the version bug above: the key did not capture everything that
+    changes the reply. There it was a behaviour change, here it is the reader.
+
+    Not affected, checked: session-carried context. `_resolve_global_cacheability`
+    already refuses the global cache for `uses_personal_context` and
+    `is_follow_up`, so a follow-up like "something cheaper" was never sharing an
+    entry.
+    """
+
+    MESSAGE = "i need spicy menu"
+
+    def test_opposite_diets_do_not_share_an_entry(self) -> None:
+        veg = rag._response_cache_key(self.MESSAGE, None, preference_diet="veg")
+        non_veg = rag._response_cache_key(self.MESSAGE, None, preference_diet="non_veg")
+        self.assertNotEqual(veg, non_veg)
+
+    def test_a_preference_separates_from_having_none(self) -> None:
+        """The reported case exactly: a veg guest must not read the entry a
+        guest with no stated diet wrote."""
+
+        none_stated = rag._response_cache_key(self.MESSAGE, None)
+        veg = rag._response_cache_key(self.MESSAGE, None, preference_diet="veg")
+        self.assertNotEqual(none_stated, veg)
+
+    def test_a_diet_named_in_the_message_still_works(self) -> None:
+        """The existing path must not regress: when the message says it, the
+        descriptor already put it in the key and the result is the same."""
+
+        spoken = rag._response_cache_key("veg food please", None)
+        seeded = rag._response_cache_key("veg food please", None, preference_diet="veg")
+        self.assertEqual(spoken, seeded)
+
+    def test_the_same_preference_still_shares_an_entry(self) -> None:
+        """The cache must keep earning its keep — two vegetarians asking the
+        same question should hit, not miss."""
+
+        first = rag._response_cache_key(self.MESSAGE, None, preference_diet="veg")
+        second = rag._response_cache_key(self.MESSAGE, None, preference_diet="veg")
+        self.assertEqual(first, second)
+
+
 if __name__ == "__main__":
     unittest.main()
