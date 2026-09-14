@@ -28,6 +28,7 @@ type MenuItemCustomizationGroupFormState = {
   is_required: boolean;
   min_selection: string;
   max_selection: string;
+  supports_halves: boolean;
   is_active: boolean;
   sort_order: string;
   options: MenuItemCustomizationOptionFormState[];
@@ -79,6 +80,7 @@ type MenuItemCustomizationGroupDraftState = {
   min_selection: string;
   max_selection: string;
   is_required: boolean;
+  supports_halves: boolean;
   is_active: boolean;
 };
 
@@ -140,6 +142,7 @@ function createEmptyGroup(): MenuItemCustomizationGroupFormState {
     is_required: false,
     min_selection: "0",
     max_selection: "1",
+    supports_halves: false,
     is_active: true,
     sort_order: "0",
     options: [],
@@ -164,6 +167,7 @@ function createEmptyGroupDraftState(): MenuItemCustomizationGroupDraftState {
     selection_type: "MULTI",
     min_selection: "0",
     max_selection: "1",
+    supports_halves: false,
     is_required: false,
     is_active: true,
   };
@@ -179,6 +183,7 @@ function createGroupDraftStateFromGroup(
     min_selection: group.min_selection,
     max_selection: group.max_selection,
     is_required: group.is_required,
+    supports_halves: group.supports_halves,
     is_active: group.is_active,
   };
 }
@@ -228,6 +233,10 @@ function mapGroupToForm(
     is_required: group.is_required,
     min_selection: String(group.min_selection),
     max_selection: String(group.max_selection),
+    // Only a MULTI group can really be split: with one choice allowed, "half
+    // and half" has nothing to put on the other half. An older row flagged on
+    // a SINGLE group reads as off rather than offering an impossible choice.
+    supports_halves: group.supports_halves && group.selection_type === "MULTI",
     is_active: group.is_active,
     sort_order: String(group.sort_order),
     options: group.options.map(mapOptionToForm),
@@ -242,6 +251,7 @@ function buildGroupMergeSignature(
     | "is_required"
     | "min_selection"
     | "max_selection"
+    | "supports_halves"
     | "is_active"
     | "sort_order"
     | "options"
@@ -253,6 +263,7 @@ function buildGroupMergeSignature(
     is_required: group.is_required,
     min_selection: group.min_selection,
     max_selection: group.max_selection,
+    supports_halves: group.supports_halves,
     is_active: group.is_active,
     sort_order: group.sort_order,
     options: group.options.map((option) => ({
@@ -410,6 +421,9 @@ function buildGroupPayload(
     is_required: group.is_required,
     min_selection: minSelection,
     max_selection: maxSelection,
+    // Sent, finally. The server rebuilds every group from this payload, so a
+    // field left out of it is a field switched off.
+    supports_halves: group.supports_halves && group.selection_type === "MULTI",
     is_active: group.is_active,
     sort_order: parseInteger(group.sort_order, `${title} sort order`),
     options,
@@ -987,6 +1001,7 @@ export function MenuItemCustomizationEditor({
     nextGroup.min_selection = draft.min_selection;
     nextGroup.max_selection = draft.max_selection;
     nextGroup.is_required = draft.is_required;
+    nextGroup.supports_halves = draft.supports_halves;
     nextGroup.is_active = draft.is_active;
     nextGroup.sort_order = nextSortOrder;
 
@@ -1042,6 +1057,7 @@ export function MenuItemCustomizationEditor({
           min_selection: editingGroupDraft.min_selection,
           max_selection: editingGroupDraft.max_selection,
           is_required: editingGroupDraft.is_required,
+          supports_halves: editingGroupDraft.supports_halves,
           is_active: editingGroupDraft.is_active,
         })),
       sizeId,
@@ -1371,6 +1387,22 @@ export function MenuItemCustomizationEditor({
               }))
             }
           />
+          {/* Only for MULTI: with a single choice allowed there is nothing to
+              put on the other half. */}
+          <Checkbox
+            checked={draft.supports_halves && draft.selection_type === "MULTI"}
+            disabled={draft.selection_type !== "MULTI"}
+            label="Half & half"
+            onChange={(checked) =>
+              setGroupDrafts((current) => ({
+                ...current,
+                [scopeKey]: {
+                  ...draft,
+                  supports_halves: checked,
+                },
+              }))
+            }
+          />
           <Checkbox
             checked={draft.is_active}
             label="Active"
@@ -1579,6 +1611,20 @@ export function MenuItemCustomizationEditor({
                           }
                         />
                         <Checkbox
+                          checked={
+                            editingGroupDraft.supports_halves &&
+                            editingGroupDraft.selection_type === "MULTI"
+                          }
+                          disabled={editingGroupDraft.selection_type !== "MULTI"}
+                          label="Half & half"
+                          onChange={(checked) =>
+                            setEditingGroupDraft((current) => ({
+                              ...current,
+                              supports_halves: checked,
+                            }))
+                          }
+                        />
+                        <Checkbox
                           checked={editingGroupDraft.is_active}
                           label="Active"
                           onChange={(checked) =>
@@ -1631,7 +1677,12 @@ export function MenuItemCustomizationEditor({
                       ) : null}
                       <div className="menu-group-list__cell">
                         <span className="menu-size-list__cell-label">Type</span>
-                        <span>{group.selection_type === "SINGLE" ? "Single" : "Multi"}</span>
+                        <span>
+                          {group.selection_type === "SINGLE" ? "Single" : "Multi"}
+                          {group.supports_halves ? (
+                            <span className="menu-group-halves-chip">Half &amp; half</span>
+                          ) : null}
+                        </span>
                       </div>
                       <div className="menu-group-list__cell">
                         <span className="menu-size-list__cell-label">Required</span>

@@ -201,3 +201,44 @@ export function selectionProblem(
 
   return null;
 }
+
+/**
+ * The group's selection rule, in one sentence, with both numbers in it.
+ *
+ * The owner sets a minimum and a maximum and the customer used to see neither
+ * together: a badge said "Choose 2" and the line under it said "Choose up to
+ * 4" — one rule told twice, in two places, agreeing with itself only by
+ * accident. An owner who caps toppings at four has said something the customer
+ * needs before they pick a fifth, not after.
+ */
+export function selectionHint(group: CustomizationGroup): string {
+  // A single-choice group is one, whatever its stored maximum says; the admin
+  // forces max to 1 there, but older rows predate that rule.
+  if (group.selection_type === "SINGLE") return "Choose 1";
+
+  const min = Math.max(0, Number(group.min_selection) || 0);
+  const max = Math.max(0, Number(group.max_selection) || 0);
+  if (min > 0 && max > 0) {
+    return min === max ? `Choose exactly ${min}` : `Choose ${min} to ${max}`;
+  }
+  if (max > 0) return `Choose up to ${max}`;
+  if (min > 0) return `Choose at least ${min}`;
+  return "Choose any";
+}
+
+/**
+ * Is there room for another option in this group?
+ *
+ * Used to stop the customer picking a sixth topping in a group capped at five.
+ * The cap was validated only at the Add button before, which let someone build
+ * something the kitchen would not make and told them so at the end.
+ *
+ * A SINGLE group always has room: tapping another option replaces the one
+ * chosen rather than adding to it, so a ceiling would lock the group after the
+ * first tap.
+ */
+export function canPickMore(group: CustomizationGroup, chosen: number): boolean {
+  if (group.selection_type === "SINGLE") return true;
+  const max = Math.max(0, Number(group.max_selection) || 0);
+  return max === 0 || chosen < max;
+}

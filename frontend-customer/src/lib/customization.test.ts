@@ -8,6 +8,8 @@ import {
   splitSummary,
   unitPriceFor,
   visibleGroups,
+  canPickMore,
+  selectionHint,
 } from "./customization";
 import type { CustomizationGroup, CustomizationOption, MenuItem, MenuSize } from "./bangkok-data";
 
@@ -343,5 +345,80 @@ describe("portionLabel", () => {
     expect(portionLabel("LEFT")).toBe("Left half");
     expect(portionLabel("RIGHT")).toBe("Right half");
     expect(portionLabel("WHOLE")).toBe("Whole");
+  });
+});
+
+describe("selectionHint", () => {
+  /**
+   * The rules an owner sets have to reach the customer as words.
+   *
+   * Before this the badge said "Choose 2" and the line under it said "Choose
+   * up to 4" — two different sentences about one rule, in two places, and
+   * neither of them said both numbers.
+   */
+  const group = (over: Partial<ReturnType<typeof base>> = {}) => ({ ...base(), ...over });
+  function base() {
+    return {
+      id: "g",
+      title: "Toppings",
+      selection_type: "MULTI" as "SINGLE" | "MULTI",
+      is_required: false,
+      min_selection: 0,
+      max_selection: 0,
+      supports_halves: false,
+      is_active: true,
+      options: [],
+    };
+  }
+
+  it("says one for a single choice, whatever the numbers claim", () => {
+    // A SINGLE group is one option by definition; its stored max is noise.
+    expect(selectionHint(group({ selection_type: "SINGLE", max_selection: 4 }))).toBe("Choose 1");
+  });
+
+  it("gives both numbers when both are set", () => {
+    expect(selectionHint(group({ min_selection: 2, max_selection: 4 }))).toBe("Choose 2 to 4");
+  });
+
+  it("says exactly when they are the same", () => {
+    expect(selectionHint(group({ min_selection: 3, max_selection: 3 }))).toBe("Choose exactly 3");
+  });
+
+  it("says only the one that is set", () => {
+    expect(selectionHint(group({ min_selection: 0, max_selection: 4 }))).toBe("Choose up to 4");
+    expect(selectionHint(group({ min_selection: 2, max_selection: 0 }))).toBe("Choose at least 2");
+  });
+
+  it("says anything goes when nothing is set", () => {
+    expect(selectionHint(group())).toBe("Choose any");
+  });
+});
+
+describe("canPickMore", () => {
+  const group = (max: number, type: "SINGLE" | "MULTI" = "MULTI") => ({
+    id: "g",
+    title: "Toppings",
+    selection_type: type as "SINGLE" | "MULTI",
+    is_required: false,
+    min_selection: 0,
+    max_selection: max,
+    supports_halves: false,
+    is_active: true,
+    options: [],
+  });
+
+  it("stops at the ceiling the owner set", () => {
+    expect(canPickMore(group(3), 2)).toBe(true);
+    expect(canPickMore(group(3), 3)).toBe(false);
+  });
+
+  it("has no ceiling when none was set", () => {
+    expect(canPickMore(group(0), 99)).toBe(true);
+  });
+
+  it("never blocks a single choice, which replaces rather than adds", () => {
+    // Tapping a second option in a SINGLE group swaps it; if the ceiling
+    // applied, the first pick would lock the group forever.
+    expect(canPickMore(group(1, "SINGLE"), 1)).toBe(true);
   });
 });

@@ -28,6 +28,68 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (7) — The admin was switching half-and-half off
+
+**Goal:** three reports — does half-and-half respect the per-group selection
+rules, show the min/max an owner sets, and "changing a predefined thing in the
+menu item editor then saving does not update".
+
+**The save bug, measured rather than guessed.** Driving the real admin UI:
+editing a group's min/max and saving sent `min=2 max=4`, answered **200 in
+2.8s**, and the value was in the database afterwards. Editing an option's price
+did the same. So the general save works — what does not is one field:
+
+**`frontend-admin` never knew `supports_halves` existed.** It was absent from
+both the read interface and the payload interface, so the editor could not show
+it and did not send it. `_sync_menu_item_customizations` rebuilds every group
+from the payload, so the server reset the column to its default on every save:
+**editing a description switched half-and-half off.** That is what wiped the
+flag set on 2026-09-14 (4), and why all six half-pizza e2e tests quietly
+SKIPPED in the run after — the spec discovers its item by the flag, found
+none, and skipped rather than failed.
+
+**Fixed:** the flag is carried through the types, the form state, the draft,
+the merge signature and the payload, and an owner sets it with a "Half & half"
+checkbox in the composer and the group editor. Offered only on MULTI, because
+one choice cannot cover two halves. Verified end to end through the browser:
+ticked in the UI, sent as `supports_halves=true`, 200, and read back true.
+
+**Also fixed — the group row's first column was 0px wide.** Measured
+`grid-template-columns: 0px 180px 100px 90px 100px 110px 234px`: every column
+after the title declared a fixed minimum, those plus the six 12px gaps used the
+entire 886px row, and the title's `minmax(0, 1.15fr)` got what was left, which
+was nothing. The title then overflowed its zero-width cell and drew on top of
+the sizes — "Crust" and "Small (8\")" on the same pixels. Titles now declare a
+real minimum. The size checkboxes in the composer had the same problem and were
+clipped to "S (-"; they get their own full-width line.
+
+**Customer side:** `selectionHint` puts both numbers in one sentence ("Choose 2
+to 4", "Choose exactly 3", "Choose up to 7") with a live "· 3 chosen", and
+`canPickMore` greys out further options at the ceiling. The cap was checked
+only at the Add button before, so a seventh topping went on and the refusal
+arrived at the end.
+
+**Learned — do not re-derive:**
+- **A rebuild-from-payload endpoint turns every missing client field into a
+  silent reset.** `_sync_menu_item_customizations` clears `sizes` and
+  `customization_groups` and recreates them, so anything the admin does not
+  send is not "left alone", it is erased. Any new column on those tables needs
+  the admin updated in the same change.
+- **A skipping test is not a passing test.** The half-pizza specs went from 3
+  passing to 6 skipped and the suite still reported green. The skip count moved
+  from 6 to 12 and that was the only visible sign.
+- **Drive the UI before reading it.** Two hours of plausible hypotheses about
+  the editor's draft state were wrong; ten minutes of Playwright against the
+  real admin found both the working save and the 0px column.
+- Restoring data touched while debugging needs the ORIGINAL values written
+  down first: this run left `Toppings` at min=2/max=4/required and Mozzarella
+  at $9.25 before they were put back to 0/7/optional and $1.75.
+
+**Open:** the menu-item save takes ~2.8s and shows only "Saving…". The admin
+lints with 51 pre-existing errors (unchanged by this work).
+
+---
+
 ## 2026-09-14 (6) — Checkout already knew who was ordering
 
 **Goal:** reported — a signed-in customer should not be asked for their name,

@@ -1949,13 +1949,13 @@ select:focus-visible {
 
 .menu-group-composer--with-sizes {
   grid-template-columns:
-    minmax(0, 1.3fr)
-    minmax(150px, 0.8fr)
-    minmax(110px, 0.65fr)
-    minmax(110px, 0.65fr)
+    minmax(140px, 1.3fr)
+    minmax(120px, 0.8fr)
+    minmax(96px, 0.6fr)
+    minmax(96px, 0.6fr)
     auto
     auto
-    minmax(0, 1.2fr)
+    auto
     auto;
 }
 
@@ -1980,7 +1980,7 @@ select:focus-visible {
 }
 
 .menu-group-composer--with-sizes .menu-group-size-availability {
-  grid-column: 7 / 8;
+  grid-column: 1 / -1;
 }
 
 .menu-group-size-availability > span {
@@ -2005,13 +2005,16 @@ select:focus-visible {
 .menu-group-list__header,
 .menu-group-list__row {
   display: grid;
+  /* The title's minimum is a real number, not 0. Under `minmax(0, …fr)` a row
+     whose other columns declare fixed minimums leaves the title nothing, and
+     the title then overflows its own cell and draws over its neighbour. */
   grid-template-columns:
-    minmax(0, 1.25fr)
-    minmax(100px, 0.65fr)
-    minmax(90px, 0.6fr)
-    minmax(100px, 0.7fr)
-    minmax(110px, 0.8fr)
-    auto;
+    minmax(150px, 1.5fr)
+    minmax(80px, 0.55fr)
+    minmax(76px, 0.5fr)
+    minmax(80px, 0.55fr)
+    minmax(92px, 0.6fr)
+    minmax(120px, auto);
   gap: 12px;
   align-items: center;
 }
@@ -2019,24 +2022,24 @@ select:focus-visible {
 .menu-group-list--with-sizes .menu-group-list__header,
 .menu-group-list--with-sizes .menu-group-list__row {
   grid-template-columns:
-    minmax(0, 1.15fr)
-    minmax(180px, 1fr)
-    minmax(100px, 0.65fr)
-    minmax(90px, 0.6fr)
-    minmax(100px, 0.7fr)
-    minmax(110px, 0.8fr)
-    auto;
+    minmax(130px, 1.3fr)
+    minmax(120px, 1fr)
+    minmax(112px, 0.75fr)
+    minmax(76px, 0.5fr)
+    minmax(80px, 0.55fr)
+    minmax(92px, 0.6fr)
+    minmax(120px, auto);
 }
 
 .menu-option-list__header,
 .menu-option-list__row {
   display: grid;
   grid-template-columns:
-    minmax(0, 1.3fr)
-    minmax(120px, 0.8fr)
-    minmax(100px, 0.7fr)
-    minmax(110px, 0.8fr)
-    auto;
+    minmax(150px, 1.4fr)
+    minmax(96px, 0.7fr)
+    minmax(88px, 0.6fr)
+    minmax(92px, 0.6fr)
+    minmax(110px, auto);
   gap: 12px;
   align-items: center;
 }
@@ -2069,8 +2072,11 @@ select:focus-visible {
 .menu-group-list__cell,
 .menu-option-list__cell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 4px;
   min-height: 40px;
+  min-width: 0;
 }
 
 .menu-group-list__cell--name strong,
@@ -10009,4 +10015,17 @@ summary:focus-visible,
     grid-column: 2 / -1;
     justify-content: flex-start;
   }
+}
+
+/* Marks a group whose options the kitchen can put on one half. Sits beside the
+   selection type, because "Multi" and "can be split" are the same question
+   asked twice and belong together. */
+.menu-group-halves-chip {
+  border-radius: 999px;
+  background: rgba(255, 82, 0, 0.12);
+  padding: 2px 8px;
+  color: var(--brand-strong, #ff5200);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  white-space: nowrap;
 }

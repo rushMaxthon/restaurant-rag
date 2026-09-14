@@ -19,6 +19,8 @@ import { useBangkokStore } from "@/lib/bangkok-store";
 import type { OptionPortion } from "@/lib/bangkok-store";
 import {
   activeOptions,
+  canPickMore,
+  selectionHint,
   activeSizes,
   requiresChoosing,
   splitSummary,
@@ -309,9 +311,7 @@ function DishPage() {
                         marked "not required" with a minimum of one IS required,
                         and showing it as optional only defers the surprise. */}
                       {requiresChoosing(g) ? (
-                        <span className="choice-badge choice-badge--required">
-                          {g.min_selection > 1 ? `Choose ${g.min_selection}` : "Required"}
-                        </span>
+                        <span className="choice-badge choice-badge--required">Required</span>
                       ) : (
                         <span className="choice-badge">Optional</span>
                       )}
@@ -326,12 +326,8 @@ function DishPage() {
                     <p className="choice-card__hint">
                       {isFolded && chosenHere.length > 0
                         ? chosenHere.map((o) => o.name).join(", ")
-                        : `${
-                            g.selection_type === "SINGLE"
-                              ? "Single choice"
-                              : g.max_selection > 0
-                                ? `Choose up to ${g.max_selection}`
-                                : "Choose any"
+                        : `${selectionHint(g)}${
+                            chosenHere.length > 0 ? ` · ${chosenHere.length} chosen` : ""
                           }${g.supports_halves ? " · can be split across halves" : ""}`}
                     </p>
                   </button>
@@ -341,10 +337,22 @@ function DishPage() {
                         const active = Boolean(selected[g.id]?.includes(o.id));
                         const portion = portions[o.id] ?? "WHOLE";
                         const half = g.supports_halves && portion !== "WHOLE";
+                        // At the ceiling, the ones already chosen stay tappable
+                        // so they can be taken off again; the rest go quiet.
+                        // The cap used to be checked only at the Add button,
+                        // which let someone build a seven-topping pizza and
+                        // told them it was too many at the end.
+                        const atCeiling = !active && !canPickMore(g, chosenHere.length);
                         return (
                           <div key={o.id}>
                             <button
                               type="button"
+                              disabled={atCeiling}
+                              title={
+                                atCeiling
+                                  ? `You can choose up to ${g.max_selection} from "${g.title}".`
+                                  : undefined
+                              }
                               onClick={() => toggle(g.id, o.id, g.selection_type === "SINGLE")}
                               className="option-row w-full"
                               data-on={active}
@@ -367,7 +375,7 @@ function DishPage() {
 
                             {/* Only for a group the owner marked splittable, and
                             only once the topping is actually on the pizza. */}
-                            {active && g.supports_halves && (
+                            {active && g.supports_halves && g.selection_type === "MULTI" && (
                               <div
                                 className="portion-picker"
                                 role="group"

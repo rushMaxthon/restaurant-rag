@@ -1293,3 +1293,11 @@ html {
   accent-color: var(--primary);
   cursor: pointer;
 }
+
+/* An option that would exceed the group's ceiling. Dimmed rather than hidden:
+   the customer needs to see what they would be choosing between, and taking
+   one off has to put the rest back within reach. */
+.option-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
