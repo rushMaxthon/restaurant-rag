@@ -4,7 +4,8 @@
 it cannot ask the concierge for guidance. This endpoint is the same rule
 engine and the same suppression memory, reached without starting a
 conversation — see `backend/app/services/suggestions.py` for the rules
-themselves and `docs` for why one suggestion per page-render is the contract.
+themselves and `docs/superpowers/specs/2026-09-14-waiter-agentic-cart-design.md`
+for why one suggestion per page-render is the contract.
 """
 
 from __future__ import annotations
@@ -39,6 +40,16 @@ from app.services.suggestions import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 
+# A real cart is small: even a generous order of a few dozen lines, each with
+# a size and a handful of customization option ids, serializes to well under
+# 2000 characters of JSON. 4096 leaves headroom for that without leaving the
+# query param open to a payload built purely to be large. Enforced by hand in
+# `_parse_cart`, BEFORE `json.loads` runs, rather than via FastAPI's
+# `Query(max_length=...)` — that path raises a 422, and an oversized `cart` on
+# this endpoint must answer like every other malformed value: 200, no
+# suggestion.
+MAX_CART_QUERY_LENGTH = 4096
+
 
 def _principal_id(current_user: User | None, session_id: uuid.UUID) -> uuid.UUID:
     """Same identity rule `app/api/chat.py` uses, so a decline made on a page
@@ -59,9 +70,22 @@ def _parse_cart(cart: str | None) -> list[CartLineFacts]:
     `suggestion_for_cart` re-resolves every id against the branch regardless,
     so nothing here needs to validate correctness beyond "is this shape usable
     at all".
+
+    The length check runs BEFORE `json.loads` on purpose, not after: the
+    attack this closes is a string of thousands of nested `[` characters
+    (`"[" * 5000 + "]" * 5000`, ~10KB), which is cheap to construct and blows
+    Python's recursion limit inside the JSON decoder itself — the crash
+    happens while parsing, so no amount of validating the *parsed result*
+    would ever run. Rejecting on raw length keeps that string away from
+    `json.loads` entirely. This is done manually here rather than via
+    FastAPI's `Query(max_length=...)`, which would raise a 422 on the exact
+    input requirement 1 says must answer with a null suggestion instead.
     """
 
     if not cart:
+        return []
+    if len(cart) > MAX_CART_QUERY_LENGTH:
+        logger.info("Suggestions: oversized cart parameter, treating as empty")
         return []
     try:
         raw_lines = json.loads(cart)
@@ -70,6 +94,17 @@ def _parse_cart(cart: str | None) -> list[CartLineFacts]:
         parsed = [CartLinePayload.model_validate(entry) for entry in raw_lines]
     except (ValueError, TypeError):
         logger.info("Suggestions: malformed cart parameter, treating as empty")
+        return []
+    except RecursionError:
+        # Belt to the length bound's braces: nesting depth is cheap per byte
+        # (`[[[[...]]]]` costs 2 bytes per level), so a bound generous enough
+        # for a real cart's JSON does not, by itself, guarantee every string
+        # under that bound stays inside the interpreter's recursion limit.
+        # Do NOT collapse this into the tuple above — RecursionError is a
+        # RuntimeError, not a ValueError, and merging it with a bare
+        # `except Exception` would also swallow genuine bugs in this function
+        # behind a silent null suggestion.
+        logger.info("Suggestions: cart parameter too deeply nested, treating as empty")
         return []
     return [
         CartLineFacts(
@@ -87,7 +122,16 @@ def get_suggestion(
     current_user: Annotated[User | None, Depends(get_current_user_optional)],
     restaurant_location_id: uuid.UUID,
     session_id: uuid.UUID,
-    cart: Annotated[str | None, Query(description="JSON array of cart lines")] = None,
+    cart: Annotated[
+        str | None,
+        Query(
+            description=(
+                "JSON array of cart lines. Oversized or malformed values are "
+                f"ignored, not rejected — see `_parse_cart` (cap: "
+                f"{MAX_CART_QUERY_LENGTH} characters)."
+            )
+        ),
+    ] = None,
 ) -> SuggestionEnvelope:
     """One suggestion for a page that has nothing to say, or none at all.
 

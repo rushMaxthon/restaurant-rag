@@ -83,6 +83,40 @@ class SuggestionContractTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIsNone(response.json()["suggestion"])
 
+    def test_a_dangerous_cart_never_crashes_the_page(self) -> None:
+        """Two separate ways an untrusted `cart` string can hurt the server,
+        both of which must land on the same 200/null answer as any other
+        malformed value.
+
+        - Deeply nested JSON (`"[" * n + "]" * n`) blows Python's recursion
+          limit inside the JSON decoder itself, before any of `_parse_cart`'s
+          shape checks ever run. Depth 1000 (2000 bytes) is well under the
+          4096-byte cap and still recurses past the default limit — this
+          exercises the `except RecursionError` clause specifically, not the
+          length bound.
+        - An oversized payload (the reported reproduction: `"[" * 5000 +
+          "]" * 5000`, ~10KB) exercises the length bound itself; it is well
+          past 4096 bytes regardless of what it contains.
+        """
+
+        client = TestClient(app)
+        dangerous_carts = {
+            "deeply_nested_under_cap": "[" * 1000 + "]" * 1000,
+            "oversized_reported_reproduction": "[" * 5000 + "]" * 5000,
+        }
+        for label, dangerous_cart in dangerous_carts.items():
+            with self.subTest(cart=label):
+                response = client.get(
+                    "/api/suggestions",
+                    params={
+                        "restaurant_location_id": str(uuid.uuid4()),
+                        "session_id": str(uuid.uuid4()),
+                        "cart": dangerous_cart,
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNone(response.json()["suggestion"])
+
     def test_declining_a_suggestion_never_needs_a_signed_in_customer(self) -> None:
         """A guest browsing before login can still dismiss a prompt for good."""
 
