@@ -17,10 +17,15 @@ import { DishCard } from "@/components/bangkok/dish-card";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import type { OptionPortion } from "@/lib/bangkok-store";
+import type { CustomizationGroup } from "@/lib/bangkok-data";
 import {
   activeOptions,
   canPickMore,
+  nextSideFor,
+  regroupForMode,
+  roomOnSide,
   selectionHint,
+  sideCounts,
   activeSizes,
   requiresChoosing,
   splitSummary,
@@ -59,6 +64,10 @@ function DishPage() {
   // seven toppings and a crust is a long scroll, and folding what is already
   // answered brings the Add button back into reach.
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  // Which splittable groups the customer has chosen to split. A group is one
+  // thing or the other — the whole item, or two halves — and this is where
+  // that is decided, once, rather than inferred from each topping's portion.
+  const [split, setSplit] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -84,7 +93,7 @@ function DishPage() {
   const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds, portions);
   const halves = splitSummary(item, chosenSize, chosenOptionIds, portions);
   const total = unitPrice * quantity;
-  const problem = selectionProblem(item, chosenSize, selected);
+  const problem = selectionProblem(item, chosenSize, selected, portions);
   const valid = problem === null;
   // The options the customer can actually see and has actually chosen. Derived
   // from the same visible set as the price, so what is charged, what is shown
@@ -95,15 +104,46 @@ function DishPage() {
 
   const conflicts = item ? store.conflictsWithCart(item) : false;
 
-  function toggle(gid: string, oid: string, single: boolean) {
-    setSelected((s) => ({
-      ...s,
-      [gid]: single
-        ? [oid]
-        : s[gid]?.includes(oid)
-          ? s[gid]?.filter((v) => v !== oid)
-          : [...(s[gid] ?? []), oid],
-    }));
+  function toggle(group: CustomizationGroup, oid: string, single: boolean, groupIsSplit = false) {
+    const gid = group.id;
+    const current = selected[gid] ?? [];
+
+    // Set alongside the other updater rather than inside it: a state setter
+    // called from within an updater runs again every time React replays that
+    // updater, and React replays them.
+    if (!current.includes(oid) && !single) {
+      // Decided from what is already in the group, before this one joins it.
+      setPortions((p) => ({
+        ...p,
+        [oid]: groupIsSplit ? nextSideFor(group, current, p) : "WHOLE",
+      }));
+    }
+    setSelected((s) => {
+      const latest = s[gid] ?? [];
+      return {
+        ...s,
+        [gid]: single
+          ? [oid]
+          : latest.includes(oid)
+            ? latest.filter((v) => v !== oid)
+            : [...latest, oid],
+      };
+    });
+  }
+
+  /**
+   * Switch a group between "all over it" and "split across halves".
+   *
+   * The choices are re-rationed for the mode being entered rather than carried
+   * across unchanged: two toppings picked for opposite halves are not two
+   * toppings on the whole pizza, and treating them as such put a group over
+   * its own limit the moment the customer switched back.
+   */
+  function setGroupSplit(group: CustomizationGroup, wantSplit: boolean, optionIds: string[]) {
+    const next = regroupForMode(group, optionIds, wantSplit);
+    setSplit((current) => ({ ...current, [group.id]: wantSplit }));
+    setSelected((current) => ({ ...current, [group.id]: next.chosen }));
+    setPortions((current) => ({ ...current, ...next.portions }));
   }
 
   function handleAdd(replace = false) {
@@ -297,6 +337,13 @@ function DishPage() {
                 (selected[g.id] ?? []).includes(o.id),
               );
               const isFolded = Boolean(folded[g.id]);
+              const chosenIds = selected[g.id] ?? [];
+              const canSplit = g.supports_halves && g.selection_type === "MULTI";
+              const isSplit = canSplit && Boolean(split[g.id]);
+              // The owner's maximum counts on each half once the item is
+              // split, so what is already on each side decides what can still
+              // go on it.
+              const counts = sideCounts(chosenIds, portions);
               return (
                 <section className="choice-card mt-6" key={g.id} data-folded={isFolded}>
                   <button
@@ -326,23 +373,65 @@ function DishPage() {
                     <p className="choice-card__hint">
                       {isFolded && chosenHere.length > 0
                         ? chosenHere.map((o) => o.name).join(", ")
-                        : `${selectionHint(g)}${
-                            chosenHere.length > 0 ? ` · ${chosenHere.length} chosen` : ""
-                          }${g.supports_halves ? " · can be split across halves" : ""}`}
+                        : isSplit
+                          ? `${selectionHint(g)} on each half · ${counts.LEFT} left, ${counts.RIGHT} right`
+                          : `${selectionHint(g)}${
+                              chosenHere.length > 0 ? ` · ${chosenHere.length} chosen` : ""
+                            }`}
                     </p>
                   </button>
+
+                  {/* The owner's flag turned into one question, asked once:
+                      the same on all of it, or different on each half. Asking
+                      it per topping produced dead ends - two toppings on the
+                      whole item and neither could move to a half, because each
+                      read the other as whole. */}
+                  {canSplit && !isFolded && (
+                    <div
+                      className="split-switch"
+                      role="group"
+                      aria-label={`How to put on ${g.title}`}
+                    >
+                      <button
+                        type="button"
+                        className="split-switch__option"
+                        data-on={!isSplit}
+                        onClick={() => setGroupSplit(g, false, chosenIds)}
+                      >
+                        <span className="portion-glyph portion-glyph--whole" aria-hidden="true" />
+                        Same all over
+                      </button>
+                      <button
+                        type="button"
+                        className="split-switch__option"
+                        data-on={isSplit}
+                        onClick={() => setGroupSplit(g, true, chosenIds)}
+                      >
+                        <span className="portion-glyph portion-glyph--left" aria-hidden="true" />
+                        Half &amp; half
+                      </button>
+                    </div>
+                  )}
+
                   {!isFolded && (
                     <div className="option-grid">
                       {activeOptions(g).map((o) => {
                         const active = Boolean(selected[g.id]?.includes(o.id));
                         const portion = portions[o.id] ?? "WHOLE";
-                        const half = g.supports_halves && portion !== "WHOLE";
+                        const half = isSplit && portion !== "WHOLE";
                         // At the ceiling, the ones already chosen stay tappable
                         // so they can be taken off again; the rest go quiet.
                         // The cap used to be checked only at the Add button,
                         // which let someone build a seven-topping pizza and
                         // told them it was too many at the end.
-                        const atCeiling = !active && !canPickMore(g, chosenHere.length);
+                        // The side the toggle would actually put it on, so
+                        // the button and the click cannot disagree.
+                        const landsOn = isSplit ? nextSideFor(g, chosenIds, portions) : "WHOLE";
+                        const atCeiling =
+                          !active &&
+                          (isSplit
+                            ? !roomOnSide(g, counts, landsOn)
+                            : !canPickMore(g, chosenHere.length));
                         return (
                           <div key={o.id}>
                             <button
@@ -350,10 +439,14 @@ function DishPage() {
                               disabled={atCeiling}
                               title={
                                 atCeiling
-                                  ? `You can choose up to ${g.max_selection} from "${g.title}".`
+                                  ? isSplit
+                                    ? `Each half takes up to ${g.max_selection} from "${g.title}".`
+                                    : `You can choose up to ${g.max_selection} from "${g.title}".`
                                   : undefined
                               }
-                              onClick={() => toggle(g.id, o.id, g.selection_type === "SINGLE")}
+                              onClick={() =>
+                                toggle(g, o.id, g.selection_type === "SINGLE", isSplit)
+                              }
                               className="option-row w-full"
                               data-on={active}
                             >
@@ -373,35 +466,44 @@ function DishPage() {
                               </span>
                             </button>
 
-                            {/* Only for a group the owner marked splittable, and
-                            only once the topping is actually on the pizza. */}
-                            {active && g.supports_halves && g.selection_type === "MULTI" && (
+                            {/* Which half, once the group is being split.
+                            "Whole" is not offered here: that is the other
+                            answer to the question asked above, not a third
+                            option beside the two halves. */}
+                            {active && isSplit && (
                               <div
                                 className="portion-picker"
                                 role="group"
-                                aria-label={`Where to put ${o.name}`}
+                                aria-label={`Which half for ${o.name}`}
                               >
-                                {(["LEFT", "WHOLE", "RIGHT"] as OptionPortion[]).map((value) => (
-                                  <button
-                                    type="button"
-                                    key={value}
-                                    className="portion-option"
-                                    data-on={portion === value}
-                                    onClick={() =>
-                                      setPortions((current) => ({ ...current, [o.id]: value }))
-                                    }
-                                  >
-                                    <span
-                                      className={`portion-glyph portion-glyph--${value.toLowerCase()}`}
-                                      aria-hidden="true"
-                                    />
-                                    {value === "WHOLE"
-                                      ? "Whole"
-                                      : value === "LEFT"
-                                        ? "Left"
-                                        : "Right"}
-                                  </button>
-                                ))}
+                                {(["LEFT", "RIGHT"] as OptionPortion[]).map((value) => {
+                                  // Room on the side it would move TO, not
+                                  // counting where it sits now.
+                                  const full = portion !== value && !roomOnSide(g, counts, value);
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={value}
+                                      className="portion-option"
+                                      data-on={portion === value}
+                                      disabled={full}
+                                      title={
+                                        full
+                                          ? `That half already has ${g.max_selection} from "${g.title}".`
+                                          : undefined
+                                      }
+                                      onClick={() =>
+                                        setPortions((current) => ({ ...current, [o.id]: value }))
+                                      }
+                                    >
+                                      <span
+                                        className={`portion-glyph portion-glyph--${value.toLowerCase()}`}
+                                        aria-hidden="true"
+                                      />
+                                      {value === "LEFT" ? "Left" : "Right"}
+                                    </button>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

@@ -41,6 +41,7 @@ import {
   nextBookableTime,
   nextOpening,
 } from "@/lib/branch-hours";
+import { chosenLabels } from "@/lib/customization";
 import {
   addressFromSaved,
   composeDeliveryAddress,
@@ -500,7 +501,15 @@ function Checkout() {
       items: s.cart.map((line) => ({
         menu_item_id: line.itemId,
         menu_item_size_id: line.sizeId ?? null,
-        selected_options: line.optionIds.map((id) => ({ option_id: id, quantity: 1 })),
+        // The portion travels with the option. Without it every half-and-half
+        // order reached the server as a whole one: the kitchen was told to put
+        // both toppings over the whole pizza, and the server priced two whole
+        // toppings against a screen that had charged for two halves.
+        selected_options: line.optionIds.map((id) => ({
+          option_id: id,
+          quantity: 1,
+          portion: line.optionPortions?.[id] ?? ("WHOLE" as const),
+        })),
         quantity: line.quantity,
       })),
     };
@@ -1062,6 +1071,20 @@ function Checkout() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{line.name}</p>
+                  {/* The size and the choices, on the last screen before
+                      paying. It showed the dish name alone, so a Large
+                      half-and-half pizza and a Small plain one were the same
+                      two lines of text at different prices. */}
+                  {(line.sizeName || line.addOnNames.length > 0) && (
+                    <p className="text-xs leading-snug text-muted">
+                      {[
+                        line.sizeName,
+                        ...chosenLabels(line.optionIds, line.addOnNames, line.optionPortions),
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </p>
+                  )}
                   <p className="money text-sm text-muted">
                     {line.quantity} × {formatMoney(line.unitPrice)}
                   </p>

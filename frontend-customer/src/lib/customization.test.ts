@@ -10,6 +10,12 @@ import {
   visibleGroups,
   canPickMore,
   selectionHint,
+  portionMode,
+  nextSideFor,
+  sideCounts,
+  roomOnSide,
+  regroupForMode,
+  chosenLabels,
 } from "./customization";
 import type { CustomizationGroup, CustomizationOption, MenuItem, MenuSize } from "./bangkok-data";
 
@@ -420,5 +426,299 @@ describe("canPickMore", () => {
     // Tapping a second option in a SINGLE group swaps it; if the ceiling
     // applied, the first pick would lock the group forever.
     expect(canPickMore(group(1, "SINGLE"), 1)).toBe(true);
+  });
+});
+
+describe("portionMode", () => {
+  /**
+   * A splittable group is in one of three states, and the state decides what
+   * the customer may pick next: nothing chosen yet, everything on the whole
+   * item, or the item being split.
+   */
+  it("is undecided until something is chosen", () => {
+    expect(portionMode([], {})).toBe("NONE");
+  });
+
+  it("is whole while every choice covers the whole item", () => {
+    expect(portionMode(["a", "b"], {})).toBe("WHOLE");
+    expect(portionMode(["a"], { a: "WHOLE" })).toBe("WHOLE");
+  });
+
+  it("is split as soon as one choice names a side", () => {
+    expect(portionMode(["a"], { a: "LEFT" })).toBe("SPLIT");
+    expect(portionMode(["a", "b"], { a: "LEFT", b: "RIGHT" })).toBe("SPLIT");
+  });
+
+  it("ignores portions of options that are not chosen", () => {
+    // Unticking a topping leaves its portion behind in state; it must not keep
+    // the group in split mode on its own.
+    expect(portionMode(["a"], { a: "WHOLE", b: "LEFT" })).toBe("WHOLE");
+  });
+});
+
+describe("selectionProblem, about halves", () => {
+  const pizza = {
+    id: "p",
+    name: "Pizza",
+    price: "12.00",
+    customization_groups: [
+      {
+        id: "g",
+        title: "Toppings",
+        selection_type: "MULTI" as const,
+        is_required: false,
+        min_selection: 0,
+        max_selection: 5,
+        supports_halves: true,
+        is_active: true,
+        options: [
+          { id: "a", name: "Pepperoni", extra_price: "3.00", is_active: true },
+          { id: "b", name: "Mushroom", extra_price: "2.00", is_active: true },
+        ],
+      },
+    ],
+  };
+
+  it("asks for the other half when only one side was named", () => {
+    const problem = selectionProblem(pizza as never, undefined, { g: ["a"] }, { a: "LEFT" });
+    expect(problem).toMatch(/right half/i);
+  });
+
+  it("counts the maximum on each half, as the rest of the page does", () => {
+    // One on the left and one on the right under a cap of one: allowed by
+    // every other part of the page, and refused here with "choose at most 1"
+    // until this counted per half too.
+    const capped = {
+      ...pizza,
+      customization_groups: [{ ...pizza.customization_groups[0]!, max_selection: 1 }],
+    };
+    expect(
+      selectionProblem(capped as never, undefined, { g: ["a", "b"] }, { a: "LEFT", b: "RIGHT" }),
+    ).toBeNull();
+  });
+
+  it("still refuses too many on one half", () => {
+    const capped = {
+      ...pizza,
+      customization_groups: [
+        {
+          ...pizza.customization_groups[0]!,
+          max_selection: 1,
+          options: [
+            ...pizza.customization_groups[0]!.options,
+            { id: "c", name: "Olives", extra_price: "1.00", is_active: true },
+          ],
+        },
+      ],
+    };
+    expect(
+      selectionProblem(
+        capped as never,
+        undefined,
+        { g: ["a", "b", "c"] },
+        { a: "LEFT", b: "RIGHT", c: "LEFT" },
+      ),
+    ).toMatch(/each half/i);
+  });
+
+  it("is content once both halves are named", () => {
+    expect(
+      selectionProblem(pizza as never, undefined, { g: ["a", "b"] }, { a: "LEFT", b: "RIGHT" }),
+    ).toBeNull();
+  });
+
+  it("is content when nothing is split", () => {
+    expect(selectionProblem(pizza as never, undefined, { g: ["a"] }, {})).toBeNull();
+  });
+
+  it("still works for callers that pass no portions at all", () => {
+    expect(selectionProblem(pizza as never, undefined, { g: ["a"] })).toBeNull();
+  });
+});
+
+describe("nextSideFor", () => {
+  /**
+   * Where a topping lands when it is ticked into a split group.
+   *
+   * The bare half first — that is the half the customer has to fill before
+   * the order will go. After that, whichever side still has room under the
+   * owner's cap. Always answering "left" blocked toppings that the right half
+   * had room for.
+   */
+  const group = (max: number) => ({
+    id: "g",
+    title: "Toppings",
+    selection_type: "MULTI" as "SINGLE" | "MULTI",
+    is_required: false,
+    min_selection: 0,
+    max_selection: max,
+    supports_halves: true,
+    is_active: true,
+    options: [],
+  });
+
+  it("starts on the left", () => {
+    expect(nextSideFor(group(0), [], {})).toBe("LEFT");
+  });
+
+  it("fills the bare half next", () => {
+    expect(nextSideFor(group(0), ["a"], { a: "LEFT" })).toBe("RIGHT");
+    expect(nextSideFor(group(0), ["a"], { a: "RIGHT" })).toBe("LEFT");
+  });
+
+  it("goes to the side that still has room", () => {
+    // Left is full at two; the right has one of its two.
+    const chosen = ["a", "b", "c"];
+    const portions = { a: "LEFT" as const, b: "LEFT" as const, c: "RIGHT" as const };
+    expect(nextSideFor(group(2), chosen, portions)).toBe("RIGHT");
+  });
+
+  it("answers left when both sides are full, for the caller to refuse", () => {
+    const chosen = ["a", "b"];
+    const portions = { a: "LEFT" as const, b: "RIGHT" as const };
+    expect(nextSideFor(group(1), chosen, portions)).toBe("LEFT");
+  });
+});
+
+describe("sideCounts", () => {
+  it("counts what is on each half, and what covers all of it", () => {
+    expect(sideCounts(["a", "b", "c"], { a: "LEFT", b: "RIGHT", c: "LEFT" })).toEqual({
+      LEFT: 2,
+      RIGHT: 1,
+      WHOLE: 0,
+    });
+  });
+
+  it("treats a missing portion as covering the whole item", () => {
+    expect(sideCounts(["a"], {})).toEqual({ LEFT: 0, RIGHT: 0, WHOLE: 1 });
+  });
+});
+
+describe("roomOnSide", () => {
+  /**
+   * The owner's maximum counts on each half. "Up to 2" on a split pizza is two
+   * on the left and two on the right — the halves are two orders of the same
+   * size sharing a base, and counting across both sold one topping per side.
+   */
+  const group = (max: number) => ({
+    id: "g",
+    title: "Toppings",
+    selection_type: "MULTI" as "SINGLE" | "MULTI",
+    is_required: false,
+    min_selection: 0,
+    max_selection: max,
+    supports_halves: true,
+    is_active: true,
+    options: [],
+  });
+
+  it("gives each half the full allowance", () => {
+    const counts = { LEFT: 2, RIGHT: 0, WHOLE: 0 };
+    expect(roomOnSide(group(2), counts, "LEFT")).toBe(false);
+    expect(roomOnSide(group(2), counts, "RIGHT")).toBe(true);
+  });
+
+  it("has no ceiling when the owner set none", () => {
+    expect(roomOnSide(group(0), { LEFT: 9, RIGHT: 9, WHOLE: 0 }, "LEFT")).toBe(true);
+  });
+
+  it("counts the whole item on its own", () => {
+    expect(roomOnSide(group(1), { LEFT: 0, RIGHT: 0, WHOLE: 1 }, "WHOLE")).toBe(false);
+  });
+
+  it("is the shape a cap of one asks for: half this, half that", () => {
+    const counts = { LEFT: 1, RIGHT: 1, WHOLE: 0 };
+    expect(roomOnSide(group(1), counts, "LEFT")).toBe(false);
+    expect(roomOnSide(group(1), counts, "RIGHT")).toBe(false);
+  });
+});
+
+describe("regroupForMode", () => {
+  /**
+   * Switching a group between "same all over" and "half & half".
+   *
+   * Reported: choose one topping on the whole pizza, switch to halves, add a
+   * second one there, switch back — and both toppings were on the whole
+   * pizza at once, over a cap of one. Two toppings picked for opposite halves
+   * have no meaning as a whole-pizza order, and merging them silently
+   * invented one.
+   */
+  const group = (max: number) => ({
+    id: "g",
+    title: "Toppings",
+    selection_type: "MULTI" as "SINGLE" | "MULTI",
+    is_required: false,
+    min_selection: 0,
+    max_selection: max,
+    supports_halves: true,
+    is_active: true,
+    options: [],
+  });
+
+  it("puts everything on the whole item, up to the cap", () => {
+    expect(regroupForMode(group(1), ["a", "b"], false)).toEqual({
+      chosen: ["a"],
+      portions: { a: "WHOLE" },
+    });
+  });
+
+  it("keeps what fits when the cap is generous", () => {
+    expect(regroupForMode(group(5), ["a", "b"], false)).toEqual({
+      chosen: ["a", "b"],
+      portions: { a: "WHOLE", b: "WHOLE" },
+    });
+  });
+
+  it("fills the left half then the right when splitting", () => {
+    expect(regroupForMode(group(1), ["a", "b"], true)).toEqual({
+      chosen: ["a", "b"],
+      portions: { a: "LEFT", b: "RIGHT" },
+    });
+  });
+
+  it("drops what neither half has room for", () => {
+    expect(regroupForMode(group(1), ["a", "b", "c"], true)).toEqual({
+      chosen: ["a", "b"],
+      portions: { a: "LEFT", b: "RIGHT" },
+    });
+  });
+
+  it("sends everything left when the owner set no cap", () => {
+    // Nothing to ration, and the customer moves them where they want.
+    expect(regroupForMode(group(0), ["a", "b"], true)).toEqual({
+      chosen: ["a", "b"],
+      portions: { a: "LEFT", b: "LEFT" },
+    });
+  });
+});
+
+describe("chosenLabels", () => {
+  /**
+   * What a cart line says it is.
+   *
+   * The cart listed the toppings by name alone, so "half pepperoni, half
+   * mushroom" and "pepperoni and mushroom all over" read identically — two
+   * different pizzas at two different prices, shown the same way, on the last
+   * screen before paying.
+   */
+  it("says which half, and says nothing when there is no half", () => {
+    expect(
+      chosenLabels(["a", "b", "c"], ["Pepperoni", "Mushroom", "Olives"], {
+        a: "LEFT",
+        b: "RIGHT",
+      }),
+    ).toEqual(["Pepperoni · left half", "Mushroom · right half", "Olives"]);
+  });
+
+  it("treats a missing portion as the whole item", () => {
+    expect(chosenLabels(["a"], ["Pepperoni"], {})).toEqual(["Pepperoni"]);
+  });
+
+  it("survives a name list that does not line up", () => {
+    // Old carts were stored before portions existed; a line from one must not
+    // throw on the way to the screen.
+    expect(chosenLabels(["a", "b"], ["Pepperoni"], { a: "LEFT" })).toEqual([
+      "Pepperoni · left half",
+    ]);
   });
 });

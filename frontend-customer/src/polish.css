@@ -1301,3 +1301,44 @@ html {
   cursor: not-allowed;
   opacity: 0.45;
 }
+
+/* A portion the group's current mode rules out: whole once it is split, or a
+   half once something covers the whole item. Dimmed rather than removed, so
+   the customer can see the choice exists and why it is not theirs yet. */
+.portion-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* The one question a splittable group asks: the same all over, or different on
+   each half. Asked once, at the top of the group, rather than per topping. */
+.split-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  padding: 0.25rem;
+}
+.split-switch__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.5rem 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.split-switch__option[data-on="true"] {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgb(20 23 31 / 0.1);
+}

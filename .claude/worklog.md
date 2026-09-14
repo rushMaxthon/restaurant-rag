@@ -28,6 +28,138 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (10) — The halves were being dropped at checkout
+
+**Goal:** follow one half-and-half pizza from the dish page to what the server
+stores, because every piece had been tested and the joins between them had not.
+
+**Found, and it was the expensive kind.** `checkout.tsx` built its order
+payload as `{option_id, quantity}` and never sent `portion`. So every split
+pizza reached the server as a WHOLE one: the kitchen would have put both
+toppings over the whole pizza, and the server priced two whole toppings against
+a screen that had charged for two halves. The API type had carried `portion`
+since the feature landed; the one caller did not fill it in.
+
+**Two display holes beside it.** The cart listed toppings by name alone, so
+"half pepperoni, half mushroom" and "both all over" were the same text at
+different prices. The checkout summary showed the dish name and price and
+nothing else — not even the size, so a Large half-and-half and a Small plain
+pizza were two identical lines. Both now carry the size and each topping's
+half (`chosenLabels`).
+
+**Also fixed this session:** switching a group between "same all over" and
+"half & half" carried the choices across unchanged, so one topping chosen whole
+plus one chosen per half came back as TWO toppings on the whole pizza — over a
+cap of one. `regroupForMode` re-rations the choices for the mode being entered
+and visibly unticks what no longer fits.
+
+**Learned — do not re-derive:**
+- **Test the joins, not just the pieces.** Six half-and-half specs passed while
+  the feature was being discarded one screen later. The end-to-end spec
+  (`half-pizza-end-to-end.spec.ts`) follows one order through the dish page,
+  the cart, the checkout summary and back out of `/orders`.
+- **`uvicorn --reload` in this app is not reliable.** A reload takes long enough
+  (embedding warm-up, Supabase connect) that the old worker keeps serving, and
+  a reload that does not finish leaves the old code answering while the log says
+  "Reloading...". Restart it properly and wait for "Application startup
+  complete".
+- **A backend started outside this session cannot be restarted from it.** Port
+  8000 was held by PIDs invisible to the agent's session — `taskkill` reported
+  "not found" while they answered requests, and a new uvicorn failed with
+  `[Errno 10048]` bind-in-use, silently, so the stale server kept serving.
+  Check the bind actually succeeded before trusting a "restart".
+- The giveaway that a server is stale: an error message the current source
+  cannot produce. "Toppings allows at most 1 selections" against a payload
+  carrying LEFT and RIGHT could only come from code predating the per-half cap.
+
+**Open:** `half-pizza-end-to-end.spec.ts` cannot pass until that backend is
+restarted — the code is right and the server is old. Everything else is green.
+
+---
+
+## 2026-09-14 (9) — The topping cap counts on each half
+
+**Goal:** reported from a screenshot — six toppings spread across two halves of
+one pizza. "Either left-right, or full; if I select full then don't allow
+anything extra; if I select left and right then don't allow any other thing."
+Plus: the limits must come from admin and change without a deploy.
+
+**Now:** `max_selection` counts on EACH half once the item is split. Two on the
+left and two on the right under a cap of two, rather than two shared between
+them — the halves are two orders of the same size sharing a base, and counting
+across both sold one topping per side under a cap of two.
+
+That makes the reported shape a data setting rather than a special case: a cap
+of **1** is exactly "half this, half that, nothing else", and the owner can
+change it in the dashboard at any time. `e2e/admin-menu-sync.spec.ts` proves
+the link by setting the cap to 1 through the same endpoint the dashboard uses,
+checking the web menu obeys it, and putting back whatever was there.
+
+**Learned — do not re-derive:**
+- **The backend was serving code from before the halves rules.** Restarted
+  without `--reload` hours earlier, so `/orders/validate` accepted "whole
+  beside a half" — 200, while the unit test for the same rule passed. Every
+  green E2E result in between only proved the CLIENT was enforcing it. It now
+  runs with `--reload`. Checking the rule over HTTP is what caught it; the unit
+  tests could not.
+- **`minimum_order_amount` is validated before customizations**, so a cheap
+  test order is refused for its total and the customization rule under test
+  never runs. Order two.
+- A test that mutates menu data must restore what it READ, not a hardcoded
+  number, or it quietly rewrites the menu for everyone after it.
+- Three E2E runs were thrown away this session for being measured against
+  changed code or a stale server. A run started before an edit is not evidence
+  about the code after it.
+
+**Open:** the owner's cap on the pizza is still 7, so nothing visibly changes
+there until someone sets it to 1 — that is the dial, and it is theirs.
+
+---
+
+## 2026-09-14 (8) — Half and half is one question, not many
+
+**Goal:** the owner's two rules for a splittable group — a split item has to
+describe BOTH halves, and a group is either the same all over or split, never
+a mixture.
+
+**Enforced on the server** in `resolve_menu_item_selection`, per group: a lone
+LEFT (or RIGHT) is refused by name, and WHOLE beside a half is refused. Read
+from the portions the CUSTOMER chose, before left+right of one option collapses
+to WHOLE — after that collapse "pepperoni on both halves" is indistinguishable
+from "pepperoni on the whole pizza", and the two mean opposite things to these
+rules.
+
+**The client had to stop inferring the mode from the toppings.** First attempt
+judged each option against the rest of its group and produced two dead ends:
+the first topping lands on the whole item, which switched the halves off before
+a split could start; and with two toppings on the whole item neither could move
+to a half, because each read the other as whole. The rule is about the GROUP,
+so the customer now answers it once — a "Same all over / Half & half" switch at
+the top of the group — and the per-topping picker offers Left and Right only.
+"Whole" is not a third choice beside the two halves; it is the other answer to
+the question above.
+
+**Learned — do not re-derive:**
+- **A per-item rule inferred from per-item state locks itself.** Any constraint
+  of the form "these things must agree" needs somewhere to hold the agreement.
+  Putting it on the group made the dead ends impossible rather than handled.
+- **Validate on what was chosen, normalise afterwards.** The LEFT+RIGHT → WHOLE
+  collapse is right for pricing and for the kitchen ticket and wrong for the
+  rules, so the rules read a snapshot taken before it.
+- A topping ticked into a split group lands on whichever half is still bare
+  (`defaultPortionFor`). Landing it on "whole" would create the forbidden
+  mixture one tap after the rule started applying.
+- Three existing tests ordered half a pizza and said nothing about the other
+  half — legal before, not now. The rounding one moved its assertion from the
+  order total to the olives line, because a legal split order always has a
+  second topping in the total and it buried what the test was pinning.
+
+**Open:** the rule forbids "pepperoni on the whole pizza, mushroom on the left
+only", which some kitchens do allow. That is the owner's stated rule, not an
+oversight — but it is the first thing to revisit if a restaurant asks.
+
+---
+
 ## 2026-09-14 (7) — The admin was switching half-and-half off
 
 **Goal:** three reports — does half-and-half respect the per-group selection
