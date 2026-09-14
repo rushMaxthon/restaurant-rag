@@ -16,6 +16,7 @@ import {
 import type { MenuItem } from "@/lib/bangkok-data";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { useAuth } from "@/lib/auth";
 
 type ConciergeSearch = { q?: string };
 
@@ -149,6 +150,7 @@ function ConciergePage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const store = useBangkokStore();
+  const { isAuthenticated } = useAuth();
 
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -160,20 +162,40 @@ function ConciergePage() {
   const autoSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Replay the conversation the backend kept. Only for a signed-in customer:
-  // a guest's turns are keyed to a session id that dies with the tab, so there
-  // is nothing on the server to ask for.
+  // Replay the conversation the backend kept, across sessions.
+  //
+  // Three things were wrong here and each on its own hid the history:
+  //
+  //   - it returned early when localStorage held no session id, so a customer
+  //     signing in on a fresh browser saw nothing while the server held
+  //     everything
+  //   - it asked for ONE session, so conversations from earlier visits were
+  //     invisible even when that session id was present
+  //   - it ran once on mount, so logging in while the page was open loaded
+  //     nothing until a reload
+  //
+  // The common path made all three bite at once: chat as a guest, then sign in.
+  // The stored session belonged to the GUEST — whose turns are never written,
+  // since `chat_history.user_id` is NOT NULL — so it fetched a session with no
+  // rows and rendered an empty thread.
   useEffect(() => {
-    if (!getToken()) return;
-    const stored = readStoredSession();
-    if (!stored) return;
-    sessionIdRef.current = stored;
+    if (!isAuthenticated) return;
 
     let cancelled = false;
     void (async () => {
       try {
-        const history = await getChatHistory(stored);
+        // No session filter: "my history" spans visits, not one tab.
+        const history = await getChatHistory();
         if (cancelled || history.length === 0) return;
+
+        // Continue the conversation the last turn belonged to, so a follow-up
+        // lands in the thread it is answering rather than starting a new one.
+        const latest = history[history.length - 1];
+        if (latest?.session_id) {
+          sessionIdRef.current = latest.session_id;
+          storeSession(latest.session_id);
+        }
+
         // Suggestions are not persisted with a turn, so replayed assistant
         // turns carry prose only. Re-running retrieval to rebuild those cards
         // would be a second answer to a question already answered, and would
@@ -194,7 +216,7 @@ function ConciergePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // A craving chip on the home screen deep-links here with ?q=... — send it
   // immediately rather than just dropping it in the box, then drop the param
