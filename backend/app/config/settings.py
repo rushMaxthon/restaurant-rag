@@ -493,7 +493,13 @@ class Settings(BaseSettings):
     # Every customer-facing price is rendered in CAD, so the charge currency
     # has to agree — a Stripe intent in another currency would show the
     # customer one number on the checkout screen and bill them a different one.
-    payment_currency: str = "cad"
+    # USD since 8f4d050 switched every customer- and owner-facing price to it.
+    # This setting is NOT cosmetic: orders stamp `orders.currency` from it at
+    # creation and the Stripe intent is built from that, so a value the screen
+    # does not show charges the customer in a currency nobody quoted. It was
+    # "cad" here while .env said "inr" and the apps rendered USD — three
+    # currencies for one number.
+    payment_currency: str = "usd"
     # Whether this deployment takes cash on delivery at all. Off: this product
     # is card-only, and an always-available COD meant "Place order" completed
     # without any payment step, which read as the payment being skipped.
