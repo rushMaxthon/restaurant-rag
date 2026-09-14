@@ -130,3 +130,78 @@ def choose_category_default(
                     menu_item_id=candidate_id,
                 )
     return None
+
+
+@dataclass(frozen=True)
+class CartLineFacts:
+    menu_item_id: uuid.UUID
+    size_id: uuid.UUID | None
+    customization_option_ids: frozenset[uuid.UUID]
+
+
+@dataclass(frozen=True)
+class ComboUpgrade:
+    combo_id: uuid.UUID
+    item_ids: tuple[uuid.UUID, ...]
+    saving: Decimal
+
+
+@dataclass(frozen=True)
+class SizeOption:
+    menu_item_id: uuid.UUID
+    size_id: uuid.UUID
+    extra_cost: Decimal
+
+
+@dataclass(frozen=True)
+class AddOnOption:
+    menu_item_id: uuid.UUID
+    option_id: uuid.UUID
+    extra_cost: Decimal
+
+
+def choose_upsell(
+    lines: list[CartLineFacts],
+    *,
+    combos: list[ComboUpgrade],
+    sizes: list[SizeOption],
+    add_ons: list[AddOnOption],
+) -> SellSuggestion | None:
+    """First rung that fires wins, and the rungs descend in customer value."""
+
+    if not lines:
+        return None
+
+    cart_item_ids = {line.menu_item_id for line in lines}
+
+    for combo in combos:
+        if set(combo.item_ids) <= cart_item_ids:
+            return SellSuggestion(
+                kind="up_sell",
+                basis="combo_upgrade",
+                combo_id=combo.combo_id,
+                saving=combo.saving,
+            )
+
+    for size in sizes:
+        if size.menu_item_id in cart_item_ids:
+            return SellSuggestion(
+                kind="up_sell",
+                basis="size_upgrade",
+                menu_item_id=size.menu_item_id,
+                size_id=size.size_id,
+                extra_cost=size.extra_cost,
+            )
+
+    chosen_options = {option for line in lines for option in line.customization_option_ids}
+    for add_on in add_ons:
+        if add_on.menu_item_id in cart_item_ids and add_on.option_id not in chosen_options:
+            return SellSuggestion(
+                kind="up_sell",
+                basis="add_on",
+                menu_item_id=add_on.menu_item_id,
+                customization_option_id=add_on.option_id,
+                extra_cost=add_on.extra_cost,
+            )
+
+    return None

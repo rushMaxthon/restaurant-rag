@@ -20,15 +20,21 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.main import app  # noqa: F401 - imported first to settle import order
 from app.services.suggestions import (
+    AddOnOption,
     CandidateItem,
+    CartLineFacts,
+    ComboUpgrade,
     PairingPattern,
+    SizeOption,
     choose_category_default,
     choose_pairing,
+    choose_upsell,
 )
 
 CURRY = uuid.UUID("00000000-0000-0000-0000-0000000000c1")
 TEA = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
 RICE = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
+PIZZA = uuid.UUID("00000000-0000-0000-0000-0000000000ef")
 
 
 def _candidate(item_id: uuid.UUID, *, is_veg: bool = True, available: bool = True) -> CandidateItem:
@@ -187,6 +193,95 @@ class CategoryFallbackTests(unittest.TestCase):
                 diet=None,
             )
         )
+
+
+class UpsellLadderTests(unittest.TestCase):
+    """Ordered by value to the CUSTOMER, not margin to the restaurant.
+
+    A combo saves money, a size gives more food, an add-on only costs more. A
+    waiter who opens with the most profitable add-on gets tuned out, and then
+    none of the three rungs work.
+    """
+
+    def _line(self, item_id=PIZZA, *, size_id=None, option_ids=()):
+        return CartLineFacts(
+            menu_item_id=item_id,
+            size_id=size_id,
+            customization_option_ids=frozenset(option_ids),
+        )
+
+    def test_a_combo_upgrade_beats_a_size_upgrade(self) -> None:
+        combo_id = uuid.uuid4()
+        larger = uuid.uuid4()
+
+        result = choose_upsell(
+            [self._line(size_id=uuid.uuid4())],
+            combos=[ComboUpgrade(combo_id=combo_id, item_ids=(PIZZA,), saving=Decimal("4.00"))],
+            sizes=[SizeOption(menu_item_id=PIZZA, size_id=larger, extra_cost=Decimal("3.00"))],
+            add_ons=[],
+        )
+
+        self.assertEqual(result.basis, "combo_upgrade")
+        self.assertEqual(result.combo_id, combo_id)
+        self.assertEqual(result.saving, Decimal("4.00"))
+        self.assertEqual(result.kind, "up_sell")
+
+    def test_a_size_upgrade_beats_an_add_on(self) -> None:
+        larger = uuid.uuid4()
+        option = uuid.uuid4()
+
+        result = choose_upsell(
+            [self._line(size_id=uuid.uuid4())],
+            combos=[],
+            sizes=[SizeOption(menu_item_id=PIZZA, size_id=larger, extra_cost=Decimal("3.00"))],
+            add_ons=[AddOnOption(menu_item_id=PIZZA, option_id=option, extra_cost=Decimal("1.00"))],
+        )
+
+        self.assertEqual(result.basis, "size_upgrade")
+        self.assertEqual(result.size_id, larger)
+        self.assertEqual(result.extra_cost, Decimal("3.00"))
+
+    def test_an_add_on_is_the_last_resort(self) -> None:
+        option = uuid.uuid4()
+
+        result = choose_upsell(
+            [self._line()],
+            combos=[],
+            sizes=[],
+            add_ons=[AddOnOption(menu_item_id=PIZZA, option_id=option, extra_cost=Decimal("1.00"))],
+        )
+
+        self.assertEqual(result.basis, "add_on")
+        self.assertEqual(result.customization_option_id, option)
+
+    def test_a_combo_the_cart_does_not_fully_contain_is_not_offered(self) -> None:
+        """A combo upgrade is only an upgrade if the cart already holds it."""
+
+        other = uuid.uuid4()
+
+        self.assertIsNone(
+            choose_upsell(
+                [self._line()],
+                combos=[ComboUpgrade(combo_id=uuid.uuid4(), item_ids=(PIZZA, other), saving=Decimal("4.00"))],
+                sizes=[],
+                add_ons=[],
+            )
+        )
+
+    def test_an_add_on_already_chosen_is_not_offered_again(self) -> None:
+        option = uuid.uuid4()
+
+        self.assertIsNone(
+            choose_upsell(
+                [self._line(option_ids=(option,))],
+                combos=[],
+                sizes=[],
+                add_ons=[AddOnOption(menu_item_id=PIZZA, option_id=option, extra_cost=Decimal("1.00"))],
+            )
+        )
+
+    def test_an_empty_cart_yields_nothing(self) -> None:
+        self.assertIsNone(choose_upsell([], combos=[], sizes=[], add_ons=[]))
 
 
 if __name__ == "__main__":
