@@ -334,7 +334,7 @@ function Checkout() {
         </div>
       )}
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
           <section className="elevated-panel p-5 sm:p-6">
             <h2 className="font-display text-xl font-black">

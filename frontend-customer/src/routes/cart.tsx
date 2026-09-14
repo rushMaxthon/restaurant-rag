@@ -124,7 +124,7 @@ function CartPage() {
         </Button>
       </header>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_400px]">
         <section className="space-y-3">
           {s.cart.map((line, i) => (
             <article

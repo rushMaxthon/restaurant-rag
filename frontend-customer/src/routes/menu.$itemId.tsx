@@ -96,7 +96,7 @@ function DishPage() {
   if (itemQuery.isLoading) {
     return (
       <div className="page-pad mx-auto max-w-7xl py-10" aria-busy="true">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="skeleton aspect-[16/10] !rounded-2xl" />
           <div className="elevated-panel skeleton-panel p-5 sm:p-6">
             <div className="skeleton skeleton-line skeleton-line--meta" />
@@ -131,7 +131,7 @@ function DishPage() {
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
 
-        <div className="mt-5 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="dish-hero relative overflow-hidden rounded-2xl">
             <DishImage src={item.image_url} name={item.name} className="aspect-[16/10]" priority />
             {(item.is_bestseller || item.is_new) && (
