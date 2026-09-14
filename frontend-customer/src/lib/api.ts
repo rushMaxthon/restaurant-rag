@@ -437,8 +437,8 @@ export const api = {
 type ChatStreamPayload = {
   message: string;
   session_id?: string | null;
-  restaurant_id?: string | null;
-  restaurant_location_id?: string | null;
+  restaurant_id?: string | null | undefined;
+  restaurant_location_id?: string | null | undefined;
   guest_preferences?: GuestPreferences | undefined;
 };
 
