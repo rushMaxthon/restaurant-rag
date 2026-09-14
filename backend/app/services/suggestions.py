@@ -112,6 +112,10 @@ def choose_category_default(
     for the first thousand orders is not a waiter.
     """
 
+    # Empty cart_categories means the cart has no items with resolvable
+    # categories — not that the cart is empty. The caller must represent
+    # uncategorised items (with a sentinel or similar) so this never fires
+    # on an actual cart. The truly-empty-cart case is filtered by the caller.
     if not cart_categories:
         return None
 

@@ -177,7 +177,7 @@ class CategoryFallbackTests(unittest.TestCase):
         )
 
     def test_an_empty_cart_yields_nothing(self) -> None:
-        """Nothing in the cart means nothing is missing from it."""
+        """Empty category set (no resolvable items) yields no suggestion."""
 
         self.assertIsNone(
             choose_category_default(
