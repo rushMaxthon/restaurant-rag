@@ -111,6 +111,13 @@ Every handler returns plain data with ids that came from the database.
 
 ## Task 2b: Suggestions become a tool — and learn the customer
 
+> **DEFERRED — 2026-09-15, customer's instruction: "let's do one by one, all
+> can't be implemented now. First complete the agentic that we have
+> discussed."** Nothing here is cancelled and nothing in Phase 1 is removed —
+> `suggestions.py` keeps serving the home and cart prompts throughout. This task
+> runs only after the agent works end to end (Task 8 green). It is written down
+> now so the design is not re-derived later.
+
 **Files:** modify `ordering_agent/tools.py`, `backend/app/services/suggestions.py`,
 create `tests/test_ordering_agent_suggestions.py`
 
