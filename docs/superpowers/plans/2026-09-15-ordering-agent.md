@@ -61,8 +61,22 @@ The customer-side agent mirrors that. Nothing here is a novel pattern for this c
 
 Define the tool contract before any tool exists: a name, a Pydantic argument model with `extra="forbid"`, a one-line description, and a handler signature. Mirror `insights/tool_chat.py`'s `TOOLS` shape so the two agents read alike.
 
-**Read-only tools** (this task defines the registry and these five):
-`search_menu`, `get_dish`, `view_cart`, `check_hours`, `price_quote`.
+**Read-only tools** (this task defines the registry and these seven):
+`search_menu`, `get_dish`, `view_cart`, `check_hours`, `price_quote`,
+`restaurant_info`, `payment_options`.
+
+The customer's requirement is that the agent answers **anything** about the
+restaurant, the menu, the cart or payment — so the read-only surface has to
+cover all four, not just the menu. `restaurant_info` reads real
+`RestaurantLocation` columns (address, phone, delivery/pickup availability,
+ETA, minimum order, delivery fee, prep time). `payment_options` reads
+`get_enabled_payment_methods` (`restaurant_locations.py:227`).
+
+**`payment_options` is strictly read-only.** It answers "do you take card?".
+Its argument model must make initiating a payment structurally impossible — no
+amount, no method to charge, no order id. The spec stops the agent at a filled
+cart; answering a question about payment is inside that boundary, performing
+one is not.
 
 **No handler may accept a restaurant, branch, customer or user id as an argument.** Scope is injected by the caller from the authenticated session. A tool whose arg model exposes a scope id is a defect.
 
@@ -81,7 +95,13 @@ Implement the five read-only handlers over existing services — **no new busine
 - `get_dish` → dish resolution using the existing dish-name confidence signal
 - `view_cart` → the cart the request carried, re-resolved against the branch
 - `check_hours` → existing `restaurant_locations` window/cutoff logic
-- `price_quote` → existing order pricing; **never arithmetic invented here**
+- `price_quote` → **delegates to `validate_order_draft`** (`orders.py`, exposed
+  as `POST /api/orders/validate`), the client's own pricing source for subtotal,
+  delivery fee, tax and total. Never arithmetic invented here — two pricing
+  paths that disagree is the bug this codebase already guards against by
+  keeping exactly one.
+- `restaurant_info` → `RestaurantLocation` columns, branch-scoped
+- `payment_options` → `get_enabled_payment_methods`, read-only
 
 Every handler returns plain data with ids that came from the database.
 
@@ -138,8 +158,21 @@ Behind a flag defaulting **off**. The agent runs alongside the existing pipeline
 
 ## Task 8: End-to-end verification
 
-- [ ] With Ollama running and the flag on, drive real sentences that avoid every keyword: "go on then", "nah I'm good", "scrap that", "make it two instead", "what time do you shut?", "how much is that altogether?"
-- [ ] Confirm hours and menu questions are unchanged with the flag both on and off.
+Drive real sentences with Ollama running and the flag on, covering all four
+subjects the customer named. **Phrase every one so it shares no keyword with any
+tool name or the old regex tier** — that is the point of the architecture.
+
+| Subject | Sentences to drive |
+|---|---|
+| Restaurant | "what time do you shut?", "whereabouts are you?", "is there a minimum spend?", "how long does delivery usually take?" |
+| Menu | "something spicy but not too heavy", "what's good here?", "anything without dairy?", "tell me about the pork belly" |
+| Cart | "go on then", "nah I'm good", "scrap that", "make it two instead", "what have I got so far?" |
+| Payment | "can I pay by card?", "do you take cash on the door?" |
+| Totals | "how much is that altogether?", "what's the damage?" |
+
+- [ ] Confirm every answer traces to a tool result — no invented dish, price or time.
+- [ ] Confirm hours and menu questions are unchanged with the flag both on AND off.
+- [ ] Confirm no payment is ever initiated, only described.
 - [ ] Quote every result.
 
 ---
