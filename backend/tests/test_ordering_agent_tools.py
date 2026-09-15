@@ -197,26 +197,30 @@ class PromptDescriptionHelperTests(unittest.TestCase):
 
 
 class HandlerSignatureTests(unittest.TestCase):
-    """Handlers may raise NotImplementedError in this task; Task 2 fills them in."""
+    """Task 1 left every handler raising `NotImplementedError`; Task 2 wired
+    each one to a real service (see `test_ordering_agent_readonly.py` for the
+    behavioural coverage). The only thing left to pin here structurally is
+    that none of them regressed back to a stub — real handlers legitimately
+    raise on nonsense inputs like a `None` session, which is not the same
+    thing and is no longer this file's concern.
+    """
 
     def test_every_handler_is_callable(self) -> None:
         for name, spec in TOOLS.items():
             with self.subTest(tool=name):
                 self.assertTrue(callable(spec.handler))
 
-    def test_handlers_may_raise_not_implemented_for_now(self) -> None:
-        # Not asserting they DO raise it forever — just that Task 1 is allowed
-        # to leave them unfinished without that being a contract violation.
+    def test_no_handler_is_still_a_task_1_stub(self) -> None:
+        import inspect
+
         for name, spec in TOOLS.items():
             with self.subTest(tool=name):
-                try:
-                    spec.handler(None, None, spec.args_model())
-                except NotImplementedError:
-                    pass
-                except ValidationError:
-                    # A tool whose args model requires a field (e.g. a query)
-                    # cannot be built with zero arguments; that is fine too.
-                    pass
+                source = inspect.getsource(spec.handler)
+                self.assertNotIn(
+                    "NotImplementedError",
+                    source,
+                    f"{name} is still Task 1's placeholder",
+                )
 
 
 class ArgModelShapeTests(unittest.TestCase):
