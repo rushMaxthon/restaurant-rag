@@ -22,7 +22,14 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.main import app  # noqa: F401 - imported first to settle import order
-from app.services.cart_actions import classify_cart_verb, extract_requested_quantity
+from app.services.cart_actions import (
+    CartAction,
+    ExistingCartLine,
+    ResolvedDish,
+    classify_cart_verb,
+    extract_requested_quantity,
+    resolve_cart_actions,
+)
 
 
 class QuantityExtractionTests(unittest.TestCase):
@@ -163,6 +170,158 @@ class CartVerbClassificationTests(unittest.TestCase):
         classifier guessing which half of the request mattered more."""
 
         self.assertIsNone(classify_cart_verb("remove the pizza and add a coke"))
+
+
+PAD_THAI = uuid.uuid4()
+CURRY = uuid.uuid4()
+
+
+class ActionResolverTests(unittest.TestCase):
+    """One customer sentence, at most one cart action — never a guessed list."""
+
+    def _dish(self, *, has_sizes: bool = False, has_customizations: bool = False, item_id=PAD_THAI) -> ResolvedDish:
+        return ResolvedDish(menu_item_id=item_id, has_sizes=has_sizes, has_customizations=has_customizations)
+
+    def test_a_plain_named_add_is_applied(self) -> None:
+        actions = resolve_cart_actions(
+            "add the pad thai",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[],
+        )
+
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].kind, "add")
+        self.assertEqual(actions[0].status, "applied")
+        self.assertEqual(actions[0].reason, "named")
+        self.assertEqual(actions[0].menu_item_id, PAD_THAI)
+        self.assertEqual(actions[0].quantity, 1)
+
+    def test_a_quantity_is_carried_through(self) -> None:
+        actions = resolve_cart_actions(
+            "add two pad thai", dish_reference="named", resolved_dish=self._dish(), existing_lines=[]
+        )
+
+        self.assertEqual(actions[0].quantity, 2)
+
+    def test_a_choice_bearing_item_is_never_blind_added(self) -> None:
+        """Same rule dish-card.tsx and suggestionNeedsChoice already enforce."""
+
+        actions = resolve_cart_actions(
+            "add the pad thai",
+            dish_reference="named",
+            resolved_dish=self._dish(has_sizes=True),
+            existing_lines=[],
+        )
+
+        self.assertEqual(actions[0].status, "proposed")
+        self.assertEqual(actions[0].reason, "needs_choice")
+
+    def test_an_unrecognised_dish_name_yields_no_action(self) -> None:
+        actions = resolve_cart_actions(
+            "add the moon rock curry", dish_reference="absent", resolved_dish=None, existing_lines=[]
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_an_unresolved_reference_yields_no_action(self) -> None:
+        """`unknown` (no distance to judge by) is not evidence either way."""
+
+        actions = resolve_cart_actions(
+            "add it", dish_reference="unknown", resolved_dish=None, existing_lines=[]
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_a_message_with_no_cart_verb_yields_no_action(self) -> None:
+        actions = resolve_cart_actions(
+            "what's spicy tonight?", dish_reference="named", resolved_dish=self._dish(), existing_lines=[]
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_removing_the_one_matching_line_is_applied(self) -> None:
+        actions = resolve_cart_actions(
+            "remove the pad thai",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[ExistingCartLine(menu_item_id=PAD_THAI)],
+        )
+
+        self.assertEqual(actions[0].kind, "remove")
+        self.assertEqual(actions[0].status, "applied")
+
+    def test_removing_nothing_present_yields_no_action(self) -> None:
+        actions = resolve_cart_actions(
+            "remove the pad thai", dish_reference="named", resolved_dish=self._dish(), existing_lines=[]
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_removing_a_dish_with_two_lines_is_always_proposed(self) -> None:
+        """Two sizes of the same dish — which one? Destructive, so ask, always."""
+
+        actions = resolve_cart_actions(
+            "remove the pad thai",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[ExistingCartLine(menu_item_id=PAD_THAI), ExistingCartLine(menu_item_id=PAD_THAI)],
+        )
+
+        self.assertEqual(actions[0].status, "proposed")
+        self.assertEqual(actions[0].reason, "destructive")
+
+    def test_clear_is_always_proposed_regardless_of_confidence(self) -> None:
+        actions = resolve_cart_actions(
+            "clear my cart", dish_reference="unknown", resolved_dish=None, existing_lines=[]
+        )
+
+        self.assertEqual(actions[0].kind, "clear")
+        self.assertEqual(actions[0].status, "proposed")
+        self.assertEqual(actions[0].reason, "destructive")
+
+    def test_set_quantity_on_one_matching_line_is_applied(self) -> None:
+        actions = resolve_cart_actions(
+            "make it 3",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[ExistingCartLine(menu_item_id=PAD_THAI)],
+        )
+
+        self.assertEqual(actions[0].kind, "set_quantity")
+        self.assertEqual(actions[0].status, "applied")
+        self.assertEqual(actions[0].quantity, 3)
+
+    def test_set_quantity_with_no_number_yields_no_action(self) -> None:
+        actions = resolve_cart_actions(
+            "change the quantity to",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[ExistingCartLine(menu_item_id=PAD_THAI)],
+        )
+
+        self.assertEqual(actions, [])
+
+    def test_set_quantity_on_two_matching_lines_is_ambiguous(self) -> None:
+        actions = resolve_cart_actions(
+            "make it 3",
+            dish_reference="named",
+            resolved_dish=self._dish(),
+            existing_lines=[ExistingCartLine(menu_item_id=PAD_THAI), ExistingCartLine(menu_item_id=PAD_THAI)],
+        )
+
+        self.assertEqual(actions[0].status, "proposed")
+        self.assertEqual(actions[0].reason, "ambiguous")
+
+    def test_a_line_of_a_different_item_does_not_count_as_a_match(self) -> None:
+        actions = resolve_cart_actions(
+            "remove the pad thai",
+            dish_reference="named",
+            resolved_dish=self._dish(item_id=PAD_THAI),
+            existing_lines=[ExistingCartLine(menu_item_id=CURRY)],
+        )
+
+        self.assertEqual(actions, [])
 
 
 if __name__ == "__main__":

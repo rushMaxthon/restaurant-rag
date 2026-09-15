@@ -16,6 +16,8 @@ values rather than importing it, for that same reason.
 from __future__ import annotations
 
 import re
+import uuid
+from dataclasses import dataclass
 from typing import Literal
 
 DishReferenceVerdict = Literal["named", "absent", "unknown"]
@@ -241,3 +243,140 @@ def classify_cart_verb(message: str) -> CartVerb | None:
     if len(matched) == 1:
         return matched[0]
     return None
+
+
+ActionKind = Literal["add", "remove", "set_quantity", "clear"]
+ActionStatus = Literal["applied", "proposed"]
+# `needs_choice` is not in the design spec's draft enum (`named` / `ambiguous`
+# / `destructive`) — added because "the dish was named confidently but has
+# sizes or customizations" is a different failure from "which item?" or
+# "should this really happen?", and the client needs to tell them apart to
+# render the right affordance (a link to the dish page, not a confirm button).
+ActionReason = Literal["named", "ambiguous", "destructive", "needs_choice"]
+
+
+@dataclass(frozen=True)
+class ExistingCartLine:
+    """The only fact about an existing cart line the resolver needs."""
+
+    menu_item_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class ResolvedDish:
+    """The single item this turn's retrieval landed on, if any.
+
+    Deliberately just these three fields: they are exactly what
+    `ChatSuggestionItem` already carries for the top retrieved candidate, so
+    the caller in `rag.py` builds this from data already computed for the
+    reply rather than a second database read.
+    """
+
+    menu_item_id: uuid.UUID
+    has_sizes: bool
+    has_customizations: bool
+
+
+@dataclass(frozen=True)
+class CartAction:
+    kind: ActionKind
+    status: ActionStatus
+    reason: ActionReason
+    menu_item_id: uuid.UUID | None = None
+    quantity: int | None = None
+
+
+def _matching_lines(existing_lines: list[ExistingCartLine], menu_item_id: uuid.UUID) -> list[ExistingCartLine]:
+    return [line for line in existing_lines if line.menu_item_id == menu_item_id]
+
+
+def resolve_cart_actions(
+    message: str,
+    *,
+    dish_reference: DishReferenceVerdict,
+    resolved_dish: ResolvedDish | None,
+    existing_lines: list[ExistingCartLine],
+) -> list[CartAction]:
+    """One customer sentence, at most one cart action.
+
+    A list, per the design's `cart_actions: list[CartAction] # ordered, may be
+    empty` — this phase only ever returns 0 or 1, because multi-item parsing
+    ("two pad thai and a curry") is the phrasing tier-2 (an LLM planner, not
+    built) exists for. Returning a list rather than `CartAction | None` keeps
+    the contract stable for when that seam is filled in.
+    """
+
+    verb = classify_cart_verb(message)
+    if verb is None:
+        return []
+
+    if verb == "clear":
+        # Proposed ALWAYS, whatever the confidence — the spec is explicit that
+        # `clear` never applies itself.
+        return [CartAction(kind="clear", status="proposed", reason="destructive")]
+
+    # Every remaining verb needs a dish to act on. `absent` (menu doesn't have
+    # it) and `unknown` (no distance to judge by) both mean "not this
+    # resolver's job to guess" — silence beats a guess, the same rule
+    # `classify_dish_reference` states for the reply itself.
+    if resolved_dish is None or dish_reference != "named":
+        return []
+
+    matches = _matching_lines(existing_lines, resolved_dish.menu_item_id)
+    quantity = extract_requested_quantity(message)
+
+    if verb == "add":
+        if resolved_dish.has_sizes or resolved_dish.has_customizations:
+            return [
+                CartAction(
+                    kind="add",
+                    status="proposed",
+                    reason="needs_choice",
+                    menu_item_id=resolved_dish.menu_item_id,
+                    quantity=quantity or 1,
+                )
+            ]
+        return [
+            CartAction(
+                kind="add",
+                status="applied",
+                reason="named",
+                menu_item_id=resolved_dish.menu_item_id,
+                quantity=quantity or 1,
+            )
+        ]
+
+    if verb == "remove":
+        if not matches:
+            # Nothing to remove is not a destructive act on nothing — silence.
+            return []
+        if len(matches) > 1:
+            return [
+                CartAction(kind="remove", status="proposed", reason="destructive", menu_item_id=resolved_dish.menu_item_id)
+            ]
+        return [CartAction(kind="remove", status="applied", reason="named", menu_item_id=resolved_dish.menu_item_id)]
+
+    if verb == "set_quantity":
+        if quantity is None or not matches:
+            return []
+        if len(matches) > 1:
+            return [
+                CartAction(
+                    kind="set_quantity",
+                    status="proposed",
+                    reason="ambiguous",
+                    menu_item_id=resolved_dish.menu_item_id,
+                    quantity=quantity,
+                )
+            ]
+        return [
+            CartAction(
+                kind="set_quantity",
+                status="applied",
+                reason="named",
+                menu_item_id=resolved_dish.menu_item_id,
+                quantity=quantity,
+            )
+        ]
+
+    return []  # pragma: no cover - exhaustive over CartVerb
