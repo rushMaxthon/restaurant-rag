@@ -316,9 +316,23 @@ def resolve_cart_actions(
         return [CartAction(kind="clear", status="proposed", reason="destructive")]
 
     # Every remaining verb needs a dish to act on. `absent` (menu doesn't have
-    # it) and `unknown` (no distance to judge by) both mean "not this
-    # resolver's job to guess" — silence beats a guess, the same rule
-    # `classify_dish_reference` states for the reply itself.
+    # it) returns [] straightforwardly — there's nothing to act on.
+    #
+    # `unknown` also returns [] here, and that is a DELIBERATE DEVIATION from
+    # `docs/superpowers/specs/2026-09-14-waiter-agentic-cart-design.md`, which
+    # states "`unknown` or more than one candidate -> `proposed`, rendered as
+    # a choice". This resolver does not do that. `unknown` is not "a weak but
+    # present candidate" the way a distant embedding match would be — it's an
+    # ABSENT confidence signal: no embedding, or an empty retrieval. The only
+    # dish that could reach `resolved_dish` in that state comes from the
+    # keyword/trigram fallback tier, which `apply_dish_name_guardrail`'s own
+    # comment warns would "score every keyword hit as a confident dish match"
+    # if trusted. Rendering that as a `proposed` confirm-card would show the
+    # customer a SPECIFIC, possibly nonsensical dish with the visual authority
+    # of a real proposal ("Add Moon Rock Curry?"); returning [] instead falls
+    # through to a prose reply that can hedge ("I couldn't find that dish").
+    # Silence is the better failure here, so `unknown` is folded into the same
+    # silent path as `absent` rather than into the spec's `proposed` path.
     if resolved_dish is None or dish_reference != "named":
         return []
 

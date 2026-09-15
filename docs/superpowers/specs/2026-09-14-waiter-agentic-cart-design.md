@@ -180,13 +180,29 @@ It:
 `DISH_NAME_MAX_DISTANCE`. That signal decides:
 
 - `named` → `applied`, with undo
-- `unknown` or more than one candidate → `proposed`, rendered as a choice
+- more than one candidate → `proposed`, rendered as a choice
 - **anything destructive** (`clear`, or a `remove` matching several lines) →
   `proposed` always, whatever the confidence
 
 Reusing the guardrail's signal matters: it is measured and tested. A second
 threshold invented here would need its own calibration and would drift from the
 first one.
+
+**Amendment (Task 3 review, 2026-09-15):** `unknown` yields no action at all —
+not `proposed` as drafted above. The reasoning above treats `unknown` as one
+more point on the same confidence scale as `named`, just a weaker one, and a
+weak-but-present candidate is exactly what a confirm-card is for. But `unknown`
+isn't a weak signal — it's an absent one: no embedding distance to judge, or an
+empty retrieval. The only dish that can reach the resolver in that state comes
+from the keyword/trigram fallback tier, which `apply_dish_name_guardrail`'s own
+comment already distrusts for this reason — it would "score every keyword hit
+as a confident dish match" if the guardrail let it. A `proposed` card built on
+that tier doesn't ask the customer to confirm a fuzzy match; it asserts one
+specific, possibly nonsensical dish with the full visual authority of a real
+proposal. A prose reply built over the same non-match can hedge ("I couldn't
+find that dish"); a card cannot. So `resolve_cart_actions` folds `unknown` into
+the same silent path as `absent` — see the comment at the `dish_reference`
+gate in `cart_actions.py`.
 
 ---
 
@@ -345,7 +361,9 @@ deterministic tier is therefore never wasted work.
 - nothing qualifying, and the fallback also silent, yields no suggestion
 - the same item is not offered twice in a session; suggesting stops after two
   declines
-- `classify_dish_reference` returning `unknown` yields `proposed`, not `applied`
+- `classify_dish_reference` returning `unknown` yields no action at all — not
+  `applied`, and not `proposed` either (amended, see "`status` is decided by
+  confidence, not by the model")
 - `clear` is `proposed` even when confidence is high
 - a reply carrying actions is refused by `may_cache_globally`
 - a `cart` line naming an item from another branch is ignored, and the turn
