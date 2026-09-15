@@ -108,6 +108,59 @@ Every handler returns plain data with ids that came from the database.
 - [ ] Tests first: each handler returns rows scoped to the branch; an id from another branch is ignored; `price_quote` totals match the existing pricing service for the same input.
 - [ ] RED, implement, GREEN, full suite, commit.
 
+
+## Task 2b: Suggestions become a tool — and learn the customer
+
+**Files:** modify `ordering_agent/tools.py`, `backend/app/services/suggestions.py`,
+create `tests/test_ordering_agent_suggestions.py`
+
+**Phase 1 is not replaced. It is promoted.** `suggestions.py` — cross-sell from
+mined order patterns, the labelled category fallback, the up-sell ladder, the
+suppression memory — stays exactly as it is and keeps serving the home and cart
+prompts. This task gives the agent a tool over the same service, so a
+conversation and a page cannot drift apart. One suggestion contract, one more
+renderer.
+
+Register `suggest_addition` — read-only, returns at most one suggestion for the
+current cart, honouring the existing suppression rules (never twice, never after
+two declines, never something already in the cart).
+
+### Personal history, which the customer asked for
+
+Today cross-sell is **branch-wide**: what everyone ordered together. The
+customer wants it to also reflect *their own* past orders.
+
+`recommendations.py` already computes exactly this signal —
+`_load_order_history(db, user_id)` returns an `OrderHistoryProfile` with per-item,
+per-category and per-cuisine counts drawn from that customer's PAID, eligible
+orders. Reuse it; do not write a second history query.
+
+**Ranking, strongest evidence first:**
+
+| Basis | Means | Wording it licenses |
+|---|---|---|
+| `personal_history` | *this* customer ordered these together before | "you usually add…" |
+| `co_occurrence` | other customers ordered them together | "often ordered with…" |
+| `category_default` | nobody did; cheapest in a missing category | "most people add a drink" |
+
+This is the honesty rule extended, not bent: a stronger claim requires stronger
+evidence, and `basis` still decides the wording. A personal claim is the
+strongest of the three and needs the narrowest evidence — **this customer's own
+orders**, not a demographic guess.
+
+**Guards:**
+- A signed-out guest has no history; the rule must degrade to `co_occurrence`
+  silently, never invent a personal claim for someone it cannot identify.
+- One order is not a habit. Require enough repetition to justify the word
+  "usually" — pick a floor, state it in a comment, and test the boundary.
+- Diet, branch scope, availability and suppression all still apply first.
+
+- [ ] Tests: a customer with a repeated pairing gets `personal_history`; one with
+      a single order does not; a guest never does; a personal suggestion still
+      obeys diet and suppression; the three bases produce three distinguishable
+      wordings.
+- [ ] RED, implement, GREEN, full suite, commit.
+
 ## Task 3: Cart-mutating tools
 
 **Files:** modify `ordering_agent/tools.py`, create `tests/test_ordering_agent_mutations.py`
@@ -168,6 +221,7 @@ tool name or the old regex tier** — that is the point of the architecture.
 | Menu | "something spicy but not too heavy", "what's good here?", "anything without dairy?", "tell me about the pork belly" |
 | Cart | "go on then", "nah I'm good", "scrap that", "make it two instead", "what have I got so far?" |
 | Payment | "can I pay by card?", "do you take cash on the door?" |
+| Suggestions | "what goes with this?", "surprise me", "the usual?" — and confirm a returning customer's own history outranks the branch-wide default |
 | Totals | "how much is that altogether?", "what's the damage?" |
 
 - [ ] Confirm every answer traces to a tool result — no invented dish, price or time.
