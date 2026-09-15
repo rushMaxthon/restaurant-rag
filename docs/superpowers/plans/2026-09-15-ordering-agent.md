@@ -168,6 +168,43 @@ orders**, not a demographic guess.
       wordings.
 - [ ] RED, implement, GREEN, full suite, commit.
 
+
+## Three outcomes, never two — customer's ruling, 2026-09-15
+
+A cart line can end up in one of three states, and conflating any two of them
+tells the customer something false.
+
+| State | What it means | What the agent does |
+|---|---|---|
+| **Not at this branch** | the id resolves to nothing here | **never mention it** — it is not on this menu, so it does not exist in the conversation |
+| **Needs a choice** | the dish is real and available, but has sizes, or has toppings the customer has not chosen | **ask** — "which size?"; for toppings, offer the defaults and ask whether to keep or change them |
+| **Complete** | fully specified | price it, add it, act |
+
+The customer's words:
+
+> "If item is not available at branch then do not show on their menu. We can ask
+> user about size and we can select topping as per their choice and we can ask
+> them to do you want to change or go with default toppings"
+
+**Why this matters more than a wording nit.** `price_quote` currently answers
+*"None of these items are on this branch's menu"* for a pizza that is very much
+on the menu and merely lacks a size. That is the same class of mistake the
+Add-vs-Choose bug was in Phase 1: a dish needing a choice is not a missing dish,
+and the two demand different answers — "we don't have that" versus "which one?".
+
+**So every tool that resolves cart lines must return these three outcomes
+distinctly**, and a "needs a choice" result must carry *what* the choices are —
+the available sizes, the customization groups and their defaults — so the agent
+can ask a real question rather than a vague one. A tool that only answers
+"couldn't price it" forces the agent to guess, which is what this whole
+architecture exists to avoid.
+
+Toppings specifically: defaults are pre-selected and the customer is asked
+whether to keep or change them. Never silently applied, never demanded before a
+price can be given.
+
+---
+
 ## Task 3: Cart-mutating tools
 
 **Files:** modify `ordering_agent/tools.py`, create `tests/test_ordering_agent_mutations.py`
