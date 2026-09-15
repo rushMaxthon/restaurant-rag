@@ -775,6 +775,11 @@ class PreparedChatTurn:
     combo_suggestions: list[GeneratedComboResponse] = field(default_factory=list)
     offer_suggestions: list[PersonalizedOfferCardResponse] = field(default_factory=list)
     fallback_reply: str | None = None
+    # From `apply_dish_name_guardrail`'s own return value — captured here so
+    # `cart_actions.py` never re-derives it. Re-deriving would re-run the
+    # fallback vector query that function performs when no vector candidate
+    # survived, doubling a DB call on every turn a cart action might resolve.
+    dish_reference_verdict: DishReference = "unknown"
 
 
 @dataclass
@@ -6929,7 +6934,7 @@ def _prepare_chat_turn(
 
     # After retrieval, because the verdict comes from what the menu turned out to
     # contain; before filtering and ranking, which both trust `intent.dish`.
-    apply_dish_name_guardrail(
+    dish_reference_verdict = apply_dish_name_guardrail(
         resolved_intent,
         final_candidates,
         message=message,
@@ -7051,6 +7056,7 @@ def _prepare_chat_turn(
         context_block=context_block,
         prompt=prompt,
         timings=timings,
+        dish_reference_verdict=dish_reference_verdict,
     )
 
 
