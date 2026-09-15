@@ -53,9 +53,25 @@ export type SavedAddressCreate = {
   is_default?: boolean;
 };
 
+export type ProfileStats = {
+  total_orders: number;
+  delivered_orders: number;
+  saved_places: number;
+  favorites_count: number;
+};
+
+/**
+ * Everything the account knows about someone, in one request.
+ *
+ * `/profile/me` has always returned all of this; the type named only the two
+ * fields checkout happened to need, so the profile screen would have made
+ * three more calls for data already in its hand.
+ */
 export type ProfileSummary = {
   user: AuthUser;
+  stats: ProfileStats;
   saved_addresses: SavedAddress[];
+  recent_orders: Order[];
 };
 
 export type AuthResponse = {
@@ -451,6 +467,18 @@ export const api = {
   // the customer edits their details anywhere else. This is the live copy,
   // and it carries the saved addresses in the same response.
   getProfile: () => request<ProfileSummary>("/profile/me", { auth: true }),
+
+  updateProfile: (payload: { full_name: string; phone_number?: string | null }) =>
+    request<AuthUser>("/profile/me", { method: "PATCH", body: payload, auth: true }),
+
+  deleteSavedAddress: (addressId: string) =>
+    request<void>(`/profile/addresses/${addressId}`, { method: "DELETE", auth: true }),
+
+  makeSavedAddressDefault: (addressId: string) =>
+    request<SavedAddress>(`/profile/addresses/${addressId}/default`, {
+      method: "POST",
+      auth: true,
+    }),
 
   createSavedAddress: (payload: SavedAddressCreate) =>
     request<SavedAddress>("/profile/addresses", { method: "POST", body: payload, auth: true }),

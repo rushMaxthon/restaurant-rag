@@ -278,11 +278,31 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.queued, [])
 
-    def test_nothing_is_queued_while_the_channel_is_switched_off(self) -> None:
+    def test_a_switched_off_channel_refuses_rather_than_swallows(self) -> None:
+        """503, not 200, and nothing queued.
+
+        A 200 tells Meta the message was handled and it is never redelivered.
+        With the webhook still pointed here, a switched-off channel answering
+        200 would quietly destroy the messages of whoever the number really
+        belongs to. Refusing makes Meta retry, so they arrive once the webhook
+        is pointed back.
+        """
         with patch.object(self.endpoint.settings, "whatsapp_enabled", False):
             response = self.post(text_payload())
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 503)
         self.assertEqual(self.queued, [])
+
+    def test_an_unlisted_sender_is_accepted_and_never_queued(self) -> None:
+        # End to end through the endpoint: the allowlist keeps a stranger's
+        # question out of the queue entirely, so nothing can answer it.
+        with patch.object(self.endpoint.settings, "whatsapp_allowed_senders", "916353100362"),              patch.object(whatsapp.settings, "whatsapp_allowed_senders", "916353100362"):
+            response = self.post(text_payload(from_number="919687278179"))
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(self.queued, [])
+
+            # And the tester still gets through.
+            self.post(text_payload(from_number="916353100362", message_id="wamid.XYZ"))
+            self.assertEqual(len(self.queued), 1)
 
     def test_a_delivery_receipt_queues_nothing(self) -> None:
         payload = text_payload()
@@ -360,3 +380,29 @@ class TaskRegistrationTests(unittest.TestCase):
             set(),
             "task modules missing from celery include: tasks there are queued but never run",
         )
+
+
+class AllowlistTests(unittest.TestCase):
+    """Who may be answered while testing on someone else's live number."""
+
+    def test_an_empty_list_answers_everyone(self) -> None:
+        # Production: the number is ours and every customer is welcome.
+        self.assertTrue(whatsapp.may_answer("919876543210", allowed=""))
+
+    def test_a_listed_number_is_answered(self) -> None:
+        self.assertTrue(whatsapp.may_answer("916353100362", allowed="916353100362"))
+
+    def test_an_unlisted_number_is_not(self) -> None:
+        # The real customer of the real business whose number this is.
+        self.assertFalse(whatsapp.may_answer("919687278179", allowed="916353100362"))
+
+    def test_formatting_does_not_decide_who_is_allowed(self) -> None:
+        self.assertTrue(whatsapp.may_answer("916353100362", allowed="+91 63531 00362"))
+
+    def test_several_testers_can_be_listed(self) -> None:
+        allowed = "916353100362, 919999999999"
+        self.assertTrue(whatsapp.may_answer("919999999999", allowed=allowed))
+        self.assertFalse(whatsapp.may_answer("919687278179", allowed=allowed))
+
+    def test_a_sender_with_no_number_is_not_answered(self) -> None:
+        self.assertFalse(whatsapp.may_answer("", allowed="916353100362"))

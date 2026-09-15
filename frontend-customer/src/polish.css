@@ -1342,3 +1342,232 @@ html {
   color: var(--primary);
   box-shadow: 0 1px 3px rgb(20 23 31 / 0.1);
 }
+
+/* --- The account, as a running tab ------------------------------------------
+   A restaurant account is not a dashboard. The artefact a customer recognises
+   is the paper chit, and this app already speaks that language through its
+   order codes — so the order history IS the page, printed as one continuous
+   receipt, and identity sits quietly beside it.
+
+   The first version of this screen was four stat tiles and three identical
+   cards with the same radius and the same grey shadow. It was legible and it
+   could have belonged to any product on earth. */
+.tab {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .tab {
+    /* Deliberately unequal: the rail is a caption, the receipt is the page. */
+    grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+}
+
+/* The name, set large enough to be the greeting rather than a field value. */
+.tab__name {
+  font-size: clamp(2.1rem, 7vw, 3.1rem);
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+.tab__standing {
+  margin-top: 0.6rem;
+  max-width: 34ch;
+  font-size: 1.02rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --- the rail --------------------------------------------------------------- */
+.rail {
+  display: grid;
+  gap: 0.9rem;
+}
+@media (min-width: 900px) {
+  .rail {
+    position: sticky;
+    top: 5.5rem;
+  }
+}
+.rail__row {
+  display: grid;
+  gap: 0.1rem;
+  border-left: 2px solid var(--border);
+  padding-left: 0.85rem;
+}
+.rail__row dt {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.rail__row dd {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.rail__action {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 1.5px solid currentColor;
+  padding-bottom: 1px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+.rail__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Quiet until you reach for it. Removing an address is not the thing anyone
+   came here to do, so it should not be the loudest word on the line. */
+.rail__danger {
+  border-bottom-color: transparent;
+  color: var(--muted);
+}
+.rail__danger:hover,
+.rail__danger:focus-visible {
+  border-bottom-color: currentColor;
+  color: var(--danger);
+}
+
+/* --- the receipt ------------------------------------------------------------
+   One surface, not a stack of cards. Sections are separated by perforations,
+   which is where a real chit tears. */
+.receipt {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--border);
+}
+.receipt__block {
+  padding: 1.15rem 1.25rem;
+}
+@media (min-width: 640px) {
+  .receipt__block {
+    padding: 1.35rem 1.6rem;
+  }
+}
+/* The tear line: a dashed rule with a notch bitten out of each edge. The
+   notches are filled with the page behind, so they follow the theme. */
+.receipt__tear {
+  position: relative;
+  border-top: 1px dashed var(--border);
+}
+.receipt__tear::before,
+.receipt__tear::after {
+  content: "";
+  position: absolute;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+.receipt__tear::before {
+  left: -8px;
+}
+.receipt__tear::after {
+  right: -8px;
+}
+.receipt__heading {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.receipt__note {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Addresses read as "delivering to", the way a bill carries an address. */
+.place {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0;
+}
+.place + .place {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.place__mark {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  transform: translateY(-1px);
+}
+.place[data-default="true"] .place__mark {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.place__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.place__name {
+  font-weight: 700;
+}
+.place__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Order lines: figures align down the page like a real bill. */
+.line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem 1rem;
+  padding: 0.7rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.line + .line {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.line__code {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.line__total {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.line__when {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.line:hover .line__code {
+  color: var(--primary);
+}
+.line__state {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.receipt__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.tab__error {
+  border-left: 2px solid var(--danger);
+  padding-left: 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--danger);
+}

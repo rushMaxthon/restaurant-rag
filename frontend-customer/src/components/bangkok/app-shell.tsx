@@ -61,9 +61,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             variant="ghost"
             size="icon"
             asChild
-            aria-label={isAuthenticated ? "Your preferences" : "Sign in"}
+            aria-label={isAuthenticated ? "Your account" : "Sign in"}
           >
-            <Link to={isAuthenticated ? "/preferences" : "/login"}>
+            {/* The account page, not preferences: preferences are one thing an
+                account holds, and they are reachable from it. */}
+            <Link to={isAuthenticated ? "/profile" : "/login"}>
               <UserRound />
             </Link>
           </Button>

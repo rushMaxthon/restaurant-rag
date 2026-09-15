@@ -77,6 +77,31 @@ def is_our_number(phone_number_id: str, *, configured: str | None = None) -> boo
     return bool(ours) and bool(phone_number_id) and phone_number_id == ours
 
 
+def may_answer(from_number: str, *, allowed: str | None = None) -> bool:
+    """May this particular person be answered?
+
+    Empty list means everyone, which is the production answer. During testing
+    on a number that belongs to someone else's live business it is set to the
+    testers, because the alternative is what happened the first time this ran:
+    a real customer of that business asked their question and got three
+    restaurant recommendations back.
+
+    Compared on digits alone, so +91 63531 00362 and 916353100362 are the same
+    person however they were written down.
+    """
+
+    raw = allowed if allowed is not None else settings.whatsapp_allowed_senders
+    entries = [
+        "".join(ch for ch in entry if ch.isdigit())
+        for entry in (raw or "").split(",")
+        if entry.strip()
+    ]
+    if not entries:
+        return True
+    digits = "".join(ch for ch in (from_number or "") if ch.isdigit())
+    return bool(digits) and digits in entries
+
+
 def inbound_messages(payload: Any) -> list[InboundMessage]:
     """Every answerable message in one delivery.
 

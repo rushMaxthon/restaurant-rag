@@ -309,6 +309,18 @@ class Settings(BaseSettings):
     # them.
     whatsapp_restaurant_id: str = ""
 
+    # Who may be answered, as a comma-separated list of sender numbers in the
+    # form WhatsApp uses (country code, digits only, no +).
+    #
+    # Empty means everyone, which is what a real deployment wants. It is not
+    # what TESTING wants on a number that belongs to a live business: with the
+    # webhook pointed here, that business's customers reach this bot, and they
+    # got restaurant recommendations from a tailor's number before this
+    # existed. Set it to your own number and everyone else is dropped in
+    # silence - no reply is the right answer to someone we should not be
+    # talking to at all.
+    whatsapp_allowed_senders: str = ""
+
     # Meta retries a delivery it thinks failed, and a retry must not produce a
     # second reply. Seen message ids are remembered for this long.
     whatsapp_seen_message_ttl_seconds: int = 3600

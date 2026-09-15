@@ -20,7 +20,12 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from app.config import get_settings
 from app.services.cache import cache_get_json, cache_set_json
-from app.services.whatsapp import inbound_messages, is_our_number, verify_signature
+from app.services.whatsapp import (
+    inbound_messages,
+    is_our_number,
+    may_answer,
+    verify_signature,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
@@ -85,7 +90,13 @@ async def receive(
         return Response(status_code=status.HTTP_403_FORBIDDEN)  # type: ignore[return-value]
 
     if not settings.whatsapp_enabled:
-        return ACCEPTED
+        # 503, not 200. A 200 tells Meta the message was handled and it is
+        # never sent again - so a switched-off channel on a webhook that still
+        # points here would swallow the messages of whoever the number really
+        # belongs to. An error makes Meta retry, and they arrive once the
+        # webhook is pointed back where it should be.
+        logger.warning("WhatsApp delivery refused: channel disabled")
+        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)  # type: ignore[return-value]
 
     try:
         body = await request.json()
@@ -105,6 +116,11 @@ async def receive(
                 message.phone_number_id or "(none)",
                 settings.whatsapp_phone_number_id or "(none)",
             )
+            continue
+        if not may_answer(message.from_number):
+            # Not on the testing allowlist. Silence, not a reply: this number
+            # may belong to a live business whose customers are not ours.
+            logger.info("WhatsApp message ignored: sender not on the allowlist")
             continue
         if _already_answered(message.message_id):
             logger.info("WhatsApp message %s already answered", message.message_id)
