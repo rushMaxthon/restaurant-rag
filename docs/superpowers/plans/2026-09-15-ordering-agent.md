@@ -205,6 +205,44 @@ price can be given.
 
 ---
 
+
+### The selection flow, in order — customer's ruling, 2026-09-15
+
+> "For the size we will ask when we select the item from the menu. After user
+> select the size we will show default topping and it's price then we will ask
+> them to customised"
+
+Three steps, in this order, and the price appears at step 2 — not withheld until
+the customer has finished customising.
+
+| Step | Agent says | Needs from tools |
+|---|---|---|
+| 1. Dish chosen | "Which size?" — the sizes with their prices | the dish's active sizes, each with its own price |
+| 2. Size chosen | "That comes with X, Y — that's $N" | the default toppings for **that size**, and the price of size + defaults |
+| 3. Price shown | "Want to change anything?" | the customization groups the customer may alter |
+
+**Why the price lands at step 2.** A customer deciding whether to order needs the
+number before being asked to fiddle with toppings, not after. Withholding it
+until customisation is complete makes the cost feel like something being
+revealed rather than offered.
+
+**Size is asked at selection, not at pricing.** By the time `price_quote` sees a
+line it should already carry a size. A line reaching pricing without one means
+the flow was skipped — that is still "needs a choice", not "not on the menu",
+but it is a fallback, not the normal path.
+
+**Toppings are pre-selected, never silently applied.** Step 2 *states* the
+defaults. The customer is told what they are getting before being asked whether
+to change it. Silence is consent only because the defaults were said out loud.
+
+Note that a size carries its own price (`MenuItemSize.price` is absolute, not a
+delta) and each chosen option adds `extra_price`. Step 2's figure is the size
+price plus the defaults' extras — computed by the pricing path, never by the
+model.
+
+
+---
+
 ## Task 3: Cart-mutating tools
 
 **Files:** modify `ordering_agent/tools.py`, create `tests/test_ordering_agent_mutations.py`
