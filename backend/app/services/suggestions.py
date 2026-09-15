@@ -277,6 +277,12 @@ class SuggestionMemory:
     offered_item_ids: frozenset[uuid.UUID] = frozenset()
     declined_item_ids: frozenset[uuid.UUID] = frozenset()
     decline_count: int = 0
+    # The most recent cart signature this session was answered for, and what
+    # it was answered with. Lets `suggestion_for_cart` treat "the same cart,
+    # asked again" as a pure read instead of a new offer — see
+    # `_cart_signature` and `record_answer` for why that distinction exists.
+    last_cart_signature: str | None = None
+    last_suggestion: SellSuggestion | None = None
 
 
 def _suggestion_identity(suggestion: SellSuggestion) -> uuid.UUID | None:
@@ -334,6 +340,34 @@ def record_offer(memory: SuggestionMemory, suggestion: SellSuggestion) -> Sugges
         offered_item_ids=memory.offered_item_ids | {identity},
         declined_item_ids=memory.declined_item_ids,
         decline_count=memory.decline_count,
+        # Not this function's job to touch — carried through unchanged so a
+        # caller that composes this with `record_answer` (see
+        # `suggestion_for_cart`) gets the same result regardless of which
+        # order the two pure calls are written in.
+        last_cart_signature=memory.last_cart_signature,
+        last_suggestion=memory.last_suggestion,
+    )
+
+
+def record_answer(
+    memory: SuggestionMemory, cart_signature: str, suggestion: SellSuggestion
+) -> SuggestionMemory:
+    """Remember what a specific cart shape was just answered with.
+
+    Separate from `record_offer` on purpose: `record_offer` is what makes an
+    item unavailable to offer again LATER (the cross-ask "never twice" rule);
+    this is what makes the SAME ask, repeated right now, come back with the
+    same answer instead of nothing (see `_cart_signature`'s docstring for why
+    that repeat happens routinely). `suggestion_for_cart` calls both, in
+    sequence, exactly once per freshly-chosen suggestion.
+    """
+
+    return SuggestionMemory(
+        offered_item_ids=memory.offered_item_ids,
+        declined_item_ids=memory.declined_item_ids,
+        decline_count=memory.decline_count,
+        last_cart_signature=cart_signature,
+        last_suggestion=suggestion,
     )
 
 
@@ -342,11 +376,70 @@ def record_decline(memory: SuggestionMemory, menu_item_id: uuid.UUID) -> Suggest
         offered_item_ids=memory.offered_item_ids,
         declined_item_ids=memory.declined_item_ids | {menu_item_id},
         decline_count=memory.decline_count + 1,
+        # A decline must never be replayed back at the customer: leaving the
+        # last answer in place would mean the very next GET for the SAME cart
+        # hits the replay path in `suggestion_for_cart` and hands back the
+        # exact suggestion just declined, undoing the decline on the next
+        # render. Cleared HERE — at the point the "no" is recorded — rather
+        # than as a special case in the replay check itself, so the rule
+        # lives with the event that invalidates the cache instead of being
+        # duplicated at every place that might read it.
+        last_cart_signature=None,
+        last_suggestion=None,
     )
 
 
 def _memory_cache_key(user_id: uuid.UUID, session_id: uuid.UUID) -> str:
     return f"suggestions:memory:{user_id}:{session_id}"
+
+
+def _suggestion_to_payload(suggestion: SellSuggestion) -> dict:
+    """The wire form of a `SellSuggestion`, for the last-answer slot `store_memory`
+    writes. Every optional field is written through as `None` rather than
+    omitted, so `_suggestion_from_payload` can read every key with `.get()`
+    uniformly instead of guessing which ones a given `basis` left out.
+    """
+
+    return {
+        "kind": suggestion.kind,
+        "basis": suggestion.basis,
+        "menu_item_id": str(suggestion.menu_item_id) if suggestion.menu_item_id else None,
+        "combo_id": str(suggestion.combo_id) if suggestion.combo_id else None,
+        "size_id": str(suggestion.size_id) if suggestion.size_id else None,
+        "customization_option_id": (
+            str(suggestion.customization_option_id) if suggestion.customization_option_id else None
+        ),
+        "saving": str(suggestion.saving) if suggestion.saving is not None else None,
+        "extra_cost": str(suggestion.extra_cost) if suggestion.extra_cost is not None else None,
+    }
+
+
+def _suggestion_from_payload(payload: object) -> SellSuggestion | None:
+    """The inverse of `_suggestion_to_payload`, tolerant of a payload this code
+    did not write. Same reasoning as `load_memory`'s corrupt-payload handling:
+    a bad round trip through Redis must degrade to "no stored answer", not a
+    500 on the next page render.
+    """
+
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return SellSuggestion(
+            kind=str(payload["kind"]),
+            basis=str(payload["basis"]),
+            menu_item_id=uuid.UUID(payload["menu_item_id"]) if payload.get("menu_item_id") else None,
+            combo_id=uuid.UUID(payload["combo_id"]) if payload.get("combo_id") else None,
+            size_id=uuid.UUID(payload["size_id"]) if payload.get("size_id") else None,
+            customization_option_id=(
+                uuid.UUID(payload["customization_option_id"])
+                if payload.get("customization_option_id")
+                else None
+            ),
+            saving=Decimal(payload["saving"]) if payload.get("saving") is not None else None,
+            extra_cost=Decimal(payload["extra_cost"]) if payload.get("extra_cost") is not None else None,
+        )
+    except (KeyError, TypeError, ValueError, ArithmeticError):
+        return None
 
 
 def load_memory(user_id: uuid.UUID, session_id: uuid.UUID | None) -> SuggestionMemory:
@@ -364,6 +457,7 @@ def load_memory(user_id: uuid.UUID, session_id: uuid.UUID | None) -> SuggestionM
     if not isinstance(payload, dict):
         return SuggestionMemory()
     try:
+        last_cart_signature = payload.get("last_cart_signature")
         return SuggestionMemory(
             offered_item_ids=frozenset(
                 uuid.UUID(value) for value in payload.get("offered", []) if isinstance(value, str)
@@ -372,6 +466,8 @@ def load_memory(user_id: uuid.UUID, session_id: uuid.UUID | None) -> SuggestionM
                 uuid.UUID(value) for value in payload.get("declined", []) if isinstance(value, str)
             ),
             decline_count=int(payload.get("decline_count", 0)),
+            last_cart_signature=last_cart_signature if isinstance(last_cart_signature, str) else None,
+            last_suggestion=_suggestion_from_payload(payload.get("last_suggestion")),
         )
     except (TypeError, ValueError):
         logger.warning("Suggestion memory payload validation failed; starting fresh")
@@ -391,6 +487,12 @@ def store_memory(
             "offered": sorted(str(value) for value in memory.offered_item_ids),
             "declined": sorted(str(value) for value in memory.declined_item_ids),
             "decline_count": memory.decline_count,
+            "last_cart_signature": memory.last_cart_signature,
+            "last_suggestion": (
+                _suggestion_to_payload(memory.last_suggestion)
+                if memory.last_suggestion is not None
+                else None
+            ),
         },
         ttl_seconds=SUGGESTION_MEMORY_TTL_SECONDS,
     )
@@ -434,6 +536,44 @@ def _load_visible_combos(db: Session, location_id: uuid.UUID) -> list[GeneratedC
     )
 
 
+def _cart_signature(cart_lines: list[CartLineFacts]) -> str:
+    """A fingerprint of exactly what `suggestion_for_cart`'s answer can depend on.
+
+    `suggestion_for_cart` MUST be idempotent for an unchanged cart: React 19
+    StrictMode double-invokes effects in development, so the identical
+    request fires twice in a row with nothing about the cart having changed.
+    Before this signature existed, the second call fell straight into
+    `is_suppressed`, because the first call's `record_offer` had already
+    added the chosen item to `offered_item_ids` — so an unchanged cart
+    silently turned a correct answer into `None` on the very next render, and
+    the suggestion never appeared in a browser at all. Any remount
+    (StrictMode, navigating away and back, a re-render that re-runs the
+    effect) reproduces the same thing in production. Do not "simplify" this
+    away by keying replay on something coarser (the raw cart JSON, a request
+    hash) — it has to name exactly the fields the answer can depend on, or it
+    either misses real repeats or wrongly treats a changed cart as unchanged.
+    Mirrors the client's `cartSuggestionSignature`
+    (`frontend-customer/src/lib/suggestions.ts`) in spirit.
+
+    Deliberately excludes quantity: `CartLineFacts` has no quantity field, so
+    quantity provably cannot move `suggestion_for_cart`'s answer, and a
+    signature that included it would re-trigger on every quantity tap —
+    exactly the churn this exists to avoid. Lines are sorted before joining
+    so the same cart in a different line order still produces the same
+    string. Callers must pass BRANCH-RESOLVED lines (after filtering out ids
+    that don't belong to this location), so a cart line naming a foreign menu
+    item cannot perturb the signature either.
+    """
+
+    return "|".join(
+        sorted(
+            f"{line.menu_item_id}:{line.size_id or ''}:"
+            f"{','.join(sorted(str(option_id) for option_id in line.customization_option_ids))}"
+            for line in cart_lines
+        )
+    )
+
+
 def suggestion_for_cart(
     db: Session,
     *,
@@ -455,8 +595,6 @@ def suggestion_for_cart(
     memory = load_memory(user_id, session_id)
     if memory.decline_count >= DECLINE_LIMIT:
         return None
-
-    combos = _load_visible_combos(db, restaurant_location_id)
 
     # Every candidate the rules may look at, loaded once and scoped to the
     # branch. An id that does not resolve HERE is simply absent, which is what
@@ -481,9 +619,23 @@ def suggestion_for_cart(
     # kitchen doesn't serve. Dropping unresolved lines here, before anything
     # downstream sees them, closes that gap at the one place it can be closed
     # for good instead of trusting every future caller to have done it first.
+    # It is also what makes `_cart_signature` below safe to compute from
+    # `cart_lines` directly, rather than needing its own resolution pass.
     cart_lines = [line for line in cart_lines if line.menu_item_id in menu_items]
     if not cart_lines:
         return None
+
+    # A byte-for-byte repeat of the last ask this session made gets the exact
+    # same answer back, read-only: no `record_offer`, no `store_memory`, and
+    # critically no chance to trip `is_suppressed` against the very offer this
+    # call is about to repeat. See `_cart_signature` for why this has to exist
+    # at all. A cart that has genuinely changed (or a session with no prior
+    # answer) falls through to fresh selection below, same as always.
+    signature = _cart_signature(cart_lines)
+    if memory.last_suggestion is not None and memory.last_cart_signature == signature:
+        return memory.last_suggestion
+
+    combos = _load_visible_combos(db, restaurant_location_id)
 
     cart_item_ids = {line.menu_item_id for line in cart_lines}
     candidates = {
@@ -556,7 +708,14 @@ def suggestion_for_cart(
             continue
         if is_suppressed(candidate, memory=memory, cart_item_ids=cart_item_ids):
             continue
-        store_memory(user_id, session_id, record_offer(memory, candidate))
+        # Two separate pure updates, composed: `record_offer` is what makes
+        # this item unavailable to offer again LATER this session;
+        # `record_answer` is what lets THIS cart, asked again unchanged,
+        # short-circuit to the line above instead of running this whole
+        # computation and re-touching `is_suppressed`.
+        memory = record_offer(memory, candidate)
+        memory = record_answer(memory, signature, candidate)
+        store_memory(user_id, session_id, memory)
         return candidate
 
     return None
