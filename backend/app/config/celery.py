@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.tasks.insights",
         "app.tasks.notifications",
         "app.tasks.payments",
+        "app.tasks.whatsapp",
     ],
 )
 

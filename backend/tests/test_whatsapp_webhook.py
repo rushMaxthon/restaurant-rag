@@ -319,3 +319,44 @@ class EndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TaskRegistrationTests(unittest.TestCase):
+    """Every task module has to be in Celery's `include` list.
+
+    It is explicit, not autodiscovered, so a new task module that nobody adds
+    to it enqueues fine and is never run: the API accepts the message, the
+    worker logs "unregistered task", and the customer waits forever. Found
+    exactly that way - the worker started and listed every task but this one.
+    """
+
+    def test_the_task_name_matches_the_queue_it_is_routed_by(self) -> None:
+        # `task_routes` is keyed by the task's name. A name that does not match
+        # its routing key is not an error anywhere — the task simply runs on
+        # the default queue, which no notifications worker is listening to.
+        from app.config.celery import celery_app
+        from app.tasks.whatsapp import answer_whatsapp_message
+
+        name = answer_whatsapp_message.name
+        self.assertEqual(name, "app.tasks.whatsapp.answer_whatsapp_message")
+        self.assertIn(name, celery_app.tasks)
+        self.assertEqual(celery_app.conf.task_routes[name]["queue"], "notifications")
+
+    def test_every_task_module_is_included(self) -> None:
+        import pkgutil
+        from pathlib import Path
+
+        from app.config.celery import celery_app
+
+        tasks_dir = Path(__file__).resolve().parents[1] / "app" / "tasks"
+        on_disk = {
+            f"app.tasks.{m.name}"
+            for m in pkgutil.iter_modules([str(tasks_dir)])
+            if not m.name.startswith("_")
+        }
+        included = set(celery_app.conf.include or [])
+        self.assertEqual(
+            on_disk - included,
+            set(),
+            "task modules missing from celery include: tasks there are queued but never run",
+        )
