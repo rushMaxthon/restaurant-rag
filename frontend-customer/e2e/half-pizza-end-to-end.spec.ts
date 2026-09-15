@@ -87,6 +87,17 @@ test("a split pizza reaches the server as a split pizza", async ({ page, request
   await fillCheckoutContact(page);
   await expect(page.getByText(/left half/i).first()).toBeVisible();
 
+  // Outside opening hours the branch cannot take an ASAP order and the Pay
+  // button waits for a slot ("Pick a time to continue"), so this runs or does
+  // not depending on the clock.
+  const later = page.getByRole("button", { name: /schedule for later/i });
+  if (await later.count()) await later.click();
+  const times = page.locator(".slot-grid .slot-chip");
+  if (await times.count()) {
+    await times.first().waitFor({ state: "visible", timeout: 20_000 });
+    await times.first().click();
+  }
+
   // Place it. The order is PAYMENT_PENDING at this point, which is enough:
   // what is being checked is what the server was told, not that money moved.
   // Below lg the pay button lives in a fixed bottom bar; clickFixed explains
@@ -111,9 +122,14 @@ test("a split pizza reaches the server as a split pizza", async ({ page, request
 
   const line = latest.items.find((i: { menu_item_id: string }) => i.menu_item_id === itemId);
   expect(line, "the split pizza is on the order").toBeTruthy();
-  const portions = (line.selected_options ?? []).map(
-    (o: { portion?: string }) => o.portion ?? "WHOLE",
-  );
+  // `selected_options_snapshot`, not `selected_options`: what an order stores
+  // is a frozen copy of the choice, so it still reads correctly after the menu
+  // has moved on.
+  const chosen = (line.selected_options_snapshot ?? []) as {
+    option_name: string;
+    portion?: string;
+  }[];
+  const portions = chosen.map((o) => o.portion ?? "WHOLE");
   expect(portions).toContain("LEFT");
   expect(portions).toContain("RIGHT");
 

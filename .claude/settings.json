@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Meta_Ads__ads_get_ad_entities",
+      "mcp__claude_ai_Meta_Ads__ads_get_ad_accounts",
+      "mcp__claude_ai_Meta_Ads__ads_get_ad_preview",
+      "mcp__claude_ai_Meta_Ads__ads_get_creatives",
+      "mcp__claude_ai_Meta_Ads__ads_get_datasets",
+      "mcp__claude_ai_Meta_Ads__ads_get_dataset_stats",
+      "mcp__claude_ai_Meta_Ads__ads_get_dataset_quality",
+      "mcp__claude_ai_Meta_Ads__ads_get_errors",
+      "mcp__claude_ai_Meta_Ads__ads_insights_performance_trend",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__read_page",
+      "mcp__claude-in-chrome__read_console_messages",
+      "mcp__claude-in-chrome__read_network_requests",
+      "mcp__claude-in-chrome__find",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__list_organizations",
+      "mcp__plugin_vercel_vercel__list_projects",
+      "mcp__plugin_vercel_vercel__list_teams",
+      "mcp__plugin_vercel_vercel__list_deployments",
+      "mcp__plugin_vercel_vercel__get_web_analytics",
+      "mcp__plugin_vercel_vercel__get_runtime_logs",
+      "Bash(claude mcp list)"
+    ]
+  }
+}
