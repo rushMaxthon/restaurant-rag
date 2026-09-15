@@ -43,6 +43,8 @@ from app.config import get_settings
 from app.models.base import Base
 from app.models.enums import OrderFulfillmentType, PaymentMethod, UserRole
 from app.models.menu_item import MenuItem
+from app.models.menu_item_customization_group import MenuItemCustomizationGroup
+from app.models.menu_item_customization_option import MenuItemCustomizationOption
 from app.models.menu_item_size import MenuItemSize
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
@@ -58,6 +60,7 @@ from app.services.ordering_agent.tools import (
     PriceQuoteArgs,
     RestaurantInfoArgs,
     SearchMenuArgs,
+    SelectedOptionArgs,
     TOOLS,
     ViewCartArgs,
 )
@@ -240,6 +243,7 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
             category: str = "Mains",
             is_veg: bool = False,
             has_sizes: bool = False,
+            has_customizations: bool = False,
         ) -> MenuItem:
             row = MenuItem(
                 id=uuid.uuid4(),
@@ -251,6 +255,7 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
                 is_veg=is_veg,
                 is_available=True,
                 has_sizes=has_sizes,
+                has_customizations=has_customizations,
             )
             session.add(row)
             return row
@@ -272,23 +277,99 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
             price="180.00",
             has_sizes=True,
         )
+        # Mirrors the coordinator's own reproduction of the fix-round-1
+        # defect: a real, sized pizza with a REQUIRED topping choice. Used to
+        # come back "not on this branch's menu"; must now come back
+        # `needs_choice` with both the sizes and the topping group listed.
+        pizza = make_item(
+            restaurant_id=restaurant.id,
+            location_id=branch_a.id,
+            name="Margherita Pizza",
+            price="350.00",
+            has_sizes=True,
+            has_customizations=True,
+        )
         other_branch_item = make_item(
             restaurant_id=restaurant.id, location_id=branch_b.id, name="Tom Yum Soup", price="240.00"
         )
         session.flush()
-        session.add(
-            MenuItemSize(
-                id=uuid.uuid4(),
-                menu_item_id=sized_item.id,
-                name="Regular",
-                price=Decimal("180.00"),
-            )
+
+        pizza_small_id, pizza_large_id = uuid.uuid4(), uuid.uuid4()
+        session.add_all(
+            [
+                MenuItemSize(
+                    id=uuid.uuid4(),
+                    menu_item_id=sized_item.id,
+                    name="Regular",
+                    price=Decimal("180.00"),
+                ),
+                MenuItemSize(id=pizza_small_id, menu_item_id=pizza.id, name="Small", price=Decimal("350.00")),
+                MenuItemSize(id=pizza_large_id, menu_item_id=pizza.id, name="Large", price=Decimal("550.00")),
+            ]
+        )
+        session.flush()
+
+        # A REQUIRED group ("choose your base") — the one case with no
+        # default, must genuinely block a price until answered.
+        crust_group_id = uuid.uuid4()
+        crust_group = MenuItemCustomizationGroup(
+            id=crust_group_id,
+            menu_item_id=pizza.id,
+            title="Crust",
+            is_required=True,
+            min_selection=1,
+            max_selection=1,
+        )
+        # An OPTIONAL group ("extra toppings") — rule 3: has a default (no
+        # extra toppings) and must never block a price, only be offered.
+        toppings_group_id = uuid.uuid4()
+        toppings_group = MenuItemCustomizationGroup(
+            id=toppings_group_id,
+            menu_item_id=pizza.id,
+            title="Extra Toppings",
+            is_required=False,
+            min_selection=0,
+            max_selection=3,
+        )
+        session.add_all([crust_group, toppings_group])
+        session.flush()
+
+        crust_thin_id, crust_stuffed_id = uuid.uuid4(), uuid.uuid4()
+        topping_cheese_id, topping_olives_id = uuid.uuid4(), uuid.uuid4()
+        session.add_all(
+            [
+                MenuItemCustomizationOption(
+                    id=crust_thin_id, group_id=crust_group_id, name="Thin Crust", extra_price=Decimal("0.00")
+                ),
+                MenuItemCustomizationOption(
+                    id=crust_stuffed_id,
+                    group_id=crust_group_id,
+                    name="Stuffed Crust",
+                    extra_price=Decimal("60.00"),
+                ),
+                MenuItemCustomizationOption(
+                    id=topping_cheese_id,
+                    group_id=toppings_group_id,
+                    name="Extra Cheese",
+                    extra_price=Decimal("40.00"),
+                ),
+                MenuItemCustomizationOption(
+                    id=topping_olives_id, group_id=toppings_group_id, name="Olives", extra_price=Decimal("20.00")
+                ),
+            ]
         )
         session.flush()
 
         cls.pad_thai_id = pad_thai.id
         cls.curry_id = curry.id
         cls.sized_item_id = sized_item.id
+        cls.pizza_id = pizza.id
+        cls.pizza_small_id = pizza_small_id
+        cls.pizza_large_id = pizza_large_id
+        cls.crust_thin_id = crust_thin_id
+        cls.crust_stuffed_id = crust_stuffed_id
+        cls.topping_cheese_id = topping_cheese_id
+        cls.topping_olives_id = topping_olives_id
         cls.other_branch_item_id = other_branch_item.id
         session.commit()
 
@@ -330,6 +411,23 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         self.assertEqual(result["menu_item_id"], self.pad_thai_id)
         self.assertEqual(result["price"], Decimal("220.00"))
 
+    def test_get_dish_returns_sizes_with_their_own_prices(self) -> None:
+        """Second fix round: step 1 of the flow ("which size, and what does
+        it cost") must be answerable from this one call — each size's own
+        absolute price, not a delta off the base `price`."""
+
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Margherita"))
+        self.assertTrue(result["found"])
+        self.assertEqual(result["menu_item_id"], self.pizza_id)
+        sizes = {(size["name"], size["price"]) for size in result["sizes"]}
+        self.assertEqual(sizes, {("Small", Decimal("350.00")), ("Large", Decimal("550.00"))})
+
+    def test_get_dish_reports_no_sizes_for_an_unsized_item(self) -> None:
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Pad Thai"))
+        self.assertEqual(result["sizes"], [])
+
     def test_get_dish_at_the_wrong_branch_does_not_find_it(self) -> None:
         """Tom Yum Soup is real, but only at branch B — asking from branch A's
         scope must not resolve it."""
@@ -370,15 +468,113 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         self.assertEqual(result["lines"], [])
         self.assertEqual(result["subtotal"], Decimal("0.00"))
 
-    def test_view_cart_drops_a_line_missing_a_required_size(self) -> None:
-        """Fried Rice `has_sizes=True`; a line naming it with no size cannot
-        be priced and must be dropped, not raise."""
+    def test_view_cart_flags_a_missing_size_as_needing_a_choice_not_absent(self) -> None:
+        """Fix round 1's exact defect: a real, sized dish with no size named
+        must come back `needs_choice`, listing its real sizes and prices —
+        never "not on this branch's menu", and never silently dropped."""
 
-        lines = [CartLineArgs(menu_item_id=self.sized_item_id, quantity=1)]
+        lines = [CartLineArgs(menu_item_id=self.pizza_id, quantity=2)]
         with self._session() as db:
             result = TOOLS["view_cart"].handler(db, self._scope(), ViewCartArgs(lines=lines))
+
         self.assertEqual(result["lines"], [])
+        self.assertEqual(result["dropped_line_count"], 0)
+        self.assertEqual(len(result["needs_choice"]), 1)
+        choice = result["needs_choice"][0]
+        self.assertEqual(choice["menu_item_id"], self.pizza_id)
+        self.assertTrue(choice["needs_size"])
+        sizes = {(size["name"], size["price"]) for size in choice["available_sizes"]}
+        self.assertEqual(sizes, {("Small", Decimal("350.00")), ("Large", Decimal("550.00"))})
+
+    def test_view_cart_reports_required_customization_groups_and_their_defaults(self) -> None:
+        """Once a size resolves the pizza still has an unmet REQUIRED group
+        (Crust) and a satisfied-by-default OPTIONAL one (Extra Toppings).
+        The response must show both — which one blocks, and what the
+        optional one defaults to (nothing chosen, at_default True)."""
+
+        lines = [
+            CartLineArgs(menu_item_id=self.pizza_id, quantity=1, menu_item_size_id=self.pizza_small_id)
+        ]
+        with self._session() as db:
+            result = TOOLS["view_cart"].handler(db, self._scope(), ViewCartArgs(lines=lines))
+
+        self.assertEqual(result["lines"], [])
+        self.assertEqual(len(result["needs_choice"]), 1)
+        choice = result["needs_choice"][0]
+        self.assertFalse(choice["needs_size"])
+        self.assertTrue(choice["needs_customization"])
+
+        groups_by_title = {g["title"]: g for g in choice["customization_groups"]}
+        crust = groups_by_title["Crust"]
+        toppings = groups_by_title["Extra Toppings"]
+        self.assertTrue(crust["is_required"])
+        self.assertTrue(crust["needs_selection"])
+        self.assertIsNone(crust["default_selection"])
+        self.assertFalse(toppings["is_required"])
+        self.assertFalse(toppings["needs_selection"])
+        self.assertEqual(toppings["default_selection"], [])
+        self.assertTrue(toppings["at_default"])
+        self.assertEqual(len(toppings["options"]), 2)
+
+    def test_view_cart_prices_a_complete_pizza_line_and_shows_its_defaults(self) -> None:
+        """A size AND the required crust chosen, no extra toppings: complete,
+        priced from `resolve_menu_item_selection`, and still shows the
+        optional group as available/at-default alongside the price — step 2
+        of the flow needs the price and the defaults together."""
+
+        lines = [
+            CartLineArgs(
+                menu_item_id=self.pizza_id,
+                quantity=1,
+                menu_item_size_id=self.pizza_small_id,
+                selected_options=[SelectedOptionArgs(option_id=self.crust_thin_id)],
+            )
+        ]
+        with self._session() as db:
+            result = TOOLS["view_cart"].handler(db, self._scope(), ViewCartArgs(lines=lines))
+
+        self.assertEqual(result["needs_choice"], [])
+        self.assertEqual(len(result["lines"]), 1)
+        line = result["lines"][0]
+        self.assertEqual(line["unit_price"], Decimal("350.00"))
+        groups_by_title = {g["title"]: g for g in line["customization_groups"]}
+        self.assertEqual(groups_by_title["Crust"]["selected_option_ids"], [self.crust_thin_id])
+        self.assertTrue(groups_by_title["Extra Toppings"]["at_default"])
+
+    def test_view_cart_mixed_cart_prices_complete_lines_and_flags_the_incomplete_one(self) -> None:
+        """Three real lines, one of them missing a size: the three price,
+        the fourth is reported as needing a choice — never a whole-cart
+        refusal (rule 4)."""
+
+        lines = [
+            CartLineArgs(menu_item_id=self.pad_thai_id, quantity=1),
+            CartLineArgs(menu_item_id=self.curry_id, quantity=1),
+            CartLineArgs(menu_item_id=self.pizza_id, quantity=1),  # no size named
+        ]
+        with self._session() as db:
+            result = TOOLS["view_cart"].handler(db, self._scope(), ViewCartArgs(lines=lines))
+
+        priced_ids = {line["menu_item_id"] for line in result["lines"]}
+        self.assertEqual(priced_ids, {self.pad_thai_id, self.curry_id})
+        self.assertEqual(result["subtotal"], Decimal("480.00"))
+        self.assertEqual(len(result["needs_choice"]), 1)
+        self.assertEqual(result["needs_choice"][0]["menu_item_id"], self.pizza_id)
+        self.assertEqual(result["dropped_line_count"], 0)
+
+    def test_view_cart_still_silently_drops_a_foreign_branch_id_alongside_a_choice(self) -> None:
+        """The other-branch id must not be promoted to `needs_choice` just
+        because a real needs_choice line also exists in the same cart."""
+
+        lines = [
+            CartLineArgs(menu_item_id=self.pizza_id, quantity=1),  # needs a size
+            CartLineArgs(menu_item_id=self.other_branch_item_id, quantity=1),  # not here at all
+        ]
+        with self._session() as db:
+            result = TOOLS["view_cart"].handler(db, self._scope(), ViewCartArgs(lines=lines))
+
         self.assertEqual(result["dropped_line_count"], 1)
+        self.assertEqual(len(result["needs_choice"]), 1)
+        self.assertEqual(result["needs_choice"][0]["menu_item_id"], self.pizza_id)
 
     # -- check_hours ---------------------------------------------------
 
@@ -488,6 +684,48 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
                 db, self._scope(customer=self.customer), PriceQuoteArgs(lines=lines)
             )
         self.assertFalse(result["priced"])
+        self.assertEqual(result["needs_choice"], [])
+
+    def test_price_quote_prices_the_complete_lines_and_flags_the_incomplete_one(self) -> None:
+        """Rule 4: a mixed cart must not refuse the whole quote. Pad Thai and
+        Green Curry price; the sizeless pizza rides along in `needs_choice`
+        on the SAME response."""
+
+        lines = [
+            CartLineArgs(menu_item_id=self.pad_thai_id, quantity=2),
+            CartLineArgs(menu_item_id=self.pizza_id, quantity=1),  # no size named
+        ]
+        with self._session() as db:
+            result = TOOLS["price_quote"].handler(
+                db, self._scope(customer=self.customer), PriceQuoteArgs(lines=lines)
+            )
+            expected = validate_order_draft(
+                db,
+                self.customer,
+                OrderCreateRequest(
+                    restaurant_id=self.restaurant_id,
+                    restaurant_location_id=self.branch_a_id,
+                    items=[OrderCreateItem(menu_item_id=self.pad_thai_id, quantity=2)],
+                    delivery_address="Some real address, 12345",
+                ),
+            )
+
+        self.assertTrue(result["priced"])
+        self.assertEqual(result["subtotal"], expected.subtotal)
+        self.assertEqual(result["total_amount"], expected.total_amount)
+        self.assertEqual(len(result["needs_choice"]), 1)
+        self.assertEqual(result["needs_choice"][0]["menu_item_id"], self.pizza_id)
+        self.assertTrue(result["needs_choice"][0]["needs_size"])
+
+    def test_price_quote_with_only_a_needs_choice_line_does_not_price_but_still_reports_it(self) -> None:
+        lines = [CartLineArgs(menu_item_id=self.pizza_id, quantity=1)]
+        with self._session() as db:
+            result = TOOLS["price_quote"].handler(
+                db, self._scope(customer=self.customer), PriceQuoteArgs(lines=lines)
+            )
+        self.assertFalse(result["priced"])
+        self.assertEqual(len(result["needs_choice"]), 1)
+        self.assertEqual(result["needs_choice"][0]["menu_item_id"], self.pizza_id)
 
     # -- restaurant_info -------------------------------------------------
 

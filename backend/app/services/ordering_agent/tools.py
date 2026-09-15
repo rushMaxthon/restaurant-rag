@@ -47,6 +47,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.enums import MenuItemPortion, OrderFulfillmentType
 from app.models.menu_item import MenuItem
+from app.models.menu_item_customization_group import MenuItemCustomizationGroup
+from app.models.menu_item_size import MenuItemSize
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.order import (
@@ -58,6 +60,7 @@ from app.services import rag as ordering_rag
 from app.services.menu_item_customizations import (
     ResolvedMenuItemSelection,
     SelectedCustomizationOptionInput,
+    _get_active_customization_groups,
     menu_item_query_with_customizations,
     resolve_menu_item_selection,
 )
@@ -182,9 +185,25 @@ class GetDishArgs(ToolArgs):
     `apply_dish_name_guardrail`/`classify_dish_reference` already resolve one:
     by name and retrieval confidence against the branch's real menu, never by
     an id the model invented on the strength of a name it typed.
+
+    `menu_item_size_id` is optional and additive: step 1 of the customer's
+    flow ("small or large, and what do they cost") is answered by `sizes` on
+    the base response regardless, but once a size is actually chosen, step 2
+    ("comes with X and Y, that's $N") needs the defaults for THAT size, which
+    only exist once a size is picked out of `has_sizes` items. Omitted for an
+    unsized dish, or before the customer has chosen one.
     """
 
     name: str = Field(min_length=1, max_length=255)
+    menu_item_size_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "A size already chosen for this dish (from an earlier get_dish "
+            "or search_menu result), if any. When given, the response also "
+            "reports the defaults for that size, the price of the size plus "
+            "its defaults, and which groups can still be changed."
+        ),
+    )
 
 
 class ViewCartArgs(ToolArgs):
@@ -326,36 +345,155 @@ def _load_branch_menu_items(db: Session, scope: OrderingScope) -> dict[uuid.UUID
 
 @dataclass(frozen=True, slots=True)
 class ResolvedCartLine:
-    """One line of `args.lines` that survived branch scoping and customization
-    validation, paired with the real row and price it resolved to.
+    """One line of `args.lines` that is real, at this branch, and fully
+    specified — paired with the real row and price it resolved to.
+
+    `groups` still carries every applicable optional group even though this
+    line is complete: rule 2 of the second fix ("show the defaults for that
+    size, and the price of size + defaults, in the same step") needs both the
+    price (`selection.unit_price`, from `resolve_menu_item_selection`, never
+    computed here) and what the customer is defaulting into, together — not
+    a price now and a customization list on some later call.
     """
 
     line: CartLineArgs
     menu_item: MenuItem
     selection: ResolvedMenuItemSelection
+    groups: list[MenuItemCustomizationGroup]
+
+
+@dataclass(frozen=True, slots=True)
+class CartLineChoice:
+    """A real, branch-available line that is not yet complete enough to
+    price — never confused with a line that does not exist here (Fix round 1,
+    2026-09-15: reporting a real, sized dish as "not on this branch's menu"
+    because no size was named is the same class of bug as Phase 1's
+    Add-vs-Choose confusion). Carries the actual choices available so the
+    agent can ask a real question rather than a vague one.
+
+    `groups` holds every active group applicable given whatever size IS
+    known (all of the item's, or just its item-level ones if the size
+    itself is still unresolved) — not only the required-and-unmet ones —
+    so a single response can carry "small or large?" alongside "keep the
+    default (no extra toppings) or add some?" in one turn, per rule 2 of the
+    fix. `needs_selection_group_ids` marks which of those actually block a
+    price; the rest are optional and already complete as-is (rule 3: an
+    optional group's default IS the empty selection, never invented as a
+    specific pre-picked option that does not exist on this schema).
+    """
+
+    line: CartLineArgs
+    menu_item: MenuItem
+    needs_size: bool
+    available_sizes: list[MenuItemSize]
+    groups: list[MenuItemCustomizationGroup]
+    needs_selection_group_ids: frozenset[uuid.UUID]
+
+
+@dataclass(frozen=True, slots=True)
+class CartLineResolution:
+    resolved: list[ResolvedCartLine]
+    needs_choice: list[CartLineChoice]
+    # Silently absent for either of two reasons this API does not
+    # distinguish, on purpose: `menu_item_id` does not belong to this branch
+    # (an invented or foreign id — genuinely does not exist in this
+    # conversation), or it belongs here but `resolve_menu_item_selection`
+    # still refuses it for a reason that is not "needs a choice" (a
+    # duplicate option, an inactive option id, a size named on an item that
+    # does not have sizes). Both are the browser's cart having drifted from
+    # the real menu in a way no follow-up question fixes, which is exactly
+    # what "not on the menu" ought to mean — reserved for that now that
+    # "needs a choice" has its own outcome.
+    dropped_count: int
+
+
+def _active_size(menu_item: MenuItem, menu_item_size_id: uuid.UUID | None) -> MenuItemSize | None:
+    if menu_item_size_id is None:
+        return None
+    return next(
+        (size for size in menu_item.sizes if size.id == menu_item_size_id and size.is_active),
+        None,
+    )
+
+
+def _applicable_groups_and_unmet(
+    menu_item: MenuItem, selected_size: MenuItemSize | None, line: CartLineArgs
+) -> tuple[list[MenuItemCustomizationGroup], frozenset[uuid.UUID]]:
+    """Every active group this line could be asked about, and which of those
+    are *required* and still unsatisfied.
+
+    Reuses `menu_item_customizations._get_active_customization_groups` — the
+    same "item-level groups plus this size's own groups, deduped" rule
+    `resolve_menu_item_selection` itself applies — rather than re-deriving
+    which groups apply to a size. A group counts as unmet exactly the way
+    that function would reject it: fewer selections than
+    `max(min_selection, 1)` once `is_required` is set. An optional group is
+    never unmet: rule 3 of the fix ("toppings default, they do not block")
+    is already true of this schema without inventing a "default option"
+    flag that does not exist on `MenuItemCustomizationOption` — an optional
+    group's default IS the empty selection `resolve_menu_item_selection`
+    already accepts. Optional groups are still returned in the first list,
+    because the agent asking "keep the default or change it?" needs to know
+    they exist at all.
+    """
+
+    active_groups = _get_active_customization_groups(menu_item, selected_size=selected_size)
+    chosen_option_ids = {option.option_id for option in line.selected_options}
+    unmet_ids: set[uuid.UUID] = set()
+    for group in active_groups:
+        if not group.is_required:
+            continue
+        active_option_ids = {option.id for option in group.options if option.is_active}
+        if len(chosen_option_ids & active_option_ids) < max(group.min_selection, 1):
+            unmet_ids.add(group.id)
+    return active_groups, frozenset(unmet_ids)
 
 
 def _resolve_cart_lines(
     menu_items: dict[uuid.UUID, MenuItem], lines: list[CartLineArgs]
-) -> list[ResolvedCartLine]:
-    """The browser's word about its cart, filtered down to what is real.
+) -> CartLineResolution:
+    """The browser's word about its cart, sorted into the three outcomes a
+    real dish can be in — never collapsing "needs a choice" into "not on the
+    menu", which was Fix round 1's whole finding.
 
-    Two ways a line can fail to survive, both silent rather than raised: its
-    `menu_item_id` is not a key in `menu_items` (wrong branch, or simply
-    invented), or it resolves but with a size/option combination
-    `resolve_menu_item_selection` refuses (its own `HTTPException`, e.g. "no
-    size chosen for an item that requires one"). Either way the line is
-    dropped, not the whole cart — a browser session that has drifted from the
-    real menu degrades to what is still valid instead of failing the turn,
-    matching the requirement that a malformed cart degrades rather than
-    raises.
+    Size is checked before customizations because an unresolved size makes
+    size-specific groups unknowable (`_get_active_customization_groups`
+    cannot tell which size's groups apply); item-level required groups are
+    still checked and surfaced alongside a missing size, since those apply
+    regardless of which size is eventually chosen and there is no reason to
+    make the customer resolve one incomplete thing at a time when both are
+    already knowable in one turn.
     """
 
     resolved: list[ResolvedCartLine] = []
+    needs_choice: list[CartLineChoice] = []
+    dropped_count = 0
+
     for line in lines:
         menu_item = menu_items.get(line.menu_item_id)
         if menu_item is None:
+            dropped_count += 1
             continue
+
+        selected_size = _active_size(menu_item, line.menu_item_size_id)
+        needs_size = menu_item.has_sizes and selected_size is None
+        groups, needs_selection_group_ids = _applicable_groups_and_unmet(menu_item, selected_size, line)
+
+        if needs_size or needs_selection_group_ids:
+            needs_choice.append(
+                CartLineChoice(
+                    line=line,
+                    menu_item=menu_item,
+                    needs_size=needs_size,
+                    available_sizes=(
+                        [size for size in menu_item.sizes if size.is_active] if needs_size else []
+                    ),
+                    groups=groups,
+                    needs_selection_group_ids=needs_selection_group_ids,
+                )
+            )
+            continue
+
         try:
             selection = resolve_menu_item_selection(
                 menu_item,
@@ -370,9 +508,114 @@ def _resolve_cart_lines(
                 ],
             )
         except HTTPException:
+            # Real and sized/customized correctly per the checks above, but
+            # refused for some other reason (a duplicate option, an option
+            # id that isn't active) — genuinely malformed rather than
+            # "hasn't decided yet", so it stays silently dropped like an
+            # unresolvable id, not promoted to a choice with nothing useful
+            # to ask about.
+            dropped_count += 1
             continue
-        resolved.append(ResolvedCartLine(line=line, menu_item=menu_item, selection=selection))
-    return resolved
+        resolved.append(ResolvedCartLine(line=line, menu_item=menu_item, selection=selection, groups=groups))
+
+    return CartLineResolution(resolved=resolved, needs_choice=needs_choice, dropped_count=dropped_count)
+
+
+def _serialize_size(size: MenuItemSize) -> dict[str, Any]:
+    return {"size_id": size.id, "name": size.name, "price": size.price}
+
+
+def _serialize_customization_group(
+    group: MenuItemCustomizationGroup,
+    *,
+    needs_selection: bool,
+    selected_option_ids: frozenset[uuid.UUID] = frozenset(),
+) -> dict[str, Any]:
+    return {
+        "group_id": group.id,
+        "title": group.title,
+        "is_required": group.is_required,
+        # True only for a required group with nothing chosen yet — the one
+        # case with no default to fall back on. An optional group is never
+        # `True` here: its default IS the empty selection below, not a
+        # specific pre-picked option, because no such flag exists on
+        # `MenuItemCustomizationOption` to invent one from.
+        "needs_selection": needs_selection,
+        "default_selection": [] if not group.is_required else None,
+        # What is actually selected on THIS line for this group right now —
+        # empty for an untouched optional group (that emptiness IS the
+        # default being accepted, stated out loud here rather than applied
+        # silently), or the customer's real picks otherwise.
+        "selected_option_ids": sorted(selected_option_ids, key=str),
+        "at_default": not group.is_required and not selected_option_ids,
+        "min_selection": group.min_selection,
+        "max_selection": group.max_selection,
+        "selection_type": group.selection_type.value,
+        "options": [
+            {"option_id": option.id, "name": option.name, "extra_price": option.extra_price}
+            for option in group.options
+            if option.is_active
+        ],
+    }
+
+
+def _selected_option_ids_for_group(
+    group: MenuItemCustomizationGroup, line: CartLineArgs
+) -> frozenset[uuid.UUID]:
+    active_option_ids = {option.id for option in group.options if option.is_active}
+    chosen_ids = {option.option_id for option in line.selected_options}
+    return frozenset(chosen_ids & active_option_ids)
+
+
+def _serialize_choice(entry: CartLineChoice) -> dict[str, Any]:
+    """The real question the agent should ask, not a vague "couldn't price
+    it": which sizes exist and what they cost, and every applicable
+    customization group — required or not — with its options, prices, and
+    whether it actually blocks a price or is just offered ("keep the default
+    or change it?"). Everything rules 2 and 3 of the fix demand the tool
+    hand back in one place.
+
+    `needs_size`/`needs_customization` are reported as two separate booleans
+    on purpose (second fix round): size and toppings are different questions
+    asked at different steps of the flow the customer specified, and a
+    single undifferentiated "needs a choice" cannot drive that — the caller
+    needs to know *which* step it is still on.
+    """
+
+    return {
+        "menu_item_id": entry.menu_item.id,
+        "name": entry.menu_item.name,
+        "quantity": entry.line.quantity,
+        "needs_size": entry.needs_size,
+        "needs_customization": bool(entry.needs_selection_group_ids),
+        "available_sizes": [_serialize_size(size) for size in entry.available_sizes],
+        "customization_groups": [
+            _serialize_customization_group(
+                group,
+                needs_selection=group.id in entry.needs_selection_group_ids,
+                selected_option_ids=_selected_option_ids_for_group(group, entry.line),
+            )
+            for group in entry.groups
+        ],
+    }
+
+
+def _serialize_resolved_groups(entry: ResolvedCartLine) -> list[dict[str, Any]]:
+    """The same "what's included, what's changeable" picture as
+    `_serialize_choice`, but for a line that is already priced — step 2 of
+    the flow ("that comes with X and Y, that's $N") needs the defaults and
+    the price in the SAME response, not a price now and a customization list
+    on a follow-up call.
+    """
+
+    return [
+        _serialize_customization_group(
+            group,
+            needs_selection=False,
+            selected_option_ids=_selected_option_ids_for_group(group, entry.line),
+        )
+        for group in entry.groups
+    ]
 
 
 def _serialize_menu_item(menu_item: MenuItem) -> dict[str, Any]:
@@ -385,6 +628,124 @@ def _serialize_menu_item(menu_item: MenuItem) -> dict[str, Any]:
         "description": menu_item.description,
         "has_sizes": menu_item.has_sizes,
         "has_customizations": menu_item.has_customizations,
+        # Each size's own absolute price, never a delta off `price` above —
+        # `get_dish` answering "small or large, and what do they cost" from
+        # this one call is step 1 of the size -> defaults -> price flow the
+        # customer specified, and must not need a second round trip.
+        "sizes": (
+            [_serialize_size(size) for size in menu_item.sizes if size.is_active]
+            if menu_item.has_sizes
+            else []
+        ),
+    }
+
+
+def _default_option_ids_for_group(group: MenuItemCustomizationGroup) -> frozenset[uuid.UUID]:
+    """Options marked as what a customer gets without changing anything
+    (`MenuItemCustomizationOption.is_default`, migration 0061). Backfilled
+    only for groups that are both required and single-choice — the one shape
+    where the customer cannot end up with nothing, so there is an honest
+    default to name (the cheapest active option, already priced into the
+    base price). Every other group's options are all `is_default=False` by
+    design, so this returns an empty set for them rather than guessing one.
+    """
+
+    return frozenset(option.id for option in group.options if option.is_active and option.is_default)
+
+
+def _defaults_for_size(
+    menu_item: MenuItem, selected_size: MenuItemSize | None
+) -> tuple[list[SelectedCustomizationOptionInput], list[MenuItemCustomizationGroup]]:
+    """The selections an unmodified order for this size would carry, and
+    every group a customer could still change to get something else.
+
+    `active_groups` doubles as "what's changeable": even a required group's
+    default can be swapped for another option in the same group, and an
+    optional group can always be added to, so there is no narrower list of
+    "changeable" groups than the full set of active ones.
+    """
+
+    active_groups = _get_active_customization_groups(menu_item, selected_size=selected_size)
+    default_selections = [
+        SelectedCustomizationOptionInput(option_id=option_id)
+        for group in active_groups
+        for option_id in _default_option_ids_for_group(group)
+    ]
+    return default_selections, active_groups
+
+
+def _describe_defaults_for_size(menu_item: MenuItem, menu_item_size_id: uuid.UUID) -> dict[str, Any]:
+    """Step 2 of the customer's specified flow ("comes with X and Y, that's
+    $N") for a dish whose size is already known — answered directly from
+    `get_dish` so the agent does not have to fabricate a whole cart line just
+    to learn what a plain, unmodified order costs.
+
+    Priced the same way a real cart line would be: the default option ids are
+    run through `resolve_menu_item_selection`, the same function `view_cart`
+    and checkout use, never arithmetic done here. A required group that has
+    no default at all (possible if a group was added after the 0061 backfill
+    ran, or is required-but-multi-select, which the backfill deliberately
+    never fills) makes `resolve_menu_item_selection` refuse for "requires at
+    least one selection" — surfaced here as `priced: False` with that reason,
+    an honest "still needs a choice" rather than a fabricated price.
+    """
+
+    selected_size = _active_size(menu_item, menu_item_size_id)
+    if selected_size is None:
+        return {"priced": False, "reason": "That size is not available for this dish."}
+
+    default_selections, active_groups = _defaults_for_size(menu_item, selected_size)
+    try:
+        selection = resolve_menu_item_selection(
+            menu_item,
+            menu_item_size_id=selected_size.id,
+            selected_options=default_selections,
+        )
+    except HTTPException as exc:
+        return {"priced": False, "reason": exc.detail}
+
+    default_ids_by_group = {group.id: _default_option_ids_for_group(group) for group in active_groups}
+    return {
+        "priced": True,
+        "size_name": selection.size_name,
+        # From `resolve_menu_item_selection`'s own arithmetic
+        # (base_unit_price + customization_total_price), never re-summed
+        # here — "the price of the size plus its defaults, from the pricing
+        # path" is the whole point of this field.
+        "price_with_defaults": selection.unit_price,
+        "default_options": [
+            {
+                "option_id": option.id,
+                "name": option.name,
+                "extra_price": option.extra_price,
+                "group_id": group.id,
+                "group_title": group.title,
+            }
+            for group in active_groups
+            for option in group.options
+            if option.id in default_ids_by_group[group.id]
+        ],
+        # Every applicable group, not only the ones that got a default —
+        # "which groups the customer may still change" includes optional
+        # groups with nothing pre-selected at all, per the same "empty
+        # selection is a real default" rule `view_cart` already applies.
+        "changeable_groups": [
+            {
+                "group_id": group.id,
+                "title": group.title,
+                "is_required": group.is_required,
+                "selection_type": group.selection_type.value,
+                "min_selection": group.min_selection,
+                "max_selection": group.max_selection,
+                "default_option_ids": sorted(default_ids_by_group[group.id], key=str),
+                "options": [
+                    {"option_id": option.id, "name": option.name, "extra_price": option.extra_price}
+                    for option in group.options
+                    if option.is_active
+                ],
+            }
+            for group in active_groups
+        ],
     }
 
 
@@ -478,7 +839,15 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
     name_matched_tier = source in {"vector", "keyword", "fuzzy_name"}
     if verdict == "absent" or not candidates or not name_matched_tier:
         return {"found": False, "confidence": verdict}
-    return {"found": True, "confidence": verdict, **_serialize_menu_item(candidates[0].menu_item)}
+
+    matched_item = candidates[0].menu_item
+    result = {"found": True, "confidence": verdict, **_serialize_menu_item(matched_item)}
+    # Additive: only computed when the caller already knows which size was
+    # chosen (step 2 of the flow), never assumed from `sizes` above — a size
+    # is the customer's choice, not something this tool should guess at.
+    if args.menu_item_size_id is not None:
+        result["defaults"] = _describe_defaults_for_size(matched_item, args.menu_item_size_id)
+    return result
 
 
 def _view_cart(db: Session, scope: OrderingScope, args: ViewCartArgs) -> dict[str, Any]:
@@ -487,14 +856,27 @@ def _view_cart(db: Session, scope: OrderingScope, args: ViewCartArgs) -> dict[st
     Nothing here is priced independently of `resolve_menu_item_selection` —
     `unit_price`/`total_price` are its numbers, quantized the same way
     `orders.py` quantizes every line total, never a second formula.
+
+    Fix round 1 (2026-09-15): a sized dish with no size chosen used to be
+    indistinguishable from a dish that plain does not exist here — both
+    vanished into the same dropped-line count. `needs_choice` is now its own
+    key, separate from `lines`, carrying the sizes/groups an agent needs to
+    ask a real question. `subtotal` only ever totals `lines` — the priced,
+    complete ones — never anything from `needs_choice`.
+
+    Fix round 2 (2026-09-15): each priced line also carries
+    `customization_groups` — step 2 of the customer's specified flow ("that
+    comes with X and Y, that's $N") needs the price AND what it defaults to
+    in the one response, not a price now and a separate call to learn what
+    was included.
     """
 
     menu_items = _load_branch_menu_items(db, scope)
-    resolved = _resolve_cart_lines(menu_items, args.lines)
+    resolution = _resolve_cart_lines(menu_items, args.lines)
 
     lines_out: list[dict[str, Any]] = []
     subtotal = Decimal("0.00")
-    for entry in resolved:
+    for entry in resolution.resolved:
         total_price = _quantize(entry.selection.unit_price * entry.line.quantity)
         subtotal += total_price
         lines_out.append(
@@ -505,16 +887,18 @@ def _view_cart(db: Session, scope: OrderingScope, args: ViewCartArgs) -> dict[st
                 "quantity": entry.line.quantity,
                 "unit_price": entry.selection.unit_price,
                 "total_price": total_price,
+                "customization_groups": _serialize_resolved_groups(entry),
             }
         )
 
     return {
         "lines": lines_out,
+        "needs_choice": [_serialize_choice(entry) for entry in resolution.needs_choice],
         "subtotal": _quantize(subtotal),
-        # Never negative, never a count the caller can't already derive — but
-        # spelled out anyway, so an agent surfacing "2 items dropped" doesn't
-        # have to infer it by subtracting two lengths itself.
-        "dropped_line_count": len(args.lines) - len(resolved),
+        # Genuinely absent from this branch or otherwise malformed — see
+        # `CartLineResolution.dropped_count`. Never counts a `needs_choice`
+        # line: that one is real and answerable, just not priced yet.
+        "dropped_line_count": resolution.dropped_count,
     }
 
 
@@ -582,15 +966,31 @@ def _price_quote(db: Session, scope: OrderingScope, args: PriceQuoteArgs) -> dic
     resolves to nothing on this branch. A `validate_order_draft` refusal for
     any other reason (below minimum order, branch closed) is relayed as-is —
     its `detail` string, not a re-derived one.
+
+    Fix round 1 (2026-09-15): a cart with three complete lines and one that
+    needs a size used to refuse the whole quote — "None of these items are on
+    this branch's menu" was simply false about the three that were. Pricing
+    now runs on `resolution.resolved` alone; `needs_choice` rides alongside
+    every response (priced or not) so the caller always has whatever is left
+    to ask about. Only a cart with NO complete line at all fails to produce a
+    `priced: True` response, because `validate_order_draft`/`OrderCreateRequest`
+    both require at least one item — there is no number to delegate to.
     """
 
     if scope.customer is None:
-        return {"priced": False, "reason": "Sign in to get an exact price."}
+        return {"priced": False, "reason": "Sign in to get an exact price.", "needs_choice": []}
 
     menu_items = _load_branch_menu_items(db, scope)
-    resolved = _resolve_cart_lines(menu_items, args.lines)
-    if not resolved:
-        return {"priced": False, "reason": "None of these items are on this branch's menu."}
+    resolution = _resolve_cart_lines(menu_items, args.lines)
+    needs_choice_out = [_serialize_choice(entry) for entry in resolution.needs_choice]
+
+    if not resolution.resolved:
+        reason = (
+            "Some items need a choice before they can be priced."
+            if resolution.needs_choice
+            else "None of these items are on this branch's menu."
+        )
+        return {"priced": False, "reason": reason, "needs_choice": needs_choice_out}
 
     payload = OrderCreateRequest(
         restaurant_id=scope.restaurant_id,
@@ -610,7 +1010,7 @@ def _price_quote(db: Session, scope: OrderingScope, args: PriceQuoteArgs) -> dic
                     for option in entry.line.selected_options
                 ],
             )
-            for entry in resolved
+            for entry in resolution.resolved
         ],
         # Pricing never reads this field — `_prepare_order_draft` stores it on
         # the order and never touches it computing a total — so a placeholder
@@ -621,7 +1021,7 @@ def _price_quote(db: Session, scope: OrderingScope, args: PriceQuoteArgs) -> dic
     try:
         quote = validate_order_draft(db, scope.customer, payload)
     except HTTPException as exc:
-        return {"priced": False, "reason": exc.detail}
+        return {"priced": False, "reason": exc.detail, "needs_choice": needs_choice_out}
 
     return {
         "priced": True,
@@ -632,6 +1032,10 @@ def _price_quote(db: Session, scope: OrderingScope, args: PriceQuoteArgs) -> dic
         "total_amount": quote.total_amount,
         "currency": quote.currency,
         "item_count": quote.item_count,
+        # Priced ignores these lines entirely (they are not in `items`
+        # above) — surfaced so a mixed cart's response still tells the
+        # agent there is more to ask about, per rule 4 of the fix.
+        "needs_choice": needs_choice_out,
     }
 
 
