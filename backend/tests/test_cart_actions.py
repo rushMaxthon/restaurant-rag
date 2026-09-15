@@ -67,7 +67,15 @@ class QuantityExtractionTests(unittest.TestCase):
 
 class CartVerbClassificationTests(unittest.TestCase):
     """Independent of `ExtractedIntent` on purpose — see the plan's refinement
-    note 3. This never touches the menu-discovery intent taxonomy."""
+    note 3. This never touches the menu-discovery intent taxonomy.
+
+    Fix round 1 (review, 2026-09-15): the original patterns were bare-keyword
+    matches with no notion of "is this actually about the cart", so they fired
+    on plain conversation — "cancel my order" read as add, "do you do take
+    out?" read as remove, a bare "never mind" read as clear. The tests below
+    pin down the false positives the review found, alongside the phrasings
+    that must still work.
+    """
 
     def test_add_phrasings_are_recognised(self) -> None:
         for message in ("add pad thai", "order two spring rolls", "i'll have the curry", "give me a coke"):
@@ -83,16 +91,78 @@ class CartVerbClassificationTests(unittest.TestCase):
 
     def test_clear_phrasings_are_recognised(self) -> None:
         self.assertEqual(classify_cart_verb("clear my cart"), "clear")
-        self.assertEqual(classify_cart_verb("start over"), "clear")
+        self.assertEqual(classify_cart_verb("start over with my order"), "clear")
 
     def test_an_ordinary_question_is_not_a_cart_verb(self) -> None:
         for message in ("what's spicy tonight?", "how much is the pad thai?", "recommend something vegetarian"):
             self.assertIsNone(classify_cart_verb(message), msg=message)
 
-    def test_clear_wins_over_add_when_both_words_appear(self) -> None:
-        """"start over and add pad thai" is still one action per turn — clear."""
+    def test_start_over_without_cart_context_still_reads_a_real_add_cue(self) -> None:
+        """Replaces a prior version of this test whose docstring ("start over
+        and add pad thai") and assertion (a completely different string, with
+        no add cue at all) disagreed. "start over" carries no cart-mutation
+        signal without a nearby cart/order/basket word — see
+        test_bare_destructive_cues_need_cart_context below — so it doesn't
+        shadow the genuine "add" cue elsewhere in the same sentence."""
 
-        self.assertEqual(classify_cart_verb("never mind, start over"), "clear")
+        self.assertEqual(classify_cart_verb("start over and add pad thai"), "add")
+
+    def test_bare_destructive_cues_need_cart_context(self) -> None:
+        """A bare "never mind" or "start over" with no cart/order/basket word
+        anywhere nearby is ordinary conversation, not a cart action — clearing
+        someone's cart because they said "actually, never mind" about
+        something unrelated is the worst failure mode this module has."""
+
+        for message in ("actually, never mind", "can we start over"):
+            self.assertIsNone(classify_cart_verb(message), msg=message)
+
+    def test_order_as_a_noun_is_not_an_add_cue(self) -> None:
+        """"order" meaning "my existing order" (status, cancellation) is far
+        more common in this domain than the imperative "order X" — matching
+        it bare turned every order-status question into an add."""
+
+        for message in ("what's the status of my order?", "cancel my order"):
+            self.assertIsNone(classify_cart_verb(message), msg=message)
+
+    def test_wanting_an_action_is_not_wanting_an_item(self) -> None:
+        """"I want to <verb>" is a request for staff to do something, not a
+        request for a dish — only "i want <a thing>" is an add cue."""
+
+        self.assertIsNone(classify_cart_verb("I want to speak to a manager"))
+
+    def test_get_me_a_non_item_is_not_an_add_cue(self) -> None:
+        self.assertIsNone(classify_cart_verb("can you get me the wifi password"))
+
+    def test_take_out_the_fulfillment_type_is_not_a_remove_cue(self) -> None:
+        """Take-out is a fulfillment type on this site, not a request to
+        remove something from the cart — "take the rice out" is; "do you do
+        take out?" is not, and the difference is whether there's an object
+        between "take" and "out"."""
+
+        for message in ("do you do take out?", "is this for take out or delivery?"):
+            self.assertIsNone(classify_cart_verb(message), msg=message)
+
+    def test_cart_scoped_phrasings_still_classify(self) -> None:
+        """The genuine requests the review specifically asked to keep
+        working, gathered here for direct traceability against that list."""
+
+        cases = [
+            ("clear my cart", "clear"),
+            ("start over with my order", "clear"),
+            ("remove the pizza from my cart", "remove"),
+            ("add two spring rolls", "add"),
+        ]
+        for message, expected in cases:
+            self.assertEqual(classify_cart_verb(message), expected, msg=message)
+
+    def test_a_genuine_two_verb_conflict_yields_none(self) -> None:
+        """"remove the pizza and add a coke" asks for two different cart
+        mutations in one turn. Silently doing one and dropping the other is
+        the failure mode nobody notices, so a real conflict between action
+        categories returns None and lets a later tier ask, rather than the
+        classifier guessing which half of the request mattered more."""
+
+        self.assertIsNone(classify_cart_verb("remove the pizza and add a coke"))
 
 
 if __name__ == "__main__":

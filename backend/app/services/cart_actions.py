@@ -113,24 +113,96 @@ def extract_requested_quantity(message: str) -> int | None:
 
 CartVerb = Literal["add", "remove", "set_quantity", "clear"]
 
-# Checked in this order — most destructive first — so a message that mentions
-# more than one verb-shaped word resolves to the safer reading rather than an
-# arbitrary one. "Never mind, start over" must not fall through to "add"
-# because it also contains no add-shaped word, but a future phrasing that DID
-# mention both should still prefer the one that asks for confirmation anyway.
-_CLEAR_PATTERN = re.compile(r"\bclear\b.*\b(cart|order|basket)\b|\bstart over\b|\bnever ?mind\b", re.IGNORECASE)
+# Fix round 1 (review, 2026-09-15): the first version of this classifier
+# matched bare keywords — "order", "clear", "take ... out", "i want" — with no
+# requirement that the sentence be ABOUT the cart. That fired on ordinary
+# restaurant conversation: "cancel my order" (a status question) read as
+# "add", "do you do take out?" (a fulfillment-type question) read as
+# "remove", and a bare "never mind" read as "clear" — the most destructive
+# verb — with nothing to do with a cart anywhere in the sentence. The rule
+# from the review: cues must be scoped to the cart, and ambiguity must return
+# `None` rather than guess. Below, `_has_nearby_cart_word` gates the
+# destructive `clear` cues on an actual cart/order/basket word nearby (the
+# same windowed-proximity idea `_has_nearby_currency_mark` above uses for
+# prices), `_matches_add` narrows "order", "i want" and "get me" so they only
+# fire on item requests, and `_REMOVE_PATTERN`'s take-out cue requires an
+# object between "take" and "out" so it no longer matches the fulfillment
+# type. See `classify_cart_verb` for how multiple matches are resolved.
+_CLEAR_CUE_PATTERN = re.compile(r"\bclear\b|\bstart over\b|\bnever ?mind\b", re.IGNORECASE)
+_CART_WORD_PATTERN = re.compile(r"\b(cart|order|basket)\b", re.IGNORECASE)
+_CART_WORD_WINDOW = 20  # chars of context each side — enough to bridge "start over with my order"
+
 _SET_QUANTITY_PATTERN = re.compile(
     r"\bmake it\b|\bchange (?:it|the (?:quantity|order))? ?to\b|\bset (?:it|the quantity)? ?to\b",
     re.IGNORECASE,
 )
+
+# "take ... out" used to be `r"\btake .* out\b"`, whose `.*` matches zero
+# characters — so it matched the bare phrase "take out" itself, and every
+# "do you do take out?" / "is this for take out or delivery?" question read
+# as removing an item. Take-out is a fulfillment type on this site, not a
+# cart action. Requiring at least one token between "take" and "out" keeps
+# "take the rice out" (an object sits between them) while dropping the
+# adjacent noun phrase.
 _REMOVE_PATTERN = re.compile(
-    r"\bremove\b|\bdelete\b|\btake .* out\b|\bget rid of\b|\bdon'?t want\b",
+    r"\bremove\b|\bdelete\b|\btake\s+(?:\S+\s+)+out\b|\bget rid of\b|\bdon'?t want\b",
     re.IGNORECASE,
 )
-_ADD_PATTERN = re.compile(
-    r"\badd\b|\border\b|\bget me\b|\bi'?ll have\b|\bi want\b|\bgive me\b|\bput in\b|\banother\b",
-    re.IGNORECASE,
+
+_ADD_SIMPLE_PATTERN = re.compile(
+    r"\badd\b|\bi'?ll have\b|\bgive me\b|\bput in\b|\banother\b", re.IGNORECASE
 )
+# "order" as a verb ("order two spring rolls") is an add cue; "order" as a
+# noun referring to an existing order ("my order", "cancel my order", "the
+# status of my order") is not, and the noun usage is the far more common one
+# in a chat that already has an order in flight. The two are indistinguishable
+# by the word itself, but the noun form is reliably preceded by a determiner
+# and the imperative form isn't — so exclude "order" immediately preceded by
+# one of these rather than matching it bare.
+_ORDER_VERB_PATTERN = re.compile(
+    r"(?<!my )(?<!the )(?<!your )(?<!this )(?<!that )(?<!an )\border\b", re.IGNORECASE
+)
+# "i want to <verb>" asks staff to DO something ("i want to speak to a
+# manager"); only "i want <a thing>" is a request for a dish. Whether what
+# follows "want" is an infinitive is the cheapest signal available without a
+# real parse.
+_WANT_ITEM_PATTERN = re.compile(r"\bi want\b(?!\s+to\b)", re.IGNORECASE)
+# "get me" is a general fetch-something phrase, and most of what customers
+# ask staff to fetch outside the menu falls into a small, known set. Not
+# exhaustive — a deterministic tier never is — but it removes the concrete
+# false positive the review found ("can you get me the wifi password").
+_GET_ME_PATTERN = re.compile(r"\bget me\b", re.IGNORECASE)
+_GET_ME_NON_ITEM_PATTERN = re.compile(
+    r"\bget me\b\s*(?:the\s+)?(?:wifi|wi-fi|password|manager|bill|check|receipt)\b", re.IGNORECASE
+)
+
+
+def _has_nearby_cart_word(message: str, start: int, end: int) -> bool:
+    """Whether a cart/order/basket word sits close enough to a destructive cue
+    to mean the sentence is actually about the cart.
+
+    Windowed rather than message-global for the same reason
+    `_has_nearby_currency_mark` above is windowed: a global check would also
+    accept a cart word anywhere in an unrelated sentence, which is exactly
+    the false-positive shape the review flagged for bare "never mind" and
+    "start over".
+    """
+
+    window_start = max(0, start - _CART_WORD_WINDOW)
+    window_end = min(len(message), end + _CART_WORD_WINDOW)
+    return bool(_CART_WORD_PATTERN.search(message[window_start:window_end]))
+
+
+def _matches_add(message: str) -> bool:
+    if _ADD_SIMPLE_PATTERN.search(message):
+        return True
+    if _ORDER_VERB_PATTERN.search(message):
+        return True
+    if _WANT_ITEM_PATTERN.search(message):
+        return True
+    if _GET_ME_PATTERN.search(message) and not _GET_ME_NON_ITEM_PATTERN.search(message):
+        return True
+    return False
 
 
 def classify_cart_verb(message: str) -> CartVerb | None:
@@ -141,14 +213,31 @@ def classify_cart_verb(message: str) -> CartVerb | None:
     value in it, and adding one there would touch every `intent.intent == ...`
     branch already in `rag.py`. This classifier is additive: `None` means "not
     a cart-action message", and every existing reply path is unaffected.
+
+    When more than one category matches — "remove the pizza and add a
+    coke" — this returns `None` rather than picking one by a fixed priority
+    order. An earlier version prioritised by destructiveness, but silently
+    acting on (or dropping) half of a two-part request is a worse failure
+    than asking; a later tier can still resolve it by asking which change
+    the customer meant, or by handling both in sequence.
     """
 
-    if _CLEAR_PATTERN.search(message):
-        return "clear"
-    if _SET_QUANTITY_PATTERN.search(message):
-        return "set_quantity"
-    if _REMOVE_PATTERN.search(message):
-        return "remove"
-    if _ADD_PATTERN.search(message):
-        return "add"
+    clear_cue = _CLEAR_CUE_PATTERN.search(message)
+    is_clear = bool(clear_cue and _has_nearby_cart_word(message, clear_cue.start(), clear_cue.end()))
+    is_set_quantity = bool(_SET_QUANTITY_PATTERN.search(message))
+    is_remove = bool(_REMOVE_PATTERN.search(message))
+    is_add = _matches_add(message)
+
+    matched: list[CartVerb] = []
+    if is_clear:
+        matched.append("clear")
+    if is_set_quantity:
+        matched.append("set_quantity")
+    if is_remove:
+        matched.append("remove")
+    if is_add:
+        matched.append("add")
+
+    if len(matched) == 1:
+        return matched[0]
     return None
