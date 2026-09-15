@@ -54,6 +54,42 @@ export type SavedAddressCreate = {
   is_default?: boolean;
 };
 
+/** A dish someone favourited, as the favourites list returns it. */
+export type FavoriteItem = {
+  id: string;
+  name: string;
+  price: Money;
+  image_url?: string | null;
+  category?: string | null;
+  is_veg?: boolean;
+  is_available?: boolean;
+  has_sizes?: boolean;
+  has_customizations?: boolean;
+};
+
+/**
+ * Two or more dishes people actually ordered together.
+ *
+ * Not a marketing bundle: `generated_from_orders` says it was derived from
+ * real orders, and `unique_user_count` is how many different people did it.
+ * That provenance is the interesting part of this feature and the reason the
+ * UI leads with it rather than with the discount.
+ */
+export type GeneratedCombo = {
+  id: string;
+  combo_name: string;
+  description: string | null;
+  restaurant_name: string;
+  items: { menu_item_id: string; name: string; price: Money; image_url?: string | null }[];
+  order_count: number;
+  unique_user_count: number;
+  original_total_price: Money;
+  suggested_combo_price: Money;
+  savings_amount: Money;
+  image_url: string | null;
+  generated_from_orders: boolean;
+};
+
 export type ProfileStats = {
   total_orders: number;
   delivered_orders: number;
@@ -528,7 +564,35 @@ export const api = {
       timeoutMs: 45000,
     }),
 
-  getGeneratedCombos: (limit = 12) => request<unknown[]>("/generated-combos", { query: { limit } }),
+  /**
+   * The dishes this customer keeps coming back to, as ids only.
+   *
+   * Ids rather than whole items: every dish card on the menu needs to know
+   * whether it is a favourite, and that is a set membership test, not 40 menu
+   * items fetched a second time.
+   */
+  getFavoriteIds: () => request<string[]>("/favorites/ids", { auth: true }),
+
+  getFavorites: () => request<FavoriteItem[]>("/favorites", { auth: true }),
+
+  addFavorite: (menuItemId: string) =>
+    request<{ is_favorite: boolean }>(`/favorites/${menuItemId}`, { method: "POST", auth: true }),
+
+  removeFavorite: (menuItemId: string) =>
+    request<{ is_favorite: boolean }>(`/favorites/${menuItemId}`, { method: "DELETE", auth: true }),
+
+  /**
+   * Pairings for one restaurant.
+   *
+   * The unscoped `/generated-combos` answers for the whole marketplace, which
+   * on a restaurant's own menu offered a burger and a milkshake from somewhere
+   * else entirely — dishes that cannot go in this cart at all, since a cart
+   * belongs to one restaurant and one branch.
+   */
+  getGeneratedCombos: (restaurantId: string, limit = 12) =>
+    request<GeneratedCombo[]>(`/restaurants/${restaurantId}/generated-combos`, {
+      query: { limit },
+    }),
 
   // NOTE: the real route is /offers/personalized (see backend app/api/personalized_offers.py) —
   // there is no top-level /personalized-offers path on this API.
