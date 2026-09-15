@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cartLinesForRequest, cartSuggestionSignature, suggestionCopy, suggestionNeedsChoice } from "./suggestions";
+import {
+  cartLinesForRequest,
+  cartSuggestionSignature,
+  suggestionCopy,
+  suggestionNeedsChoice,
+  suggestionReason,
+} from "./suggestions";
 
 describe("cartLinesForRequest", () => {
   it("sends identifiers only, never names or prices", () => {
@@ -128,6 +134,48 @@ describe("suggestionCopy", () => {
     );
 
     expect(copy).toContain("Thai Iced Tea");
+  });
+});
+
+describe("suggestionReason", () => {
+  it("claims evidence only when there is evidence, and never names the item", () => {
+    const mined = suggestionReason({ basis: "co_occurrence" });
+    const guess = suggestionReason({ basis: "category_default" }, "Beverages");
+
+    expect(mined).toContain("Often ordered");
+    expect(guess).toContain("Most people");
+    // The whole point of `basis`: these must not read alike.
+    expect(mined).not.toEqual(guess);
+    // Splitting the name out must not let it sneak back into the reason.
+    expect(mined).not.toContain("Thai Iced Tea");
+    expect(guess).not.toContain("Thai Iced Tea");
+    // The popularity claim must be about the category (drink), not any item.
+    expect(guess).toContain("Most people add a drink");
+  });
+
+  it("uses category noun when available, still with no item name", () => {
+    const reason = suggestionReason({ basis: "category_default" }, "Dessert");
+
+    expect(reason).toBe("Most people add a something sweet");
+    expect(reason).not.toContain("Tiramisu");
+  });
+
+  it("omits popularity claim when category is unknown or absent", () => {
+    const unknownCategory = suggestionReason({ basis: "category_default" }, "Soups");
+    const noCategory = suggestionReason({ basis: "category_default" });
+
+    // No popularity claim when the category cannot be naturally named — and
+    // no fallback to naming the item either, since that's the exact claim
+    // category_default is not entitled to make.
+    expect(unknownCategory).not.toContain("Most people");
+    expect(noCategory).not.toContain("Most people");
+  });
+
+  it("falls back to something neutral for an unknown basis, with no item name", () => {
+    const reason = suggestionReason({ basis: "something_new" });
+
+    expect(reason.length).toBeGreaterThan(0);
+    expect(reason).not.toContain("Thai Iced Tea");
   });
 });
 

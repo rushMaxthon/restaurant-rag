@@ -170,25 +170,57 @@
  * instead of a paragraph; `align-items: center` on the row still centers a
  * wrapped two-line block against the actions beside it.
  */
+/* ~72px tall by design: a compact row (thumbnail + reason/name/price), never
+   a second product surface. A hero image was explicitly rejected here — the
+   thumbnail is deliberately small (see .waiter-prompt__thumb) so this still
+   reads as a nudge sitting on top of the page, not a menu card competing
+   with the real one. */
 .waiter-prompt {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 44px;
+  gap: 0.75rem;
+  min-height: 72px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--primary-soft);
-  padding: 0.85rem 1.1rem;
+  padding: 0.5rem 0.75rem;
+}
+/* Sized in the markup via Tailwind (h-14 w-14, ~56px) — small enough to stay
+   a label for the offer, not a photo the eye lands on first. */
+.waiter-prompt__thumb {
+  flex-shrink: 0;
 }
 .waiter-prompt__text {
+  display: flex;
   min-width: 0;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+/* The claim ("Most people add a drink") lives here, never on .waiter-prompt__name
+   — see suggestionReason's docstring. Quiet on purpose: it is a label for the
+   offer below it, not the headline. */
+.waiter-prompt__reason {
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--muted);
+}
+/* No truncation: an earlier `nowrap` + ellipsis hid the dish name at 360px.
+   It must wrap onto a second line instead, so the name — the reason someone
+   would tap Add — always survives on a narrow phone. */
+.waiter-prompt__name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-weight: 800;
+  line-height: var(--leading-tight, 1.15);
+}
+.waiter-prompt__price {
+  font-size: var(--text-sm, 0.875rem);
   font-weight: 700;
+  color: var(--muted);
 }
 .waiter-prompt__actions {
   display: flex;

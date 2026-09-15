@@ -125,6 +125,45 @@ export function suggestionCopy(
   }
 }
 
+/**
+ * The reason label alone, with no item name — for the compact-row layout,
+ * where the dish name is rendered separately (thumbnail + bold name) and
+ * repeating it here would read as a stutter: "Most people add a drink —
+ * Singha Soda Lime" next to "Singha Soda Lime" in bold underneath it.
+ *
+ * Mirrors `suggestionCopy`'s honesty rule exactly, just without the name
+ * clause: `co_occurrence` may say a pairing was mined from real orders,
+ * `category_default` may only claim the CATEGORY is popular (never the
+ * specific item, which was picked by absence of evidence), and when the
+ * category has no natural noun the reason makes no popularity claim at all
+ * — it returns a neutral, non-empty label rather than an empty string, so
+ * the row never renders a blank line where the reason belongs.
+ *
+ * `suggestionCopy` itself is untouched and still used as the prompt's
+ * `aria-label`, so a screen reader still hears one coherent sentence.
+ */
+export function suggestionReason(
+  suggestion: Pick<SellSuggestion, "basis">,
+  category?: string | null,
+): string {
+  switch (suggestion.basis) {
+    case "co_occurrence":
+      return "Often ordered with what you've got";
+    case "category_default": {
+      const noun = categoryNoun(category);
+      return noun ? `Most people add a ${noun}` : "Picked for your order";
+    }
+    case "combo_upgrade":
+      return "A better deal on what's in your cart";
+    case "size_upgrade":
+      return "Would you like a bigger size?";
+    case "add_on":
+      return "Goes well with your order";
+    default:
+      return "Suggested for your order";
+  }
+}
+
 /** The only two fields `suggestionNeedsChoice` needs from a menu item. */
 export type MenuItemChoiceFlags = {
   has_sizes: boolean;

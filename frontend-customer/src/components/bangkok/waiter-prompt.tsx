@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DishImage } from "@/components/bangkok/dish-image";
+import { VegMark } from "@/components/bangkok/veg-mark";
 import { api } from "@/lib/api";
+import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { readChatSession, storeChatSession } from "@/lib/chat-session";
 import { useMenuItem } from "@/lib/queries";
@@ -11,6 +14,7 @@ import {
   cartSuggestionSignature,
   suggestionCopy,
   suggestionNeedsChoice,
+  suggestionReason,
   type SellSuggestion,
 } from "@/lib/suggestions";
 
@@ -112,8 +116,38 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
   const needsChoice = suggestionNeedsChoice(suggestion, item);
 
   return (
-    <aside className={`waiter-prompt waiter-prompt--${placement}`} role="note" aria-live="polite">
-      <p className="waiter-prompt__text">{suggestionCopy(suggestion, item.name, item.category)}</p>
+    // aria-label carries `suggestionCopy` — one coherent sentence with the item
+    // name in it — as the accessible name, even though the visible markup now
+    // splits reason, name and price into separate nodes. Without it a screen
+    // reader would read three disconnected fragments instead of the sentence
+    // this copy was written to be.
+    <aside
+      className={`waiter-prompt waiter-prompt--${placement}`}
+      role="note"
+      aria-live="polite"
+      aria-label={suggestionCopy(suggestion, item.name, item.category)}
+    >
+      {/*
+        The same DishImage the menu grid and dish page use, so a null
+        `image_url` — common in this data — falls back to the same
+        initials-on-a-tint tile customers already see elsewhere, not a
+        second, ad hoc "broken image" look invented just for this row.
+        Tailwind classes override DishImage's own aspect-[4/3]/w-full/
+        text-3xl defaults via tailwind-merge: square, ~56px, small text.
+      */}
+      <DishImage
+        src={item.image_url}
+        name={item.name}
+        className="waiter-prompt__thumb aspect-square h-14 w-14 shrink-0 rounded-lg text-sm"
+      />
+      <div className="waiter-prompt__text" aria-hidden="true">
+        <span className="waiter-prompt__reason">{suggestionReason(suggestion, item.category)}</span>
+        <span className="waiter-prompt__name">
+          <VegMark veg={item.is_veg} />
+          {item.name}
+        </span>
+        <span className="waiter-prompt__price">{formatMoney(item.price)}</span>
+      </div>
       <div className="waiter-prompt__actions">
         {needsChoice ? (
           <Button size="sm" variant="outline" asChild>
