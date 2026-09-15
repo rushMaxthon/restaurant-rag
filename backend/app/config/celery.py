@@ -32,6 +32,7 @@ celery_app.conf.update(
         "app.tasks.insights.generate_owner_briefings_task": {"queue": "analytics"},
         "app.tasks.insights.measure_action_outcomes_task": {"queue": "analytics"},
         "app.tasks.notifications.send_order_status_notification": {"queue": "notifications"},
+        "app.tasks.whatsapp.answer_whatsapp_message": {"queue": "notifications"},
         "app.tasks.payments.reap_unpaid_orders_task": {"queue": "default"},
     },
     beat_schedule={

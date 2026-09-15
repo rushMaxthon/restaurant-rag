@@ -274,6 +274,49 @@ class Settings(BaseSettings):
     insights_anomaly_z_threshold: float = 3.0
     insights_top_contributor_limit: int = 8
 
+    # --- WhatsApp concierge -------------------------------------------------
+    #
+    # The same assistant as the web concierge, reached over WhatsApp. Nothing
+    # here is a second brain: the webhook hands the message to the same
+    # `handle_chat_message` the web app calls.
+    #
+    # Off by default like every other channel-level feature, so a deployment
+    # without credentials answers nobody rather than half-answering.
+    whatsapp_enabled: bool = False
+
+    # The ONE number this bot may answer on, as Meta's numeric id (not the
+    # dialling number). Every inbound event names the number it arrived at, and
+    # anything that is not this id is dropped without a reply.
+    #
+    # This matters more than it looks: a WhatsApp number can be shared with
+    # another integration, and Meta delivers each message to whoever is
+    # subscribed. Two systems answering one message means the customer gets two
+    # replies. Empty means "answer nothing", which is the safe way to be
+    # misconfigured.
+    whatsapp_phone_number_id: str = ""
+
+    # Meta Cloud API credentials. The app secret signs every webhook delivery;
+    # the access token is what we send replies with.
+    whatsapp_access_token: str = ""
+    whatsapp_app_secret: str = ""
+    # Chosen by us and echoed back during Meta's one-time subscription check.
+    whatsapp_verify_token: str = ""
+    whatsapp_api_base_url: str = "https://graph.facebook.com/v21.0"
+
+    # Which restaurant this number speaks for. Set it and the assistant answers
+    # from that menu only, the same way a single-restaurant app client does;
+    # leave it empty and it behaves like the marketplace app, across all of
+    # them.
+    whatsapp_restaurant_id: str = ""
+
+    # Meta retries a delivery it thinks failed, and a retry must not produce a
+    # second reply. Seen message ids are remembered for this long.
+    whatsapp_seen_message_ttl_seconds: int = 3600
+
+    # WhatsApp rejects a body over 4096 characters outright, so a long answer is
+    # trimmed rather than lost.
+    whatsapp_max_body_chars: int = 4000
+
     # AI Restaurant Manager insight generation and narration.
     #
     # Both flags default off. With narration disabled the feature still works

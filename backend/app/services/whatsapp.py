@@ -1,0 +1,194 @@
+"""The WhatsApp side of the concierge: reading Meta's deliveries, and replying.
+
+This module is deliberately thin. It does not answer anything — the answering
+is `rag.handle_chat_message`, the same function the web concierge calls, so the
+two channels cannot drift into giving different advice about the same menu.
+What lives here is the part that is specific to WhatsApp:
+
+* authenticating a delivery by its signature, since there is no other
+  credential on the request (the Stripe webhook is authenticated the same way);
+* deciding whether a message was even meant for us;
+* turning Meta's envelope into something the assistant can read, and the
+  assistant's answer back into something WhatsApp will send.
+
+**The number may not be ours alone.** A WhatsApp number can be shared with
+another integration, and Meta delivers each inbound message to every subscribed
+app. If both answer, the customer gets two replies to one question. Every
+delivery names the number it arrived at, so `is_our_number` is the guard, and it
+fails closed: an unconfigured deployment answers nobody.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import logging
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+@dataclass(frozen=True)
+class InboundMessage:
+    """One question from one person, lifted out of Meta's envelope."""
+
+    message_id: str
+    from_number: str
+    phone_number_id: str
+    text: str
+
+
+def verify_signature(payload: bytes, header: str | None, *, app_secret: str | None = None) -> bool:
+    """Is this delivery really from Meta?
+
+    HMAC-SHA256 of the RAW body under the app secret, as `sha256=<hex>`. The
+    raw bytes matter: re-serialised JSON reorders keys and changes whitespace,
+    and the digest no longer matches.
+
+    Returns False when there is no configured secret. A deployment that has not
+    been given one must refuse everything rather than accept anything, which is
+    the failure that would otherwise let a stranger drive the assistant.
+    """
+
+    secret = app_secret if app_secret is not None else settings.whatsapp_app_secret
+    if not secret or not header:
+        return False
+
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    provided = header[len("sha256=") :] if header.startswith("sha256=") else header
+    return hmac.compare_digest(expected, provided)
+
+
+def is_our_number(phone_number_id: str, *, configured: str | None = None) -> bool:
+    """Did this arrive at the number this bot speaks for?
+
+    The whole point of the WhatsApp channel not stepping on another
+    integration. Both sides must be non-empty: an event with no number, or a
+    deployment with no number configured, is not a match.
+    """
+
+    ours = configured if configured is not None else settings.whatsapp_phone_number_id
+    return bool(ours) and bool(phone_number_id) and phone_number_id == ours
+
+
+def inbound_messages(payload: Any) -> list[InboundMessage]:
+    """Every answerable message in one delivery.
+
+    Tolerant on purpose. Meta posts delivery receipts, reactions, media and
+    shapes that did not exist when this was written, through the same webhook;
+    anything unreadable is simply not a question. Raising here would return a
+    500, and Meta retries a 500 until it gives up.
+    """
+
+    found: list[InboundMessage] = []
+    if not isinstance(payload, dict):
+        return found
+
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+            metadata = value.get("metadata")
+            phone_number_id = ""
+            if isinstance(metadata, dict):
+                phone_number_id = str(metadata.get("phone_number_id") or "")
+
+            for message in value.get("messages") or []:
+                if not isinstance(message, dict) or message.get("type") != "text":
+                    continue
+                text_block = message.get("text")
+                body = ""
+                if isinstance(text_block, dict):
+                    body = str(text_block.get("body") or "").strip()
+                if not body:
+                    continue
+                found.append(
+                    InboundMessage(
+                        message_id=str(message.get("id") or ""),
+                        from_number=str(message.get("from") or ""),
+                        phone_number_id=phone_number_id,
+                        text=body,
+                    )
+                )
+    return found
+
+
+def render_reply(reply: str, suggestions: list[Any] | None = None) -> str:
+    """The assistant's answer as one WhatsApp message.
+
+    The web concierge returns dish cards — an image, a name, a price, a button.
+    WhatsApp has no such thing in a plain text reply, so the dishes are listed
+    under the answer with their prices. Losing the pictures is a real loss and
+    the honest first version; interactive lists are the next step, and they
+    bring limits of their own (ten rows, twenty-four character titles).
+
+    Trimmed to the configured length because WhatsApp rejects an over-long body
+    outright: a trimmed answer reaches the customer, a rejected one does not.
+    """
+
+    parts = [reply.strip()]
+    for item in suggestions or []:
+        name = getattr(item, "name", None) or (item.get("name") if isinstance(item, dict) else None)
+        if not name:
+            continue
+        price = getattr(item, "price", None) or (
+            item.get("price") if isinstance(item, dict) else None
+        )
+        parts.append(f"• {name}" + (f" — {price}" if price else ""))
+
+    body = "\n".join(part for part in parts if part).strip()
+    limit = int(settings.whatsapp_max_body_chars)
+    if len(body) > limit:
+        body = body[: limit - 1].rstrip() + "…"
+    return body
+
+
+def send_text(to: str, body: str) -> bool:
+    """Send one message back. True if Meta accepted it.
+
+    Failures are logged and swallowed: this runs on a worker, and the only
+    thing a raise would achieve is a retry that sends the customer the same
+    answer twice.
+    """
+
+    if not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        logger.warning("WhatsApp send skipped: channel is not configured")
+        return False
+
+    url = f"{settings.whatsapp_api_base_url}/{settings.whatsapp_phone_number_id}/messages"
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to,
+                "type": "text",
+                "text": {"preview_url": False, "body": body},
+            },
+            timeout=20.0,
+        )
+    except httpx.HTTPError:
+        logger.exception("WhatsApp send failed for %s", to)
+        return False
+
+    if response.status_code >= 400:
+        # Body, not just status: Meta explains refusals (expired token, outside
+        # the 24-hour window, unregistered recipient) only in the body.
+        logger.error(
+            "WhatsApp send rejected for %s: %s %s", to, response.status_code, response.text[:400]
+        )
+        return False
+    return True
