@@ -221,6 +221,13 @@ function Orders() {
   const isAuthenticated = useRequireAuth();
   const navigate = useNavigate();
   const ordersQuery = useOrders(isAuthenticated);
+  // Above the early return below: hooks cannot sit after one. Placed under it
+  // they ran on some renders and not others, and React tore the page down with
+  // "rendered more hooks than during the previous render" — which the customer
+  // met as "this page didn't load".
+  const [liveShown, setLiveShown] = useState(FIRST_BATCH);
+  const [unpaidShown, setUnpaidShown] = useState(FIRST_BATCH);
+  const [pastShown, setPastShown] = useState(FIRST_BATCH);
 
   if (!isAuthenticated) return null;
 
@@ -237,9 +244,6 @@ function Orders() {
       !SETTLED.has(o.status) && !(o.status === "PAYMENT_PENDING" && o.payment_status !== "COD"),
   );
   const past = orders.filter((o) => SETTLED.has(o.status));
-  const [liveShown, setLiveShown] = useState(FIRST_BATCH);
-  const [unpaidShown, setUnpaidShown] = useState(FIRST_BATCH);
-  const [pastShown, setPastShown] = useState(FIRST_BATCH);
 
   return (
     <div className="page-pad mx-auto max-w-6xl pb-24 pt-10">
