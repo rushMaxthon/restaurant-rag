@@ -19,6 +19,7 @@ import type {
   GeneratedCombo,
   LocationScheduleOptionsResponse,
   MenuItem,
+  MenuItemPortion,
   Order,
   OrderValidationResult,
   OrderFulfillmentType,
@@ -870,7 +871,12 @@ export const api = {
       items: Array<{
         menu_item_id: string;
         menu_item_size_id?: string | null;
-        selected_options?: Array<{ option_id: string; quantity: number }>;
+        selected_options?: Array<{
+          option_id: string;
+          quantity: number;
+          /** Which half this option goes on; omitted means the whole item. */
+          portion?: MenuItemPortion;
+        }>;
         quantity: number;
       }>;
     },
@@ -1176,7 +1182,12 @@ export const api = {
       items: Array<{
         menu_item_id: string;
         menu_item_size_id?: string | null;
-        selected_options?: Array<{ option_id: string; quantity: number }>;
+        selected_options?: Array<{
+          option_id: string;
+          quantity: number;
+          /** Which half this option goes on; omitted means the whole item. */
+          portion?: MenuItemPortion;
+        }>;
         quantity: number;
       }>;
       delivery_address: string;
@@ -1271,7 +1282,12 @@ export const api = {
       items: Array<{
         menu_item_id: string;
         menu_item_size_id?: string | null;
-        selected_options?: Array<{ option_id: string; quantity: number }>;
+        selected_options?: Array<{
+          option_id: string;
+          quantity: number;
+          /** Which half this option goes on; omitted means the whole item. */
+          portion?: MenuItemPortion;
+        }>;
         quantity: number;
       }>;
       delivery_address: string;

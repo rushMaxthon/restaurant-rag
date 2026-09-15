@@ -44,6 +44,7 @@ import type {
   MenuItem,
   MenuItemCustomizationGroup,
   MenuItemCustomizationOption,
+  MenuItemPortion,
   Restaurant,
 } from '@/types/app';
 import { checkAuthAndRedirect } from '@utils/authRedirect';
@@ -51,10 +52,18 @@ import { getNewItemBadgeMeta } from '@utils/newItemBadges';
 import {
   buildLineItemId,
   calculateUnitPrice,
+  chargedExtraPrice,
   findCustomizationOption,
   formatCustomizationSummary,
   getActiveCustomizationGroups,
   getDefaultSelectedSize,
+  getSideCounts,
+  groupSupportsHalves,
+  nextSideFor,
+  portionOf,
+  regroupForMode,
+  roomOnSide,
+  splitSummary,
   validateCustomizationSelection,
 } from '@/utils/menuItemCustomization';
 
@@ -66,19 +75,30 @@ function CollapsibleGroup({
   group,
   groupSelections,
   selectedOptions,
+  isSplit,
   onOptionPress,
   onOptionQuantityChange,
+  onSetSplit,
+  onSetOptionPortion,
   styles,
   theme,
 }: {
   group: MenuItemCustomizationGroup;
   groupSelections: CartSelectedOption[];
   selectedOptions: CartSelectedOption[];
+  /** Whether the customer has put this group into half-and-half mode. */
+  isSplit: boolean;
   onOptionPress: (
     group: MenuItemCustomizationGroup,
     option: MenuItemCustomizationOption,
   ) => void;
   onOptionQuantityChange: (optionId: string, delta: number) => void;
+  onSetSplit: (group: MenuItemCustomizationGroup, wantSplit: boolean) => void;
+  onSetOptionPortion: (
+    group: MenuItemCustomizationGroup,
+    optionId: string,
+    portion: MenuItemPortion,
+  ) => void;
   styles: ReturnType<typeof createStyles>;
   theme: AppTheme;
 }) {
@@ -114,6 +134,10 @@ function CollapsibleGroup({
   });
 
   const selectedCount = groupSelections.length;
+  // The owner's flag is what offers the control at all; the customer's switch
+  // is what turns it on.
+  const canSplit = groupSupportsHalves(group);
+  const sideCounts = getSideCounts(groupSelections);
 
   return (
     <View style={styles.selectionCard}>
@@ -146,7 +170,11 @@ function CollapsibleGroup({
             {group.selection_type === 'SINGLE'
               ? 'Single choice'
               : `Pick ${group.min_selection}–${group.max_selection}`}
-            {selectedCount > 0 ? ` • ${selectedCount} selected` : ''}
+            {isSplit
+              ? ` on each half • ${sideCounts.LEFT} left, ${sideCounts.RIGHT} right`
+              : selectedCount > 0
+              ? ` • ${selectedCount} selected`
+              : ''}
           </Text>
         </View>
 
@@ -160,11 +188,69 @@ function CollapsibleGroup({
       {/* Collapsed preview pills */}
       {!open && selectedCount > 0 ? (
         <View style={styles.selectionPreviewRow}>
-          {groupSelections.map(sel => (
-            <View key={sel.optionId} style={styles.selectionPreviewPill}>
-              <Text style={styles.selectionPreviewText}>{sel.optionName}</Text>
-            </View>
-          ))}
+          {groupSelections.map(sel => {
+            const portion = portionOf(sel);
+            return (
+              <View key={sel.optionId} style={styles.selectionPreviewPill}>
+                <Text style={styles.selectionPreviewText}>
+                  {portion === 'WHOLE'
+                    ? sel.optionName
+                    : `${sel.optionName} · ${
+                        portion === 'LEFT' ? 'left' : 'right'
+                      }`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {/* The owner's flag turned into one question, asked once: the same on
+          all of it, or different on each half. Asking it per topping produced
+          dead ends — two toppings on the whole item and neither could move to
+          a half, because each read the other as whole. */}
+      {open && canSplit ? (
+        <View
+          style={styles.splitSwitch}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={`How to put on ${group.title}`}
+        >
+          <Pressable
+            onPress={() => onSetSplit(group, false)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: !isSplit }}
+            style={[
+              styles.splitSwitchOption,
+              !isSplit ? styles.splitSwitchOptionActive : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.splitSwitchText,
+                !isSplit ? styles.splitSwitchTextActive : null,
+              ]}
+            >
+              Same all over
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onSetSplit(group, true)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: isSplit }}
+            style={[
+              styles.splitSwitchOption,
+              isSplit ? styles.splitSwitchOptionActive : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.splitSwitchText,
+                isSplit ? styles.splitSwitchTextActive : null,
+              ]}
+            >
+              Half &amp; half
+            </Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -178,73 +264,149 @@ function CollapsibleGroup({
                 entry => entry.optionId === option.id,
               );
               const selected = Boolean(selection);
+              const portion = selection ? portionOf(selection) : 'WHOLE';
+              const onHalf = isSplit && portion !== 'WHOLE';
+              // The side this tap would actually put it on, so the row and the
+              // press cannot disagree about where it lands.
+              const landsOn = isSplit
+                ? nextSideFor(group, groupSelections)
+                : 'WHOLE';
+              // At the ceiling the ones already chosen stay tappable so they
+              // can be taken off again; the rest go quiet. Checking the cap
+              // only at Add let someone build an item the kitchen would refuse
+              // and told them so at the end.
+              const atCeiling =
+                !selected && isSplit && !roomOnSide(group, sideCounts, landsOn);
               return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => onOptionPress(group, option)}
-                  style={[
-                    styles.optionCard,
-                    selected ? styles.optionCardActive : null,
-                  ]}
-                >
-                  {/* Indicator */}
-                  <View
+                <View key={option.id}>
+                  <Pressable
+                    onPress={() => onOptionPress(group, option)}
+                    disabled={atCeiling}
                     style={[
-                      styles.optionIndicator,
-                      group.selection_type === 'SINGLE'
-                        ? styles.optionIndicatorRadio
-                        : styles.optionIndicatorCheck,
-                      selected ? styles.optionIndicatorActive : null,
+                      styles.optionCard,
+                      selected ? styles.optionCardActive : null,
+                      atCeiling ? styles.optionCardDisabled : null,
                     ]}
                   >
-                    {selected ? (
-                      <Text style={styles.optionIndicatorMark}>
-                        {group.selection_type === 'SINGLE' ? '●' : '✓'}
-                      </Text>
-                    ) : null}
-                  </View>
+                    {/* Indicator */}
+                    <View
+                      style={[
+                        styles.optionIndicator,
+                        group.selection_type === 'SINGLE'
+                          ? styles.optionIndicatorRadio
+                          : styles.optionIndicatorCheck,
+                        selected ? styles.optionIndicatorActive : null,
+                      ]}
+                    >
+                      {selected ? (
+                        <Text style={styles.optionIndicatorMark}>
+                          {group.selection_type === 'SINGLE' ? '●' : '✓'}
+                        </Text>
+                      ) : null}
+                    </View>
 
-                  {/* Copy */}
-                  <View style={styles.optionCopy}>
-                    <Text style={styles.optionName}>{option.name}</Text>
-                    {/* {option.is_countable ? (
+                    {/* Copy */}
+                    <View style={styles.optionCopy}>
+                      <Text style={styles.optionName}>{option.name}</Text>
+                      {/* {option.is_countable ? (
                       <Text style={styles.optionHint}>Qty adjustable</Text>
                     ) : null} */}
-                  </View>
+                    </View>
 
-                  {/* Price */}
-                  <Text
-                    style={[
-                      styles.optionPrice,
-                      selected ? styles.optionPriceActive : null,
-                    ]}
-                  >
-                    {toNumber(option.extra_price) > 0
-                      ? `+${formatCurrency(option.extra_price)}`
-                      : 'Free'}
-                  </Text>
+                    {/* Price */}
+                    <Text
+                      style={[
+                        styles.optionPrice,
+                        selected ? styles.optionPriceActive : null,
+                      ]}
+                    >
+                      {/* Half the topping, half the price — shown on the row so
+                        the number moves when the customer splits it, rather
+                        than only in the total. */}
+                      {toNumber(option.extra_price) > 0
+                        ? `+${formatCurrency(
+                            chargedExtraPrice(
+                              group,
+                              option.extra_price,
+                              onHalf ? portion : 'WHOLE',
+                            ),
+                          )}`
+                        : 'Free'}
+                    </Text>
 
-                  {/* Countable stepper */}
-                  {option.is_countable && selected ? (
-                    <View style={styles.optionStepper}>
-                      <Pressable
-                        onPress={() => onOptionQuantityChange(option.id, -1)}
-                        style={styles.optionStepperButton}
-                      >
-                        <Text style={styles.optionStepperButtonText}>−</Text>
-                      </Pressable>
-                      <Text style={styles.optionStepperCount}>
-                        {selection?.quantity ?? 1}
-                      </Text>
-                      <Pressable
-                        onPress={() => onOptionQuantityChange(option.id, 1)}
-                        style={styles.optionStepperButton}
-                      >
-                        <Text style={styles.optionStepperButtonText}>+</Text>
-                      </Pressable>
+                    {/* Countable stepper */}
+                    {option.is_countable && selected ? (
+                      <View style={styles.optionStepper}>
+                        <Pressable
+                          onPress={() => onOptionQuantityChange(option.id, -1)}
+                          style={styles.optionStepperButton}
+                        >
+                          <Text style={styles.optionStepperButtonText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.optionStepperCount}>
+                          {selection?.quantity ?? 1}
+                        </Text>
+                        <Pressable
+                          onPress={() => onOptionQuantityChange(option.id, 1)}
+                          style={styles.optionStepperButton}
+                        >
+                          <Text style={styles.optionStepperButtonText}>+</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </Pressable>
+
+                  {/* Which half, once the group is being split. "Whole" is not
+                    offered here: that is the other answer to the question
+                    asked above, not a third option beside the two halves. */}
+                  {selected && isSplit ? (
+                    <View
+                      style={styles.portionPicker}
+                      accessibilityRole="radiogroup"
+                      accessibilityLabel={`Which half for ${option.name}`}
+                    >
+                      {(['LEFT', 'RIGHT'] as MenuItemPortion[]).map(value => {
+                        // Room on the side it would move TO, not counting where
+                        // it sits now.
+                        const others = groupSelections.filter(
+                          entry => entry.optionId !== option.id,
+                        );
+                        const full =
+                          portion !== value &&
+                          !roomOnSide(group, getSideCounts(others), value);
+                        return (
+                          <Pressable
+                            key={value}
+                            disabled={full}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: portion === value }}
+                            onPress={() =>
+                              onSetOptionPortion(group, option.id, value)
+                            }
+                            style={[
+                              styles.portionOption,
+                              portion === value
+                                ? styles.portionOptionActive
+                                : null,
+                              full ? styles.portionOptionDisabled : null,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.portionOptionText,
+                                portion === value
+                                  ? styles.portionOptionTextActive
+                                  : null,
+                              ]}
+                            >
+                              {value === 'LEFT' ? 'Left' : 'Right'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   ) : null}
-                </Pressable>
+                </View>
               );
             })}
         </View>
@@ -288,6 +450,10 @@ export function MenuItemDetailScreen(): React.JSX.Element {
   const [selectedOptions, setSelectedOptions] = useState<CartSelectedOption[]>(
     [],
   );
+  // Which splittable groups the customer has put into half-and-half mode. A
+  // group is one thing or the other — all of it, or two halves — and this is
+  // where that is decided once, rather than inferred from each topping.
+  const [splitGroups, setSplitGroups] = useState<Record<string, boolean>>({});
   // How many of this configuration the footer will add; the cart keeps its own
   // count, so this resets to 1 whenever the item changes.
   const [draftQuantity, setDraftQuantity] = useState(1);
@@ -410,6 +576,7 @@ export function MenuItemDetailScreen(): React.JSX.Element {
     }
     setSelectedSize(getDefaultSelectedSize(item));
     setSelectedOptions([]);
+    setSplitGroups({});
   }, [item]);
 
   const activeGroups = useMemo(
@@ -455,6 +622,10 @@ export function MenuItemDetailScreen(): React.JSX.Element {
   const customizationSummary = useMemo(
     () => formatCustomizationSummary(selectedSize, selectedOptions),
     [selectedOptions, selectedSize],
+  );
+  const halves = useMemo(
+    () => splitSummary(selectedOptions),
+    [selectedOptions],
   );
   // Once this configuration is in the cart the stepper edits the cart line
   // itself, so the footer count is the cart count — never a second copy of it.
@@ -504,6 +675,7 @@ export function MenuItemDetailScreen(): React.JSX.Element {
     group: MenuItemCustomizationGroup,
     option: MenuItemCustomizationOption,
     quantityValue: number,
+    portion: MenuItemPortion = 'WHOLE',
   ) => {
     setSelectedOptions(current => {
       const next = current.filter(entry => entry.optionId !== option.id);
@@ -516,6 +688,7 @@ export function MenuItemDetailScreen(): React.JSX.Element {
         extraPrice: option.extra_price,
         quantity: quantityValue,
         isCountable: option.is_countable,
+        portion,
       });
       return next;
     });
@@ -539,6 +712,9 @@ export function MenuItemDetailScreen(): React.JSX.Element {
       price: nextSize.price,
     });
     setSelectedOptions([]);
+    // The groups themselves change with the size, so the modes chosen against
+    // the old set have nothing left to describe.
+    setSplitGroups({});
   };
 
   const handleOptionPress = (
@@ -581,6 +757,24 @@ export function MenuItemDetailScreen(): React.JSX.Element {
     const groupSelections = selectedOptions.filter(
       entry => entry.groupId === group.id,
     );
+
+    // Split groups count the owner's maximum on EACH half, so what is already
+    // on the side this would land on decides whether it fits — counting the
+    // pair together sold one topping per side under a cap of two.
+    if (isGroupInSplitMode(group)) {
+      const side = nextSideFor(group, groupSelections);
+      if (!roomOnSide(group, getSideCounts(groupSelections), side)) {
+        pushToast(
+          'Selection limit reached',
+          `Each half takes up to ${group.max_selection} from ${group.title}.`,
+          'info',
+        );
+        return;
+      }
+      upsertOption(group, option, 1, side);
+      return;
+    }
+
     if (groupSelections.length >= group.max_selection) {
       pushToast(
         'Selection limit reached',
@@ -590,6 +784,63 @@ export function MenuItemDetailScreen(): React.JSX.Element {
       return;
     }
     upsertOption(group, option, 1);
+  };
+
+  /**
+   * Whether this group is currently being split.
+   *
+   * The customer's switch decides, and only for a group the owner allows to be
+   * split at all — a stale mode on a group whose flag was turned off must not
+   * keep sending halves the kitchen can no longer make.
+   */
+  const isGroupInSplitMode = (group: MenuItemCustomizationGroup): boolean =>
+    groupSupportsHalves(group) && Boolean(splitGroups[group.id]);
+
+  /**
+   * Switch a group between "same all over" and "half & half".
+   *
+   * The choices are re-rationed for the mode being entered rather than carried
+   * across unchanged: two toppings picked for opposite halves are not two
+   * toppings on the whole item, and treating them as such put a group over its
+   * own limit the moment the customer switched back.
+   */
+  const handleSetGroupSplit = (
+    group: MenuItemCustomizationGroup,
+    wantSplit: boolean,
+  ) => {
+    const groupSelections = selectedOptions.filter(
+      entry => entry.groupId === group.id,
+    );
+    const regrouped = regroupForMode(group, groupSelections, wantSplit);
+    setSplitGroups(current => ({ ...current, [group.id]: wantSplit }));
+    setSelectedOptions(current => [
+      ...current.filter(entry => entry.groupId !== group.id),
+      ...regrouped,
+    ]);
+  };
+
+  /** Move one already-chosen option to the other half. */
+  const handleSetOptionPortion = (
+    group: MenuItemCustomizationGroup,
+    optionId: string,
+    portion: MenuItemPortion,
+  ) => {
+    const others = selectedOptions.filter(
+      entry => entry.groupId === group.id && entry.optionId !== optionId,
+    );
+    if (!roomOnSide(group, getSideCounts(others), portion)) {
+      pushToast(
+        'Selection limit reached',
+        `That half already has ${group.max_selection} from ${group.title}.`,
+        'info',
+      );
+      return;
+    }
+    setSelectedOptions(current =>
+      current.map(entry =>
+        entry.optionId === optionId ? { ...entry, portion } : entry,
+      ),
+    );
   };
 
   const handleOptionQuantityChange = (optionId: string, delta: number) => {
@@ -935,13 +1186,48 @@ export function MenuItemDetailScreen(): React.JSX.Element {
                 group={group}
                 groupSelections={groupSelections}
                 selectedOptions={selectedOptions}
+                isSplit={isGroupInSplitMode(group)}
                 onOptionPress={handleOptionPress}
                 onOptionQuantityChange={handleOptionQuantityChange}
+                onSetSplit={handleSetGroupSplit}
+                onSetOptionPortion={handleSetOptionPortion}
                 styles={styles}
                 theme={theme}
               />
             );
           })}
+
+          {/* The item read back as two halves, so it can be checked before
+              paying rather than discovered at the door. */}
+          {halves.left.length > 0 || halves.right.length > 0 ? (
+            <View style={styles.halfSummary}>
+              <Text style={styles.halfSummaryTitle}>How it is split</Text>
+              <View style={styles.halfSummaryRow}>
+                <Text style={styles.halfSummaryLabel}>Left half</Text>
+                <Text style={styles.halfSummaryValue}>
+                  {halves.left.length > 0
+                    ? halves.left.join(', ')
+                    : 'Nothing extra'}
+                </Text>
+              </View>
+              <View style={styles.halfSummaryRow}>
+                <Text style={styles.halfSummaryLabel}>Right half</Text>
+                <Text style={styles.halfSummaryValue}>
+                  {halves.right.length > 0
+                    ? halves.right.join(', ')
+                    : 'Nothing extra'}
+                </Text>
+              </View>
+              {halves.whole.length > 0 ? (
+                <View style={styles.halfSummaryRow}>
+                  <Text style={styles.halfSummaryLabel}>Whole</Text>
+                  <Text style={styles.halfSummaryValue}>
+                    {halves.whole.join(', ')}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </ScrollView>
 
         {/* ── Action bar — FIXED: no absolute, sits at bottom of flex column ── */}
@@ -1275,6 +1561,98 @@ export const createStyles = (theme: AppTheme) =>
       fontWeight: '700',
       lineHeight: 24,
       transform: [{ rotate: '90deg' }],
+    },
+
+    // ── Half & half ───────────────────────────────────────────────────────────
+    splitSwitch: {
+      flexDirection: 'row',
+      gap: 6,
+      padding: 4,
+      borderRadius: 999,
+      backgroundColor: theme.colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    splitSwitchOption: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 999,
+      alignItems: 'center',
+    },
+    splitSwitchOptionActive: {
+      backgroundColor: theme.colors.primarySoft,
+    },
+    splitSwitchText: {
+      color: theme.colors.secondaryText,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    splitSwitchTextActive: {
+      color: theme.colors.primary,
+    },
+    portionPicker: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 6,
+      marginBottom: 2,
+      paddingLeft: 36,
+    },
+    portionOption: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    portionOptionActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primarySoft,
+    },
+    portionOptionDisabled: {
+      opacity: 0.4,
+    },
+    portionOptionText: {
+      color: theme.colors.secondaryText,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    portionOptionTextActive: {
+      color: theme.colors.primary,
+    },
+    optionCardDisabled: {
+      opacity: 0.4,
+    },
+    halfSummary: {
+      marginTop: 16,
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceAlt,
+      gap: 8,
+    },
+    halfSummaryTitle: {
+      color: theme.colors.text,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    halfSummaryRow: {
+      flexDirection: 'row',
+      gap: 10,
+      alignItems: 'flex-start',
+    },
+    halfSummaryLabel: {
+      color: theme.colors.secondaryText,
+      fontSize: 12,
+      fontWeight: '700',
+      width: 78,
+    },
+    halfSummaryValue: {
+      flex: 1,
+      color: theme.colors.text,
+      fontSize: 12,
+      fontWeight: '600',
     },
 
     // Collapsed selection preview pills
