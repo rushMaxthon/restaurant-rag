@@ -34,6 +34,8 @@ from app.models.user_preferences import UserPreferences
 from app.schemas.chat import ChatHistoryItemResponse, ChatMessageResponse, ChatSuggestionItem
 from app.schemas.generated_combo import GeneratedComboResponse
 from app.schemas.personalized_offer import PersonalizedOfferCardResponse
+from app.schemas.suggestions import CartLinePayload, SellSuggestionResponse
+from app.services.suggestions import CartLineFacts, SellSuggestion, suggestion_for_cart
 from app.services.bestsellers import (
     get_menu_item_featured_flag,
     hydrate_dynamic_bestseller_flags,
@@ -5496,6 +5498,7 @@ def may_cache_globally(
     cacheable: bool,
     history_messages: Sequence[object],
     session_summary: str = "none",
+    has_suggestion: bool = False,
 ) -> bool:
     """Whether this reply may be shared with visitors who did not have this conversation.
 
@@ -5520,9 +5523,18 @@ def may_cache_globally(
     READING a cached entry is still allowed. Serving a generic cached answer to
     someone mid-conversation costs that one person a little context; writing is
     what harms everyone else.
+
+    `has_suggestion` guards the same class of bug for a different input: a
+    `SellSuggestion` is computed from THIS customer's cart, and the global
+    cache key carries no cart. Nothing about extending the key fixes this
+    either — cart contents are unbounded and not something a cache key can
+    reasonably fold in — so a reply carrying one is refused outright, the same
+    way a reply shaped by session state is.
     """
 
     if not cacheable:
+        return False
+    if has_suggestion:
         return False
     if history_messages:
         return False
@@ -7200,6 +7212,45 @@ def _sse_frame(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
+def _safe_suggestion_for_cart(
+    db: Session,
+    *,
+    cart_lines: list[CartLineFacts],
+    restaurant_location_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    diet: str | None,
+) -> SellSuggestion | None:
+    """The nudge is a nicety; the reply it rides on is not.
+
+    A bug in the selling rules or one of their DB reads must never turn a
+    working chat turn into a 500 — so this is the one call in the pipeline
+    allowed a bare `except Exception`, and it earns that only by logging the
+    full traceback rather than swallowing it. A silent `except: return None`
+    here would hide a real regression in `suggestions.py` behind "no
+    suggestion today", which looks like normal thin-evidence silence, not a
+    bug.
+    """
+
+    try:
+        return suggestion_for_cart(
+            db,
+            cart_lines=cart_lines,
+            restaurant_location_id=restaurant_location_id,
+            user_id=user_id,
+            session_id=session_id,
+            diet=diet,
+        )
+    except Exception:
+        logger.exception(
+            "Suggestion computation failed for chat turn; continuing without one "
+            "user_id=%s session_id=%s",
+            user_id,
+            session_id,
+        )
+        return None
+
+
 def handle_chat_message(
     db: Session,
     *,
@@ -7209,6 +7260,7 @@ def handle_chat_message(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
     guest_preferences: object | None = None,
+    cart: list[CartLinePayload] | None = None,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7471,10 +7523,46 @@ def handle_chat_message(
                 )
             )
         )
+
+    # Computed here, once the reply text is otherwise final and before the
+    # cache-write decision that needs to know about it — not in any of the
+    # three early returns above (acknowledgement, greeting, cache hit). Those
+    # paths write into a DIFFERENT cache each (the greeting cache, or nothing
+    # at all for a cache hit) that has no notion of "carries a suggestion";
+    # teaching all three about it would multiply the exact leak this guards
+    # against instead of containing it to the one write site that needs it.
+    cart_lines = [
+        CartLineFacts(
+            menu_item_id=line.menu_item_id,
+            size_id=line.size_id,
+            customization_option_ids=frozenset(line.customization_option_ids),
+        )
+        for line in (cart or [])
+    ]
+    suggestion = _safe_suggestion_for_cart(
+        db,
+        cart_lines=cart_lines,
+        restaurant_location_id=restaurant_location_id,
+        user_id=user.id,
+        # The active session id, not the raw request one: for a guest this is
+        # what `_resolve_principal` minted when none arrived, and it is the id
+        # echoed back in `ChatMessageResponse.session_id` for the browser to
+        # reuse on its next `GET /api/suggestions` call. Keying suppression
+        # memory on anything else would let the two surfaces disagree about
+        # which "session" they are suppressing for.
+        session_id=prepared.active_session_id,
+        # The diet THIS turn resolved — message-explicit or seeded from a
+        # stored preference by `seed_intent_from_preferences` — not a second
+        # lookup. A second source for diet is how the chat and the page start
+        # disagreeing about what a customer is allowed to be shown.
+        diet=prepared.extracted_intent.diet,
+    )
+
     if may_cache_globally(
         cacheable=cacheable_response,
         history_messages=prepared.history_messages,
         session_summary=_session_state_prompt_summary(prepared.session_state),
+        has_suggestion=suggestion is not None,
     ):
         cache_set_json(
             response_cache_key,
@@ -7535,6 +7623,9 @@ def handle_chat_message(
         # invite exactly the round-trip the trust boundary forbids.
         inferred_preferences=(
             durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+        ),
+        suggestion=(
+            SellSuggestionResponse(**suggestion.__dict__) if suggestion is not None else None
         ),
     )
 

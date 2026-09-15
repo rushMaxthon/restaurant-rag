@@ -18,6 +18,7 @@ from app.api.profile import router as profile_router
 from app.api.recommendations import router as recommendations_router
 from app.api.reports import router as reports_router
 from app.api.restaurants import router as restaurants_router
+from app.api.suggestions import router as suggestions_router
 from app.api.whatsapp import router as whatsapp_router
 
 api_router = APIRouter()
@@ -39,6 +40,7 @@ api_router.include_router(preferences_router)
 api_router.include_router(profile_router)
 api_router.include_router(recommendations_router)
 api_router.include_router(reports_router)
+api_router.include_router(suggestions_router)
 api_router.include_router(whatsapp_router)
 
 __all__ = ["api_router"]

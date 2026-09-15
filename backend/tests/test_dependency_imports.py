@@ -59,6 +59,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.insights",
             "app.tasks.notifications",
             "app.tasks.payments",
+            "app.tasks.whatsapp",
         ):
             with self.subTest(module=module):
                 self.assert_imports_cleanly(f"import {module}", module)
@@ -77,6 +78,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.insights.run_shadow_analysis_task",
             "app.tasks.notifications.send_order_status_notification",
             "app.tasks.payments.reap_unpaid_orders_task",
+            "app.tasks.whatsapp.answer_whatsapp_message",
         }
         result = run_in_fresh_interpreter(
             "from app.config.celery import celery_app\n"

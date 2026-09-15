@@ -280,6 +280,14 @@ export interface MenuItemCustomizationOption {
   sort_order: number;
 }
 
+/**
+ * Which part of the item a chosen option covers.
+ *
+ * Mirrors the backend `MenuItemPortion`. LEFT and RIGHT are labels for two
+ * halves, not geometry — the kitchen reads them off the ticket.
+ */
+export type MenuItemPortion = 'WHOLE' | 'LEFT' | 'RIGHT';
+
 export interface MenuItemCustomizationGroup {
   id: string;
   menu_item_size_id: string | null;
@@ -288,6 +296,14 @@ export interface MenuItemCustomizationGroup {
   is_required: boolean;
   min_selection: number;
   max_selection: number;
+  /**
+   * Whether the kitchen can put these options on half the item.
+   *
+   * Off for everything the owner has not explicitly marked, so the half-and-half
+   * control only appears where the owner said it can. Optional on the wire
+   * because a cart persisted before halves existed has no such field.
+   */
+  supports_halves?: boolean;
   is_active: boolean;
   sort_order: number;
   options: MenuItemCustomizationOption[];
@@ -487,9 +503,11 @@ export interface OrderItemSelectedOptionSnapshot {
   selection_type: MenuItemCustomizationSelectionType;
   option_id: string;
   option_name: string;
+  /** What this option was CHARGED at — half the list price for a half. */
   extra_price: DecimalValue;
   quantity: number;
   is_countable: boolean;
+  portion?: MenuItemPortion;
 }
 
 /** Bootstrap payload for the payment layer; never carries a secret key. */
@@ -702,6 +720,11 @@ export interface CartSelectedOption {
   extraPrice: DecimalValue;
   quantity: number;
   isCountable: boolean;
+  /**
+   * Which half this option goes on. Optional, and absent means WHOLE: carts
+   * persisted before halves existed are still on people's phones.
+   */
+  portion?: MenuItemPortion;
 }
 
 export interface CartSelectedSize {

@@ -87,6 +87,7 @@ def send_chat_message(
         guest_preferences=(
             payload.guest_preferences.model_dump() if payload.guest_preferences else None
         ),
+        cart=payload.cart,
     )
     logger.info(
         "Chat API response: user_id=%s session_id=%s suggestions=%d total=%.2fms",
