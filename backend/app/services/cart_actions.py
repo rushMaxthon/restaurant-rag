@@ -55,7 +55,27 @@ _BARE_DIGIT_PATTERN = re.compile(
     r"(?<![\$\d])\b(\d{1,2})\b(?!\s*(?:am|pm|rupees?|rs\.?|dollars?|percent|%|people|mins?|minutes?))",
     re.IGNORECASE,
 )
-_CURRENCY_NEARBY_PATTERN = re.compile(r"[\$₹]|\bunder\b|\bover\b|\bbudget\b", re.IGNORECASE)
+
+# Currency markers that indicate a number is a price, not a quantity of dishes.
+# Windowed check (below) applies this, not message-global.
+_CURRENCY_MARK_PATTERN = re.compile(
+    r"[\$₹]|\bunder\b|\bover\b|\bbudget\b|\bdollars?\b|\brupees?\b", re.IGNORECASE
+)
+_CURRENCY_WINDOW = 15  # characters of context on each side treated as "nearby"
+
+
+def _has_nearby_currency_mark(lowered: str, start: int, end: int) -> bool:
+    """Whether a currency word or symbol sits close enough to this match to
+    mean the match is a price, not a quantity of dishes.
+
+    Windowed rather than message-global: "add 2 chicken satay, under $15
+    budget" must still read 2 as the quantity — the currency mention is
+    about a DIFFERENT number in the same sentence. A global check dropped
+    that legitimate quantity outright.
+    """
+    window_start = max(0, start - _CURRENCY_WINDOW)
+    window_end = min(len(lowered), end + _CURRENCY_WINDOW)
+    return bool(_CURRENCY_MARK_PATTERN.search(lowered[window_start:window_end]))
 
 
 def extract_requested_quantity(message: str) -> int | None:
@@ -75,12 +95,17 @@ def extract_requested_quantity(message: str) -> int | None:
         return int(digits)
 
     for phrase in _NUMBER_WORD_ORDER:
-        if re.search(rf"\b{re.escape(phrase)}\b", lowered):
+        match = re.search(rf"\b{re.escape(phrase)}\b", lowered)
+        if match:
+            if _has_nearby_currency_mark(lowered, match.start(), match.end()):
+                # This number-word is near a currency mark, so it's likely a price.
+                # Skip it and try the next phrase, or fall through to bare digits.
+                continue
             return _NUMBER_WORDS[phrase]
 
-    if not _CURRENCY_NEARBY_PATTERN.search(lowered):
-        bare = _BARE_DIGIT_PATTERN.search(lowered)
-        if bare:
+    bare = _BARE_DIGIT_PATTERN.search(lowered)
+    if bare:
+        if not _has_nearby_currency_mark(lowered, bare.start(), bare.end()):
             return int(bare.group(1))
 
     return None

@@ -53,6 +53,17 @@ class QuantityExtractionTests(unittest.TestCase):
 
         self.assertEqual(extract_requested_quantity("a couple of pad thai"), 2)
 
+    def test_a_spelled_out_currency_amount_is_not_read_as_a_quantity(self) -> None:
+        self.assertIsNone(extract_requested_quantity("keep it under two dollars"))
+        self.assertIsNone(extract_requested_quantity("just two dollars"))
+
+    def test_a_currency_mention_elsewhere_in_the_message_does_not_swallow_a_real_quantity(self) -> None:
+        """The currency guard must be proximity-based, not message-global —
+        a customer stating both a quantity and a budget in one sentence is
+        plausible, and the quantity must still be read."""
+
+        self.assertEqual(extract_requested_quantity("add 2 chicken satay under $15 budget"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
