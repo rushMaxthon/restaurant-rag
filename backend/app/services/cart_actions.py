@@ -109,3 +109,46 @@ def extract_requested_quantity(message: str) -> int | None:
             return int(bare.group(1))
 
     return None
+
+
+CartVerb = Literal["add", "remove", "set_quantity", "clear"]
+
+# Checked in this order — most destructive first — so a message that mentions
+# more than one verb-shaped word resolves to the safer reading rather than an
+# arbitrary one. "Never mind, start over" must not fall through to "add"
+# because it also contains no add-shaped word, but a future phrasing that DID
+# mention both should still prefer the one that asks for confirmation anyway.
+_CLEAR_PATTERN = re.compile(r"\bclear\b.*\b(cart|order|basket)\b|\bstart over\b|\bnever ?mind\b", re.IGNORECASE)
+_SET_QUANTITY_PATTERN = re.compile(
+    r"\bmake it\b|\bchange (?:it|the (?:quantity|order))? ?to\b|\bset (?:it|the quantity)? ?to\b",
+    re.IGNORECASE,
+)
+_REMOVE_PATTERN = re.compile(
+    r"\bremove\b|\bdelete\b|\btake .* out\b|\bget rid of\b|\bdon'?t want\b",
+    re.IGNORECASE,
+)
+_ADD_PATTERN = re.compile(
+    r"\badd\b|\border\b|\bget me\b|\bi'?ll have\b|\bi want\b|\bgive me\b|\bput in\b|\banother\b",
+    re.IGNORECASE,
+)
+
+
+def classify_cart_verb(message: str) -> CartVerb | None:
+    """Which kind of cart mutation this sentence asks for, if any.
+
+    Independent of `ExtractedIntent.intent` — that field is a menu-discovery
+    taxonomy (`recommendation`, `menu_question`, ...) with no cart-mutation
+    value in it, and adding one there would touch every `intent.intent == ...`
+    branch already in `rag.py`. This classifier is additive: `None` means "not
+    a cart-action message", and every existing reply path is unaffected.
+    """
+
+    if _CLEAR_PATTERN.search(message):
+        return "clear"
+    if _SET_QUANTITY_PATTERN.search(message):
+        return "set_quantity"
+    if _REMOVE_PATTERN.search(message):
+        return "remove"
+    if _ADD_PATTERN.search(message):
+        return "add"
+    return None

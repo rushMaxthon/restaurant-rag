@@ -22,7 +22,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.main import app  # noqa: F401 - imported first to settle import order
-from app.services.cart_actions import extract_requested_quantity
+from app.services.cart_actions import classify_cart_verb, extract_requested_quantity
 
 
 class QuantityExtractionTests(unittest.TestCase):
@@ -63,6 +63,36 @@ class QuantityExtractionTests(unittest.TestCase):
         plausible, and the quantity must still be read."""
 
         self.assertEqual(extract_requested_quantity("add 2 chicken satay under $15 budget"), 2)
+
+
+class CartVerbClassificationTests(unittest.TestCase):
+    """Independent of `ExtractedIntent` on purpose — see the plan's refinement
+    note 3. This never touches the menu-discovery intent taxonomy."""
+
+    def test_add_phrasings_are_recognised(self) -> None:
+        for message in ("add pad thai", "order two spring rolls", "i'll have the curry", "give me a coke"):
+            self.assertEqual(classify_cart_verb(message), "add", msg=message)
+
+    def test_remove_phrasings_are_recognised(self) -> None:
+        for message in ("remove the pad thai", "delete the curry", "take the rice out"):
+            self.assertEqual(classify_cart_verb(message), "remove", msg=message)
+
+    def test_set_quantity_phrasings_are_recognised(self) -> None:
+        self.assertEqual(classify_cart_verb("make it 3"), "set_quantity")
+        self.assertEqual(classify_cart_verb("change the quantity to 2"), "set_quantity")
+
+    def test_clear_phrasings_are_recognised(self) -> None:
+        self.assertEqual(classify_cart_verb("clear my cart"), "clear")
+        self.assertEqual(classify_cart_verb("start over"), "clear")
+
+    def test_an_ordinary_question_is_not_a_cart_verb(self) -> None:
+        for message in ("what's spicy tonight?", "how much is the pad thai?", "recommend something vegetarian"):
+            self.assertIsNone(classify_cart_verb(message), msg=message)
+
+    def test_clear_wins_over_add_when_both_words_appear(self) -> None:
+        """"start over and add pad thai" is still one action per turn — clear."""
+
+        self.assertEqual(classify_cart_verb("never mind, start over"), "clear")
 
 
 if __name__ == "__main__":
