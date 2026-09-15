@@ -232,6 +232,17 @@ def resolve_menu_item_selection(
     # would have rejected the whole point of a half-and-half pizza.
     seen_selections: set[tuple[uuid.UUID, MenuItemPortion]] = set()
 
+    # What the customer actually asked for, per group, before any collapsing.
+    chosen_portions: dict[uuid.UUID, set[MenuItemPortion]] = {}
+    for selection in selected_options:
+        owning = active_options_by_id.get(selection.option_id)
+        if owning is None:
+            # Reported by name in the resolve loop below; skipped here so the
+            # customer hears about the unavailable topping rather than about
+            # a half.
+            continue
+        chosen_portions.setdefault(owning[0].id, set()).add(selection.portion)
+
     # Left AND right of the same topping is the same thing as the whole item, so
     # it is collapsed before pricing. It costs the same either way; the point is
     # that the ticket reads "Pepperoni" instead of two half-lines, and that a
@@ -331,6 +342,33 @@ def resolve_menu_item_selection(
             group.selection_type.value,
             selection_count,
         )
+        # Two rules about halves, both of them the owner's, and both of them
+        # about a group rather than the whole item: a second splittable group
+        # decides for itself.
+        portions = chosen_portions.get(group.id, set())
+        halves = portions & {MenuItemPortion.LEFT, MenuItemPortion.RIGHT}
+        if halves and MenuItemPortion.WHOLE in portions:
+            # Once something covers the whole item there is nothing left to
+            # decide about halves, and once the item is being split, "all of
+            # it" is not one of the two sides.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"{group.title} is either split across halves or the same on the whole "
+                    f"{menu_item.name} — not both."
+                ),
+            )
+        if len(halves) == 1:
+            # Half a pizza and silence about the other half. The kitchen can
+            # read that two ways and the customer meant one of them.
+            missing = "right" if MenuItemPortion.LEFT in halves else "left"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Choose something for the {missing} half from {group.title}, "
+                    f"or put it on the whole {menu_item.name}."
+                ),
+            )
         if group.selection_type.value == "SINGLE" and selection_count > 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -346,7 +384,22 @@ def resolve_menu_item_selection(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"{group.title} requires at least {group.min_selection} selections.",
             )
-        if selection_count > group.max_selection:
+        # Counted on each half when the item is split. "Up to two toppings" on
+        # a split pizza means two on each side, not two shared between them:
+        # the halves are two orders of the same size sharing a base, and a cap
+        # counted across both bought one topping per side.
+        if halves:
+            for side in (MenuItemPortion.LEFT, MenuItemPortion.RIGHT):
+                on_side = sum(1 for chosen in selections if chosen.portion is side)
+                if on_side > group.max_selection:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"{group.title} allows at most {group.max_selection} on each half "
+                            f"of {menu_item.name}."
+                        ),
+                    )
+        elif selection_count > group.max_selection:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"{group.title} allows at most {group.max_selection} selections.",

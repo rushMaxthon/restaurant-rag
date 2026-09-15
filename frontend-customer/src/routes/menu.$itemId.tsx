@@ -17,8 +17,15 @@ import { DishCard } from "@/components/bangkok/dish-card";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import type { OptionPortion } from "@/lib/bangkok-store";
+import type { CustomizationGroup } from "@/lib/bangkok-data";
 import {
   activeOptions,
+  canPickMore,
+  nextSideFor,
+  regroupForMode,
+  roomOnSide,
+  selectionHint,
+  sideCounts,
   activeSizes,
   requiresChoosing,
   splitSummary,
@@ -57,6 +64,10 @@ function DishPage() {
   // seven toppings and a crust is a long scroll, and folding what is already
   // answered brings the Add button back into reach.
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  // Which splittable groups the customer has chosen to split. A group is one
+  // thing or the other — the whole item, or two halves — and this is where
+  // that is decided, once, rather than inferred from each topping's portion.
+  const [split, setSplit] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -82,7 +93,7 @@ function DishPage() {
   const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds, portions);
   const halves = splitSummary(item, chosenSize, chosenOptionIds, portions);
   const total = unitPrice * quantity;
-  const problem = selectionProblem(item, chosenSize, selected);
+  const problem = selectionProblem(item, chosenSize, selected, portions);
   const valid = problem === null;
   // The options the customer can actually see and has actually chosen. Derived
   // from the same visible set as the price, so what is charged, what is shown
@@ -93,15 +104,46 @@ function DishPage() {
 
   const conflicts = item ? store.conflictsWithCart(item) : false;
 
-  function toggle(gid: string, oid: string, single: boolean) {
-    setSelected((s) => ({
-      ...s,
-      [gid]: single
-        ? [oid]
-        : s[gid]?.includes(oid)
-          ? s[gid]?.filter((v) => v !== oid)
-          : [...(s[gid] ?? []), oid],
-    }));
+  function toggle(group: CustomizationGroup, oid: string, single: boolean, groupIsSplit = false) {
+    const gid = group.id;
+    const current = selected[gid] ?? [];
+
+    // Set alongside the other updater rather than inside it: a state setter
+    // called from within an updater runs again every time React replays that
+    // updater, and React replays them.
+    if (!current.includes(oid) && !single) {
+      // Decided from what is already in the group, before this one joins it.
+      setPortions((p) => ({
+        ...p,
+        [oid]: groupIsSplit ? nextSideFor(group, current, p) : "WHOLE",
+      }));
+    }
+    setSelected((s) => {
+      const latest = s[gid] ?? [];
+      return {
+        ...s,
+        [gid]: single
+          ? [oid]
+          : latest.includes(oid)
+            ? latest.filter((v) => v !== oid)
+            : [...latest, oid],
+      };
+    });
+  }
+
+  /**
+   * Switch a group between "all over it" and "split across halves".
+   *
+   * The choices are re-rationed for the mode being entered rather than carried
+   * across unchanged: two toppings picked for opposite halves are not two
+   * toppings on the whole pizza, and treating them as such put a group over
+   * its own limit the moment the customer switched back.
+   */
+  function setGroupSplit(group: CustomizationGroup, wantSplit: boolean, optionIds: string[]) {
+    const next = regroupForMode(group, optionIds, wantSplit);
+    setSplit((current) => ({ ...current, [group.id]: wantSplit }));
+    setSelected((current) => ({ ...current, [group.id]: next.chosen }));
+    setPortions((current) => ({ ...current, ...next.portions }));
   }
 
   function handleAdd(replace = false) {
@@ -126,7 +168,7 @@ function DishPage() {
   if (itemQuery.isLoading) {
     return (
       <div className="page-pad mx-auto max-w-7xl py-10" aria-busy="true">
-        <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="skeleton aspect-[16/10] !rounded-2xl" />
           <div className="elevated-panel skeleton-panel p-5 sm:p-6">
             <div className="skeleton skeleton-line skeleton-line--meta" />
@@ -161,75 +203,100 @@ function DishPage() {
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
 
-        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="dish-hero relative overflow-hidden rounded-2xl">
-            <DishImage src={item.image_url} name={item.name} className="aspect-[16/10]" priority />
-            {(item.is_bestseller || item.is_new) && (
-              <div className="absolute left-3 top-3 flex gap-1.5">
-                {item.is_bestseller && (
-                  <span className="dish-badge dish-badge--hot">Bestseller</span>
-                )}
-                {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
-              </div>
-            )}
-            {!item.is_available && (
-              <div className="absolute inset-0 grid place-items-center bg-overlay">
-                <span className="rounded-full bg-surface px-4 py-2 font-black uppercase tracking-wide">
-                  Unavailable
-                </span>
-              </div>
-            )}
-          </div>
-
-          <aside className="elevated-panel p-5 sm:p-6 lg:sticky lg:top-24">
-            <div className="flex flex-wrap items-center gap-3">
-              <VegMark veg={item.is_veg} />
-              {item.rating && (
-                <span className="flex items-center gap-1 font-semibold">
-                  <Star className="size-4 fill-primary text-primary" />
-                  {item.rating}
-                  {item.rating_count > 0 && (
-                    <span className="text-sm text-muted">({item.rating_count})</span>
+        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
+          {/* The picture and what the dish IS travel together, and stay put
+              while the choices scroll beside them. Before this the left column
+              held only the image while the right one ran to three screens, so
+              anyone past the first group was choosing toppings alongside a
+              screen and a half of empty background. */}
+          <div className="dish-lede lg:sticky lg:top-24">
+            <div className="dish-hero relative overflow-hidden rounded-2xl">
+              <DishImage
+                src={item.image_url}
+                name={item.name}
+                className="aspect-[16/10]"
+                priority
+              />
+              {(item.is_bestseller || item.is_new) && (
+                <div className="absolute left-3 top-3 flex gap-1.5">
+                  {item.is_bestseller && (
+                    <span className="dish-badge dish-badge--hot">Bestseller</span>
                   )}
-                </span>
+                  {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
+                </div>
               )}
-              <span className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-bold text-muted">
-                {item.category}
-              </span>
+              {!item.is_available && (
+                <div className="absolute inset-0 grid place-items-center bg-overlay">
+                  <span className="rounded-full bg-surface px-4 py-2 font-black uppercase tracking-wide">
+                    Unavailable
+                  </span>
+                </div>
+              )}
             </div>
 
-            <h1 className="mt-3 font-display text-4xl font-black leading-[1.05]">{item.name}</h1>
-
-            {(dishRestaurant.data?.name || item.cuisine_type) && (
-              <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
-                <Store className="size-3.5 shrink-0 text-primary" />
-                {dishRestaurant.data?.name ?? item.cuisine_type}
-                {dishRestaurant.data?.name && item.cuisine_type && (
-                  <span className="font-medium">· {item.cuisine_type}</span>
+            <div className="dish-lede__body">
+              <div className="flex flex-wrap items-center gap-3">
+                <VegMark veg={item.is_veg} />
+                {item.rating && (
+                  <span className="flex items-center gap-1 font-semibold">
+                    <Star className="size-4 fill-primary text-primary" />
+                    {item.rating}
+                    {item.rating_count > 0 && (
+                      <span className="text-sm text-muted">({item.rating_count})</span>
+                    )}
+                  </span>
                 )}
-              </p>
-            )}
+                <span className="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-bold text-muted">
+                  {item.category}
+                </span>
+              </div>
 
-            <p className="mt-4 leading-relaxed text-muted">{item.description}</p>
+              <h1 className="mt-3 font-display text-4xl font-black leading-[1.05]">{item.name}</h1>
 
-            {/* "From $12" rather than a single price the customer may not end
-                up paying. Only for sized items; a simple dish has one price and
-                saying "from" about it would be evasive. */}
-            {sizes.length > 0 && (
-              <div className="mt-4">
-                <p className="money font-display text-3xl font-black">
-                  From{" "}
-                  {formatMoney(
-                    sizes.reduce(
-                      (low, s) => (Number(s.price) < Number(low.price) ? s : low),
-                      sizes[0]!,
-                    ).price,
+              {(dishRestaurant.data?.name || item.cuisine_type) && (
+                <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
+                  <Store className="size-3.5 shrink-0 text-primary" />
+                  {dishRestaurant.data?.name ?? item.cuisine_type}
+                  {dishRestaurant.data?.name && item.cuisine_type && (
+                    <span className="font-medium">· {item.cuisine_type}</span>
                   )}
                 </p>
-                <p className="text-sm text-muted">Final price depends on the size you pick</p>
-              </div>
-            )}
+              )}
 
+              <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+
+              {/* "From $12" until a size is picked, because that is the only
+                  honest single number then. Once one IS picked the guess is
+                  replaced by what that size actually costs — leaving "From"
+                  up there asks the customer to keep discounting the headline. */}
+              {sizes.length > 0 && (
+                <div className="dish-lede__price">
+                  <p className="money font-display text-3xl font-black">
+                    {chosenSize ? (
+                      formatMoney(chosenSize.price)
+                    ) : (
+                      <>
+                        From{" "}
+                        {formatMoney(
+                          sizes.reduce(
+                            (low, s) => (Number(s.price) < Number(low.price) ? s : low),
+                            sizes[0]!,
+                          ).price,
+                        )}
+                      </>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted">
+                    {chosenSize
+                      ? `${chosenSize.name} · extras are charged on top`
+                      : "Final price depends on the size you pick"}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="elevated-panel dish-choices">
             {sizes.length > 0 && (
               <section className="choice-card mt-6">
                 <header className="choice-card__head">
@@ -270,6 +337,13 @@ function DishPage() {
                 (selected[g.id] ?? []).includes(o.id),
               );
               const isFolded = Boolean(folded[g.id]);
+              const chosenIds = selected[g.id] ?? [];
+              const canSplit = g.supports_halves && g.selection_type === "MULTI";
+              const isSplit = canSplit && Boolean(split[g.id]);
+              // The owner's maximum counts on each half once the item is
+              // split, so what is already on each side decides what can still
+              // go on it.
+              const counts = sideCounts(chosenIds, portions);
               return (
                 <section className="choice-card mt-6" key={g.id} data-folded={isFolded}>
                   <button
@@ -284,9 +358,7 @@ function DishPage() {
                         marked "not required" with a minimum of one IS required,
                         and showing it as optional only defers the surprise. */}
                       {requiresChoosing(g) ? (
-                        <span className="choice-badge choice-badge--required">
-                          {g.min_selection > 1 ? `Choose ${g.min_selection}` : "Required"}
-                        </span>
+                        <span className="choice-badge choice-badge--required">Required</span>
                       ) : (
                         <span className="choice-badge">Optional</span>
                       )}
@@ -301,26 +373,80 @@ function DishPage() {
                     <p className="choice-card__hint">
                       {isFolded && chosenHere.length > 0
                         ? chosenHere.map((o) => o.name).join(", ")
-                        : `${
-                            g.selection_type === "SINGLE"
-                              ? "Single choice"
-                              : g.max_selection > 0
-                                ? `Choose up to ${g.max_selection}`
-                                : "Choose any"
-                          }${g.supports_halves ? " · can be split across halves" : ""}`}
+                        : isSplit
+                          ? `${selectionHint(g)} on each half · ${counts.LEFT} left, ${counts.RIGHT} right`
+                          : `${selectionHint(g)}${
+                              chosenHere.length > 0 ? ` · ${chosenHere.length} chosen` : ""
+                            }`}
                     </p>
                   </button>
+
+                  {/* The owner's flag turned into one question, asked once:
+                      the same on all of it, or different on each half. Asking
+                      it per topping produced dead ends - two toppings on the
+                      whole item and neither could move to a half, because each
+                      read the other as whole. */}
+                  {canSplit && !isFolded && (
+                    <div
+                      className="split-switch"
+                      role="group"
+                      aria-label={`How to put on ${g.title}`}
+                    >
+                      <button
+                        type="button"
+                        className="split-switch__option"
+                        data-on={!isSplit}
+                        onClick={() => setGroupSplit(g, false, chosenIds)}
+                      >
+                        <span className="portion-glyph portion-glyph--whole" aria-hidden="true" />
+                        Same all over
+                      </button>
+                      <button
+                        type="button"
+                        className="split-switch__option"
+                        data-on={isSplit}
+                        onClick={() => setGroupSplit(g, true, chosenIds)}
+                      >
+                        <span className="portion-glyph portion-glyph--left" aria-hidden="true" />
+                        Half &amp; half
+                      </button>
+                    </div>
+                  )}
+
                   {!isFolded && (
                     <div className="option-grid">
                       {activeOptions(g).map((o) => {
                         const active = Boolean(selected[g.id]?.includes(o.id));
                         const portion = portions[o.id] ?? "WHOLE";
-                        const half = g.supports_halves && portion !== "WHOLE";
+                        const half = isSplit && portion !== "WHOLE";
+                        // At the ceiling, the ones already chosen stay tappable
+                        // so they can be taken off again; the rest go quiet.
+                        // The cap used to be checked only at the Add button,
+                        // which let someone build a seven-topping pizza and
+                        // told them it was too many at the end.
+                        // The side the toggle would actually put it on, so
+                        // the button and the click cannot disagree.
+                        const landsOn = isSplit ? nextSideFor(g, chosenIds, portions) : "WHOLE";
+                        const atCeiling =
+                          !active &&
+                          (isSplit
+                            ? !roomOnSide(g, counts, landsOn)
+                            : !canPickMore(g, chosenHere.length));
                         return (
                           <div key={o.id}>
                             <button
                               type="button"
-                              onClick={() => toggle(g.id, o.id, g.selection_type === "SINGLE")}
+                              disabled={atCeiling}
+                              title={
+                                atCeiling
+                                  ? isSplit
+                                    ? `Each half takes up to ${g.max_selection} from "${g.title}".`
+                                    : `You can choose up to ${g.max_selection} from "${g.title}".`
+                                  : undefined
+                              }
+                              onClick={() =>
+                                toggle(g, o.id, g.selection_type === "SINGLE", isSplit)
+                              }
                               className="option-row w-full"
                               data-on={active}
                             >
@@ -340,35 +466,44 @@ function DishPage() {
                               </span>
                             </button>
 
-                            {/* Only for a group the owner marked splittable, and
-                            only once the topping is actually on the pizza. */}
-                            {active && g.supports_halves && (
+                            {/* Which half, once the group is being split.
+                            "Whole" is not offered here: that is the other
+                            answer to the question asked above, not a third
+                            option beside the two halves. */}
+                            {active && isSplit && (
                               <div
                                 className="portion-picker"
                                 role="group"
-                                aria-label={`Where to put ${o.name}`}
+                                aria-label={`Which half for ${o.name}`}
                               >
-                                {(["LEFT", "WHOLE", "RIGHT"] as OptionPortion[]).map((value) => (
-                                  <button
-                                    type="button"
-                                    key={value}
-                                    className="portion-option"
-                                    data-on={portion === value}
-                                    onClick={() =>
-                                      setPortions((current) => ({ ...current, [o.id]: value }))
-                                    }
-                                  >
-                                    <span
-                                      className={`portion-glyph portion-glyph--${value.toLowerCase()}`}
-                                      aria-hidden="true"
-                                    />
-                                    {value === "WHOLE"
-                                      ? "Whole"
-                                      : value === "LEFT"
-                                        ? "Left"
-                                        : "Right"}
-                                  </button>
-                                ))}
+                                {(["LEFT", "RIGHT"] as OptionPortion[]).map((value) => {
+                                  // Room on the side it would move TO, not
+                                  // counting where it sits now.
+                                  const full = portion !== value && !roomOnSide(g, counts, value);
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={value}
+                                      className="portion-option"
+                                      data-on={portion === value}
+                                      disabled={full}
+                                      title={
+                                        full
+                                          ? `That half already has ${g.max_selection} from "${g.title}".`
+                                          : undefined
+                                      }
+                                      onClick={() =>
+                                        setPortions((current) => ({ ...current, [o.id]: value }))
+                                      }
+                                    >
+                                      <span
+                                        className={`portion-glyph portion-glyph--${value.toLowerCase()}`}
+                                        aria-hidden="true"
+                                      />
+                                      {value === "LEFT" ? "Left" : "Right"}
+                                    </button>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -409,87 +544,93 @@ function DishPage() {
               </div>
             )}
 
-            <div className="mt-7 flex items-center justify-between gap-4 border-t border-border pt-5">
-              <div className="qty-pill">
-                <button
-                  type="button"
-                  className="qty-step"
-                  aria-label="Reduce quantity"
-                  disabled={quantity <= 1}
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                >
-                  <Minus className="size-4" />
-                </button>
-                <span className="qty-value">{quantity}</span>
-                <button
-                  type="button"
-                  className="qty-step"
-                  aria-label="Increase quantity"
-                  onClick={() => setQuantity((q) => q + 1)}
-                >
-                  <Plus className="size-4" />
-                </button>
+            {/* Quantity, total and Add stay on screen while the choices
+                scroll under them. A dish with a size, a glaze and four topping
+                groups is taller than any phone and taller than most desktops,
+                and the button that ends the task sat below all of it. */}
+            <div className="dish-actions">
+              <div className="flex items-center justify-between gap-4">
+                <div className="qty-pill">
+                  <button
+                    type="button"
+                    className="qty-step"
+                    aria-label="Reduce quantity"
+                    disabled={quantity <= 1}
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <span className="qty-value">{quantity}</span>
+                  <button
+                    type="button"
+                    className="qty-step"
+                    aria-label="Increase quantity"
+                    onClick={() => setQuantity((q) => q + 1)}
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
+                  <p className="money total-figure font-display text-3xl font-black leading-tight">
+                    {formatMoney(total)}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
-                <p className="money total-figure font-display text-3xl font-black leading-tight">
-                  {formatMoney(total)}
-                </p>
-              </div>
-            </div>
 
-            {/* Cart scope is restaurant + location, so a dish from another
+              {/* Cart scope is restaurant + location, so a dish from another
                 kitchen cannot join this order. Offering to start a fresh cart
                 beats refusing the dish, which is what made a concierge
                 suggestion feel like a dead end. */}
-            {conflicts ? (
-              <div className="added-note mt-5 rounded-xl border border-border bg-surface-alt p-4">
-                <p className="text-sm font-semibold leading-relaxed">
-                  Your cart already has items from{" "}
-                  {store.cartRestaurantName ?? "another restaurant"}. One order can only come from
-                  one kitchen.
-                </p>
-                <Button
-                  className="mt-3 h-12 w-full"
-                  disabled={!valid || !item.is_available}
-                  onClick={() => handleAdd(true)}
-                >
-                  Start a new cart with this
-                </Button>
-              </div>
-            ) : added ? (
-              <div className="added-note mt-5 grid gap-2">
-                <p className="flex items-center justify-center gap-2 text-sm font-bold text-success">
-                  <Check className="size-4" strokeWidth={3} /> Added to your cart
-                </p>
-                <Button className="h-12 w-full" asChild>
-                  <Link to="/cart">
-                    <ShoppingBag className="size-4" /> Go to cart
-                  </Link>
-                </Button>
-                <Button variant="outline" className="h-12 w-full" onClick={() => setAdded(false)}>
-                  Add another
-                </Button>
-              </div>
-            ) : (
-              <>
-                <Button
-                  className="mt-5 h-12 w-full text-base"
-                  disabled={!valid || !item.is_available}
-                  onClick={() => handleAdd(false)}
-                >
-                  {item.is_available
-                    ? `Add to cart · ${formatMoney(total)}`
-                    : "Currently unavailable"}
-                </Button>
-                {/* Say what is missing. A greyed-out button with no reason is
+              {conflicts ? (
+                <div className="added-note mt-5 rounded-xl border border-border bg-surface-alt p-4">
+                  <p className="text-sm font-semibold leading-relaxed">
+                    Your cart already has items from{" "}
+                    {store.cartRestaurantName ?? "another restaurant"}. One order can only come from
+                    one kitchen.
+                  </p>
+                  <Button
+                    className="mt-3 h-12 w-full"
+                    disabled={!valid || !item.is_available}
+                    onClick={() => handleAdd(true)}
+                  >
+                    Start a new cart with this
+                  </Button>
+                </div>
+              ) : added ? (
+                <div className="added-note mt-5 grid gap-2">
+                  <p className="flex items-center justify-center gap-2 text-sm font-bold text-success">
+                    <Check className="size-4" strokeWidth={3} /> Added to your cart
+                  </p>
+                  <Button className="h-12 w-full" asChild>
+                    <Link to="/cart">
+                      <ShoppingBag className="size-4" /> Go to cart
+                    </Link>
+                  </Button>
+                  <Button variant="outline" className="h-12 w-full" onClick={() => setAdded(false)}>
+                    Add another
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    className="mt-5 h-12 w-full text-base"
+                    disabled={!valid || !item.is_available}
+                    onClick={() => handleAdd(false)}
+                  >
+                    {item.is_available
+                      ? `Add to cart · ${formatMoney(total)}`
+                      : "Currently unavailable"}
+                  </Button>
+                  {/* Say what is missing. A greyed-out button with no reason is
                     the dead end this app keeps producing; the customer has to
                     hunt the page for whichever group is unanswered. */}
-                {item.is_available && problem && (
-                  <p className="mt-2 text-center text-sm font-semibold text-muted">{problem}</p>
-                )}
-              </>
-            )}
+                  {item.is_available && problem && (
+                    <p className="mt-2 text-center text-sm font-semibold text-muted">{problem}</p>
+                  )}
+                </>
+              )}
+            </div>
           </aside>
         </div>
       </div>

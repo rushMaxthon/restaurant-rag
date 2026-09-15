@@ -170,7 +170,31 @@ def latest_combo_from_session(db: FakeSession) -> GeneratedCombo:
     return combos[-1]
 
 
+# Every fixture in the lifecycle tests below is dated around this instant, and
+# `rebuild_generated_combos` reads the real clock to decide whether a combo has
+# gone stale. Left alone, that makes the tests age: the newest fixture order is
+# 2026-06-17, the expiry is 90 days, so on 2026-09-15 at 00:00 UTC they began
+# reporting ARCHIVED where they expect LIVE — a failure that appeared overnight
+# with no change to any code, and would have gone on failing forever.
+FROZEN_NOW = datetime(2026, 6, 18, tzinfo=UTC)
+
+
+class FrozenDatetime(datetime):
+    """`datetime` with `now()` pinned, for patching into the service module."""
+
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        return FROZEN_NOW if tz is not None else FROZEN_NOW.replace(tzinfo=None)
+
+
 class GeneratedComboLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The service does `datetime.now(timezone.utc)` at module scope, so the
+        # clock is replaced where it is read rather than in each test.
+        patcher = patch.object(generated_combo_service, "datetime", FrozenDatetime)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_counted_order_statuses_ignore_unknown_values(self) -> None:
         with patch.object(
             generated_combo_service.settings,

@@ -28,6 +28,294 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-14 (10) — The halves were being dropped at checkout
+
+**Goal:** follow one half-and-half pizza from the dish page to what the server
+stores, because every piece had been tested and the joins between them had not.
+
+**Found, and it was the expensive kind.** `checkout.tsx` built its order
+payload as `{option_id, quantity}` and never sent `portion`. So every split
+pizza reached the server as a WHOLE one: the kitchen would have put both
+toppings over the whole pizza, and the server priced two whole toppings against
+a screen that had charged for two halves. The API type had carried `portion`
+since the feature landed; the one caller did not fill it in.
+
+**Two display holes beside it.** The cart listed toppings by name alone, so
+"half pepperoni, half mushroom" and "both all over" were the same text at
+different prices. The checkout summary showed the dish name and price and
+nothing else — not even the size, so a Large half-and-half and a Small plain
+pizza were two identical lines. Both now carry the size and each topping's
+half (`chosenLabels`).
+
+**Also fixed this session:** switching a group between "same all over" and
+"half & half" carried the choices across unchanged, so one topping chosen whole
+plus one chosen per half came back as TWO toppings on the whole pizza — over a
+cap of one. `regroupForMode` re-rations the choices for the mode being entered
+and visibly unticks what no longer fits.
+
+**Learned — do not re-derive:**
+- **Test the joins, not just the pieces.** Six half-and-half specs passed while
+  the feature was being discarded one screen later. The end-to-end spec
+  (`half-pizza-end-to-end.spec.ts`) follows one order through the dish page,
+  the cart, the checkout summary and back out of `/orders`.
+- **`uvicorn --reload` in this app is not reliable.** A reload takes long enough
+  (embedding warm-up, Supabase connect) that the old worker keeps serving, and
+  a reload that does not finish leaves the old code answering while the log says
+  "Reloading...". Restart it properly and wait for "Application startup
+  complete".
+- **A backend started outside this session cannot be restarted from it.** Port
+  8000 was held by PIDs invisible to the agent's session — `taskkill` reported
+  "not found" while they answered requests, and a new uvicorn failed with
+  `[Errno 10048]` bind-in-use, silently, so the stale server kept serving.
+  Check the bind actually succeeded before trusting a "restart".
+- The giveaway that a server is stale: an error message the current source
+  cannot produce. "Toppings allows at most 1 selections" against a payload
+  carrying LEFT and RIGHT could only come from code predating the per-half cap.
+
+**Open:** `half-pizza-end-to-end.spec.ts` cannot pass until that backend is
+restarted — the code is right and the server is old. Everything else is green.
+
+---
+
+## 2026-09-14 (9) — The topping cap counts on each half
+
+**Goal:** reported from a screenshot — six toppings spread across two halves of
+one pizza. "Either left-right, or full; if I select full then don't allow
+anything extra; if I select left and right then don't allow any other thing."
+Plus: the limits must come from admin and change without a deploy.
+
+**Now:** `max_selection` counts on EACH half once the item is split. Two on the
+left and two on the right under a cap of two, rather than two shared between
+them — the halves are two orders of the same size sharing a base, and counting
+across both sold one topping per side under a cap of two.
+
+That makes the reported shape a data setting rather than a special case: a cap
+of **1** is exactly "half this, half that, nothing else", and the owner can
+change it in the dashboard at any time. `e2e/admin-menu-sync.spec.ts` proves
+the link by setting the cap to 1 through the same endpoint the dashboard uses,
+checking the web menu obeys it, and putting back whatever was there.
+
+**Learned — do not re-derive:**
+- **The backend was serving code from before the halves rules.** Restarted
+  without `--reload` hours earlier, so `/orders/validate` accepted "whole
+  beside a half" — 200, while the unit test for the same rule passed. Every
+  green E2E result in between only proved the CLIENT was enforcing it. It now
+  runs with `--reload`. Checking the rule over HTTP is what caught it; the unit
+  tests could not.
+- **`minimum_order_amount` is validated before customizations**, so a cheap
+  test order is refused for its total and the customization rule under test
+  never runs. Order two.
+- A test that mutates menu data must restore what it READ, not a hardcoded
+  number, or it quietly rewrites the menu for everyone after it.
+- Three E2E runs were thrown away this session for being measured against
+  changed code or a stale server. A run started before an edit is not evidence
+  about the code after it.
+
+**Open:** the owner's cap on the pizza is still 7, so nothing visibly changes
+there until someone sets it to 1 — that is the dial, and it is theirs.
+
+---
+
+## 2026-09-14 (8) — Half and half is one question, not many
+
+**Goal:** the owner's two rules for a splittable group — a split item has to
+describe BOTH halves, and a group is either the same all over or split, never
+a mixture.
+
+**Enforced on the server** in `resolve_menu_item_selection`, per group: a lone
+LEFT (or RIGHT) is refused by name, and WHOLE beside a half is refused. Read
+from the portions the CUSTOMER chose, before left+right of one option collapses
+to WHOLE — after that collapse "pepperoni on both halves" is indistinguishable
+from "pepperoni on the whole pizza", and the two mean opposite things to these
+rules.
+
+**The client had to stop inferring the mode from the toppings.** First attempt
+judged each option against the rest of its group and produced two dead ends:
+the first topping lands on the whole item, which switched the halves off before
+a split could start; and with two toppings on the whole item neither could move
+to a half, because each read the other as whole. The rule is about the GROUP,
+so the customer now answers it once — a "Same all over / Half & half" switch at
+the top of the group — and the per-topping picker offers Left and Right only.
+"Whole" is not a third choice beside the two halves; it is the other answer to
+the question above.
+
+**Learned — do not re-derive:**
+- **A per-item rule inferred from per-item state locks itself.** Any constraint
+  of the form "these things must agree" needs somewhere to hold the agreement.
+  Putting it on the group made the dead ends impossible rather than handled.
+- **Validate on what was chosen, normalise afterwards.** The LEFT+RIGHT → WHOLE
+  collapse is right for pricing and for the kitchen ticket and wrong for the
+  rules, so the rules read a snapshot taken before it.
+- A topping ticked into a split group lands on whichever half is still bare
+  (`defaultPortionFor`). Landing it on "whole" would create the forbidden
+  mixture one tap after the rule started applying.
+- Three existing tests ordered half a pizza and said nothing about the other
+  half — legal before, not now. The rounding one moved its assertion from the
+  order total to the olives line, because a legal split order always has a
+  second topping in the total and it buried what the test was pinning.
+
+**Open:** the rule forbids "pepperoni on the whole pizza, mushroom on the left
+only", which some kitchens do allow. That is the owner's stated rule, not an
+oversight — but it is the first thing to revisit if a restaurant asks.
+
+---
+
+## 2026-09-14 (7) — The admin was switching half-and-half off
+
+**Goal:** three reports — does half-and-half respect the per-group selection
+rules, show the min/max an owner sets, and "changing a predefined thing in the
+menu item editor then saving does not update".
+
+**The save bug, measured rather than guessed.** Driving the real admin UI:
+editing a group's min/max and saving sent `min=2 max=4`, answered **200 in
+2.8s**, and the value was in the database afterwards. Editing an option's price
+did the same. So the general save works — what does not is one field:
+
+**`frontend-admin` never knew `supports_halves` existed.** It was absent from
+both the read interface and the payload interface, so the editor could not show
+it and did not send it. `_sync_menu_item_customizations` rebuilds every group
+from the payload, so the server reset the column to its default on every save:
+**editing a description switched half-and-half off.** That is what wiped the
+flag set on 2026-09-14 (4), and why all six half-pizza e2e tests quietly
+SKIPPED in the run after — the spec discovers its item by the flag, found
+none, and skipped rather than failed.
+
+**Fixed:** the flag is carried through the types, the form state, the draft,
+the merge signature and the payload, and an owner sets it with a "Half & half"
+checkbox in the composer and the group editor. Offered only on MULTI, because
+one choice cannot cover two halves. Verified end to end through the browser:
+ticked in the UI, sent as `supports_halves=true`, 200, and read back true.
+
+**Also fixed — the group row's first column was 0px wide.** Measured
+`grid-template-columns: 0px 180px 100px 90px 100px 110px 234px`: every column
+after the title declared a fixed minimum, those plus the six 12px gaps used the
+entire 886px row, and the title's `minmax(0, 1.15fr)` got what was left, which
+was nothing. The title then overflowed its zero-width cell and drew on top of
+the sizes — "Crust" and "Small (8\")" on the same pixels. Titles now declare a
+real minimum. The size checkboxes in the composer had the same problem and were
+clipped to "S (-"; they get their own full-width line.
+
+**Customer side:** `selectionHint` puts both numbers in one sentence ("Choose 2
+to 4", "Choose exactly 3", "Choose up to 7") with a live "· 3 chosen", and
+`canPickMore` greys out further options at the ceiling. The cap was checked
+only at the Add button before, so a seventh topping went on and the refusal
+arrived at the end.
+
+**Learned — do not re-derive:**
+- **A rebuild-from-payload endpoint turns every missing client field into a
+  silent reset.** `_sync_menu_item_customizations` clears `sizes` and
+  `customization_groups` and recreates them, so anything the admin does not
+  send is not "left alone", it is erased. Any new column on those tables needs
+  the admin updated in the same change.
+- **A skipping test is not a passing test.** The half-pizza specs went from 3
+  passing to 6 skipped and the suite still reported green. The skip count moved
+  from 6 to 12 and that was the only visible sign.
+- **Drive the UI before reading it.** Two hours of plausible hypotheses about
+  the editor's draft state were wrong; ten minutes of Playwright against the
+  real admin found both the working save and the 0px column.
+- Restoring data touched while debugging needs the ORIGINAL values written
+  down first: this run left `Toppings` at min=2/max=4/required and Mozzarella
+  at $9.25 before they were put back to 0/7/optional and $1.75.
+
+**Open:** the menu-item save takes ~2.8s and shows only "Saving…". The admin
+lints with 51 pre-existing errors (unchanged by this work).
+
+---
+
+## 2026-09-14 (6) — Checkout already knew who was ordering
+
+**Goal:** reported — a signed-in customer should not be asked for their name,
+number and address on every order.
+
+**What was already there:** all of it. `users` carries `full_name`,
+`phone_number` and a free-text `default_address`, and the backend has had
+`/profile/me` and a full structured **saved addresses** CRUD
+(`/profile/addresses`, with HOME/WORK/OTHER labels and an `is_default`) since
+before this web app existed — the mobile app writes them. The web app called
+none of it. No backend change was needed; this is four client files.
+
+**Now:** checkout fills the name and number from the account, and the address
+from the default saved address. Every field stays editable, and the form says
+where the answers came from rather than filling itself in silently. More than
+one saved address gets tiles to switch between them. A new address offers to
+save itself, so the second order is already filled in — without that the
+feature is dormant for anyone who has never used the mobile app.
+
+**Learned — do not re-derive:**
+- **The saved-address parts map one-for-one onto the checkout form.**
+  `address_line_1/2`, `landmark`, `city`, `state`, `postal_code` are exactly
+  the fields collected on 2026-09-14 (2). Nothing to translate, so
+  `addressFromSaved` is a rename and nothing more.
+- **`users.default_address` is ONE free-text column, not an address.** Parsing
+  it is a guess by shape: taken apart only when it is comma-separated and ends
+  in something postal-code-shaped, and otherwise dropped whole onto line 1.
+  Spreading a wrong guess over five fields is worse than filling one — every
+  wrong field is one the customer has to find, and a plausible wrong city
+  reaches a rider.
+- **Save on order creation, and dedupe.** Without the dedupe every e2e run
+  added another copy of the same street to the test account; with it the count
+  stayed at 1 across two runs (verified). An address typed into an abandoned
+  form is not one the customer asked to keep, so nothing is saved until the
+  order exists, and the save's failure is swallowed — "we could not save your
+  address" is not a thing to interrupt a payment with.
+- **A ref cannot be read for rendering.** The "filled in from your account"
+  note was first driven by the same `useRef` that guards the one-shot prefill;
+  changing a ref causes no render, so the note appeared only because unrelated
+  state happened to change in the same pass. It has its own state now.
+- Editing a prefilled address clears the "this is the saved one" link, so the
+  save box comes back. Otherwise a corrected flat number is typed, sent, and
+  forgotten by the next order.
+
+**Open:** the web app still has no screen for MANAGING saved addresses — they
+can be created from checkout and read anywhere, but renaming, relabelling and
+deleting are mobile-only. `phone_number` is stored formatted here ("(415)
+555-0132") and bare on `users`; both read back fine, but nothing normalises
+them to one shape.
+
+---
+
+## 2026-09-14 (5) — The dish page's two columns
+
+**Goal:** reported from a screenshot — the dish page looked wrong on a
+desktop.
+
+**What was actually wrong:** the columns were split picture / everything-else.
+The left column held one 460px image; the right held the name, the description,
+the price, every choice, the total and the button, and ran to three screens. So
+the first thing anyone saw was a wide black rectangle of nothing, and the
+button that ends the task was below all of it — on a 1900x916 display the Add
+button was not on screen at any point until you scrolled past the toppings.
+
+**Now:** the picture and what the dish IS travel together on the left and stay
+put (`position: sticky`) while the decisions scroll beside them; the rail holds
+only decisions. Quantity, total and Add are pinned to the bottom of the rail,
+so the price and the button are on screen the whole time, and so is the line
+saying which group is still unanswered.
+
+**Learned — do not re-derive:**
+- **`bottom: 0` is wrong on a phone.** The pinned block landed behind the
+  four-icon tab bar: visible, and untappable. It offsets by `--mobile-nav-h`
+  (a new token in `styles.css`, with a matching `min-height` on
+  `.mobile-nav-bar` so the number is true rather than guessed) and drops back
+  to `0` at `lg`, where there is no tab bar.
+- **Sticky only buys what the taller column lends it.** The lede sticks for
+  `row height - lede height` and no further, so on a short dish (wings: 672 vs
+  993) it barely moves. That is fine — the balance is what fixed the hole, and
+  the stickiness pays on a long dish.
+- **Screenshotting the app needs `http://localhost:5173`, not
+  `127.0.0.1:5173`.** Only `localhost` is in the backend's CORS list, so on the
+  IP every fetch fails and the page sits on its skeleton forever — which looks
+  exactly like a hung query. Ten minutes went into that.
+- `"From $11.99"` now becomes the chosen size's real price once a size is
+  picked. Leaving "From" up asks the customer to keep discounting the headline
+  against a number they have already chosen.
+
+**Open:** the pinned block takes ~190px of an 851px phone, which is the usual
+shape for this pattern but is a lot on a small screen. Not tuned further
+without someone actually using it.
+
+---
+
 ## 2026-09-14 (4) — Customization correctness, and half-and-half
 
 **Goal:** a long list of reported customization bugs, then a new feature —

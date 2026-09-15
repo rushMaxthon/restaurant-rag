@@ -15,6 +15,7 @@ import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
   availabilityNow,
@@ -165,11 +166,17 @@ function CartPage() {
                     {(line.sizeName || line.addOnNames.length > 0) && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {line.sizeName && <span className="tag-chip">{line.sizeName}</span>}
-                        {line.addOnNames.map((name) => (
-                          <span className="tag-chip" key={name}>
-                            + {name}
-                          </span>
-                        ))}
+                        {/* With the half named, because "half pepperoni, half
+                            mushroom" and "both all over" are different pizzas
+                            at different prices and read identically without
+                            it. */}
+                        {chosenLabels(line.optionIds, line.addOnNames, line.optionPortions).map(
+                          (label) => (
+                            <span className="tag-chip" key={label}>
+                              + {label}
+                            </span>
+                          ),
+                        )}
                       </div>
                     )}
                     <p className="money mt-2 text-sm text-muted">

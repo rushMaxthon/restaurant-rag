@@ -587,6 +587,17 @@ export interface MenuItemCustomizationGroup {
   is_required: boolean;
   min_selection: number;
   max_selection: number;
+  /**
+   * Whether these options can be put on one half of the item.
+   *
+   * The customer app offers the left/right split only where this is on, so it
+   * is the whole of the half-and-half feature. It was missing from both of
+   * these interfaces, which meant the editor could not read it and did not
+   * send it — and since a save rebuilds every group from the payload, the
+   * server reset it to false. Editing a description switched half-and-half
+   * off, silently.
+   */
+  supports_halves: boolean;
   is_active: boolean;
   sort_order: number;
   options: MenuItemCustomizationOption[];
@@ -647,6 +658,7 @@ export interface MenuItemCustomizationGroupPayload {
   is_required: boolean;
   min_selection: number;
   max_selection: number;
+  supports_halves: boolean;
   is_active: boolean;
   sort_order: number;
   options: MenuItemCustomizationOptionPayload[];

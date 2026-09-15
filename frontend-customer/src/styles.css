@@ -46,6 +46,10 @@
   --success: #16a34a;
   --danger: #dc2626;
   --radius: 0.5rem;
+  /* The phone tab bar's height. Pinned controls above it need a number to
+     offset by, and a bar whose height is only whatever its icons add up to
+     cannot give them one. */
+  --mobile-nav-h: 58px;
   --overlay: rgb(20 23 31 / 0.55);
   --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
   --placeholder-a: color-mix(in srgb, var(--primary) 15%, var(--surface));

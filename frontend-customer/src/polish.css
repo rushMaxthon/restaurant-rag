@@ -156,6 +156,7 @@ main > * {
   transform: translateY(-1px);
 }
 .mobile-nav-bar {
+  min-height: var(--mobile-nav-h);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -1151,4 +1152,193 @@ html {
 /* Three sizes should read as three, not two and a stray. */
 .size-tiles {
   grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+}
+
+/* --- The dish page's two columns -------------------------------------------
+   Left: the picture and what the dish is. Right: every decision, and nothing
+   else. They used to be split picture / everything-else, which made one column
+   460px tall and the other three screens, and the gap between them was the
+   first thing anyone saw. */
+.dish-lede {
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+}
+.dish-lede__price {
+  border-top: 1px solid var(--border);
+  padding-top: 0.9rem;
+}
+
+/* Padding lives here rather than in utility classes so the action block below
+   can reach back out to the panel's edges with one variable. */
+.dish-choices {
+  --panel-pad: 1.25rem;
+  padding: var(--panel-pad);
+}
+@media (min-width: 640px) {
+  .dish-choices {
+    --panel-pad: 1.5rem;
+  }
+}
+
+/* Pinned to the bottom of the rail, full-bleed to the panel edge so nothing
+   scrolls through a transparent gap beside it. The top border is the seam;
+   the shadow above it says there is more underneath. */
+.dish-actions {
+  position: sticky;
+  /* Above the tab bar, not under it. At `bottom: 0` on a phone the Add button
+     landed behind the four nav icons — pinned, visible, and untappable. */
+  bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+  z-index: 2;
+  margin: 1.5rem calc(var(--panel-pad) * -1) calc(var(--panel-pad) * -1);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 calc(var(--radius) + 6px) calc(var(--radius) + 6px);
+  background: var(--surface);
+  padding: 0.9rem var(--panel-pad) var(--panel-pad);
+  box-shadow: 0 -12px 24px -18px var(--overlay);
+}
+/* A short fade above the seam, so the card the bar is covering reads as
+   continuing underneath rather than as having been sliced through. */
+.dish-actions::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 100% 0;
+  height: 1.75rem;
+  background: linear-gradient(to top, var(--surface), transparent);
+  pointer-events: none;
+}
+/* The tab bar is a phone thing; on a desktop the rail reaches the bottom. */
+@media (min-width: 1024px) {
+  .dish-actions {
+    bottom: 0;
+  }
+}
+
+/* --- What the account already knows ----------------------------------------
+   Checkout asked a signed-in customer for their name, their number and their
+   address on every single order, all of which the account already held. */
+.prefill-note {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  padding: 0.4rem 0.75rem;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* One tile per saved address, shown only when there is more than one — with
+   a single address there is nothing to choose between. */
+.saved-address-picker {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.saved-address {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface-alt);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+}
+.saved-address:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.saved-address[data-on="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.saved-address__label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+/* Two lines at most. A full address is longer than a tile, and a tile that
+   grows to fit one makes the other tiles grow with it. */
+.saved-address__line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.save-address {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.save-address input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* An option that would exceed the group's ceiling. Dimmed rather than hidden:
+   the customer needs to see what they would be choosing between, and taking
+   one off has to put the rest back within reach. */
+.option-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* A portion the group's current mode rules out: whole once it is split, or a
+   half once something covers the whole item. Dimmed rather than removed, so
+   the customer can see the choice exists and why it is not theirs yet. */
+.portion-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* The one question a splittable group asks: the same all over, or different on
+   each half. Asked once, at the top of the group, rather than per topping. */
+.split-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  padding: 0.25rem;
+}
+.split-switch__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.5rem 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.split-switch__option[data-on="true"] {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgb(20 23 31 / 0.1);
 }

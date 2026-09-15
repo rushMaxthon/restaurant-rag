@@ -97,7 +97,10 @@ test.describe("browsing without an account", () => {
     // Ollama is slow and variable locally, hence the long wait.
     await expect(page.getByText("something spicy").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("article").first()).toBeVisible({ timeout: 170_000 });
-    await expect(page.getByRole("link", { name: /^sign in/i })).toHaveCount(0);
+    // Scoped to the conversation, not the page. The header's account button is
+    // labelled "Sign in" for a guest on every screen, which is a way in rather
+    // than a wall; what this guards is the chat itself refusing to answer one.
+    await expect(page.getByRole("main").getByRole("link", { name: /^sign in/i })).toHaveCount(0);
   });
 });
 

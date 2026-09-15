@@ -169,6 +169,7 @@ export function selectionProblem(
   item: MenuItem | undefined,
   selectedSize: MenuSize | undefined,
   selected: Record<string, string[]>,
+  portions: Record<string, OptionPortion> = {},
 ): string | null {
   if (!item) return null;
 
@@ -194,10 +195,245 @@ export function selectionProblem(
         : `Choose an option from "${group.title}".`;
     }
 
-    if (group.max_selection > 0 && count > group.max_selection) {
-      return `Choose at most ${group.max_selection} from "${group.title}".`;
+    // Counted on each half when the item is split, the same way the server
+    // counts it and the same way the options disable themselves. Counting the
+    // group's total here let the page offer one topping per half and then
+    // refuse to add them: "choose at most 1" about two halves of one pizza.
+    const chosen = selected[group.id] ?? [];
+    const counts = sideCounts(chosen, portions);
+    const isSplit = group.supports_halves && counts.LEFT + counts.RIGHT > 0;
+    if (group.max_selection > 0) {
+      if (isSplit) {
+        if (counts.LEFT > group.max_selection || counts.RIGHT > group.max_selection) {
+          return `Choose at most ${group.max_selection} on each half from "${group.title}".`;
+        }
+      } else if (count > group.max_selection) {
+        return `Choose at most ${group.max_selection} from "${group.title}".`;
+      }
+    }
+
+    // Both halves, or neither. Mirrors the server, which refuses a lone half
+    // — the UI will not usually let it get this far, but the UI is a UI.
+    if (group.supports_halves) {
+      const missing = missingHalf(selected[group.id] ?? [], portions);
+      if (missing) {
+        return `Choose something for the ${missing} half from "${group.title}", or put it on the whole item.`;
+      }
     }
   }
 
   return null;
+}
+
+/**
+ * The group's selection rule, in one sentence, with both numbers in it.
+ *
+ * The owner sets a minimum and a maximum and the customer used to see neither
+ * together: a badge said "Choose 2" and the line under it said "Choose up to
+ * 4" — one rule told twice, in two places, agreeing with itself only by
+ * accident. An owner who caps toppings at four has said something the customer
+ * needs before they pick a fifth, not after.
+ */
+export function selectionHint(group: CustomizationGroup): string {
+  // A single-choice group is one, whatever its stored maximum says; the admin
+  // forces max to 1 there, but older rows predate that rule.
+  if (group.selection_type === "SINGLE") return "Choose 1";
+
+  const min = Math.max(0, Number(group.min_selection) || 0);
+  const max = Math.max(0, Number(group.max_selection) || 0);
+  if (min > 0 && max > 0) {
+    return min === max ? `Choose exactly ${min}` : `Choose ${min} to ${max}`;
+  }
+  if (max > 0) return `Choose up to ${max}`;
+  if (min > 0) return `Choose at least ${min}`;
+  return "Choose any";
+}
+
+/**
+ * Is there room for another option in this group?
+ *
+ * Used to stop the customer picking a sixth topping in a group capped at five.
+ * The cap was validated only at the Add button before, which let someone build
+ * something the kitchen would not make and told them so at the end.
+ *
+ * A SINGLE group always has room: tapping another option replaces the one
+ * chosen rather than adding to it, so a ceiling would lock the group after the
+ * first tap.
+ */
+export function canPickMore(group: CustomizationGroup, chosen: number): boolean {
+  if (group.selection_type === "SINGLE") return true;
+  const max = Math.max(0, Number(group.max_selection) || 0);
+  return max === 0 || chosen < max;
+}
+
+/** What a splittable group is currently doing. */
+export type PortionMode = "NONE" | "WHOLE" | "SPLIT";
+
+/**
+ * Whole, split, or not yet decided.
+ *
+ * The owner's rule is that a group is one or the other: pick a topping for the
+ * whole item and there is nothing left to say about halves; start naming sides
+ * and "all of it" stops being one of the two sides.
+ *
+ * Reads only the options that are actually chosen. Unticking a topping leaves
+ * its portion behind in state, and a leftover "LEFT" must not hold the group
+ * in split mode by itself.
+ */
+export function portionMode(
+  chosenOptionIds: string[],
+  portions: Record<string, OptionPortion>,
+): PortionMode {
+  if (chosenOptionIds.length === 0) return "NONE";
+  const anySplit = chosenOptionIds.some((id) => (portions[id] ?? "WHOLE") !== "WHOLE");
+  return anySplit ? "SPLIT" : "WHOLE";
+}
+
+/**
+ * The half that was left undescribed, or null.
+ *
+ * Half a pizza and silence about the other half is not an order: the kitchen
+ * can read it two ways — bare, or the same as the named side — and the
+ * customer meant one of them.
+ */
+export function missingHalf(
+  chosenOptionIds: string[],
+  portions: Record<string, OptionPortion>,
+): "left" | "right" | null {
+  const sides = new Set(
+    chosenOptionIds.map((id) => portions[id] ?? "WHOLE").filter((p) => p !== "WHOLE"),
+  );
+  if (sides.size !== 1) return null;
+  return sides.has("LEFT") ? "right" : "left";
+}
+
+/** How many chosen options sit on each half, and how many cover all of it. */
+export type SideCounts = Record<OptionPortion, number>;
+
+export function sideCounts(
+  chosenOptionIds: string[],
+  portions: Record<string, OptionPortion>,
+): SideCounts {
+  const counts: SideCounts = { LEFT: 0, RIGHT: 0, WHOLE: 0 };
+  for (const id of chosenOptionIds) counts[portions[id] ?? "WHOLE"] += 1;
+  return counts;
+}
+
+/**
+ * Is there room for one more on this side?
+ *
+ * The owner's maximum counts on EACH half. "Up to two toppings" on a split
+ * pizza means two on the left and two on the right: the halves are two orders
+ * of the same size sharing a base, and counting the cap across both sold one
+ * topping per side under a cap of two.
+ *
+ * Set the maximum to 1 and this is exactly "half this, half that, nothing
+ * else" — which is the point: the number is the owner's, not the app's, and
+ * changing it in admin changes the menu.
+ */
+export function roomOnSide(
+  group: CustomizationGroup,
+  counts: SideCounts,
+  side: OptionPortion,
+): boolean {
+  const max = Math.max(0, Number(group.max_selection) || 0);
+  return max === 0 || counts[side] < max;
+}
+
+/**
+ * Which half a newly chosen option should land on.
+ *
+ * The bare half first: that is the one the customer must fill before the order
+ * will go at all. After that, whichever side still has room under the owner's
+ * cap — always answering "left" blocked toppings the right half had room for,
+ * which is what a cap of two looked like from the outside: two on the left,
+ * one on the right, and everything after that refused.
+ *
+ * When both sides are full it answers left anyway, and the caller refuses the
+ * option rather than putting it somewhere it does not fit.
+ */
+export function nextSideFor(
+  group: CustomizationGroup,
+  chosenOptionIds: string[],
+  portions: Record<string, OptionPortion>,
+): OptionPortion {
+  const counts = sideCounts(chosenOptionIds, portions);
+  if (counts.LEFT === 0 && counts.RIGHT > 0) return "LEFT";
+  if (counts.RIGHT === 0 && counts.LEFT > 0) return "RIGHT";
+  if (roomOnSide(group, counts, "LEFT")) return "LEFT";
+  if (roomOnSide(group, counts, "RIGHT")) return "RIGHT";
+  return "LEFT";
+}
+
+/**
+ * The group's choices, re-expressed for the mode it is switching into.
+ *
+ * The two modes describe different things, so the choices cannot simply carry
+ * over. Reported: one topping on the whole pizza, switch to halves, add a
+ * second there, switch back — and BOTH sat on the whole pizza at once, two
+ * chosen under a cap of one. Toppings picked for opposite halves have no
+ * meaning as a whole-pizza order, and merging them invented one the customer
+ * never asked for and the kitchen could not make.
+ *
+ * So the choices are re-rationed against the cap for the mode being entered,
+ * and anything that no longer fits is dropped rather than left over the limit.
+ * Dropping is visible — the topping simply unticks — which is the honest
+ * outcome: the customer can see what did not survive and put it back.
+ */
+export function regroupForMode(
+  group: CustomizationGroup,
+  chosenOptionIds: string[],
+  toSplit: boolean,
+): { chosen: string[]; portions: Record<string, OptionPortion> } {
+  const cap = Math.max(0, Number(group.max_selection) || 0);
+  const room = cap === 0 ? Number.POSITIVE_INFINITY : cap;
+  const portions: Record<string, OptionPortion> = {};
+
+  if (!toSplit) {
+    const chosen = chosenOptionIds.slice(0, room === Infinity ? undefined : room);
+    for (const id of chosen) portions[id] = "WHOLE";
+    return { chosen, portions };
+  }
+
+  // Left first, then right: the left is where a split starts, and filling it
+  // before the right keeps "one each" the shape a cap of one produces.
+  const chosen: string[] = [];
+  let left = 0;
+  let right = 0;
+  for (const id of chosenOptionIds) {
+    if (left < room) {
+      portions[id] = "LEFT";
+      left += 1;
+    } else if (right < room) {
+      portions[id] = "RIGHT";
+      right += 1;
+    } else {
+      continue;
+    }
+    chosen.push(id);
+  }
+  return { chosen, portions };
+}
+
+/**
+ * A cart line's chosen options, each labelled with the half it goes on.
+ *
+ * The cart and the checkout summary listed names alone, so "half pepperoni,
+ * half mushroom" and "pepperoni and mushroom all over" looked identical — two
+ * different pizzas, at two different prices, shown the same way on the last
+ * screens before paying.
+ *
+ * Ids and names are stored as parallel lists; anything past the end of either
+ * is dropped rather than rendered as "undefined", because carts saved before
+ * portions existed are still in people's browsers.
+ */
+export function chosenLabels(
+  optionIds: string[],
+  optionNames: string[],
+  portions: Record<string, OptionPortion> = {},
+): string[] {
+  return optionNames.slice(0, optionIds.length).map((name, index) => {
+    const portion = portions[optionIds[index] as string] ?? "WHOLE";
+    return portion === "WHOLE" ? name : `${name} · ${portion === "LEFT" ? "left" : "right"} half`;
+  });
 }
