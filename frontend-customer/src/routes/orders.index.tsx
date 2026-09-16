@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
+import { useState } from "react";
 
 export const Route = createFileRoute("/orders/")({
   head: () => ({
@@ -166,11 +167,67 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
   );
 }
 
+/**
+ * A finished order, at the size a finished order deserves.
+ *
+ * The full card carries a thumbnail strip, an item list and a five-step
+ * progress bar. That is the right amount of screen for something you are
+ * waiting on, and far too much for the two hundredth thing you ate: the page
+ * became a scroll nobody reached the end of. Past orders get one line each,
+ * the same line the account screen uses, so the two agree.
+ */
+function PastLine({ order }: { order: Order }) {
+  const when = new Date(order.placed_at);
+  const date = Number.isNaN(when.getTime())
+    ? ""
+    : when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const items = order.items.reduce((sum, item) => sum + item.quantity, 0);
+
+  return (
+    <Link to="/orders/$orderId" params={{ orderId: order.id }} className="line">
+      <span className="line__code">{orderCode(order)}</span>
+      <span className="money line__total">{formatMoney(order.total_amount)}</span>
+      <span className="line__when">
+        {date} · {items} {items === 1 ? "item" : "items"}
+        {order.status === "CANCELLED" && " · cancelled"}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * How much of a section to show before asking.
+ *
+ * Measured on a real account: 131 in progress and 126 abandoned checkouts,
+ * every one a card with a thumbnail strip and a progress bar, came to 117
+ * screens of scrolling on a phone. No section is safe from this — the "in
+ * progress" list is short for most people and enormous for anyone whose
+ * payments keep failing — so all three are capped and all three can be opened.
+ */
+const FIRST_BATCH = 5;
+const NEXT_BATCH = 20;
+
+function ShowMore({ remaining, onClick }: { remaining: number; onClick: () => void }) {
+  if (remaining <= 0) return null;
+  return (
+    <button type="button" className="rail__action mt-3" onClick={onClick}>
+      Show {Math.min(NEXT_BATCH, remaining)} more
+    </button>
+  );
+}
+
 function Orders() {
   const { user, logout } = useAuth();
   const isAuthenticated = useRequireAuth();
   const navigate = useNavigate();
   const ordersQuery = useOrders(isAuthenticated);
+  // Above the early return below: hooks cannot sit after one. Placed under it
+  // they ran on some renders and not others, and React tore the page down with
+  // "rendered more hooks than during the previous render" — which the customer
+  // met as "this page didn't load".
+  const [liveShown, setLiveShown] = useState(FIRST_BATCH);
+  const [unpaidShown, setUnpaidShown] = useState(FIRST_BATCH);
+  const [pastShown, setPastShown] = useState(FIRST_BATCH);
 
   if (!isAuthenticated) return null;
 
@@ -255,10 +312,14 @@ function Orders() {
             <span className="section-count">{live.length}</span>
           </h2>
           <div className="grid gap-4">
-            {live.map((order, i) => (
+            {live.slice(0, liveShown).map((order, i) => (
               <OrderRow order={order} index={i} key={order.id} />
             ))}
           </div>
+          <ShowMore
+            remaining={live.length - liveShown}
+            onClick={() => setLiveShown((n) => n + NEXT_BATCH)}
+          />
         </section>
       )}
 
@@ -273,10 +334,23 @@ function Orders() {
             These never reached the kitchen because the payment wasn't completed. Nothing has been
             charged.
           </p>
-          <div className="grid gap-4">
-            {unpaid.map((order, i) => (
-              <OrderRow order={order} index={i} key={order.id} />
-            ))}
+          <div className="receipt">
+            <div className="receipt__block">
+              {unpaid.slice(0, unpaidShown).map((order) => (
+                <PastLine order={order} key={order.id} />
+              ))}
+            </div>
+            {unpaid.length > unpaidShown && (
+              <>
+                <div className="receipt__tear" />
+                <div className="receipt__block">
+                  <ShowMore
+                    remaining={unpaid.length - unpaidShown}
+                    onClick={() => setUnpaidShown((n) => n + NEXT_BATCH)}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </section>
       )}
@@ -287,10 +361,23 @@ function Orders() {
             Past orders
             <span className="section-count">{past.length}</span>
           </h2>
-          <div className="grid gap-4">
-            {past.map((order, i) => (
-              <OrderRow order={order} index={i} key={order.id} />
-            ))}
+          <div className="receipt">
+            <div className="receipt__block">
+              {past.slice(0, pastShown).map((order) => (
+                <PastLine order={order} key={order.id} />
+              ))}
+            </div>
+            {past.length > pastShown && (
+              <>
+                <div className="receipt__tear" />
+                <div className="receipt__block">
+                  <ShowMore
+                    remaining={past.length - pastShown}
+                    onClick={() => setPastShown((n) => n + NEXT_BATCH)}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </section>
       )}

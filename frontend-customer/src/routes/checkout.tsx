@@ -55,6 +55,7 @@ import {
 import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
+import { refusalNeedsCart } from "@/lib/order-refusal";
 
 /** Shown beside the phone field; matches the backend's own default. */
 const PHONE_COUNTRY_CODE = "+1";
@@ -188,6 +189,8 @@ function Checkout() {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether that error is one the cart can fix. See placeOrder.
+  const [errorNeedsCart, setErrorNeedsCart] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrderNumber, setPlacedOrderNumber] = useState<string | null>(null);
   // Card only: this product does not take cash. The method still comes from
@@ -451,6 +454,7 @@ function Checkout() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setErrorNeedsCart(false);
 
     // Order against the cart's own restaurant. The concierge answers across the
     // whole marketplace, so a cart can legitimately hold another kitchen's dish
@@ -556,6 +560,18 @@ function Checkout() {
       setError(
         err instanceof ApiError ? err.message : "We couldn't place your order. Please try again.",
       );
+      // A refusal about what is in the order is fixed in the cart, not here.
+      // Without the way back, "The selected size is unavailable for Build Your
+      // Own Pizza" is a dead end on the last screen before paying. Refusals
+      // about when ("Restaurant is currently closed") are answered on this
+      // page, so the link is offered only when the message names a dish in
+      // the cart or the cart itself.
+      setErrorNeedsCart(
+        refusalNeedsCart(
+          err instanceof ApiError && err.status === 400 ? err.message : "",
+          s.cart.map((line) => line.name),
+        ),
+      );
     } finally {
       setPayingCard(false);
     }
@@ -590,7 +606,18 @@ function Checkout() {
           role="alert"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <span>{error}</span>
+          <span>
+            {error}
+            {errorNeedsCart && (
+              <>
+                {" "}
+                <Link to="/cart" className="underline">
+                  Change it in your cart
+                </Link>
+                .
+              </>
+            )}
+          </span>
         </div>
       )}
 

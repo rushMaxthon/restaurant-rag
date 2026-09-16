@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Heart,
   Minus,
   Plus,
   ShoppingBag,
@@ -17,6 +18,8 @@ import { DishCard } from "@/components/bangkok/dish-card";
 import { formatMoney } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import type { OptionPortion } from "@/lib/bangkok-store";
+import { useAuth } from "@/lib/auth";
+import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import type { CustomizationGroup } from "@/lib/bangkok-data";
 import {
   activeOptions,
@@ -53,6 +56,10 @@ function DishPage() {
   const store = useBangkokStore();
   const itemQuery = useMenuItem(itemId);
   const item = itemQuery.data;
+  const { isAuthenticated } = useAuth();
+  const favorites = useFavoriteIds(isAuthenticated);
+  const toggleFavorite = useToggleFavorite();
+  const isFavorite = Boolean(item && favorites.data?.has(item.id));
 
   const [size, setSize] = useState<string>("");
   const [selected, setSelected] = useState<Record<string, string[]>>({});
@@ -211,6 +218,22 @@ function DishPage() {
               screen and a half of empty background. */}
           <div className="dish-lede lg:sticky lg:top-24">
             <div className="dish-hero relative overflow-hidden rounded-2xl">
+              {/* The same gesture in the same place as on the menu card, so it
+                  is one thing to learn wherever you meet the dish. */}
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  className="heart"
+                  data-on={isFavorite}
+                  aria-pressed={isFavorite}
+                  aria-label={
+                    isFavorite ? `Remove ${item.name} from your usuals` : `Save ${item.name}`
+                  }
+                  onClick={() => toggleFavorite.mutate({ menuItemId: item.id, next: !isFavorite })}
+                >
+                  <Heart className="size-4" fill={isFavorite ? "currentColor" : "none"} />
+                </button>
+              )}
               <DishImage
                 src={item.image_url}
                 name={item.name}
