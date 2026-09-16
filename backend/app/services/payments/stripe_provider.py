@@ -162,15 +162,20 @@ class StripeProvider:
             logger.exception("Stripe checkout session creation failed order_id=%s", order_id)
             raise PaymentProviderError(str(error.user_message or error)) from error
 
-        intent_id = session.get("payment_intent")
-        if not intent_id:
-            # Without it there is nothing for the webhook to match the order
-            # against, and the customer would pay into silence.
-            raise PaymentProviderError("Stripe returned a checkout session with no payment intent.")
+        session_id = session.get("id")
+        url = session.get("url")
+        if not session_id or not url:
+            # Without these there is nothing to send the customer to, and
+            # nothing for the webhook to match the order against later.
+            raise PaymentProviderError("Stripe returned an unusable checkout session.")
+        # `payment_intent` is empty here on purpose: Stripe creates the intent
+        # when the customer starts paying, not when the session is made. The
+        # session id is the reference that exists now and arrives again on
+        # `checkout.session.completed`.
         return CheckoutSessionResult(
-            session_id=str(session.get("id")),
-            url=str(session.get("url")),
-            intent_id=str(intent_id),
+            session_id=str(session_id),
+            url=str(url),
+            intent_id=str(session.get("payment_intent") or session_id),
             amount=amount,
             currency=currency,
             expires_at=session.get("expires_at"),
@@ -228,6 +233,15 @@ class StripeProvider:
             last_error = data_object.get("last_payment_error") or {}
             failure_code = last_error.get("code")
             failure_message = last_error.get("message")
+        elif object_type == "checkout.session":
+            # A link being paid. The session id is what this app recorded when
+            # it issued the link, so that is what identifies the order — the
+            # intent Stripe has now created was unknown at that point.
+            intent_id = data_object.get("id")
+            currency = data_object.get("currency")
+            raw_amount = data_object.get("amount_total")
+            if raw_amount is not None and currency:
+                amount = from_minor_units(int(raw_amount), currency)
         elif object_type == "charge":
             intent_id = data_object.get("payment_intent")
             currency = data_object.get("currency")

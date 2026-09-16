@@ -81,7 +81,9 @@ class FakeProvider:
         return payments_base.CheckoutSessionResult(
             session_id=f"cs_test_{index}",
             url=f"https://checkout.stripe.test/cs_test_{index}",
-            intent_id=f"pi_test_{index}",
+            # As Stripe does: no PaymentIntent until the customer starts
+            # paying, so the session id is the reference that exists now.
+            intent_id=f"cs_test_{index}",
             amount=kwargs["amount"],
             currency=kwargs["currency"],
             expires_at=None,
@@ -786,15 +788,16 @@ class CreatePaymentLinkTests(unittest.TestCase):
         self.assertEqual(result.amount, Decimal("412.50"))
         self.assertTrue(result.url.startswith("https://"))
 
-    def test_the_intent_is_recorded_so_the_existing_webhook_can_finish_it(self) -> None:
-        # The whole reason a Checkout Session is used rather than a Payment
-        # Link object: it carries an intent the paid-webhook already knows.
+    def test_the_session_is_recorded_so_the_webhook_can_finish_it(self) -> None:
+        # Stripe has no PaymentIntent for a session until someone starts
+        # paying, so the session id is the reference recorded now and the
+        # one that comes back on checkout.session.completed.
         order = make_order()
         result, session, provider = self._link(order)
         self.assertEqual(len(session.transactions), 1)
-        self.assertEqual(session.transactions[0].provider_intent_id, "pi_test_1")
+        self.assertEqual(session.transactions[0].provider_intent_id, "cs_test_1")
         self.assertEqual(session.transactions[0].status, PaymentStatus.PENDING)
-        self.assertEqual(order.payment_reference, "pi_test_1")
+        self.assertEqual(order.payment_reference, "cs_test_1")
 
     def test_asking_twice_returns_one_link_and_one_transaction(self) -> None:
         # A link gets forwarded and tapped later. Two payable links for one

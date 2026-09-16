@@ -608,7 +608,7 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
             )
         else:
             order, transaction = found
-            if event.event_type == "payment_intent.succeeded":
+            if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
                 _mark_paid(db, order, transaction, event)
                 handled = "paid"
             elif event.event_type == "payment_intent.payment_failed":
