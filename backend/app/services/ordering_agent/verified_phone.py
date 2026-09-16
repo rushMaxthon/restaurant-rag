@@ -36,6 +36,15 @@ class PhoneNotVerified(Exception):
     """Raised rather than quietly provisioning from an unverified number."""
 
 
+class EmailAlreadyUsed(Exception):
+    """The email belongs to another account in this app.
+
+    Not an error to swallow: handing a verified phone the account that owns
+    an address would let anyone claim a stranger's order history by typing
+    their email.
+    """
+
+
 def customer_for_verified_phone(
     db: Session,
     *,
@@ -74,9 +83,25 @@ def customer_for_verified_phone(
     if existing is not None:
         return existing
 
+    # An email already spoken for in this app belongs to somebody, and a
+    # verified phone is no reason to hand them that account: anyone could
+    # type a stranger's address and inherit their order history. So the
+    # collision is reported and the customer is asked for another one —
+    # refusing is the only safe answer here.
+    clean_email = email.strip().lower()[:255]
+    taken = db.scalar(
+        select(User).where(
+            User.email == clean_email,
+            User.role == UserRole.CUSTOMER,
+            User.app_client_id == app_client_id,
+        )
+    )
+    if taken is not None:
+        raise EmailAlreadyUsed(clean_email)
+
     user = User(
         full_name=full_name.strip()[:255],
-        email=email.strip().lower()[:255],
+        email=clean_email,
         phone_number=normalized,
         hashed_password=hash_password(secrets.token_urlsafe(32)),
         role=UserRole.CUSTOMER,
@@ -96,4 +121,4 @@ def customer_for_verified_phone(
     return user
 
 
-__all__ = ["PhoneNotVerified", "customer_for_verified_phone"]
+__all__ = ["EmailAlreadyUsed", "PhoneNotVerified", "customer_for_verified_phone"]

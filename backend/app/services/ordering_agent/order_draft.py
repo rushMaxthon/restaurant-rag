@@ -207,6 +207,12 @@ def remember(draft: OrderDraft, **given: str | None) -> tuple[OrderDraft, list[s
         else:
             draft.fulfillment_type = fulfillment
 
+    # An address given is a delivery. Nobody hands over their street to
+    # collect a bag themselves, and asking "delivery or pickup?" straight
+    # after being told where to deliver reads as not having listened.
+    if draft.delivery_address and not draft.fulfillment_type:
+        draft.fulfillment_type = OrderFulfillmentType.DELIVERY.value
+
     return draft, problems
 
 

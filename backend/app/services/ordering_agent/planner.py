@@ -196,7 +196,11 @@ def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
     return "\n".join(lines)
 
 
-def _collecting_facts(collecting: Sequence[str] | None, ready_to_place: bool = False) -> str:
+def _collecting_facts(
+    collecting: Sequence[str] | None,
+    ready_to_place: bool = False,
+    pending: Sequence[str] | None = None,
+) -> str:
     """What this conversation is in the middle of.
 
     Live: the customer gave every missing detail in one message and the
@@ -213,6 +217,16 @@ def _collecting_facts(collecting: Sequence[str] | None, ready_to_place: bool = F
             "now; do not ask for details again.\n"
         )
     if not collecting:
+        if pending:
+            # There is a cart but nobody has asked to order yet. Saying what
+            # placing it would need means the model can answer "let's check
+            # out" with the question instead of stopping at the subtotal.
+            return (
+                "There is a cart. To place it as an order you would still "
+                f"need: {', '.join(pending)}. When the customer wants to "
+                "order, ask for those and pass what they say to "
+                "save_order_details.\n"
+            )
         return ""
     wanted = ", ".join(collecting)
     return (
@@ -271,6 +285,7 @@ def build_planner_prompt(
     cart_summary: str | None = None,
     collecting: Sequence[str] | None = None,
     ready_to_place: bool = False,
+    pending: Sequence[str] | None = None,
 ) -> str:
     """Public so a test can assert on the prompt text directly, the same way
     `test_chat_tools.py` asserts on `tool_chat.build_planner_prompt`'s
@@ -287,7 +302,7 @@ Return STRICT JSON only, one of these two shapes:
 Tools (each returns one slice of data):
 {describe_tools_for_prompt(tool_names)}
 
-{_customer_facts(diet)}{_cart_facts(cart_summary)}{_collecting_facts(collecting, ready_to_place)}
+{_customer_facts(diet)}{_cart_facts(cart_summary)}{_collecting_facts(collecting, ready_to_place, pending)}
 Conversation so far, most recent last (empty if this is the first message):
 {_serialize_thread(recent_history, previous_reply)}
 
@@ -477,6 +492,7 @@ def plan_step(
     cart_summary: str | None = None,
     collecting: Sequence[str] | None = None,
     ready_to_place: bool = False,
+    pending: Sequence[str] | None = None,
 ) -> PlanStep:
     """One planner call: run one more tool, answer, or refuse and say why.
 
@@ -492,7 +508,7 @@ def plan_step(
         raw = generator(
             build_planner_prompt(
                 message, history, tool_names, previous_reply, recent_history, diet,
-                cart_summary, collecting, ready_to_place,
+                cart_summary, collecting, ready_to_place, pending,
             ),
             settings.ordering_agent_planner_timeout_seconds,
             settings.ordering_agent_planner_max_tokens,

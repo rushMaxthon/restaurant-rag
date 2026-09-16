@@ -263,3 +263,22 @@ class ActionSpeaksTests(unittest.TestCase):
         from app.services.ordering_agent.loop import describe_applied
 
         self.assertIsNone(describe_applied([]))
+
+
+class AddressImpliesDeliveryTests(unittest.TestCase):
+    def test_an_address_settles_the_question_nobody_needs_asked(self) -> None:
+        # Live on WhatsApp: "deliver to 42 Example Road" was answered with
+        # "do you want delivery or pickup?".
+        draft, problems = order_draft.remember(
+            order_draft.OrderDraft(), delivery_address="42 Example Road, Ahmedabad"
+        )
+        self.assertEqual(problems, [])
+        self.assertEqual(draft.fulfillment_type, "DELIVERY")
+
+    def test_a_stated_pickup_is_not_overridden_by_an_address(self) -> None:
+        draft, _ = order_draft.remember(
+            order_draft.OrderDraft(),
+            fulfillment_type="PICKUP",
+            delivery_address="42 Example Road, Ahmedabad",
+        )
+        self.assertEqual(draft.fulfillment_type, "PICKUP")

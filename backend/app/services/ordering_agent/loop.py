@@ -213,6 +213,18 @@ def describe_collecting(missing: list[str] | None) -> str | None:
     return f"Thanks. I still need {', '.join(wanted[:-1])} and {wanted[-1]}."
 
 
+def _identifiable(scope: OrderingScope) -> bool:
+    """Whether an order could be placed for whoever this is.
+
+    A signed-in customer has an account. A customer on WhatsApp does not yet
+    — the account is made from their verified number at the moment of
+    placing — and requiring one before that made every WhatsApp turn look
+    unready forever, so nothing was ever placed.
+    """
+
+    return scope.customer is not None or bool(scope.verified_phone)
+
+
 def describe_applied(records: list[ToolCallRecord]) -> str | None:
     """What the turn actually did to the cart, said from the tool's own rows.
 
@@ -251,7 +263,7 @@ def describe_ready(total: str | None = None) -> str:
     nothing. The customer gets a sentence and a button instead.
     """
 
-    return "That is everything I need. Tap Place order below and I will send you a payment link."
+    return "That is everything I need to place your order."
 
 
 def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
@@ -447,8 +459,14 @@ def run_turn(
     # they have been asked for their details; empty once nothing is missing
     # and the order can be placed.
     collecting: list[str] | None = None
+    # What an order would still need, stated whenever there is a cart to
+    # order. Live: "let's go for checkout" read the cart back and stopped,
+    # because nothing had told the model what placing it would require.
+    pending: list[str] = []
     if scope.session_id is not None:
         draft = tools_module._draft_for(scope)
+        if cart:
+            pending = draft.missing_fields()
         if draft.collecting:
             collecting = draft.missing_fields()
 
@@ -479,7 +497,31 @@ def run_turn(
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
-        ready_now = _still_missing() == [] and scope.customer is not None
+        ready_now = _still_missing() == [] and _identifiable(scope)
+        # A channel with no button, everything gathered, and rounds spent
+        # arguing with itself: place it. The model would not, measured over
+        # five different ways of asking, and the customer has already given
+        # everything an order needs. It is created unpaid, so the
+        # confirmation that matters is still theirs — opening the link.
+        if auto_place and ready_now and not placed_order_in(records):
+            prepared, guard_error = guards.prepare_tool_call(
+                "place_order", {}, cart=cart, seen=seen, diet=scope.diet
+            )
+            if guard_error is None:
+                try:
+                    # A read that failed earlier in the turn leaves the
+                    # session needing one before anything can be written.
+                    # Nothing the agent wants is pending — its tools commit
+                    # their own work — so this only clears the wreckage.
+                    if db is not None and getattr(db, "is_active", True) is False:
+                        db.rollback()
+                    result = TOOLS["place_order"].handler(db, scope, prepared)
+                    records.append(
+                        ToolCallRecord(tool="place_order", args=prepared.model_dump(), result=result)
+                    )
+                except Exception as error:  # noqa: BLE001 - never lose the turn over it
+                    logger.warning("Ordering agent could not place at the cap: %s", error, exc_info=True)
+
         question = (
             describe_placed_order(placed_order_in(records))
             or describe_applied(records)
@@ -512,7 +554,7 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
-        ready = collecting == [] and scope.customer is not None
+        ready = collecting == [] and _identifiable(scope)
         # On a channel with no button, being ready IS the instruction: the
         # model will not reach for the tool (measured, repeatedly), and the
         # customer has already asked to order and handed over their details.
@@ -533,7 +575,8 @@ def run_turn(
                 recent_history=None if ready else recent_history,
                 diet=scope.diet,
                 cart_summary=cart_summary,
-                collecting=collecting,
+                collecting=collecting or None,
+                pending=pending,
                 ready_to_place=ready,
             )
 
@@ -561,6 +604,32 @@ def run_turn(
                 continue
             step = repaired
 
+        # An answer the model itself calls an order answer, with a cart to
+        # order and nothing started yet, is not an answer — it is the moment
+        # to find out what is still needed. Live on WhatsApp: "let's go for
+        # checkout" called no tool at all, so nothing owned the turn and the
+        # customer was told that checkout was outside our kitchen.
+        if (
+            step.answer is not None
+            and step.answer_about == "order"
+            and cart
+            and collecting is None
+            and "order_requirements" in TOOLS
+        ):
+            step = PlanStep(tool="order_requirements", args={})
+
+        # The details landed during THIS turn, so the check at the top of the
+        # round saw an incomplete draft. Without this the customer is asked to
+        # confirm on the next message what they have just finished giving.
+        if (
+            auto_place
+            and step.answer is not None
+            and _still_missing() == []
+            and not placed_order_in(records)
+            and "place_order" in TOOLS
+        ):
+            step = PlanStep(tool="place_order", args={})
+
         if step.answer is not None:
             # An answer that says nothing is not an answer. The tool results
             # hold the cart; prefer saying it to shipping an empty string and
@@ -581,7 +650,7 @@ def run_turn(
                 answer=spoken,
                 placed_order=placed,
                 ready_to_place=(
-                    _still_missing() == [] and scope.customer is not None and placed is None
+                    _still_missing() == [] and _identifiable(scope) and placed is None
                 ),
                 answer_about=(
                     "order" if (placed or collecting is not None) else step.answer_about
@@ -649,9 +718,17 @@ def run_turn(
             # got three. A cart change is the end of the work; the client
             # names what happened from the action and the menu it holds, so
             # no further model round is spent phrasing it.
+            # Said, not silent. The web client composes this sentence from the
+            # action and the menu it holds; a chat thread has no client, and a
+            # turn that added something and said nothing let the reply
+            # pipeline answer instead — with "that one's outside my kitchen".
             return TurnOutcome(
-                answer=None, actions=actions, records=records,
-                fallback_reason=None, elapsed_seconds=clock() - start,
+                answer=describe_applied(records),
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+                answer_about="cart",
             )
 
     return _capped("round_cap")

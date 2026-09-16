@@ -531,7 +531,10 @@ class DestructivePolicyTests(OrderingAgentLoopTestCase):
         self.assertEqual([action["kind"] for action in outcome.actions], ["add"])
         self.assertEqual(remove_calls, [], "nothing runs after the first action")
         self.assertIsNone(outcome.fallback_reason)
-        self.assertIsNone(outcome.answer, "the client names what happened; no model round is spent on it")
+        # The turn says what it did, from the tool's own rows — no model
+        # round spent on it. The web client still renders its own sentence
+        # from the action; a chat thread has no client and needs these words.
+        self.assertIn("Added", outcome.answer or "")
 
 
 class GuardsUnitTests(unittest.TestCase):

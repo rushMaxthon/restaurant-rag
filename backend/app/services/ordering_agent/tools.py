@@ -62,6 +62,7 @@ from app.services import rag as ordering_rag
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.ordering_agent import order_draft
 from app.services.ordering_agent.verified_phone import (
+    EmailAlreadyUsed,
     PhoneNotVerified,
     customer_for_verified_phone,
 )
@@ -1370,6 +1371,10 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
                 full_name=draft.contact_name or "",
                 email=draft.contact_email or "",
             )
+        except EmailAlreadyUsed:
+            # Answerable by the customer, so it is said rather than logged
+            # and swallowed.
+            return {"outcome": "email_in_use"}
         except PhoneNotVerified as error:
             logger.warning("Could not identify a WhatsApp customer: %s", error)
             return {"outcome": "not_identified"}
