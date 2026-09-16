@@ -1677,7 +1677,7 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
         category=_optional_text(payload.get("category")) if isinstance(payload.get("category"), str) else None,
         restaurant_query=_optional_text(payload.get("restaurant_query")) if isinstance(payload.get("restaurant_query"), str) else None,
         budget=budget,
-        diet=_optional_text(payload.get("diet")) if isinstance(payload.get("diet"), str) else None,
+        diet=_canonical_intent_diet(payload.get("diet")),
         spicy=spicy,
         mood=_optional_text(payload.get("mood")) if isinstance(payload.get("mood"), str) else None,
         show_more=bool(show_more_raw) if isinstance(show_more_raw, bool) else False,
@@ -2042,6 +2042,24 @@ def _merge_intent_with_session(intent: ExtractedIntent, session_state: SessionCo
         show_more=False,
         new_only=intent.new_only or (session_state.new_only if should_inherit_soft_context else False),
     )
+
+
+def _canonical_intent_diet(value: object | None) -> str | None:
+    """The one spelling the rest of this module compares against.
+
+    Two vocabularies grew up side by side: `DIET_ALIASES` canonicalises to
+    "VEG"/"NON_VEG" for stored preferences, while every retrieval check here
+    reads `intent.diet == "veg"`. A model that answered "vegetarian" — which
+    it does — matched neither, so the diet silently stopped filtering
+    anything. Everything funnels through here now; the lowercase form wins
+    because it is what the comparisons and the effective-query builder
+    already use.
+    """
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    canonical = _normalize_diet_value([value])
+    return canonical.lower() if canonical else None
 
 
 def _build_effective_query_from_intent(message: str, intent: ExtractedIntent, session_state: SessionConversationState) -> str:
@@ -7347,7 +7365,8 @@ def _run_ordering_agent(
                 user, restaurant_id, restaurant_location_id,
                 # A diet stated on THIS turn wins: the profile write above
                 # is only read on the next one.
-                diet=stated_diet or preference_diet_for_cache(db, user, guest_preferences),
+                diet=_canonical_intent_diet(stated_diet)
+                or preference_diet_for_cache(db, user, guest_preferences),
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`

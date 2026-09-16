@@ -610,3 +610,26 @@ class SchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class DietVocabularyTests(unittest.TestCase):
+    """One spelling, whatever the model or the preference table says.
+
+    The live failure: the extractor returned "vegetarian", every retrieval
+    check compares against "veg", and the diet quietly stopped filtering.
+    """
+
+    def test_every_spelling_lands_on_the_form_retrieval_compares(self) -> None:
+        from app.services.rag import _canonical_intent_diet
+
+        for spelling in ("veg", "VEG", "Vegetarian", "vegetarian"):
+            self.assertEqual(_canonical_intent_diet(spelling), "veg", spelling)
+        for spelling in ("non veg", "NON_VEG", "non vegetarian"):
+            self.assertEqual(_canonical_intent_diet(spelling), "non_veg", spelling)
+
+    def test_nothing_useful_stays_nothing(self) -> None:
+        from app.services.rag import _canonical_intent_diet
+
+        for value in (None, "", "   ", "pescatarian", 7):
+            self.assertIsNone(_canonical_intent_diet(value))
+
