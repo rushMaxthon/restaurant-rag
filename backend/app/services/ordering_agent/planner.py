@@ -131,6 +131,7 @@ def build_planner_prompt(
     message: str,
     history: Sequence[ToolCallRecord],
     tool_names: tuple[str, ...] | None = None,
+    previous_reply: str | None = None,
 ) -> str:
     """Public so a test can assert on the prompt text directly, the same way
     `test_chat_tools.py` asserts on `tool_chat.build_planner_prompt`'s
@@ -146,6 +147,9 @@ Return STRICT JSON only, one of these two shapes:
 
 Tools (each returns one slice of data):
 {describe_tools_for_prompt(tool_names)}
+
+What you said to the customer last turn (empty if nothing):
+{(previous_reply or "").strip()[:600]}
 
 Calls already made this turn, and what they returned:
 {_serialize_history(history)}
@@ -167,6 +171,11 @@ Rules:
 - a result that carries an action (status "applied" or "proposed") is the
   end of the work: answer by telling the customer what was done, or what
   needs their confirmation
+- read the customer's message against what you said last turn. If you
+  offered to add more or check out and they are agreeing to pay, finish,
+  confirm the order, or check out — in whatever words — call go_to_checkout.
+  If they are declining or want to keep ordering, answer by asking what to
+  add. If their message is about something else, treat it on its own.
 
 Customer: {message}
 
@@ -262,6 +271,7 @@ def plan_step(
     history: Sequence[ToolCallRecord],
     tool_names: tuple[str, ...] | None = None,
     generate: Generate | None = None,
+    previous_reply: str | None = None,
 ) -> PlanStep:
     """One planner call: run one more tool, answer, or refuse and say why.
 
@@ -275,7 +285,7 @@ def plan_step(
     generator = generate or _ollama_generate
     try:
         raw = generator(
-            build_planner_prompt(message, history, tool_names),
+            build_planner_prompt(message, history, tool_names, previous_reply),
             settings.ordering_agent_planner_timeout_seconds,
             settings.ordering_agent_planner_max_tokens,
         )

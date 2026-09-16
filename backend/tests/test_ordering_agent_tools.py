@@ -58,6 +58,8 @@ EXPECTED_TOOL_NAMES = frozenset(
         "remove_from_cart",
         "set_quantity",
         "clear_cart",
+        # The hand-off to /checkout, added with the "add more or check out?" flow.
+        "go_to_checkout",
     }
 )
 

@@ -231,3 +231,11 @@ class NeedsChoiceRuleTests(unittest.TestCase):
         self.assertIn("do not call the tool again", prompt)
         self.assertIn("never repeat a call you already made", prompt)
 
+
+class PreviousReplyTests(unittest.TestCase):
+    def test_the_previous_line_and_the_checkout_rule_are_in_the_prompt(self) -> None:
+        prompt = build_planner_prompt("yes", history=[], tool_names=None, previous_reply="Added a pizza. Add more, or check out?")
+        self.assertIn("Added a pizza. Add more, or check out?", prompt)
+        self.assertIn("call go_to_checkout", prompt)
+        self.assertIn("go_to_checkout(lines)", prompt)
+

@@ -7274,6 +7274,7 @@ def _run_ordering_agent(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None,
     turn_id: str | None,
+    previous_reply: str | None = None,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7316,6 +7317,7 @@ def _run_ordering_agent(
             # means the caller sent none, not an empty cart — both reach the
             # agent as "nothing in the cart", which is what the tools expect.
             cart=list(cart or []),
+            previous_reply=previous_reply,
         )
     except Exception:
         logger.warning(
@@ -7796,6 +7798,7 @@ def stream_chat_message(
     # about what the browser is holding right now. Optional so every existing
     # caller keeps working unchanged.
     cart: list[CartLinePayload] | None = None,
+    previous_reply: str | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7986,6 +7989,7 @@ def stream_chat_message(
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
             turn_id=turn_id,
+            previous_reply=previous_reply,
         )
         yield _sse_frame(
             "done",
@@ -8185,6 +8189,7 @@ def stream_chat_message(
         restaurant_id=restaurant_id,
         restaurant_location_id=restaurant_location_id,
         turn_id=turn_id,
+        previous_reply=previous_reply,
     )
     yield _sse_frame(
         "done",

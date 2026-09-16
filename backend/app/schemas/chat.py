@@ -69,6 +69,12 @@ class ChatMessageRequest(BaseModel):
     # Both selling rules are functions of the cart, and the cart lives in the
     # browser. Untrusted: every id is re-resolved against the branch.
     cart: list[CartLinePayload] = Field(default_factory=list)
+    # The assistant's last line as the customer saw it, so the ordering
+    # agent can read "yes" or "not yet" against what it just offered. The
+    # client holds the thread; sending one line back is cheaper and more
+    # honest than re-deriving it from stored history, which may carry a
+    # different rendering than the one on screen.
+    previous_reply: str | None = Field(default=None, max_length=2000)
 
 
 class CartActionResponse(BaseModel):

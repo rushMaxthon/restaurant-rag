@@ -51,7 +51,9 @@ function describeAppliedActions(actions: CartAction[], menu: MenuItem[]): string
       }
     })
     .filter((line): line is string => Boolean(line));
-  return lines.length ? lines.join(" ") : undefined;
+  if (!lines.length) return undefined;
+  const added = actions.some((action) => action.status === "applied" && action.kind === "add");
+  return lines.join(" ") + (added ? " Add more, or check out?" : "");
 }
 
 export const Route = createFileRoute("/concierge")({
@@ -307,6 +309,8 @@ function ConciergePage() {
           // agent resolve "make it two" or "remove that" against what is
           // actually in the cart right now.
           cart: cartLinesForRequest(store.cart),
+          // The line the customer is replying to, if they are replying.
+          previous_reply: turns[turns.length - 1]?.text,
         },
         {
           onMeta: (meta) => {
@@ -409,6 +413,19 @@ function ConciergePage() {
     const proposal = turn.proposals?.[index];
     if (!proposal || proposal.resolution !== "pending") return;
 
+    if (proposal.action.kind === "checkout") {
+      // The hand-off: nothing to apply, the checkout page does the rest.
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id !== turn.id
+            ? t
+            : { ...t, proposals: t.proposals?.map((p, i) => (i === index ? { ...p, resolution: "confirmed" } : p)) },
+        ),
+      );
+      void navigate({ to: "/checkout" });
+      return;
+    }
+
     const menu = resolveMenu();
     const { dropped } = store.applyCartActions(
       `${turn.turnId}:confirm:${index}`,
@@ -462,6 +479,7 @@ function ConciergePage() {
   /** One line naming what the card is asking, or what it already did. */
   function proposalCopy(action: CartAction, menu: MenuItem[], confirmed: boolean): string {
     const dish = proposalDishLabel(action, menu);
+    if (action.kind === "checkout") return confirmed ? "Taking you to checkout." : "Ready to check out?";
     if (action.kind === "clear") return confirmed ? "Cleared your whole cart." : "Clear your whole cart?";
     if (action.kind === "remove") return confirmed ? `Removed ${dish}.` : `Remove ${dish}?`;
     if (action.kind === "set_quantity")
@@ -647,6 +665,10 @@ function ConciergePage() {
                   {turn.cartUpdated && (
                     <p className="text-base text-muted-foreground">
                       Cart updated —{" "}
+                      <Link to="/checkout" className="underline underline-offset-2">
+                        Go to checkout
+                      </Link>
+                      {" · "}
                       <button
                         type="button"
                         onClick={() => undoTurn(turn)}

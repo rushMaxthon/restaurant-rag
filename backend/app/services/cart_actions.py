@@ -245,7 +245,9 @@ def classify_cart_verb(message: str) -> CartVerb | None:
     return None
 
 
-ActionKind = Literal["add", "remove", "set_quantity", "clear"]
+# "checkout" is not a cart mutation: it is the hand-off to /checkout, always
+# proposed, and the client navigates rather than changes a line.
+ActionKind = Literal["add", "remove", "set_quantity", "clear", "checkout"]
 ActionStatus = Literal["applied", "proposed"]
 # `needs_choice` is not in the design spec's draft enum (`named` / `ambiguous`
 # / `destructive`) — added because "the dish was named confidently but has

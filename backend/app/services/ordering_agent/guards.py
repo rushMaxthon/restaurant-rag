@@ -69,6 +69,7 @@ _ALWAYS_INJECTED_CART_FIELD: dict[str, str] = {
     "view_cart": "lines",
     "remove_from_cart": "existing_lines",
     "set_quantity": "existing_lines",
+    "go_to_checkout": "lines",
 }
 
 
@@ -283,7 +284,7 @@ def enforce_destructive_policy(result: dict[str, Any]) -> dict[str, Any]:
 
     kind = action.get("kind")
     violates = action.get("status") == "applied" and (
-        kind == "clear" or (kind in ("remove", "set_quantity") and action.get("reason") != "named")
+        kind in ("clear", "checkout") or (kind in ("remove", "set_quantity") and action.get("reason") != "named")
     )
     if not violates:
         return result

@@ -323,6 +323,17 @@ class SetQuantityArgs(ToolArgs):
     existing_lines: list[CartLineArgs] = Field(default_factory=list)
 
 
+class GoToCheckoutArgs(ToolArgs):
+    """The customer is done adding and wants to pay. `lines` is the browser's
+    cart, injected by the loop like `view_cart`'s, so an empty cart can be
+    refused here rather than handing someone to a checkout with nothing in
+    it. Nothing else: no address, no slot, no payment method — those are
+    /checkout's questions, and the spec keeps this agent out of them.
+    """
+
+    lines: list[CartLineArgs] = Field(default_factory=list)
+
+
 class ClearCartArgs(NoArgs):
     """Empty the cart. `NoArgs` on purpose — there is no field a model could
     fill in that would make this any less destructive, so none exists to
@@ -1305,6 +1316,31 @@ def _set_quantity(db: Session, scope: OrderingScope, args: SetQuantityArgs) -> d
     return {"outcome": "action", "action": _serialize_action(action)}
 
 
+def _go_to_checkout(db: Session, scope: OrderingScope, args: GoToCheckoutArgs) -> dict[str, Any]:
+    """Hand the customer to /checkout. Proposed, never applied: the client
+    renders it as a "Go to checkout" card, and the page that opens is the one
+    that collects delivery/pickup, the slot and the card today. The agent
+    neither places nor pays for an order — `FORBIDDEN_ARG_NAMES` makes that
+    structurally impossible, and this tool has no arguments a customer could
+    use to try.
+    """
+
+    if not args.lines:
+        return {"outcome": "empty_cart"}
+    return {
+        "outcome": "action",
+        "action": {
+            "kind": "checkout",
+            "status": "proposed",
+            "reason": "named",
+            "menu_item_id": None,
+            "menu_item_size_id": None,
+            "selected_option_ids": [],
+            "quantity": None,
+        },
+    }
+
+
 def _clear_cart(db: Session, scope: OrderingScope, args: ClearCartArgs) -> dict[str, Any]:
     """Always `proposed`, unconditionally — no argument, no confidence level
     and no cart content could ever change that, per the plan's "destructive
@@ -1398,6 +1434,13 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
         ClearCartArgs,
         _clear_cart,
     ),
+    ToolSpec(
+        "go_to_checkout",
+        "The customer is finished adding and wants to pay: hands them to "
+        "the checkout page. Never places or pays for an order.",
+        GoToCheckoutArgs,
+        _go_to_checkout,
+    ),
 )
 
 
@@ -1452,6 +1495,7 @@ __all__ = [
     "CartLineArgs",
     "CheckHoursArgs",
     "ClearCartArgs",
+    "GoToCheckoutArgs",
     "GetDishArgs",
     "NoArgs",
     "OrderingScope",

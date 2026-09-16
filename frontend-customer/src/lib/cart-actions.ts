@@ -155,6 +155,13 @@ export function planCartActions(
   const proposals: CartAction[] = [];
 
   for (const action of actions) {
+    // A checkout hand-off is not a cart change: proposed, the screen shows a
+    // "Go to checkout" card; applied would be a drifted shape, dropped.
+    if (action.kind === "checkout") {
+      if (action.status === "proposed") proposals.push(action);
+      else dropped.push(action);
+      continue;
+    }
     if (action.kind === "clear") {
       // See the module docstring: an "applied" clear is a drifted shape,
       // never a real instruction, so it is dropped rather than trusted.

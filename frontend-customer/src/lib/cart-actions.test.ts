@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+
+// The checkout hand-off, added with the "add more or check out?" flow.
 import { planCartActions } from "./cart-actions";
 import { applyCartActionsToCart } from "./bangkok-store";
 import type { CartAction } from "./api";
@@ -180,3 +182,22 @@ describe("applyCartActionsToCart (store-level idempotency)", () => {
     expect(second.cart).toHaveLength(1);
   });
 });
+
+describe("the checkout hand-off", () => {
+  const checkout = (status: "applied" | "proposed"): CartAction => ({
+    kind: "checkout", status, reason: "named", menu_item_id: null, menu_item_size_id: null, selected_option_ids: [], quantity: null,
+  });
+
+  it("proposed goes to proposals and changes nothing", () => {
+    const result = planCartActions([checkout("proposed")], [], []);
+    expect(result.proposals).toHaveLength(1);
+    expect(result.next).toEqual([]);
+  });
+
+  it("applied is a drifted shape and is dropped", () => {
+    const result = planCartActions([checkout("applied")], [], []);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.proposals).toHaveLength(0);
+  });
+});
+

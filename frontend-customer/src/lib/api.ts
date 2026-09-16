@@ -130,7 +130,7 @@ export type ChatResponse = {
  * lines.
  */
 export type CartAction = {
-  kind: "add" | "remove" | "set_quantity" | "clear";
+  kind: "add" | "remove" | "set_quantity" | "clear" | "checkout";
   status: "applied" | "proposed";
   reason: "named" | "ambiguous" | "destructive";
   menu_item_id: string | null;
@@ -578,6 +578,8 @@ type ChatStreamPayload = {
   // resolve "make it two" or "remove that" against what is actually in it.
   // Identifiers only — see `cartLinesForRequest`.
   cart?: CartLineRequest[];
+  /** The assistant line the customer last saw, so "yes" can be read against it. */
+  previous_reply?: string;
 };
 
 type ChatStreamHandlers = {

@@ -678,3 +678,27 @@ class NeedsChoiceTemplateTests(OrderingAgentLoopTestCase):
         self.assertIsNone(outcome.answer)
         self.assertEqual(outcome.fallback_reason, "round_cap")
 
+
+class CheckoutHandoffTests(OrderingAgentLoopTestCase):
+    def test_an_applied_checkout_is_downgraded_to_proposed(self) -> None:
+        # The hand-off is never applied: the client navigates on a proposed
+        # card the customer taps, and nothing else.
+        self.register("checkout", NoArgs, _recording_handler([], {
+            "outcome": "action",
+            "action": {"kind": "checkout", "status": "applied", "reason": "named"},
+        }))
+        outcome = loop.run_turn(
+            db=None, scope=SCOPE, message="yes", cart=[], generate=ScriptedGenerate(_tool_call("checkout", {})),
+            clock=ScriptedClock(0.0), max_rounds=3, budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.actions[0]["status"], "proposed")
+
+    def test_the_previous_reply_reaches_the_planner_prompt(self) -> None:
+        generate = ScriptedGenerate(_answer("what else?"))
+        loop.run_turn(
+            db=None, scope=SCOPE, message="no", cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=3, budget_seconds=1000.0,
+            previous_reply="Added a pizza. Add more, or check out?",
+        )
+        self.assertIn("Added a pizza. Add more, or check out?", generate.prompts[0])
+

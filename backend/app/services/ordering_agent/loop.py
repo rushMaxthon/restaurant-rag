@@ -155,6 +155,7 @@ def run_turn(
     clock: Clock = time.monotonic,
     max_rounds: int | None = None,
     budget_seconds: float | None = None,
+    previous_reply: str | None = None,
 ) -> TurnOutcome:
     """Run one customer turn to completion, or to whichever bound stops it
     first. `clock`/`generate` are injected so a test drives every round
@@ -209,7 +210,7 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
-        step = plan_step(message, history=tuple(records), generate=generate)
+        step = plan_step(message, history=tuple(records), generate=generate, previous_reply=previous_reply)
 
         if not step.ok:
             if step.error == "planner_unavailable":

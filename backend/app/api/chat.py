@@ -136,6 +136,7 @@ def stream_chat_message_route(
             # same reason `guest_preferences` is: this is the route the web
             # concierge and mobile actually call.
             cart=payload.cart,
+            previous_reply=payload.previous_reply,
         ),
         media_type="text/event-stream",
         headers={
