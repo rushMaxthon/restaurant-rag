@@ -605,6 +605,17 @@ class Settings(BaseSettings):
     # does. Overridden per deployment — the default is this machine's dev
     # server, which is where it is used today.
     frontend_base_url: str = "http://localhost:5173"
+    # Where THIS API is reachable from a customer's phone — the tunnel while
+    # developing, the Render URL in production. An order placed in a chat is
+    # paid on a phone, and Stripe then sends the phone to `frontend_base_url`,
+    # which on the phone is the phone: the payment landed and the last thing
+    # the customer saw was a browser error. Empty means chat orders fall back
+    # to the frontend URLs, exactly as web orders always do.
+    public_base_url: str = ""
+    # The WhatsApp number customers message, digits only, for the "back to
+    # the chat" link on that page. Not derivable from the phone-number id
+    # Meta gives the API, which is an id and not the number.
+    whatsapp_business_number: str = ""
     payment_currency: str = "usd"
     # Whether this deployment takes cash on delivery at all. Off: this product
     # is card-only, and an always-available COD meant "Place order" completed

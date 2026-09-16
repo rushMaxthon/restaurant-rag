@@ -309,7 +309,7 @@ def create_payment_link(
             detail="Payment links are not available right now.",
         )
 
-    base = settings.frontend_base_url.rstrip("/")
+    success_url, cancel_url = _return_urls(order)
     try:
         result = provider.create_checkout_session(
             order_id=order.id,
@@ -319,8 +319,8 @@ def create_payment_link(
             currency=order.currency,
             description=f"Order {str(order.id)[:8]}",
             customer_email=getattr(customer, "email", None),
-            success_url=f"{base}/orders/{order.id}?paid=1",
-            cancel_url=f"{base}/orders/{order.id}",
+            success_url=success_url,
+            cancel_url=cancel_url,
             idempotency_key=f"order:{order.id}:checkout",
             metadata={"restaurant_location_id": str(order.restaurant_location_id)},
         )
@@ -643,6 +643,33 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         announce()
 
     return {"status": handled, "event_id": event.event_id}
+
+
+def _return_urls(order: Order) -> tuple[str, str]:
+    """Where Stripe sends the customer once they have paid, or given up.
+
+    A web order goes back to the web app, as it always has. An order placed
+    in a chat is being paid on a phone, and `frontend_base_url` on a phone is
+    the phone — so it returns to a page this API serves at its public
+    address instead, which says the payment landed and points back to the
+    chat. With no public address configured, chat orders take the web path
+    too, which is the behaviour this deployment had before.
+    """
+
+    web = settings.frontend_base_url.rstrip("/")
+    web_urls = (f"{web}/orders/{order.id}?paid=1", f"{web}/orders/{order.id}")
+
+    public = (settings.public_base_url or "").strip().rstrip("/")
+    if not public:
+        return web_urls
+    from app.services.ordering_agent import order_channel
+
+    if not order_channel.phone_for(order.id):
+        return web_urls
+    return (
+        f"{public}/api/payments/return/{order.id}?outcome=paid",
+        f"{public}/api/payments/return/{order.id}?outcome=cancelled",
+    )
 
 
 def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:

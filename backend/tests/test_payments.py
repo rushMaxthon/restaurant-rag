@@ -1018,3 +1018,86 @@ class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
         ):
             body, _ = self.said(call, phone=None)
             self.assertIsNone(body)
+
+
+class ReturnUrlTests(unittest.TestCase):
+    """Where Stripe sends the customer back, by where they ordered from."""
+
+    def order(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4())
+
+    def test_a_web_order_returns_to_the_web_app_as_before(self) -> None:
+        # The path that already works, and must keep working.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", "https://api.example.test"), \
+             patch.object(service.settings, "frontend_base_url", "http://localhost:5173"), \
+             patch.object(order_channel, "phone_for", return_value=None):
+            success, cancel = service._return_urls(order)
+        self.assertEqual(success, f"http://localhost:5173/orders/{order.id}?paid=1")
+        self.assertEqual(cancel, f"http://localhost:5173/orders/{order.id}")
+
+    def test_a_chat_order_returns_to_this_api_at_its_public_address(self) -> None:
+        # Live: the phone was sent to localhost:5173, which on a phone is the
+        # phone, and the last thing the customer saw was a browser error.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", "https://api.example.test/"), \
+             patch.object(order_channel, "phone_for", return_value="+916353100362"):
+            success, cancel = service._return_urls(order)
+        self.assertEqual(success, f"https://api.example.test/api/payments/return/{order.id}?outcome=paid")
+        self.assertEqual(cancel, f"https://api.example.test/api/payments/return/{order.id}?outcome=cancelled")
+
+    def test_a_chat_order_with_no_public_address_takes_the_web_path(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", ""), \
+             patch.object(service.settings, "frontend_base_url", "http://localhost:5173"), \
+             patch.object(order_channel, "phone_for", return_value="+916353100362"):
+            success, _ = service._return_urls(order)
+        self.assertTrue(success.startswith("http://localhost:5173/orders/"))
+
+
+class ReturnPageTests(unittest.TestCase):
+    """The page a phone lands on: says the outcome, shows no personal data."""
+
+    def page(self, outcome, number="918758325037"):
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.api import payments as payments_api
+        from app.main import app
+
+        with patch.object(payments_api.settings, "whatsapp_business_number", number):
+            return TestClient(app).get(f"/api/payments/return/{uuid.uuid4()}?outcome={outcome}")
+
+    def test_paid_points_back_to_the_chat(self) -> None:
+        response = self.page("paid")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Payment received", response.text)
+        self.assertIn("https://wa.me/918758325037", response.text)
+
+    def test_cancelled_says_nothing_was_charged(self) -> None:
+        response = self.page("cancelled")
+        self.assertIn("Payment not completed", response.text)
+        self.assertIn("Nothing has been charged", response.text)
+
+    def test_no_business_number_still_renders(self) -> None:
+        response = self.page("paid", number="")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("wa.me", response.text)
