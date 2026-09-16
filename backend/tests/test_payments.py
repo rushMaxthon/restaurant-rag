@@ -932,3 +932,89 @@ class OrderChannelTests(unittest.TestCase):
         order_id = uuid.uuid4()
         order_channel.remember(order_id, phone_number="")
         self.assertIsNone(order_channel.phone_for(order_id))
+
+
+class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
+    """Success was told; a decline, a cancellation and a refund were not.
+
+    Silence after a declined card reads exactly like a success, which is the
+    worst of the four to get wrong.
+    """
+
+    def order(self, total="261.45"):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total), customer=None)
+
+    def said(self, call, *, phone="+916353100362"):
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+
+        sent: list = []
+        forgotten: list = []
+        with patch.object(order_channel, "phone_for", return_value=phone), patch.object(
+            order_channel, "forget", lambda order_id: forgotten.append(order_id)
+        ), patch("app.tasks.whatsapp.send_text", lambda to, body: sent.append((to, body)) or True):
+            call()
+        return (sent[0][1] if sent else None), bool(forgotten)
+
+    def test_a_declined_payment_says_so_and_keeps_the_conversation(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        order = self.order()
+        transaction = SimpleNamespace(failure_message="Your card was declined")
+        body, forgotten = self.said(
+            lambda: service._report_failure_in_chat(None, order, transaction)
+        )
+        self.assertIn("did not go through", body)
+        self.assertIn("Your card was declined", body)
+        self.assertIn("Nothing has been charged", body)
+        self.assertFalse(forgotten, "they may still pay; the conversation is kept")
+
+    def test_a_bank_essay_is_not_repeated_at_the_customer(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        transaction = SimpleNamespace(failure_message="x" * 400)
+        body, _ = self.said(
+            lambda: service._report_failure_in_chat(None, self.order(), transaction)
+        )
+        self.assertNotIn("xxxx", body)
+        self.assertIn("did not go through", body)
+
+    def test_a_cancelled_payment_says_nothing_was_charged(self) -> None:
+        from app.services.payments import service
+
+        body, forgotten = self.said(lambda: service._report_cancelled_in_chat(self.order()))
+        self.assertIn("cancelled", body)
+        self.assertIn("nothing has been charged", body)
+        self.assertTrue(forgotten)
+
+    def test_a_refund_says_where_the_money_went(self) -> None:
+        from app.services.payments import service
+
+        body, forgotten = self.said(lambda: service._report_refunded_in_chat(self.order()))
+        self.assertIn("$261.45", body)
+        self.assertIn("refund", body.lower())
+        self.assertTrue(forgotten)
+
+    def test_a_web_order_hears_none_of_it(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        for call in (
+            lambda: service._confirm_in_chat(self.order()),
+            lambda: service._report_cancelled_in_chat(self.order()),
+            lambda: service._report_refunded_in_chat(self.order()),
+            lambda: service._report_failure_in_chat(
+                None, self.order(), SimpleNamespace(failure_message=None)
+            ),
+        ):
+            body, _ = self.said(call, phone=None)
+            self.assertIsNone(body)

@@ -8,6 +8,8 @@ the provider, not the reference.
 from __future__ import annotations
 
 import logging
+from functools import partial
+from typing import Callable
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -600,7 +602,10 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         return {"status": "duplicate", "event_id": event.event_id}
 
     handled = "ignored"
-    paid_order: Order | None = None
+    # What to say once the change is safely recorded. Said after the commit
+    # below, never inside it: a message is not worth a database transaction
+    # held open on a call to Meta.
+    announce: Callable[[], None] | None = None
     if event.intent_id:
         found = _order_for_intent(db, event.intent_id)
         if found is None:
@@ -612,19 +617,19 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
             if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
                 _mark_paid(db, order, transaction, event)
                 handled = "paid"
-                paid_order = order
+                announce = partial(_confirm_in_chat, order)
             elif event.event_type == "payment_intent.payment_failed":
                 _mark_failed(db, order, transaction, event)
                 handled = "failed"
+                announce = partial(_report_failure_in_chat, db, order, transaction)
             elif event.event_type == "payment_intent.canceled":
                 _mark_cancelled(db, order, transaction)
                 handled = "cancelled"
+                announce = partial(_report_cancelled_in_chat, order)
             elif event.event_type == "charge.refunded":
                 _mark_refunded(db, order, transaction)
                 handled = "refunded"
-
-    if paid_order is not None:
-        _confirm_in_chat(paid_order)
+                announce = partial(_report_refunded_in_chat, order)
 
     record = db.scalar(
         select(PaymentWebhookEvent).where(PaymentWebhookEvent.provider_event_id == event.event_id)
@@ -634,16 +639,24 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         db.add(record)
         db.commit()
 
+    if announce is not None:
+        announce()
+
     return {"status": handled, "event_id": event.event_id}
 
 
-def _confirm_in_chat(order: Order) -> None:
-    """Say thank you where the order was placed, if it was placed in a chat.
+def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:
+    """Say something about this order where it was placed, if it was a chat.
 
     Never raises, and never fails the webhook. Stripe reads anything but a
     200 as a delivery to retry, and retrying a payment that was recorded
     perfectly well because a message would not send is the tail wagging the
     dog — so a failure here is logged and the payment stands.
+
+    `finished` says whether anything more can happen to this order. A paid,
+    cancelled or refunded order is done and the conversation is forgotten; a
+    failed one is not, because the next thing that happens may well be the
+    customer paying.
     """
 
     from app.services.ordering_agent import order_channel
@@ -655,22 +668,79 @@ def _confirm_in_chat(order: Order) -> None:
     try:
         from app.tasks.whatsapp import send_text
 
-        body = (
-            "Payment received, thank you. Your order is confirmed and the kitchen "
-            f"has it.\n\nTotal paid: ${order.total_amount:.2f}\n"
-            f"Order reference: {str(order.id)[:8]}"
-        )
         if send_text(phone, body):
-            logger.info("Confirmed a paid order in chat order_id=%s", order.id)
-            # Said once. A later event for the same order — a refund, a
-            # duplicate delivery — must not read as a second confirmation.
-            order_channel.forget(order.id)
+            logger.info("Told a customer about their order in chat order_id=%s", order.id)
+            if finished:
+                order_channel.forget(order.id)
         else:
-            logger.warning("Could not confirm a paid order in chat order_id=%s", order.id)
-    except Exception:  # noqa: BLE001 - a payment is recorded whether or not we can say so
+            logger.warning("Could not reach a customer in chat order_id=%s", order.id)
+    except Exception:  # noqa: BLE001 - the payment is recorded whether or not we can say so
         logger.warning(
-            "Confirming a paid order in chat raised order_id=%s", order.id, exc_info=True
+            "Telling a customer about their order raised order_id=%s", order.id, exc_info=True
         )
+
+
+def _confirm_in_chat(order: Order) -> None:
+    """The payment landed."""
+
+    _tell_in_chat(
+        order,
+        "Payment received, thank you. Your order is confirmed and the kitchen "
+        f"has it.\n\nTotal paid: ${order.total_amount:.2f}\n"
+        f"Order reference: {str(order.id)[:8]}",
+        finished=True,
+    )
+
+
+def _report_failure_in_chat(db: Session, order: Order, transaction: PaymentTransaction) -> None:
+    """The payment did not go through, and here is the way to try again.
+
+    Silence after a declined card reads exactly like a success, and the cart
+    was emptied when the order was placed — so without a link back there is
+    no way to pay through the conversation at all.
+    """
+
+    # The bank's own words when they are short enough to be useful; a card
+    # number in the wrong century is something only the customer can fix.
+    reason = (transaction.failure_message or "").strip().rstrip(".")
+    because = f" ({reason})" if 0 < len(reason) <= 90 else ""
+    retry = ""
+    try:
+        customer = order.customer
+        if customer is not None:
+            # Idempotent per order, and a Checkout session stays open after a
+            # declined attempt: this is the same page, ready for another card.
+            link = create_payment_link(db, customer, order.id)
+            if link.url:
+                retry = f"\n\nTry again here:\n{link.url}"
+    except Exception:  # noqa: BLE001 - a failure is worth reporting without a link
+        logger.warning("Could not offer a retry link order_id=%s", order.id, exc_info=True)
+
+    _tell_in_chat(
+        order,
+        f"Your payment did not go through{because}. Nothing has been charged and "
+        f"your order is still held.{retry}",
+        # Not finished: the next thing that happens may well be them paying.
+        finished=False,
+    )
+
+
+def _report_cancelled_in_chat(order: Order) -> None:
+    _tell_in_chat(
+        order,
+        "Your payment was cancelled, so the order has not gone to the kitchen and "
+        "nothing has been charged. Tell me when you would like to order again.",
+        finished=True,
+    )
+
+
+def _report_refunded_in_chat(order: Order) -> None:
+    _tell_in_chat(
+        order,
+        f"Your refund of ${order.total_amount:.2f} is on its way back to the card you "
+        "paid with. Banks usually take a few working days to show it.",
+        finished=True,
+    )
 
 
 # --- cleanup ---------------------------------------------------------------
