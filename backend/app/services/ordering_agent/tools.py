@@ -39,7 +39,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, time
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Callable
+from typing import Any, get_args, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -155,12 +155,18 @@ class ToolArgs(BaseModel):
         nothing.
         """
 
-        if isinstance(data, dict):
-            return {
-                key: (None if isinstance(value, str) and value.strip().lower() in {"", "null", "none"} else value)
-                for key, value in data.items()
-            }
-        return data
+        if not isinstance(data, dict):
+            return data
+        cleaned = dict(data)
+        for key, value in data.items():
+            field = cls.model_fields.get(key)
+            if field is None or not isinstance(value, str):
+                continue
+            # Only where None is a value the field can hold. `query: str`
+            # takes "" as itself — it is how "show me the menu" is asked.
+            if value.strip().lower() in {"", "null", "none"} and type(None) in get_args(field.annotation):
+                cleaned[key] = None
+        return cleaned
 
     model_config = ConfigDict(extra="forbid")
 
@@ -209,13 +215,17 @@ class SearchMenuArgs(ToolArgs):
     out of a sentence like "under 300".
     """
 
-    query: str = Field(min_length=1, max_length=500)
+    # Empty means "show me the menu": a browse of the branch, by category,
+    # under the same veg and price filters. Requiring a query refused every
+    # form of that request the model produced — none, "", "" again — and
+    # the customer asking to see the menu got a line about their empty cart.
+    query: str = Field(default="", max_length=500)
     is_veg: bool | None = Field(
         default=None,
         description="True for vegetarian only, False for non-veg only, omit for either.",
     )
     max_price: Decimal | None = Field(default=None, ge=0)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=5, ge=1, le=30)
 
 
 class GetDishArgs(ToolArgs):
@@ -887,6 +897,9 @@ def _search_menu(db: Session, scope: OrderingScope, args: SearchMenuArgs) -> dic
     an explicit ceiling is enforced, an absent one is not.
     """
 
+    if not args.query.strip():
+        return _browse_menu(db, scope, args)
+
     intent = ordering_rag.ExtractedIntent(
         intent="search",
         budget=args.max_price,
@@ -907,6 +920,40 @@ def _search_menu(db: Session, scope: OrderingScope, args: SearchMenuArgs) -> dic
     return {
         "source": source,
         "results": [_serialize_menu_item(candidate.menu_item) for candidate in candidates],
+    }
+
+
+def _browse_menu(db: Session, scope: OrderingScope, args: SearchMenuArgs) -> dict[str, Any]:
+    """The branch's menu with nothing in particular asked for.
+
+    Straight from the rows, grouped by category — no embedding of an empty
+    string, no vector search for nothing. Availability, branch scope and the
+    veg and price filters are the same ones retrieval applies; the category
+    list rides along so the answer can say what kinds of thing there are
+    before naming dishes.
+    """
+
+    stmt = (
+        select(MenuItem)
+        .where(
+            MenuItem.restaurant_location_id == scope.restaurant_location_id,
+            MenuItem.is_available.is_(True),
+        )
+        .order_by(MenuItem.category, MenuItem.name)
+    )
+    if args.is_veg is not None:
+        stmt = stmt.where(MenuItem.is_veg.is_(args.is_veg))
+    if args.max_price is not None:
+        stmt = stmt.where(MenuItem.price <= args.max_price)
+    rows = list(db.scalars(stmt.limit(200)))
+    categories: list[str] = []
+    for row in rows:
+        if row.category not in categories:
+            categories.append(row.category)
+    return {
+        "source": "browse",
+        "categories": categories,
+        "results": [_serialize_menu_item(row) for row in rows[: args.limit]],
     }
 
 

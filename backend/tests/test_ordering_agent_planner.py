@@ -111,7 +111,8 @@ class RefusalTests(unittest.TestCase):
         self.assertEqual(step.error, "invalid_arguments")
 
     def test_a_missing_required_argument_is_rejected(self) -> None:
-        step, _ = plan_with(json.dumps({"tool": "search_menu", "args": {}}))
+        # get_dish, not search_menu: a search with no query is now a browse.
+        step, _ = plan_with(json.dumps({"tool": "get_dish", "args": {}}))
         self.assertFalse(step.ok)
         self.assertEqual(step.error, "invalid_arguments")
 

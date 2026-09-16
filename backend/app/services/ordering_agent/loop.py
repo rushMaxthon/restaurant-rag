@@ -516,11 +516,8 @@ def run_turn(
     # order. Live: "let's go for checkout" read the cart back and stopped,
     # because nothing had told the model what placing it would require.
     pending: list[str] = []
-    # Whether a draft is being gathered at all, cart or no cart — read once.
-    draft_collecting = False
     if scope.session_id is not None:
         draft = tools_module._draft_for(scope)
-        draft_collecting = bool(draft.collecting)
         if cart:
             pending = draft.missing_fields()
         # Collection is a property of an order, and an empty cart is not one.
@@ -589,7 +586,6 @@ def run_turn(
             describe_placed_order(placed_order_in(records))
             or describe_applied(records)
             or describe_place_failure(records)
-            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
             or _choice_question_in(records)
@@ -622,9 +618,7 @@ def run_turn(
                 describe_placed_order(placed)
                 or describe_applied(records)
                 or describe_place_failure(records)
-            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
             or describe_place_failure(records)
-        or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
         or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or _cart_summary_in(records)
@@ -777,9 +771,7 @@ def run_turn(
                 or step.answer.strip()
                 or describe_applied(records)
                 or describe_place_failure(records)
-                or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
                 or describe_place_failure(records)
-            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
             or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or _cart_summary_in(records)

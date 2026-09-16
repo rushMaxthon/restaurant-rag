@@ -244,9 +244,13 @@ class ArgModelShapeTests(unittest.TestCase):
         self.assertIsNone(args.is_veg)
         self.assertIsNone(args.max_price)
 
-    def test_search_menu_requires_a_query(self) -> None:
-        with self.assertRaises(ValidationError):
-            SearchMenuArgs()
+    def test_search_menu_with_no_query_is_a_browse(self) -> None:
+        # This used to assert a query was required. Live, "show me the menu"
+        # produced no query, "", and "" again — each refused, two rounds and
+        # a cap for a customer who asked to see the menu. Empty is a browse.
+        from app.services.ordering_agent.tools import SearchMenuArgs
+
+        self.assertEqual(SearchMenuArgs().query, "")
 
     def test_get_dish_takes_a_name_not_an_id(self) -> None:
         args = GetDishArgs(name="pad thai")
@@ -289,3 +293,36 @@ class ImportCleanlinessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrowseTests(unittest.TestCase):
+    """search_menu with nothing asked for is the menu, not an error."""
+
+    def test_an_empty_query_is_accepted(self) -> None:
+        # Live: none, "", "" again — every one refused, two rounds, a cap.
+        from app.services.ordering_agent.tools import SearchMenuArgs
+
+        self.assertEqual(SearchMenuArgs().query, "")
+        self.assertEqual(SearchMenuArgs(query="").query, "")
+        self.assertEqual(SearchMenuArgs(query="", limit=30).limit, 30)
+
+    def test_a_browse_reads_the_rows_by_category(self) -> None:
+        import uuid
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from app.services.ordering_agent import tools as T
+
+        rows = [
+            SimpleNamespace(category="Mains", name="Pad Thai"),
+            SimpleNamespace(category="Starters", name="Corn Fritters"),
+            SimpleNamespace(category="Starters", name="Spring Rolls"),
+        ]
+        db = MagicMock()
+        db.scalars.return_value = rows
+        scope = SimpleNamespace(restaurant_location_id=uuid.uuid4(), restaurant_id=uuid.uuid4())
+        with unittest.mock.patch.object(T, "_serialize_menu_item", lambda r: {"name": r.name}):
+            out = T._browse_menu(db, scope, T.SearchMenuArgs(limit=2))
+        self.assertEqual(out["source"], "browse")
+        self.assertEqual(out["categories"], ["Mains", "Starters"])
+        self.assertEqual([r["name"] for r in out["results"]], ["Pad Thai", "Corn Fritters"])
