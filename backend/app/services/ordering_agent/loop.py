@@ -35,6 +35,7 @@ from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
+    extract_order_details,
     Generate,
     PlanStep,
     ToolCallRecord,
@@ -255,6 +256,43 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
     return " ".join(said) + " Anything else, or shall we get it on its way?"
 
 
+_PLACE_FAILURE_LINES = {
+    "empty_cart": "There is nothing in your order yet. Tell me what you would like and I will add it.",
+    "email_in_use": (
+        "That email is already on another account here, so I cannot use it for this "
+        "order. Give me a different email address, please."
+    ),
+    "not_identified": "I could not set up an account for this number, so I cannot place the order from here.",
+    "no_session": "I lost track of this conversation. Tell me your order again and I will pick it up.",
+}
+
+
+def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
+    """Why the order was not placed, from the tool's own result.
+
+    Every outcome `place_order` can return short of "placed" is said here.
+    Measured live on a real phone: it returned `empty_cart` and nothing
+    spoke it, so the customer read "That is everything I need" after every
+    message including YES, and the order never existed.
+    """
+
+    for record in reversed(records):
+        if record.tool != "place_order" or not isinstance(record.result, dict):
+            continue
+        outcome = record.result.get("outcome")
+        if outcome == "placed":
+            return None
+        if outcome == "needs_details":
+            return describe_collecting(list(record.result.get("missing") or []))
+        if outcome == "refused":
+            # The backend's own words — a minimum order, a closed kitchen —
+            # are the reason, and the customer can act on them.
+            reason = str(record.result.get("reason") or "").strip().rstrip(".")
+            return f"I could not place that: {reason}." if reason else "I could not place that order."
+        return _PLACE_FAILURE_LINES.get(str(outcome), "I could not place that order just now.")
+    return None
+
+
 def describe_ready(total: str | None = None) -> str:
     """Everything is gathered and only the confirmation is left.
 
@@ -320,6 +358,12 @@ def _as_tool_lines(cart: list[CartLinePayload]) -> list[Any]:
 # other tool is a way to lose the thread of what the customer was in the
 # middle of doing.
 _COLLECTING_TOOLS = ("order_requirements", "save_order_details", "place_order", "view_cart")
+# The order can still change while its details are being gathered — "wait,
+# add a coke too" is a normal thing to say after giving an address. Without
+# these, a customer whose cart was empty when the details landed was stuck:
+# every message answered "nothing in your order yet" and nothing could be
+# added. Measured live on a real phone.
+_CART_TOOLS = ("search_menu", "get_dish", "add_to_cart", "remove_from_cart", "set_quantity")
 
 
 def _offered_tools(
@@ -335,13 +379,15 @@ def _offered_tools(
     """
 
     if ready:
-        # One tool, and the prompt says to call it. Offered four and told
-        # plainly that everything was in hand, the model still answered
-        # "ready to be placed, proceed to pay" and placed nothing — twice.
-        # A choice it cannot make wrongly is worth more than a clearer rule.
-        return ("place_order",) if "place_order" in TOOLS else ()
+        # place_order first, and the cart tools with it. This used to be the
+        # one tool: offered four, the model answered "ready to be placed"
+        # and placed nothing — twice. Placing is no longer the model's to
+        # get wrong (the web has a button, a chat places deterministically
+        # once the message has been read), so what matters now is that a
+        # last-minute change can still be made.
+        return tuple(name for name in ("place_order",) + _CART_TOOLS if name in TOOLS)
     if ordering:
-        return tuple(name for name in _COLLECTING_TOOLS if name in TOOLS)
+        return tuple(name for name in _COLLECTING_TOOLS + _CART_TOOLS if name in TOOLS)
     if seen:
         return tuple(TOOLS)
     return tuple(name for name in TOOLS if name not in _ID_BEARING_TOOLS)
@@ -470,11 +516,20 @@ def run_turn(
     # order. Live: "let's go for checkout" read the cart back and stopped,
     # because nothing had told the model what placing it would require.
     pending: list[str] = []
+    # Whether a draft is being gathered at all, cart or no cart — read once.
+    draft_collecting = False
     if scope.session_id is not None:
         draft = tools_module._draft_for(scope)
+        draft_collecting = bool(draft.collecting)
         if cart:
             pending = draft.missing_fields()
-        if draft.collecting:
+        # Collection is a property of an order, and an empty cart is not one.
+        # Framed as "collecting" with nothing in the cart, the model wandered
+        # (search, get_dish, get_dish again) and never added the dish the
+        # customer had just named; as a plain cart turn the same message
+        # adds it in two rounds. The draft keeps what it holds for when
+        # there is something to order.
+        if draft.collecting and cart:
             collecting = draft.missing_fields()
 
     def _still_missing() -> list[str] | None:
@@ -504,13 +559,14 @@ def run_turn(
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
-        ready_now = _still_missing() == [] and _identifiable(scope)
+        ready_now = _still_missing() == [] and (_identifiable(scope) and bool(cart))
         # A channel with no button, everything gathered, and rounds spent
         # arguing with itself: place it. The model would not, measured over
         # five different ways of asking, and the customer has already given
         # everything an order needs. It is created unpaid, so the
         # confirmation that matters is still theirs — opening the link.
-        if auto_place and ready_now and not placed_order_in(records):
+        already_tried = any(r.tool == "place_order" for r in records)
+        if auto_place and ready_now and not placed_order_in(records) and not already_tried:
             prepared, guard_error = guards.prepare_tool_call(
                 "place_order", {}, cart=cart, seen=seen, diet=scope.diet
             )
@@ -532,6 +588,8 @@ def run_turn(
         question = (
             describe_placed_order(placed_order_in(records))
             or describe_applied(records)
+            or describe_place_failure(records)
+            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
             or _choice_question_in(records)
@@ -555,6 +613,55 @@ def run_turn(
             ready_to_place=ready_now and placed_order_in(records) is None,
         )
 
+    def _settled() -> TurnOutcome:
+        """The turn as the rows alone can end it — no words from the model."""
+
+        placed = placed_order_in(records)
+        return TurnOutcome(
+            answer=(
+                describe_placed_order(placed)
+                or describe_applied(records)
+                or describe_place_failure(records)
+            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
+            or describe_place_failure(records)
+        or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
+        or describe_collecting(_still_missing())
+                or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
+                or _cart_summary_in(records)
+                or cart_readback
+            ),
+            placed_order=placed,
+            ready_to_place=_still_missing() == [] and (_identifiable(scope) and bool(cart)) and placed is None,
+            answer_about="order",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
+    # Details first, read narrowly. With the customer mid-checkout and fields
+    # still missing, the message is most likely the answer to "what do you
+    # need?" — read it as such before any planning, keep what validates, and
+    # settle the turn from the rows: ask for what is still missing, or (with
+    # everything held) let the placement below run. A message that carried
+    # no details falls through to the planner as before, so "wait, add a
+    # coke too" still adds the coke.
+    if collecting and scope.session_id is not None:
+        given = extract_order_details(message, missing=collecting, generate=generate)
+        if given:
+            draft, problems = order_draft.remember(order_draft.load(scope.session_id), **given)
+            draft.collecting = True
+            order_draft.save(scope.session_id, draft)
+            records.append(
+                ToolCallRecord(
+                    tool="save_order_details",
+                    args=dict(given),
+                    result={"outcome": "saved", "problems": problems, "missing": _still_missing()},
+                )
+            )
+            if _still_missing() or not auto_place:
+                return _settled()
+
     for _round_index in range(rounds):
         # Checked before every model call, per the brief — a turn that is
         # already out of time never spends more of it asking the model for
@@ -562,11 +669,22 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
-        ready = collecting == [] and _identifiable(scope)
+        ready = collecting == [] and (_identifiable(scope) and bool(cart))
         # On a channel with no button, being ready IS the instruction: the
         # model will not reach for the tool (measured, repeatedly), and the
         # customer has already asked to order and handed over their details.
-        if auto_place and _still_missing() == [] and not placed_order_in(records):
+        # Only straight after the customer asked to check out, or answered
+        # what checking out needed — with everything now held. Any other
+        # message is read by the model first: "wait, add a coke too" with
+        # the details already known must add the coke, not place the order
+        # without it. If the model then answers rather than acts, the answer
+        # path below places; the round cap places too. (Measured: without
+        # save_order_details here the model spent a 3.5s round resending it.)
+        after_checkout_request = bool(records) and records[-1].tool in (
+            "order_requirements",
+            "save_order_details",
+        )
+        if auto_place and after_checkout_request and _still_missing() == [] and not placed_order_in(records):
             step = PlanStep(tool="place_order", args={})
         else:
             step = plan_step(
@@ -640,33 +758,12 @@ def run_turn(
         if (
             auto_place
             and step.answer is not None
+            and cart
             and _still_missing() == []
             and not placed_order_in(records)
             and "place_order" in TOOLS
         ):
             step = PlanStep(tool="place_order", args={})
-
-        def _settled() -> TurnOutcome:
-            """The turn as the rows alone can end it — no words from the model."""
-
-            placed = placed_order_in(records)
-            return TurnOutcome(
-                answer=(
-                    describe_placed_order(placed)
-                    or describe_applied(records)
-                    or describe_collecting(_still_missing())
-                    or (describe_ready() if _still_missing() == [] and collecting is not None else None)
-                    or _cart_summary_in(records)
-                    or cart_readback
-                ),
-                placed_order=placed,
-                ready_to_place=_still_missing() == [] and _identifiable(scope) and placed is None,
-                answer_about="order",
-                actions=actions,
-                records=records,
-                fallback_reason=None,
-                elapsed_seconds=clock() - start,
-            )
 
         if step.answer is not None:
             # An answer that says nothing is not an answer. The tool results
@@ -679,8 +776,12 @@ def run_turn(
                 describe_placed_order(placed)
                 or step.answer.strip()
                 or describe_applied(records)
-                or describe_collecting(_still_missing())
-                or (describe_ready() if _still_missing() == [] and collecting is not None else None)
+                or describe_place_failure(records)
+                or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
+                or describe_place_failure(records)
+            or (_PLACE_FAILURE_LINES["empty_cart"] if draft_collecting and not cart else None)
+            or describe_collecting(_still_missing())
+                or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or _cart_summary_in(records)
                 or cart_readback
                 or _choice_question_in(records)
@@ -689,7 +790,7 @@ def run_turn(
                 answer=spoken,
                 placed_order=placed,
                 ready_to_place=(
-                    _still_missing() == [] and _identifiable(scope) and placed is None
+                    _still_missing() == [] and (_identifiable(scope) and bool(cart)) and placed is None
                 ),
                 answer_about=(
                     "order" if (placed or collecting is not None) else step.answer_about

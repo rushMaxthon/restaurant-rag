@@ -309,3 +309,71 @@ class SettledByTheRowsTests(unittest.TestCase):
         self.assertEqual(len(generate.prompts), 1, "one model round: the result settled the turn")
         self.assertIn("still need", outcome.answer or "")
         self.assertEqual(outcome.answer_about, "order")
+
+
+class PlaceFailureIsSpokenTests(unittest.TestCase):
+    """Every way place_order can fail is said, from its own result."""
+
+    def record(self, **result):
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        return ToolCallRecord(tool="place_order", args={}, result=result)
+
+    def test_an_empty_cart_is_said(self) -> None:
+        # Live on a real phone: empty_cart, unspoken, "That is everything I
+        # need" after YES, Yes and yes.
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        self.assertIn("nothing in your order", describe_place_failure([self.record(outcome="empty_cart")]))
+
+    def test_a_taken_email_asks_for_another(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        self.assertIn("different email", describe_place_failure([self.record(outcome="email_in_use")]))
+
+    def test_a_refusal_carries_the_backends_own_reason(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        said = describe_place_failure([self.record(outcome="refused", reason="Minimum order amount is 16.00")])
+        self.assertIn("Minimum order amount is 16.00", said)
+
+    def test_a_placed_order_is_not_a_failure(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        self.assertIsNone(describe_place_failure([self.record(outcome="placed", order_id="x")]))
+
+
+class DetailsReadFirstTests(unittest.TestCase):
+    """A mid-checkout message is read for details before any planning."""
+
+    def test_details_in_the_message_are_kept_without_a_planner_round(self) -> None:
+        # Live: the planner answered "your details have been saved" and
+        # saved nothing. The narrow reading saves them; the turn settles on
+        # what is still missing with no planner round spent.
+        import dataclasses
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock
+        from app.services.ordering_agent import loop, order_draft
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
+        store = {"draft": order_draft.OrderDraft(collecting=True)}
+        calls = []
+
+        def generate(prompt, *a, **k):
+            calls.append(prompt)
+            if "Fields:" in prompt:
+                return '{"contact_name": "Hitesh", "contact_email": "h@example.com", "delivery_address": null, "fulfillment_type": null}'
+            raise AssertionError("no planner round expected")
+
+        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
+             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message="I'm Hitesh, h@example.com",
+                cart=[__import__("app.schemas.suggestions", fromlist=["CartLinePayload"]).CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
+                generate=generate, clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+            )
+        self.assertEqual(len(calls), 1, "one narrow reading, no planner round")
+        self.assertEqual(store["draft"].contact_name, "Hitesh")
+        self.assertEqual(store["draft"].contact_email, "h@example.com")
+        self.assertIn("still need", outcome.answer or "")

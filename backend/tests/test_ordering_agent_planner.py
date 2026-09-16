@@ -352,6 +352,49 @@ class AnswerSubjectTests(unittest.TestCase):
 
 
 
+class NothingIsNoneTests(unittest.TestCase):
+    def test_an_empty_string_in_an_optional_id_is_none(self) -> None:
+        # Live, three times in an afternoon: `"menu_item_size_id": ""`.
+        from app.services.ordering_agent.tools import GetDishArgs
+
+        self.assertIsNone(GetDishArgs(name="Corn Fritters", menu_item_size_id="").menu_item_size_id)
+        self.assertIsNone(GetDishArgs(name="Corn Fritters", menu_item_size_id="null").menu_item_size_id)
+
+    def test_a_real_value_is_untouched(self) -> None:
+        from app.services.ordering_agent.tools import GetDishArgs
+
+        self.assertEqual(GetDishArgs(name="Corn Fritters").name, "Corn Fritters")
+
+
+class ReadOrderDetailsTests(unittest.TestCase):
+    def test_reads_only_what_is_asked_for_and_present(self) -> None:
+        from app.services.ordering_agent.planner import extract_order_details
+
+        seen = {}
+        def generate(prompt, *a, **k):
+            seen["prompt"] = prompt
+            return '{"contact_name": "Hitesh", "contact_email": null, "delivery_address": "42 Example Road"}'
+        found = extract_order_details(
+            "I'm Hitesh, deliver to 42 Example Road",
+            missing=["contact_name", "contact_email", "delivery_address"],
+            generate=generate,
+        )
+        self.assertEqual(found, {"contact_name": "Hitesh", "delivery_address": "42 Example Road"})
+        self.assertIn("42 Example Road", seen["prompt"])
+
+    def test_nonsense_reads_as_nothing(self) -> None:
+        from app.services.ordering_agent.planner import extract_order_details
+
+        self.assertEqual(extract_order_details("hi", missing=["contact_name"], generate=lambda *a, **k: "???"), {})
+
+    def test_nothing_asked_means_no_model_call(self) -> None:
+        from app.services.ordering_agent.planner import extract_order_details
+
+        def boom(*a, **k):
+            raise AssertionError("should not be called")
+        self.assertEqual(extract_order_details("hi", missing=[], generate=boom), {})
+
+
 class SubjectOnlyTests(unittest.TestCase):
     def test_a_subject_with_nothing_to_add_is_an_empty_answer_about_it(self) -> None:
         # Live: {"about": "cart"} was an error and a wasted round; the cart

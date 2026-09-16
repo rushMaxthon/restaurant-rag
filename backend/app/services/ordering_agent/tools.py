@@ -42,7 +42,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Callable
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -141,6 +141,26 @@ class ToolArgs(BaseModel):
     scope-checking than it looks like it has. Mirrors
     `insights/analyst/schemas.py::ToolArgs`.
     """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _nothing_is_none(cls, data):
+        """"" and "null" in a field mean nothing, not the string "null".
+
+        The model writes `"menu_item_size_id": ""` for a dish with no size —
+        JSON's way of saying so, from a model that has seen a lot of JSON —
+        and validation refused it as not a UUID, three times in one
+        afternoon, each a wasted round or a lost add. No real argument is
+        the empty string or the word null, so reading them as None loses
+        nothing.
+        """
+
+        if isinstance(data, dict):
+            return {
+                key: (None if isinstance(value, str) and value.strip().lower() in {"", "null", "none"} else value)
+                for key, value in data.items()
+            }
+        return data
 
     model_config = ConfigDict(extra="forbid")
 

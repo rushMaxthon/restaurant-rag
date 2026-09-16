@@ -67,9 +67,10 @@ def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
     placed = getattr(answer, "placed_order", None) or {}
     if placed.get("payment_url"):
         parts.append(f"Pay here:\n{placed['payment_url']}")
-    elif getattr(answer, "order_ready", False):
-        # No buttons in a chat thread, so the confirmation is a word.
-        parts.append("Reply YES and I will place it and send you a payment link.")
+    # No "reply YES" line: on this channel a ready order is placed on the turn
+    # the details land (`auto_place`), so being ready and not placed means it
+    # was tried and could not be — and the agent's line above says why. The
+    # promise was measured live: YES, Yes, yes, the same sentence back each time.
 
     if proposed:
         parts.append("Just say the word and I will do that.")

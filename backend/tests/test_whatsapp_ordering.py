@@ -127,14 +127,18 @@ class ReplyCompositionTests(unittest.TestCase):
         self.assertIn(url, body)
         self.assertIn("\n" + url, body, "nothing wrapped around it")
 
-    def test_a_ready_order_asks_for_a_word_since_there_is_no_button(self) -> None:
+    def test_a_ready_but_unplaced_order_makes_no_promise_about_the_next_message(self) -> None:
+        # Ready orders are placed on the turn the details land. Ready and
+        # not placed means it was tried and could not be; the agent's line
+        # says why, and "reply YES" was a promise the next message broke.
         body = wa._compose_reply(
             self.answer(
-                agent_asks=True, agent_reply="That is everything I need.", order_ready=True
+                agent_asks=True, agent_reply="There is nothing in your order yet.", order_ready=True
             ),
             [],
         )
-        self.assertIn("YES", body)
+        self.assertNotIn("YES", body)
+        self.assertIn("nothing in your order", body)
 
     def test_a_placed_order_does_not_also_ask_for_confirmation(self) -> None:
         body = wa._compose_reply(

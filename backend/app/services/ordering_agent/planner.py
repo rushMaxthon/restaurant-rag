@@ -480,6 +480,64 @@ def validate_call(tool: str, args: dict[str, Any]) -> PlanStep:
     return _validate_call(tool, args, tuple(TOOLS))
 
 
+_DETAIL_QUESTIONS = {
+    "contact_name": "the customer's name",
+    "contact_email": "an email address",
+    "contact_phone": "a phone number",
+    "delivery_address": "a delivery address (street, area, city)",
+    "fulfillment_type": '"DELIVERY" or "PICKUP" — whether the food is delivered or collected',
+}
+
+
+def extract_order_details(
+    message: str,
+    *,
+    missing: Sequence[str],
+    generate: Generate | None = None,
+) -> dict[str, str]:
+    """What the message says about the details an order still needs.
+
+    A narrow reading, separate from planning: the planner is asked to decide
+    what to do AND copy out an address in one JSON object, and on the details
+    turn qwen3:8b answered "your details have been saved" having saved
+    nothing. Asked only "what does this message say about these fields", it
+    reads them out reliably — and what it reads is validated by the draft
+    exactly as a tool argument would be, so a wrong email is still refused.
+
+    Returns only fields present and non-empty. Never raises: a model that is
+    unreachable or answers nonsense means an empty dict, and the planner
+    round that follows can still ask.
+    """
+
+    wanted = [field for field in missing if field in _DETAIL_QUESTIONS]
+    if not wanted or not message.strip():
+        return {}
+    lines = "\n".join(f'  "{field}": {_DETAIL_QUESTIONS[field]}, or null' for field in wanted)
+    prompt = (
+        "A customer is placing a food order over chat. Read ONLY what this message "
+        "states about the details below. Do not guess, do not infer from names, "
+        "do not fill in anything not written. Answer with one JSON object and "
+        "nothing else.\n\n"
+        f"Fields:\n{lines}\n\n"
+        f"Message: {message.strip()!r}\n\nJSON:"
+    )
+    generate = generate or _ollama_generate
+    try:
+        raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 160)
+        parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    except Exception:  # noqa: BLE001 - reading nothing is the safe failure
+        logger.warning("Ordering agent could not read order details", exc_info=True)
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    found: dict[str, str] = {}
+    for field in wanted:
+        value = parsed.get(field)
+        if isinstance(value, str) and value.strip() and value.strip().lower() not in {"null", "none"}:
+            found[field] = value.strip()
+    return found
+
+
 def plan_step(
     message: str,
     *,
