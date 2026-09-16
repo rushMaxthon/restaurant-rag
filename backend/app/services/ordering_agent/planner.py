@@ -582,6 +582,18 @@ def read_order_intent(
         'A question about a dish ("what is X", "how much is X", "do you have X") is '
         "not an add.\n"
         '- "fulfillment_type" is "DELIVERY" or "PICKUP" only if they say which.\n'
+        # Measured: "chalo order kar do", "book it", "done" and "confirm my
+        # order" all read as false while checkout was described only as
+        # "place the order, check out or pay". Those customers are not saying
+        # anything unusual; the description was narrow. What is spelled out is
+        # the MEANING, in the prompt, where the model still reads the message
+        # — never a list of words matched in code.
+        '- "checkout" is any way of saying the order is finished and should go '
+        "ahead: check out, place it, confirm it, book it, pay now, that is all, "
+        "done, go ahead — in any language, Hinglish included (chalo order kar "
+        "do, order kar do, ho gaya, bas itna hi).\n"
+        '- "checkout" is false while they are still choosing, and false for a '
+        "question.\n"
         "- Anything not stated is null.\n"
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"

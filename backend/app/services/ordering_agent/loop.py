@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import re
 import json
+from decimal import Decimal
+
 import logging
 import time
 from dataclasses import dataclass
@@ -300,6 +302,24 @@ def invented_figures(answer: str, facts: str) -> set[str]:
     return _figures(answer) - _figures(facts)
 
 
+def _short_of_minimum(result: dict[str, Any]) -> tuple[str, str, str] | None:
+    """Subtotal, minimum and the gap, when that is why a placement was refused.
+
+    Read off the two numbers the refusal carries rather than out of its
+    sentence: the reason is written for a person, and matching words to
+    decide what a refusal meant is the thing this agent does not do.
+    """
+
+    try:
+        subtotal = Decimal(str(result.get("subtotal")))
+        minimum = Decimal(str(result.get("minimum")))
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+    if subtotal >= minimum:
+        return None
+    return (f"${subtotal:.2f}", f"${minimum:.2f}", f"${minimum - subtotal:.2f}")
+
+
 def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
     """Why the order was not placed, from the tool's own result.
 
@@ -331,8 +351,17 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
         if outcome == "needs_details":
             return describe_collecting(list(record.result.get("missing") or []))
         if outcome == "refused":
-            # The backend's own words — a minimum order, a closed kitchen —
-            # are the reason, and the customer can act on them.
+            short = _short_of_minimum(record.result)
+            if short is not None:
+                subtotal, minimum, gap = short
+                # The one refusal a customer can clear themselves, so it is
+                # written as the next step rather than as a rejection.
+                return (
+                    f"Your order comes to {subtotal} and this branch takes orders from "
+                    f"{minimum} — another {gap} and I can place it. What else can I add?"
+                )
+            # The backend's own words — a closed kitchen, an item that went
+            # unavailable — are the reason, and the customer can act on them.
             reason = str(record.result.get("reason") or "").strip().rstrip(".")
             return f"I could not place that: {reason}." if reason else "I could not place that order."
         return _PLACE_FAILURE_LINES.get(str(outcome), "I could not place that order just now.")

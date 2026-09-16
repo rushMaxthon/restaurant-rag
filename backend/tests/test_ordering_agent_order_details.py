@@ -449,3 +449,44 @@ class AnOrderNeedsFoodTests(unittest.TestCase):
         )
         result = TOOLS["order_requirements"].handler(None, scope, OrderRequirementsArgs(lines=[]))
         self.assertEqual(result["outcome"], "empty_cart")
+
+
+class ShortOfTheMinimumTests(unittest.TestCase):
+    """The one refusal a customer can clear themselves."""
+
+    def refusal(self, **over):
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        result = {
+            "outcome": "refused",
+            "reason": "Minimum order amount for this restaurant is 16.00",
+            "subtotal": "6.49",
+            "minimum": "16.00",
+        }
+        result.update(over)
+        return [ToolCallRecord(tool="place_order", args={}, result=result)]
+
+    def test_it_says_the_order_the_minimum_and_the_gap(self) -> None:
+        # Live: "Minimum order amount for this restaurant is 16.00" — true,
+        # and no help at all to somebody who cannot see their subtotal.
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        said = describe_place_failure(self.refusal())
+        self.assertIn("$6.49", said)
+        self.assertIn("$16.00", said)
+        self.assertIn("$9.51", said)
+        self.assertIn("What else can I add", said)
+
+    def test_another_kind_of_refusal_still_carries_its_own_reason(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        said = describe_place_failure(
+            self.refusal(reason="This branch is closed right now", subtotal="40.00")
+        )
+        self.assertIn("closed right now", said)
+
+    def test_a_refusal_without_the_numbers_still_speaks(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+
+        said = describe_place_failure(self.refusal(subtotal=None, minimum=None))
+        self.assertIn("Minimum order amount", said)

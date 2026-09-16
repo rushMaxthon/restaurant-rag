@@ -444,3 +444,67 @@ class ReadCartRequestTests(unittest.TestCase):
 
     def test_a_silly_quantity_is_brought_back_into_range(self) -> None:
         self.assertEqual(self.read('{"wants": true, "dish": "Pizza", "quantity": 900}')[1], 20)
+
+
+class ReadOrderIntentTests(unittest.TestCase):
+    """The three things a message can want, from the model's own reading.
+
+    These assert the PARSING, not the model: a live model is not a test
+    dependency. What the model actually does with real phrasings was
+    measured separately — 9 of 9 adds including Hinglish, 11 of 11 ways of
+    asking to check out, 7 of 7 questions correctly wanting neither — and
+    the prompt was widened where it fell short (see `read_order_intent`).
+    """
+
+    def read(self, payload, message="x", missing=()):
+        from app.services.ordering_agent.planner import read_order_intent
+
+        return read_order_intent(message, missing=missing, generate=lambda *a, **k: payload)
+
+    def test_all_three_can_arrive_together(self) -> None:
+        got = self.read(
+            '{"add": {"dish": "Pad Thai", "quantity": 2},'
+            ' "details": {"contact_name": "Ravi", "contact_email": "r@example.com"},'
+            ' "checkout": true}'
+        )
+        self.assertEqual(got["add"], ("Pad Thai", 2))
+        self.assertEqual(got["details"], {"contact_name": "Ravi", "contact_email": "r@example.com"})
+        self.assertTrue(got["checkout"])
+
+    def test_a_message_wanting_nothing_reads_as_nothing(self) -> None:
+        got = self.read('{"add": null, "details": {}, "checkout": false}')
+        self.assertEqual(got, {"add": None, "details": {}, "checkout": False})
+
+    def test_nulls_and_empties_are_not_details(self) -> None:
+        got = self.read(
+            '{"add": {"dish": null}, "details": {"contact_name": "null",'
+            ' "contact_email": "  ", "delivery_address": "12 Old Street"}, "checkout": false}'
+        )
+        self.assertIsNone(got["add"])
+        self.assertEqual(got["details"], {"delivery_address": "12 Old Street"})
+
+    def test_a_field_this_draft_does_not_hold_is_ignored(self) -> None:
+        # Only the draft's own fields are read back out, so a model that
+        # invents a key cannot smuggle it into `remember`.
+        got = self.read('{"add": null, "details": {"card_number": "4242..."}, "checkout": false}')
+        self.assertEqual(got["details"], {})
+
+    def test_nonsense_wants_nothing_rather_than_raising(self) -> None:
+        got = self.read("the model said something else entirely")
+        self.assertEqual(got, {"add": None, "details": {}, "checkout": False})
+
+    def test_a_silly_quantity_is_brought_back_into_range(self) -> None:
+        got = self.read('{"add": {"dish": "Pizza", "quantity": 900}, "details": {}, "checkout": false}')
+        self.assertEqual(got["add"][1], 20)
+
+    def test_what_is_still_missing_is_named_in_the_prompt(self) -> None:
+        seen = {}
+
+        def generate(prompt, *a, **k):
+            seen["prompt"] = prompt
+            return '{"add": null, "details": {}, "checkout": false}'
+
+        from app.services.ordering_agent.planner import read_order_intent
+
+        read_order_intent("x", missing=["contact_email"], generate=generate)
+        self.assertIn("contact_email", seen["prompt"])

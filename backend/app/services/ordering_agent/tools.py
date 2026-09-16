@@ -1498,8 +1498,21 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
     except HTTPException as error:
         # A closed branch, an item that went unavailable, a minimum not met:
         # all things the customer can act on, so they are told rather than
-        # swallowed.
-        return {"outcome": "refused", "reason": str(error.detail)}
+        # swallowed. The two numbers behind the commonest of them travel
+        # with the refusal, because "the minimum is 16.00" without what the
+        # order came to leaves the customer doing arithmetic they cannot do
+        # — they cannot see the subtotal.
+        refusal: dict[str, Any] = {"outcome": "refused", "reason": str(error.detail)}
+        try:
+            priced = _view_cart(db, scope, ViewCartArgs(lines=list(args.lines)))
+            location = db.get(RestaurantLocation, scope.restaurant_location_id)
+            refusal["subtotal"] = priced.get("subtotal")
+            refusal["minimum"] = (
+                str(location.minimum_order_amount) if location is not None else None
+            )
+        except Exception:  # noqa: BLE001 - a refusal must still be returned
+            logger.warning("Could not price a refused order for the customer", exc_info=True)
+        return refusal
 
     result: dict[str, Any] = {
         "outcome": "placed",
