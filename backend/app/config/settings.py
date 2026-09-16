@@ -471,7 +471,7 @@ class Settings(BaseSettings):
     # rounds for get_dish -> add_to_cart or view_cart -> price_quote, plus one
     # spare for a self-correction," never exercised end to end. Task 8
     # measures a real turn's round count and may move this.
-    ordering_agent_max_tool_rounds: int = 4
+    ordering_agent_max_tool_rounds: int = 6
     # Wall-clock ceiling for a whole turn (every plan_step call plus every
     # tool call), independent of `ordering_agent_planner_timeout_seconds`
     # (which bounds one model call, not the turn). Also not measured yet —

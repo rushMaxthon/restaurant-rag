@@ -636,3 +636,42 @@ class RepeatedCallTests(OrderingAgentLoopTestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(outcome.answer, "done")
 
+
+class NeedsChoiceTemplateTests(OrderingAgentLoopTestCase):
+    def test_a_cap_with_a_needs_choice_result_asks_the_question_from_the_rows(self) -> None:
+        # The live failure: the tool said which size/options were needed and
+        # the model spent every round not asking. The loop asks instead,
+        # from the tool's own rows, and the turn is a success, not a fallback.
+        calls: list = []
+        result = {
+            "outcome": "needs_choice", "name": "Thai Basil Fried Rice", "needs_size": True,
+            "available_sizes": [{"size_id": "s1", "name": "Small", "price": "13.99"}],
+            "customization_groups": [{
+                "title": "Choose your protein", "needs_selection": True,
+                "options": [{"option_id": "o1", "name": "Tofu", "extra_price": "0"},
+                            {"option_id": "o2", "name": "Chicken", "extra_price": "1.50"}],
+            }],
+        }
+        self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, result))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "rice"}),
+            _tool_call("dish_lookup", {"name": "rice"}),
+        )
+        outcome = loop.run_turn(
+            db=None, scope=SCOPE, message="rice please", cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=2, budget_seconds=1000.0,
+        )
+        self.assertIsNone(outcome.fallback_reason)
+        self.assertIn("Which size for Thai Basil Fried Rice? Small ($13.99).", outcome.answer)
+        self.assertIn("Choose your protein for Thai Basil Fried Rice: Tofu, Chicken (+$1.50).", outcome.answer)
+
+    def test_a_cap_without_a_needs_choice_result_is_still_a_fallback(self) -> None:
+        self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        generate = ScriptedGenerate(_tool_call("dish_lookup", {"name": "a"}), _tool_call("dish_lookup", {"name": "b"}))
+        outcome = loop.run_turn(
+            db=None, scope=SCOPE, message="x", cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=2, budget_seconds=1000.0,
+        )
+        self.assertIsNone(outcome.answer)
+        self.assertEqual(outcome.fallback_reason, "round_cap")
+

@@ -157,6 +157,8 @@ Rules:
   containing one is discarded
 - once you have enough to answer, reply with {{"answer": "..."}} instead of
   calling another tool
+- selected_options and lines are JSON lists — pass [] when there is nothing
+  to put in them, never {{}}
 - never repeat a call you already made with the same arguments — its result
   is listed above; read it instead
 - a result with "outcome": "needs_choice" means the dish is real but the

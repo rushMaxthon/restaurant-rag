@@ -62,6 +62,62 @@ class TurnOutcome:
     elapsed_seconds: float
 
 
+def _money(value: Any) -> str:
+    try:
+        return f"${float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def ask_for_choice(result: Any) -> str | None:
+    """The question a `needs_choice` tool result already contains, as prose.
+
+    A dish that needs a size or a required group is the one case where the
+    deterministic layer holds the complete answer — the dish, its sizes,
+    its groups, their options and every price came from the tool's rows —
+    and on the first live turn the model still spent four rounds on it and
+    said nothing. So when the loop ends on a cap with that result in hand,
+    it asks the question itself, from those rows and nothing else: the
+    house rule's template fallback, applied to the one outcome that has a
+    fixed shape. Returns None for anything that is not a needs_choice.
+    """
+
+    if not isinstance(result, dict) or result.get("outcome") != "needs_choice":
+        return None
+    name = result.get("name") or "that dish"
+    parts: list[str] = []
+    sizes = result.get("available_sizes") or []
+    if result.get("needs_size") and sizes:
+        listed = ", ".join(f"{s.get('name')} ({_money(s.get('price'))})" for s in sizes)
+        parts.append(f"Which size for {name}? {listed}.")
+    for group in result.get("customization_groups") or []:
+        if not group.get("needs_selection"):
+            continue
+        options = []
+        for option in group.get("options") or []:
+            extra = option.get("extra_price") or 0
+            try:
+                extra_text = f" (+{_money(extra)})" if float(extra) > 0 else ""
+            except (TypeError, ValueError):
+                extra_text = ""
+            options.append(f"{option.get('name')}{extra_text}")
+        if options:
+            parts.append(f"{group.get('title') or 'Choose'} for {name}: {', '.join(options)}.")
+    if not parts:
+        return None
+    return " ".join(parts) + " Which would you like?"
+
+
+def _choice_question_in(records: list[ToolCallRecord]) -> str | None:
+    """The most recent needs_choice result this turn, as a question — or None."""
+
+    for record in reversed(records):
+        question = ask_for_choice(record.result)
+        if question is not None:
+            return question
+    return None
+
+
 def _repeated_call(records: list[ToolCallRecord], tool: str, args: dict[str, Any]) -> int | None:
     """The 1-based index of an earlier call this turn with the same tool and
     the same arguments that actually ran, or None. Only calls that produced
@@ -129,18 +185,29 @@ def run_turn(
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
+    def _capped(reason: str) -> TurnOutcome:
+        # A cap with a needs_choice result in hand is not a failed turn: the
+        # question is asked from the tool's rows (see `ask_for_choice`), and
+        # the turn ends as a success. Any other cap keeps the brief's rule —
+        # no partial answer, the caller falls back to today's reply.
+        question = _choice_question_in(records)
+        if question is not None:
+            logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
+            return TurnOutcome(
+                answer=question, actions=actions, records=records,
+                fallback_reason=None, elapsed_seconds=clock() - start,
+            )
+        return TurnOutcome(
+            answer=None, actions=actions, records=records,
+            fallback_reason=reason, elapsed_seconds=clock() - start,
+        )
+
     for _round_index in range(rounds):
         # Checked before every model call, per the brief — a turn that is
         # already out of time never spends more of it asking the model for
         # one more step.
         if clock() - start >= budget:
-            return TurnOutcome(
-                answer=None,
-                actions=actions,
-                records=records,
-                fallback_reason="budget_exceeded",
-                elapsed_seconds=clock() - start,
-            )
+            return _capped("budget_exceeded")
 
         step = plan_step(message, history=tuple(records), generate=generate)
 
@@ -184,13 +251,7 @@ def run_turn(
         # "partial answer" the brief rules out, just paid for in tool time
         # instead of model time.
         if clock() - start >= budget:
-            return TurnOutcome(
-                answer=None,
-                actions=actions,
-                records=records,
-                fallback_reason="budget_exceeded",
-                elapsed_seconds=clock() - start,
-            )
+            return _capped("budget_exceeded")
 
         prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen)
         if guard_error is not None:
@@ -232,13 +293,7 @@ def run_turn(
         if isinstance(action, dict):
             actions.append(action)
 
-    return TurnOutcome(
-        answer=None,
-        actions=actions,
-        records=records,
-        fallback_reason="round_cap",
-        elapsed_seconds=clock() - start,
-    )
+    return _capped("round_cap")
 
 
-__all__ = ["Clock", "TurnOutcome", "run_turn"]
+__all__ = ["Clock", "TurnOutcome", "ask_for_choice", "run_turn"]
