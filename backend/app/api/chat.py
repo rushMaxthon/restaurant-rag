@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from time import perf_counter
+from collections.abc import Iterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -99,6 +100,23 @@ def send_chat_message(
     return response
 
 
+def _releasing(frames: Iterator[str], db: Session) -> Iterator[str]:
+    """Stream frames, and hand the connection back however the stream ends.
+
+    `StreamingResponse` closes its iterator on a client disconnect as well as
+    on a normal finish, and closing a generator raises `GeneratorExit` at the
+    yield it is parked on — so this `finally` runs in both cases. Without it
+    an abandoned stream leaks its pooled connection until the worker dies.
+    Closing a Session is safe and idempotent: `get_db`'s own cleanup closes it
+    again, and SQLAlchemy reopens on next use.
+    """
+
+    try:
+        yield from frames
+    finally:
+        db.close()
+
+
 @router.post("/message/stream")
 def stream_chat_message_route(
     payload: ChatMessageRequest,
@@ -117,27 +135,30 @@ def stream_chat_message_route(
         payload.message,
     )
     return StreamingResponse(
-        stream_chat_message(
-            db,
-            user=principal,
-            message=payload.message,
-            session_id=session_id,
-            restaurant_id=scoped_restaurant_id,
-            restaurant_location_id=payload.restaurant_location_id,
-            # The surface the customer app actually uses. Wiring only the
-            # non-streaming endpoint would make this work in every curl and in
-            # no browser.
-            guest_preferences=(
-                payload.guest_preferences.model_dump() if payload.guest_preferences else None
+        _releasing(
+            stream_chat_message(
+                db,
+                user=principal,
+                message=payload.message,
+                session_id=session_id,
+                restaurant_id=scoped_restaurant_id,
+                restaurant_location_id=payload.restaurant_location_id,
+                # The surface the customer app actually uses. Wiring only the
+                # non-streaming endpoint would make this work in every curl and in
+                # no browser.
+                guest_preferences=(
+                    payload.guest_preferences.model_dump() if payload.guest_preferences else None
+                ),
+                # The ordering agent reasons about THIS cart, and the cart lives in
+                # the browser — there is no server-side cart to read it from. Sent
+                # on the streaming route as well as the non-streaming one for the
+                # same reason `guest_preferences` is: this is the route the web
+                # concierge and mobile actually call.
+                cart=payload.cart,
+                previous_reply=payload.previous_reply,
+                recent_history=[line.model_dump() for line in payload.recent_history],
             ),
-            # The ordering agent reasons about THIS cart, and the cart lives in
-            # the browser — there is no server-side cart to read it from. Sent
-            # on the streaming route as well as the non-streaming one for the
-            # same reason `guest_preferences` is: this is the route the web
-            # concierge and mobile actually call.
-            cart=payload.cart,
-            previous_reply=payload.previous_reply,
-            recent_history=[line.model_dump() for line in payload.recent_history],
+            db,
         ),
         media_type="text/event-stream",
         headers={
