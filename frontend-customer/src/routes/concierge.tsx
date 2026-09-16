@@ -26,6 +26,34 @@ import { useAuth } from "@/lib/auth";
 
 type ConciergeSearch = { q?: string };
 
+/**
+ * "Added Margherita Pizza ×1 to your cart." — from the action and the loaded
+ * menu, never from anything the server said, so the line cannot name a price
+ * or a dish the menu page would disagree with.
+ */
+function describeAppliedActions(actions: CartAction[], menu: MenuItem[]): string | undefined {
+  const nameOf = (id: string | null) => menu.find((item) => item.id === id)?.name ?? "that dish";
+  const lines = actions
+    .filter((action) => action.status === "applied")
+    .map((action) => {
+      const qty = action.quantity ?? 1;
+      switch (action.kind) {
+        case "add":
+          return `Added ${nameOf(action.menu_item_id)} ×${qty} to your cart.`;
+        case "remove":
+          return `Removed ${nameOf(action.menu_item_id)} from your cart.`;
+        case "set_quantity":
+          return `${nameOf(action.menu_item_id)} is now ×${qty}.`;
+        case "clear":
+          return "Cleared your cart.";
+        default:
+          return undefined;
+      }
+    })
+    .filter((line): line is string => Boolean(line));
+  return lines.length ? lines.join(" ") : undefined;
+}
+
 export const Route = createFileRoute("/concierge")({
   validateSearch: (search: Record<string, unknown>): ConciergeSearch =>
     typeof search["q"] === "string" ? { q: search["q"] as string } : {},
@@ -321,16 +349,29 @@ function ConciergePage() {
               );
             }
 
-            const showAgentReply = Boolean(
-              Boolean(done.agent_reply?.trim()),
-            );
+            // What the agent has to say, in its own words when it has them,
+            // otherwise a plain statement of what it did — named from the
+            // menu this page already holds, since no name crosses the wire.
+            const agentLine =
+              done.agent_reply?.trim() ||
+              (cartUpdated && done.cart_actions
+                ? describeAppliedActions(done.cart_actions, resolveMenu())
+                : undefined);
+
+            // A turn that changed the cart, or is asking to, is answered by
+            // the agent. The pipeline's reply for "add one more Margherita"
+            // was a paragraph about past-order suggestions — true of nothing
+            // the customer asked — so on those turns the agent's line is the
+            // answer and the paragraph is not shown. Every other turn keeps
+            // today's reply, with the agent's line beneath it if there is one.
+            const actedOnCart = cartUpdated || proposals.length > 0;
 
             patchAnswer((turn) => ({
               ...turn,
-              text: done.reply,
+              text: actedOnCart && agentLine ? agentLine : done.reply,
               suggestions: done.suggestions,
               turnId: done.turn_id,
-              agentReply: showAgentReply ? (done.agent_reply as string).trim() : undefined,
+              agentReply: actedOnCart ? undefined : agentLine,
               proposals,
               hadDropped,
               cartUpdated,

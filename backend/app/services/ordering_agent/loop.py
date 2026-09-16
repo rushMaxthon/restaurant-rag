@@ -292,6 +292,16 @@ def run_turn(
         action = result.get("action") if isinstance(result, dict) else None
         if isinstance(action, dict):
             actions.append(action)
+            # One mutation per turn, decided here rather than by the prompt.
+            # Live on 2026-09-16: "add one more Margherita" produced an
+            # applied add and then, rounds later, a second one — the customer
+            # got three. A cart change is the end of the work; the client
+            # names what happened from the action and the menu it holds, so
+            # no further model round is spent phrasing it.
+            return TurnOutcome(
+                answer=None, actions=actions, records=records,
+                fallback_reason=None, elapsed_seconds=clock() - start,
+            )
 
     return _capped("round_cap")
 

@@ -502,14 +502,14 @@ class DestructivePolicyTests(OrderingAgentLoopTestCase):
         self.assertEqual(outcome.actions[0]["status"], "applied")
         self.assertEqual(outcome.records[0].result["action"]["status"], "applied")
 
-    def test_actions_from_mutation_results_are_collected_in_order(self) -> None:
+    def test_the_first_action_ends_the_turn(self) -> None:
+        # Live on 2026-09-16: "add one more" turned into three, because the
+        # model went on calling mutation tools after the first applied add.
+        # A cart change is the end of the work, whatever the model plans next.
         add_result = {"outcome": "action", "action": {"kind": "add", "status": "applied", "menu_item_id": str(MENU_ITEM_ID)}}
-        remove_result = {
-            "outcome": "action",
-            "action": {"kind": "remove", "status": "proposed", "reason": "destructive"},
-        }
+        remove_calls: list = []
         self.register("add_dish", NoArgs, _recording_handler([], add_result))
-        self.register("remove_dish", NoArgs, _recording_handler([], remove_result))
+        self.register("remove_dish", NoArgs, _recording_handler(remove_calls, {"outcome": "action", "action": {"kind": "remove", "status": "proposed", "reason": "destructive"}}))
         generate = ScriptedGenerate(
             _tool_call("add_dish", {}),
             _tool_call("remove_dish", {}),
@@ -525,7 +525,10 @@ class DestructivePolicyTests(OrderingAgentLoopTestCase):
             max_rounds=4,
             budget_seconds=1000.0,
         )
-        self.assertEqual([action["kind"] for action in outcome.actions], ["add", "remove"])
+        self.assertEqual([action["kind"] for action in outcome.actions], ["add"])
+        self.assertEqual(remove_calls, [], "nothing runs after the first action")
+        self.assertIsNone(outcome.fallback_reason)
+        self.assertIsNone(outcome.answer, "the client names what happened; no model round is spent on it")
 
 
 class GuardsUnitTests(unittest.TestCase):
