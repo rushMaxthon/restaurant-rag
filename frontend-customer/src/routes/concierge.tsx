@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,15 @@ import {
   getChatHistory,
   getToken,
   streamChatMessage,
+  type CartAction,
   type ChatSuggestion,
 } from "@/lib/api";
 import type { MenuItem } from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
+import { cartLinesForRequest } from "@/lib/suggestions";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { queryKeys } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 
 type ConciergeSearch = { q?: string };
@@ -84,11 +88,26 @@ type Status = "idle" | "waiting" | "streaming" | "done" | "error";
  * asking a second question used to overwrite the dishes from the first, so the
  * cards on screen could belong to a question no longer visible anywhere.
  */
+/** One cart-action proposal, plus whether the customer has already acted on it. */
+type ProposalState = {
+  action: CartAction;
+  resolution: "pending" | "confirmed" | "dismissed";
+};
+
 type Turn = {
   id: string;
   role: "user" | "assistant";
   text: string;
   suggestions: ChatSuggestion[];
+  /** The server's own id for this turn — required to confirm a proposal on it. */
+  turnId?: string | undefined;
+  /** A short second line under the reply. Never a second full answer. */
+  agentReply?: string | undefined;
+  proposals?: ProposalState[] | undefined;
+  /** Whether anything referenced by this turn wasn't on this branch's menu. */
+  hadDropped?: boolean;
+  /** Whether an applied change (auto or confirmed) has touched the cart. */
+  cartUpdated?: boolean;
 };
 
 let turnSeq = 0;
@@ -117,7 +136,17 @@ function ConciergePage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const store = useBangkokStore();
+  const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+
+  // The same branch menu the menu page renders from, read out of the cache
+  // rather than fetched here: the ordering agent sends identifiers only, and
+  // the brief is explicit that a menu not already loaded means every action
+  // for this turn is dropped, not a reason to fetch one.
+  const resolveMenu = () =>
+    queryClient.getQueryData<MenuItem[]>(
+      queryKeys.menuItems(store.restaurantId ?? "", store.currentLocation?.id),
+    ) ?? [];
 
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -246,6 +275,10 @@ function ConciergePage() {
           // sending it would be harmless — but not sending what cannot be used
           // keeps the request honest about who it is for.
           guest_preferences: getToken() ? undefined : guestPreferencesForRequest(),
+          // Identifiers only — see `cartLinesForRequest`. Lets the ordering
+          // agent resolve "make it two" or "remove that" against what is
+          // actually in the cart right now.
+          cart: cartLinesForRequest(store.cart),
         },
         {
           onMeta: (meta) => {
@@ -262,7 +295,46 @@ function ConciergePage() {
           onDone: (done) => {
             sessionIdRef.current = done.session_id;
             storeChatSession(done.session_id);
-            patchAnswer((turn) => ({ ...turn, text: done.reply, suggestions: done.suggestions }));
+
+            // Absent entirely unless the server's ordering-agent flag is on
+            // (see `ChatStreamDone`) — everything below is a no-op under the
+            // old contract.
+            let cartUpdated = false;
+            let hadDropped = false;
+            let proposals: ProposalState[] = [];
+            if (done.turn_id && done.cart_actions) {
+              const menu = resolveMenu();
+              const { dropped, proposals: pending } = store.applyCartActions(
+                done.turn_id,
+                done.cart_actions,
+                menu,
+              );
+              hadDropped = dropped.length > 0;
+              proposals = pending.map((action) => ({ action, resolution: "pending" as const }));
+              // Applied and not reported back as dropped or still pending
+              // means it actually changed the cart.
+              cartUpdated = done.cart_actions.some(
+                (action) =>
+                  action.status === "applied" &&
+                  !dropped.includes(action) &&
+                  !pending.includes(action),
+              );
+            }
+
+            const showAgentReply = Boolean(
+              Boolean(done.agent_reply?.trim()),
+            );
+
+            patchAnswer((turn) => ({
+              ...turn,
+              text: done.reply,
+              suggestions: done.suggestions,
+              turnId: done.turn_id,
+              agentReply: showAgentReply ? (done.agent_reply as string).trim() : undefined,
+              proposals,
+              hadDropped,
+              cartUpdated,
+            }));
             setStatus("done");
           },
         },
@@ -284,6 +356,76 @@ function ConciergePage() {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     void sendQuery(draft);
+  }
+
+  /**
+   * The customer explicitly agreeing to one proposed edit. The client forces
+   * `status: "applied"` only on this one action — every other proposal on the
+   * turn stays untouched until it gets its own tap.
+   */
+  function confirmProposal(turn: Turn, index: number) {
+    if (!turn.turnId) return;
+    const proposal = turn.proposals?.[index];
+    if (!proposal || proposal.resolution !== "pending") return;
+
+    const menu = resolveMenu();
+    const { dropped } = store.applyCartActions(
+      `${turn.turnId}:confirm:${index}`,
+      [{ ...proposal.action, status: "applied" }],
+      menu,
+    );
+    const applied = dropped.length === 0;
+
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id !== turn.id
+          ? t
+          : {
+              ...t,
+              proposals: t.proposals?.map((p, i) =>
+                i === index ? { ...p, resolution: applied ? "confirmed" : "dismissed" } : p,
+              ),
+              hadDropped: t.hadDropped || !applied,
+              cartUpdated: t.cartUpdated || applied,
+            },
+      ),
+    );
+  }
+
+  function dismissProposal(turn: Turn, index: number) {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id !== turn.id
+          ? t
+          : {
+              ...t,
+              proposals: t.proposals?.map((p, i) =>
+                i === index ? { ...p, resolution: "dismissed" as const } : p,
+              ),
+            },
+      ),
+    );
+  }
+
+  function undoTurn(turn: Turn) {
+    if (!store.undoLastChatTurn()) return;
+    setTurns((prev) => prev.map((t) => (t.id === turn.id ? { ...t, cartUpdated: false } : t)));
+  }
+
+  /** "the Pad Thai", "your whole cart" for clear — the only two shapes a card names. */
+  function proposalDishLabel(action: CartAction, menu: MenuItem[]): string {
+    if (action.kind === "clear") return "your whole cart";
+    return menu.find((item) => item.id === action.menu_item_id)?.name ?? "this item";
+  }
+
+  /** One line naming what the card is asking, or what it already did. */
+  function proposalCopy(action: CartAction, menu: MenuItem[], confirmed: boolean): string {
+    const dish = proposalDishLabel(action, menu);
+    if (action.kind === "clear") return confirmed ? "Cleared your whole cart." : "Clear your whole cart?";
+    if (action.kind === "remove") return confirmed ? `Removed ${dish}.` : `Remove ${dish}?`;
+    if (action.kind === "set_quantity")
+      return confirmed ? `Updated ${dish}.` : `Update the quantity of ${dish}?`;
+    return confirmed ? `Added ${dish}.` : `Add ${dish}?`;
   }
 
   /**
@@ -402,6 +544,9 @@ function ConciergePage() {
                           Finding dishes for you…
                         </p>
                       )}
+                      {turn.agentReply && (
+                        <p className="mt-1 text-base text-muted-foreground">{turn.agentReply}</p>
+                      )}
                     </div>
                   </div>
 
@@ -425,6 +570,56 @@ function ConciergePage() {
                         ))}
                       </div>
                     )
+                  )}
+
+                  {turn.proposals && turn.proposals.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      {turn.proposals.map((p, i) =>
+                        p.resolution === "dismissed" ? null : (
+                          <div
+                            key={i}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
+                          >
+                            <span className="text-base">
+                              {proposalCopy(p.action, resolveMenu(), p.resolution === "confirmed")}
+                            </span>
+                            {p.resolution === "pending" && (
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => confirmProposal(turn, i)}>
+                                  Confirm
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => dismissProposal(turn, i)}
+                                >
+                                  Not now
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
+
+                  {turn.cartUpdated && (
+                    <p className="text-base text-muted-foreground">
+                      Cart updated —{" "}
+                      <button
+                        type="button"
+                        onClick={() => undoTurn(turn)}
+                        className="underline underline-offset-2"
+                      >
+                        Undo
+                      </button>
+                    </p>
+                  )}
+
+                  {turn.hadDropped && (
+                    <p className="text-base text-muted-foreground">
+                      Some items aren't on this branch's menu, so I left them out.
+                    </p>
                   )}
                 </div>
               );

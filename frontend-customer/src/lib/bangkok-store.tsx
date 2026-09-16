@@ -5,10 +5,13 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { MenuItem, RestaurantLocation } from "@/lib/bangkok-data";
+import type { CartAction } from "@/lib/api";
+import { planCartActions } from "@/lib/cart-actions";
 
 /** Which part of an item a chosen option covers. Mirrors the server enum. */
 export type OptionPortion = "WHOLE" | "LEFT" | "RIGHT";
@@ -66,6 +69,38 @@ export function cartConflictsWith(
   return Boolean(current && current !== itemRestaurantId);
 }
 
+export type ApplyCartActionsOutcome = {
+  cart: CartLine[];
+  dropped: CartAction[];
+  proposals: CartAction[];
+  /** False when this turn id was already applied — the idempotent no-op. */
+  applied: boolean;
+};
+
+/**
+ * The store's one chat-driven mutation rule, pure so it can be tested without
+ * mounting the provider: applying the same turn twice (a retried stream, a
+ * duplicate `done` frame) must not double-apply it.
+ *
+ * `lastAppliedTurnId` is the caller's own bookkeeping (a ref in the provider
+ * below) rather than store state, because it is not something a saved cart
+ * needs to remember across a reload — only within the session that received
+ * the turn.
+ */
+export function applyCartActionsToCart(
+  cart: CartLine[],
+  turnId: string,
+  lastAppliedTurnId: string | null,
+  actions: CartAction[],
+  menu: MenuItem[],
+): ApplyCartActionsOutcome {
+  if (turnId === lastAppliedTurnId) {
+    return { cart, dropped: [], proposals: [], applied: false };
+  }
+  const { next, dropped, proposals } = planCartActions(actions, cart, menu);
+  return { cart: next, dropped, proposals, applied: true };
+}
+
 type AppState = {
   branchId: string;
   /**
@@ -120,6 +155,20 @@ type Store = AppState & {
   addItem: (item: MenuItem, options?: AddItemOptions) => void;
   changeQuantity: (lineId: string, delta: number) => void;
   clearCart: () => void;
+  /**
+   * The ordering agent's only cart-mutating path. Idempotent per `turnId` and
+   * snapshots the cart first, so `undoLastChatTurn` can always undo it in one
+   * tap. Returns what it could NOT apply, so the caller can tell the customer:
+   * `dropped` (referenced something off this branch's menu, or arrived with a
+   * status this client refuses to trust) and `proposals` (needs a confirm).
+   */
+  applyCartActions: (
+    turnId: string,
+    actions: CartAction[],
+    menu: MenuItem[],
+  ) => { dropped: CartAction[]; proposals: CartAction[] };
+  /** Restores the cart to just before the last `applyCartActions` call. */
+  undoLastChatTurn: () => boolean;
   setFulfillment: (value: AppState["fulfillment"]) => void;
   toggleTheme: () => void;
   totalItems: number;
@@ -317,6 +366,45 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Both refs, not state: neither needs to survive a reload, and putting them
+  // in `state` would mean every chat cart edit gets written to localStorage
+  // twice over (once for the ref's own bookkeeping, once for the cart it
+  // produced), for no reader that wants it back after a restart.
+  const lastChatTurnIdRef = useRef<string | null>(null);
+  const cartSnapshotRef = useRef<CartLine[] | null>(null);
+
+  const applyCartActions = useCallback(
+    (turnId: string, actions: CartAction[], menu: MenuItem[]) => {
+      const outcome = applyCartActionsToCart(
+        state.cart,
+        turnId,
+        lastChatTurnIdRef.current,
+        actions,
+        menu,
+      );
+      if (outcome.applied) {
+        // One level of undo, per the spec: this snapshot is overwritten by
+        // the next applied turn, not stacked.
+        if (outcome.cart !== state.cart) cartSnapshotRef.current = state.cart;
+        lastChatTurnIdRef.current = turnId;
+        if (outcome.cart !== state.cart) {
+          setState((s) => ({ ...s, cart: outcome.cart }));
+        }
+      }
+      return { dropped: outcome.dropped, proposals: outcome.proposals };
+    },
+    [state.cart],
+  );
+
+  const undoLastChatTurn = useCallback(() => {
+    const snapshot = cartSnapshotRef.current;
+    if (!snapshot) return false;
+    cartSnapshotRef.current = null;
+    lastChatTurnIdRef.current = null;
+    setState((s) => ({ ...s, cart: snapshot }));
+    return true;
+  }, []);
+
   const value = useMemo<Store>(
     () => ({
       ...state,
@@ -351,6 +439,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       addItem,
       changeQuantity,
       clearCart,
+      applyCartActions,
+      undoLastChatTurn,
       setFulfillment: (fulfillment) => setState((s) => ({ ...s, fulfillment })),
       toggleTheme: () => setState((s) => ({ ...s, dark: !s.dark })),
       totalItems: state.cart.reduce((n, line) => n + line.quantity, 0),
@@ -366,6 +456,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       replaceCartWith,
       changeQuantity,
       clearCart,
+      applyCartActions,
+      undoLastChatTurn,
       appConfigQuery.isLoading,
       restaurantQuery.isLoading,
       appConfigQuery.isError,
