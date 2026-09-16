@@ -333,3 +333,29 @@ test.describe("branch opening hours", () => {
     await expect(ahead).toBeVisible();
   });
 });
+
+test.describe("the orders page stays readable", () => {
+  test("a long history does not become a mile of scrolling", async ({ page }) => {
+    await resetApp(page);
+    await signIn(page, "/orders");
+    await page.waitForLoadState("networkidle");
+
+    // Measured before this cap: an account with 131 orders in progress and 126
+    // abandoned checkouts, each drawn as a card with a thumbnail strip and a
+    // five-step progress bar, ran to 117 screens on a phone. Sections are
+    // capped and openable now, so the page opens at a readable length whatever
+    // the history behind it.
+    const screens = await page.evaluate(() => document.body.scrollHeight / window.innerHeight);
+    expect(screens, "the orders page opens far too long").toBeLessThan(12);
+
+    // The rest is still reachable, when there is a rest.
+    const more = page.getByRole("button", { name: /show \d+ more/i }).first();
+    if (await more.count()) {
+      const before = await page.locator(".line-card, .line").count();
+      await more.click();
+      await expect
+        .poll(async () => page.locator(".line-card, .line").count())
+        .toBeGreaterThan(before);
+    }
+  });
+});

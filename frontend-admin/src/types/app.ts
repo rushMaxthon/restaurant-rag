@@ -665,6 +665,9 @@ export interface MenuItemCustomizationGroupPayload {
 }
 
 export interface MenuItemSizePayload {
+  // The row being edited, when this size already exists on the server.
+  // Sending it lets a rename keep its id, and carts hold size ids.
+  id?: string;
   name: string;
   price: number;
   is_active: boolean;

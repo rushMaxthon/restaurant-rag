@@ -28,6 +28,69 @@ Running log of what each session did. Newest entry at the top.
 
 ---
 
+## 2026-09-16 — Every admin save was breaking every cart holding that dish
+
+**Goal:** `half-pizza-end-to-end.spec.ts` passed in the morning and failed in
+the afternoon with "The selected size is unavailable for Build Your Own Pizza"
+on the checkout screen. Find out why, fix it, push.
+
+**Found:** `_sync_menu_item_customizations` cleared `menu_item.sizes` and
+`menu_item.customization_groups` on every save and rebuilt them from the
+payload. Same names, same prices, all-new UUIDs. A cart lives in the browser
+holding `menu_item_size_id` and `option_id`, and `resolve_menu_item_selection`
+refuses ids it cannot find — so an owner correcting a price broke every cart
+already holding that dish, and the customer had no way out but deleting the
+line. The test failed in the afternoon because dishes were being saved in the
+admin panel then (the size rows for a dozen dishes were recreated at a human
+pace over two hours, none of it in the local backend log — a deployed API on
+the same Supabase database, most likely), and not in the morning because
+nobody was.
+
+**Changed:**
+- `backend/app/api/menu_items.py` — sizes, groups and options are now
+  reconciled in place: matched by id when the client sends one, then by name,
+  per scope (item-level vs each size, so two "Toppings" groups cannot swap).
+  Unclaimed rows are deleted. Docstring carries the incident.
+- `backend/app/schemas/menu_item.py` — optional `id` on size, group and
+  option payloads.
+- `frontend-admin` — the editor sends the size id it is editing (only real
+  UUIDs; its own `size-xxxx` draft ids stay client-side). Groups/options are
+  merged across sizes in the form and have no single server id, so they rely
+  on the name match.
+- `frontend-customer/src/routes/checkout.tsx` — a 400 from the order endpoint
+  now links back to the cart instead of being a dead end.
+- `backend/tests/test_menu_item_save_identity.py` (8) and
+  `frontend-customer/e2e/menu-save-identity.spec.ts` (2) pin it.
+
+**Verified:** backend `unittest discover` 1199 OK; the six admin-save and
+split-pizza specs pass on desktop; DB rows for the pizza keep yesterday's
+`created_at` across six saves; admin `npm run build` OK. Full E2E and customer
+build were running at the time of writing — see the commit for the outcome.
+
+**Open:**
+- The fix only protects carts once it is deployed wherever else the admin panel
+  saves to (`restaurant-rag-api-xjfx.onrender.com`); until then a save from
+  there still rotates ids.
+- A rename from a client that sends no ids (mobile, seed) still replaces the
+  row. Deliberate: there is nothing to match on.
+- From 2026-09-15, not yet in this log: the WhatsApp channel
+  (`backend/app/api/whatsapp.py`, worker task, 33 tests) is built and was
+  answering; the Meta webhook still points at the ngrok tunnel and must go back
+  to `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`; the
+  Celery worker is down, so WhatsApp does not answer right now.
+- Suggestions offered and not acted on: reorder, 71/117 dishes without photos,
+  streaming the concierge reply, unpaid-order reaping, three dishes over $100.
+
+**Learned:**
+- On Windows the venv `python.exe` is a launcher; `uvicorn` shows as two
+  processes (launcher + `Python.3.11_...`). Kill both or the port stays held.
+- The backend runs without `--reload` here. A code change is not live until
+  it is restarted; a green run against the old process proves nothing.
+- Supabase's 15-connection cap: backend + full unit suite + E2E together can
+  starve an ad-hoc DB query with `EMAXCONNSESSION`; it is not a code failure.
+
+---
+
 ## 2026-09-14 (10) — The halves were being dropped at checkout
 
 **Goal:** follow one half-and-half pizza from the dish page to what the server

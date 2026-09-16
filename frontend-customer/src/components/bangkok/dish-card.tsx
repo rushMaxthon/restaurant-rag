@@ -1,13 +1,19 @@
 import { Link } from "@tanstack/react-router";
-import { Minus, Plus, Star } from "lucide-react";
+import { Heart, Minus, Plus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
 import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { useAuth } from "@/lib/auth";
+import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 
 export function DishCard({ item }: { item: MenuItem }) {
   const { addItem, cart, changeQuantity, conflictsWithCart } = useBangkokStore();
+  const { isAuthenticated } = useAuth();
+  const favorites = useFavoriteIds(isAuthenticated);
+  const toggleFavorite = useToggleFavorite();
+  const isFavorite = favorites.data?.has(item.id) ?? false;
 
   // A concierge suggestion can belong to another restaurant, and one order can
   // only come from one kitchen. Rather than adding it and failing at checkout
@@ -28,7 +34,21 @@ export function DishCard({ item }: { item: MenuItem }) {
   const lastLine = lines[lines.length - 1];
 
   return (
-    <article className="dish-card group flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
+    <article className="dish-card group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
+      {/* Outside the Link, so a tap saves the dish instead of opening it.
+          Signed out there is nowhere to save it to, so it is not offered. */}
+      {isAuthenticated && (
+        <button
+          type="button"
+          className="heart"
+          data-on={isFavorite}
+          aria-pressed={isFavorite}
+          aria-label={isFavorite ? `Remove ${item.name} from your usuals` : `Save ${item.name}`}
+          onClick={() => toggleFavorite.mutate({ menuItemId: item.id, next: !isFavorite })}
+        >
+          <Heart className="size-4" fill={isFavorite ? "currentColor" : "none"} />
+        </button>
+      )}
       <Link
         to="/menu/$itemId"
         params={{ itemId: item.id }}

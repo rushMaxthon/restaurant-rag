@@ -10,6 +10,8 @@ export const queryKeys = {
   menuItem: (id: string) => ["menu-item", id] as const,
   orders: ["orders"] as const,
   profile: ["profile"] as const,
+  favoriteIds: ["favorite-ids"] as const,
+  favorites: ["favorites"] as const,
   order: (id: string) => ["order", id] as const,
   combos: ["generated-combos"] as const,
   offers: ["personalized-offers"] as const,
@@ -39,6 +41,76 @@ export function useProfile(enabled: boolean) {
     // A customer who has no profile row, or an account the endpoint refuses
     // (it is customers-only), must not turn into a retry storm behind a
     // checkout form that works perfectly well empty.
+    retry: false,
+  });
+}
+
+/** Which dishes are favourites, as a set the menu can test against. */
+export function useFavoriteIds(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.favoriteIds,
+    queryFn: async () => new Set(await api.getFavoriteIds()),
+    enabled,
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useFavorites(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.favorites,
+    queryFn: api.getFavorites,
+    enabled,
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+/**
+ * Turn a favourite on or off.
+ *
+ * Optimistic, because a heart that waits for a round trip before filling in
+ * feels broken - the tap is the whole interaction. The previous set is kept so
+ * a failed request puts it back rather than leaving the screen lying.
+ */
+export function useToggleFavorite() {
+  const client = useQueryClient();
+  return useMutation({
+    // Serialised. Two quick taps on one heart fire an add and a remove at the
+    // same time, and if they land out of order the server keeps the opposite
+    // of what the screen shows — saved when you meant to unsave it. A scope
+    // runs them one after another, so the last tap is the one that sticks.
+    scope: { id: "favorites" },
+    mutationFn: ({ menuItemId, next }: { menuItemId: string; next: boolean }) =>
+      next ? api.addFavorite(menuItemId) : api.removeFavorite(menuItemId),
+    onMutate: async ({ menuItemId, next }) => {
+      await client.cancelQueries({ queryKey: queryKeys.favoriteIds });
+      const previous = client.getQueryData<Set<string>>(queryKeys.favoriteIds);
+      const optimistic = new Set(previous ?? []);
+      if (next) optimistic.add(menuItemId);
+      else optimistic.delete(menuItemId);
+      client.setQueryData(queryKeys.favoriteIds, optimistic);
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.favoriteIds, context.previous);
+    },
+    onSettled: () => {
+      client.invalidateQueries({ queryKey: queryKeys.favoriteIds });
+      client.invalidateQueries({ queryKey: queryKeys.favorites });
+      // The account screen counts them.
+      client.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}
+
+/** Dishes people ordered together at this restaurant. */
+export function useGeneratedCombos(restaurantId: string | undefined, limit = 12) {
+  return useQuery({
+    queryKey: [...queryKeys.combos, restaurantId ?? "none", limit],
+    queryFn: () => api.getGeneratedCombos(restaurantId as string, limit),
+    enabled: Boolean(restaurantId),
+    staleTime: 5 * 60 * 1000,
     retry: false,
   });
 }

@@ -444,6 +444,11 @@ export function CartScreen(): React.JSX.Element {
         selected_options: item.selectedOptions.map(option => ({
           option_id: option.optionId,
           quantity: option.quantity,
+          // The portion travels with the option. Without it a half-and-half
+          // order reaches the server as a whole one: the kitchen is told to
+          // put both toppings over all of it, and the server prices two whole
+          // toppings against a screen that charged for two halves.
+          portion: option.portion ?? ('WHOLE' as const),
         })),
         quantity: item.quantity,
       })),
@@ -1306,6 +1311,11 @@ export function CartScreen(): React.JSX.Element {
           selected_options: item.selectedOptions.map(option => ({
             option_id: option.optionId,
             quantity: option.quantity,
+            // The portion travels with the option. Without it a half-and-half
+            // order reaches the server as a whole one: the kitchen is told to
+            // put both toppings over all of it, and the server prices two whole
+            // toppings against a screen that charged for two halves.
+            portion: option.portion ?? ('WHOLE' as const),
           })),
           quantity: item.quantity,
         })),
