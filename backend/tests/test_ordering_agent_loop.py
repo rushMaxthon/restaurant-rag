@@ -792,3 +792,52 @@ class OfferedToolsTests(unittest.TestCase):
         offered = loop._offered_tools({uuid.uuid4()})
         self.assertEqual(set(offered), set(TOOLS))
 
+
+class CartReadBackTests(OrderingAgentLoopTestCase):
+    """The cart is said from its own rows, never from the model's memory.
+
+    Live failure: view_cart returned two lines and a subtotal, the model
+    answered with nothing, and the customer was shown the reply pipeline's
+    guess — it had searched the menu for a dish called "cart".
+    """
+
+    def _result(self, **over):
+        base = {
+            "lines": [
+                {"name": "Corn Fritters", "quantity": 2, "total_price": "16.98", "size_name": None},
+                {"name": "Margherita Pizza", "quantity": 1, "total_price": "12.00", "size_name": "Large"},
+            ],
+            "subtotal": "28.98",
+            "needs_choice": [],
+        }
+        base.update(over)
+        return base
+
+    def test_every_line_and_the_subtotal_are_read_back(self) -> None:
+        said = loop.describe_cart(self._result())
+        self.assertIn("2 x Corn Fritters - $16.98", said)
+        self.assertIn("1 x Margherita Pizza (Large) - $12.00", said)
+        self.assertIn("Subtotal $28.98", said)
+        self.assertIn("Ready to check out?", said)
+
+    def test_an_empty_cart_says_so(self) -> None:
+        self.assertEqual(loop.describe_cart(self._result(lines=[], subtotal="0.00")), "Your cart is empty at the moment.")
+
+    def test_a_line_still_needing_a_choice_is_not_called_ready(self) -> None:
+        said = loop.describe_cart(self._result(needs_choice=[{"name": "Build Your Own Pizza"}]))
+        self.assertNotIn("Ready to check out?", said)
+        self.assertIn("needs a choice", said)
+
+    def test_anything_that_is_not_a_cart_is_left_alone(self) -> None:
+        for value in (None, {}, {"found": True}, "cart", 7):
+            self.assertIsNone(loop.describe_cart(value))
+
+    def test_an_empty_answer_falls_back_to_the_cart_rather_than_nothing(self) -> None:
+        self.register("cart", NoArgs, _recording_handler([], self._result()))
+        generate = ScriptedGenerate(_tool_call("cart", {}), _answer("   "))
+        outcome = loop.run_turn(
+            db=None, scope=SCOPE, message="show me my cart", cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=4, budget_seconds=1000.0,
+        )
+        self.assertIn("Subtotal $28.98", outcome.answer or "")
+

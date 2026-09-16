@@ -115,6 +115,48 @@ def ask_for_choice(result: Any) -> str | None:
     return " ".join(parts) + " Which would you like?"
 
 
+def describe_cart(result: Any) -> str | None:
+    """A `view_cart` result read back as a sentence, or None.
+
+    Every figure comes from the tool's own rows: the client renders the cart
+    itself, so this is only what the customer hears, and it must not disagree
+    with the screen.
+    """
+
+    if not isinstance(result, dict) or "lines" not in result or "subtotal" not in result:
+        return None
+    lines = result.get("lines") or []
+    if not lines:
+        return "Your cart is empty at the moment."
+    parts = []
+    for line in lines:
+        name = line.get("name") or "a dish"
+        size = line.get("size_name")
+        quantity = line.get("quantity") or 1
+        total = line.get("total_price")
+        label = f"{name} ({size})" if size else name
+        parts.append(f"{quantity} x {label} - {_money(total)}")
+    said = "; ".join(parts)
+    subtotal = _money(result.get("subtotal"))
+    tail = " Ready to check out?"
+    if result.get("needs_choice"):
+        # A line still missing a size or a required choice cannot be priced
+        # honestly, so the subtotal is not the whole story and saying "ready
+        # to check out" would be.
+        tail = " One of those still needs a choice before it can be ordered."
+    return f"You have {said}. Subtotal {subtotal}.{tail}"
+
+
+def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
+    """The most recent cart this turn, read back — or None."""
+
+    for record in reversed(records):
+        said = describe_cart(record.result)
+        if said is not None:
+            return said
+    return None
+
+
 def _choice_question_in(records: list[ToolCallRecord]) -> str | None:
     """The most recent needs_choice result this turn, as a question — or None."""
 
@@ -255,7 +297,7 @@ def run_turn(
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
-        question = _choice_question_in(records)
+        question = _choice_question_in(records) or _cart_summary_in(records)
         if question is not None:
             logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
             return TurnOutcome(
@@ -304,8 +346,12 @@ def run_turn(
             step = repaired
 
         if step.answer is not None:
+            # An answer that says nothing is not an answer. The tool results
+            # hold the cart; prefer saying it to shipping an empty string and
+            # letting the caller fall through to a layer with no cart at all.
+            spoken = step.answer.strip() or _cart_summary_in(records) or _choice_question_in(records)
             return TurnOutcome(
-                answer=step.answer,
+                answer=spoken,
                 actions=actions,
                 records=records,
                 fallback_reason=None,
@@ -377,4 +423,4 @@ def run_turn(
     return _capped("round_cap")
 
 
-__all__ = ["Clock", "TurnOutcome", "ask_for_choice", "run_turn"]
+__all__ = ["Clock", "TurnOutcome", "ask_for_choice", "describe_cart", "run_turn"]
