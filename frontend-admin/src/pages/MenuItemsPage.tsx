@@ -8,6 +8,7 @@ import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
+import { MENU_ITEMS_ORIGIN } from "./MenuItemEditorPage";
 import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { ApiError, api, formatCurrency } from "../services/api";
 import { pluralize } from "../services/format";
@@ -401,8 +402,11 @@ export function MenuItemsPage({
       return;
     }
 
+    // `from` so the editor comes back HERE rather than to the branch page the
+    // edit route happens to name - see `backPath` in MenuItemEditorPage.
     onNavigate(
-      `/admin/restaurants/${item.restaurantId}/locations/${itemLocationId}/menu-items/${item.id}/edit`,
+      `/admin/restaurants/${item.restaurantId}/locations/${itemLocationId}` +
+        `/menu-items/${item.id}/edit?from=${MENU_ITEMS_ORIGIN}`,
     );
   };
 

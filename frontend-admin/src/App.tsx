@@ -33,12 +33,17 @@ function usePathname() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // `pathname` stays PATH-ONLY even when a caller passes a query string: every
+  // route below is matched with a regex anchored on `$`, so storing
+  // "/x/edit?from=y" here would match nothing and render a blank page. The
+  // query still goes into the URL, where `window.location.search` can read it.
   const navigate = (nextPath: string) => {
-    if (pathname === nextPath) {
+    const [nextPathname = ""] = nextPath.split("?");
+    if (window.location.pathname + window.location.search === nextPath) {
       return;
     }
     window.history.pushState({}, "", nextPath);
-    setPathname(nextPath);
+    setPathname(nextPathname);
   };
 
   return { pathname, navigate };

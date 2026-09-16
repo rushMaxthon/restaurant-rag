@@ -46,6 +46,9 @@ function buildLocationMenuPath(restaurantId: string, locationId: string): string
   return `/admin/restaurants/${restaurantId}/locations/${locationId}`;
 }
 
+/** Marks an editor opened from the Menu Items list, so Cancel/Save return there. */
+export const MENU_ITEMS_ORIGIN = "menu-items";
+
 function getConflictingLocationIds(error: ApiError): string[] {
   if (
     error.detail !== null &&
@@ -70,11 +73,24 @@ export function MenuItemEditorPage({
 }: MenuItemEditorPageProps) {
   const isEditing = Boolean(itemId);
   const isMultiLocationCreate = !itemId && !locationId;
-  const backPath = useMemo(
-    () =>
-      locationId ? buildLocationMenuPath(restaurantId, locationId) : "/menu-items",
-    [locationId, restaurantId],
-  );
+  // Where Cancel and a successful save return to.
+  //
+  // The editor is reached from two different screens and has to go back to the
+  // one the user actually came from. Its own route names a location either way
+  // (`/restaurants/:id/locations/:id/menu-items/:id/edit`), so the location is
+  // not the tell - an item opened from the Menu Items list would otherwise land
+  // the user on the branch page, which an owner sees as "My Restaurant" and
+  // reads as being thrown out of the menu they were editing.
+  //
+  // So the opening screen says where it was: `?from=menu-items` from the Menu
+  // Items list, nothing from the branch page's own menu table.
+  const backPath = useMemo(() => {
+    const from = new URLSearchParams(window.location.search).get("from");
+    if (from === MENU_ITEMS_ORIGIN) {
+      return "/menu-items";
+    }
+    return locationId ? buildLocationMenuPath(restaurantId, locationId) : "/menu-items";
+  }, [locationId, restaurantId]);
   const [form, setForm] = useState<MenuItemFormState>(createEmptyMenuItemFormState);
   const [restaurantName, setRestaurantName] = useState("Restaurant");
   const [location, setLocation] = useState<RestaurantLocation | null>(null);
