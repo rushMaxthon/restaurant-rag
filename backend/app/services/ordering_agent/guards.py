@@ -254,22 +254,36 @@ def enforce_destructive_policy(result: dict[str, Any]) -> dict[str, Any]:
     (`_clear_cart` never returns anything else; `_remove_from_cart`/
     `_set_quantity` downgrade to `proposed` on any ambiguous match) — this
     function exists so a future handler regression cannot silently slip an
-    `applied` `clear`, or an `applied` ambiguous `remove`, past the loop
-    without at least a warning and a downgrade, per the brief's exact rule.
+    `applied` `clear`, an `applied` ambiguous `remove`, or an `applied`
+    ambiguous `set_quantity` past the loop without at least a warning and a
+    downgrade.
+
+    Gates on the PROPERTY, not on one reason string a handler happens to
+    use today: `kind == "clear"` is always disallowed, and for `kind` in
+    `{"remove", "set_quantity"}` the only reason a handler ever attaches to
+    a legitimately applied action is `"named"` (`tools.py:1225, 1263,
+    1299`) — a real, unambiguous match against the browser's own cart. Any
+    other reason on those two kinds (`"destructive"`, `"ambiguous"`, or
+    anything a future handler invents) is exactly the shape a mutation is
+    never supposed to self-report as applied, so it is downgraded too.
+    Checking `reason == "ambiguous"` alone (an earlier version of this gate)
+    missed `_remove_from_cart`'s own multi-match case, which uses
+    `reason="destructive"`, not `"ambiguous"` — the fix here is to name the
+    one reason that IS safe, rather than enumerate every reason that is not.
 
     A no-op for any result without an `"action"` dict (every read-only tool,
-    and `add_to_cart`/`set_quantity`'s own non-destructive `applied` paths) —
-    safe to call after every successful tool call rather than only after the
-    four mutation tools by name.
+    and `add_to_cart`'s own non-destructive `applied` path) — safe to call
+    after every successful tool call rather than only after the four
+    mutation tools by name.
     """
 
     action = result.get("action") if isinstance(result, dict) else None
     if not isinstance(action, dict):
         return result
 
+    kind = action.get("kind")
     violates = action.get("status") == "applied" and (
-        action.get("kind") == "clear"
-        or (action.get("kind") == "remove" and action.get("reason") == "ambiguous")
+        kind == "clear" or (kind in ("remove", "set_quantity") and action.get("reason") != "named")
     )
     if not violates:
         return result

@@ -425,6 +425,83 @@ class DestructivePolicyTests(OrderingAgentLoopTestCase):
         self.assertEqual(outcome.actions[0]["status"], "proposed")
         self.assertEqual(outcome.records[0].result["action"]["status"], "proposed")
 
+    def test_an_applied_remove_with_reason_destructive_is_downgraded(self) -> None:
+        # The real shape `_remove_from_cart`'s multi-match branch builds
+        # (`tools.py`): `kind="remove"`, `reason="destructive"`, never
+        # `"ambiguous"`. A gate that only recognised `reason=="ambiguous"`
+        # would miss this one entirely.
+        wrong_result = {
+            "outcome": "action",
+            "action": {"kind": "remove", "status": "applied", "reason": "destructive"},
+        }
+        self.register("remove_dish", NoArgs, _recording_handler([], wrong_result))
+        generate = ScriptedGenerate(
+            _tool_call("remove_dish", {}),
+            _answer("removed"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="remove the pizza",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.actions[0]["status"], "proposed")
+        self.assertEqual(outcome.records[0].result["action"]["status"], "proposed")
+
+    def test_an_applied_set_quantity_with_reason_ambiguous_is_downgraded(self) -> None:
+        # The real shape `_set_quantity`'s multi-match branch builds.
+        wrong_result = {
+            "outcome": "action",
+            "action": {"kind": "set_quantity", "status": "applied", "reason": "ambiguous"},
+        }
+        self.register("adjust_quantity", NoArgs, _recording_handler([], wrong_result))
+        generate = ScriptedGenerate(
+            _tool_call("adjust_quantity", {}),
+            _answer("updated"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="make it two",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.actions[0]["status"], "proposed")
+        self.assertEqual(outcome.records[0].result["action"]["status"], "proposed")
+
+    def test_an_applied_remove_with_reason_named_is_left_alone(self) -> None:
+        # The real shape of a genuinely unambiguous, applied removal
+        # (`tools.py:1263`'s single-match branch) must survive this gate
+        # unchanged, or a real removal would never reach the customer.
+        real_result = {
+            "outcome": "action",
+            "action": {"kind": "remove", "status": "applied", "reason": "named"},
+        }
+        self.register("remove_dish", NoArgs, _recording_handler([], real_result))
+        generate = ScriptedGenerate(
+            _tool_call("remove_dish", {}),
+            _answer("removed"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="remove the pizza",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.actions[0]["status"], "applied")
+        self.assertEqual(outcome.records[0].result["action"]["status"], "applied")
+
     def test_actions_from_mutation_results_are_collected_in_order(self) -> None:
         add_result = {"outcome": "action", "action": {"kind": "add", "status": "applied", "menu_item_id": str(MENU_ITEM_ID)}}
         remove_result = {
@@ -488,6 +565,26 @@ class GuardsUnitTests(unittest.TestCase):
 
     def test_enforce_destructive_policy_leaves_a_proposed_clear_alone(self) -> None:
         result = {"outcome": "action", "action": {"kind": "clear", "status": "proposed"}}
+        self.assertEqual(guards.enforce_destructive_policy(result), result)
+
+    def test_enforce_destructive_policy_gates_on_kind_and_reason_not_one_reason_string(self) -> None:
+        # The property, not a single reason string: `_remove_from_cart`'s
+        # real multi-match branch uses `reason="destructive"`, never
+        # `"ambiguous"` (`tools.py:1256`) — a gate that only recognised
+        # `"ambiguous"` would miss this shape entirely.
+        result = {"outcome": "action", "action": {"kind": "remove", "status": "applied", "reason": "destructive"}}
+        downgraded = guards.enforce_destructive_policy(result)
+        self.assertEqual(downgraded["action"]["status"], "proposed")
+
+    def test_enforce_destructive_policy_downgrades_an_applied_ambiguous_set_quantity(self) -> None:
+        result = {"outcome": "action", "action": {"kind": "set_quantity", "status": "applied", "reason": "ambiguous"}}
+        downgraded = guards.enforce_destructive_policy(result)
+        self.assertEqual(downgraded["action"]["status"], "proposed")
+
+    def test_enforce_destructive_policy_leaves_an_applied_named_remove_alone(self) -> None:
+        # "named" is the only reason the real handlers ever attach to a
+        # legitimately applied remove/set_quantity (`tools.py:1263, 1299`).
+        result = {"outcome": "action", "action": {"kind": "remove", "status": "applied", "reason": "named"}}
         self.assertEqual(guards.enforce_destructive_policy(result), result)
 
 
