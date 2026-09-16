@@ -308,6 +308,11 @@ class Settings(BaseSettings):
     # leave it empty and it behaves like the marketplace app, across all of
     # them.
     whatsapp_restaurant_id: str = ""
+    # Which branch a WhatsApp order is placed against. A chat thread has
+    # no branch picker, and an order cannot be placed without one — unset
+    # means the assistant answers about the menu but cannot take an order,
+    # which is better than guessing a branch on somebody's behalf.
+    whatsapp_restaurant_location_id: str = ""
 
     # Who may be answered, as a comma-separated list of sender numbers in the
     # form WhatsApp uses (country code, digits only, no +).

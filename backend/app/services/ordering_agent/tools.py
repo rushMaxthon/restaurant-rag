@@ -61,6 +61,10 @@ from app.schemas.order import (
 from app.services import rag as ordering_rag
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.ordering_agent import order_draft
+from app.services.ordering_agent.verified_phone import (
+    PhoneNotVerified,
+    customer_for_verified_phone,
+)
 from app.models.enums import OrderScheduleType, PaymentMethod
 from app.schemas.order import (
     OrderCreateItem,
@@ -421,6 +425,13 @@ class OrderingScope:
     # Caller-supplied like the rest of the scope: the model never chooses
     # whose details it is filling in.
     session_id: uuid.UUID | None = None
+    # A phone number the CHANNEL has verified belongs to this person —
+    # WhatsApp's, not one typed into a web chat. It is what lets an order be
+    # placed without a sign-in; see `verified_phone`.
+    verified_phone: str | None = None
+    # Which app the customer is reaching this through. Identity is scoped by
+    # it, so provisioning must be too.
+    app_client_id: uuid.UUID | None = None
 
 ToolHandler = Callable[[Session, OrderingScope, ToolArgs], dict[str, Any]]
 
@@ -1331,7 +1342,25 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         # Names only. The agent asks for what is missing; it never learns
         # what is already held.
         return {"outcome": "needs_details", "missing": missing}
-    if scope.customer is None:
+    customer = scope.customer
+    if customer is None and scope.verified_phone:
+        # A channel that has verified the number is the only way to be
+        # somebody without signing in. The account is made at this moment
+        # rather than at "hello", because `full_name` and `email` are
+        # required columns and the conversation has only just collected them.
+        try:
+            customer = customer_for_verified_phone(
+                db,
+                phone_number=scope.verified_phone,
+                app_client_id=scope.app_client_id,
+                verified=True,
+                full_name=draft.contact_name or "",
+                email=draft.contact_email or "",
+            )
+        except PhoneNotVerified as error:
+            logger.warning("Could not identify a WhatsApp customer: %s", error)
+            return {"outcome": "not_identified"}
+    if customer is None:
         # Identity is the account, never the details typed into a chat.
         return {"outcome": "not_identified"}
 
@@ -1367,7 +1396,7 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
     )
 
     try:
-        order = create_order(db, scope.customer, payload)
+        order = create_order(db, customer, payload)
     except HTTPException as error:
         # A closed branch, an item that went unavailable, a minimum not met:
         # all things the customer can act on, so they are told rather than
@@ -1381,7 +1410,7 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         "currency": getattr(order, "currency", None),
     }
     try:
-        link = create_payment_link(db, scope.customer, order.id)
+        link = create_payment_link(db, customer, order.id)
         result["payment_url"] = link.url
     except HTTPException as error:
         # The order exists and is theirs; only the link failed. Saying so is

@@ -7348,6 +7348,8 @@ def _run_ordering_agent(
     stated_diet: str | None = None,
     retrieval_matched_nothing: bool = False,
     session_id: uuid.UUID | None = None,
+    verified_phone: str | None = None,
+    app_client_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7400,6 +7402,8 @@ def _run_ordering_agent(
                 or preference_diet_for_cache(db, user, guest_preferences),
                 # The conversation the order draft belongs to.
                 session_id=session_id,
+                verified_phone=verified_phone,
+                app_client_id=app_client_id,
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`
@@ -7469,6 +7473,7 @@ def _run_ordering_agent(
         "agent_reply": outcome.answer,
         # The order this turn placed, for the client to render a Pay button
         # from and to empty the cart against. None on every other turn.
+        "turn_id": turn_id,
         "placed_order": _json_safe_placed_order(outcome.placed_order),
         # Everything is gathered and the customer has only to confirm.
         "order_ready": outcome.ready_to_place,
@@ -7560,6 +7565,8 @@ def handle_chat_message(
     restaurant_location_id: uuid.UUID | None = None,
     guest_preferences: object | None = None,
     cart: list[CartLinePayload] | None = None,
+    verified_phone: str | None = None,
+    app_client_id: uuid.UUID | None = None,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7910,9 +7917,35 @@ def handle_chat_message(
         restaurant_location_id=restaurant_location_id,
     )
 
+    # The same agent the streaming route runs. WhatsApp reaches the
+    # assistant through here, and a customer who can order on the web and
+    # not in a chat would be the drift this whole design exists to avoid.
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=str(uuid.uuid4()) if settings.enable_ordering_agent else None,
+        recent_history=None,
+        guest_preferences=guest_preferences,
+        session_id=prepared.active_session_id,
+        verified_phone=verified_phone,
+        app_client_id=app_client_id,
+    ) or {}
+
     return ChatMessageResponse(
         reply=reply,
         session_id=prepared.active_session_id,
+        turn_id=agent_output.get("turn_id"),
+        cart_actions=[
+            CartActionResponse(**action) for action in (agent_output.get("cart_actions") or [])
+        ],
+        agent_reply=agent_output.get("agent_reply"),
+        agent_asks=bool(agent_output.get("agent_asks")),
+        order_ready=bool(agent_output.get("order_ready")),
+        placed_order=agent_output.get("placed_order"),
         suggestions=prepared.suggestions,
         combo_suggestions=prepared.combo_suggestions,
         offer_suggestions=prepared.offer_suggestions,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Any, Literal
 from datetime import datetime
 from decimal import Decimal
 
@@ -159,6 +159,13 @@ class ChatMessageResponse(BaseModel):
     # start sending `cart` on this route, at which point this stops being
     # theoretical.
     suggestion: SellSuggestionResponse | None = None
+    # Whether the agent's answer is the one to show, everything an order
+    # needs is gathered, and what was placed if anything. Absent from the
+    # streaming route's own model — it speaks in frames — but the same
+    # fields, so a channel reading either gets one contract.
+    agent_asks: bool = False
+    order_ready: bool = False
+    placed_order: dict[str, Any] | None = None
     # The ordering agent's three additions, all of them empty here today: the
     # agent is wired into `POST /chat/message/stream` only (Task 6), because
     # the concierge streams and wiring the non-streaming route as well would
