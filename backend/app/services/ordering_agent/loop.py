@@ -33,7 +33,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent import guards
-from app.services.ordering_agent.planner import Generate, PlanStep, ToolCallRecord, plan_step
+from app.services.ordering_agent.planner import (
+    Generate,
+    PlanStep,
+    ToolCallRecord,
+    plan_step,
+    validate_call,
+)
 from app.services.ordering_agent.tools import TOOLS, OrderingScope
 
 settings = get_settings()
@@ -132,6 +138,62 @@ def _repeated_call(records: list[ToolCallRecord], tool: str, args: dict[str, Any
     return None
 
 
+# The tools that need an id the model did not invent, and therefore cannot
+# be offered before it has one. `go_to_checkout` is not among them: its cart
+# is injected, so it names nothing.
+_ID_BEARING_TOOLS = frozenset({"add_to_cart", "remove_from_cart", "set_quantity"})
+
+
+def _offered_tools(seen: set[uuid.UUID]) -> tuple[str, ...]:
+    """Which tools this round may choose from.
+
+    With nothing seen — an empty cart and no lookup yet — a cart tool has no
+    id it could legitimately carry, and a model asked for one anyway will
+    invent one; it invented "123" six rounds running on a live turn. So the
+    rule is enforced by what is on offer rather than by refusing what comes
+    back: look something up, and the cart tools appear.
+    """
+
+    if seen:
+        return tuple(TOOLS)
+    return tuple(name for name in TOOLS if name not in _ID_BEARING_TOOLS)
+
+
+def _repair_named_dish(
+    db: Session,
+    scope: OrderingScope,
+    step: PlanStep,
+    seen: set[uuid.UUID],
+    records: list[ToolCallRecord],
+) -> PlanStep | None:
+    """A refused call whose only fault was a dish name where an id belongs.
+
+    Live failure: the model called `add_to_cart(menu_item_id="Veggie Garden
+    Pizza")` and the planner refused it identically on all six rounds, so
+    "just add it" did nothing at all. Naming a dish is the model's job and
+    resolving the name is ours, so the lookup runs here, behind `get_dish`'s
+    own confidence guardrail, and the repaired call is revalidated before it
+    is allowed anywhere near a handler. Returns None when there is nothing
+    to repair, which is every other refusal.
+    """
+
+    if step.error != "invalid_arguments" or not step.tool:
+        return None
+    planned_args, lookup = guards.resolve_dish_name(db, scope, step.tool, step.args)
+    if lookup is None:
+        return None
+    guards.grow_seen_ids(seen, lookup)
+    records.append(
+        ToolCallRecord(tool="get_dish", args={"name": step.args.get("menu_item_id")}, result=lookup)
+    )
+    if planned_args is step.args or planned_args == step.args:
+        # The name did not resolve confidently. The lookup is recorded above
+        # either way, so the next round sees what was searched for.
+        return None
+    revalidated = validate_call(step.tool, planned_args)
+    return revalidated if revalidated.ok else None
+
+
 def _error_record(step: PlanStep) -> ToolCallRecord:
     """A planner refusal, reshaped into the same `ToolCallRecord` history
     entry a failed tool call gets — the model sees both the same way on the
@@ -213,7 +275,7 @@ def run_turn(
             return _capped("budget_exceeded")
 
         step = plan_step(
-            message, history=tuple(records), generate=generate,
+            message, history=tuple(records), generate=generate, tool_names=_offered_tools(seen),
             previous_reply=previous_reply, recent_history=recent_history, diet=scope.diet,
         )
 
@@ -235,8 +297,11 @@ def run_turn(
             # this turn: the model sees what it did wrong and gets another
             # round to correct it. Still counts toward `max_rounds` — a
             # model that keeps making the same mistake is still bounded.
-            records.append(_error_record(step))
-            continue
+            repaired = _repair_named_dish(db, scope, step, seen, records)
+            if repaired is None:
+                records.append(_error_record(step))
+                continue
+            step = repaired
 
         if step.answer is not None:
             return TurnOutcome(

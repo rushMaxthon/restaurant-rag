@@ -716,3 +716,79 @@ class DietGuardTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertIsNone(prepared.is_veg)
 
+
+class DishNameInAnIdFieldTests(unittest.TestCase):
+    """A name where an id belongs is resolved, not refused forever.
+
+    Live failure: the model called add_to_cart(menu_item_id="Veggie Garden
+    Pizza") and the planner rejected it identically on all six rounds, so
+    the customer's "just add it" did nothing at all.
+    """
+
+    def test_a_confident_name_becomes_the_real_id(self) -> None:
+        from app.services.ordering_agent import guards, tools as tools_module
+
+        real = uuid.uuid4()
+        original = tools_module._get_dish
+        tools_module._get_dish = lambda db, scope, args: {
+            "found": True, "confidence": "named", "menu_item_id": real, "name": args.name,
+        }
+        try:
+            args, lookup = guards.resolve_dish_name(None, SCOPE, "add_to_cart", {"menu_item_id": "Veggie Garden Pizza", "quantity": 1})
+        finally:
+            tools_module._get_dish = original
+        self.assertEqual(args["menu_item_id"], str(real))
+        self.assertEqual(args["quantity"], 1, "the other arguments are untouched")
+        self.assertEqual(lookup["menu_item_id"], real, "the lookup is recorded so the id counts as seen")
+
+    def test_an_unsure_name_is_left_alone_for_the_guards_to_refuse(self) -> None:
+        from app.services.ordering_agent import guards, tools as tools_module
+
+        original = tools_module._get_dish
+        tools_module._get_dish = lambda db, scope, args: {"found": False, "confidence": "absent"}
+        try:
+            args, lookup = guards.resolve_dish_name(None, SCOPE, "add_to_cart", {"menu_item_id": "something nobody sells"})
+        finally:
+            tools_module._get_dish = original
+        self.assertEqual(args["menu_item_id"], "something nobody sells")
+        self.assertIsNotNone(lookup, "the failed lookup is still fed back, so the model learns")
+
+    def test_a_real_id_is_never_looked_up(self) -> None:
+        from app.services.ordering_agent import guards, tools as tools_module
+
+        real = str(uuid.uuid4())
+        original = tools_module._get_dish
+        tools_module._get_dish = lambda db, scope, args: self.fail("no lookup for an id that is already an id")
+        try:
+            args, lookup = guards.resolve_dish_name(None, SCOPE, "add_to_cart", {"menu_item_id": real})
+        finally:
+            tools_module._get_dish = original
+        self.assertEqual(args["menu_item_id"], real)
+        self.assertIsNone(lookup)
+
+    def test_a_read_only_tool_is_left_alone(self) -> None:
+        from app.services.ordering_agent import guards
+
+        args, lookup = guards.resolve_dish_name(None, SCOPE, "search_menu", {"query": "pizza"})
+        self.assertIsNone(lookup)
+        self.assertEqual(args, {"query": "pizza"})
+
+
+class OfferedToolsTests(unittest.TestCase):
+    """The cart tools appear once there is an id to use, and not before.
+
+    Live failure: with nothing looked up, the model called
+    add_to_cart(menu_item_id="123") on all six rounds.
+    """
+
+    def test_nothing_seen_hides_the_tools_that_need_an_id(self) -> None:
+        offered = loop._offered_tools(set())
+        for name in ("add_to_cart", "remove_from_cart", "set_quantity"):
+            self.assertNotIn(name, offered)
+        for name in ("search_menu", "get_dish", "view_cart", "go_to_checkout"):
+            self.assertIn(name, offered, "a tool that needs no id is always offered")
+
+    def test_one_seen_id_opens_the_cart_tools(self) -> None:
+        offered = loop._offered_tools({uuid.uuid4()})
+        self.assertEqual(set(offered), set(TOOLS))
+

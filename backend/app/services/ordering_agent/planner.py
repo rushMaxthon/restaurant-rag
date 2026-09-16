@@ -266,6 +266,10 @@ Rules:
   needs their confirmation
 - a result with "outcome": "not_for_diet" means the dish is not vegetarian:
   say so and offer a vegetarian alternative from a search — never add it
+- menu_item_id is an id from an earlier result, never a dish name. If you
+  only know the name, call get_dish with it first and use the id it returns
+- if the customer agrees to something you offered — adding a dish, ordering
+  it — act on it: call the tool. Do not describe the dish again
 - read the customer's message against the conversation so far. If you
   offered to add more or check out and they are agreeing to pay, finish,
   confirm the order, or check out — in whatever words — call go_to_checkout.
@@ -351,13 +355,37 @@ def _validate_call(tool: Any, raw_args: Any, allowed: tuple[str, ...]) -> PlanSt
     try:
         validated = spec.args_model.model_validate(args_obj)
     except ValidationError as error:
+        # The refusal carries the tool and the arguments that caused it. A
+        # caller that can do something about the reason — the loop resolving
+        # a dish NAME sitting in an id field — needs to know what was tried,
+        # and `ok` stays False either way because `error` is set.
         # `extra="forbid"` is what actually catches a smuggled id that is
         # NOT in `FORBIDDEN_ARG_NAMES` (an argument nobody thought to ban by
         # name, but that this specific tool still never declared) — the
         # second, narrower gate behind the first.
-        return PlanStep(error="invalid_arguments", detail=str(error))
+        detail = str(error)
+        if "menu_item_id" in detail and "uuid" in detail.lower():
+            # The model reaches for a name or a number when it has no id.
+            # A validation dump does not tell it what to do; this does, and
+            # it costs a fraction of the prompt space.
+            detail = (
+                "menu_item_id must be an id from an earlier tool result. "
+                "Call get_dish with the dish's name first, then use the "
+                "menu_item_id it returns."
+            )
+        return PlanStep(error="invalid_arguments", detail=detail, tool=tool_name, args=args_obj)
 
     return PlanStep(tool=tool_name, args=validated.model_dump())
+
+
+def validate_call(tool: str, args: dict[str, Any]) -> PlanStep:
+    """Re-run a call through its tool's argument model.
+
+    Public so the loop can revalidate a call it repaired, rather than
+    duplicating the ordering of checks that `_validate_call` documents.
+    """
+
+    return _validate_call(tool, args, tuple(TOOLS))
 
 
 def plan_step(

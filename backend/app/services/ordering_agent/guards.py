@@ -65,6 +65,10 @@ logger = logging.getLogger(__name__)
 # because unlike these three it is the one cart-shaped argument this agent
 # is allowed to price from the model's OWN words ("price a large one") once
 # every id in them is already known.
+# The tools that act on one identified dish, and so are the ones a name can
+# turn up in where an id belongs.
+_MUTATION_TOOLS = frozenset({"add_to_cart", "remove_from_cart", "set_quantity"})
+
 _ALWAYS_INJECTED_CART_FIELD: dict[str, str] = {
     "view_cart": "lines",
     "remove_from_cart": "existing_lines",
@@ -93,6 +97,43 @@ def scope_for(
         customer=customer,
         diet=diet,
     )
+
+
+def resolve_dish_name(
+    db: Session,
+    scope: OrderingScope,
+    tool_name: str,
+    args: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Turn a dish NAME sitting in an id field into the id of a real row.
+
+    The model is asked for an id it read off an earlier result, and mostly
+    obliges; when it does not, what it puts there is the dish's name, because
+    that is what it knows. Refusing that is correct but useless — it did it
+    six times in a row on a live turn and the customer got nothing. Naming a
+    dish is the model's job and resolving the name is ours, so this runs the
+    same lookup `get_dish` runs, behind the same confidence guardrail, and
+    hands back the real id when it is unambiguous.
+
+    Returns the arguments to use and the lookup result to record, so the
+    model sees what was resolved and the id joins this turn's provenance.
+    """
+
+    value = args.get("menu_item_id")
+    if tool_name not in _MUTATION_TOOLS or not isinstance(value, str) or not value.strip():
+        return args, None
+    try:
+        uuid.UUID(value)
+        return args, None
+    except ValueError:
+        pass
+
+    from app.services.ordering_agent import tools as tools_module
+
+    result = tools_module._get_dish(db, scope, tools_module.GetDishArgs(name=value))
+    if result.get("found") and result.get("confidence") == "named" and result.get("menu_item_id"):
+        return {**args, "menu_item_id": str(result["menu_item_id"])}, result
+    return args, result
 
 
 def _collect_uuids(value: Any, sink: set[uuid.UUID]) -> None:
@@ -307,6 +348,7 @@ def enforce_destructive_policy(result: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "enforce_destructive_policy",
+    "resolve_dish_name",
     "grow_seen_ids",
     "prepare_tool_call",
     "scope_for",
