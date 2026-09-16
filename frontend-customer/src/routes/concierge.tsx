@@ -19,7 +19,7 @@ import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { queryKeys } from "@/lib/queries";
+import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 
 type ConciergeSearch = { q?: string };
@@ -139,14 +139,21 @@ function ConciergePage() {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
 
-  // The same branch menu the menu page renders from, read out of the cache
-  // rather than fetched here: the ordering agent sends identifiers only, and
-  // the brief is explicit that a menu not already loaded means every action
-  // for this turn is dropped, not a reason to fetch one.
+  // The same branch menu the menu page renders from — LOADED here, not just
+  // read from the cache. It used to be cache-only, on the reasoning that an
+  // id absent from the loaded menu should be dropped; but that conflated
+  // "this dish is not on the branch" with "nobody has opened the menu page
+  // yet". Landing straight on /concierge and asking for a real dish meant a
+  // correct add action was thrown away and the customer told the dish was
+  // not on the menu. Same query key as the menu page, so this is a cache hit
+  // whenever they have browsed, and one cheap fetch when they have not.
+  const menuQuery = useMenuItems(store.restaurantId, store.currentLocation?.id);
   const resolveMenu = () =>
+    menuQuery.data ??
     queryClient.getQueryData<MenuItem[]>(
       queryKeys.menuItems(store.restaurantId ?? "", store.currentLocation?.id),
-    ) ?? [];
+    ) ??
+    [];
 
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -318,7 +325,10 @@ function ConciergePage() {
                 done.cart_actions,
                 menu,
               );
-              hadDropped = dropped.length > 0;
+              // Only a menu we actually hold can tell us a dish is missing
+              // from it. With an empty menu the drop is ours, not the
+              // branch's, and saying otherwise would be a lie.
+              hadDropped = dropped.length > 0 && menu.length > 0;
               proposals = pending.map((action) => ({ action, resolution: "pending" as const }));
               // Applied and not reported back as dropped or still pending
               // means it actually changed the cart.
