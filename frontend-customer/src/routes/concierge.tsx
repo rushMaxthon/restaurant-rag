@@ -160,6 +160,8 @@ function ConciergePage() {
 
   const sessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** Tokens as they arrive, shown only once `done` says whose answer they are. */
+  const streamedRef = useRef("");
   const autoSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -243,6 +245,7 @@ function ConciergePage() {
     if (!text || status === "waiting" || status === "streaming") return;
 
     abortRef.current?.abort();
+    streamedRef.current = "";
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -304,7 +307,11 @@ function ConciergePage() {
             setStatus((s) => (s === "waiting" ? "streaming" : s));
           },
           onToken: (chunk) => {
-            patchAnswer((turn) => ({ ...turn, text: turn.text + chunk }));
+            // Held, not shown. Two layers answer a turn and which one speaks
+            // is only known at `done` — so painting these tokens meant the
+            // customer watched the menu pipeline's answer type itself out and
+            // then get replaced by the agent's. One answer, once.
+            streamedRef.current += chunk;
           },
           onDone: (done) => {
             sessionIdRef.current = done.session_id;
@@ -362,7 +369,10 @@ function ConciergePage() {
 
             patchAnswer((turn) => ({
               ...turn,
-              text: (actedOnCart || agentHasMore) && agentLine ? agentLine : done.reply,
+              text:
+                (actedOnCart || agentHasMore) && agentLine
+                  ? agentLine
+                  : done.reply || streamedRef.current,
               suggestions: done.suggestions,
               turnId: done.turn_id,
               proposals,
@@ -557,8 +567,6 @@ function ConciergePage() {
 
           <div className="mb-8 flex flex-col gap-8">
             {turns.map((turn, index) => {
-              const isStreamingAnswer =
-                turn.role === "assistant" && index === turns.length - 1 && busy;
 
               if (turn.role === "user") {
                 return (
@@ -578,9 +586,6 @@ function ConciergePage() {
                       {turn.text ? (
                         <p className="concierge-reply" aria-live="polite">
                           {stripMarkdown(turn.text)}
-                          {isStreamingAnswer && (
-                            <span className="stream-caret" aria-hidden="true" />
-                          )}
                         </p>
                       ) : (
                         <p className="typing text-lg" role="status">
