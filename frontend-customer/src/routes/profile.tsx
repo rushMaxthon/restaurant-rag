@@ -8,7 +8,7 @@ import { api, type SavedAddress } from "@/lib/api";
 import { formatMoney, orderCode, type Order } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { formatPhoneAsTyped, validatePhone } from "@/lib/delivery-address";
-import { useProfile } from "@/lib/queries";
+import { useFavorites, useProfile, useToggleFavorite } from "@/lib/queries";
 import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/profile")({
@@ -53,6 +53,8 @@ function ProfilePage() {
   const isAuthenticated = useRequireAuth();
   const { user } = useAuth();
   const profile = useProfile(isAuthenticated);
+  const favorites = useFavorites(isAuthenticated);
+  const toggleFavorite = useToggleFavorite();
 
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -73,6 +75,7 @@ function ProfilePage() {
 
   const stats = profile.data?.stats;
   const places = profile.data?.saved_addresses ?? [];
+  const saved = favorites.data ?? [];
   const orders = profile.data?.recent_orders ?? [];
   const phoneProblem = phone.trim() ? validatePhone(phone) : null;
   const live = orders.filter((order) => !SETTLED.has(order.status)).length;
@@ -234,6 +237,44 @@ function ProfilePage() {
                         {busyPlace === place.id ? "Removing" : "Remove"}
                       </button>
                     </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="receipt__tear" />
+
+          <div className="receipt__block">
+            <h2 className="receipt__heading">What you keep coming back to</h2>
+            {saved.length === 0 ? (
+              <p className="receipt__note">
+                Nothing saved. Tap the heart on a dish and it will be here, and at the top of{" "}
+                <Link to="/menu" className="underline">
+                  the menu
+                </Link>
+                .
+              </p>
+            ) : (
+              <div className="mt-2">
+                {saved.map((dish) => (
+                  <div className="line line--saved" key={dish.id}>
+                    <Link
+                      to="/menu/$itemId"
+                      params={{ itemId: dish.id }}
+                      className="line__code line__dish"
+                    >
+                      {dish.name}
+                    </Link>
+                    <span className="money line__total">{formatMoney(dish.price)}</span>
+                    <button
+                      type="button"
+                      className="rail__action rail__danger line__drop"
+                      onClick={() => toggleFavorite.mutate({ menuItemId: dish.id, next: false })}
+                      aria-label={`Remove ${dish.name} from your usuals`}
+                    >
+                      Remove
+                    </button>
                   </div>
                 ))}
               </div>

@@ -69,6 +69,16 @@ function createId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Whether a row id came from the server or from createId above.
+ *
+ * Only a server id means anything to the API, and only a real UUID gets past
+ * its schema - a freshly added "size-4f2b9c1a" would be rejected outright.
+ */
+function isServerId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 function normalizeSizeName(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -439,6 +449,10 @@ function buildSizePayload(
     throw new Error("Each size needs a name.");
   }
   return {
+    // Which row this is. The server matches on it before falling back to the
+    // name, so renaming "Small" to "Small (8\")" updates the size a customer's
+    // cart is already holding instead of replacing it with a new one.
+    ...(isServerId(size.id) ? { id: size.id } : {}),
     name,
     price: parsePrice(size.price, `${name} price`),
     is_active: size.is_active,

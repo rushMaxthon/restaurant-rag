@@ -1753,3 +1753,28 @@ html {
   font-weight: 600;
   color: var(--muted);
 }
+
+/* A saved dish on the account page: the same receipt line as an order, with
+   the dish name where the order code goes and a way out on the right. */
+.line--saved {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+/* An order line reserves a second row for its date; a saved dish has no date,
+   so the total must not span into a row that is not there — it left the price
+   and the Remove link sitting below the dish they belong to. */
+.line--saved .line__total {
+  grid-row: auto;
+  grid-column: 2;
+}
+.line__dish {
+  font-weight: 800;
+}
+.line__dish:hover {
+  color: var(--primary);
+}
+.line__drop {
+  grid-row: 1;
+  grid-column: 3;
+}

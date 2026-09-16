@@ -76,6 +76,11 @@ export function useFavorites(enabled: boolean) {
 export function useToggleFavorite() {
   const client = useQueryClient();
   return useMutation({
+    // Serialised. Two quick taps on one heart fire an add and a remove at the
+    // same time, and if they land out of order the server keeps the opposite
+    // of what the screen shows — saved when you meant to unsave it. A scope
+    // runs them one after another, so the last tap is the one that sticks.
+    scope: { id: "favorites" },
     mutationFn: ({ menuItemId, next }: { menuItemId: string; next: boolean }) =>
       next ? api.addFavorite(menuItemId) : api.removeFavorite(menuItemId),
     onMutate: async ({ menuItemId, next }) => {

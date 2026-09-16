@@ -10,6 +10,8 @@ from app.models.enums import MenuItemCustomizationSelectionType
 
 
 class MenuItemCustomizationOptionPayload(BaseModel):
+    # The row being edited, when there is one. See MenuItemSizePayload.id.
+    id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=160)
     extra_price: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2)
     is_active: bool = True
@@ -18,6 +20,8 @@ class MenuItemCustomizationOptionPayload(BaseModel):
 
 
 class MenuItemCustomizationGroupPayload(BaseModel):
+    # The row being edited, when there is one. See MenuItemSizePayload.id.
+    id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=160)
     selection_type: MenuItemCustomizationSelectionType = MenuItemCustomizationSelectionType.MULTI
     is_required: bool = False
@@ -76,6 +80,15 @@ class MenuItemCustomizationGroupPayload(BaseModel):
 
 
 class MenuItemSizePayload(BaseModel):
+    # Which existing row this is, when the client knows.
+    #
+    # A customer's cart lives in their browser for days and holds
+    # `menu_item_size_id` and `option_id`; the order endpoint refuses ids it
+    # cannot find. Sending the id back lets an owner rename a size without
+    # every cart holding it turning into "The selected size is unavailable".
+    # Omitted means "new row", or "match me by name" for clients that do not
+    # track ids.
+    id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=120)
     price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     is_active: bool = True

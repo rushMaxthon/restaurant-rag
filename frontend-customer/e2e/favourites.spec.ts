@@ -137,3 +137,77 @@ test.describe("what people order together", () => {
     await expect(pairs.first().locator(".pair__who")).toContainText(/ordered these together/i);
   });
 });
+
+test.describe("the list of what you saved", () => {
+  test("a dish saved on the menu is on the account, and survives a new browser", async ({
+    page,
+    request,
+    browser,
+  }) => {
+    await clearFavourites(request);
+    await resetApp(page);
+    await signIn(page, "/menu");
+    await page.waitForLoadState("networkidle");
+
+    const name = (await page.locator(".dish-card .dish-title").first().innerText()).trim();
+    await page.locator(".heart").first().click();
+    await expect(page.locator(".heart").first()).toHaveAttribute("data-on", "true");
+
+    await page.goto("/profile");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.getByRole("heading", { name: /what you keep coming back to/i }),
+    ).toBeVisible();
+    await expect(page.locator(".line--saved")).toHaveCount(1);
+    await expect(page.locator(".line--saved")).toContainText(name);
+
+    // The real test of "saved in the backend": a browser that has never seen
+    // this app before, with its own storage, signing in fresh. Anything held
+    // only on the client is gone here.
+    const fresh = await browser.newContext();
+    const other = await fresh.newPage();
+    await resetApp(other);
+    await signIn(other, "/profile");
+    await other.waitForLoadState("networkidle");
+    await expect(other.locator(".line--saved")).toContainText(name);
+    await fresh.close();
+  });
+
+  test("removing it from the account takes it off the server too", async ({ page, request }) => {
+    await clearFavourites(request);
+    await resetApp(page);
+    await signIn(page, "/menu");
+    await page.waitForLoadState("networkidle");
+    await page.locator(".heart").first().click();
+    await expect(page.locator(".heart").first()).toHaveAttribute("data-on", "true");
+
+    await page.goto("/profile");
+    await page.waitForLoadState("networkidle");
+    await page.locator(".line--saved .rail__danger").first().click();
+    await expect(page.locator(".line--saved")).toHaveCount(0);
+
+    const bearer = await token(request);
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await request.get(`${API}/favorites/ids`, {
+                headers: { Authorization: `Bearer ${bearer}` },
+              })
+            ).json()
+          ).length,
+        { timeout: 15_000 },
+      )
+      .toBe(0);
+  });
+
+  test("with nothing saved it says how to save something", async ({ page, request }) => {
+    await clearFavourites(request);
+    await resetApp(page);
+    await signIn(page, "/profile");
+    await page.waitForLoadState("networkidle");
+    // An empty screen is an invitation, not a blank.
+    await expect(page.getByText(/tap the heart on a dish/i)).toBeVisible();
+  });
+});
