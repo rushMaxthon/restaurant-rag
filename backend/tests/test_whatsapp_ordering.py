@@ -227,3 +227,43 @@ class SuggestionNoiseTests(ReplyCompositionTests):
             self.answer(suggestions=[SimpleNamespace(name="Red Curry Tofu", price="14.64")]), []
         )
         self.assertIn("Red Curry Tofu", body)
+
+
+class WaIdShapeTests(unittest.TestCase):
+    """The shape Meta actually delivers, which is not the shape we tested."""
+
+    def test_a_wa_id_becomes_a_number_an_order_can_carry(self) -> None:
+        # Live: '916353100362' reached OrderCreateRequest and was refused as
+        # a malformed 10-digit Canadian number. Every test until now passed
+        # a number that already had its plus.
+        from app.schemas.order import OrderCreateRequest
+
+        self.assertEqual(wa.e164("916353100362"), "+916353100362")
+        self.assertEqual(
+            OrderCreateRequest.normalize_contact_phone(wa.e164("916353100362")),
+            "+916353100362",
+        )
+
+    def test_a_number_that_already_has_its_plus_is_unchanged(self) -> None:
+        self.assertEqual(wa.e164("+916353100362"), "+916353100362")
+
+    def test_nothing_in_means_nothing_out(self) -> None:
+        self.assertEqual(wa.e164(""), "")
+
+    def test_the_turn_is_given_the_converted_number(self) -> None:
+        seen: dict = {}
+
+        def fake_turn(db, **kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(
+                reply="hi", suggestions=[], agent_reply=None, agent_asks=False,
+                order_ready=False, placed_order=None, cart_actions=[],
+            )
+
+        with patch.object(wa.settings, "whatsapp_enabled", True), patch.object(
+            wa, "handle_chat_message", fake_turn
+        ), patch.object(wa, "send_text", return_value=True), patch.object(
+            wa.session_cart, "load", return_value=[]
+        ):
+            wa.answer_whatsapp_message.__wrapped__(from_number="916353100362", text="hello")
+        self.assertEqual(seen.get("verified_phone"), "+916353100362")

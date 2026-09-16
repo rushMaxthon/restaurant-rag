@@ -77,6 +77,23 @@ def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
     return "\n\n".join(part for part in parts if part)
 
 
+def e164(wa_id: str) -> str:
+    """Meta's number for this person, as the rest of the app writes numbers.
+
+    A wa_id is E.164 with the "+" stripped: "916353100362". Everywhere else
+    a number with no plus is one a customer typed, measured against the
+    deployment's own national length — so this one was read as a malformed
+    Canadian number and every order for it was refused at the schema.
+
+    The country code is always present in a wa_id, so restoring the plus is
+    the whole conversion, and it is done here, once, where the number
+    arrives — not at each of the places that later treat it as a phone.
+    """
+
+    digits = "".join(character for character in wa_id if character.isdigit())
+    return f"+{digits}" if digits else ""
+
+
 def _app_client_id_for(db: Any, restaurant_id: uuid.UUID | None) -> uuid.UUID | None:
     """Which app this number's customer belongs to.
 
@@ -165,7 +182,8 @@ def answer_whatsapp_message(
             cart=cart,
             # Meta verified this number before delivering the message. It is
             # the whole basis on which an order can be placed here.
-            verified_phone=from_number,
+            # The number Meta verified, in the shape an order is written in.
+            verified_phone=e164(from_number),
             app_client_id=_app_client_id_for(db, _configured_restaurant_id()),
             # No buttons in a chat thread: see `run_turn`'s `auto_place`.
             auto_place=True,

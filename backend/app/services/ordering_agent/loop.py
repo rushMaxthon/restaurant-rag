@@ -310,8 +310,16 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
     """
 
     for record in reversed(records):
-        if record.tool != "place_order" or not isinstance(record.result, dict):
+        if record.tool != "place_order":
             continue
+        if not isinstance(record.result, dict):
+            # A handler that raised, or a call a guard refused. Live, this
+            # was silent: the schema rejected the phone number on every
+            # attempt and the customer read "That is everything I need to
+            # place your order" six times, with no order behind it. A
+            # placement that fails is never quiet again.
+            logger.warning("Ordering agent could not place an order: %s", record.error)
+            return "I could not place that order just now. Let me get someone to help."
         outcome = record.result.get("outcome")
         if outcome == "placed":
             return None
