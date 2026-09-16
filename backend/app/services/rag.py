@@ -6277,6 +6277,7 @@ def _prepare_chat_turn(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None,
     guest_preferences: object | None = None,
+    intent_lightweight_only: bool = False,
 ) -> PreparedChatTurn:
     active_session_id = session_id or uuid.uuid4()
     timings = RagStageTimings()
@@ -6361,7 +6362,13 @@ def _prepare_chat_turn(
     extracted_intent = _extract_intent(
         message,
         session_state,
-        force_lightweight=requires_session_context and not session_state_cache_hit and likely_follow_up,
+        # The ordering agent has already read this message and claimed the
+        # turn: what it is about is settled, and the model round this
+        # extractor would spend classifying it — measured at 3.5 seconds,
+        # and answering "unsupported_domain" to "add 2 corn fritters" — buys
+        # a label the reply never uses.
+        force_lightweight=(requires_session_context and not session_state_cache_hit and likely_follow_up)
+        or intent_lightweight_only,
     )
     timings.intent_ms = round((perf_counter() - intent_started_at) * 1000, 2)
     resolved_intent = _merge_intent_with_session(extracted_intent, session_state)
@@ -7738,6 +7745,32 @@ def handle_chat_message(
             ),
         )
 
+    # The agent goes first, and a turn it owns skips the pipeline's model call.
+    # Measured live: a cart read-back, an order detail, a placement — each
+    # spent 3 to 6 seconds on a pipeline reply that the channel then discarded
+    # in favour of the agent's line, before the agent had even started. What
+    # it returns is never cached: the cache holds prose about the menu, and
+    # this line is about one customer's cart on one turn.
+    # Before preparation, so the classification inside it can be skipped too.
+    # The conversation's id is the caller's: a channel that orders always has
+    # one, and a first turn without one has no draft to find under it anyway.
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=str(uuid.uuid4()) if settings.enable_ordering_agent else None,
+        recent_history=None,
+        guest_preferences=guest_preferences,
+        session_id=session_id,
+        verified_phone=verified_phone,
+        app_client_id=app_client_id,
+        auto_place=auto_place,
+    ) or {}
+    agent_owns = bool(agent_output.get("agent_asks") and agent_output.get("agent_reply"))
+
     try:
         prepared = _prepare_chat_turn(
             db,
@@ -7747,6 +7780,7 @@ def handle_chat_message(
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
             guest_preferences=guest_preferences,
+            intent_lightweight_only=agent_owns,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -7772,6 +7806,18 @@ def handle_chat_message(
         is_follow_up=prepared.is_follow_up,
     )
 
+    # A turn the agent answered but did not claim is still its turn when the
+    # pipeline matched nothing to say — only known now, after retrieval.
+    if (
+        not agent_owns
+        and agent_output.get("agent_reply")
+        and prepared.retrieval_source in _NOTHING_MATCHED_SOURCES
+    ):
+        agent_output["agent_asks"] = True
+        agent_owns = True
+    if agent_owns:
+        cacheable_response, cache_reason = False, "agent_owned"
+
     raw_reply = ""
     llm_strategy = "skipped"
     if prepared.should_bypass_llm:
@@ -7783,6 +7829,9 @@ def handle_chat_message(
             is_follow_up=prepared.is_follow_up,
             follow_up_base_message=prepared.effective_message,
         )
+    elif agent_owns:
+        reply = raw_reply = str(agent_output["agent_reply"])
+        llm_strategy = "agent_owned"
     else:
         llm_started_at = perf_counter()
         try:
@@ -7924,25 +7973,6 @@ def handle_chat_message(
         prepared=prepared,
         restaurant_location_id=restaurant_location_id,
     )
-
-    # The same agent the streaming route runs. WhatsApp reaches the
-    # assistant through here, and a customer who can order on the web and
-    # not in a chat would be the drift this whole design exists to avoid.
-    agent_output = _run_ordering_agent(
-        db,
-        user=user,
-        message=message,
-        cart=cart,
-        restaurant_id=restaurant_id,
-        restaurant_location_id=restaurant_location_id,
-        turn_id=str(uuid.uuid4()) if settings.enable_ordering_agent else None,
-        recent_history=None,
-        guest_preferences=guest_preferences,
-        session_id=prepared.active_session_id,
-        verified_phone=verified_phone,
-        app_client_id=app_client_id,
-        auto_place=auto_place,
-    ) or {}
 
     return ChatMessageResponse(
         reply=reply,
@@ -8199,6 +8229,35 @@ def stream_chat_message(
         )
         return
 
+    # The agent goes first, and a turn it owns skips the pipeline's model call.
+    # Measured live: a cart read-back, an order detail, a placement — each
+    # spent 3 to 6 seconds on a pipeline reply that the channel then discarded
+    # in favour of the agent's line, before the agent had even started. What
+    # it returns is never cached: the cache holds prose about the menu, and
+    # this line is about one customer's cart on one turn.
+    # Before preparation, so the classification inside it can be skipped too.
+    # The diet stated on this turn comes from the lightweight parser here;
+    # `stated_diet` is read again from the prepared turn further down.
+    stated_diet = durable_traits_from_message(
+        message, _fallback_extract_intent(message, SessionConversationState())
+    ).get("diet")
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=turn_id,
+        previous_reply=previous_reply,
+        recent_history=recent_history,
+        guest_preferences=guest_preferences,
+        stated_diet=stated_diet,
+                session_id=session_id,
+    )
+    agent_output = agent_output or {}
+    agent_owns = bool(agent_output.get("agent_asks") and agent_output.get("agent_reply"))
+
     try:
         prepared = _prepare_chat_turn(
             db,
@@ -8208,6 +8267,7 @@ def stream_chat_message(
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
             guest_preferences=guest_preferences,
+            intent_lightweight_only=agent_owns,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -8253,6 +8313,18 @@ def stream_chat_message(
         ),
     )
 
+    # A turn the agent answered but did not claim is still its turn when the
+    # pipeline matched nothing to say — only known now, after retrieval.
+    if (
+        not agent_owns
+        and agent_output.get("agent_reply")
+        and prepared.retrieval_source in _NOTHING_MATCHED_SOURCES
+    ):
+        agent_output["agent_asks"] = True
+        agent_owns = True
+    if agent_owns:
+        cacheable_response, cache_reason = False, "agent_owned"
+
     raw_reply = ""
     llm_strategy = "skipped"
     if prepared.should_bypass_llm:
@@ -8264,6 +8336,10 @@ def stream_chat_message(
             is_follow_up=prepared.is_follow_up,
             follow_up_base_message=prepared.effective_message,
         )
+        yield _sse_frame("token", {"text": reply})
+    elif agent_owns:
+        reply = raw_reply = str(agent_output["agent_reply"])
+        llm_strategy = "agent_owned"
         yield _sse_frame("token", {"text": reply})
     else:
         llm_strategy = "generated"
@@ -8372,25 +8448,9 @@ def stream_chat_message(
         )
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
-    # After the reply has streamed, after the cache write, before `done`: the
-    # agent decides what to do with the cart, never what the customer is told.
-    # Running it here rather than earlier is what keeps it out of both
-    # `may_cache_globally` and the cached payload.
-    agent_output = _run_ordering_agent(
-        db,
-        user=user,
-        message=message,
-        cart=cart,
-        restaurant_id=restaurant_id,
-        restaurant_location_id=restaurant_location_id,
-        turn_id=turn_id,
-        previous_reply=previous_reply,
-        recent_history=recent_history,
-        guest_preferences=guest_preferences,
-        stated_diet=stated_diet,
-        retrieval_matched_nothing=prepared.retrieval_source in _NOTHING_MATCHED_SOURCES,
-        session_id=prepared.active_session_id,
-    )
+    # The agent already ran, before the reply (see above). It used to run
+    # here, after the cache write, to stay out of the cached payload; that is
+    # now done by `cacheable_response` being false on any turn it owns.
     yield _sse_frame(
         "done",
         _with_agent_turn(

@@ -282,3 +282,30 @@ class AddressImpliesDeliveryTests(unittest.TestCase):
             delivery_address="42 Example Road, Ahmedabad",
         )
         self.assertEqual(draft.fulfillment_type, "PICKUP")
+
+
+class SettledByTheRowsTests(unittest.TestCase):
+    """A result that decides the turn ends it; no model round is spent after."""
+
+    def test_a_requirements_result_with_gaps_ends_the_turn_asking_for_them(self) -> None:
+        # Live: order_requirements ran, then ran again (2.5s) before the
+        # read-back said what was missing.
+        import dataclasses
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate, _tool_call
+        from app.services.ordering_agent import loop, order_draft
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
+        generate = ScriptedGenerate(
+            _tool_call("order_requirements", {}),
+            _tool_call("order_requirements", {}),  # never reached
+        )
+        with patch.object(order_draft, "load", return_value=order_draft.OrderDraft()),              patch.object(order_draft, "save", lambda *a, **k: None):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message="checkout", cart=[], generate=generate,
+                clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+            )
+        self.assertEqual(len(generate.prompts), 1, "one model round: the result settled the turn")
+        self.assertIn("still need", outcome.answer or "")
+        self.assertEqual(outcome.answer_about, "order")

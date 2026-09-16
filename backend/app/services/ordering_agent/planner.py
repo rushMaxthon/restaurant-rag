@@ -533,6 +533,15 @@ def plan_step(
     if "tool" in parsed:
         return _validate_call(parsed.get("tool"), parsed.get("args"), allowed)
 
+    # A subject and nothing else. The model has said what the turn is about
+    # and has nothing to add — and for a cart or an order the deterministic
+    # read-back for that subject is the answer. Measured live, treating this
+    # as an error spent a 2.4-second round before the model said, in its own
+    # words, what the rows already said.
+    about = parsed.get("about")
+    if isinstance(about, str) and about.strip():
+        return PlanStep(answer="", answer_about=about.strip().lower())
+
     return PlanStep(
         error="planner_unusable",
         detail="response JSON had neither 'tool' nor 'answer'",

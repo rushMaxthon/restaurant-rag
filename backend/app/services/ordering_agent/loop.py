@@ -288,13 +288,17 @@ def _choice_question_in(records: list[ToolCallRecord]) -> str | None:
 
 def _repeated_call(records: list[ToolCallRecord], tool: str, args: dict[str, Any]) -> int | None:
     """The 1-based index of an earlier call this turn with the same tool and
-    the same arguments that actually ran, or None. Only calls that produced
-    a result count: a call that was refused (an error record) is fair to
-    retry with the same arguments once the model has fixed what it can.
+    the same arguments, or None.
+
+    Refused calls count too. They were exempt at first — "fair to retry once
+    the model has fixed what it can" — but a model that resends the same
+    arguments has fixed nothing, and measured live the exemption bought one
+    `save_order_details` refused four times over, each a full model round:
+    a 20-second turn for a customer who had just typed their address.
     """
 
     for index, record in enumerate(records, 1):
-        if record.tool == tool and record.error is None and record.args == args:
+        if record.tool == tool and record.args == args:
             return index
     return None
 
@@ -444,12 +448,15 @@ def run_turn(
     # alternative is a model that has to remember to look before it speaks,
     # and on a live turn it did not.
     cart_summary: str | None = None
+    # The same read-back without the prompt's framing, for the customer.
+    cart_readback: str | None = None
     if cart:
         try:
             cart_summary = describe_cart(TOOLS["view_cart"].handler(db, scope, ViewCartArgs(lines=_as_tool_lines(cart))))
         except Exception:  # noqa: BLE001 - a prompt fact is never worth failing a turn for
             logger.warning("Ordering agent could not resolve the cart for the prompt", exc_info=True)
         if cart_summary:
+            cart_readback = cart_summary
             cart_summary = "In the cart right now: " + cart_summary
 
     # What this conversation is in the middle of, if anything. Stated as a
@@ -529,6 +536,7 @@ def run_turn(
             or (describe_ready() if ready_now else None)
             or _choice_question_in(records)
             or _cart_summary_in(records)
+            or cart_readback
         )
         if question is not None:
             logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
@@ -600,7 +608,15 @@ def run_turn(
             # model that keeps making the same mistake is still bounded.
             repaired = _repair_named_dish(db, scope, step, seen, records)
             if repaired is None:
-                records.append(_error_record(step))
+                # The third place a call can be refused, and the third
+                # place a verbatim resend means the model is stuck. No tool
+                # name or arguments survive a planner refusal (see
+                # `_error_record`), so "the same refusal, word for word" is
+                # the comparison — and the detail names what was refused.
+                record = _error_record(step)
+                if any(earlier.error == record.error for earlier in records):
+                    return _capped("repeated_call")
+                records.append(record)
                 continue
             step = repaired
 
@@ -630,6 +646,28 @@ def run_turn(
         ):
             step = PlanStep(tool="place_order", args={})
 
+        def _settled() -> TurnOutcome:
+            """The turn as the rows alone can end it — no words from the model."""
+
+            placed = placed_order_in(records)
+            return TurnOutcome(
+                answer=(
+                    describe_placed_order(placed)
+                    or describe_applied(records)
+                    or describe_collecting(_still_missing())
+                    or (describe_ready() if _still_missing() == [] and collecting is not None else None)
+                    or _cart_summary_in(records)
+                    or cart_readback
+                ),
+                placed_order=placed,
+                ready_to_place=_still_missing() == [] and _identifiable(scope) and placed is None,
+                answer_about="order",
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+
         if step.answer is not None:
             # An answer that says nothing is not an answer. The tool results
             # hold the cart; prefer saying it to shipping an empty string and
@@ -644,6 +682,7 @@ def run_turn(
                 or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None else None)
                 or _cart_summary_in(records)
+                or cart_readback
                 or _choice_question_in(records)
             )
             return TurnOutcome(
@@ -675,6 +714,8 @@ def run_turn(
 
         prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen, diet=scope.diet)
         if guard_error is not None:
+            if _repeated_call(records, tool_name, step.args) is not None:
+                return _capped("repeated_call")
             records.append(ToolCallRecord(tool=tool_name, args=step.args, error=guard_error))
             continue
 
@@ -686,14 +727,18 @@ def run_turn(
         # call, and gets told which earlier result to read.
         repeated = _repeated_call(records, tool_name, prepared.model_dump())
         if repeated is not None:
+            # The turn ends here rather than spending another round telling
+            # the model to read call N: measured live, it did not, and the
+            # deterministic read-backs (`_capped`) already say everything
+            # the rows can say.
             records.append(
                 ToolCallRecord(
                     tool=tool_name,
                     args=prepared.model_dump(),
-                    error=f"repeated_call: identical to call {repeated}; read its result instead of calling again",
+                    error=f"repeated_call: identical to call {repeated}",
                 )
             )
-            continue
+            return _capped("repeated_call")
 
         spec = TOOLS[tool_name]
         try:
@@ -708,6 +753,20 @@ def run_turn(
         result = guards.enforce_destructive_policy(result)
         guards.grow_seen_ids(seen, result)
         records.append(ToolCallRecord(tool=tool_name, args=prepared.model_dump(), result=result))
+
+        # Two results that settle the turn by themselves. The read-backs say
+        # what the rows say; a further model round only lets the model say it
+        # worse or call the same tool again — both measured live, 2.5 and
+        # 3.5 seconds apiece, on the two turns a customer is most likely to
+        # be watching the clock.
+        if tool_name == "place_order" and isinstance(result, dict) and result.get("outcome") == "placed":
+            return _settled()
+        if tool_name == "order_requirements":
+            if _still_missing() or not auto_place:
+                return _settled()
+            # Everything held and a channel with no button: the next round's
+            # opening check places it — with no model call in between.
+            continue
 
         action = result.get("action") if isinstance(result, dict) else None
         if isinstance(action, dict):

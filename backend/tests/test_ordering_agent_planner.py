@@ -350,3 +350,21 @@ class AnswerSubjectTests(unittest.TestCase):
         prompt = build_planner_prompt("x", history=[], tool_names=None)
         self.assertIn('"about"', prompt)
 
+
+
+class SubjectOnlyTests(unittest.TestCase):
+    def test_a_subject_with_nothing_to_add_is_an_empty_answer_about_it(self) -> None:
+        # Live: {"about": "cart"} was an error and a wasted round; the cart
+        # read-back for that subject is the answer.
+        from app.services.ordering_agent.planner import plan_step
+
+        step = plan_step("what is in my cart", history=(), generate=lambda prompt, *a, **k: '{"about": "cart"}', tool_names=("view_cart",))
+        self.assertTrue(step.ok)
+        self.assertEqual(step.answer, "")
+        self.assertEqual(step.answer_about, "cart")
+
+    def test_an_empty_object_is_still_unusable(self) -> None:
+        from app.services.ordering_agent.planner import plan_step
+
+        step = plan_step("hi", history=(), generate=lambda prompt, *a, **k: "{}", tool_names=("view_cart",))
+        self.assertEqual(step.error, "planner_unusable")

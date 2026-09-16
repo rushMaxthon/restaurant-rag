@@ -164,10 +164,15 @@ class FlagOffTests(OrderingAgentLoopTestCase):
 
 class RoundCapTests(OrderingAgentLoopTestCase):
     def test_the_loop_stops_at_the_round_cap(self) -> None:
-        # Never answers; each round is a fresh, harmless read-only call, so
-        # nothing else can stop the loop first.
+        # Never answers; each round is a fresh, harmless read-only call with
+        # different arguments, so nothing else (the repeat guard included)
+        # can stop the loop first.
         self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
-        generate = ScriptedGenerate(_tool_call("dish_lookup", {"name": "pizza"}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _tool_call("dish_lookup", {"name": "pasta"}),
+            _tool_call("dish_lookup", {"name": "soup"}),
+        )
         outcome = loop.run_turn(
             db=None,
             scope=SCOPE,
@@ -602,9 +607,13 @@ if __name__ == "__main__":
 
 
 class RepeatedCallTests(OrderingAgentLoopTestCase):
-    def test_an_identical_repeat_of_an_answered_call_is_refused_not_run(self) -> None:
+    def test_an_identical_repeat_ends_the_turn(self) -> None:
         # The live failure this guards: a correct `needs_choice` result,
-        # then the same call again and again until the round cap.
+        # then the same call again and again until the round cap. The first
+        # version of this rule refused the repeat and gave the model one more
+        # round to read the hint; measured live, it resent the same call
+        # instead, so now a repeat is the end of the turn — the read-backs
+        # say what the rows say, and no further round is paid for.
         calls: list = []
         self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"outcome": "needs_choice"}))
         generate = ScriptedGenerate(
@@ -623,10 +632,34 @@ class RepeatedCallTests(OrderingAgentLoopTestCase):
             budget_seconds=1000.0,
         )
         self.assertEqual(len(calls), 1, "the handler ran once; the repeat was refused")
-        self.assertEqual(outcome.answer, "which size?")
+        self.assertEqual(outcome.fallback_reason, "repeated_call")
         self.assertTrue(outcome.records[1].error and outcome.records[1].error.startswith("repeated_call: identical to call 1"))
-        # The refusal reached the model on the next round.
-        self.assertIn("repeated_call", generate.prompts[2])
+        self.assertEqual(len(generate.prompts), 2, "no third round was spent on the model")
+
+    def test_a_refused_call_resent_verbatim_ends_the_turn(self) -> None:
+        # Live on WhatsApp: one `save_order_details` refused by validation,
+        # resent byte for byte four times, each a full model round. A model
+        # that resends the same arguments has fixed nothing.
+        calls: list = []
+        self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"found": True}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
+            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
+            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="a pizza",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=5,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(calls, [], "never ran: the scope id is not the model's to pass")
+        self.assertEqual(outcome.fallback_reason, "repeated_call")
+        self.assertEqual(len(generate.prompts), 2)
 
     def test_a_repeat_of_a_refused_call_is_allowed(self) -> None:
         # A call that never ran (refused by a guard) may be retried verbatim
