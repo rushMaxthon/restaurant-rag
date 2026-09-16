@@ -200,3 +200,26 @@ class TaskWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SuggestionNoiseTests(ReplyCompositionTests):
+    def test_dishes_are_not_listed_under_a_cart_answer(self) -> None:
+        # Live: "what's in my cart?" came back with the subtotal and then
+        # three unrelated dishes, which is a second conversation nobody
+        # started. The web dropped the same list for the same reason.
+        body = wa._compose_reply(
+            self.answer(
+                agent_asks=True,
+                agent_reply="You have 3 x Corn Fritters - $25.47.",
+                suggestions=[SimpleNamespace(name="Red Curry Tofu", price="14.64")],
+            ),
+            [],
+        )
+        self.assertIn("Corn Fritters", body)
+        self.assertNotIn("Red Curry Tofu", body)
+
+    def test_dishes_still_go_under_a_menu_answer(self) -> None:
+        body = wa._compose_reply(
+            self.answer(suggestions=[SimpleNamespace(name="Red Curry Tofu", price="14.64")]), []
+        )
+        self.assertIn("Red Curry Tofu", body)

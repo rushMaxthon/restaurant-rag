@@ -23,6 +23,8 @@ import logging
 import uuid
 from typing import Any
 
+from sqlalchemy import select
+
 from app.config import get_settings
 from app.config.celery import celery_app
 from app.config.database import SessionLocal
@@ -55,12 +57,12 @@ def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
     cannot pay for.
     """
 
-    spoken = (
-        answer.agent_reply
-        if getattr(answer, "agent_asks", False) and answer.agent_reply
-        else answer.reply
-    )
-    parts = [render_reply(spoken, list(answer.suggestions or []))]
+    owns = bool(getattr(answer, "agent_asks", False) and answer.agent_reply)
+    spoken = answer.agent_reply if owns else answer.reply
+    # Dishes to consider go under an answer about the menu. Under "you have
+    # 3 x Corn Fritters, subtotal $25.47" they are a second conversation
+    # nobody started — the web dropped the same list for the same reason.
+    parts = [render_reply(spoken, [] if owns else list(answer.suggestions or []))]
 
     placed = getattr(answer, "placed_order", None) or {}
     if placed.get("payment_url"):
@@ -72,6 +74,25 @@ def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
     if proposed:
         parts.append("Just say the word and I will do that.")
     return "\n\n".join(part for part in parts if part)
+
+
+def _app_client_id_for(db: Any, restaurant_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Which app this number's customer belongs to.
+
+    Identity is scoped by app client — the same phone in the marketplace app
+    and in a single-restaurant app are two different accounts, on purpose —
+    and a CUSTOMER row without one is refused by the database. A chat thread
+    carries no bundle id, so the app is the one that owns the restaurant this
+    number answers for.
+    """
+
+    if restaurant_id is None:
+        return None
+    from app.models.app_client import AppClient
+
+    return db.scalar(
+        select(AppClient.id).where(AppClient.restaurant_id == restaurant_id).limit(1)
+    )
 
 
 def _configured_location_id() -> uuid.UUID | None:
@@ -144,6 +165,9 @@ def answer_whatsapp_message(
             # Meta verified this number before delivering the message. It is
             # the whole basis on which an order can be placed here.
             verified_phone=from_number,
+            app_client_id=_app_client_id_for(db, _configured_restaurant_id()),
+            # No buttons in a chat thread: see `run_turn`'s `auto_place`.
+            auto_place=True,
         )
 
     # No client to apply them, so this side does — the same actions, the same

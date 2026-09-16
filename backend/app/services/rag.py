@@ -31,7 +31,12 @@ from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.schemas.chat import ChatHistoryItemResponse, ChatMessageResponse, ChatSuggestionItem
+from app.schemas.chat import (
+    CartActionResponse,
+    ChatHistoryItemResponse,
+    ChatMessageResponse,
+    ChatSuggestionItem,
+)
 from app.schemas.generated_combo import GeneratedComboResponse
 from app.schemas.personalized_offer import PersonalizedOfferCardResponse
 from app.schemas.suggestions import CartLinePayload, SellSuggestionResponse
@@ -7350,6 +7355,7 @@ def _run_ordering_agent(
     session_id: uuid.UUID | None = None,
     verified_phone: str | None = None,
     app_client_id: uuid.UUID | None = None,
+    auto_place: bool = False,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7412,6 +7418,7 @@ def _run_ordering_agent(
             cart=list(cart or []),
             previous_reply=previous_reply,
             recent_history=recent_history,
+            auto_place=auto_place,
         )
     except Exception:
         logger.warning(
@@ -7567,6 +7574,7 @@ def handle_chat_message(
     cart: list[CartLinePayload] | None = None,
     verified_phone: str | None = None,
     app_client_id: uuid.UUID | None = None,
+    auto_place: bool = False,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7933,6 +7941,7 @@ def handle_chat_message(
         session_id=prepared.active_session_id,
         verified_phone=verified_phone,
         app_client_id=app_client_id,
+        auto_place=auto_place,
     ) or {}
 
     return ChatMessageResponse(

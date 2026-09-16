@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent import guards, order_draft
+from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
     Generate,
     PlanStep,
@@ -359,6 +360,14 @@ def run_turn(
     clock: Clock = time.monotonic,
     max_rounds: int | None = None,
     budget_seconds: float | None = None,
+    # Whether this channel can offer a button. The web can: everything
+    # gathered, the customer taps Place order, and nothing is ambiguous. A
+    # chat thread cannot, and asking someone to "reply YES" when they have
+    # just said yes is the loop this closes. Where there is no button, the
+    # next message once everything is gathered places the order — unpaid,
+    # so the customer's real confirmation is still the one that matters:
+    # opening the payment link.
+    auto_place: bool = False,
     previous_reply: str | None = None,
     recent_history: Sequence[dict[str, str]] | None = None,
 ) -> TurnOutcome:
@@ -409,9 +418,7 @@ def run_turn(
     # and the order can be placed.
     collecting: list[str] | None = None
     if scope.session_id is not None:
-        draft = order_draft.seed_from_profile(
-            order_draft.load(scope.session_id), scope.customer
-        )
+        draft = tools_module._draft_for(scope)
         if draft.collecting:
             collecting = draft.missing_fields()
 
@@ -424,11 +431,15 @@ def run_turn(
         needed their address.
         """
 
-        if collecting is None or scope.session_id is None:
+        if scope.session_id is None:
             return collecting
-        return order_draft.seed_from_profile(
-            order_draft.load(scope.session_id), scope.customer
-        ).missing_fields()
+        fresh = tools_module._draft_for(scope)
+        # The flag is read fresh too: a turn that STARTED the collection was
+        # otherwise judged by its own beginning, and said nothing at the end
+        # to a customer who had just handed over their address.
+        if not fresh.collecting and collecting is None:
+            return None
+        return fresh.missing_fields()
 
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
@@ -471,21 +482,29 @@ def run_turn(
             return _capped("budget_exceeded")
 
         ready = collecting == [] and scope.customer is not None
-        step = plan_step(
-            message, history=tuple(records), generate=generate, tool_names=_offered_tools(
-                seen, collecting is not None, ready
-            ),
-            previous_reply=previous_reply,
-            # The thread is dropped once the state says exactly what to do.
-            # It exists to resolve "yes" and "the second one"; with nothing
-            # left to collect there is nothing to resolve, and on a live turn
-            # the model answered by copying its own earlier question out of
-            # it word for word instead of placing the order.
-            recent_history=None if ready else recent_history,
-            diet=scope.diet,
-            cart_summary=cart_summary, collecting=collecting,
-            ready_to_place=ready,
-        )
+        # On a channel with no button, being ready IS the instruction: the
+        # model will not reach for the tool (measured, repeatedly), and the
+        # customer has already asked to order and handed over their details.
+        if auto_place and _still_missing() == [] and not placed_order_in(records):
+            step = PlanStep(tool="place_order", args={})
+        else:
+            step = plan_step(
+                message,
+                history=tuple(records),
+                generate=generate,
+                tool_names=_offered_tools(seen, collecting is not None, ready),
+                previous_reply=previous_reply,
+                # The thread is dropped once the state says exactly what to do.
+                # It exists to resolve "yes" and "the second one"; with nothing
+                # left to collect there is nothing to resolve, and on a live turn
+                # the model answered by copying its own earlier question out of
+                # it word for word instead of placing the order.
+                recent_history=None if ready else recent_history,
+                diet=scope.diet,
+                cart_summary=cart_summary,
+                collecting=collecting,
+                ready_to_place=ready,
+            )
 
         if not step.ok:
             if step.error == "planner_unavailable":

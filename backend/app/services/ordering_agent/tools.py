@@ -1257,6 +1257,21 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def _draft_for(scope: OrderingScope):
+    """The draft, with everything already known filled in.
+
+    A signed-in customer's account supplies most of it. On a channel that
+    verified the caller's number, that number is a detail too — asking a
+    customer on WhatsApp for the phone they are typing from is the kind of
+    question that makes software feel unaware of itself.
+    """
+
+    draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    if not draft.contact_phone and scope.verified_phone:
+        draft.contact_phone = scope.verified_phone
+    return draft
+
+
 def _order_requirements(
     db: Session, scope: OrderingScope, args: OrderRequirementsArgs
 ) -> dict[str, Any]:
@@ -1269,7 +1284,7 @@ def _order_requirements(
 
     if scope.session_id is None:
         return {"outcome": "no_session"}
-    draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    draft = _draft_for(scope)
     # Asking is what starts the collection. Recorded so the next turn knows
     # what this conversation is in the middle of.
     if draft.missing_fields():
@@ -1305,9 +1320,7 @@ def _save_order_details(
     order_draft.save(scope.session_id, draft)
     # Seeded only for the report: what the account holds counts as known, but
     # it is not written into the draft the customer is building.
-    seeded = order_draft.seed_from_profile(
-        order_draft.OrderDraft(**{f: getattr(draft, f) for f in draft.__slots__}), scope.customer
-    )
+    seeded = _draft_for(scope)
     return {
         "outcome": "saved",
         "have": seeded.known_fields(),
@@ -1336,7 +1349,7 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
     if not args.lines:
         return {"outcome": "empty_cart"}
 
-    draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    draft = _draft_for(scope)
     missing = draft.missing_fields()
     if missing:
         # Names only. The agent asks for what is missing; it never learns
