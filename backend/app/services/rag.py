@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
-from typing import Any, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Iterator, Literal, Sequence
 
 import httpx
 from fastapi import HTTPException, status
@@ -7218,6 +7218,153 @@ def _sse_frame(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
+# Imported at call time rather than at the top of this module, because
+# `ordering_agent/tools.py` imports THIS module: it reuses
+# `_resolve_final_candidates` and the dish-name guardrail instead of growing a
+# second retrieval path. A top-level import here would resolve only when rag.py
+# happens to be imported first; importing `ordering_agent.loop` directly would
+# then fail on planner -> tools -> rag -> loop. Binding the name at module level
+# anyway — rather than importing inside `_run_ordering_agent` — is what keeps
+# the seam patchable as `rag.run_turn`, which is how it is tested with no model.
+if TYPE_CHECKING:  # the same import, for the annotation only — never at runtime
+    from app.services.ordering_agent.loop import TurnOutcome
+
+
+def run_turn(db: Session, **kwargs: Any) -> "TurnOutcome":
+    from app.services.ordering_agent.loop import run_turn as _ordering_agent_run_turn
+
+    return _ordering_agent_run_turn(db, **kwargs)
+
+
+def _optional_id_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _json_safe_cart_action(action: dict[str, Any]) -> dict[str, Any]:
+    """One of the agent's action dicts, rebuilt key by key for the wire.
+
+    Enumerated rather than copied wholesale so that a field added to the
+    agent's action shape later cannot reach a browser by accident: the rule
+    that an action carries identifiers and a quantity — never a name, never a
+    price — is re-applied here, at the one place actions leave the server, and
+    not only upstream where they are built. Ids become strings here rather than
+    relying on `_sse_frame`'s `default=str`, so the payload is JSON-safe on its
+    own terms and a test can assert the exact contract Task 7's client reads.
+    """
+
+    return {
+        "kind": action.get("kind"),
+        "status": action.get("status"),
+        "reason": action.get("reason"),
+        "menu_item_id": _optional_id_str(action.get("menu_item_id")),
+        "menu_item_size_id": _optional_id_str(action.get("menu_item_size_id")),
+        "selected_option_ids": [
+            str(option_id) for option_id in action.get("selected_option_ids") or []
+        ],
+        "quantity": action.get("quantity"),
+    }
+
+
+def _run_ordering_agent(
+    db: Session,
+    *,
+    user: ChatPrincipal,
+    message: str,
+    cart: list[CartLinePayload] | None,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    turn_id: str | None,
+) -> dict[str, Any] | None:
+    """Run the ordering agent for this turn and return ONLY what the `done`
+    frame adds. Never touches the reply, the suggestions or the response cache.
+
+    Additive to the point of paranoia, because this runs on a live chat turn
+    whose reply has already streamed: every failure below ends in the same
+    empty result rather than an exception, so a model outage, a budget overrun
+    or a bug inside a tool costs the customer their cart actions and nothing
+    else. A raise here could not un-send the tokens already written, but it
+    could turn a working turn into a broken stream.
+    """
+
+    if turn_id is None:
+        # The flag is off, and the gate is here rather than only inside
+        # `run_turn` (which has its own) so that "off" means the agent is never
+        # imported, never called and never logged on this path — not "called
+        # and returned early".
+        return None
+
+    if restaurant_id is None or restaurant_location_id is None:
+        # Every tool in the registry is branch-scoped, and the branch comes
+        # from the caller, never from the model. With no branch there is
+        # nothing to scope to. Debug, not warning: a visitor browsing the
+        # marketplace before choosing a branch is the ordinary case, not a bug.
+        logger.debug(
+            "Ordering agent skipped, no branch on this turn restaurant_id=%s restaurant_location_id=%s",
+            restaurant_id,
+            restaurant_location_id,
+        )
+        return {"cart_actions": [], "agent_reply": None}
+
+    try:
+        from app.services.ordering_agent.guards import scope_for
+
+        outcome = run_turn(
+            db,
+            scope=scope_for(user, restaurant_id, restaurant_location_id),
+            message=message,
+            # The browser's cart, which is the only place it exists. `None`
+            # means the caller sent none, not an empty cart — both reach the
+            # agent as "nothing in the cart", which is what the tools expect.
+            cart=list(cart or []),
+        )
+    except Exception:
+        logger.warning(
+            "Ordering agent turn failed, reply unaffected user_id=%s message=%s",
+            user.id,
+            _trim_text(message, 80),
+            exc_info=True,
+        )
+        return {"cart_actions": [], "agent_reply": None}
+
+    # One line per run, because the three numbers that explain a bad turn are
+    # how it ended, how many tool calls it took to get there, and how long the
+    # customer waited for it.
+    logger.info(
+        "Ordering agent turn fallback_reason=%s records=%d actions=%d elapsed=%.2fs",
+        outcome.fallback_reason,
+        len(outcome.records),
+        len(outcome.actions),
+        outcome.elapsed_seconds,
+    )
+    return {
+        "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
+        "agent_reply": outcome.answer,
+    }
+
+
+def _with_agent_turn(
+    payload: dict[str, Any],
+    turn_id: str | None,
+    agent_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add this turn's agent keys to a frame payload — or, with the flag off,
+    add nothing at all.
+
+    Absent rather than empty, deliberately: with the flag off a client written
+    against today's frames must receive today's bytes exactly, and an
+    always-present `"cart_actions": []` would quietly change every payload on
+    the endpoint for a feature nobody had switched on.
+    """
+
+    if turn_id is None:
+        return payload
+
+    payload["turn_id"] = turn_id
+    if agent_output is not None:
+        payload.update(agent_output)
+    return payload
+
+
 def _safe_suggestion_for_cart(
     db: Session,
     *,
@@ -7645,6 +7792,10 @@ def stream_chat_message(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
     guest_preferences: object | None = None,
+    # Untrusted, and the only place the cart exists: the ordering agent reasons
+    # about what the browser is holding right now. Optional so every existing
+    # caller keeps working unchanged.
+    cart: list[CartLinePayload] | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7764,6 +7915,13 @@ def stream_chat_message(
         )
         return
 
+    # Minted once per turn, past the two paths that never plan anything: an
+    # acknowledgement and a greeting have no question to answer, so there is no
+    # turn for the agent to run. `None` with the flag off, which is what keeps
+    # every frame below byte-identical to what this endpoint emitted before the
+    # agent existed.
+    turn_id = str(uuid.uuid4()) if settings.enable_ordering_agent else None
+
     cache_started_at = perf_counter()
     response_cache_key, cached_response_payload, cacheable_response, cache_reason = _lookup_global_response_cache(
         message=message,
@@ -7792,15 +7950,18 @@ def stream_chat_message(
         prepared.timings.cache_lookup_ms = cache_lookup_ms
         yield _sse_frame(
             "meta",
-            {
-                "session_id": str(prepared.active_session_id),
-                "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
-                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-                "inferred_preferences": (
-                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
-                ),
-            },
+            _with_agent_turn(
+                {
+                    "session_id": str(prepared.active_session_id),
+                    "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
+                    "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                    "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                    "inferred_preferences": (
+                        durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                    ),
+                },
+                turn_id,
+            ),
         )
         yield _sse_frame("token", {"text": reply})
         _persist_chat_exchange(
@@ -7813,18 +7974,35 @@ def stream_chat_message(
         )
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
+        # A cache hit still runs the agent: the cache holds prose, and what to
+        # do with THIS cart on THIS turn is not something another customer's
+        # cached reply can answer. Nothing the agent returns is ever written
+        # back into that cache.
+        agent_output = _run_ordering_agent(
+            db,
+            user=user,
+            message=message,
+            cart=cart,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+            turn_id=turn_id,
+        )
         yield _sse_frame(
             "done",
-            {
-                "reply": reply,
-                "session_id": str(prepared.active_session_id),
-                "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
-                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-                "inferred_preferences": (
-                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
-                ),
-            },
+            _with_agent_turn(
+                {
+                    "reply": reply,
+                    "session_id": str(prepared.active_session_id),
+                    "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
+                    "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                    "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                    "inferred_preferences": (
+                        durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                    ),
+                },
+                turn_id,
+                agent_output,
+            ),
         )
         return
 
@@ -7865,12 +8043,15 @@ def stream_chat_message(
     response_suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
     yield _sse_frame(
         "meta",
-        {
-            "session_id": str(prepared.active_session_id),
-            "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
-            "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-            "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-        },
+        _with_agent_turn(
+            {
+                "session_id": str(prepared.active_session_id),
+                "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
+                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+            },
+            turn_id,
+        ),
     )
 
     raw_reply = ""
@@ -7992,13 +8173,30 @@ def stream_chat_message(
         )
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
+    # After the reply has streamed, after the cache write, before `done`: the
+    # agent decides what to do with the cart, never what the customer is told.
+    # Running it here rather than earlier is what keeps it out of both
+    # `may_cache_globally` and the cached payload.
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=turn_id,
+    )
     yield _sse_frame(
         "done",
-        {
-            "reply": reply,
-            "session_id": str(prepared.active_session_id),
-            "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
-            "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-            "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-        },
+        _with_agent_turn(
+            {
+                "reply": reply,
+                "session_id": str(prepared.active_session_id),
+                "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
+                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+            },
+            turn_id,
+            agent_output,
+        ),
     )

@@ -71,6 +71,26 @@ class ChatMessageRequest(BaseModel):
     cart: list[CartLinePayload] = Field(default_factory=list)
 
 
+class CartActionResponse(BaseModel):
+    """One cart change the ordering agent decided on, as the wire sees it.
+
+    Identifiers and a quantity, and deliberately nothing else: the client
+    already has the branch menu loaded and renders the name and the price from
+    that, so putting either here would create a second source for them that can
+    disagree with the menu the customer is looking at. `status` is the field
+    that matters most — `proposed` means the client must ASK before changing
+    anything, and every destructive change is proposed by construction.
+    """
+
+    kind: str
+    status: str
+    reason: str
+    menu_item_id: uuid.UUID | None = None
+    menu_item_size_id: uuid.UUID | None = None
+    selected_option_ids: list[uuid.UUID] = Field(default_factory=list)
+    quantity: int | None = None
+
+
 class ChatMessageResponse(BaseModel):
     reply: str
     session_id: uuid.UUID
@@ -96,6 +116,19 @@ class ChatMessageResponse(BaseModel):
     # start sending `cart` on this route, at which point this stops being
     # theoretical.
     suggestion: SellSuggestionResponse | None = None
+    # The ordering agent's three additions, all of them empty here today: the
+    # agent is wired into `POST /chat/message/stream` only (Task 6), because
+    # the concierge streams and wiring the non-streaming route as well would
+    # mean two seams to keep honest for a surface nobody calls. They are
+    # declared on this model anyway so the two routes describe the same turn —
+    # a client reading the OpenAPI schema should not have to learn that the
+    # streamed `done` frame carries fields the response model denies exist.
+    turn_id: uuid.UUID | None = None
+    cart_actions: list[CartActionResponse] = Field(default_factory=list)
+    # The agent's own sentence, kept separate from `reply` on purpose: `reply`
+    # is what the existing pipeline said and streams unchanged, and this never
+    # substitutes for it.
+    agent_reply: str | None = None
 
 
 class ChatHistoryItemResponse(BaseModel):

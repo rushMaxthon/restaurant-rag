@@ -130,6 +130,12 @@ def stream_chat_message_route(
             guest_preferences=(
                 payload.guest_preferences.model_dump() if payload.guest_preferences else None
             ),
+            # The ordering agent reasons about THIS cart, and the cart lives in
+            # the browser — there is no server-side cart to read it from. Sent
+            # on the streaming route as well as the non-streaming one for the
+            # same reason `guest_preferences` is: this is the route the web
+            # concierge and mobile actually call.
+            cart=payload.cart,
         ),
         media_type="text/event-stream",
         headers={
