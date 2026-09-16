@@ -439,6 +439,25 @@ class Settings(BaseSettings):
     # is a property of the wording rather than of the data: what "was anything
     # out of stock" means does not change when an order arrives.
     chat_tool_plan_cache_ttl_seconds: int = 86400
+
+    # --- Customer-facing ordering agent's planner (Task 4) ------------------
+    #
+    # A sibling of the chat_tool_planner_* block above, not a reuse of it: this
+    # one is multi-round (the loop feeds each tool's result back and calls the
+    # planner again until it answers), so a plan here depends on the cart and
+    # on what already happened this turn, never on the question's wording
+    # alone — there is deliberately no cache_ttl setting to go with it, unlike
+    # chat_tool_plan_cache_ttl_seconds above, because caching by wording would
+    # serve one customer's half-built cart to a different customer who typed
+    # the same sentence.
+    ordering_agent_model: str = "qwen3:8b"
+    ordering_agent_planner_timeout_seconds: float = 45.0
+    # 400, not chat_tool_planner_max_tokens' 90: that budget only ever writes
+    # a tool name and a few arguments. This planner's other shape is the
+    # customer-facing reply itself (`{"answer": "..."}`), and a sentence or
+    # two of real prose needs more room than an owner-side tool pick ever did.
+    ordering_agent_planner_max_tokens: int = 400
+
     ai_manager_router_timeout_seconds: float = 20.0
     ai_manager_router_max_tokens: int = 80
     # The window a chat question covers when the owner names no period at all.
