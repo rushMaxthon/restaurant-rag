@@ -590,3 +590,49 @@ class GuardsUnitTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepeatedCallTests(OrderingAgentLoopTestCase):
+    def test_an_identical_repeat_of_an_answered_call_is_refused_not_run(self) -> None:
+        # The live failure this guards: a correct `needs_choice` result,
+        # then the same call again and again until the round cap.
+        calls: list = []
+        self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"outcome": "needs_choice"}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _answer("which size?"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="a pizza",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=5,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(len(calls), 1, "the handler ran once; the repeat was refused")
+        self.assertEqual(outcome.answer, "which size?")
+        self.assertTrue(outcome.records[1].error and outcome.records[1].error.startswith("repeated_call: identical to call 1"))
+        # The refusal reached the model on the next round.
+        self.assertIn("repeated_call", generate.prompts[2])
+
+    def test_a_repeat_of_a_refused_call_is_allowed(self) -> None:
+        # A call that never ran (refused by a guard) may be retried verbatim
+        # once the model has fixed what it can; only answered calls count.
+        calls: list = []
+        self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"found": True}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _answer("done"),
+        )
+        outcome = loop.run_turn(
+            db=None, scope=SCOPE, message="a pizza", cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(outcome.answer, "done")
+

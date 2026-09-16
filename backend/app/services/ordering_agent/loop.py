@@ -62,6 +62,19 @@ class TurnOutcome:
     elapsed_seconds: float
 
 
+def _repeated_call(records: list[ToolCallRecord], tool: str, args: dict[str, Any]) -> int | None:
+    """The 1-based index of an earlier call this turn with the same tool and
+    the same arguments that actually ran, or None. Only calls that produced
+    a result count: a call that was refused (an error record) is fair to
+    retry with the same arguments once the model has fixed what it can.
+    """
+
+    for index, record in enumerate(records, 1):
+        if record.tool == tool and record.error is None and record.args == args:
+            return index
+    return None
+
+
 def _error_record(step: PlanStep) -> ToolCallRecord:
     """A planner refusal, reshaped into the same `ToolCallRecord` history
     entry a failed tool call gets — the model sees both the same way on the
@@ -182,6 +195,23 @@ def run_turn(
         prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen)
         if guard_error is not None:
             records.append(ToolCallRecord(tool=tool_name, args=step.args, error=guard_error))
+            continue
+
+        # Seen live on 2026-09-16: `add_to_cart` answered `needs_choice`
+        # (correctly — the dish has a required group) and the model called it
+        # again with byte-identical arguments, then again, until the round
+        # cap. The prompt now says not to; this is the deterministic half of
+        # that rule, so a model that ignores it burns a record, not a handler
+        # call, and gets told which earlier result to read.
+        repeated = _repeated_call(records, tool_name, prepared.model_dump())
+        if repeated is not None:
+            records.append(
+                ToolCallRecord(
+                    tool=tool_name,
+                    args=prepared.model_dump(),
+                    error=f"repeated_call: identical to call {repeated}; read its result instead of calling again",
+                )
+            )
             continue
 
         spec = TOOLS[tool_name]

@@ -220,3 +220,14 @@ class MultiRoundTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NeedsChoiceRuleTests(unittest.TestCase):
+    def test_the_prompt_tells_the_model_to_ask_rather_than_retry(self) -> None:
+        # Seen live: a correct `needs_choice` result was answered with the
+        # same call again. The rule is prompt text, so this pins the text.
+        prompt = build_planner_prompt("a pizza", history=[], tool_names=None)
+        self.assertIn('"needs_choice"', prompt)
+        self.assertIn("do not call the tool again", prompt)
+        self.assertIn("never repeat a call you already made", prompt)
+

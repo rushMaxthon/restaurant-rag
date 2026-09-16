@@ -157,6 +157,14 @@ Rules:
   containing one is discarded
 - once you have enough to answer, reply with {{"answer": "..."}} instead of
   calling another tool
+- never repeat a call you already made with the same arguments — its result
+  is listed above; read it instead
+- a result with "outcome": "needs_choice" means the dish is real but the
+  customer must choose first: do not call the tool again — answer by asking
+  which of the listed sizes or options they want, each with its price
+- a result that carries an action (status "applied" or "proposed") is the
+  end of the work: answer by telling the customer what was done, or what
+  needs their confirmation
 
 Customer: {message}
 
