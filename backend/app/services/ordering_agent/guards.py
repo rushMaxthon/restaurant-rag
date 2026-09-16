@@ -77,6 +77,7 @@ def scope_for(
     principal: ChatPrincipal,
     restaurant_id: uuid.UUID,
     restaurant_location_id: uuid.UUID,
+    diet: str | None = None,
 ) -> OrderingScope:
     """The half of every tool call the model never supplies, built from the
     caller's already-authenticated session — never from anything the model
@@ -90,6 +91,7 @@ def scope_for(
         restaurant_id=restaurant_id,
         restaurant_location_id=restaurant_location_id,
         customer=customer,
+        diet=diet,
     )
 
 
@@ -206,6 +208,7 @@ def prepare_tool_call(
     *,
     cart: list[CartLinePayload],
     seen: set[uuid.UUID],
+    diet: str | None = None,
 ) -> tuple[ToolArgs, None] | tuple[None, str]:
     """Everything that must happen to a planner-validated call between the
     plan and the handler: inject the real cart where one applies, re-validate
@@ -227,6 +230,10 @@ def prepare_tool_call(
         # this function directly with a name the planner never blessed.
         return None, "unknown_tool"
 
+    if diet == "veg" and tool_name == "search_menu":
+        # The customer's diet is not the model's to forget: a vegetarian's
+        # search is veg-only whatever `is_veg` the plan carried.
+        args = {**args, "is_veg": True}
     merged, refusal = _inject_cart(tool_name, args, cart, seen)
     if refusal is not None:
         return None, refusal

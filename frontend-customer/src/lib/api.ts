@@ -580,6 +580,8 @@ type ChatStreamPayload = {
   cart?: CartLineRequest[];
   /** The assistant line the customer last saw, so "yes" can be read against it. */
   previous_reply?: string | undefined;
+  /** The tail of the thread as shown, newest last, so answers are read against their questions. */
+  recent_history?: { role: "customer" | "assistant"; text: string }[] | undefined;
 };
 
 type ChatStreamHandlers = {

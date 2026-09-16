@@ -7275,6 +7275,8 @@ def _run_ordering_agent(
     restaurant_location_id: uuid.UUID | None,
     turn_id: str | None,
     previous_reply: str | None = None,
+    recent_history: list[dict[str, str]] | None = None,
+    guest_preferences: object | None = None,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7311,13 +7313,19 @@ def _run_ordering_agent(
 
         outcome = run_turn(
             db,
-            scope=scope_for(user, restaurant_id, restaurant_location_id),
+            # The same diet the reply pipeline applies, so the agent and the
+            # prose can never disagree about what this customer eats.
+            scope=scope_for(
+                user, restaurant_id, restaurant_location_id,
+                diet=preference_diet_for_cache(db, user, guest_preferences),
+            ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`
             # means the caller sent none, not an empty cart — both reach the
             # agent as "nothing in the cart", which is what the tools expect.
             cart=list(cart or []),
             previous_reply=previous_reply,
+            recent_history=recent_history,
         )
     except Exception:
         logger.warning(
@@ -7799,6 +7807,7 @@ def stream_chat_message(
     # caller keeps working unchanged.
     cart: list[CartLinePayload] | None = None,
     previous_reply: str | None = None,
+    recent_history: list[dict[str, str]] | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7990,6 +7999,8 @@ def stream_chat_message(
             restaurant_location_id=restaurant_location_id,
             turn_id=turn_id,
             previous_reply=previous_reply,
+            recent_history=recent_history,
+            guest_preferences=guest_preferences,
         )
         yield _sse_frame(
             "done",
@@ -8190,6 +8201,8 @@ def stream_chat_message(
         restaurant_location_id=restaurant_location_id,
         turn_id=turn_id,
         previous_reply=previous_reply,
+        recent_history=recent_history,
+        guest_preferences=guest_preferences,
     )
     yield _sse_frame(
         "done",

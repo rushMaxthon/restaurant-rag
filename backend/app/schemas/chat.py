@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 from datetime import datetime
 from decimal import Decimal
 
@@ -60,6 +61,14 @@ class GuestPreferencePayload(BaseModel):
     spice_level: str | None = Field(default=None, max_length=32)
 
 
+class ChatThreadLine(BaseModel):
+    """One line of the thread as the customer saw it. Text only, capped: it
+    feeds a prompt, never a database row."""
+
+    role: Literal["customer", "assistant"]
+    text: str = Field(min_length=1, max_length=600)
+
+
 class ChatMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     restaurant_id: uuid.UUID | None = None
@@ -75,6 +84,9 @@ class ChatMessageRequest(BaseModel):
     # honest than re-deriving it from stored history, which may carry a
     # different rendering than the one on screen.
     previous_reply: str | None = Field(default=None, max_length=2000)
+    # The tail of the thread, newest last, so the ordering agent reads an
+    # answer against the question it answers. Capped at 8 lines.
+    recent_history: list[ChatThreadLine] = Field(default_factory=list, max_length=8)
 
 
 class CartActionResponse(BaseModel):

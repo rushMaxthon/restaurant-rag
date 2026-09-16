@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -156,6 +157,7 @@ def run_turn(
     max_rounds: int | None = None,
     budget_seconds: float | None = None,
     previous_reply: str | None = None,
+    recent_history: Sequence[dict[str, str]] | None = None,
 ) -> TurnOutcome:
     """Run one customer turn to completion, or to whichever bound stops it
     first. `clock`/`generate` are injected so a test drives every round
@@ -210,7 +212,10 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
-        step = plan_step(message, history=tuple(records), generate=generate, previous_reply=previous_reply)
+        step = plan_step(
+            message, history=tuple(records), generate=generate,
+            previous_reply=previous_reply, recent_history=recent_history, diet=scope.diet,
+        )
 
         if not step.ok:
             if step.error == "planner_unavailable":
@@ -254,7 +259,7 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
-        prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen)
+        prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen, diet=scope.diet)
         if guard_error is not None:
             records.append(ToolCallRecord(tool=tool_name, args=step.args, error=guard_error))
             continue

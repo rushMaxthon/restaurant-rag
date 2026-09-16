@@ -361,6 +361,11 @@ class OrderingScope:
     restaurant_id: uuid.UUID
     restaurant_location_id: uuid.UUID
     customer: User | None = None
+    # The diet the reply pipeline already applies ("veg" / "non_veg" / None,
+    # from `preference_diet_for_cache`). Carried here so the tools enforce
+    # it deterministically: a vegetarian's search is veg-only and an add of
+    # a non-veg dish is refused, whatever the model planned.
+    diet: str | None = None
 
 ToolHandler = Callable[[Session, OrderingScope, ToolArgs], dict[str, Any]]
 
@@ -1230,6 +1235,11 @@ def _add_to_cart(db: Session, scope: OrderingScope, args: AddToCartArgs) -> dict
         return {"outcome": "needs_choice", **_serialize_choice(resolution.needs_choice[0])}
 
     entry = resolution.resolved[0]
+    if scope.diet == "veg" and not entry.menu_item.is_veg:
+        # Reported live: a vegetarian asked for a dish by name and the agent
+        # added it. The reply pipeline never offers it; the cart must not
+        # take it either. The name goes back so the agent can say why.
+        return {"outcome": "not_for_diet", "name": entry.menu_item.name, "diet": "vegetarian"}
     action = CartAction(
         kind="add",
         status="applied",

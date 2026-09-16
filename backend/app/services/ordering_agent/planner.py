@@ -127,11 +127,39 @@ def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
     return "\n".join(lines)
 
 
+def _customer_facts(diet: str | None) -> str:
+    """What the tools will enforce anyway, said up front so the model does
+    not plan a search or an add it will only be refused for."""
+
+    if diet == "veg":
+        return "The customer is vegetarian: never offer, search for, or add a non-veg dish.\n"
+    return ""
+
+
+def _serialize_thread(recent_history: Sequence[dict[str, str]] | None, previous_reply: str | None) -> str:
+    """The thread as the customer saw it, newest last — so "yes", "make it
+    two" or "the second one" are read against what they answer. The client
+    holds the thread and sends the tail; the older single-line form is kept
+    for callers that only have that."""
+
+    lines = []
+    for entry in list(recent_history or [])[-8:]:
+        role = "Customer" if entry.get("role") == "customer" else "You"
+        text = (entry.get("text") or "").strip()[:500]
+        if text:
+            lines.append(f"{role}: {text}")
+    if not lines and previous_reply:
+        lines.append(f"You: {previous_reply.strip()[:600]}")
+    return "\n".join(lines)
+
+
 def build_planner_prompt(
     message: str,
     history: Sequence[ToolCallRecord],
     tool_names: tuple[str, ...] | None = None,
     previous_reply: str | None = None,
+    recent_history: Sequence[dict[str, str]] | None = None,
+    diet: str | None = None,
 ) -> str:
     """Public so a test can assert on the prompt text directly, the same way
     `test_chat_tools.py` asserts on `tool_chat.build_planner_prompt`'s
@@ -148,8 +176,9 @@ Return STRICT JSON only, one of these two shapes:
 Tools (each returns one slice of data):
 {describe_tools_for_prompt(tool_names)}
 
-What you said to the customer last turn (empty if nothing):
-{(previous_reply or "").strip()[:600]}
+{_customer_facts(diet)}
+Conversation so far, most recent last (empty if this is the first message):
+{_serialize_thread(recent_history, previous_reply)}
 
 Calls already made this turn, and what they returned:
 {_serialize_history(history)}
@@ -171,7 +200,9 @@ Rules:
 - a result that carries an action (status "applied" or "proposed") is the
   end of the work: answer by telling the customer what was done, or what
   needs their confirmation
-- read the customer's message against what you said last turn. If you
+- a result with "outcome": "not_for_diet" means the dish is not vegetarian:
+  say so and offer a vegetarian alternative from a search — never add it
+- read the customer's message against the conversation so far. If you
   offered to add more or check out and they are agreeing to pay, finish,
   confirm the order, or check out — in whatever words — call go_to_checkout.
   If they are declining or want to keep ordering, answer by asking what to
@@ -272,6 +303,8 @@ def plan_step(
     tool_names: tuple[str, ...] | None = None,
     generate: Generate | None = None,
     previous_reply: str | None = None,
+    recent_history: Sequence[dict[str, str]] | None = None,
+    diet: str | None = None,
 ) -> PlanStep:
     """One planner call: run one more tool, answer, or refuse and say why.
 
@@ -285,7 +318,7 @@ def plan_step(
     generator = generate or _ollama_generate
     try:
         raw = generator(
-            build_planner_prompt(message, history, tool_names, previous_reply),
+            build_planner_prompt(message, history, tool_names, previous_reply, recent_history, diet),
             settings.ordering_agent_planner_timeout_seconds,
             settings.ordering_agent_planner_max_tokens,
         )

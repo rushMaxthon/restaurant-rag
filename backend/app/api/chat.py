@@ -137,6 +137,7 @@ def stream_chat_message_route(
             # concierge and mobile actually call.
             cart=payload.cart,
             previous_reply=payload.previous_reply,
+            recent_history=[line.model_dump() for line in payload.recent_history],
         ),
         media_type="text/event-stream",
         headers={

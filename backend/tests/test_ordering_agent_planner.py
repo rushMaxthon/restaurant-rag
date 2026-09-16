@@ -239,3 +239,19 @@ class PreviousReplyTests(unittest.TestCase):
         self.assertIn("call go_to_checkout", prompt)
         self.assertIn("go_to_checkout(lines)", prompt)
 
+
+class ThreadAndDietTests(unittest.TestCase):
+    def test_the_thread_and_the_diet_are_in_the_prompt(self) -> None:
+        prompt = build_planner_prompt(
+            "make it two", history=[], tool_names=None,
+            recent_history=[{"role": "customer", "text": "add a green curry"}, {"role": "assistant", "text": "Added Green Curry x1. Add more, or check out?"}],
+            diet="veg",
+        )
+        self.assertIn("Customer: add a green curry", prompt)
+        self.assertIn("You: Added Green Curry x1.", prompt)
+        self.assertIn("The customer is vegetarian", prompt)
+        self.assertIn('"not_for_diet"', prompt)
+
+    def test_a_meat_eater_gets_no_diet_line(self) -> None:
+        self.assertNotIn("The customer is vegetarian", build_planner_prompt("hi", history=[], tool_names=None, diet=None))
+

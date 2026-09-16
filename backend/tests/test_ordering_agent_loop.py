@@ -702,3 +702,17 @@ class CheckoutHandoffTests(OrderingAgentLoopTestCase):
         )
         self.assertIn("Added a pizza. Add more, or check out?", generate.prompts[0])
 
+
+class DietGuardTests(unittest.TestCase):
+    def test_a_vegetarian_search_is_forced_veg(self) -> None:
+        from app.services.ordering_agent import guards
+        prepared, error = guards.prepare_tool_call("search_menu", {"query": "curry", "is_veg": None}, cart=[], seen=set(), diet="veg")
+        self.assertIsNone(error)
+        self.assertTrue(prepared.is_veg)
+
+    def test_no_diet_leaves_the_search_alone(self) -> None:
+        from app.services.ordering_agent import guards
+        prepared, error = guards.prepare_tool_call("search_menu", {"query": "curry"}, cart=[], seen=set(), diet=None)
+        self.assertIsNone(error)
+        self.assertIsNone(prepared.is_veg)
+

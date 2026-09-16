@@ -311,6 +311,13 @@ function ConciergePage() {
           cart: cartLinesForRequest(store.cart),
           // The line the customer is replying to, if they are replying.
           previous_reply: turns[turns.length - 1]?.text,
+          recent_history: turns
+            .slice(-8)
+            .filter((t) => t.text.trim().length > 0)
+            .map((t) => ({
+              role: t.role === "user" ? ("customer" as const) : ("assistant" as const),
+              text: t.text.trim().slice(0, 600),
+            })),
         },
         {
           onMeta: (meta) => {
