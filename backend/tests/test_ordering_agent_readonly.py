@@ -263,6 +263,19 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         pad_thai = make_item(
             restaurant_id=restaurant.id, location_id=branch_a.id, name="Pad Thai", price="220.00"
         )
+        # Distinct from "Pad Thai" above on purpose: "pad thai" (what a
+        # customer actually types) is an exact case-insensitive match for
+        # THIS item's name, but only a near-miss (a substring) against a
+        # dish literally named "Pad Thai (Veg)" — the fix-round-4 short
+        # circuit must not fire for it, and the existing keyword-tier
+        # cascade must still be the one that resolves it.
+        pad_thai_veg = make_item(
+            restaurant_id=restaurant.id,
+            location_id=branch_a.id,
+            name="Pad Thai (Veg)",
+            price="210.00",
+            is_veg=True,
+        )
         curry = make_item(
             restaurant_id=restaurant.id,
             location_id=branch_a.id,
@@ -368,6 +381,7 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         session.flush()
 
         cls.pad_thai_id = pad_thai.id
+        cls.pad_thai_veg_id = pad_thai_veg.id
         cls.curry_id = curry.id
         cls.sized_item_id = sized_item.id
         cls.pizza_id = pizza.id
@@ -417,6 +431,69 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertEqual(result["menu_item_id"], self.pad_thai_id)
         self.assertEqual(result["price"], Decimal("220.00"))
+
+    def test_get_dish_exact_name_matches_resolve_named_without_touching_the_cascade(self) -> None:
+        """Fix round 4: the reported defect. An exact `MenuItem.name` value
+        must resolve `found=True, confidence="named"` — never `absent`,
+        never `unknown` — and must not even reach the retrieval cascade
+        (patched here to raise if called), since an exact match needs no
+        embedding, no keyword tier, and no guardrail distance to be sure of
+        itself. Exercised over every real dish name in the fixture, not
+        just one, mirroring how the coordinator found the defect (a sample
+        across a whole branch, not a single lucky/unlucky name)."""
+
+        exact_names_and_ids = {
+            "Pad Thai": self.pad_thai_id,
+            "Pad Thai (Veg)": self.pad_thai_veg_id,
+            "Green Curry": self.curry_id,
+            "Fried Rice": self.sized_item_id,
+            "Margherita Pizza": self.pizza_id,
+        }
+        with self._session() as db, patch(
+            "app.services.rag._resolve_final_candidates",
+            side_effect=AssertionError("cascade should not run"),
+        ):
+            for name, expected_id in exact_names_and_ids.items():
+                with self.subTest(name=name):
+                    result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name=name))
+                    self.assertTrue(result["found"], msg=name)
+                    self.assertEqual(result["confidence"], "named", msg=name)
+                    self.assertEqual(result["menu_item_id"], expected_id, msg=name)
+
+    def test_get_dish_exact_name_match_is_case_insensitive(self) -> None:
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="pad thai"))
+        self.assertTrue(result["found"])
+        self.assertEqual(result["confidence"], "named")
+        self.assertEqual(result["menu_item_id"], self.pad_thai_id)
+
+    def test_get_dish_near_miss_still_uses_the_existing_cascade(self) -> None:
+        """"Margherita" is not an exact match for "Margherita Pizza" — it
+        must fall through to the same keyword-tier cascade this resolved
+        through before fix round 4, and get the same answer it always has:
+        found via keyword match, `unknown` confidence with no embedding
+        available (there is no vector-sourced candidate for the guardrail to
+        read a distance from, and its own fallback re-query is skipped when
+        `query_embedding` is `None`). Fix round 4 adds a path in front of
+        this one; it must not change what this path itself produces."""
+
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Margherita"))
+        self.assertTrue(result["found"])
+        self.assertEqual(result["menu_item_id"], self.pizza_id)
+        self.assertEqual(result["confidence"], "unknown")
+
+    def test_get_dish_genuinely_absent_dish_still_resolves_absent(self) -> None:
+        """Not a new test in spirit — `test_get_dish_degrades_for_a_name_on_no_menu`
+        already covers this — but named and grouped here explicitly per the
+        coordinator's ask, since fix round 4 must not turn "absent" into
+        "found" for a name that genuinely is not on the menu."""
+
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(
+                db, self._scope(), GetDishArgs(name="xyzzy nonsense dish")
+            )
+        self.assertFalse(result["found"])
 
     def test_get_dish_returns_sizes_with_their_own_prices(self) -> None:
         """Second fix round: step 1 of the flow ("which size, and what does

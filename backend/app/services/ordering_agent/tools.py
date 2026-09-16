@@ -42,6 +42,7 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -745,15 +746,79 @@ def _search_menu(db: Session, scope: OrderingScope, args: SearchMenuArgs) -> dic
     }
 
 
+def _find_exact_name_match(db: Session, scope: OrderingScope, name: str) -> MenuItem | None:
+    """A case-insensitive, exact match against this branch's own
+    `MenuItem.name` — the strongest signal a customer can give, stronger
+    than any embedding distance (fix round 4, 2026-09-16).
+
+    Why semantic similarity was the wrong tool for this: the document side
+    of the vector index is not the name alone —
+    `app/tasks/embed.py::_format_embedding_text` embeds
+    `"{name} | {cuisine} | {category} | {description} | {price} | {veg_label}"` —
+    while the query side embeds only what the customer typed
+    (`_embed_query`, asymmetric document/query embedding). For most dishes
+    the name still dominates the resulting vector closely enough to clear
+    `DISH_NAME_MAX_DISTANCE`, but for some it does not, and a customer who
+    typed the dish's real name verbatim was told it does not exist. An exact
+    text match sidesteps that dilution entirely — checked first, against
+    the database, before any embedding is computed or any cascade tier
+    runs.
+
+    `.limit(1)` guards against `MultipleResultsFound` if two rows at a
+    branch ever share a name; picking one deterministically over raising is
+    consistent with this module degrading rather than erroring wherever an
+    id or a name does not resolve cleanly.
+    """
+
+    return db.scalars(
+        select(MenuItem)
+        .where(
+            MenuItem.restaurant_id == scope.restaurant_id,
+            MenuItem.restaurant_location_id == scope.restaurant_location_id,
+            MenuItem.is_available.is_(True),
+            func.lower(MenuItem.name) == name.strip().lower(),
+        )
+        .limit(1)
+    ).first()
+
+
+def _build_dish_result(menu_item: MenuItem, *, confidence: str, args: GetDishArgs) -> dict[str, Any]:
+    result = {"found": True, "confidence": confidence, **_serialize_menu_item(menu_item)}
+    # An id that doesn't resolve (foreign, inactive, invented) degrades to
+    # `None`, which `_get_active_customization_groups` already treats the
+    # same as "no size given" — dish-wide groups only, never an exception.
+    selected_size = _active_size(menu_item, args.menu_item_size_id)
+    applicable_groups = _get_active_customization_groups(menu_item, selected_size=selected_size)
+    result["customization_groups"] = [_serialize_catalog_group(group) for group in applicable_groups]
+    return result
+
+
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
-    """Resolves a named dish exactly as the chat turn's dish-name guardrail
-    would: run the same retrieval cascade `search_menu` uses, then read the
-    same confidence signal (`classify_dish_reference`, via
-    `apply_dish_name_guardrail`) rather than trusting whatever the cascade's
-    fallback tiers surfaced. `verdict == "absent"` means nothing on this
-    menu resembles the name closely enough to answer with, which this tool
-    reports honestly instead of returning a distant fallback match under the
-    customer's name.
+    """Resolves a named dish, exact name first, then exactly as the chat
+    turn's dish-name guardrail would.
+
+    Fix round 4 (2026-09-16): an exact (case-insensitive) match against
+    `MenuItem.name` at this branch short-circuits straight to `found: True,
+    confidence: "named"` — see `_find_exact_name_match` for why semantic
+    similarity is the wrong tool to route an exact name through. This
+    resolved a real defect: dishes named straight out of `menu_items.name`
+    (~20% of a sample at one branch) were coming back `absent`, and several
+    more resolved with `confidence: "unknown"` despite existing, on-menu
+    dishes — a verdict Task 3's mutation tools gate on, so an exact name
+    reading as `unknown` would never produce an `applied` action. Neither
+    failure is possible once an exact match is checked first; the cascade
+    below is now reached only for a name that is NOT an exact match (a
+    near-miss, a typo, a partial name), where its existing behaviour is
+    unchanged byte for byte — this fix adds a path in front of it, it does
+    not alter it.
+
+    The cascade path (unchanged): run the same retrieval cascade
+    `search_menu` uses, then read the same confidence signal
+    (`classify_dish_reference`, via `apply_dish_name_guardrail`) rather than
+    trusting whatever the cascade's fallback tiers surfaced. `verdict ==
+    "absent"` means nothing on this menu resembles the name closely enough
+    to answer with, which this tool reports honestly instead of returning a
+    distant fallback match under the customer's name.
 
     Deliberately does not gate on `settings.enable_dish_name_guardrail`: that
     flag controls whether the *existing chat pipeline* is allowed to erase a
@@ -774,16 +839,14 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
     tiers that matched the name itself — `vector`, `keyword`, `fuzzy_name` —
     are allowed to answer "found".
 
-    Fix round 3 (2026-09-16): `customization_groups` is always populated now,
-    not gated behind `menu_item_size_id` — a dish with `has_customizations`
-    True used to report no group information at all until a size was named,
-    which made step 2 of the flow ("that comes with X and Y") unanswerable
-    for exactly the dishes that needed it. `_get_active_customization_groups`
-    (the same helper `_resolve_cart_lines` already uses) is reused here
-    too — item-level groups only when no size is given, item-level plus that
-    size's own groups once one is. No price is computed alongside it; see
-    `_serialize_catalog_group`.
+    `customization_groups` is always populated (fix round 3) via
+    `_build_dish_result`, shared by both this exact-match path and the
+    cascade path below so neither can drift from the other's shape.
     """
+
+    exact_match = _find_exact_name_match(db, scope, args.name)
+    if exact_match is not None:
+        return _build_dish_result(exact_match, confidence="named", args=args)
 
     intent = ordering_rag.ExtractedIntent(intent="dish_lookup", dish=args.name)
     query_embedding = ordering_rag._embed_query(args.name)
@@ -812,14 +875,7 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
         return {"found": False, "confidence": verdict}
 
     matched_item = candidates[0].menu_item
-    result = {"found": True, "confidence": verdict, **_serialize_menu_item(matched_item)}
-    # An id that doesn't resolve (foreign, inactive, invented) degrades to
-    # `None`, which `_get_active_customization_groups` already treats the
-    # same as "no size given" — dish-wide groups only, never an exception.
-    selected_size = _active_size(matched_item, args.menu_item_size_id)
-    applicable_groups = _get_active_customization_groups(matched_item, selected_size=selected_size)
-    result["customization_groups"] = [_serialize_catalog_group(group) for group in applicable_groups]
-    return result
+    return _build_dish_result(matched_item, confidence=verdict, args=args)
 
 
 def _view_cart(db: Session, scope: OrderingScope, args: ViewCartArgs) -> dict[str, Any]:
