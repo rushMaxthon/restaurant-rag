@@ -237,7 +237,8 @@ class PreviousReplyTests(unittest.TestCase):
         prompt = build_planner_prompt("yes", history=[], tool_names=None, previous_reply="Added a pizza. Add more, or check out?")
         self.assertIn("Added a pizza. Add more, or check out?", prompt)
         self.assertIn("call go_to_checkout", prompt)
-        self.assertIn("go_to_checkout(lines)", prompt)
+        # `lines` is injected by the caller, so it is no longer advertised.
+        self.assertIn("go_to_checkout(no arguments)", prompt)
 
 
 class ThreadAndDietTests(unittest.TestCase):

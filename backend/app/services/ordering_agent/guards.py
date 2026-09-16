@@ -52,7 +52,12 @@ from typing import Any
 
 from app.schemas.suggestions import CartLinePayload
 from app.services.chat_principal import ChatPrincipal, is_guest
-from app.services.ordering_agent.tools import TOOLS, OrderingScope, ToolArgs
+from app.services.ordering_agent.tools import (
+    INJECTED_CART_FIELDS,
+    TOOLS,
+    OrderingScope,
+    ToolArgs,
+)
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -69,13 +74,7 @@ logger = logging.getLogger(__name__)
 # turn up in where an id belongs.
 _MUTATION_TOOLS = frozenset({"add_to_cart", "remove_from_cart", "set_quantity"})
 
-_ALWAYS_INJECTED_CART_FIELD: dict[str, str] = {
-    "view_cart": "lines",
-    "remove_from_cart": "existing_lines",
-    "set_quantity": "existing_lines",
-    "go_to_checkout": "lines",
-    "place_order": "lines",
-}
+_ALWAYS_INJECTED_CART_FIELD = INJECTED_CART_FIELDS
 
 
 def scope_for(

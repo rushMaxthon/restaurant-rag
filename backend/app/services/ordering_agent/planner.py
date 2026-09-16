@@ -54,6 +54,7 @@ from app.services.ollama_client import (
     think_option,
 )
 from app.services.ordering_agent.tools import (
+    INJECTED_CART_FIELDS,
     FORBIDDEN_ARG_NAMES,
     TOOLS,
     describe_tools_for_prompt,
@@ -195,6 +196,32 @@ def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
     return "\n".join(lines)
 
 
+def _collecting_facts(collecting: Sequence[str] | None, ready_to_place: bool = False) -> str:
+    """What this conversation is in the middle of.
+
+    Live: the customer gave every missing detail in one message and the
+    model called nothing, so nothing was saved. Saying the state plainly,
+    with the field names, is cheaper than hoping it is inferred from eight
+    lines of thread.
+    """
+
+    if ready_to_place:
+        # The state after collecting, which was left unsaid once and cost a
+        # customer a repeated question they had already answered.
+        return (
+            "Everything needed to place this order is held. Call place_order "
+            "now; do not ask for details again.\n"
+        )
+    if not collecting:
+        return ""
+    wanted = ", ".join(collecting)
+    return (
+        "You are collecting the details needed to place this order. Still "
+        f"missing: {wanted}. Whatever the customer says next, pass it to "
+        "save_order_details — it takes any of them, in any order.\n"
+    )
+
+
 def _cart_facts(cart_summary: str | None) -> str:
     """The cart the customer is holding, as a fact rather than a lookup.
 
@@ -242,6 +269,8 @@ def build_planner_prompt(
     recent_history: Sequence[dict[str, str]] | None = None,
     diet: str | None = None,
     cart_summary: str | None = None,
+    collecting: Sequence[str] | None = None,
+    ready_to_place: bool = False,
 ) -> str:
     """Public so a test can assert on the prompt text directly, the same way
     `test_chat_tools.py` asserts on `tool_chat.build_planner_prompt`'s
@@ -258,7 +287,7 @@ Return STRICT JSON only, one of these two shapes:
 Tools (each returns one slice of data):
 {describe_tools_for_prompt(tool_names)}
 
-{_customer_facts(diet)}{_cart_facts(cart_summary)}
+{_customer_facts(diet)}{_cart_facts(cart_summary)}{_collecting_facts(collecting, ready_to_place)}
 Conversation so far, most recent last (empty if this is the first message):
 {_serialize_thread(recent_history, previous_reply)}
 
@@ -287,6 +316,26 @@ Rules:
   needs their confirmation
 - a result with "outcome": "not_for_diet" means the dish is not vegetarian:
   say so and offer a vegetarian alternative from a search — never add it
+- when the customer wants to order, pay, or finish: call
+  order_requirements first. It says which contact details are held and
+  which are missing
+- ask for the missing details in one friendly message, and pass whatever
+  they answer to save_order_details. Ask only for what "missing" lists
+- when nothing is missing, call place_order. It creates the order and
+  returns a link to pay it; say the total and that the link is below.
+  NEVER write the payment link into your answer — it is shown separately
+- a result with "outcome": "not_identified" means they must sign in first;
+  "needs_details" means keep asking
+- when the customer wants to order, pay, or finish: call
+  order_requirements first. It says which contact details are held and
+  which are missing
+- ask for the missing details in one friendly message, and pass whatever
+  they answer to save_order_details. Ask only for what "missing" lists
+- when nothing is missing, call place_order. It creates the order and
+  returns a link to pay it; say the total and that the link is below.
+  NEVER write the payment link into your answer — it is shown separately
+- a result with "outcome": "not_identified" means they must sign in first;
+  "needs_details" means keep asking
 - menu_item_id is an id from an earlier result, never a dish name. If you
   only know the name, call get_dish with it first and use the id it returns
 - if the customer agrees to something you offered — adding a dish, ordering
@@ -373,6 +422,13 @@ def _validate_call(tool: Any, raw_args: Any, allowed: tuple[str, ...]) -> PlanSt
     # `allowed` is always a subset of `TOOLS` (see `plan_step`), so this
     # lookup cannot miss for a name that just passed the check above.
     spec = TOOLS[tool_name]
+    # Whatever the model wrote in a field the caller injects is discarded a
+    # moment later, so judging the call on it refuses good plans for bad
+    # reasons. Dropped before validation rather than after, because
+    # `extra="forbid"` would otherwise reject the shape it invented.
+    injected = INJECTED_CART_FIELDS.get(tool_name)
+    if injected:
+        args_obj = {key: value for key, value in args_obj.items() if key != injected}
     try:
         validated = spec.args_model.model_validate(args_obj)
     except ValidationError as error:
@@ -419,6 +475,8 @@ def plan_step(
     recent_history: Sequence[dict[str, str]] | None = None,
     diet: str | None = None,
     cart_summary: str | None = None,
+    collecting: Sequence[str] | None = None,
+    ready_to_place: bool = False,
 ) -> PlanStep:
     """One planner call: run one more tool, answer, or refuse and say why.
 
@@ -433,7 +491,8 @@ def plan_step(
     try:
         raw = generator(
             build_planner_prompt(
-                message, history, tool_names, previous_reply, recent_history, diet, cart_summary
+                message, history, tool_names, previous_reply, recent_history, diet,
+                cart_summary, collecting, ready_to_place,
             ),
             settings.ordering_agent_planner_timeout_seconds,
             settings.ordering_agent_planner_max_tokens,

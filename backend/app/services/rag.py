@@ -7258,6 +7258,23 @@ def _optional_id_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
 
+def _json_safe_placed_order(placed: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The placed order as the wire carries it: an id, a total, and a link.
+
+    Enumerated rather than copied, for the same reason a cart action is —
+    whatever else a tool result grows, only these four fields leave here.
+    """
+
+    if not placed:
+        return None
+    return {
+        "order_id": _optional_id_str(placed.get("order_id")),
+        "total": str(placed["total"]) if placed.get("total") is not None else None,
+        "currency": placed.get("currency"),
+        "payment_url": placed.get("payment_url"),
+    }
+
+
 def _json_safe_cart_action(action: dict[str, Any]) -> dict[str, Any]:
     """One of the agent's action dicts, rebuilt key by key for the wire.
 
@@ -7360,7 +7377,13 @@ def _run_ordering_agent(
             restaurant_id,
             restaurant_location_id,
         )
-        return {"cart_actions": [], "agent_reply": None, "agent_asks": False}
+        return {
+            "cart_actions": [],
+            "agent_reply": None,
+            "agent_asks": False,
+            "placed_order": None,
+            "order_ready": False,
+        }
 
     try:
         from app.services.ordering_agent.guards import scope_for
@@ -7393,7 +7416,13 @@ def _run_ordering_agent(
             _trim_text(message, 80),
             exc_info=True,
         )
-        return {"cart_actions": [], "agent_reply": None, "agent_asks": False}
+        return {
+            "cart_actions": [],
+            "agent_reply": None,
+            "agent_asks": False,
+            "placed_order": None,
+            "order_ready": False,
+        }
 
     # One line per run, because the three numbers that explain a bad turn are
     # how it ended, how many tool calls it took to get there, and how long the
@@ -7431,6 +7460,11 @@ def _run_ordering_agent(
     return {
         "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
         "agent_reply": outcome.answer,
+        # The order this turn placed, for the client to render a Pay button
+        # from and to empty the cart against. None on every other turn.
+        "placed_order": _json_safe_placed_order(outcome.placed_order),
+        # Everything is gathered and the customer has only to confirm.
+        "order_ready": outcome.ready_to_place,
         # The reply pipeline reporting `popular_fallback` is it saying, in its
         # own words, "I could not match that — here are some popular dishes".
         # If the agent has an answer on such a turn, the agent's is the one

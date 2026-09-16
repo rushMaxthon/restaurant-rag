@@ -59,9 +59,21 @@ class OrderDraft:
     contact_email: str | None = None
     delivery_address: str | None = None
     fulfillment_type: str | None = None
+    # Set once the customer has been asked for their details. It is what
+    # tells a later turn that the conversation is mid-collection, rather
+    # than leaving the model to infer it from a thread it may not read.
+    collecting: bool = False
+
+    #: Not a detail, a state flag. Excluded everywhere the detail fields are
+    #: counted, or "collecting" would report itself as something we hold.
+    _STATE_FIELDS = ("collecting",)
 
     def known_fields(self) -> list[str]:
-        return [f.name for f in fields(self) if getattr(self, f.name)]
+        return [
+            f.name
+            for f in fields(self)
+            if f.name not in self._STATE_FIELDS and getattr(self, f.name)
+        ]
 
     def missing_fields(self) -> list[str]:
         """What still has to be asked for.
@@ -98,8 +110,15 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     stored = cache_get_json(_key(session_id))
     if not isinstance(stored, dict):
         return OrderDraft()
-    allowed = {f.name for f in fields(OrderDraft)}
-    return OrderDraft(**{k: v for k, v in stored.items() if k in allowed and isinstance(v, str)})
+    detail_fields = {f.name for f in fields(OrderDraft)} - set(OrderDraft._STATE_FIELDS)
+    kept: dict[str, Any] = {
+        key: value
+        for key, value in stored.items()
+        if key in detail_fields and isinstance(value, str)
+    }
+    if isinstance(stored.get("collecting"), bool):
+        kept["collecting"] = stored["collecting"]
+    return OrderDraft(**kept)
 
 
 def save(session_id: uuid.UUID | str, draft: OrderDraft) -> None:

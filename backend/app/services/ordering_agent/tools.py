@@ -1259,6 +1259,12 @@ def _order_requirements(
     if scope.session_id is None:
         return {"outcome": "no_session"}
     draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    # Asking is what starts the collection. Recorded so the next turn knows
+    # what this conversation is in the middle of.
+    if draft.missing_fields():
+        stored = order_draft.load(scope.session_id)
+        stored.collecting = True
+        order_draft.save(scope.session_id, stored)
     return {
         "outcome": "requirements",
         "identified": scope.customer is not None,
@@ -1674,6 +1680,20 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
 )
 
 
+# The cart-shaped arguments the caller fills in from the request, whatever
+# the model wrote there. Named here, beside the arg models, because three
+# places need to agree about them: the guards that inject them, the prompt
+# that must not advertise them, and the validation that must not judge the
+# model on a value nobody will read.
+INJECTED_CART_FIELDS: dict[str, str] = {
+    "view_cart": "lines",
+    "remove_from_cart": "existing_lines",
+    "set_quantity": "existing_lines",
+    "go_to_checkout": "lines",
+    "place_order": "lines",
+}
+
+
 def _validate_registry(specs: tuple[ToolSpec, ...]) -> dict[str, ToolSpec]:
     registry: dict[str, ToolSpec] = {}
     for spec in specs:
@@ -1710,7 +1730,11 @@ def describe_tools_for_prompt(names: "tuple[str, ...] | None" = None) -> str:
         spec = TOOLS.get(name)
         if spec is None:
             continue
-        fields = spec.args_model.model_fields
+        # An injected field is not something the model chooses, so listing it
+        # only invites it to invent one — which it did, and the call was
+        # refused before the real cart could replace it.
+        injected = INJECTED_CART_FIELDS.get(name)
+        fields = [f for f in spec.args_model.model_fields if f != injected]
         args = ", ".join(fields) if fields else "no arguments"
         summary = spec.description.split(".")[0].strip()
         lines.append(f"- {name}({args}) — {summary}")
@@ -1719,6 +1743,7 @@ def describe_tools_for_prompt(names: "tuple[str, ...] | None" = None) -> str:
 
 __all__ = [
     "FORBIDDEN_ARG_NAMES",
+    "INJECTED_CART_FIELDS",
     "TOOL_LIST",
     "TOOLS",
     "AddToCartArgs",

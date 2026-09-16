@@ -13,8 +13,17 @@ from sqlalchemy.orm import Session
 from app.api.deps import AppScopeDep, ensure_restaurant_writable
 from app.config.database import get_db
 from app.models.user import User
-from app.schemas.chat import ChatClearResponse, ChatHistoryItemResponse, ChatMessageRequest, ChatMessageResponse
-from app.services.auth import get_current_user, get_current_user_optional
+from app.services.ordering_agent.guards import _request_cart_lines, scope_for
+from app.services.ordering_agent.tools import TOOLS, CartLineArgs, PlaceOrderArgs
+from app.schemas.chat import (
+    ChatClearResponse,
+    ChatHistoryItemResponse,
+    ChatMessageRequest,
+    ChatMessageResponse,
+    ChatPlaceOrderRequest,
+    ChatPlaceOrderResponse,
+)
+from app.services.auth import get_current_user, get_current_user_optional, require_customer
 from app.services.chat_principal import ChatPrincipal, guest_principal_for_session
 from app.services.rag import clear_chat_history, get_chat_history, handle_chat_message, stream_chat_message
 
@@ -205,4 +214,46 @@ def delete_chat_history(
     return ChatClearResponse(
         deleted_count=deleted_count,
         cleared_session_id=session_id,
+    )
+
+@router.post("/place-order", response_model=ChatPlaceOrderResponse)
+def place_order_from_chat(
+    payload: ChatPlaceOrderRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_customer)],
+    app_scope: AppScopeDep,
+) -> ChatPlaceOrderResponse:
+    """Place the order this conversation built, and return a link to pay it.
+
+    The same code the agent's `place_order` tool runs, reachable by a button.
+    Four rounds of prompting could not get a small local model to call that
+    tool reliably at the one moment it mattered, and "did the order happen"
+    is not a question a customer should have to ask twice — so the web app
+    asks directly, and the model keeps the tool for WhatsApp, where there is
+    nothing to tap.
+
+    Nothing here comes from the request but the conversation, the branch and
+    the cart: who it is for is the token, and where it goes is the draft that
+    conversation already collected and validated.
+    """
+
+    scope = scope_for(
+        current_user,
+        _resolve_chat_restaurant_id(app_scope, payload.restaurant_id),
+        payload.restaurant_location_id,
+        session_id=payload.session_id,
+    )
+    result = TOOLS["place_order"].handler(
+        db, scope, PlaceOrderArgs(
+            lines=[CartLineArgs.model_validate(line) for line in _request_cart_lines(payload.cart)]
+        )
+    )
+    return ChatPlaceOrderResponse(
+        outcome=str(result.get("outcome")),
+        order_id=result.get("order_id"),
+        total=result.get("total"),
+        currency=result.get("currency"),
+        payment_url=result.get("payment_url"),
+        missing=list(result.get("missing") or []),
+        reason=result.get("reason") or result.get("payment_problem"),
     )

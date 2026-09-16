@@ -69,6 +69,31 @@ class ChatThreadLine(BaseModel):
     text: str = Field(min_length=1, max_length=600)
 
 
+class ChatPlaceOrderRequest(BaseModel):
+    """Place the order this conversation has been building.
+
+    Carries no contact details: those were collected and validated over the
+    conversation and live in the draft this session owns. All that is needed
+    here is which conversation, which branch, and the cart the browser is
+    holding — the same cart every other ordering call sends.
+    """
+
+    restaurant_id: uuid.UUID
+    restaurant_location_id: uuid.UUID
+    session_id: uuid.UUID
+    cart: list[CartLinePayload] = Field(default_factory=list)
+
+
+class ChatPlaceOrderResponse(BaseModel):
+    outcome: str
+    order_id: uuid.UUID | None = None
+    total: Decimal | None = None
+    currency: str | None = None
+    payment_url: str | None = None
+    missing: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
 class ChatMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     restaurant_id: uuid.UUID | None = None

@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
-from app.services.ordering_agent import guards
+from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent.planner import (
     Generate,
     PlanStep,
@@ -67,6 +67,13 @@ class TurnOutcome:
     records: list[ToolCallRecord]
     fallback_reason: str | None
     elapsed_seconds: float
+    # The order this turn created, if any: id, total and the link to pay it.
+    # Carried rather than spoken — see `describe_placed_order`.
+    placed_order: dict[str, Any] | None = None
+    # True when everything needed is held and the customer has only to
+    # say go. The client turns this into a button; see the module note
+    # on why it is not left to the model.
+    ready_to_place: bool = False
     # What the model said its answer was about ("cart", "menu", "other").
     # The caller routes on it: a reply pipeline with no cart must never be
     # the one answering a question about the cart.
@@ -151,6 +158,36 @@ def describe_cart(result: Any) -> str | None:
     return f"You have {said}. Subtotal {subtotal}.{tail}"
 
 
+def placed_order_in(records: list[ToolCallRecord]) -> dict[str, Any] | None:
+    """The order this turn placed, if it placed one."""
+
+    for record in reversed(records):
+        result = record.result
+        if isinstance(result, dict) and result.get("outcome") == "placed":
+            return result
+    return None
+
+
+def describe_placed_order(placed: dict[str, Any] | None) -> str | None:
+    """What was placed, said from the order's own figures.
+
+    The payment link is deliberately absent: a model repeating a long opaque
+    URL is a customer who cannot pay. It reaches the browser as a field and
+    is rendered there.
+    """
+
+    if not placed:
+        return None
+    total = _money(placed.get("total"))
+    if placed.get("payment_problem"):
+        return (
+            f"Your order is placed and comes to {total}, but the payment link "
+            "could not be created just now. It is saved and can be paid from "
+            "your orders."
+        )
+    return f"Your order is placed and comes to {total}. The payment link is just below."
+
+
 def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
     """The most recent cart this turn, read back — or None."""
 
@@ -197,7 +234,15 @@ def _as_tool_lines(cart: list[CartLinePayload]) -> list[Any]:
     return [CartLineArgs.model_validate(line) for line in guards._request_cart_lines(cart)]
 
 
-def _offered_tools(seen: set[uuid.UUID]) -> tuple[str, ...]:
+# While details are being collected, these are the only useful moves. Every
+# other tool is a way to lose the thread of what the customer was in the
+# middle of doing.
+_COLLECTING_TOOLS = ("order_requirements", "save_order_details", "place_order", "view_cart")
+
+
+def _offered_tools(
+    seen: set[uuid.UUID], ordering: bool = False, ready: bool = False
+) -> tuple[str, ...]:
     """Which tools this round may choose from.
 
     With nothing seen — an empty cart and no lookup yet — a cart tool has no
@@ -207,6 +252,14 @@ def _offered_tools(seen: set[uuid.UUID]) -> tuple[str, ...]:
     back: look something up, and the cart tools appear.
     """
 
+    if ready:
+        # One tool, and the prompt says to call it. Offered four and told
+        # plainly that everything was in hand, the model still answered
+        # "ready to be placed, proceed to pay" and placed nothing — twice.
+        # A choice it cannot make wrongly is worth more than a clearer rule.
+        return ("place_order",) if "place_order" in TOOLS else ()
+    if ordering:
+        return tuple(name for name in _COLLECTING_TOOLS if name in TOOLS)
     if seen:
         return tuple(TOOLS)
     return tuple(name for name in TOOLS if name not in _ID_BEARING_TOOLS)
@@ -313,6 +366,20 @@ def run_turn(
         if cart_summary:
             cart_summary = "In the cart right now: " + cart_summary
 
+    # What this conversation is in the middle of, if anything. Stated as a
+    # fact for the same reason the cart is: a model that has to infer it
+    # from the thread sometimes does not.
+    # None while the customer is still browsing; a list of field names once
+    # they have been asked for their details; empty once nothing is missing
+    # and the order can be placed.
+    collecting: list[str] | None = None
+    if scope.session_id is not None:
+        draft = order_draft.seed_from_profile(
+            order_draft.load(scope.session_id), scope.customer
+        )
+        if draft.collecting:
+            collecting = draft.missing_fields()
+
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
@@ -321,7 +388,11 @@ def run_turn(
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
-        question = _choice_question_in(records) or _cart_summary_in(records)
+        question = (
+            describe_placed_order(placed_order_in(records))
+            or _choice_question_in(records)
+            or _cart_summary_in(records)
+        )
         if question is not None:
             logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
             # A read-back the loop composed from cart or choice rows is about
@@ -329,7 +400,7 @@ def run_turn(
             return TurnOutcome(
                 answer=question, actions=actions, records=records,
                 fallback_reason=None, elapsed_seconds=clock() - start,
-                answer_about="cart",
+                answer_about="cart", placed_order=placed_order_in(records),
             )
         return TurnOutcome(
             answer=None, actions=actions, records=records,
@@ -343,10 +414,21 @@ def run_turn(
         if clock() - start >= budget:
             return _capped("budget_exceeded")
 
+        ready = collecting == [] and scope.customer is not None
         step = plan_step(
-            message, history=tuple(records), generate=generate, tool_names=_offered_tools(seen),
-            previous_reply=previous_reply, recent_history=recent_history, diet=scope.diet,
-            cart_summary=cart_summary,
+            message, history=tuple(records), generate=generate, tool_names=_offered_tools(
+                seen, collecting is not None, ready
+            ),
+            previous_reply=previous_reply,
+            # The thread is dropped once the state says exactly what to do.
+            # It exists to resolve "yes" and "the second one"; with nothing
+            # left to collect there is nothing to resolve, and on a live turn
+            # the model answered by copying its own earlier question out of
+            # it word for word instead of placing the order.
+            recent_history=None if ready else recent_history,
+            diet=scope.diet,
+            cart_summary=cart_summary, collecting=collecting,
+            ready_to_place=ready,
         )
 
         if not step.ok:
@@ -377,10 +459,22 @@ def run_turn(
             # An answer that says nothing is not an answer. The tool results
             # hold the cart; prefer saying it to shipping an empty string and
             # letting the caller fall through to a layer with no cart at all.
-            spoken = step.answer.strip() or _cart_summary_in(records) or _choice_question_in(records)
+            placed = placed_order_in(records)
+            # A turn that placed an order is about that order, whatever the
+            # model called it, and the read-back is the order's own figures.
+            spoken = (
+                describe_placed_order(placed)
+                or step.answer.strip()
+                or _cart_summary_in(records)
+                or _choice_question_in(records)
+            )
             return TurnOutcome(
                 answer=spoken,
-                answer_about=step.answer_about,
+                placed_order=placed,
+                ready_to_place=ready and placed is None,
+                answer_about=(
+                    "order" if (placed or collecting is not None) else step.answer_about
+                ),
                 actions=actions,
                 records=records,
                 fallback_reason=None,
@@ -452,4 +546,12 @@ def run_turn(
     return _capped("round_cap")
 
 
-__all__ = ["Clock", "TurnOutcome", "ask_for_choice", "describe_cart", "run_turn"]
+__all__ = [
+    "Clock",
+    "TurnOutcome",
+    "ask_for_choice",
+    "describe_cart",
+    "describe_placed_order",
+    "placed_order_in",
+    "run_turn",
+]
