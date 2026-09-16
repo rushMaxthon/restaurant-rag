@@ -9,12 +9,14 @@ import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
   ApiError,
   getChatHistory,
+  placeOrderFromChat,
   getToken,
   streamChatMessage,
   type CartAction,
+  type ChatStreamDone,
   type ChatSuggestion,
 } from "@/lib/api";
-import type { MenuItem } from "@/lib/bangkok-data";
+import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
@@ -106,6 +108,10 @@ type Turn = {
   hadDropped?: boolean;
   /** Whether an applied change (auto or confirmed) has touched the cart. */
   cartUpdated?: boolean;
+  /** The order this turn placed, with the link to pay it. */
+  placedOrder?: ChatStreamDone["placed_order"];
+  /** Everything an order needs is gathered; only a confirmation is left. */
+  orderReady?: boolean;
 };
 
 let turnSeq = 0;
@@ -157,6 +163,7 @@ function ConciergePage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [placing, setPlacing] = useState(false);
 
   const sessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -360,6 +367,11 @@ function ConciergePage() {
             // the customer asked — so on those turns the agent's line is the
             // answer and the paragraph is not shown. Every other turn keeps
             // today's reply, with the agent's line beneath it if there is one.
+            // An order carries the cart away with it: those items are on the
+            // order now, and leaving them behind is how someone orders twice.
+            const placed = done.placed_order ?? null;
+            if (placed?.order_id) store.clearCart();
+
             const actedOnCart = cartUpdated || proposals.length > 0;
             // Beneath the reply only when the agent has something the reply
             // does not - a question to answer, a dish refused for the diet.
@@ -378,6 +390,8 @@ function ConciergePage() {
               proposals,
               hadDropped,
               cartUpdated,
+              placedOrder: placed,
+              orderReady: Boolean(done.order_ready),
             }));
             setStatus("done");
           },
@@ -476,6 +490,55 @@ function ConciergePage() {
   }
 
   /** One line naming what the card is asking, or what it already did. */
+  /**
+   * Place the order, from the details this conversation already gathered.
+   *
+   * Deliberately not routed through the model: with `place_order` as its
+   * only tool and the state spelled out, it answered "ready to be placed,
+   * proceed to checkout" and placed nothing, every time. The server runs
+   * the same handler either way.
+   */
+  async function placeOrder(turn: Turn) {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId || !store.restaurantId || !store.currentLocation?.id || placing) return;
+    setPlacing(true);
+    try {
+      const result = await placeOrderFromChat({
+        restaurant_id: store.restaurantId,
+        restaurant_location_id: store.currentLocation.id,
+        session_id: sessionId,
+        cart: cartLinesForRequest(store.cart),
+      });
+      if (result.outcome === "placed" && result.order_id) {
+        store.clearCart();
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id !== turn.id
+              ? t
+              : {
+                  ...t,
+                  orderReady: false,
+                  placedOrder: {
+                    order_id: result.order_id,
+                    total: result.total,
+                    currency: result.currency,
+                    payment_url: result.payment_url,
+                  },
+                },
+          ),
+        );
+      } else {
+        // Refused for a reason the customer can act on: a closed branch, a
+        // minimum not met, a detail still missing.
+        setError(result.reason || "That order could not be placed just yet.");
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That order could not be placed just yet.");
+    } finally {
+      setPlacing(false);
+    }
+  }
+
   function proposalCopy(action: CartAction, menu: MenuItem[], confirmed: boolean): string {
     const dish = proposalDishLabel(action, menu);
     if (action.kind === "checkout") return confirmed ? "Taking you to checkout." : "Ready to check out?";
@@ -636,6 +699,28 @@ function ConciergePage() {
                         ),
                       )}
                     </div>
+                  )}
+
+                  {turn.orderReady && !turn.placedOrder && (
+                    <Button
+                      className="w-fit"
+                      disabled={placing}
+                      onClick={() => placeOrder(turn)}
+                    >
+                      {placing ? "Placing…" : "Place order"}
+                    </Button>
+                  )}
+
+                  {turn.placedOrder?.payment_url && (
+                    <a
+                      href={turn.placedOrder.payment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground"
+                    >
+                      Pay
+                      {turn.placedOrder.total ? ` ${formatMoney(turn.placedOrder.total)}` : ""}
+                    </a>
                   )}
 
                   {turn.cartUpdated && (

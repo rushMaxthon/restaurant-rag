@@ -188,6 +188,41 @@ def describe_placed_order(placed: dict[str, Any] | None) -> str | None:
     return f"Your order is placed and comes to {total}. The payment link is just below."
 
 
+def describe_collecting(missing: list[str] | None) -> str | None:
+    """What is still needed, in words, from the field names.
+
+    Used when a collecting turn runs out of rounds: the customer has just
+    handed over their address and deserves better than the reply pipeline's
+    "that one's outside my kitchen", which is what an intent extractor makes
+    of a street name.
+    """
+
+    if not missing:
+        return None
+    said = {
+        "fulfillment_type": "whether you want delivery or pickup",
+        "contact_name": "your name",
+        "contact_phone": "a phone number",
+        "contact_email": "an email address",
+        "delivery_address": "the delivery address",
+    }
+    wanted = [said.get(name, name) for name in missing]
+    if len(wanted) == 1:
+        return f"Thanks. I still need {wanted[0]}."
+    return f"Thanks. I still need {', '.join(wanted[:-1])} and {wanted[-1]}."
+
+
+def describe_ready(total: str | None = None) -> str:
+    """Everything is gathered and only the confirmation is left.
+
+    Said deterministically because the model would not: offered place_order
+    as its only tool it still answered "proceed to checkout" and placed
+    nothing. The customer gets a sentence and a button instead.
+    """
+
+    return "That is everything I need. Tap Place order below and I will send you a payment link."
+
+
 def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
     """The most recent cart this turn, read back — or None."""
 
@@ -380,6 +415,21 @@ def run_turn(
         if draft.collecting:
             collecting = draft.missing_fields()
 
+    def _still_missing() -> list[str] | None:
+        """What the draft wants NOW, not when the turn began.
+
+        The turn's own `save_order_details` calls have happened by the time
+        anything is said, so the list computed up front is one step behind —
+        it told a customer who had just given their address that it still
+        needed their address.
+        """
+
+        if collecting is None or scope.session_id is None:
+            return collecting
+        return order_draft.seed_from_profile(
+            order_draft.load(scope.session_id), scope.customer
+        ).missing_fields()
+
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
@@ -388,8 +438,11 @@ def run_turn(
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
+        ready_now = _still_missing() == [] and scope.customer is not None
         question = (
             describe_placed_order(placed_order_in(records))
+            or describe_collecting(_still_missing())
+            or (describe_ready() if ready_now else None)
             or _choice_question_in(records)
             or _cart_summary_in(records)
         )
@@ -400,11 +453,14 @@ def run_turn(
             return TurnOutcome(
                 answer=question, actions=actions, records=records,
                 fallback_reason=None, elapsed_seconds=clock() - start,
-                answer_about="cart", placed_order=placed_order_in(records),
+                answer_about="order" if collecting is not None else "cart",
+                placed_order=placed_order_in(records),
+                ready_to_place=ready_now and placed_order_in(records) is None,
             )
         return TurnOutcome(
             answer=None, actions=actions, records=records,
             fallback_reason=reason, elapsed_seconds=clock() - start,
+            ready_to_place=ready_now and placed_order_in(records) is None,
         )
 
     for _round_index in range(rounds):
@@ -465,13 +521,17 @@ def run_turn(
             spoken = (
                 describe_placed_order(placed)
                 or step.answer.strip()
+                or describe_collecting(_still_missing())
+                or (describe_ready() if _still_missing() == [] and collecting is not None else None)
                 or _cart_summary_in(records)
                 or _choice_question_in(records)
             )
             return TurnOutcome(
                 answer=spoken,
                 placed_order=placed,
-                ready_to_place=ready and placed is None,
+                ready_to_place=(
+                    _still_missing() == [] and scope.customer is not None and placed is None
+                ),
                 answer_about=(
                     "order" if (placed or collecting is not None) else step.answer_about
                 ),

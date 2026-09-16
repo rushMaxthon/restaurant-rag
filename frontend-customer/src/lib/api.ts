@@ -156,6 +156,17 @@ export type ChatStreamMeta = {
 export type ChatStreamDone = ChatStreamMeta & {
   /** True when the agent asked the customer to choose or refused a dish for their diet. */
   agent_asks?: boolean;
+  /** Set only on the turn that placed an order. The link is a field, not
+   *  text in the reply: a model repeating a long URL is a customer who
+   *  cannot pay. */
+  /** True when everything an order needs is gathered and only a confirmation is left. */
+  order_ready?: boolean;
+  placed_order?: {
+    order_id: string | null;
+    total: string | null;
+    currency: string | null;
+    payment_url: string | null;
+  } | null;
   reply: string;
   // Same flag-gated pair as `turn_id` above: both arrive together or not at
   // all.
@@ -602,6 +613,30 @@ type ChatStreamHandlers = {
  * then a stream of `token` frames with partial reply text, then `done` with
  * the full reply.
  */
+/**
+ * Place the order this conversation built.
+ *
+ * The contact details are not sent: they were collected and validated turn
+ * by turn and live server-side against this session. All this carries is
+ * which conversation, which branch, and the cart.
+ */
+export async function placeOrderFromChat(params: {
+  restaurant_id: string;
+  restaurant_location_id: string;
+  session_id: string;
+  cart: CartLineRequest[];
+}): Promise<{
+  outcome: string;
+  order_id: string | null;
+  total: string | null;
+  currency: string | null;
+  payment_url: string | null;
+  missing: string[];
+  reason: string | null;
+}> {
+  return request("/chat/place-order", { method: "POST", body: JSON.stringify(params), auth: true });
+}
+
 export async function streamChatMessage(
   payload: ChatStreamPayload,
   handlers: ChatStreamHandlers,

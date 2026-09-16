@@ -7456,6 +7456,13 @@ def _run_ordering_agent(
         "remove_from_cart",
         "set_quantity",
         "clear_cart",
+        # Gathering the details for an order, and placing it. Without these
+        # a customer giving their address was answered by the intent
+        # extractor, which quite reasonably reads an address as nothing to
+        # do with food and refuses it as off-topic.
+        "order_requirements",
+        "save_order_details",
+        "place_order",
     }
     return {
         "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
