@@ -22,6 +22,8 @@ facing sentence of its own to paper over one.
 
 from __future__ import annotations
 
+import re
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -35,6 +37,7 @@ from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
+    extract_cart_request,
     extract_order_details,
     Generate,
     PlanStep,
@@ -267,6 +270,36 @@ _PLACE_FAILURE_LINES = {
 }
 
 
+_MONEY = re.compile(
+    # A currency symbol and a number, or a bare number with exactly two
+    # decimals — the two shapes a price is written in.
+    r"(?:[$\u20b9\u00a3\u20ac]\s*\d[\d,]*(?:\.\d+)?)|(?:\b\d[\d,]*\.\d{2}\b)"
+)
+
+
+def _figures(text: str) -> set[str]:
+    """Every money-shaped figure in a piece of text, currency dropped."""
+
+    return {
+        match.group(0).lstrip("$\u20b9\u00a3\u20ac").strip().replace(",", "")
+        for match in _MONEY.finditer(text)
+    }
+
+
+def invented_figures(answer: str, facts: str) -> set[str]:
+    """Money in the answer that the turn's own rows cannot account for.
+
+    Live, to a real customer: "Your order is all set for pickup. The
+    total amount is Rs 150." The cart was empty and this branch does not
+    price in rupees — the model was not reading a row, there were no rows
+    to read. The house rule is older than this agent (the narrator's
+    numbers are checked back against the fact pack) and this is that
+    check, on the one number a customer acts on.
+    """
+
+    return _figures(answer) - _figures(facts)
+
+
 def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
     """Why the order was not placed, from the tool's own result.
 
@@ -367,7 +400,10 @@ _CART_TOOLS = ("search_menu", "get_dish", "add_to_cart", "remove_from_cart", "se
 
 
 def _offered_tools(
-    seen: set[uuid.UUID], ordering: bool = False, ready: bool = False
+    seen: set[uuid.UUID],
+    ordering: bool = False,
+    ready: bool = False,
+    retired: set[str] | None = None,
 ) -> tuple[str, ...]:
     """Which tools this round may choose from.
 
@@ -378,6 +414,16 @@ def _offered_tools(
     back: look something up, and the cart tools appear.
     """
 
+    offered = _tools_for(seen, ordering, ready)
+    # A tool that already answered this turn is not offered again: its answer
+    # is in the history to read, and asking twice is how a turn ended having
+    # done nothing. Never narrowed to nothing — an empty offer would leave
+    # the model no move at all.
+    kept = tuple(name for name in offered if name not in (retired or ()))
+    return kept or offered
+
+
+def _tools_for(seen: set[uuid.UUID], ordering: bool, ready: bool) -> tuple[str, ...]:
     if ready:
         # place_order first, and the cart tools with it. This used to be the
         # one tool: offered four, the model answered "ready to be placed"
@@ -488,7 +534,9 @@ def run_turn(
     rounds = max_rounds if max_rounds is not None else settings.ordering_agent_max_tool_rounds
     budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
 
-    seen = guards.seed_seen_ids(cart)
+    seen: set[uuid.UUID] = guards.seed_seen_ids(cart)
+    # Tools this turn has already answered with identical arguments.
+    retired: set[str] = set()
     # The cart resolved once, up front, by the same code the tool uses. It
     # goes into every prompt as a fact and costs one query per turn; the
     # alternative is a model that has to remember to look before it speaks,
@@ -551,11 +599,60 @@ def run_turn(
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
+    def _add_what_was_asked_for() -> list[dict[str, Any]]:
+        """Carry out the add the planner would not.
+
+        Only from a turn that achieved nothing, so the happy path pays for
+        no extra round. The message is read narrowly for a dish, the name is
+        resolved against this branch's menu (never the model's word for what
+        exists), and the add goes through the same guard and handler any
+        planned call would.
+        """
+
+        if db is None or actions or not scope.restaurant_location_id:
+            return []
+        asked = extract_cart_request(message, generate=generate)
+        if asked is None:
+            return []
+        name, quantity = asked
+        # The same lookup `get_dish` runs, behind the same confidence
+        # guardrail: the customer's word for a dish becomes a real row's id,
+        # or nothing happens.
+        resolved_args, lookup = guards.resolve_dish_name(
+            db, scope, "add_to_cart", {"menu_item_id": name, "quantity": quantity}
+        )
+        if resolved_args.get("menu_item_id") == name:
+            logger.info("Ordering agent could not resolve a dish the customer asked for: %r", name)
+            return []
+        if lookup:
+            guards.grow_seen_ids(seen, lookup)
+            records.append(ToolCallRecord(tool="get_dish", args={"name": name}, result=lookup))
+        prepared, guard_error = guards.prepare_tool_call(
+            "add_to_cart", resolved_args, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            logger.info("Ordering agent could not add what was asked for: %s", guard_error)
+            return []
+        try:
+            result = TOOLS["add_to_cart"].handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - never lose the turn over it
+            logger.warning("Ordering agent add-on-recovery raised: %s", error, exc_info=True)
+            return []
+        result = guards.enforce_destructive_policy(result)
+        guards.grow_seen_ids(seen, result)
+        records.append(ToolCallRecord(tool="add_to_cart", args=prepared.model_dump(), result=result))
+        action = result.get("action") if isinstance(result, dict) else None
+        return [action] if action else []
+
     def _capped(reason: str) -> TurnOutcome:
         # A cap with a needs_choice result in hand is not a failed turn: the
         # question is asked from the tool's rows (see `ask_for_choice`), and
         # the turn ends as a success. Any other cap keeps the brief's rule —
         # no partial answer, the caller falls back to today's reply.
+        # Nothing done and nothing said: the likeliest reason is that the
+        # customer asked for a dish and the planner went in circles.
+        actions.extend(_add_what_was_asked_for())
+
         ready_now = _still_missing() == [] and (_identifiable(scope) and bool(cart))
         # A channel with no button, everything gathered, and rounds spent
         # arguing with itself: place it. The model would not, measured over
@@ -685,7 +782,7 @@ def run_turn(
                 message,
                 history=tuple(records),
                 generate=generate,
-                tool_names=_offered_tools(seen, collecting is not None, ready),
+                tool_names=_offered_tools(seen, collecting is not None, ready, retired),
                 previous_reply=previous_reply,
                 # The thread is dropped once the state says exactly what to do.
                 # It exists to resolve "yes" and "the second one"; with nothing
@@ -766,9 +863,20 @@ def run_turn(
             placed = placed_order_in(records)
             # A turn that placed an order is about that order, whatever the
             # model called it, and the read-back is the order's own figures.
+            # What the rows say, to check what the model says against.
+            facts = " ".join(
+                [cart_readback or ""]
+                + [json.dumps(record.result, default=str) for record in records if record.result]
+            )
+            said = step.answer.strip()
+            if said and invented_figures(said, facts):
+                logger.warning(
+                    "Ordering agent answer quoted a figure no row carries: %r", said[:160]
+                )
+                said = ""
             spoken = (
                 describe_placed_order(placed)
-                or step.answer.strip()
+                or said
                 or describe_applied(records)
                 or describe_place_failure(records)
                 or describe_place_failure(records)
@@ -808,7 +916,7 @@ def run_turn(
         prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen, diet=scope.diet)
         if guard_error is not None:
             if _repeated_call(records, tool_name, step.args) is not None:
-                return _capped("repeated_call")
+                retired.add(tool_name)
             records.append(ToolCallRecord(tool=tool_name, args=step.args, error=guard_error))
             continue
 
@@ -820,18 +928,23 @@ def run_turn(
         # call, and gets told which earlier result to read.
         repeated = _repeated_call(records, tool_name, prepared.model_dump())
         if repeated is not None:
-            # The turn ends here rather than spending another round telling
-            # the model to read call N: measured live, it did not, and the
-            # deterministic read-backs (`_capped`) already say everything
-            # the rows can say.
+            # Retired, not refused. Ending the turn here stopped the waste
+            # and stopped the work with it: live, "I want margherita pizza"
+            # searched, searched again and added nothing — three times over,
+            # for three different dishes, and the customer went on to give a
+            # name and an address for an order with no food in it. Taking
+            # the tool off the table forces the next round to choose
+            # something else. The handler still never runs twice on the same
+            # arguments, which is what the speed fix was actually for.
+            retired.add(tool_name)
             records.append(
                 ToolCallRecord(
                     tool=tool_name,
                     args=prepared.model_dump(),
-                    error=f"repeated_call: identical to call {repeated}",
+                    error=f"repeated_call: identical to call {repeated}; that tool is done for this turn",
                 )
             )
-            return _capped("repeated_call")
+            continue
 
         spec = TOOLS[tool_name]
         try:

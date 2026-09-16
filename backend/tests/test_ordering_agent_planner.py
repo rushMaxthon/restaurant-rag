@@ -412,3 +412,35 @@ class SubjectOnlyTests(unittest.TestCase):
 
         step = plan_step("hi", history=(), generate=lambda prompt, *a, **k: "{}", tool_names=("view_cart",))
         self.assertEqual(step.error, "planner_unusable")
+
+
+class ReadCartRequestTests(unittest.TestCase):
+    """Asking for food, in the ways customers actually ask."""
+
+    def read(self, payload, message="x"):
+        from app.services.ordering_agent.planner import extract_cart_request
+
+        return extract_cart_request(message, generate=lambda *a, **k: payload)
+
+    def test_a_request_is_read_with_its_quantity(self) -> None:
+        self.assertEqual(
+            self.read('{"wants": true, "dish": "Margherita Pizza", "quantity": 2}'),
+            ("Margherita Pizza", 2),
+        )
+
+    def test_a_request_without_a_number_is_one(self) -> None:
+        self.assertEqual(
+            self.read('{"wants": true, "dish": "Corn Fritters"}'), ("Corn Fritters", 1)
+        )
+
+    def test_a_question_is_not_a_request(self) -> None:
+        self.assertIsNone(self.read('{"wants": false, "dish": "Margherita Pizza"}'))
+
+    def test_a_request_naming_nothing_is_not_actionable(self) -> None:
+        self.assertIsNone(self.read('{"wants": true, "dish": null}'))
+
+    def test_nonsense_reads_as_nothing(self) -> None:
+        self.assertIsNone(self.read("no json here"))
+
+    def test_a_silly_quantity_is_brought_back_into_range(self) -> None:
+        self.assertEqual(self.read('{"wants": true, "dish": "Pizza", "quantity": 900}')[1], 20)

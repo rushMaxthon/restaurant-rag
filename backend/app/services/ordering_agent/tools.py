@@ -381,8 +381,15 @@ class GoToCheckoutArgs(ToolArgs):
 
 
 class OrderRequirementsArgs(NoArgs):
-    """What is still needed before this order can be placed. Takes nothing:
-    the cart, the customer and the draft are all scope, not arguments."""
+    """What is still needed before this order can be placed.
+
+    The customer and the draft are scope, not arguments. The cart is
+    injected — an order needs food before it needs an address, and without
+    it this collected a name, an email and a delivery address for an empty
+    cart while the customer's pizza was never added.
+    """
+
+    lines: list[CartLineArgs] = Field(default_factory=list)
 
 
 class SaveOrderDetailsArgs(ToolArgs):
@@ -1352,6 +1359,12 @@ def _order_requirements(
 
     if scope.session_id is None:
         return {"outcome": "no_session"}
+    # An order needs food before it needs an address. Live, this collected a
+    # name, an email and a delivery address for an empty cart, and the
+    # customer never noticed their pizza had not been added — the agent had
+    # stopped talking about food and started taking details.
+    if not args.lines:
+        return {"outcome": "empty_cart"}
     draft = _draft_for(scope)
     # Asking is what starts the collection. Recorded so the next turn knows
     # what this conversation is in the middle of.
@@ -1810,6 +1823,7 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
 # model on a value nobody will read.
 INJECTED_CART_FIELDS: dict[str, str] = {
     "view_cart": "lines",
+    "order_requirements": "lines",
     "remove_from_cart": "existing_lines",
     "set_quantity": "existing_lines",
     "go_to_checkout": "lines",

@@ -20,7 +20,9 @@ from unittest.mock import patch
 
 from app.main import app  # noqa: F401 - imported first to settle import order
 from app.services.ordering_agent import order_draft
+from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent.tools import (
+    CartLineArgs,
     OrderingScope,
     OrderRequirementsArgs,
     SaveOrderDetailsArgs,
@@ -119,8 +121,14 @@ class DetailToolTests(unittest.TestCase):
             session_id=uuid.uuid4(),
         )
 
-    def requirements(self, scope=None):
-        return TOOLS["order_requirements"].handler(None, scope or self.scope, OrderRequirementsArgs())
+    def requirements(self, scope=None, lines=None):
+        # A cart by default: an order needs food before it needs an address,
+        # and every one of these tests is about an order that has some.
+        if lines is None:
+            lines = [CartLineArgs(menu_item_id=uuid.uuid4(), quantity=1)]
+        return TOOLS["order_requirements"].handler(
+            None, scope or self.scope, OrderRequirementsArgs(lines=lines)
+        )
 
     def save(self, scope=None, **kwargs):
         return TOOLS["save_order_details"].handler(
@@ -303,7 +311,10 @@ class SettledByTheRowsTests(unittest.TestCase):
         )
         with patch.object(order_draft, "load", return_value=order_draft.OrderDraft()),              patch.object(order_draft, "save", lambda *a, **k: None):
             outcome = loop.run_turn(
-                db=None, scope=scope, message="checkout", cart=[], generate=generate,
+                db=None, scope=scope, message="checkout",
+                # Something to order: an empty cart collects nothing now.
+                cart=[CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
+                generate=generate,
                 clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
             )
         self.assertEqual(len(generate.prompts), 1, "one model round: the result settled the turn")
@@ -377,3 +388,23 @@ class DetailsReadFirstTests(unittest.TestCase):
         self.assertEqual(store["draft"].contact_name, "Hitesh")
         self.assertEqual(store["draft"].contact_email, "h@example.com")
         self.assertIn("still need", outcome.answer or "")
+
+
+class AnOrderNeedsFoodTests(unittest.TestCase):
+    """Checkout details are not collected for an empty cart."""
+
+    def test_an_empty_cart_collects_nothing(self) -> None:
+        # Live, to a real customer: asked for a name, an email and a
+        # delivery address while their pizza had never been added, then
+        # told the total was Rs 150.
+        import uuid as _uuid
+        from types import SimpleNamespace
+
+        from app.services.ordering_agent.tools import TOOLS, OrderRequirementsArgs
+
+        scope = SimpleNamespace(
+            session_id=_uuid.uuid4(), customer=None, verified_phone=None,
+            restaurant_id=_uuid.uuid4(), restaurant_location_id=_uuid.uuid4(),
+        )
+        result = TOOLS["order_requirements"].handler(None, scope, OrderRequirementsArgs(lines=[]))
+        self.assertEqual(result["outcome"], "empty_cart")

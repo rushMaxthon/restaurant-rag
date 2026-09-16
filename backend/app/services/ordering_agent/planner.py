@@ -538,6 +538,58 @@ def extract_order_details(
     return found
 
 
+def extract_cart_request(
+    message: str,
+    *,
+    generate: Generate | None = None,
+) -> tuple[str, int] | None:
+    """The dish this message asks to have, if it asks for one.
+
+    Narrow on purpose. Asked to plan, qwen3:8b answered "I want margherita
+    pizza" by searching the menu, then searching again with the same
+    arguments, and adding nothing — three of four real phrasings failed that
+    way. Asked only "is this a request for food, and for what", it answers.
+
+    Returns (dish as the customer named it, quantity) or None. The name is
+    still resolved against this branch's menu by the caller, so a dish that
+    does not exist cannot be added by saying it convincingly.
+    """
+
+    if not message.strip():
+        return None
+    prompt = (
+        "A customer is talking to a restaurant. Decide whether this message asks to "
+        "put a dish INTO their order, and which dish.\n\n"
+        'Answer with one JSON object: {"wants": true/false, "dish": "the dish named, '
+        'exactly as written, or null", "quantity": a number, default 1}\n\n'
+        "Rules:\n"
+        '- "wants" is true only if they are asking for food to be added, however they '
+        'phrase it ("add X", "I want X", "get me X", "X please", "put X in my cart").\n'
+        '- "wants" is false for questions ("what do you have", "is X spicy", "how much '
+        'is X"), for browsing, and for anything about payment, delivery or their '
+        "details.\n"
+        "- Never invent a dish. If no dish is named, dish is null.\n\n"
+        f"Message: {message.strip()!r}\n\nJSON:"
+    )
+    generate = generate or _ollama_generate
+    try:
+        raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 120)
+        parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    except Exception:  # noqa: BLE001 - reading nothing is the safe failure
+        logger.warning("Ordering agent could not read a cart request", exc_info=True)
+        return None
+    if not isinstance(parsed, dict) or parsed.get("wants") is not True:
+        return None
+    dish = parsed.get("dish")
+    if not isinstance(dish, str) or not dish.strip():
+        return None
+    try:
+        quantity = int(parsed.get("quantity") or 1)
+    except (TypeError, ValueError):
+        quantity = 1
+    return dish.strip(), max(1, min(quantity, 20))
+
+
 def plan_step(
     message: str,
     *,

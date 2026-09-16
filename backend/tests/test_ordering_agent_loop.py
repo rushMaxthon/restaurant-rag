@@ -43,6 +43,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services.ordering_agent import guards, loop
+from app.services.ordering_agent.loop import _offered_tools
 from app.services.ordering_agent.planner import ToolCallRecord
 from app.services.ordering_agent.tools import (
     CartLineArgs,
@@ -607,13 +608,16 @@ if __name__ == "__main__":
 
 
 class RepeatedCallTests(OrderingAgentLoopTestCase):
-    def test_an_identical_repeat_ends_the_turn(self) -> None:
-        # The live failure this guards: a correct `needs_choice` result,
-        # then the same call again and again until the round cap. The first
-        # version of this rule refused the repeat and gave the model one more
-        # round to read the hint; measured live, it resent the same call
-        # instead, so now a repeat is the end of the turn — the read-backs
-        # say what the rows say, and no further round is paid for.
+    def test_an_identical_repeat_retires_the_tool_and_plans_again(self) -> None:
+        # The live failure this guards: a correct `needs_choice` result, then
+        # the same call again and again until the round cap.
+        #
+        # It has had three shapes. Refusing the repeat and letting the model
+        # try again wasted rounds; ending the turn stopped the waste and the
+        # work with it — "I want margherita pizza" searched, searched again
+        # and added nothing, three times over for three dishes. Retiring the
+        # tool keeps both: the handler never runs twice on the same
+        # arguments, and the next round must choose something else.
         calls: list = []
         self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"outcome": "needs_choice"}))
         generate = ScriptedGenerate(
@@ -632,34 +636,21 @@ class RepeatedCallTests(OrderingAgentLoopTestCase):
             budget_seconds=1000.0,
         )
         self.assertEqual(len(calls), 1, "the handler ran once; the repeat was refused")
-        self.assertEqual(outcome.fallback_reason, "repeated_call")
+        self.assertEqual(outcome.answer, "which size?", "the turn carried on and finished")
         self.assertTrue(outcome.records[1].error and outcome.records[1].error.startswith("repeated_call: identical to call 1"))
-        self.assertEqual(len(generate.prompts), 2, "no third round was spent on the model")
 
-    def test_a_refused_call_resent_verbatim_ends_the_turn(self) -> None:
-        # Live on WhatsApp: one `save_order_details` refused by validation,
-        # resent byte for byte four times, each a full model round. A model
-        # that resends the same arguments has fixed nothing.
-        calls: list = []
-        self.register("dish_lookup", DishLookupArgs, _recording_handler(calls, {"found": True}))
-        generate = ScriptedGenerate(
-            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
-            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
-            _tool_call("dish_lookup", {"name": "pizza", "restaurant_id": "smuggled"}),
-        )
-        outcome = loop.run_turn(
-            db=None,
-            scope=SCOPE,
-            message="a pizza",
-            cart=[],
-            generate=generate,
-            clock=ScriptedClock(0.0),
-            max_rounds=5,
-            budget_seconds=1000.0,
-        )
-        self.assertEqual(calls, [], "never ran: the scope id is not the model's to pass")
-        self.assertEqual(outcome.fallback_reason, "repeated_call")
-        self.assertEqual(len(generate.prompts), 2)
+    def test_a_retired_tool_is_not_offered_while_others_remain(self) -> None:
+        self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        self.register("other_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        offered = _offered_tools(set(), retired={"dish_lookup"})
+        self.assertNotIn("dish_lookup", offered)
+        self.assertIn("other_lookup", offered)
+
+    def test_the_offer_is_never_narrowed_to_nothing(self) -> None:
+        # An empty offer would leave the model no move at all.
+        self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        every = _offered_tools(set())
+        self.assertEqual(_offered_tools(set(), retired=set(every)), every)
 
     def test_a_repeat_of_a_refused_call_is_allowed(self) -> None:
         # A call that never ran (refused by a guard) may be retried verbatim
