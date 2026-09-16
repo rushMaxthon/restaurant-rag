@@ -538,6 +538,86 @@ def extract_order_details(
     return found
 
 
+def read_order_intent(
+    message: str,
+    *,
+    missing: Sequence[str] = (),
+    generate: Generate | None = None,
+) -> dict[str, Any]:
+    """The three things a message can want from an order, read in one pass.
+
+    Returns {"add": (dish, quantity) | None, "details": {field: value},
+    "checkout": bool}. Everything is what the message SAYS; nothing here is
+    trusted as true. The dish is resolved against this branch's own menu by
+    the caller and the details go through the draft's own validation, so a
+    misread name or a malformed email is refused exactly as it would be
+    coming from a planned tool call.
+
+    Never raises. A model that is unreachable or answers nonsense means all
+    three are empty and the planner takes the turn, which is where this
+    agent started.
+    """
+
+    empty: dict[str, Any] = {"add": None, "details": {}, "checkout": False}
+    if not message.strip():
+        return empty
+    fields = ", ".join(f'"{name}"' for name in _DETAIL_QUESTIONS)
+    still = (
+        f"They have already been asked for: {', '.join(missing)}.\n" if missing else ""
+    )
+    prompt = (
+        "A customer is talking to a restaurant over chat. Read this ONE message and "
+        "answer with one JSON object and nothing else.\n\n"
+        "{\n"
+        '  "add": {"dish": "the dish they are asking for, exactly as written, or null", '
+        '"quantity": 1},\n'
+        f'  "details": {{{fields}}}   // each one as stated, or null\n'
+        '  "checkout": true if they are asking to place the order, check out or pay; '
+        "else false\n"
+        "}\n\n"
+        "Rules:\n"
+        "- Only what this message actually says. Never invent a dish, a name, an "
+        "email or an address.\n"
+        '- "add" is for asking for food ("add X", "I want X", "get me X", "X please"). '
+        'A question about a dish ("what is X", "how much is X", "do you have X") is '
+        "not an add.\n"
+        '- "fulfillment_type" is "DELIVERY" or "PICKUP" only if they say which.\n'
+        "- Anything not stated is null.\n"
+        f"{still}\n"
+        f"Message: {message.strip()!r}\n\nJSON:"
+    )
+    generate = generate or _ollama_generate
+    try:
+        raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 220)
+        parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    except Exception:  # noqa: BLE001 - reading nothing is the safe failure
+        logger.warning("Ordering agent could not read what a message wants", exc_info=True)
+        return empty
+    if not isinstance(parsed, dict):
+        return empty
+
+    add = None
+    asked = parsed.get("add")
+    if isinstance(asked, dict):
+        dish = asked.get("dish")
+        if isinstance(dish, str) and dish.strip() and dish.strip().lower() not in {"null", "none"}:
+            try:
+                quantity = int(asked.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 1
+            add = (dish.strip(), max(1, min(quantity, 20)))
+
+    details: dict[str, str] = {}
+    given = parsed.get("details")
+    if isinstance(given, dict):
+        for field in _DETAIL_QUESTIONS:
+            value = given.get(field)
+            if isinstance(value, str) and value.strip() and value.strip().lower() not in {"null", "none"}:
+                details[field] = value.strip()
+
+    return {"add": add, "details": details, "checkout": parsed.get("checkout") is True}
+
+
 def extract_cart_request(
     message: str,
     *,

@@ -38,7 +38,7 @@ from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
     extract_cart_request,
-    extract_order_details,
+    read_order_intent,
     Generate,
     PlanStep,
     ToolCallRecord,
@@ -612,25 +612,38 @@ def run_turn(
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
-    def _add_what_was_asked_for() -> list[dict[str, Any]]:
-        """Carry out the add the planner would not.
+    def _place_now() -> None:
+        """Place the order, here, from rows that say it is ready."""
 
-        Only from a turn that achieved nothing, so the happy path pays for
-        no extra round. The message is read narrowly for a dish, the name is
-        resolved against this branch's menu (never the model's word for what
-        exists), and the add goes through the same guard and handler any
-        planned call would.
+        prepared, guard_error = guards.prepare_tool_call(
+            "place_order", {}, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            return
+        try:
+            if db is not None and getattr(db, "is_active", True) is False:
+                db.rollback()
+            result = TOOLS["place_order"].handler(db, scope, prepared)
+            records.append(
+                ToolCallRecord(tool="place_order", args=prepared.model_dump(), result=result)
+            )
+        except Exception as error:  # noqa: BLE001 - a failed placement is said, not raised
+            logger.warning("Ordering agent could not place: %s", error, exc_info=True)
+            records.append(
+                ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
+            )
+
+    def _add_named_dish(name: str, quantity: int) -> list[dict[str, Any]]:
+        """Put a dish the customer named into the cart.
+
+        The name is resolved against this branch's own menu through the same
+        lookup and confidence guardrail `get_dish` uses, so a dish that does
+        not exist cannot be added by naming it convincingly, and the add goes
+        through the same guard and handler a planned call would.
         """
 
-        if db is None or actions or not scope.restaurant_location_id:
+        if db is None or not scope.restaurant_location_id:
             return []
-        asked = extract_cart_request(message, generate=generate)
-        if asked is None:
-            return []
-        name, quantity = asked
-        # The same lookup `get_dish` runs, behind the same confidence
-        # guardrail: the customer's word for a dish becomes a real row's id,
-        # or nothing happens.
         resolved_args, lookup = guards.resolve_dish_name(
             db, scope, "add_to_cart", {"menu_item_id": name, "quantity": quantity}
         )
@@ -649,13 +662,30 @@ def run_turn(
         try:
             result = TOOLS["add_to_cart"].handler(db, scope, prepared)
         except Exception as error:  # noqa: BLE001 - never lose the turn over it
-            logger.warning("Ordering agent add-on-recovery raised: %s", error, exc_info=True)
+            logger.warning("Ordering agent add raised: %s", error, exc_info=True)
             return []
         result = guards.enforce_destructive_policy(result)
         guards.grow_seen_ids(seen, result)
         records.append(ToolCallRecord(tool="add_to_cart", args=prepared.model_dump(), result=result))
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
+
+    def _add_what_was_asked_for() -> list[dict[str, Any]]:
+        """Carry out the add the planner would not.
+
+        Only from a turn that achieved nothing, so the happy path pays for
+        no extra round. The message is read narrowly for a dish, the name is
+        resolved against this branch's menu (never the model's word for what
+        exists), and the add goes through the same guard and handler any
+        planned call would.
+        """
+
+        if db is None or actions or not scope.restaurant_location_id:
+            return []
+        asked = extract_cart_request(message, generate=generate)
+        if asked is None:
+            return []
+        return _add_named_dish(*asked)
 
     def _capped(reason: str) -> TurnOutcome:
         # A cap with a needs_choice result in hand is not a failed turn: the
@@ -743,28 +773,52 @@ def run_turn(
             elapsed_seconds=clock() - start,
         )
 
-    # Details first, read narrowly. With the customer mid-checkout and fields
-    # still missing, the message is most likely the answer to "what do you
-    # need?" — read it as such before any planning, keep what validates, and
-    # settle the turn from the rows: ask for what is still missing, or (with
-    # everything held) let the placement below run. A message that carried
-    # no details falls through to the planner as before, so "wait, add a
-    # coke too" still adds the coke.
-    if collecting and scope.session_id is not None:
-        given = extract_order_details(message, missing=collecting, generate=generate)
-        if given:
-            draft, problems = order_draft.remember(order_draft.load(scope.session_id), **given)
-            draft.collecting = True
-            order_draft.save(scope.session_id, draft)
-            records.append(
-                ToolCallRecord(
-                    tool="save_order_details",
-                    args=dict(given),
-                    result={"outcome": "saved", "problems": problems, "missing": _still_missing()},
-                )
+    # What this message wants, read once before any planning. Everything the
+    # agent guarantees hangs off a tool having run, and the planner answers
+    # in prose instead often enough that three conversations in a row died
+    # here — asking to check out and giving a name, an email and an address,
+    # each answered pleasantly with nothing done. See `read_order_intent`.
+    wanted = read_order_intent(message, missing=collecting or (), generate=generate)
+
+    if wanted["add"]:
+        added = _add_named_dish(*wanted["add"])
+        if added:
+            actions.extend(added)
+
+    if wanted["details"] and scope.session_id is not None:
+        draft, problems = order_draft.remember(
+            order_draft.load(scope.session_id), **wanted["details"]
+        )
+        # Giving your name is starting to check out, whether or not anybody
+        # called the tool that says so.
+        draft.collecting = True
+        order_draft.save(scope.session_id, draft)
+        collecting = _still_missing() or []
+        records.append(
+            ToolCallRecord(
+                tool="save_order_details",
+                args=dict(wanted["details"]),
+                result={"outcome": "saved", "problems": problems, "missing": collecting},
             )
-            if _still_missing() or not auto_place:
-                return _settled()
+        )
+
+    if wanted["checkout"] and scope.session_id is not None and cart:
+        prepared, guard_error = guards.prepare_tool_call(
+            "order_requirements", {}, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is None:
+            result = TOOLS["order_requirements"].handler(db, scope, prepared)
+            records.append(ToolCallRecord(tool="order_requirements", args={}, result=result))
+            collecting = _still_missing() or []
+
+    if records:
+        # Something was actually done. Place it if this channel has no button
+        # and nothing is missing; otherwise say what happened and what is
+        # still needed. Either way the turn is over — no planning round can
+        # improve on rows that already answer the question.
+        if auto_place and cart and _still_missing() == [] and not placed_order_in(records):
+            _place_now()
+        return _settled()
 
     for _round_index in range(rounds):
         # Checked before every model call, per the brief — a turn that is

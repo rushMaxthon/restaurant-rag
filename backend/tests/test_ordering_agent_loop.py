@@ -78,14 +78,39 @@ class BoomArgs(NoArgs):
     pass
 
 
-class ScriptedGenerate:
-    """Replays fixed model replies; anything past the end repeats the last."""
+#: What a turn's opening reading answers when a test has not scripted one:
+#: this message asks for no dish, gives no detail and requests no checkout.
+NOTHING_WANTED = '{"add": null, "details": {}, "checkout": false}'
 
-    def __init__(self, *replies: str) -> None:
+
+def _is_intent_reading(prompt: str) -> bool:
+    """Whether this prompt is the turn's opening reading rather than a plan.
+
+    Both go to the same model through the same seam, so a double that
+    replays a fixed script has to tell them apart or the reading eats the
+    first planned reply — which is every scripted test at once.
+    """
+
+    return '"checkout": true if they are asking' in prompt
+
+
+class ScriptedGenerate:
+    """Replays fixed model replies; anything past the end repeats the last.
+
+    The opening reading is answered with "nothing wanted" and does not
+    consume the script, so a test scripting three planner rounds still gets
+    three planner rounds. A test about the reading itself scripts its own
+    reply through `intent`.
+    """
+
+    def __init__(self, *replies: str, intent: str | None = None) -> None:
         self.replies = list(replies)
+        self.intent = intent or NOTHING_WANTED
         self.prompts: list[str] = []
 
     def __call__(self, prompt: str, timeout_seconds: float, max_tokens: int) -> str:
+        if _is_intent_reading(prompt):
+            return self.intent
         self.prompts.append(prompt)
         index = min(len(self.prompts) - 1, len(self.replies) - 1)
         return self.replies[index]

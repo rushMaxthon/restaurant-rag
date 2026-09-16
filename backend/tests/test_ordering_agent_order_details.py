@@ -379,39 +379,56 @@ class PlaceFailureIsSpokenTests(unittest.TestCase):
 
 
 class DetailsReadFirstTests(unittest.TestCase):
-    """A mid-checkout message is read for details before any planning."""
+    """A message is read for what it wants before anything is planned."""
 
     def test_details_in_the_message_are_kept_without_a_planner_round(self) -> None:
-        # Live: the planner answered "your details have been saved" and
-        # saved nothing. The narrow reading saves them; the turn settles on
-        # what is still missing with no planner round spent.
+        # Live, three conversations running: the planner answered "Thank you,
+        # Vishal, your order is all set" and saved nothing, because saving
+        # depends on a tool it did not call. The reading does not depend on
+        # the planner choosing to act.
         import dataclasses
         from unittest.mock import patch
 
-        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
         from app.services.ordering_agent import loop, order_draft
+        from app.schemas.suggestions import CartLinePayload
 
         scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
         store = {"draft": order_draft.OrderDraft(collecting=True)}
-        calls = []
+        generate = ScriptedGenerate(
+            intent=(
+                '{"add": null, "details": {"contact_name": "Hitesh", '
+                '"contact_email": "h@example.com"}, "checkout": false}'
+            )
+        )
 
-        def generate(prompt, *a, **k):
-            calls.append(prompt)
-            if "Fields:" in prompt:
-                return '{"contact_name": "Hitesh", "contact_email": "h@example.com", "delivery_address": null, "fulfillment_type": null}'
-            raise AssertionError("no planner round expected")
-
-        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
-             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
+        with patch.object(order_draft, "load", lambda sid: store["draft"]),              patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
             outcome = loop.run_turn(
                 db=None, scope=scope, message="I'm Hitesh, h@example.com",
-                cart=[__import__("app.schemas.suggestions", fromlist=["CartLinePayload"]).CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
+                cart=[CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
                 generate=generate, clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
             )
-        self.assertEqual(len(calls), 1, "one narrow reading, no planner round")
+        self.assertEqual(generate.prompts, [], "the reading settled it; no planner round")
         self.assertEqual(store["draft"].contact_name, "Hitesh")
         self.assertEqual(store["draft"].contact_email, "h@example.com")
         self.assertIn("still need", outcome.answer or "")
+
+    def test_a_message_wanting_nothing_falls_through_to_the_planner(self) -> None:
+        # A question about the menu is none of the three things an order can
+        # want, and must still be planned exactly as before.
+        import dataclasses
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate, _answer
+        from app.services.ordering_agent import loop
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4())
+        generate = ScriptedGenerate(_answer("We have four curries."))
+        outcome = loop.run_turn(
+            db=None, scope=scope, message="what curries do you have?", cart=[],
+            generate=generate, clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+        )
+        self.assertEqual(len(generate.prompts), 1, "planned, as before")
+        self.assertEqual(outcome.answer, "We have four curries.")
 
 
 class AnOrderNeedsFoodTests(unittest.TestCase):
