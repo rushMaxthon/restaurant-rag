@@ -73,13 +73,23 @@ def customer_for_verified_phone(
     if not normalized:
         raise PhoneNotVerified(f"Not a usable phone number: {phone_number!r}")
 
-    existing = db.scalar(
-        select(User).where(
-            User.phone_number == normalized,
+    # The same number, written either way. A wa_id arrives as E.164 with the
+    # "+" stripped, and accounts provisioned from one before that was
+    # restored hold the plus-less form — so an exact-string match made a
+    # returning customer a stranger, and then refused them their own email
+    # address. One number is one person.
+    digits = normalized.lstrip("+")
+    existing = db.scalars(
+        select(User)
+        .where(
+            User.phone_number.in_({normalized, digits}),
             User.role == UserRole.CUSTOMER,
             User.app_client_id == app_client_id,
         )
-    )
+        # The canonical spelling first, so a customer holding both rows is
+        # served the one every other part of the app would have written.
+        .order_by(User.phone_number.desc())
+    ).first()
     if existing is not None:
         return existing
 

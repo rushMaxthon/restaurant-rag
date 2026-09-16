@@ -14,6 +14,34 @@ from app.services.ordering_agent.verified_phone import (
 )
 
 
+def _bound_values(statement) -> set:
+    """Every value bound into the statement, collections flattened.
+
+    An `in_({...})` binds a list, which a set of raw values cannot hold —
+    and matching on bound values rather than SQL text is the whole point of
+    this double: a service that filtered on the wrong column finds nobody.
+    """
+
+    found = set()
+    for value in statement.compile().params.values():
+        if isinstance(value, (list, tuple, set, frozenset)):
+            found.update(value)
+        else:
+            found.add(value)
+    return found
+
+
+class _Rows:
+    def __init__(self, rows) -> None:
+        self.rows = rows
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
 class FakeDb:
     """Holds users in a list and answers the one query this service makes."""
 
@@ -25,11 +53,21 @@ class FakeDb:
         # Matches on the statement's own bound values rather than on the SQL
         # text, so a service that filtered on the wrong column would find
         # nobody here — which is the point of checking at all.
-        wanted = set(statement.compile().params.values())
+        wanted = _bound_values(statement)
         for user in self.users:
             if {user.phone_number, user.role, user.app_client_id} <= wanted:
                 return user
         return None
+
+    def scalars(self, statement):
+        """The same matching, for the lookup that accepts either shape of a
+        number and therefore returns rows rather than one row."""
+
+        wanted = _bound_values(statement)
+        return _Rows([
+            user for user in self.users
+            if {user.phone_number, user.role, user.app_client_id} <= wanted
+        ])
 
     def add(self, obj):
         self.added.append(obj)
@@ -108,3 +146,26 @@ class VerifiedPhoneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OneNumberOnePersonTests(unittest.TestCase):
+    """A number written with a plus or without it is the same number."""
+
+    def test_an_account_stored_without_the_plus_is_still_theirs(self) -> None:
+        # Live: a customer was refused their own email because their account
+        # had been provisioned from a wa_id before the plus was restored, so
+        # the lookup by number missed it and the email check called them a
+        # stranger.
+        app_client_id = uuid.uuid4()
+        legacy = make_customer("916353100362", app_client_id)
+        db = FakeDb([legacy])
+        found = customer_for_verified_phone(
+            db,
+            phone_number="+916353100362",
+            app_client_id=app_client_id,
+            verified=True,
+            full_name="vishal",
+            email="test@gmail.com",
+        )
+        self.assertIs(found, legacy, "found by number, so the email was never questioned")
+        self.assertEqual(db.added, [], "nobody new was created")

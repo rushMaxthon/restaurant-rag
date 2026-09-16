@@ -309,9 +309,14 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
     message including YES, and the order never existed.
     """
 
-    for record in reversed(records):
-        if record.tool != "place_order":
-            continue
+    attempts = [record for record in records if record.tool == "place_order"]
+    # The attempt that actually reached the handler, not a later one a guard
+    # turned back. Live, `place_order` answered `email_in_use` and a retired
+    # repeat with no result of its own was reported instead, so the customer
+    # read "I could not place that order just now" and had no idea their
+    # email was the problem.
+    answered = [record for record in attempts if isinstance(record.result, dict)]
+    for record in reversed(answered or attempts):
         if not isinstance(record.result, dict):
             # A handler that raised, or a call a guard refused. Live, this
             # was silent: the schema rejected the phone number on every

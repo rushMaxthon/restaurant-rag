@@ -348,6 +348,18 @@ class PlaceFailureIsSpokenTests(unittest.TestCase):
         said = describe_place_failure([self.record(outcome="refused", reason="Minimum order amount is 16.00")])
         self.assertIn("Minimum order amount is 16.00", said)
 
+    def test_the_reason_survives_a_later_refused_attempt(self) -> None:
+        # Live: place_order answered email_in_use, a retired repeat followed
+        # with no result of its own, and that is what the customer was told.
+        from app.services.ordering_agent.loop import describe_place_failure
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        said = describe_place_failure([
+            ToolCallRecord(tool="place_order", args={}, result={"outcome": "email_in_use"}),
+            ToolCallRecord(tool="place_order", args={}, error="repeated_call: identical to call 1"),
+        ])
+        self.assertIn("different email", said)
+
     def test_a_placement_that_raised_is_not_silent(self) -> None:
         # Live: the schema refused the phone number on every attempt and the
         # customer read "That is everything I need to place your order" with
