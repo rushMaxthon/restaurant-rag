@@ -106,6 +106,64 @@ class PlanStep:
         return self.error is None and (self.tool is not None or self.answer is not None)
 
 
+# Fields a planner never needs and which dominate a result's size: prose the
+# customer reads, images the client renders, bookkeeping the tools already
+# applied. Dropping these is what keeps a six-round prompt inside the model's
+# context window.
+_NOISY_KEYS = frozenset(
+    {
+        "description",
+        "image_url",
+        "help_text",
+        "sort_order",
+        "is_countable",
+        "is_active",
+        "created_at",
+        "updated_at",
+        "cuisine_type",
+        "category",
+        "restaurant_id",
+        "restaurant_location_id",
+    }
+)
+
+# Enough of a list to choose from, few enough to stay small. A group with more
+# options than this says so, so the model knows to ask rather than assume the
+# list it can see is the whole list.
+_MAX_LIST = 6
+_MAX_STRING = 120
+_MAX_RESULT_CHARS = 1400
+
+
+def _compact(value: Any, depth: int = 0) -> Any:
+    """A tool result reduced to what the next decision needs.
+
+    Ids survive whole — they are the one thing the model must reproduce
+    exactly, and a truncated id is worse than no id. Everything else is
+    trimmed: long prose to a clause, long lists to a head plus a count.
+    """
+
+    if isinstance(value, dict):
+        if depth >= 4:
+            return "..."
+        out = {}
+        for key, item in value.items():
+            if key in _NOISY_KEYS:
+                continue
+            out[key] = _compact(item, depth + 1)
+        return out
+    if isinstance(value, (list, tuple)):
+        if depth >= 4:
+            return "..."
+        items = [_compact(item, depth + 1) for item in list(value)[:_MAX_LIST]]
+        if len(value) > _MAX_LIST:
+            items.append(f"...and {len(value) - _MAX_LIST} more")
+        return items
+    if isinstance(value, str) and len(value) > _MAX_STRING:
+        return value[:_MAX_STRING] + "..."
+    return value
+
+
 def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
     """Prior calls and their results, verbatim and compact — the model's only
     memory of this turn, since nothing else carries between `plan_step`
@@ -122,8 +180,14 @@ def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
         if record.error is not None:
             payload["error"] = record.error
         else:
-            payload["result"] = record.result
-        lines.append(json.dumps(payload, default=str, separators=(",", ":")))
+            payload["result"] = _compact(record.result)
+        line = json.dumps(payload, default=str, separators=(",", ":"))
+        if len(line) > _MAX_RESULT_CHARS:
+            # A last backstop for a shape `_compact` did not anticipate. Better
+            # a clipped record than a prompt that pushes the rules out of the
+            # model's context window, which is the failure this exists for.
+            line = line[:_MAX_RESULT_CHARS] + '..."}'
+        lines.append(line)
     return "\n".join(lines)
 
 

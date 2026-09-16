@@ -7389,11 +7389,16 @@ def _run_ordering_agent(
     # how it ended, how many tool calls it took to get there, and how long the
     # customer waited for it.
     logger.info(
-        "Ordering agent turn fallback_reason=%s records=%d actions=%d elapsed=%.2fs",
+        "Ordering agent turn fallback_reason=%s records=%d actions=%d elapsed=%.2fs tools=%s",
         outcome.fallback_reason,
         len(outcome.records),
         len(outcome.actions),
         outcome.elapsed_seconds,
+        # The sequence, not just the count: a turn that ended empty is only
+        # diagnosable if you can see what it chose to do with its rounds.
+        ",".join(
+            f"{record.tool or '?'}{'!' if record.error else ''}" for record in outcome.records
+        ),
     )
     # Whether the agent has something the reply does not: it asked the
     # customer to choose, or refused a dish for their diet. On such turns the

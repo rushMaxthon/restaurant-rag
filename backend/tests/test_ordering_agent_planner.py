@@ -255,3 +255,59 @@ class ThreadAndDietTests(unittest.TestCase):
     def test_a_meat_eater_gets_no_diet_line(self) -> None:
         self.assertNotIn("The customer is vegetarian", build_planner_prompt("hi", history=[], tool_names=None, diet=None))
 
+
+class PromptSizeTests(unittest.TestCase):
+    """The prompt has to stay inside the model's context window.
+
+    Measured on the live failure: one un-compacted `get_dish` result was
+    17,163 characters, so six rounds pushed the rules and the customer's
+    message out of a qwen3:8b prompt and the agent wandered instead of
+    adding the dish it had already found.
+    """
+
+    def _fat_dish_result(self) -> dict:
+        option = {
+            "option_id": "11111111-1111-1111-1111-111111111111",
+            "name": "Extra cheese",
+            "extra_price": "1.50",
+            "description": "x" * 400,
+            "image_url": "https://example.test/" + "y" * 200,
+            "sort_order": 3,
+            "is_active": True,
+        }
+        group = {
+            "group_id": "22222222-2222-2222-2222-222222222222",
+            "title": "Toppings",
+            "needs_selection": True,
+            "options": [dict(option, name=f"Option {i}") for i in range(30)],
+        }
+        return {
+            "found": True,
+            "menu_item_id": "33333333-3333-3333-3333-333333333333",
+            "name": "Cheese Burst Pizza",
+            "price": "349.00",
+            "description": "z" * 2000,
+            "customization_groups": [group] * 4,
+        }
+
+    def test_a_six_round_history_stays_small_enough_to_reason_over(self) -> None:
+        record = ToolCallRecord(tool="get_dish", args={"name": "Cheese Burst Pizza"}, result=self._fat_dish_result())
+        prompt = build_planner_prompt("add it", history=[record] * 6, tool_names=None)
+        # Comfortably inside an 8k-token window at ~4 chars per token, with
+        # room for the rules, the thread and the reply.
+        self.assertLess(len(prompt), 16_000, "a six-round prompt must not crowd out the rules")
+
+    def test_the_ids_the_model_must_reproduce_survive_whole(self) -> None:
+        record = ToolCallRecord(tool="get_dish", args={"name": "x"}, result=self._fat_dish_result())
+        prompt = build_planner_prompt("add it", history=[record], tool_names=None)
+        self.assertIn("33333333-3333-3333-3333-333333333333", prompt)
+        self.assertIn("22222222-2222-2222-2222-222222222222", prompt)
+        self.assertIn("Cheese Burst Pizza", prompt)
+        self.assertIn("349.00", prompt)
+
+    def test_a_long_option_list_says_it_was_cut(self) -> None:
+        record = ToolCallRecord(tool="get_dish", args={"name": "x"}, result=self._fat_dish_result())
+        prompt = build_planner_prompt("add it", history=[record], tool_names=None)
+        self.assertIn("more", prompt)
+        self.assertNotIn("z" * 200, prompt, "prose the customer reads is not a planning fact")
+
