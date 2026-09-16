@@ -579,7 +579,7 @@ type ChatStreamPayload = {
   // Identifiers only — see `cartLinesForRequest`.
   cart?: CartLineRequest[];
   /** The assistant line the customer last saw, so "yes" can be read against it. */
-  previous_reply?: string;
+  previous_reply?: string | undefined;
 };
 
 type ChatStreamHandlers = {
