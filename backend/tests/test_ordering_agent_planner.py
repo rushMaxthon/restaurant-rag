@@ -508,3 +508,54 @@ class ReadOrderIntentTests(unittest.TestCase):
 
         read_order_intent("x", missing=["contact_email"], generate=generate)
         self.assertIn("contact_email", seen["prompt"])
+
+
+class QuickReadTests(unittest.TestCase):
+    """Sentences plain enough to read without a model."""
+
+    def read(self, message):
+        from app.services.ordering_agent.planner import quick_read
+
+        return quick_read(message)
+
+    def test_the_plain_ways_of_asking_are_read_at_once(self) -> None:
+        for message, expected in [
+            ("cart", "cart"),
+            ("What's in my cart?", "cart"),
+            ("show me the cart", "cart"),
+            ("menu", "menu"),
+            ("Show me menu", "menu"),
+            ("what do you have on the menu", "menu"),
+            ("checkout", "checkout"),
+            ("Yeah let's do check out", "checkout"),
+            ("checkout please", "checkout"),
+            ("order kar do bhai", "checkout"),
+            ("chalo order kar do", "checkout"),
+            ("done", "checkout"),
+            ("give me payment link", "checkout"),
+        ]:
+            self.assertEqual(self.read(message), expected, message)
+
+    def test_a_sentence_carrying_anything_else_is_left_to_the_model(self) -> None:
+        # The dish, the name and the address are the content a word match
+        # cannot see, and losing them is how a customer has to say it twice.
+        for message in [
+            "I want roti canai",
+            "add one more pizza",
+            "I'll take the pad thai and check out",
+            "I will pickup, name is vishal, email is test@gmail.com",
+            "how much is the pizza",
+            "do you have pizza",
+            "is there a minimum order",
+        ]:
+            self.assertIsNone(self.read(message), message)
+
+    def test_turning_something_down_is_not_asking_for_it(self) -> None:
+        # The failure a word match cannot avoid on its own.
+        for message in ["no checkout", "don't checkout yet", "not the menu", "cancel my order"]:
+            self.assertIsNone(self.read(message), message)
+
+    def test_a_long_sentence_is_never_plain(self) -> None:
+        self.assertIsNone(
+            self.read("so what I was thinking is maybe we could look at the menu together")
+        )

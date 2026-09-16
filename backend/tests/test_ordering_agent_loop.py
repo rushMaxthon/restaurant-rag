@@ -417,7 +417,11 @@ class CartInjectionTests(OrderingAgentLoopTestCase):
         outcome = loop.run_turn(
             db=None,
             scope=SCOPE,
-            message="what's in my cart?",
+            # Not a plain cart question: those are read off the sentence and
+            # answered from the rows without the model seeing them at all
+            # (`quick_read`). This test is about what happens when the model
+            # DOES plan a `view_cart` and types its own lines into it.
+            message="remind me what I picked and whether the large one is in there",
             cart=real_cart,
             generate=generate,
             clock=ScriptedClock(0.0),
@@ -891,7 +895,10 @@ class CartReadBackTests(OrderingAgentLoopTestCase):
         self.register("cart", NoArgs, _recording_handler([], self._result()))
         generate = ScriptedGenerate(_tool_call("cart", {}), _answer("   "))
         outcome = loop.run_turn(
-            db=None, scope=SCOPE, message="show me my cart", cart=[], generate=generate,
+            # Not a plain cart question: those are answered from the rows
+            # without a model round (`quick_read`), and this test is about
+            # what the answer chain does when the MODEL returns nothing.
+            db=None, scope=SCOPE, message="remind me what I picked so far", cart=[], generate=generate,
             clock=ScriptedClock(0.0), max_rounds=4, budget_seconds=1000.0,
         )
         self.assertIn("Subtotal $28.98", outcome.answer or "")

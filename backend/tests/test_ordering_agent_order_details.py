@@ -317,7 +317,9 @@ class SettledByTheRowsTests(unittest.TestCase):
                 generate=generate,
                 clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
             )
-        self.assertEqual(len(generate.prompts), 1, "one model round: the result settled the turn")
+        self.assertEqual(
+            generate.prompts, [], "'checkout' says one plain thing; no model round at all"
+        )
         self.assertIn("still need", outcome.answer or "")
         self.assertEqual(outcome.answer_about, "order")
 
@@ -490,3 +492,33 @@ class ShortOfTheMinimumTests(unittest.TestCase):
 
         said = describe_place_failure(self.refusal(subtotal=None, minimum=None))
         self.assertIn("Minimum order amount", said)
+
+
+class EmptyOrderIsAnsweredAtOnceTests(unittest.TestCase):
+    """Asking about an order with nothing in it needs no model at all."""
+
+    def outcome(self, message):
+        import dataclasses
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4())
+        generate = ScriptedGenerate()
+        got = loop.run_turn(
+            db=None, scope=scope, message=message, cart=[], generate=generate,
+            clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+        )
+        return got, generate
+
+    def test_checkout_with_nothing_in_the_order_says_so(self) -> None:
+        # Live: 17.9 seconds, ending in a menu suggestion, for a fact known
+        # before the turn started.
+        got, generate = self.outcome("checkout")
+        self.assertIn("nothing in your order", got.answer or "")
+        self.assertEqual(generate.prompts, [], "no model round for a known fact")
+
+    def test_the_cart_with_nothing_in_it_says_so(self) -> None:
+        got, generate = self.outcome("cart")
+        self.assertIn("nothing in your order", got.answer or "")
+        self.assertEqual(generate.prompts, [])

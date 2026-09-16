@@ -40,6 +40,7 @@ from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
     extract_cart_request,
+    quick_read,
     read_order_intent,
     Generate,
     PlanStep,
@@ -807,7 +808,37 @@ def run_turn(
     # in prose instead often enough that three conversations in a row died
     # here — asking to check out and giving a name, an email and an address,
     # each answered pleasantly with nothing done. See `read_order_intent`.
-    wanted = read_order_intent(message, missing=collecting or (), generate=generate)
+    # A sentence that plainly says one thing is read off the sentence. Only
+    # ever a read, and only when it says nothing else — see `quick_read`.
+    plain = quick_read(message)
+    if plain in {"cart", "checkout"} and not cart:
+        # Asking about an order that has nothing in it. Measured: "checkout"
+        # on an empty cart spent 17.9 seconds arriving at a menu suggestion,
+        # and "cart" spent 6.5 — for a fact known before either started.
+        return TurnOutcome(
+            answer=_PLACE_FAILURE_LINES["empty_cart"],
+            answer_about="cart",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+    if plain == "cart" and cart_readback:
+        return _settled()
+    if plain == "menu":
+        # The reply pipeline answers about the menu, and better; this turn
+        # simply has nothing to add and should not spend a model round
+        # discovering that.
+        return TurnOutcome(
+            answer=None, actions=actions, records=records,
+            fallback_reason=None, elapsed_seconds=clock() - start,
+        )
+
+    wanted = (
+        {"add": None, "details": {}, "checkout": True}
+        if plain == "checkout"
+        else read_order_intent(message, missing=collecting or (), generate=generate)
+    )
 
     if wanted["add"]:
         added = _add_named_dish(*wanted["add"])

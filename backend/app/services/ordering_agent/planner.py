@@ -538,6 +538,93 @@ def extract_order_details(
     return found
 
 
+#: Words that carry no request of their own. Stripped before matching, so
+#: "yeah ok let's do the checkout please bro" and "checkout" are one thing.
+_FILLER = frozenset(
+    """
+    a an the my our me i we you u to for of in on is are am it that this
+    yeah yah ya yes yep ok okay k please pls plz kindly now just only also too
+    lets let us do does did can could would will shall want wanted need show
+    see give get tell have has had on at with what whats where
+    hey hi hello bro bhai ji sir maam
+    thanks thank and then so well um uh na haan
+    """.split()
+)
+
+#: What a sentence can plainly be. Each of these is a READ — see the module
+#: docstring for why nothing that changes an order is in here.
+_PLAIN = {
+    "cart": (
+        "cart", "cart status", "basket", "order", "order status", "order summary",
+        "cart summary", "cart detail", "cart details", "order detail", "order details",
+        "inside cart", "cart me kya hai", "kya hai cart me",
+    ),
+    "menu": (
+        "menu", "menu card", "menu list", "food menu", "dishes", "dish list",
+        "items", "item list", "options", "food", "food list", "menu items",
+    ),
+    "checkout": (
+        "checkout", "check out", "checkout order", "place order", "order place",
+        "confirm order", "confirm", "book", "book order", "finish", "finish order",
+        "done", "complete order", "proceed", "proceed checkout", "pay", "payment",
+        "payment link", "pay now", "order kar do", "kar do", "chalo order kar do",
+        "bas itna hi", "ho gaya", "itna hi", "thats all", "that all", "all",
+    ),
+}
+
+#: A sentence that turns something down, or asks about it, is not a request
+#: for it. Cheap to spot, and the difference between "checkout" and "I do not
+#: want to checkout yet".
+_NEGATIONS = frozenset(
+    "no not dont don't nope never cancel stop wait without except neither nahi mat".split()
+)
+
+
+def _plainly(text: str) -> str:
+    """A sentence reduced to the words that carry a request.
+
+    Both sides of the comparison go through this, so the phrases above are
+    written the way a customer says them rather than in whatever form
+    survives the filter — "order kar do" stays readable there even though
+    "do" is filler and never reaches the match.
+    """
+
+    # An apostrophe joins a word rather than breaking it: "what's" is one
+    # word ("whats", filler), not "what" and a stray "s".
+    without_apostrophes = text.lower().replace("'", "").replace("’", "")
+    cleaned = "".join(
+        character if character.isalnum() or character.isspace() else " "
+        for character in without_apostrophes
+    )
+    return " ".join(word for word in cleaned.split() if word not in _FILLER)
+
+
+#: The phrases above, reduced once at import so a match is a dictionary hit.
+_PLAIN_BY_PHRASE = {
+    _plainly(phrase): signal
+    for signal, phrases in _PLAIN.items()
+    for phrase in phrases
+    if _plainly(phrase)
+}
+
+
+def quick_read(message: str) -> str | None:
+    """What this sentence plainly asks for, or None to go and read it properly.
+
+    Returns "cart", "menu", "checkout" or None. None is the common answer and
+    the safe one: anything with content of its own — a dish, a name, an
+    address, a negation — belongs to `read_order_intent`, which reads meaning
+    rather than matching words.
+    """
+
+    words = message.lower().split()
+    if not words or len(words) > 10:
+        return None
+    if _NEGATIONS & {word.strip(".,!?") for word in words}:
+        return None
+    return _PLAIN_BY_PHRASE.get(_plainly(message))
+
+
 def read_order_intent(
     message: str,
     *,
