@@ -458,6 +458,28 @@ class Settings(BaseSettings):
     # two of real prose needs more room than an owner-side tool pick ever did.
     ordering_agent_planner_max_tokens: int = 400
 
+    # --- Customer-facing ordering agent's loop (Task 5) ----------------------
+    #
+    # Off by default per the house rule every AI flag here follows: with this
+    # false, `loop.run_turn` never calls the planner, never runs a tool, and
+    # returns `fallback_reason="flag_off"` immediately, so Task 6's chat turn
+    # can wire this in ahead of anyone actually turning it on.
+    enable_ordering_agent: bool = False
+    # A customer's turn is at most this many plan-then-tool rounds before the
+    # loop gives up and falls back — not measured yet, since nothing has run
+    # against a real model or a real cart: a placeholder chosen to be "enough
+    # rounds for get_dish -> add_to_cart or view_cart -> price_quote, plus one
+    # spare for a self-correction," never exercised end to end. Task 8
+    # measures a real turn's round count and may move this.
+    ordering_agent_max_tool_rounds: int = 4
+    # Wall-clock ceiling for a whole turn (every plan_step call plus every
+    # tool call), independent of `ordering_agent_planner_timeout_seconds`
+    # (which bounds one model call, not the turn). Also not measured yet —
+    # picked as "a customer will wait this long for a chat reply before it
+    # reads as broken," not from timing data. Task 8 measures and may move
+    # this alongside the round cap above.
+    ordering_agent_budget_seconds: float = 30.0
+
     ai_manager_router_timeout_seconds: float = 20.0
     ai_manager_router_max_tokens: int = 80
     # The window a chat question covers when the owner names no period at all.

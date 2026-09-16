@@ -1,0 +1,214 @@
+"""Task 5: the bounded loop that turns `planner.plan_step` into a turn.
+
+`plan_step` only ever decides ONE next step (its own docstring says so);
+this module is what calls it again and again, feeding each round's
+`ToolCallRecord` back in as history, until it answers, refuses in a way that
+cannot be recovered from this turn, or runs out of rounds or time. Sibling
+of `insights/tool_chat.py`'s owner-facing loop in spirit, but genuinely
+bounded on two axes at once (`ordering_agent_max_tool_rounds`,
+`ordering_agent_budget_seconds`) rather than one, because a customer is
+watching a chat window, not reading a nightly briefing — a turn that runs
+long must fail predictably, not eventually.
+
+Every id-bearing decision (which ids the model may use, whether the
+browser's cart overrides what it wrote, whether a mutation's result is
+allowed to claim it was applied) is `guards.py`'s job, not this module's —
+this loop only sequences: plan, guard, run, record, repeat.
+
+Task 6 (not this task) decides what "today's reply" is when
+`TurnOutcome.fallback_reason` is set; this module never invents a customer-
+facing sentence of its own to paper over one.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass
+from typing import Any, Callable
+
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.schemas.suggestions import CartLinePayload
+from app.services.ordering_agent import guards
+from app.services.ordering_agent.planner import Generate, PlanStep, ToolCallRecord, plan_step
+from app.services.ordering_agent.tools import TOOLS, OrderingScope
+
+settings = get_settings()
+logger = logging.getLogger(__name__)
+
+Clock = Callable[[], float]
+
+
+@dataclass(slots=True)
+class TurnOutcome:
+    """What one `run_turn` call produced, and how it ended.
+
+    `answer`/`fallback_reason` are the two ways a turn can end, but not a
+    strict either/or the way `PlanStep`'s fields are: a turn that hits
+    `round_cap` or `budget_exceeded` still reports `fallback_reason` with
+    `answer=None` — never a half-finished sentence, per the brief's "never a
+    partial answer" rule. `actions`/`records` are populated regardless of
+    how the turn ended, because a mutation already applied earlier in the
+    same turn is real even if a later round timed out, and the caller logs
+    every attempted call either way.
+    """
+
+    answer: str | None
+    actions: list[dict[str, Any]]
+    records: list[ToolCallRecord]
+    fallback_reason: str | None
+    elapsed_seconds: float
+
+
+def _error_record(step: PlanStep) -> ToolCallRecord:
+    """A planner refusal, reshaped into the same `ToolCallRecord` history
+    entry a failed tool call gets — the model sees both the same way on the
+    next round. `step.tool` is always `None` on every refusal path
+    `planner.py`'s `_validate_call`/`plan_step` can take (a smuggled scope
+    id or an unknown tool name never gets far enough to be recorded), so
+    there is no real tool name to carry here; `""` is a placeholder, never
+    read back out by anything that treats it as a real tool.
+    """
+
+    detail = f"{step.error}: {step.detail}" if step.detail else (step.error or "planner_error")
+    return ToolCallRecord(tool=step.tool or "", args=step.args, error=detail)
+
+
+def run_turn(
+    db: Session,
+    *,
+    scope: OrderingScope,
+    message: str,
+    cart: list[CartLinePayload],
+    generate: Generate | None = None,
+    clock: Clock = time.monotonic,
+    max_rounds: int | None = None,
+    budget_seconds: float | None = None,
+) -> TurnOutcome:
+    """Run one customer turn to completion, or to whichever bound stops it
+    first. `clock`/`generate` are injected so a test drives every round
+    deterministically — no sleeping for the budget, no Ollama for the plan —
+    the same reason `plan_step` itself takes `generate` as an argument.
+
+    Flag-gated per the house rule every AI feature follows: with
+    `enable_ordering_agent` off, this returns immediately with
+    `fallback_reason="flag_off"` and runs nothing else at all — no seeding,
+    no clock reads beyond the one needed to report `elapsed_seconds`, no
+    call to `plan_step`.
+    """
+
+    start = clock()
+    if not settings.enable_ordering_agent:
+        return TurnOutcome(
+            answer=None,
+            actions=[],
+            records=[],
+            fallback_reason="flag_off",
+            elapsed_seconds=clock() - start,
+        )
+
+    rounds = max_rounds if max_rounds is not None else settings.ordering_agent_max_tool_rounds
+    budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
+
+    seen = guards.seed_seen_ids(cart)
+    records: list[ToolCallRecord] = []
+    actions: list[dict[str, Any]] = []
+
+    for _round_index in range(rounds):
+        # Checked before every model call, per the brief — a turn that is
+        # already out of time never spends more of it asking the model for
+        # one more step.
+        if clock() - start >= budget:
+            return TurnOutcome(
+                answer=None,
+                actions=actions,
+                records=records,
+                fallback_reason="budget_exceeded",
+                elapsed_seconds=clock() - start,
+            )
+
+        step = plan_step(message, history=tuple(records), generate=generate)
+
+        if not step.ok:
+            if step.error == "planner_unavailable":
+                # The model itself is unreachable; asking it again next
+                # round would just fail the same way, so this is the one
+                # planner error that stops the turn outright rather than
+                # being fed back for the model to correct.
+                return TurnOutcome(
+                    answer=None,
+                    actions=actions,
+                    records=records,
+                    fallback_reason="planner_unavailable",
+                    elapsed_seconds=clock() - start,
+                )
+            # Every other planner error (unknown_tool, scope_argument,
+            # invalid_arguments, planner_unusable) is recoverable *within*
+            # this turn: the model sees what it did wrong and gets another
+            # round to correct it. Still counts toward `max_rounds` — a
+            # model that keeps making the same mistake is still bounded.
+            records.append(_error_record(step))
+            continue
+
+        if step.answer is not None:
+            return TurnOutcome(
+                answer=step.answer,
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+
+        # `step.ok` and no answer means `step.tool` is set (`PlanStep.ok`'s
+        # own definition) — one more tool to run before the turn can end.
+        tool_name = step.tool or ""
+
+        # Checked again before every tool call, separately from the model
+        # check above: a plan can arrive right at the edge of the budget,
+        # and running one more (possibly slow) handler past it would be the
+        # "partial answer" the brief rules out, just paid for in tool time
+        # instead of model time.
+        if clock() - start >= budget:
+            return TurnOutcome(
+                answer=None,
+                actions=actions,
+                records=records,
+                fallback_reason="budget_exceeded",
+                elapsed_seconds=clock() - start,
+            )
+
+        prepared, guard_error = guards.prepare_tool_call(tool_name, step.args, cart=cart, seen=seen)
+        if guard_error is not None:
+            records.append(ToolCallRecord(tool=tool_name, args=step.args, error=guard_error))
+            continue
+
+        spec = TOOLS[tool_name]
+        try:
+            result = spec.handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - a raising handler must not abort the turn
+            logger.warning("Ordering agent tool %r raised: %s", tool_name, error)
+            records.append(
+                ToolCallRecord(tool=tool_name, args=prepared.model_dump(), error=f"tool_error: {error}")
+            )
+            continue
+
+        result = guards.enforce_destructive_policy(result)
+        guards.grow_seen_ids(seen, result)
+        records.append(ToolCallRecord(tool=tool_name, args=prepared.model_dump(), result=result))
+
+        action = result.get("action") if isinstance(result, dict) else None
+        if isinstance(action, dict):
+            actions.append(action)
+
+    return TurnOutcome(
+        answer=None,
+        actions=actions,
+        records=records,
+        fallback_reason="round_cap",
+        elapsed_seconds=clock() - start,
+    )
+
+
+__all__ = ["Clock", "TurnOutcome", "run_turn"]

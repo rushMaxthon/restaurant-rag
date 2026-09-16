@@ -1,0 +1,495 @@
+"""Tests for the ordering agent's bounded loop and its guards (Task 5).
+
+No Ollama, no database, per the brief: `run_turn` takes its `generate` and
+`clock` as arguments, so every round is scripted and no wall clock is ever
+actually slept on. The tool registry is patched via `unittest.mock.patch.dict`
+on `tools.TOOLS` itself (in place, not a rebind) rather than adding a
+`registry` parameter to `run_turn`/`guards.prepare_tool_call`: both
+`loop.py` and `planner.py` already hold their own `from ... import TOOLS`
+name bound to that one dict object, and `patch.dict` mutates the object's
+contents rather than replacing the module attribute, so a stub registry
+reaches the planner's own tool-name validation for free — a `registry`
+parameter would have to be threaded through `plan_step` too, which is not
+this task's file to change.
+
+What has to be right here, in the order the brief asks for it:
+
+* the loop stops at the round cap
+* exceeding the budget yields the fallback, never a partial answer
+* a failing tool does not abort the turn
+* results are fed back in order
+* the flag being off short-circuits everything else
+* an id the model never saw this turn is refused, and the refusal is fed back
+* the request cart overrides whatever cart-shaped lines the model typed
+* an applied `clear`/ambiguous-`remove` from a (deliberately wrong) stub
+  handler is downgraded before it reaches the caller
+* actions collected from mutation results stay in call order
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+import uuid
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.config import get_settings
+from app.schemas.suggestions import CartLinePayload
+from app.services.ordering_agent import guards, loop
+from app.services.ordering_agent.planner import ToolCallRecord
+from app.services.ordering_agent.tools import (
+    CartLineArgs,
+    NoArgs,
+    OrderingScope,
+    ToolArgs,
+    ToolSpec,
+    TOOLS,
+)
+
+settings = get_settings()
+
+SCOPE = OrderingScope(
+    restaurant_id=uuid.uuid4(),
+    restaurant_location_id=uuid.uuid4(),
+    customer=None,
+)
+
+MENU_ITEM_ID = uuid.uuid4()
+SIZE_ID = uuid.uuid4()
+
+
+class DishLookupArgs(ToolArgs):
+    name: str = "anything"
+
+
+class AddArgs(ToolArgs):
+    menu_item_id: uuid.UUID
+
+
+class BoomArgs(NoArgs):
+    pass
+
+
+class ScriptedGenerate:
+    """Replays fixed model replies; anything past the end repeats the last."""
+
+    def __init__(self, *replies: str) -> None:
+        self.replies = list(replies)
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str, timeout_seconds: float, max_tokens: int) -> str:
+        self.prompts.append(prompt)
+        index = min(len(self.prompts) - 1, len(self.replies) - 1)
+        return self.replies[index]
+
+
+class ScriptedClock:
+    """Replays fixed timestamps; anything past the end repeats the last."""
+
+    def __init__(self, *ticks: float) -> None:
+        self.ticks = list(ticks)
+        self.calls = 0
+
+    def __call__(self) -> float:
+        index = min(self.calls, len(self.ticks) - 1)
+        self.calls += 1
+        return self.ticks[index]
+
+
+def _recording_handler(calls: list, result: dict):
+    def handler(db, scope, args):
+        calls.append(args)
+        return result
+
+    return handler
+
+
+def _tool_call(tool: str, args: dict) -> str:
+    return json.dumps({"tool": tool, "args": args})
+
+
+def _answer(text: str) -> str:
+    return json.dumps({"answer": text})
+
+
+class OrderingAgentLoopTestCase(unittest.TestCase):
+    """Enables the flag for the duration of each test and patches `TOOLS`
+    to a small stub registry, mirroring how `test_chat_tools.py` toggles
+    `settings.enable_ai_manager_chat_tools` directly rather than mocking
+    `get_settings`.
+    """
+
+    def setUp(self) -> None:
+        self._flag = settings.enable_ordering_agent
+        settings.enable_ordering_agent = True
+        self._registry: dict[str, ToolSpec] = {}
+        self._patcher = mock.patch.dict(
+            "app.services.ordering_agent.tools.TOOLS", self._registry, clear=True
+        )
+        self._patcher.start()
+
+    def tearDown(self) -> None:
+        self._patcher.stop()
+        settings.enable_ordering_agent = self._flag
+
+    def register(self, name: str, args_model, handler) -> None:
+        TOOLS[name] = ToolSpec(name, "stub", args_model, handler)
+
+
+class FlagOffTests(OrderingAgentLoopTestCase):
+    def test_flag_off_short_circuits_before_anything_runs(self) -> None:
+        settings.enable_ordering_agent = False
+        generate = ScriptedGenerate(_answer("should never be reached"))
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="hi",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+        )
+        self.assertIsNone(outcome.answer)
+        self.assertEqual(outcome.fallback_reason, "flag_off")
+        self.assertEqual(outcome.actions, [])
+        self.assertEqual(outcome.records, [])
+        self.assertEqual(generate.prompts, [])
+
+
+class RoundCapTests(OrderingAgentLoopTestCase):
+    def test_the_loop_stops_at_the_round_cap(self) -> None:
+        # Never answers; each round is a fresh, harmless read-only call, so
+        # nothing else can stop the loop first.
+        self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        generate = ScriptedGenerate(_tool_call("dish_lookup", {"name": "pizza"}))
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=3,
+            budget_seconds=1000.0,
+        )
+        self.assertIsNone(outcome.answer)
+        self.assertEqual(outcome.fallback_reason, "round_cap")
+        self.assertEqual(len(generate.prompts), 3)
+        self.assertEqual(len(outcome.records), 3)
+
+
+class BudgetTests(OrderingAgentLoopTestCase):
+    def test_exceeding_the_budget_before_any_round_yields_the_fallback(self) -> None:
+        generate = ScriptedGenerate(_answer("too late"))
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0, 100.0),
+            max_rounds=4,
+            budget_seconds=30.0,
+        )
+        self.assertIsNone(outcome.answer)
+        self.assertEqual(outcome.fallback_reason, "budget_exceeded")
+        self.assertEqual(generate.prompts, [])
+        self.assertEqual(outcome.records, [])
+
+    def test_exceeding_the_budget_never_returns_a_partial_answer(self) -> None:
+        # Round 1 completes a real tool call; round 2's model check is over
+        # budget, so the turn must stop WITHOUT ever asking for round 2's
+        # answer, even though the model was scripted to provide one.
+        self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _answer("here you go"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            # start=0, round1 model-check=5 (ok), round1 tool-check=10 (ok),
+            # round2 model-check=50 (exceeds a 30s budget).
+            clock=ScriptedClock(0.0, 5.0, 10.0, 50.0),
+            max_rounds=4,
+            budget_seconds=30.0,
+        )
+        self.assertIsNone(outcome.answer)
+        self.assertEqual(outcome.fallback_reason, "budget_exceeded")
+        # Round 1's record survives the later timeout.
+        self.assertEqual(len(outcome.records), 1)
+        self.assertEqual(len(generate.prompts), 1)
+
+
+class FailingToolTests(OrderingAgentLoopTestCase):
+    def test_a_raising_tool_does_not_abort_the_turn(self) -> None:
+        def boom(db, scope, args):
+            raise RuntimeError("kaboom")
+
+        self.register("boom", BoomArgs, boom)
+        generate = ScriptedGenerate(
+            _tool_call("boom", {}),
+            _answer("recovered anyway"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.answer, "recovered anyway")
+        self.assertIsNone(outcome.fallback_reason)
+        self.assertEqual(len(outcome.records), 1)
+        self.assertIn("tool_error", outcome.records[0].error or "")
+
+
+class ResultsFedBackTests(OrderingAgentLoopTestCase):
+    def test_results_are_fed_back_to_the_next_round_in_order(self) -> None:
+        self.register(
+            "dish_lookup",
+            DishLookupArgs,
+            _recording_handler([], {"found": True, "menu_item_id": str(MENU_ITEM_ID)}),
+        )
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _answer("added"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.answer, "added")
+        self.assertEqual(len(outcome.records), 1)
+        self.assertEqual(outcome.records[0].tool, "dish_lookup")
+        # Round 2's prompt actually carries round 1's result.
+        self.assertEqual(len(generate.prompts), 2)
+        self.assertIn(str(MENU_ITEM_ID), generate.prompts[1])
+
+    def test_multiple_tool_results_stay_in_call_order(self) -> None:
+        first_id, second_id = uuid.uuid4(), uuid.uuid4()
+        self.register(
+            "dish_lookup", DishLookupArgs, _recording_handler([], {"menu_item_id": str(first_id)})
+        )
+        self.register(
+            "other_lookup", DishLookupArgs, _recording_handler([], {"menu_item_id": str(second_id)})
+        )
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "a"}),
+            _tool_call("other_lookup", {"name": "b"}),
+            _answer("done"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual([record.tool for record in outcome.records], ["dish_lookup", "other_lookup"])
+
+
+class ProvenanceTests(OrderingAgentLoopTestCase):
+    def test_an_unseen_id_is_refused_and_the_refusal_is_fed_back(self) -> None:
+        calls: list = []
+        self.register("add_dish", AddArgs, _recording_handler(calls, {"outcome": "action"}))
+        unseen_id = uuid.uuid4()
+        generate = ScriptedGenerate(
+            _tool_call("add_dish", {"menu_item_id": str(unseen_id)}),
+            _answer("ok"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        # The handler never actually ran with the unseen id.
+        self.assertEqual(calls, [])
+        self.assertEqual(len(outcome.records), 1)
+        self.assertTrue((outcome.records[0].error or "").startswith("unknown_id"))
+        self.assertIn(str(unseen_id), outcome.records[0].error or "")
+        # The model got another round and answered.
+        self.assertEqual(outcome.answer, "ok")
+        self.assertEqual(len(generate.prompts), 2)
+        self.assertIn("unknown_id", generate.prompts[1])
+
+    def test_an_id_learned_this_turn_from_a_prior_result_is_accepted(self) -> None:
+        learned_id = uuid.uuid4()
+        self.register(
+            "dish_lookup", DishLookupArgs, _recording_handler([], {"menu_item_id": str(learned_id)})
+        )
+        calls: list = []
+        self.register("add_dish", AddArgs, _recording_handler(calls, {"outcome": "action"}))
+        generate = ScriptedGenerate(
+            _tool_call("dish_lookup", {"name": "pizza"}),
+            _tool_call("add_dish", {"menu_item_id": str(learned_id)}),
+            _answer("added"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(outcome.answer, "added")
+        self.assertIsNone(outcome.records[1].error)
+
+
+class CartInjectionTests(OrderingAgentLoopTestCase):
+    def test_the_request_cart_overrides_model_typed_lines_for_view_cart(self) -> None:
+        class ViewArgs(ToolArgs):
+            lines: list[CartLineArgs] = []
+
+        calls: list = []
+        self.register("view_cart", ViewArgs, _recording_handler(calls, {"lines": [], "subtotal": "0.00"}))
+
+        real_cart = [
+            CartLinePayload(menu_item_id=MENU_ITEM_ID, quantity=2, size_id=SIZE_ID, customization_option_ids=[])
+        ]
+        # The model invents a completely different, unseen line.
+        fabricated_id = str(uuid.uuid4())
+        generate = ScriptedGenerate(
+            _tool_call("view_cart", {"lines": [{"menu_item_id": fabricated_id, "quantity": 1}]}),
+            _answer("here's your cart"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="what's in my cart?",
+            cart=real_cart,
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(outcome.answer, "here's your cart")
+        self.assertEqual(len(calls), 1)
+        sent_lines = calls[0].lines
+        self.assertEqual(len(sent_lines), 1)
+        self.assertEqual(sent_lines[0].menu_item_id, MENU_ITEM_ID)
+        self.assertEqual(sent_lines[0].quantity, 2)
+
+
+class DestructivePolicyTests(OrderingAgentLoopTestCase):
+    def test_an_applied_clear_from_a_stub_handler_is_downgraded(self) -> None:
+        # A deliberately wrong handler, to prove the loop's own gate (not
+        # the real handler's correctness) is what catches this.
+        wrong_result = {"outcome": "action", "action": {"kind": "clear", "status": "applied", "reason": "destructive"}}
+        self.register("clear_cart", NoArgs, _recording_handler([], wrong_result))
+        generate = ScriptedGenerate(
+            _tool_call("clear_cart", {}),
+            _answer("cleared"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="clear my cart",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual(len(outcome.actions), 1)
+        self.assertEqual(outcome.actions[0]["status"], "proposed")
+        self.assertEqual(outcome.records[0].result["action"]["status"], "proposed")
+
+    def test_actions_from_mutation_results_are_collected_in_order(self) -> None:
+        add_result = {"outcome": "action", "action": {"kind": "add", "status": "applied", "menu_item_id": str(MENU_ITEM_ID)}}
+        remove_result = {
+            "outcome": "action",
+            "action": {"kind": "remove", "status": "proposed", "reason": "destructive"},
+        }
+        self.register("add_dish", NoArgs, _recording_handler([], add_result))
+        self.register("remove_dish", NoArgs, _recording_handler([], remove_result))
+        generate = ScriptedGenerate(
+            _tool_call("add_dish", {}),
+            _tool_call("remove_dish", {}),
+            _answer("done"),
+        )
+        outcome = loop.run_turn(
+            db=None,
+            scope=SCOPE,
+            message="anything",
+            cart=[],
+            generate=generate,
+            clock=ScriptedClock(0.0),
+            max_rounds=4,
+            budget_seconds=1000.0,
+        )
+        self.assertEqual([action["kind"] for action in outcome.actions], ["add", "remove"])
+
+
+class GuardsUnitTests(unittest.TestCase):
+    """`guards.py`'s own building blocks, exercised directly rather than
+    only through the loop.
+    """
+
+    def test_scope_for_a_guest_has_no_customer(self) -> None:
+        from app.services.chat_principal import guest_principal_for_session
+
+        principal = guest_principal_for_session(uuid.uuid4())
+        scope = guards.scope_for(principal, uuid.uuid4(), uuid.uuid4())
+        self.assertIsNone(scope.customer)
+
+    def test_seed_seen_ids_walks_every_cart_line_field(self) -> None:
+        item_id, size_id, option_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        cart = [
+            CartLinePayload(
+                menu_item_id=item_id,
+                quantity=1,
+                size_id=size_id,
+                customization_option_ids=[option_id],
+            )
+        ]
+        seen = guards.seed_seen_ids(cart)
+        self.assertEqual(seen, {item_id, size_id, option_id})
+
+    def test_grow_seen_ids_walks_nested_results(self) -> None:
+        seen: set[uuid.UUID] = set()
+        nested_id = uuid.uuid4()
+        guards.grow_seen_ids(seen, {"results": [{"menu_item_id": str(nested_id)}]})
+        self.assertIn(nested_id, seen)
+
+    def test_enforce_destructive_policy_ignores_actionless_results(self) -> None:
+        result = {"found": True}
+        self.assertEqual(guards.enforce_destructive_policy(result), result)
+
+    def test_enforce_destructive_policy_leaves_a_proposed_clear_alone(self) -> None:
+        result = {"outcome": "action", "action": {"kind": "clear", "status": "proposed"}}
+        self.assertEqual(guards.enforce_destructive_policy(result), result)
+
+
+if __name__ == "__main__":
+    unittest.main()
