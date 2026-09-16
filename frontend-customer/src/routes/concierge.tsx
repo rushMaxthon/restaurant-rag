@@ -376,13 +376,18 @@ function ConciergePage() {
             // answer and the paragraph is not shown. Every other turn keeps
             // today's reply, with the agent's line beneath it if there is one.
             const actedOnCart = cartUpdated || proposals.length > 0;
+            // Beneath the reply only when the agent has something the reply
+            // does not - a question to answer, a dish refused for the diet.
+            // On a plain menu question the reply already answered it, and a
+            // second answer under it read as two voices (reported live).
+            const agentHasMore = Boolean(done.agent_asks);
 
             patchAnswer((turn) => ({
               ...turn,
               text: actedOnCart && agentLine ? agentLine : done.reply,
               suggestions: done.suggestions,
               turnId: done.turn_id,
-              agentReply: actedOnCart ? undefined : agentLine,
+              agentReply: !actedOnCart && agentHasMore ? agentLine : undefined,
               proposals,
               hadDropped,
               cartUpdated,

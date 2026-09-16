@@ -154,6 +154,8 @@ export type ChatStreamMeta = {
 };
 
 export type ChatStreamDone = ChatStreamMeta & {
+  /** True when the agent asked the customer to choose or refused a dish for their diet. */
+  agent_asks?: boolean;
   reply: string;
   // Same flag-gated pair as `turn_id` above: both arrive together or not at
   // all.

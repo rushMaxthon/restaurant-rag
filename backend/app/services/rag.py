@@ -7265,6 +7265,33 @@ def _json_safe_cart_action(action: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _remember_stated_diet(db: Session, user: ChatPrincipal, diet: str | None) -> None:
+    """A signed-in customer who says "I'm vegetarian" in the chat is remembered
+    on their account, the way a guest's durable traits are remembered in the
+    browser. Reported live: customer1 said it, and two turns later the
+    reply offered a seafood soup — the profile had no diet, so neither the
+    retrieval, the pairing service nor the ordering agent knew. Narrow on
+    purpose: only `dietary_preferences` is touched (the profile endpoint's
+    upsert rewrites cuisines too, which the chat has no business doing), and
+    only when it actually changes.
+    """
+
+    if not diet or is_guest(user):
+        return
+    try:
+        row = db.query(UserPreferences).filter(UserPreferences.user_id == user.id).first()
+        if row is None:
+            row = UserPreferences(user_id=user.id)
+            db.add(row)
+        if list(row.dietary_preferences or []) != [diet]:
+            row.dietary_preferences = [diet]
+            db.commit()
+            logger.info("Chat remembered a stated diet user_id=%s diet=%s", user.id, diet)
+    except Exception:  # noqa: BLE001 - a preference write must never break the turn
+        db.rollback()
+        logger.warning("Could not remember a stated diet user_id=%s", user.id, exc_info=True)
+
+
 def _run_ordering_agent(
     db: Session,
     *,
@@ -7277,6 +7304,7 @@ def _run_ordering_agent(
     previous_reply: str | None = None,
     recent_history: list[dict[str, str]] | None = None,
     guest_preferences: object | None = None,
+    stated_diet: str | None = None,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7306,7 +7334,7 @@ def _run_ordering_agent(
             restaurant_id,
             restaurant_location_id,
         )
-        return {"cart_actions": [], "agent_reply": None}
+        return {"cart_actions": [], "agent_reply": None, "agent_asks": False}
 
     try:
         from app.services.ordering_agent.guards import scope_for
@@ -7317,7 +7345,9 @@ def _run_ordering_agent(
             # prose can never disagree about what this customer eats.
             scope=scope_for(
                 user, restaurant_id, restaurant_location_id,
-                diet=preference_diet_for_cache(db, user, guest_preferences),
+                # A diet stated on THIS turn wins: the profile write above
+                # is only read on the next one.
+                diet=stated_diet or preference_diet_for_cache(db, user, guest_preferences),
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`
@@ -7334,7 +7364,7 @@ def _run_ordering_agent(
             _trim_text(message, 80),
             exc_info=True,
         )
-        return {"cart_actions": [], "agent_reply": None}
+        return {"cart_actions": [], "agent_reply": None, "agent_asks": False}
 
     # One line per run, because the three numbers that explain a bad turn are
     # how it ended, how many tool calls it took to get there, and how long the
@@ -7346,9 +7376,18 @@ def _run_ordering_agent(
         len(outcome.actions),
         outcome.elapsed_seconds,
     )
+    # Whether the agent has something the reply does not: it asked the
+    # customer to choose, or refused a dish for their diet. On such turns the
+    # client shows the agent's line; on a plain menu question it does not,
+    # because two answers to one question read as two voices (reported live).
+    asking = {"needs_choice", "not_for_diet", "empty_cart"}
     return {
         "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
         "agent_reply": outcome.answer,
+        "agent_asks": any(
+            isinstance(record.result, dict) and record.result.get("outcome") in asking
+            for record in outcome.records
+        ),
     }
 
 
@@ -8055,6 +8094,12 @@ def stream_chat_message(
         is_follow_up=prepared.is_follow_up,
     )
 
+    # What this message says about the customer, kept: guests get it back
+    # as `inferred_preferences` on the done frame; a signed-in customer gets
+    # it written to their account, and the agent gets it right now.
+    stated_diet = durable_traits_from_message(message, prepared.extracted_intent).get("diet")
+    _remember_stated_diet(db, user, stated_diet)
+
     response_suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
     yield _sse_frame(
         "meta",
@@ -8203,6 +8248,7 @@ def stream_chat_message(
         previous_reply=previous_reply,
         recent_history=recent_history,
         guest_preferences=guest_preferences,
+        stated_diet=stated_diet,
     )
     yield _sse_frame(
         "done",

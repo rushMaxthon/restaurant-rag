@@ -66,7 +66,7 @@ HOURS_REPLY = "We take delivery orders until 10:30 PM today."
 
 # The three keys this task adds, named once so a test asserting "everything
 # else is unchanged" cannot drift from the seam's actual contract.
-AGENT_KEYS = ("turn_id", "cart_actions", "agent_reply")
+AGENT_KEYS = ("turn_id", "cart_actions", "agent_reply", "agent_asks")
 
 
 def parse_frame(frame: str) -> tuple[str, dict]:
