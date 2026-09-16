@@ -62,6 +62,7 @@ EXPECTED_TOOL_NAMES = frozenset(
         "go_to_checkout",
         # The details an order needs, gathered over several turns.
         "order_requirements",
+        "place_order",
         "save_order_details",
     }
 )

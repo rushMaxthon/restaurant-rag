@@ -74,6 +74,7 @@ _ALWAYS_INJECTED_CART_FIELD: dict[str, str] = {
     "remove_from_cart": "existing_lines",
     "set_quantity": "existing_lines",
     "go_to_checkout": "lines",
+    "place_order": "lines",
 }
 
 

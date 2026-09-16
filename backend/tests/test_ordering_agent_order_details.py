@@ -185,3 +185,42 @@ class DetailToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlaceOrderTests(DetailToolTests):
+    """Placing is gated on identity and on a complete draft.
+
+    The order is created unpaid on purpose: that is what makes it safe to do
+    from a sentence rather than a button, since nothing is charged until the
+    customer opens the payment link.
+    """
+
+    def place(self, scope=None, lines=None):
+        from app.services.ordering_agent.tools import CartLineArgs, PlaceOrderArgs
+
+        args = PlaceOrderArgs(
+            lines=lines
+            if lines is not None
+            else [CartLineArgs(menu_item_id=uuid.uuid4(), quantity=1)]
+        )
+        return TOOLS["place_order"].handler(None, scope or self.scope, args)
+
+    def test_an_empty_cart_places_nothing(self) -> None:
+        self.assertEqual(self.place(lines=[])["outcome"], "empty_cart")
+
+    def test_an_incomplete_draft_names_what_is_missing_and_nothing_else(self) -> None:
+        self.save(contact_name="Hitesh", fulfillment_type="DELIVERY")
+        result = self.place()
+        self.assertEqual(result["outcome"], "needs_details")
+        self.assertIn("delivery_address", result["missing"])
+        self.assertNotIn("Hitesh", repr(result), "names what is missing, never what is held")
+
+    def test_a_guest_with_a_complete_draft_still_cannot_place(self) -> None:
+        # Identity is the account. Details typed into a chat are contact
+        # details, not proof of who is ordering.
+        self.save(
+            contact_name="Hitesh", contact_phone="+919876543210",
+            contact_email="h@example.com", delivery_address="42 Example Road",
+            fulfillment_type="DELIVERY",
+        )
+        self.assertEqual(self.place()["outcome"], "not_identified")

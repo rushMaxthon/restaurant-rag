@@ -34,6 +34,7 @@ query that chooses whose data comes out.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, time
@@ -60,6 +61,14 @@ from app.schemas.order import (
 from app.services import rag as ordering_rag
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.ordering_agent import order_draft
+from app.models.enums import OrderScheduleType, PaymentMethod
+from app.schemas.order import (
+    OrderCreateItem,
+    OrderCreateItemCustomizationOption,
+    OrderCreateRequest,
+)
+from app.services.orders import create_order
+from app.services.payments import create_payment_link
 from app.services.menu_item_customizations import (
     ResolvedMenuItemSelection,
     SelectedCustomizationOptionInput,
@@ -75,6 +84,7 @@ from app.services.restaurant_locations import (
 )
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 BUSINESS_TIMEZONE = settings.business_timezone_info
 TWO_PLACES = Decimal("0.01")
 
@@ -359,6 +369,19 @@ class SaveOrderDetailsArgs(ToolArgs):
     contact_email: str | None = Field(default=None, max_length=320)
     delivery_address: str | None = Field(default=None, max_length=2000)
     fulfillment_type: OrderFulfillmentType | None = None
+
+
+class PlaceOrderArgs(ToolArgs):
+    """Place the order the conversation has been building.
+
+    `lines` is the browser's cart, injected by the loop like `view_cart`'s —
+    the model never retypes what is being bought. Nothing else: who it is
+    for, where it goes and what it costs all come from the draft and the
+    database, so there is no argument here a customer could use to order in
+    somebody else's name or at somebody else's price.
+    """
+
+    lines: list[CartLineArgs] = Field(default_factory=list)
 
 
 class ClearCartArgs(NoArgs):
@@ -1277,6 +1300,95 @@ def _save_order_details(
     }
 
 
+def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dict[str, Any]:
+    """Create the order, and hand back a link to pay it.
+
+    Everything this needs has already been gathered and checked: the cart is
+    the browser's, the contact details are the draft's (validated as they
+    arrived), and the price is `create_order`'s own — the same arithmetic
+    checkout runs, never a figure from here or from the model.
+
+    The order is created unpaid. That is what makes this safe to do from a
+    sentence rather than a button: nothing is charged until the customer
+    opens the link and enters a card on Stripe's page, and an unpaid order
+    is the most reversible thing in this system.
+    """
+
+    if scope.session_id is None:
+        return {"outcome": "no_session"}
+    if not args.lines:
+        return {"outcome": "empty_cart"}
+
+    draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    missing = draft.missing_fields()
+    if missing:
+        # Names only. The agent asks for what is missing; it never learns
+        # what is already held.
+        return {"outcome": "needs_details", "missing": missing}
+    if scope.customer is None:
+        # Identity is the account, never the details typed into a chat.
+        return {"outcome": "not_identified"}
+
+    fulfillment = OrderFulfillmentType(draft.fulfillment_type or OrderFulfillmentType.DELIVERY.value)
+    payload = OrderCreateRequest(
+        restaurant_id=scope.restaurant_id,
+        restaurant_location_id=scope.restaurant_location_id,
+        fulfillment_type=fulfillment,
+        schedule_type=OrderScheduleType.ASAP,
+        items=[
+            OrderCreateItem(
+                menu_item_id=line.menu_item_id,
+                quantity=line.quantity,
+                menu_item_size_id=line.menu_item_size_id,
+                selected_options=[
+                    OrderCreateItemCustomizationOption(
+                        option_id=option.option_id,
+                        quantity=option.quantity,
+                        portion=option.portion,
+                    )
+                    for option in line.selected_options
+                ],
+            )
+            for line in args.lines
+        ],
+        # Required by the schema even for pickup; the branch's own address is
+        # where a pickup order is collected, and `missing_fields` has already
+        # stopped asking the customer for one.
+        delivery_address=draft.delivery_address or "Pickup at the restaurant",
+        contact_name=draft.contact_name,
+        contact_phone=draft.contact_phone,
+        payment_method=PaymentMethod.CARD,
+    )
+
+    try:
+        order = create_order(db, scope.customer, payload)
+    except HTTPException as error:
+        # A closed branch, an item that went unavailable, a minimum not met:
+        # all things the customer can act on, so they are told rather than
+        # swallowed.
+        return {"outcome": "refused", "reason": str(error.detail)}
+
+    result: dict[str, Any] = {
+        "outcome": "placed",
+        "order_id": order.id,
+        "total": order.total_amount,
+        "currency": getattr(order, "currency", None),
+    }
+    try:
+        link = create_payment_link(db, scope.customer, order.id)
+        result["payment_url"] = link.url
+    except HTTPException as error:
+        # The order exists and is theirs; only the link failed. Saying so is
+        # better than pretending the order did not happen.
+        logger.warning("Payment link failed for order %s: %s", order.id, error.detail)
+        result["payment_problem"] = str(error.detail)
+
+    # The details live on the order now. There is no reason for a copy of
+    # somebody's address to outlive it in a cache.
+    order_draft.clear(scope.session_id)
+    return result
+
+
 def _serialize_action(action: CartAction) -> dict[str, Any]:
     """Identifiers and a quantity, never a name or a price — the whole point
     of Task 3. The client already has the branch menu loaded and renders
@@ -1545,6 +1657,14 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
         _save_order_details,
     ),
     ToolSpec(
+        "place_order",
+        "Place the order the conversation has built and return a link to pay "
+        "it. Creates the order unpaid; nothing is charged until the customer "
+        "opens the link.",
+        PlaceOrderArgs,
+        _place_order,
+    ),
+    ToolSpec(
         "go_to_checkout",
         "The customer is finished adding and wants to pay: hands them to "
         "the checkout page. Never places or pays for an order.",
@@ -1608,6 +1728,7 @@ __all__ = [
     "GoToCheckoutArgs",
     "GetDishArgs",
     "OrderRequirementsArgs",
+    "PlaceOrderArgs",
     "SaveOrderDetailsArgs",
     "NoArgs",
     "OrderingScope",
