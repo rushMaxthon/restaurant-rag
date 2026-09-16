@@ -23,6 +23,7 @@ from app.services.payments.registry import (
 from app.services.payments.service import (
     cancel_payment,
     create_payment_intent,
+    create_payment_link,
     get_payment_status,
     handle_stripe_webhook,
     payment_config,
@@ -40,6 +41,7 @@ __all__ = [
     "available_payment_methods",
     "cancel_payment",
     "create_payment_intent",
+    "create_payment_link",
     "get_payment_status",
     "handle_stripe_webhook",
     "is_method_supported",

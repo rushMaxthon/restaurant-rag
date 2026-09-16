@@ -540,6 +540,11 @@ class Settings(BaseSettings):
     # does not show charges the customer in a currency nobody quoted. It was
     # "cad" here while .env said "inr" and the apps rendered USD — three
     # currencies for one number.
+    # Where Stripe sends the customer back after a hosted checkout. The card
+    # sheet never needed this because it never left the page; a payment link
+    # does. Overridden per deployment — the default is this machine's dev
+    # server, which is where it is used today.
+    frontend_base_url: str = "http://localhost:5173"
     payment_currency: str = "usd"
     # Whether this deployment takes cash on delivery at all. Off: this product
     # is card-only, and an always-available COD meant "Place order" completed

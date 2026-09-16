@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -24,6 +25,17 @@ class PaymentIntentResponse(BaseModel):
     amount: Decimal
     currency: str
     publishable_key: str
+
+
+class PaymentLinkResponse(BaseModel):
+    """A hosted page to pay one order on. No key, no secret, no card field:
+    everything sensitive stays on Stripe's side of the link."""
+
+    order_id: uuid.UUID
+    url: str
+    amount: Decimal
+    currency: str
+    expires_at: datetime | None = None
 
 
 class PaymentStatusResponse(BaseModel):

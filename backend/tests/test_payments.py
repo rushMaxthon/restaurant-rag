@@ -54,6 +54,8 @@ class FakeProvider:
     def __init__(self, *, configured: bool = True) -> None:
         self._configured = configured
         self.created: list[dict] = []
+        self.sessions: list[dict] = []
+        self._session_ids: dict[str, int] = {}
         self.cancelled: list[str] = []
         self.retrieve_result: payments_base.PaymentIntentResult | None = None
 
@@ -68,6 +70,21 @@ class FakeProvider:
             amount=kwargs["amount"],
             currency=kwargs["currency"],
             status="requires_payment_method",
+        )
+
+    def create_checkout_session(self, **kwargs) -> payments_base.CheckoutSessionResult:
+        self.sessions.append(kwargs)
+        # Stripe returns the SAME session for a repeated idempotency key, and
+        # the reuse rule depends on that, so the fake behaves the same way.
+        key = kwargs["idempotency_key"]
+        index = self._session_ids.setdefault(key, len(self._session_ids) + 1)
+        return payments_base.CheckoutSessionResult(
+            session_id=f"cs_test_{index}",
+            url=f"https://checkout.stripe.test/cs_test_{index}",
+            intent_id=f"pi_test_{index}",
+            amount=kwargs["amount"],
+            currency=kwargs["currency"],
+            expires_at=None,
         )
 
     def retrieve_intent(self, intent_id: str) -> payments_base.PaymentIntentResult:
@@ -747,3 +764,80 @@ class OrderPaymentWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- payment links ---------------------------------------------------------
+
+
+class CreatePaymentLinkTests(unittest.TestCase):
+    """A link is the sheet's amount and guards, on a page the customer can
+    reach from a chat. What is new is only where the card is typed."""
+
+    def _link(self, order, session=None, provider=None):
+        session = session or FakeSession(orders=[order])
+        provider = provider or FakeProvider()
+        with patch.object(payments_service, "resolve_provider", return_value=provider):
+            return payments_service.create_payment_link(session, make_customer(order), order.id), session, provider
+
+    def test_the_amount_comes_from_the_order_not_the_caller(self) -> None:
+        order = make_order(total="412.50")
+        result, session, provider = self._link(order)
+        self.assertEqual(provider.sessions[0]["amount"], Decimal("412.50"))
+        self.assertEqual(result.amount, Decimal("412.50"))
+        self.assertTrue(result.url.startswith("https://"))
+
+    def test_the_intent_is_recorded_so_the_existing_webhook_can_finish_it(self) -> None:
+        # The whole reason a Checkout Session is used rather than a Payment
+        # Link object: it carries an intent the paid-webhook already knows.
+        order = make_order()
+        result, session, provider = self._link(order)
+        self.assertEqual(len(session.transactions), 1)
+        self.assertEqual(session.transactions[0].provider_intent_id, "pi_test_1")
+        self.assertEqual(session.transactions[0].status, PaymentStatus.PENDING)
+        self.assertEqual(order.payment_reference, "pi_test_1")
+
+    def test_asking_twice_returns_one_link_and_one_transaction(self) -> None:
+        # A link gets forwarded and tapped later. Two payable links for one
+        # order is a double charge waiting to happen.
+        order = make_order()
+        session = FakeSession(orders=[order])
+        provider = FakeProvider()
+        first, _, _ = self._link(order, session, provider)
+        second, _, _ = self._link(order, session, provider)
+        self.assertEqual(first.url, second.url)
+        self.assertEqual(len(session.transactions), 1)
+        self.assertEqual(
+            provider.sessions[0]["idempotency_key"], f"order:{order.id}:checkout"
+        )
+        self.assertEqual(provider.sessions[0]["idempotency_key"], provider.sessions[1]["idempotency_key"])
+
+    def test_a_paid_order_is_refused(self) -> None:
+        order = make_order(payment_status=PaymentStatus.PAID)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_a_cancelled_order_is_refused(self) -> None:
+        order = make_order(order_status=OrderStatus.CANCELLED)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_a_cash_order_is_refused(self) -> None:
+        order = make_order(payment_method=PaymentMethod.COD)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 400)
+
+    def test_an_unconfigured_provider_fails_loudly_rather_than_returning_a_dead_link(self) -> None:
+        order = make_order()
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order, provider=FakeProvider(configured=False))
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_the_customer_is_returned_to_their_own_order(self) -> None:
+        order = make_order()
+        _, _, provider = self._link(order)
+        self.assertIn(str(order.id), provider.sessions[0]["success_url"])
+        self.assertIn(str(order.id), provider.sessions[0]["cancel_url"])
+

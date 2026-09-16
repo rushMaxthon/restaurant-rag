@@ -16,10 +16,11 @@ from app.schemas.order import (
     OrderStatusUpdateRequest,
     OrderValidationResponse,
 )
-from app.schemas.payment import PaymentIntentResponse, PaymentStatusResponse
+from app.schemas.payment import PaymentIntentResponse, PaymentLinkResponse, PaymentStatusResponse
 from app.services.payments import (
     cancel_payment,
     create_payment_intent,
+    create_payment_link,
     get_payment_status,
 )
 from app.services.auth import (
@@ -120,6 +121,28 @@ def create_order_payment_intent(
     """
 
     return create_payment_intent(
+        db,
+        current_user,
+        order_id,
+        app_scope_restaurant_id=app_scope.restaurant_filter_id,
+    )
+
+
+@router.post("/{order_id}/payment-link", response_model=PaymentLinkResponse)
+def create_order_payment_link(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_customer)],
+    app_scope: AppScopeDep,
+) -> PaymentLinkResponse:
+    """A hosted page to pay this order on, as a URL.
+
+    The same guards as the payment sheet, and the same amount — read off the
+    stored order, never off the request. What differs is where the card is
+    typed: on Stripe's page, which is what makes this usable in a chat.
+    """
+
+    return create_payment_link(
         db,
         current_user,
         order_id,

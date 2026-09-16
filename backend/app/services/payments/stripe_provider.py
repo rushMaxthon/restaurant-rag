@@ -16,6 +16,7 @@ import stripe
 
 from app.config import get_settings
 from app.services.payments.base import (
+    CheckoutSessionResult,
     PaymentIntentResult,
     PaymentProviderError,
     WebhookEvent,
@@ -99,6 +100,80 @@ class StripeProvider:
             amount=from_minor_units(int(intent["amount"]), intent["currency"]),
             currency=str(intent["currency"]).upper(),
             status=str(intent["status"]),
+        )
+
+    def create_checkout_session(
+        self,
+        *,
+        order_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        restaurant_id: uuid.UUID,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        customer_email: str | None,
+        success_url: str,
+        cancel_url: str,
+        idempotency_key: str,
+        metadata: dict[str, str] | None = None,
+    ) -> CheckoutSessionResult:
+        """A hosted payment page for one order, as a URL.
+
+        `mode="payment"` makes Stripe create a PaymentIntent for the session
+        immediately, and that id is what this returns — so every path that
+        already knows how to finish a payment (the webhook, the transaction
+        row, `order.payment_reference`) keeps working untouched.
+
+        The amount comes from the caller, which reads it off the stored order,
+        never off a request: a tampered client cannot be quoted less than the
+        order is worth.
+        """
+
+        payload_metadata = {
+            "order_id": str(order_id),
+            "customer_id": str(customer_id),
+            "restaurant_id": str(restaurant_id),
+            **(metadata or {}),
+        }
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[
+                    {
+                        "quantity": 1,
+                        "price_data": {
+                            "currency": currency.lower(),
+                            "unit_amount": to_minor_units(amount, currency),
+                            "product_data": {"name": description},
+                        },
+                    }
+                ],
+                success_url=success_url,
+                cancel_url=cancel_url,
+                # Prefills the receipt field. Stripe emails the receipt; the
+                # app never has to.
+                **({"customer_email": customer_email} if customer_email else {}),
+                metadata=payload_metadata,
+                payment_intent_data={"metadata": payload_metadata},
+                idempotency_key=idempotency_key,
+                **self._client_kwargs(),
+            )
+        except stripe.StripeError as error:  # pragma: no cover - network failure path
+            logger.exception("Stripe checkout session creation failed order_id=%s", order_id)
+            raise PaymentProviderError(str(error.user_message or error)) from error
+
+        intent_id = session.get("payment_intent")
+        if not intent_id:
+            # Without it there is nothing for the webhook to match the order
+            # against, and the customer would pay into silence.
+            raise PaymentProviderError("Stripe returned a checkout session with no payment intent.")
+        return CheckoutSessionResult(
+            session_id=str(session.get("id")),
+            url=str(session.get("url")),
+            intent_id=str(intent_id),
+            amount=amount,
+            currency=currency,
+            expires_at=session.get("expires_at"),
         )
 
     def retrieve_intent(self, intent_id: str) -> PaymentIntentResult:

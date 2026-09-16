@@ -28,7 +28,7 @@ from app.models.enums import (
 from app.models.order import Order
 from app.models.payment import PaymentTransaction, PaymentWebhookEvent
 from app.models.user import User
-from app.schemas.payment import PaymentIntentResponse, PaymentStatusResponse
+from app.schemas.payment import PaymentIntentResponse, PaymentLinkResponse, PaymentStatusResponse
 from app.services.order_events import mark_order_cancelled, record_order_status_event
 from app.services.payments.base import (
     PaymentProviderError,
@@ -247,6 +247,121 @@ def create_payment_intent(
         amount=result.amount,
         currency=result.currency,
         publishable_key=settings.stripe_publishable_key,
+    )
+
+
+def create_payment_link(
+    db: Session,
+    customer: User,
+    order_id: uuid.UUID,
+    *,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+) -> PaymentLinkResponse:
+    """A link the customer can pay on, for an order that is theirs.
+
+    Every guard `create_payment_intent` applies is applied here, for the same
+    reasons: the amount is read off the stored order, a paid or cancelled
+    order is refused, and a provider that is not configured fails loudly
+    rather than handing back a dead link.
+
+    The idempotency key is per ORDER rather than per attempt, which is the one
+    real difference. An intent is consumed by the sheet that requested it; a
+    link is sent to someone and may be tapped later, twice, or forwarded. A
+    stable key means Stripe returns the SAME session every time, so a customer
+    can never be holding two payable links for one order.
+    """
+
+    order = _load_customer_order(
+        db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
+    )
+    if order.payment_method != PaymentMethod.CARD:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="This order is not a card order.",
+        )
+    if order.payment_status == PaymentStatus.PAID:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order has already been paid.",
+        )
+    if order.status == OrderStatus.CANCELLED:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order was cancelled and can no longer be paid.",
+        )
+    if order.payment_status not in RETRYABLE_PAYMENT_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order cannot be paid right now.",
+        )
+
+    provider = resolve_provider(order.payment_method)
+    if provider is None or not provider.is_configured():
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Card payments are not available right now.",
+        )
+    if not hasattr(provider, "create_checkout_session"):
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment links are not available right now.",
+        )
+
+    base = settings.frontend_base_url.rstrip("/")
+    try:
+        result = provider.create_checkout_session(
+            order_id=order.id,
+            customer_id=customer.id,
+            restaurant_id=order.restaurant_id,
+            amount=order.total_amount,
+            currency=order.currency,
+            description=f"Order {str(order.id)[:8]}",
+            customer_email=getattr(customer, "email", None),
+            success_url=f"{base}/orders/{order.id}?paid=1",
+            cancel_url=f"{base}/orders/{order.id}",
+            idempotency_key=f"order:{order.id}:checkout",
+            metadata={"restaurant_location_id": str(order.restaurant_location_id)},
+        )
+    except PaymentProviderError as error:
+        raise HTTPException(
+            status_code=http_status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
+
+    # The same session comes back on a repeat, and with it the same intent —
+    # so the transaction row is created once and found thereafter. The unique
+    # index on `provider_intent_id` would refuse a second anyway; this is what
+    # keeps that from being an error the customer sees.
+    existing = db.scalar(
+        select(PaymentTransaction).where(PaymentTransaction.provider_intent_id == result.intent_id)
+    )
+    if existing is None:
+        db.add(
+            PaymentTransaction(
+                order_id=order.id,
+                provider=provider.name,
+                provider_intent_id=result.intent_id,
+                status=PaymentStatus.PENDING,
+                amount=result.amount,
+                currency=result.currency,
+            )
+        )
+    order.payment_reference = result.intent_id
+    order.payment_status = PaymentStatus.PENDING
+    db.add(order)
+    db.commit()
+
+    logger.info(
+        "Payment link issued order_id=%s intent_id=%s", order.id, result.intent_id
+    )
+    return PaymentLinkResponse(
+        order_id=order.id,
+        url=result.url,
+        amount=result.amount,
+        currency=result.currency,
+        expires_at=(
+            datetime.fromtimestamp(result.expires_at, tz=UTC) if result.expires_at else None
+        ),
     )
 
 
