@@ -311,3 +311,41 @@ class PromptSizeTests(unittest.TestCase):
         self.assertIn("more", prompt)
         self.assertNotIn("z" * 200, prompt, "prose the customer reads is not a planning fact")
 
+
+class CartInThePromptTests(unittest.TestCase):
+    def test_the_cart_is_stated_so_the_model_need_not_look_it_up(self) -> None:
+        prompt = build_planner_prompt(
+            "what have I got?", history=[], tool_names=None,
+            cart_summary="In the cart right now: You have 2 x Corn Fritters - $16.98. Subtotal $16.98.",
+        )
+        self.assertIn("In the cart right now: You have 2 x Corn Fritters", prompt)
+
+    def test_an_empty_cart_adds_no_line(self) -> None:
+        self.assertNotIn("In the cart right now", build_planner_prompt("hi", history=[], tool_names=None))
+
+
+class AnswerSubjectTests(unittest.TestCase):
+    """The model names what its answer is about, so the caller can route it.
+
+    Live: "whats in my basket" was answered by the reply pipeline with
+    sticky rice, because "basket" matches a bamboo basket in a dish
+    description. No indirect signal caught it — the direct one does.
+    """
+
+    def test_the_subject_is_read_off_the_answer(self) -> None:
+        step = plan_step("what have I got?", history=[], generate=lambda *a: '{"answer": "Two fritters.", "about": "cart"}')
+        self.assertEqual(step.answer, "Two fritters.")
+        self.assertEqual(step.answer_about, "cart")
+
+    def test_a_missing_or_odd_subject_is_other(self) -> None:
+        for payload in ('{"answer": "hi"}', '{"answer": "hi", "about": 7}', '{"answer": "hi", "about": null}'):
+            self.assertEqual(plan_step("x", history=[], generate=lambda *a, p=payload: p).answer_about, "other")
+
+    def test_the_subject_is_case_insensitive(self) -> None:
+        step = plan_step("x", history=[], generate=lambda *a: '{"answer": "hi", "about": "  CART "}')
+        self.assertEqual(step.answer_about, "cart")
+
+    def test_the_prompt_asks_for_the_subject(self) -> None:
+        prompt = build_planner_prompt("x", history=[], tool_names=None)
+        self.assertIn('"about"', prompt)
+

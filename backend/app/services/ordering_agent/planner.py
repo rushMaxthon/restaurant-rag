@@ -98,6 +98,10 @@ class PlanStep:
     tool: str | None = None
     args: dict[str, Any] = field(default_factory=dict)
     answer: str | None = None
+    # What the model says its own answer is about. The caller routes on it:
+    # a reply pipeline with no cart must not answer a cart question. Free
+    # text, lowercased; anything unrecognised is treated as "other".
+    answer_about: str = "other"
     error: str | None = None
     detail: str | None = None
 
@@ -191,6 +195,19 @@ def _serialize_history(history: Sequence[ToolCallRecord]) -> str:
     return "\n".join(lines)
 
 
+def _cart_facts(cart_summary: str | None) -> str:
+    """The cart the customer is holding, as a fact rather than a lookup.
+
+    The browser sends the cart with every message and the loop resolves it
+    against the branch before this is written, so the model can answer "what
+    have I got?" without first deciding to call a tool — which on a live turn
+    it simply did not do, and the customer was handed a menu search for a
+    dish called "cart".
+    """
+
+    return f"{cart_summary}\n" if cart_summary else ""
+
+
 def _customer_facts(diet: str | None) -> str:
     """What the tools will enforce anyway, said up front so the model does
     not plan a search or an add it will only be refused for."""
@@ -224,6 +241,7 @@ def build_planner_prompt(
     previous_reply: str | None = None,
     recent_history: Sequence[dict[str, str]] | None = None,
     diet: str | None = None,
+    cart_summary: str | None = None,
 ) -> str:
     """Public so a test can assert on the prompt text directly, the same way
     `test_chat_tools.py` asserts on `tool_chat.build_planner_prompt`'s
@@ -235,12 +253,12 @@ tools can tell you and what you already found out this turn.
 
 Return STRICT JSON only, one of these two shapes:
 {{"tool": "<tool name>", "args": {{...}}}}
-{{"answer": "<your reply to the customer>"}}
+{{"answer": "<your reply to the customer>", "about": "cart" | "menu" | "other"}}
 
 Tools (each returns one slice of data):
 {describe_tools_for_prompt(tool_names)}
 
-{_customer_facts(diet)}
+{_customer_facts(diet)}{_cart_facts(cart_summary)}
 Conversation so far, most recent last (empty if this is the first message):
 {_serialize_thread(recent_history, previous_reply)}
 
@@ -252,6 +270,9 @@ Rules:
 - pass only the arguments listed for that tool
 - never include a restaurant, branch, customer or user id — a call
   containing one is discarded
+- "about" says what your answer is about: "cart" for their cart, its
+  prices, totals or placing the order; "menu" for dishes and the menu;
+  "other" for anything else
 - once you have enough to answer, reply with {{"answer": "..."}} instead of
   calling another tool
 - selected_options and lines are JSON lists — pass [] when there is nothing
@@ -397,6 +418,7 @@ def plan_step(
     previous_reply: str | None = None,
     recent_history: Sequence[dict[str, str]] | None = None,
     diet: str | None = None,
+    cart_summary: str | None = None,
 ) -> PlanStep:
     """One planner call: run one more tool, answer, or refuse and say why.
 
@@ -410,7 +432,9 @@ def plan_step(
     generator = generate or _ollama_generate
     try:
         raw = generator(
-            build_planner_prompt(message, history, tool_names, previous_reply, recent_history, diet),
+            build_planner_prompt(
+                message, history, tool_names, previous_reply, recent_history, diet, cart_summary
+            ),
             settings.ordering_agent_planner_timeout_seconds,
             settings.ordering_agent_planner_max_tokens,
         )
@@ -425,7 +449,11 @@ def plan_step(
         answer = parsed.get("answer")
         if not isinstance(answer, str) or not answer.strip():
             return PlanStep(error="planner_unusable", detail="answer was not a non-empty string")
-        return PlanStep(answer=answer.strip())
+        about = parsed.get("about")
+        return PlanStep(
+            answer=answer.strip(),
+            answer_about=about.strip().lower() if isinstance(about, str) else "other",
+        )
 
     if "tool" in parsed:
         return _validate_call(parsed.get("tool"), parsed.get("args"), allowed)

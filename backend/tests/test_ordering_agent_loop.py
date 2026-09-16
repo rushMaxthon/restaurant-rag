@@ -394,8 +394,11 @@ class CartInjectionTests(OrderingAgentLoopTestCase):
             budget_seconds=1000.0,
         )
         self.assertEqual(outcome.answer, "here's your cart")
-        self.assertEqual(len(calls), 1)
-        sent_lines = calls[0].lines
+        # Twice: once up front, so the prompt can state the cart as a fact,
+        # and once for the call the model planned. Both get the real cart —
+        # which is the point of the test — so the planned one is the last.
+        self.assertEqual(len(calls), 2)
+        sent_lines = calls[-1].lines
         self.assertEqual(len(sent_lines), 1)
         self.assertEqual(sent_lines[0].menu_item_id, MENU_ITEM_ID)
         self.assertEqual(sent_lines[0].quantity, 2)

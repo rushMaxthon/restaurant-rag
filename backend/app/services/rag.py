@@ -7283,6 +7283,12 @@ def _json_safe_cart_action(action: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Retrieval saying it matched nothing the customer named. `popular_fallback`
+# is the pipeline's own "I could not find that, here is what is popular"; a
+# reply built on it is about the menu in general, not about the question.
+_NOTHING_MATCHED_SOURCES = frozenset({"popular_fallback", "emergency_db_fallback", "no_more_matches"})
+
+
 def _remember_stated_diet(db: Session, user: ChatPrincipal, diet: str | None) -> None:
     """A signed-in customer who says "I'm vegetarian" in the chat is remembered
     on their account, the way a guest's durable traits are remembered in the
@@ -7323,6 +7329,7 @@ def _run_ordering_agent(
     recent_history: list[dict[str, str]] | None = None,
     guest_preferences: object | None = None,
     stated_diet: str | None = None,
+    retrieval_matched_nothing: bool = False,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7421,7 +7428,15 @@ def _run_ordering_agent(
     return {
         "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
         "agent_reply": outcome.answer,
-        "agent_asks": any(
+        # The reply pipeline reporting `popular_fallback` is it saying, in its
+        # own words, "I could not match that — here are some popular dishes".
+        # If the agent has an answer on such a turn, the agent's is the one
+        # grounded in something the customer asked about.
+        # The model naming its own answer's subject is the direct signal; the
+        # two below are safety nets for a model that omits it.
+        "agent_asks": (outcome.answer_about in {"cart", "order"} and bool(outcome.answer))
+        or (retrieval_matched_nothing and bool(outcome.answer))
+        or any(
             (isinstance(record.result, dict) and record.result.get("outcome") in asking)
             or (record.tool in owned and record.error is None)
             for record in outcome.records
@@ -8287,6 +8302,7 @@ def stream_chat_message(
         recent_history=recent_history,
         guest_preferences=guest_preferences,
         stated_diet=stated_diet,
+        retrieval_matched_nothing=prepared.retrieval_source in _NOTHING_MATCHED_SOURCES,
     )
     yield _sse_frame(
         "done",

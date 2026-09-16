@@ -40,7 +40,7 @@ from app.services.ordering_agent.planner import (
     plan_step,
     validate_call,
 )
-from app.services.ordering_agent.tools import TOOLS, OrderingScope
+from app.services.ordering_agent.tools import TOOLS, CartLineArgs, OrderingScope, ViewCartArgs
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -67,6 +67,10 @@ class TurnOutcome:
     records: list[ToolCallRecord]
     fallback_reason: str | None
     elapsed_seconds: float
+    # What the model said its answer was about ("cart", "menu", "other").
+    # The caller routes on it: a reply pipeline with no cart must never be
+    # the one answering a question about the cart.
+    answer_about: str = "other"
 
 
 def _money(value: Any) -> str:
@@ -186,6 +190,13 @@ def _repeated_call(records: list[ToolCallRecord], tool: str, args: dict[str, Any
 _ID_BEARING_TOOLS = frozenset({"add_to_cart", "remove_from_cart", "set_quantity"})
 
 
+def _as_tool_lines(cart: list[CartLinePayload]) -> list[Any]:
+    """The request's cart in the shape `view_cart` takes. `guards` owns the
+    field-name translation; this is the one caller outside a planned call."""
+
+    return [CartLineArgs.model_validate(line) for line in guards._request_cart_lines(cart)]
+
+
 def _offered_tools(seen: set[uuid.UUID]) -> tuple[str, ...]:
     """Which tools this round may choose from.
 
@@ -289,6 +300,19 @@ def run_turn(
     budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
 
     seen = guards.seed_seen_ids(cart)
+    # The cart resolved once, up front, by the same code the tool uses. It
+    # goes into every prompt as a fact and costs one query per turn; the
+    # alternative is a model that has to remember to look before it speaks,
+    # and on a live turn it did not.
+    cart_summary: str | None = None
+    if cart:
+        try:
+            cart_summary = describe_cart(TOOLS["view_cart"].handler(db, scope, ViewCartArgs(lines=_as_tool_lines(cart))))
+        except Exception:  # noqa: BLE001 - a prompt fact is never worth failing a turn for
+            logger.warning("Ordering agent could not resolve the cart for the prompt", exc_info=True)
+        if cart_summary:
+            cart_summary = "In the cart right now: " + cart_summary
+
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
@@ -300,9 +324,12 @@ def run_turn(
         question = _choice_question_in(records) or _cart_summary_in(records)
         if question is not None:
             logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
+            # A read-back the loop composed from cart or choice rows is about
+            # those rows, whatever the model would have called it.
             return TurnOutcome(
                 answer=question, actions=actions, records=records,
                 fallback_reason=None, elapsed_seconds=clock() - start,
+                answer_about="cart",
             )
         return TurnOutcome(
             answer=None, actions=actions, records=records,
@@ -319,6 +346,7 @@ def run_turn(
         step = plan_step(
             message, history=tuple(records), generate=generate, tool_names=_offered_tools(seen),
             previous_reply=previous_reply, recent_history=recent_history, diet=scope.diet,
+            cart_summary=cart_summary,
         )
 
         if not step.ok:
@@ -352,6 +380,7 @@ def run_turn(
             spoken = step.answer.strip() or _cart_summary_in(records) or _choice_question_in(records)
             return TurnOutcome(
                 answer=spoken,
+                answer_about=step.answer_about,
                 actions=actions,
                 records=records,
                 fallback_reason=None,
