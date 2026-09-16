@@ -60,6 +60,9 @@ EXPECTED_TOOL_NAMES = frozenset(
         "clear_cart",
         # The hand-off to /checkout, added with the "add more or check out?" flow.
         "go_to_checkout",
+        # The details an order needs, gathered over several turns.
+        "order_requirements",
+        "save_order_details",
     }
 )
 
@@ -67,7 +70,7 @@ EXPECTED_TOOL_NAMES = frozenset(
 class RegistryLookupTests(unittest.TestCase):
     """Every registered tool is retrievable by name; an unknown name is not."""
 
-    def test_registry_contains_exactly_the_seven_tools(self) -> None:
+    def test_registry_contains_exactly_the_tools_the_agent_is_given(self) -> None:
         self.assertEqual(set(TOOLS), EXPECTED_TOOL_NAMES)
 
     def test_each_expected_tool_is_retrievable_by_name(self) -> None:

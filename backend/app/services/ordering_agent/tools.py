@@ -59,6 +59,7 @@ from app.schemas.order import (
 )
 from app.services import rag as ordering_rag
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
+from app.services.ordering_agent import order_draft
 from app.services.menu_item_customizations import (
     ResolvedMenuItemSelection,
     SelectedCustomizationOptionInput,
@@ -334,6 +335,32 @@ class GoToCheckoutArgs(ToolArgs):
     lines: list[CartLineArgs] = Field(default_factory=list)
 
 
+class OrderRequirementsArgs(NoArgs):
+    """What is still needed before this order can be placed. Takes nothing:
+    the cart, the customer and the draft are all scope, not arguments."""
+
+
+class SaveOrderDetailsArgs(ToolArgs):
+    """The contact details a customer just gave, as they said them.
+
+    Every field optional because they arrive a sentence at a time. Each is
+    validated before it is kept, and a refusal names the field so the agent
+    can ask again for that one rather than starting over.
+
+    This is the only tool that takes a customer's own words as data rather
+    than as an id, and it is why: a name, an email and an address cannot be
+    looked up from a menu. They are validated here and stored out of the
+    model's reach — `order_requirements` afterwards reports only that a field
+    is filled, never what is in it.
+    """
+
+    contact_name: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=32)
+    contact_email: str | None = Field(default=None, max_length=320)
+    delivery_address: str | None = Field(default=None, max_length=2000)
+    fulfillment_type: OrderFulfillmentType | None = None
+
+
 class ClearCartArgs(NoArgs):
     """Empty the cart. `NoArgs` on purpose — there is no field a model could
     fill in that would make this any less destructive, so none exists to
@@ -366,6 +393,11 @@ class OrderingScope:
     # it deterministically: a vegetarian's search is veg-only and an add of
     # a non-veg dish is refused, whatever the model planned.
     diet: str | None = None
+    # Which conversation this is. The order draft is keyed by it, so the
+    # details a customer gives over several turns find each other again.
+    # Caller-supplied like the rest of the scope: the model never chooses
+    # whose details it is filling in.
+    session_id: uuid.UUID | None = None
 
 ToolHandler = Callable[[Session, OrderingScope, ToolArgs], dict[str, Any]]
 
@@ -1191,6 +1223,60 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def _order_requirements(
+    db: Session, scope: OrderingScope, args: OrderRequirementsArgs
+) -> dict[str, Any]:
+    """What is known, what is missing, and whether this order could be placed.
+
+    Reports the NAMES of the details held, never their values. A customer's
+    address belongs on the order and in the kitchen ticket, not in a model's
+    context window on every later turn — see `order_draft`.
+    """
+
+    if scope.session_id is None:
+        return {"outcome": "no_session"}
+    draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
+    return {
+        "outcome": "requirements",
+        "identified": scope.customer is not None,
+        "have": draft.known_fields(),
+        "missing": draft.missing_fields(),
+        "fulfillment_type": draft.fulfillment_type,
+        "ready_to_place": draft.is_complete and scope.customer is not None,
+    }
+
+
+def _save_order_details(
+    db: Session, scope: OrderingScope, args: SaveOrderDetailsArgs
+) -> dict[str, Any]:
+    """Keep what the customer just gave, and say what is still wanted."""
+
+    if scope.session_id is None:
+        return {"outcome": "no_session"}
+    draft = order_draft.load(scope.session_id)
+    draft, problems = order_draft.remember(
+        draft,
+        contact_name=args.contact_name,
+        contact_phone=args.contact_phone,
+        contact_email=args.contact_email,
+        delivery_address=args.delivery_address,
+        fulfillment_type=args.fulfillment_type.value if args.fulfillment_type else None,
+    )
+    order_draft.save(scope.session_id, draft)
+    # Seeded only for the report: what the account holds counts as known, but
+    # it is not written into the draft the customer is building.
+    seeded = order_draft.seed_from_profile(
+        order_draft.OrderDraft(**{f: getattr(draft, f) for f in draft.__slots__}), scope.customer
+    )
+    return {
+        "outcome": "saved",
+        "have": seeded.known_fields(),
+        "missing": seeded.missing_fields(),
+        "problems": problems,
+        "ready_to_place": seeded.is_complete and scope.customer is not None,
+    }
+
+
 def _serialize_action(action: CartAction) -> dict[str, Any]:
     """Identifiers and a quantity, never a name or a price — the whole point
     of Task 3. The client already has the branch menu loaded and renders
@@ -1445,6 +1531,20 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
         _clear_cart,
     ),
     ToolSpec(
+        "order_requirements",
+        "What is still needed before this order can be placed: which contact "
+        "details are held and which are missing.",
+        OrderRequirementsArgs,
+        _order_requirements,
+    ),
+    ToolSpec(
+        "save_order_details",
+        "Keep the name, phone, email, address or delivery choice the "
+        "customer just gave, and report what is still missing.",
+        SaveOrderDetailsArgs,
+        _save_order_details,
+    ),
+    ToolSpec(
         "go_to_checkout",
         "The customer is finished adding and wants to pay: hands them to "
         "the checkout page. Never places or pays for an order.",
@@ -1507,6 +1607,8 @@ __all__ = [
     "ClearCartArgs",
     "GoToCheckoutArgs",
     "GetDishArgs",
+    "OrderRequirementsArgs",
+    "SaveOrderDetailsArgs",
     "NoArgs",
     "OrderingScope",
     "PaymentOptionsArgs",

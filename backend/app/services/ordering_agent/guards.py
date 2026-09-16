@@ -82,6 +82,7 @@ def scope_for(
     restaurant_id: uuid.UUID,
     restaurant_location_id: uuid.UUID,
     diet: str | None = None,
+    session_id: uuid.UUID | None = None,
 ) -> OrderingScope:
     """The half of every tool call the model never supplies, built from the
     caller's already-authenticated session — never from anything the model
@@ -96,6 +97,7 @@ def scope_for(
         restaurant_location_id=restaurant_location_id,
         customer=customer,
         diet=diet,
+        session_id=session_id,
     )
 
 

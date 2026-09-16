@@ -7330,6 +7330,7 @@ def _run_ordering_agent(
     guest_preferences: object | None = None,
     stated_diet: str | None = None,
     retrieval_matched_nothing: bool = False,
+    session_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """Run the ordering agent for this turn and return ONLY what the `done`
     frame adds. Never touches the reply, the suggestions or the response cache.
@@ -7374,6 +7375,8 @@ def _run_ordering_agent(
                 # is only read on the next one.
                 diet=_canonical_intent_diet(stated_diet)
                 or preference_diet_for_cache(db, user, guest_preferences),
+                # The conversation the order draft belongs to.
+                session_id=session_id,
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`
@@ -8303,6 +8306,7 @@ def stream_chat_message(
         guest_preferences=guest_preferences,
         stated_diet=stated_diet,
         retrieval_matched_nothing=prepared.retrieval_source in _NOTHING_MATCHED_SOURCES,
+        session_id=prepared.active_session_id,
     )
     yield _sse_frame(
         "done",
