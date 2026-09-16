@@ -58,6 +58,7 @@ from app.schemas.order import (
     OrderCreateRequest,
 )
 from app.services import rag as ordering_rag
+from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.menu_item_customizations import (
     ResolvedMenuItemSelection,
     SelectedCustomizationOptionInput,
@@ -266,6 +267,66 @@ class PaymentOptionsArgs(NoArgs):
     id could occupy, so this tool cannot be extended into initiating a
     payment without someone visibly changing its argument model first. It
     answers "do you take card", it never processes one.
+    """
+
+
+class AddToCartArgs(CartLineArgs):
+    """A dish the customer has fully or partially specified, to add.
+
+    Field-for-field identical to `CartLineArgs` — an addition IS a cart line
+    — kept as its own class rather than a bare alias so the registry has a
+    distinct, self-documenting name for the tool's argument model, the same
+    way `RestaurantInfoArgs`/`PaymentOptionsArgs` are distinct `NoArgs`
+    subclasses above.
+    """
+
+
+class RemoveFromCartArgs(ToolArgs):
+    """Which line to remove, identified the only way it honestly can be.
+
+    There is no server-side cart, so there is no server-issued line id to
+    hand back from an earlier call the way a database row would have one.
+    `menu_item_id` must be an id the model read off a *previous* tool
+    result (`view_cart`, `get_dish`, `search_menu`) — never one it invented
+    from a name — and `existing_lines` is the browser's cart, echoed back
+    exactly as `view_cart`/`price_quote` already require, so this handler can
+    count how many of the customer's current lines that id actually matches.
+
+    That count is the whole safety mechanism, reused rather than
+    reinvented from `cart_actions.resolve_cart_actions`: zero matches means
+    nothing to remove (silence, not an error), exactly one is unambiguous
+    enough to apply, and more than one — the customer has this dish in more
+    than one size or with different toppings — is exactly the ambiguity
+    `cart_actions.py` already treats as destructive-so-always-proposed. A
+    `menu_item_size_id` field was deliberately left off: matching stays at
+    the same granularity `cart_actions._matching_lines` already uses (by
+    `menu_item_id` alone), so "remove the pizza" behaves identically whether
+    it came from the old regex tier or this tool, and two different sizes of
+    the same dish correctly reads as ambiguous rather than as two unrelated
+    items.
+    """
+
+    menu_item_id: uuid.UUID
+    existing_lines: list[CartLineArgs] = Field(default_factory=list)
+
+
+class SetQuantityArgs(ToolArgs):
+    """Change one line's quantity — same identification rule as
+    `RemoveFromCartArgs`, plus the target quantity itself. `quantity` here is
+    the FINAL count the customer wants, not a delta, matching
+    `extract_requested_quantity`'s own semantics ("make it two" means the
+    line should read two afterwards).
+    """
+
+    menu_item_id: uuid.UUID
+    quantity: int = Field(ge=1, le=99)
+    existing_lines: list[CartLineArgs] = Field(default_factory=list)
+
+
+class ClearCartArgs(NoArgs):
+    """Empty the cart. `NoArgs` on purpose — there is no field a model could
+    fill in that would make this any less destructive, so none exists to
+    tempt it. Always returns a `proposed` action; see `_clear_cart`.
     """
 
 
@@ -1114,6 +1175,148 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def _serialize_action(action: CartAction) -> dict[str, Any]:
+    """Identifiers and a quantity, never a name or a price — the whole point
+    of Task 3. The client already has the branch menu loaded and renders
+    from that, which is why there is exactly one place `MenuItem.name`/
+    `MenuItem.price` are read for a cart-mutating response: nowhere.
+    """
+
+    return {
+        "kind": action.kind,
+        "status": action.status,
+        "reason": action.reason,
+        "menu_item_id": action.menu_item_id,
+        "menu_item_size_id": action.menu_item_size_id,
+        "selected_option_ids": list(action.selected_options),
+        "quantity": action.quantity,
+    }
+
+
+def _add_to_cart(db: Session, scope: OrderingScope, args: AddToCartArgs) -> dict[str, Any]:
+    """One line to add, resolved through the exact same three-outcome sieve
+    `view_cart`/`price_quote` already run every line through
+    (`_load_branch_menu_items` + `_resolve_cart_lines`), reused rather than
+    reimplemented so "is this dish real, sized, customizable" can never
+    answer differently for `view_cart` than it does here.
+
+    Not on this branch -> `not_on_menu`, and nothing else — the "say
+    nothing" outcome the plan requires, not an error. Needs a size or a
+    required group -> `needs_choice`, carrying exactly what `_serialize_choice`
+    already returns for `view_cart`'s `needs_choice` lines, so the agent asks
+    a real question instead of guessing. Only a fully specified line ever
+    becomes an `applied` action; a line that DID specify a size/options still
+    carries them onto the action, since those are the identifiers the client
+    needs to add exactly the row that was resolved, not the base dish.
+    """
+
+    menu_items = _load_branch_menu_items(db, scope)
+    resolution = _resolve_cart_lines(menu_items, [args])
+
+    if resolution.dropped_count:
+        return {"outcome": "not_on_menu"}
+    if resolution.needs_choice:
+        return {"outcome": "needs_choice", **_serialize_choice(resolution.needs_choice[0])}
+
+    entry = resolution.resolved[0]
+    action = CartAction(
+        kind="add",
+        status="applied",
+        reason="named",
+        menu_item_id=entry.menu_item.id,
+        quantity=entry.line.quantity,
+        menu_item_size_id=entry.line.menu_item_size_id,
+        selected_options=tuple(option.option_id for option in entry.line.selected_options),
+    )
+    return {"outcome": "action", "action": _serialize_action(action)}
+
+
+def _existing_lines_for(args_lines: list[CartLineArgs]) -> list[ExistingCartLine]:
+    return [ExistingCartLine(menu_item_id=line.menu_item_id) for line in args_lines]
+
+
+def _matching_full_lines(args_lines: list[CartLineArgs], menu_item_id: uuid.UUID) -> list[CartLineArgs]:
+    return [line for line in args_lines if line.menu_item_id == menu_item_id]
+
+
+def _remove_from_cart(db: Session, scope: OrderingScope, args: RemoveFromCartArgs) -> dict[str, Any]:
+    """Destructive-when-ambiguous, reused verbatim from `cart_actions.py`:
+    `_matching_lines` is the exact function `resolve_cart_actions` already
+    calls to decide between `applied` and `proposed` for a `remove`, applied
+    here to a model-supplied id instead of a regex-classified message. No
+    branch lookup: a line the browser is holding is real by construction —
+    it is describing its own cart, not naming an id it hopes exists.
+    """
+
+    matches = _matching_lines(_existing_lines_for(args.existing_lines), args.menu_item_id)
+    if not matches:
+        return {"outcome": "not_found"}
+
+    if len(matches) > 1:
+        action = CartAction(kind="remove", status="proposed", reason="destructive", menu_item_id=args.menu_item_id)
+        return {"outcome": "action", "action": _serialize_action(action)}
+
+    line = _matching_full_lines(args.existing_lines, args.menu_item_id)[0]
+    action = CartAction(
+        kind="remove",
+        status="applied",
+        reason="named",
+        menu_item_id=args.menu_item_id,
+        menu_item_size_id=line.menu_item_size_id,
+        selected_options=tuple(option.option_id for option in line.selected_options),
+    )
+    return {"outcome": "action", "action": _serialize_action(action)}
+
+
+def _set_quantity(db: Session, scope: OrderingScope, args: SetQuantityArgs) -> dict[str, Any]:
+    """Same identification and ambiguity rule as `_remove_from_cart` — the
+    only difference is the resulting `kind`/`quantity` and that
+    `cart_actions.resolve_cart_actions` uses `reason="ambiguous"`, not
+    `"destructive"`, for a multi-match `set_quantity`: overwriting the wrong
+    line's count is a mistake to confirm, not the same irrecoverable class of
+    harm as deleting the wrong one, and the reason string is what the client
+    uses to choose its wording.
+    """
+
+    matches = _matching_lines(_existing_lines_for(args.existing_lines), args.menu_item_id)
+    if not matches:
+        return {"outcome": "not_found"}
+
+    if len(matches) > 1:
+        action = CartAction(
+            kind="set_quantity",
+            status="proposed",
+            reason="ambiguous",
+            menu_item_id=args.menu_item_id,
+            quantity=args.quantity,
+        )
+        return {"outcome": "action", "action": _serialize_action(action)}
+
+    line = _matching_full_lines(args.existing_lines, args.menu_item_id)[0]
+    action = CartAction(
+        kind="set_quantity",
+        status="applied",
+        reason="named",
+        menu_item_id=args.menu_item_id,
+        quantity=args.quantity,
+        menu_item_size_id=line.menu_item_size_id,
+        selected_options=tuple(option.option_id for option in line.selected_options),
+    )
+    return {"outcome": "action", "action": _serialize_action(action)}
+
+
+def _clear_cart(db: Session, scope: OrderingScope, args: ClearCartArgs) -> dict[str, Any]:
+    """Always `proposed`, unconditionally — no argument, no confidence level
+    and no cart content could ever change that, per the plan's "destructive
+    is always proposed, never applied" rule. Needs neither `db` nor `scope`;
+    kept in the `(db, scope, args)` shape only so every handler in the
+    registry reads alike.
+    """
+
+    action = CartAction(kind="clear", status="proposed", reason="destructive")
+    return {"outcome": "action", "action": _serialize_action(action)}
+
+
 TOOL_LIST: tuple[ToolSpec, ...] = (
     ToolSpec(
         "search_menu",
@@ -1165,6 +1368,36 @@ TOOL_LIST: tuple[ToolSpec, ...] = (
         PaymentOptionsArgs,
         _payment_options,
     ),
+    ToolSpec(
+        "add_to_cart",
+        "Add a dish to the cart. Never applied for a dish that still needs "
+        "a size or a required choice — that returns the choices instead.",
+        AddToCartArgs,
+        _add_to_cart,
+    ),
+    ToolSpec(
+        "remove_from_cart",
+        "Remove a dish from the cart by its menu item id. Proposed for "
+        "confirmation, rather than applied, whenever that id matches more "
+        "than one current cart line.",
+        RemoveFromCartArgs,
+        _remove_from_cart,
+    ),
+    ToolSpec(
+        "set_quantity",
+        "Change how many of a dish are in the cart. Proposed for "
+        "confirmation, rather than applied, whenever the id matches more "
+        "than one current cart line.",
+        SetQuantityArgs,
+        _set_quantity,
+    ),
+    ToolSpec(
+        "clear_cart",
+        "Empty the entire cart. Always proposed for the customer's "
+        "confirmation, never applied automatically.",
+        ClearCartArgs,
+        _clear_cart,
+    ),
 )
 
 
@@ -1215,16 +1448,20 @@ __all__ = [
     "FORBIDDEN_ARG_NAMES",
     "TOOL_LIST",
     "TOOLS",
+    "AddToCartArgs",
     "CartLineArgs",
     "CheckHoursArgs",
+    "ClearCartArgs",
     "GetDishArgs",
     "NoArgs",
     "OrderingScope",
     "PaymentOptionsArgs",
     "PriceQuoteArgs",
+    "RemoveFromCartArgs",
     "RestaurantInfoArgs",
     "SearchMenuArgs",
     "SelectedOptionArgs",
+    "SetQuantityArgs",
     "ToolArgs",
     "ToolHandler",
     "ToolSpec",

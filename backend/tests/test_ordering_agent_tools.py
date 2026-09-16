@@ -53,6 +53,11 @@ EXPECTED_TOOL_NAMES = frozenset(
         "price_quote",
         "restaurant_info",
         "payment_options",
+        # Task 3: the four cart-mutating tools.
+        "add_to_cart",
+        "remove_from_cart",
+        "set_quantity",
+        "clear_cart",
     }
 )
 

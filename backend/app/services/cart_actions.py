@@ -284,6 +284,15 @@ class CartAction:
     reason: ActionReason
     menu_item_id: uuid.UUID | None = None
     quantity: int | None = None
+    # Added for the ordering agent's mutation tools (Task 3): the regex-tier
+    # caller above never named a size or a topping, so these two defaulted
+    # away for every existing call site. A tool-driven `add`/`remove` can
+    # resolve to one specific sized, customized line, and the client needs
+    # that identifier to apply the action to the right line rather than the
+    # first line that happens to share a `menu_item_id` — still identifiers
+    # only, never a name or a price.
+    menu_item_size_id: uuid.UUID | None = None
+    selected_options: tuple[uuid.UUID, ...] = ()
 
 
 def _matching_lines(existing_lines: list[ExistingCartLine], menu_item_id: uuid.UUID) -> list[ExistingCartLine]:
