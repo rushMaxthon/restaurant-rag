@@ -10,11 +10,21 @@ step of the ordering flow:
    with exactly one default, it is the cheapest ACTIVE option, ties go to the
    lowest `sort_order`, and no optional or multi-select group gets one.
 
-2. `ordering_agent.tools._describe_defaults_for_size` (reached through
-   `get_dish` with `menu_item_size_id` set) — the tool-facing read of that
-   column: which options are the defaults, the price of the size plus its
-   defaults from `resolve_menu_item_selection` (never computed here), and
-   which groups the customer may still change.
+2. `get_dish`'s `customization_groups` — the tool-facing read of that column.
+
+   Fix round 3 (2026-09-16) superseded the original shape here:
+   `_describe_defaults_for_size` used to compute a size-plus-defaults PRICE
+   inside `get_dish` via `resolve_menu_item_selection`, gated behind an
+   explicit `menu_item_size_id` argument, and reported nothing about
+   customization groups at all when that argument was omitted — which left a
+   dish with `has_customizations=True` reporting no group information
+   whatsoever until a size was named. `get_dish` now always returns
+   `customization_groups` (dish-wide groups, plus a given size's own once
+   `menu_item_size_id` narrows it), each option carrying its real
+   `is_default`, and prices nothing itself — see
+   `test_ordering_agent_readonly.py::test_get_dish_defaults_compose_into_a_real_price_quote`
+   for proof that those defaults compose into a working `price_quote` call
+   instead.
 
 DB fixture mirrors `test_ordering_agent_readonly.py`: a throwaway local
 Postgres database via `Base.metadata.create_all`, skipped outright if
@@ -362,10 +372,10 @@ class BackfillSqlTests(unittest.TestCase):
 
 
 @unittest.skipUnless(postgres_available(), "Postgres is not reachable")
-class GetDishDefaultsForSizeTests(unittest.TestCase):
-    """`get_dish(name, menu_item_size_id=...)` — the tool-facing read of the
-    real `is_default` column, exercised through the registry the ordering
-    agent actually calls, exactly like `test_ordering_agent_readonly.py`.
+class GetDishCustomizationGroupsTests(unittest.TestCase):
+    """`get_dish`'s `customization_groups` — the tool-facing read of the real
+    `is_default` column, exercised through the registry the ordering agent
+    actually calls, exactly like `test_ordering_agent_readonly.py`.
     """
 
     engine = None
@@ -462,10 +472,41 @@ class GetDishDefaultsForSizeTests(unittest.TestCase):
         session.flush()
 
         small = MenuItemSize(id=uuid.uuid4(), menu_item_id=pizza.id, name="Small", price=Decimal("300.00"))
-        session.add(small)
+        large = MenuItemSize(id=uuid.uuid4(), menu_item_id=pizza.id, name="Large", price=Decimal("450.00"))
+        session.add_all([small, large])
         session.flush()
         cls.pizza_id = pizza.id
         cls.small_id = small.id
+        cls.large_id = large.id
+
+        # A group the SCHEMA scopes to one specific size
+        # (`menu_item_size_id` set) rather than the dish — only meaningful
+        # once Large is chosen, and must not appear for Small or for no size
+        # at all.
+        large_only_group = MenuItemCustomizationGroup(
+            id=uuid.uuid4(),
+            menu_item_id=pizza.id,
+            menu_item_size_id=large.id,
+            title="Stuffed Crust Filling",
+            is_required=False,
+            selection_type=MenuItemCustomizationSelectionType.SINGLE,
+            min_selection=0,
+            max_selection=1,
+        )
+        session.add(large_only_group)
+        session.flush()
+        session.add(
+            MenuItemCustomizationOption(
+                id=uuid.uuid4(),
+                group_id=large_only_group.id,
+                name="Cheese Stuffed",
+                extra_price=Decimal("70.00"),
+                is_default=False,
+                sort_order=1,
+            )
+        )
+        session.flush()
+        cls.large_only_group_id = large_only_group.id
 
         # A required, single-choice group WITH a default already marked —
         # simulating the state migration 0061 leaves a real group in.
@@ -571,6 +612,7 @@ class GetDishDefaultsForSizeTests(unittest.TestCase):
         cls.undefaulted_pizza_id = undefaulted_pizza.id
         cls.undefaulted_size_id = undefaulted_size.id
         cls.thin_id = thin.id
+        cls.stuffed_id = stuffed.id
         cls.olives_id = olives.id
         session.commit()
 
@@ -580,47 +622,77 @@ class GetDishDefaultsForSizeTests(unittest.TestCase):
     def _scope(self) -> OrderingScope:
         return OrderingScope(restaurant_id=self.restaurant_id, restaurant_location_id=self.location_id)
 
-    def test_get_dish_without_a_size_never_reports_defaults(self) -> None:
-        """Backward compatible: omitting `menu_item_size_id` must not change
-        `get_dish`'s existing response shape at all."""
+    def test_get_dish_without_a_size_reports_the_dish_wide_groups_and_their_defaults(self) -> None:
+        """The reported gap, reproduced directly: `has_customizations: True`
+        must come with the groups themselves even with no size named — the
+        dish-wide ones (Crust, Extra Toppings; both have no
+        `menu_item_size_id`) do not depend on a size to be knowable."""
 
         with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
             result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Default Pizza"))
-        self.assertTrue(result["found"])
-        self.assertNotIn("defaults", result)
 
-    def test_get_dish_with_a_size_reports_the_default_options_and_their_price(self) -> None:
+        self.assertTrue(result["found"])
+        groups_by_title = {group["title"]: group for group in result["customization_groups"]}
+        self.assertEqual(set(groups_by_title), {"Crust", "Extra Toppings"})
+
+        crust = groups_by_title["Crust"]
+        self.assertTrue(crust["is_required"])
+        self.assertIsNone(crust["menu_item_size_id"])
+        crust_defaults = {o["option_id"] for o in crust["options"] if o["is_default"]}
+        self.assertEqual(crust_defaults, {self.thin_id})
+        self.assertEqual({o["option_id"] for o in crust["options"]}, {self.thin_id, self.stuffed_id})
+
+        toppings = groups_by_title["Extra Toppings"]
+        self.assertFalse(toppings["is_required"])
+        # Offered but not pre-picked — nothing on this group has is_default.
+        self.assertEqual({o["option_id"] for o in toppings["options"] if o["is_default"]}, set())
+
+    def test_get_dish_never_computes_a_price(self) -> None:
+        """The coordinator's explicit instruction: get_dish answers "what
+        could this be", never "what would this cost" — no price-shaped key
+        anywhere in the response."""
+
         with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
             result = TOOLS["get_dish"].handler(
-                db,
-                self._scope(),
-                GetDishArgs(name="Default Pizza", menu_item_size_id=self.small_id),
+                db, self._scope(), GetDishArgs(name="Default Pizza", menu_item_size_id=self.small_id)
             )
 
-        self.assertTrue(result["found"])
-        defaults = result["defaults"]
-        self.assertTrue(defaults["priced"])
-        # Size ($300.00) plus the one default option (Thin Crust, +$0.00) —
-        # from `resolve_menu_item_selection`, not re-added here.
-        self.assertEqual(defaults["price_with_defaults"], Decimal("300.00"))
-        self.assertEqual(defaults["size_name"], "Small")
+        self.assertNotIn("defaults", result)
+        self.assertNotIn("price_with_defaults", result)
+        for group in result["customization_groups"]:
+            self.assertNotIn("price", group)
+            for option in group["options"]:
+                self.assertNotIn("price", option)
 
-        default_option_ids = {option["option_id"] for option in defaults["default_options"]}
-        self.assertEqual(default_option_ids, {self.thin_id})
+    def test_get_dish_scopes_a_size_specific_group_to_the_right_size(self) -> None:
+        """`Stuffed Crust Filling` is scoped to Large via the group's own
+        `menu_item_size_id` — it must be absent with no size given, absent
+        for Small, and present for Large."""
 
-        groups_by_title = {group["title"]: group for group in defaults["changeable_groups"]}
-        self.assertEqual(set(groups_by_title), {"Crust", "Extra Toppings"})
-        self.assertEqual(groups_by_title["Crust"]["default_option_ids"], [self.thin_id])
-        self.assertTrue(groups_by_title["Crust"]["is_required"])
-        # Offered but not pre-picked — nothing on this group has is_default.
-        self.assertEqual(groups_by_title["Extra Toppings"]["default_option_ids"], [])
-        self.assertFalse(groups_by_title["Extra Toppings"]["is_required"])
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            no_size = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Default Pizza"))
+            small = TOOLS["get_dish"].handler(
+                db, self._scope(), GetDishArgs(name="Default Pizza", menu_item_size_id=self.small_id)
+            )
+            large = TOOLS["get_dish"].handler(
+                db, self._scope(), GetDishArgs(name="Default Pizza", menu_item_size_id=self.large_id)
+            )
 
-    def test_get_dish_with_a_size_that_has_no_marked_default_reports_unpriced(self) -> None:
+        self.assertNotIn("Stuffed Crust Filling", {g["title"] for g in no_size["customization_groups"]})
+        self.assertNotIn("Stuffed Crust Filling", {g["title"] for g in small["customization_groups"]})
+
+        large_group = next(
+            g for g in large["customization_groups"] if g["title"] == "Stuffed Crust Filling"
+        )
+        self.assertEqual(large_group["menu_item_size_id"], self.large_id)
+        # The dish-wide groups are still there too — narrowing to a size
+        # adds that size's own groups, it does not drop the dish's others.
+        self.assertIn("Crust", {g["title"] for g in large["customization_groups"]})
+
+    def test_get_dish_reports_no_default_for_a_group_nobody_backfilled(self) -> None:
         """A required group nobody ever ran the backfill against (or added
-        after it ran) must not get an invented price — `resolve_menu_item_selection`
-        refuses it exactly as it would refuse a real cart line missing that
-        choice, and the tool relays that refusal rather than guessing."""
+        after it ran) must not get an invented default — every option in it
+        honestly reports `is_default: False`, same as an optional group."""
 
         with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
             result = TOOLS["get_dish"].handler(
@@ -630,8 +702,9 @@ class GetDishDefaultsForSizeTests(unittest.TestCase):
             )
 
         self.assertTrue(result["found"])
-        self.assertFalse(result["defaults"]["priced"])
-        self.assertIn("reason", result["defaults"])
+        crust_group = next(g for g in result["customization_groups"] if g["title"] == "Crust")
+        self.assertTrue(crust_group["is_required"])
+        self.assertEqual({o["option_id"] for o in crust_group["options"] if o["is_default"]}, set())
 
 
 if __name__ == "__main__":

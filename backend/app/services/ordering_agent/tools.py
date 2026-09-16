@@ -186,12 +186,17 @@ class GetDishArgs(ToolArgs):
     by name and retrieval confidence against the branch's real menu, never by
     an id the model invented on the strength of a name it typed.
 
-    `menu_item_size_id` is optional and additive: step 1 of the customer's
-    flow ("small or large, and what do they cost") is answered by `sizes` on
-    the base response regardless, but once a size is actually chosen, step 2
-    ("comes with X and Y, that's $N") needs the defaults for THAT size, which
-    only exist once a size is picked out of `has_sizes` items. Omitted for an
-    unsized dish, or before the customer has chosen one.
+    `customization_groups` is always in the response now (fix round 3,
+    2026-09-16) — every group that applies dish-wide, plus, once
+    `menu_item_size_id` narrows it, that size's own groups too
+    (`MenuItemCustomizationGroup.menu_item_size_id` scopes some groups to one
+    specific size rather than the whole dish). `menu_item_size_id` is
+    optional and purely a filter: step 1 of the customer's flow ("small or
+    large, and what do they cost") is answered by `sizes` on the base
+    response regardless of whether a size is named here; naming one only
+    narrows which size-specific groups are included alongside the dish-wide
+    ones. No price is computed by this narrowing — `price_quote` is where a
+    size-plus-selections total comes from.
     """
 
     name: str = Field(min_length=1, max_length=255)
@@ -199,9 +204,9 @@ class GetDishArgs(ToolArgs):
         default=None,
         description=(
             "A size already chosen for this dish (from an earlier get_dish "
-            "or search_menu result), if any. When given, the response also "
-            "reports the defaults for that size, the price of the size plus "
-            "its defaults, and which groups can still be changed."
+            "or search_menu result), if any. Narrows `customization_groups` "
+            "to the dish-wide groups plus this size's own; omit to see only "
+            "the dish-wide ones."
         ),
     )
 
@@ -525,29 +530,58 @@ def _serialize_size(size: MenuItemSize) -> dict[str, Any]:
     return {"size_id": size.id, "name": size.name, "price": size.price}
 
 
+def _default_option_ids_for_group(group: MenuItemCustomizationGroup) -> frozenset[uuid.UUID]:
+    """Options marked as what a customer gets without changing anything
+    (`MenuItemCustomizationOption.is_default`, migration 0061). Backfilled
+    only for groups that are both required and single-choice — the one shape
+    where the customer cannot end up with nothing, so there is an honest
+    default to name (the cheapest active option, already priced into the
+    base price). Every other group's options are all `is_default=False` by
+    design, so this returns an empty set for them rather than guessing one.
+    """
+
+    return frozenset(option.id for option in group.options if option.is_active and option.is_default)
+
+
 def _serialize_customization_group(
     group: MenuItemCustomizationGroup,
     *,
     needs_selection: bool,
     selected_option_ids: frozenset[uuid.UUID] = frozenset(),
 ) -> dict[str, Any]:
+    """Fix round 3 (2026-09-16): `default_selection`/`at_default` used to be a
+    placeholder ("optional groups default to empty, required groups have no
+    default") because no per-option default existed on this schema. Migration
+    `0061` added `MenuItemCustomizationOption.is_default`, backfilled for
+    every required+single-choice group (the cheapest active option); this now
+    reads that real column instead of guessing from `is_required` alone — a
+    required group can genuinely have a marked default now, and reports it.
+    """
+
+    default_ids = _default_option_ids_for_group(group)
     return {
         "group_id": group.id,
         "title": group.title,
         "is_required": group.is_required,
-        # True only for a required group with nothing chosen yet — the one
-        # case with no default to fall back on. An optional group is never
-        # `True` here: its default IS the empty selection below, not a
-        # specific pre-picked option, because no such flag exists on
-        # `MenuItemCustomizationOption` to invent one from.
+        # True only when nothing satisfies this group yet AND it is
+        # required — the one case where an answer cannot be deferred.
         "needs_selection": needs_selection,
-        "default_selection": [] if not group.is_required else None,
+        # The real `is_default` option ids for this group — empty for an
+        # optional or multi-select group (migration 0061 never marks one
+        # there, by design: a free choice is never pre-decided), one id for
+        # a backfilled required+single group, and still empty for a
+        # required group nobody ever ran the backfill against (honestly
+        # reported as "no default", not guessed).
+        "default_selection": sorted(default_ids, key=str),
         # What is actually selected on THIS line for this group right now —
         # empty for an untouched optional group (that emptiness IS the
         # default being accepted, stated out loud here rather than applied
-        # silently), or the customer's real picks otherwise.
+        # silently), or the customer's real picks otherwise. `at_default`
+        # compares the two sets directly, so it is equally true of an
+        # optional group left untouched and a required group where the
+        # customer's pick happens to match the marked default.
         "selected_option_ids": sorted(selected_option_ids, key=str),
-        "at_default": not group.is_required and not selected_option_ids,
+        "at_default": frozenset(selected_option_ids) == default_ids,
         "min_selection": group.min_selection,
         "max_selection": group.max_selection,
         "selection_type": group.selection_type.value,
@@ -640,111 +674,38 @@ def _serialize_menu_item(menu_item: MenuItem) -> dict[str, Any]:
     }
 
 
-def _default_option_ids_for_group(group: MenuItemCustomizationGroup) -> frozenset[uuid.UUID]:
-    """Options marked as what a customer gets without changing anything
-    (`MenuItemCustomizationOption.is_default`, migration 0061). Backfilled
-    only for groups that are both required and single-choice — the one shape
-    where the customer cannot end up with nothing, so there is an honest
-    default to name (the cheapest active option, already priced into the
-    base price). Every other group's options are all `is_default=False` by
-    design, so this returns an empty set for them rather than guessing one.
+def _serialize_catalog_group(group: MenuItemCustomizationGroup) -> dict[str, Any]:
+    """A customization group as pure catalog fact — title, whether it is
+    required, its selection type and min/max, every active option with its
+    real `extra_price` and whether it is the marked default
+    (`MenuItemCustomizationOption.is_default`, migration 0061). No price is
+    computed here: `get_dish` answers "what could this be", never "what
+    would THIS combination cost" — that number comes from `price_quote`
+    (fix round 3, 2026-09-16), the one price path, same as everywhere else
+    in this module.
+
+    `menu_item_size_id` is the group's own scoping column, passed straight
+    through: `None` means the group applies to the dish at every size, a
+    real id means the schema itself restricts it to one specific size.
     """
 
-    return frozenset(option.id for option in group.options if option.is_active and option.is_default)
-
-
-def _defaults_for_size(
-    menu_item: MenuItem, selected_size: MenuItemSize | None
-) -> tuple[list[SelectedCustomizationOptionInput], list[MenuItemCustomizationGroup]]:
-    """The selections an unmodified order for this size would carry, and
-    every group a customer could still change to get something else.
-
-    `active_groups` doubles as "what's changeable": even a required group's
-    default can be swapped for another option in the same group, and an
-    optional group can always be added to, so there is no narrower list of
-    "changeable" groups than the full set of active ones.
-    """
-
-    active_groups = _get_active_customization_groups(menu_item, selected_size=selected_size)
-    default_selections = [
-        SelectedCustomizationOptionInput(option_id=option_id)
-        for group in active_groups
-        for option_id in _default_option_ids_for_group(group)
-    ]
-    return default_selections, active_groups
-
-
-def _describe_defaults_for_size(menu_item: MenuItem, menu_item_size_id: uuid.UUID) -> dict[str, Any]:
-    """Step 2 of the customer's specified flow ("comes with X and Y, that's
-    $N") for a dish whose size is already known — answered directly from
-    `get_dish` so the agent does not have to fabricate a whole cart line just
-    to learn what a plain, unmodified order costs.
-
-    Priced the same way a real cart line would be: the default option ids are
-    run through `resolve_menu_item_selection`, the same function `view_cart`
-    and checkout use, never arithmetic done here. A required group that has
-    no default at all (possible if a group was added after the 0061 backfill
-    ran, or is required-but-multi-select, which the backfill deliberately
-    never fills) makes `resolve_menu_item_selection` refuse for "requires at
-    least one selection" — surfaced here as `priced: False` with that reason,
-    an honest "still needs a choice" rather than a fabricated price.
-    """
-
-    selected_size = _active_size(menu_item, menu_item_size_id)
-    if selected_size is None:
-        return {"priced": False, "reason": "That size is not available for this dish."}
-
-    default_selections, active_groups = _defaults_for_size(menu_item, selected_size)
-    try:
-        selection = resolve_menu_item_selection(
-            menu_item,
-            menu_item_size_id=selected_size.id,
-            selected_options=default_selections,
-        )
-    except HTTPException as exc:
-        return {"priced": False, "reason": exc.detail}
-
-    default_ids_by_group = {group.id: _default_option_ids_for_group(group) for group in active_groups}
     return {
-        "priced": True,
-        "size_name": selection.size_name,
-        # From `resolve_menu_item_selection`'s own arithmetic
-        # (base_unit_price + customization_total_price), never re-summed
-        # here — "the price of the size plus its defaults, from the pricing
-        # path" is the whole point of this field.
-        "price_with_defaults": selection.unit_price,
-        "default_options": [
+        "group_id": group.id,
+        "title": group.title,
+        "is_required": group.is_required,
+        "min_selection": group.min_selection,
+        "max_selection": group.max_selection,
+        "selection_type": group.selection_type.value,
+        "menu_item_size_id": group.menu_item_size_id,
+        "options": [
             {
                 "option_id": option.id,
                 "name": option.name,
                 "extra_price": option.extra_price,
-                "group_id": group.id,
-                "group_title": group.title,
+                "is_default": option.is_default,
             }
-            for group in active_groups
             for option in group.options
-            if option.id in default_ids_by_group[group.id]
-        ],
-        # Every applicable group, not only the ones that got a default —
-        # "which groups the customer may still change" includes optional
-        # groups with nothing pre-selected at all, per the same "empty
-        # selection is a real default" rule `view_cart` already applies.
-        "changeable_groups": [
-            {
-                "group_id": group.id,
-                "title": group.title,
-                "is_required": group.is_required,
-                "selection_type": group.selection_type.value,
-                "min_selection": group.min_selection,
-                "max_selection": group.max_selection,
-                "default_option_ids": sorted(default_ids_by_group[group.id], key=str),
-                "options": [
-                    {"option_id": option.id, "name": option.name, "extra_price": option.extra_price}
-                    for option in group.options
-                    if option.is_active
-                ],
-            }
-            for group in active_groups
+            if option.is_active
         ],
     }
 
@@ -812,6 +773,16 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
     regardless of what was asked) as if it were the dish asked for. Only the
     tiers that matched the name itself — `vector`, `keyword`, `fuzzy_name` —
     are allowed to answer "found".
+
+    Fix round 3 (2026-09-16): `customization_groups` is always populated now,
+    not gated behind `menu_item_size_id` — a dish with `has_customizations`
+    True used to report no group information at all until a size was named,
+    which made step 2 of the flow ("that comes with X and Y") unanswerable
+    for exactly the dishes that needed it. `_get_active_customization_groups`
+    (the same helper `_resolve_cart_lines` already uses) is reused here
+    too — item-level groups only when no size is given, item-level plus that
+    size's own groups once one is. No price is computed alongside it; see
+    `_serialize_catalog_group`.
     """
 
     intent = ordering_rag.ExtractedIntent(intent="dish_lookup", dish=args.name)
@@ -842,11 +813,12 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
 
     matched_item = candidates[0].menu_item
     result = {"found": True, "confidence": verdict, **_serialize_menu_item(matched_item)}
-    # Additive: only computed when the caller already knows which size was
-    # chosen (step 2 of the flow), never assumed from `sizes` above — a size
-    # is the customer's choice, not something this tool should guess at.
-    if args.menu_item_size_id is not None:
-        result["defaults"] = _describe_defaults_for_size(matched_item, args.menu_item_size_id)
+    # An id that doesn't resolve (foreign, inactive, invented) degrades to
+    # `None`, which `_get_active_customization_groups` already treats the
+    # same as "no size given" — dish-wide groups only, never an exception.
+    selected_size = _active_size(matched_item, args.menu_item_size_id)
+    applicable_groups = _get_active_customization_groups(matched_item, selected_size=selected_size)
+    result["customization_groups"] = [_serialize_catalog_group(group) for group in applicable_groups]
     return result
 
 

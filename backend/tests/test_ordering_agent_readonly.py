@@ -338,8 +338,15 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         topping_cheese_id, topping_olives_id = uuid.uuid4(), uuid.uuid4()
         session.add_all(
             [
+                # Marked `is_default=True` to mirror what migration 0061's
+                # real backfill would do here: the cheapest active option in
+                # a required+single-choice group.
                 MenuItemCustomizationOption(
-                    id=crust_thin_id, group_id=crust_group_id, name="Thin Crust", extra_price=Decimal("0.00")
+                    id=crust_thin_id,
+                    group_id=crust_group_id,
+                    name="Thin Crust",
+                    extra_price=Decimal("0.00"),
+                    is_default=True,
                 ),
                 MenuItemCustomizationOption(
                     id=crust_stuffed_id,
@@ -428,6 +435,66 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
             result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Pad Thai"))
         self.assertEqual(result["sizes"], [])
 
+    def test_get_dish_returns_customization_groups_with_real_defaults(self) -> None:
+        """Fix round 3: `has_customizations: True` must come with the groups
+        themselves, not nothing — both groups here are dish-wide (no size
+        named), so both must appear without needing `menu_item_size_id` at
+        all. Crust's real default (migration 0061: cheapest active option in
+        a required+single group) shows as `is_default`; Extra Toppings, an
+        optional group, marks none."""
+
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Margherita"))
+
+        groups_by_title = {g["title"]: g for g in result["customization_groups"]}
+        self.assertEqual(set(groups_by_title), {"Crust", "Extra Toppings"})
+
+        crust = groups_by_title["Crust"]
+        self.assertTrue(crust["is_required"])
+        crust_defaults = {o["option_id"] for o in crust["options"] if o["is_default"]}
+        self.assertEqual(crust_defaults, {self.crust_thin_id})
+
+        toppings = groups_by_title["Extra Toppings"]
+        self.assertFalse(toppings["is_required"])
+        self.assertEqual({o["option_id"] for o in toppings["options"] if o["is_default"]}, set())
+        self.assertEqual(len(toppings["options"]), 2)
+
+    def test_get_dish_reports_no_customization_groups_for_a_plain_item(self) -> None:
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            result = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Pad Thai"))
+        self.assertEqual(result["customization_groups"], [])
+
+    def test_get_dish_defaults_compose_into_a_real_price_quote(self) -> None:
+        """The coordinator's explicit ask: get_dish must not price anything
+        itself, but the defaults it reports must actually compose into a
+        working `price_quote` call — proving the composition works end to
+        end, through the one price path, rather than asserting it in the
+        abstract."""
+
+        with self._session() as db, patch("app.services.rag._embed_query", return_value=None):
+            dish = TOOLS["get_dish"].handler(db, self._scope(), GetDishArgs(name="Margherita"))
+
+        small_size_id = next(s["size_id"] for s in dish["sizes"] if s["name"] == "Small")
+        crust_group = next(g for g in dish["customization_groups"] if g["title"] == "Crust")
+        default_crust_option_id = next(o["option_id"] for o in crust_group["options"] if o["is_default"])
+
+        lines = [
+            CartLineArgs(
+                menu_item_id=dish["menu_item_id"],
+                quantity=1,
+                menu_item_size_id=small_size_id,
+                selected_options=[SelectedOptionArgs(option_id=default_crust_option_id)],
+            )
+        ]
+        with self._session() as db:
+            result = TOOLS["price_quote"].handler(
+                db, self._scope(customer=self.customer), PriceQuoteArgs(lines=lines)
+            )
+
+        self.assertTrue(result["priced"])
+        self.assertEqual(result["needs_choice"], [])
+        self.assertEqual(result["subtotal"], Decimal("350.00"))
+
     def test_get_dish_at_the_wrong_branch_does_not_find_it(self) -> None:
         """Tom Yum Soup is real, but only at branch B — asking from branch A's
         scope must not resolve it."""
@@ -489,8 +556,10 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
     def test_view_cart_reports_required_customization_groups_and_their_defaults(self) -> None:
         """Once a size resolves the pizza still has an unmet REQUIRED group
         (Crust) and a satisfied-by-default OPTIONAL one (Extra Toppings).
-        The response must show both — which one blocks, and what the
-        optional one defaults to (nothing chosen, at_default True)."""
+        The response must show both — which one blocks, and what each
+        defaults to: Crust has a REAL marked default (Thin Crust) that
+        nonetheless still blocks until explicitly chosen; Extra Toppings
+        defaults to nothing chosen, at_default True."""
 
         lines = [
             CartLineArgs(menu_item_id=self.pizza_id, quantity=1, menu_item_size_id=self.pizza_small_id)
@@ -509,7 +578,12 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         toppings = groups_by_title["Extra Toppings"]
         self.assertTrue(crust["is_required"])
         self.assertTrue(crust["needs_selection"])
-        self.assertIsNone(crust["default_selection"])
+        # A real default exists (migration 0061's rule: cheapest active
+        # option in a required+single group) but nothing has been chosen
+        # yet, so it still blocks — a default narrates, it never applies
+        # itself.
+        self.assertEqual(crust["default_selection"], [self.crust_thin_id])
+        self.assertFalse(crust["at_default"])
         self.assertFalse(toppings["is_required"])
         self.assertFalse(toppings["needs_selection"])
         self.assertEqual(toppings["default_selection"], [])
@@ -539,6 +613,12 @@ class OrderingAgentReadonlyToolTests(unittest.TestCase):
         self.assertEqual(line["unit_price"], Decimal("350.00"))
         groups_by_title = {g["title"]: g for g in line["customization_groups"]}
         self.assertEqual(groups_by_title["Crust"]["selected_option_ids"], [self.crust_thin_id])
+        # The customer's explicit pick happens to be the real marked default
+        # (Thin Crust) — `at_default` reads that off `is_default`, not off
+        # `is_required`, so a required group can now be truthfully "at
+        # default" too.
+        self.assertEqual(groups_by_title["Crust"]["default_selection"], [self.crust_thin_id])
+        self.assertTrue(groups_by_title["Crust"]["at_default"])
         self.assertTrue(groups_by_title["Extra Toppings"]["at_default"])
 
     def test_view_cart_mixed_cart_prices_complete_lines_and_flags_the_incomplete_one(self) -> None:
