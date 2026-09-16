@@ -224,3 +224,42 @@ class PlaceOrderTests(DetailToolTests):
             fulfillment_type="DELIVERY",
         )
         self.assertEqual(self.place()["outcome"], "not_identified")
+
+
+class ActionSpeaksTests(unittest.TestCase):
+    """An action that happened can always say so.
+
+    Live on WhatsApp: a turn added three corn fritters and had nothing to
+    say, so the reply pipeline filled the silence — and what it says about a
+    message it cannot classify is "that one's outside my kitchen".
+    """
+
+    def record(self, kind: str, **over):
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        result = {
+            "outcome": "action",
+            "action": {"kind": kind, "status": "applied", "menu_item_id": str(uuid.uuid4())},
+            "name": "Corn Fritters",
+            "quantity": 3,
+        }
+        result.update(over)
+        return ToolCallRecord(tool="add_to_cart", args={}, result=result)
+
+    def test_an_add_says_what_went_in(self) -> None:
+        from app.services.ordering_agent.loop import describe_applied
+
+        said = describe_applied([self.record("add")])
+        self.assertIn("3 x Corn Fritters", said)
+
+    def test_a_proposal_says_nothing_since_nothing_happened(self) -> None:
+        from app.services.ordering_agent.loop import describe_applied
+
+        record = self.record("add")
+        record.result["action"]["status"] = "proposed"
+        self.assertIsNone(describe_applied([record]))
+
+    def test_a_turn_that_did_nothing_says_nothing(self) -> None:
+        from app.services.ordering_agent.loop import describe_applied
+
+        self.assertIsNone(describe_applied([]))

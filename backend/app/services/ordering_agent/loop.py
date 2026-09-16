@@ -213,6 +213,36 @@ def describe_collecting(missing: list[str] | None) -> str | None:
     return f"Thanks. I still need {', '.join(wanted[:-1])} and {wanted[-1]}."
 
 
+def describe_applied(records: list[ToolCallRecord]) -> str | None:
+    """What the turn actually did to the cart, said from the tool's own rows.
+
+    A turn that added something and then had nothing to say let the reply
+    pipeline fill the silence — and asked about an address or a dish it had
+    just added, that pipeline says "that one's outside my kitchen". An action
+    that happened should always be able to speak for itself.
+    """
+
+    said = []
+    for record in records:
+        result = record.result
+        if not isinstance(result, dict) or result.get("outcome") != "action":
+            continue
+        action = result.get("action") or {}
+        if action.get("status") != "applied":
+            continue
+        name = result.get("name") or "that dish"
+        quantity = result.get("quantity") or action.get("quantity") or 1
+        if action.get("kind") == "add":
+            said.append(f"Added {quantity} x {name} to your order.")
+        elif action.get("kind") == "set_quantity":
+            said.append(f"{name} is now x{quantity}.")
+        elif action.get("kind") == "remove":
+            said.append(f"Removed {name} from your order.")
+    if not said:
+        return None
+    return " ".join(said) + " Anything else, or shall we get it on its way?"
+
+
 def describe_ready(total: str | None = None) -> str:
     """Everything is gathered and only the confirmation is left.
 
@@ -452,6 +482,7 @@ def run_turn(
         ready_now = _still_missing() == [] and scope.customer is not None
         question = (
             describe_placed_order(placed_order_in(records))
+            or describe_applied(records)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
             or _choice_question_in(records)
@@ -540,6 +571,7 @@ def run_turn(
             spoken = (
                 describe_placed_order(placed)
                 or step.answer.strip()
+                or describe_applied(records)
                 or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None else None)
                 or _cart_summary_in(records)

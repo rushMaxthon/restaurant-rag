@@ -1495,7 +1495,16 @@ def _add_to_cart(db: Session, scope: OrderingScope, args: AddToCartArgs) -> dict
         menu_item_size_id=entry.line.menu_item_size_id,
         selected_options=tuple(option.option_id for option in entry.line.selected_options),
     )
-    return {"outcome": "action", "action": _serialize_action(action)}
+    # `name` is for the agent to speak with, never for the wire: the action
+    # itself stays identifiers-only, and the client renders from its own
+    # menu. Without it a turn that added something had nothing to say, and
+    # the reply pipeline filled the silence with "outside my kitchen".
+    return {
+        "outcome": "action",
+        "action": _serialize_action(action),
+        "name": entry.menu_item.name,
+        "quantity": entry.line.quantity,
+    }
 
 
 def _existing_lines_for(args_lines: list[CartLineArgs]) -> list[ExistingCartLine]:
