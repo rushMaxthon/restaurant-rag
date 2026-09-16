@@ -4,8 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DishCard } from "@/components/bangkok/dish-card";
-import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
@@ -73,34 +71,6 @@ export const Route = createFileRoute("/concierge")({
   component: ConciergePage,
 });
 
-function suggestionToMenuItem(s: ChatSuggestion): MenuItem {
-  return {
-    id: s.id,
-    restaurant_id: s.restaurant_id,
-    restaurant_location_id: s.restaurant_location_id,
-    name: s.name,
-    category: s.category,
-    cuisine_type: s.cuisine_type ?? "",
-    description: s.description ?? "",
-    price: s.price,
-    is_veg: s.is_veg,
-    is_available: s.is_available,
-    is_bestseller: s.is_bestseller ?? false,
-    image_url: s.image_url,
-    rating: null,
-    rating_count: 0,
-    is_new: s.is_new ?? false,
-    is_favorite: s.is_favorite ?? false,
-    // From the suggestion, not hardcoded. A sized or customisable dish was
-    // being added straight to the cart at its base price with no size and no
-    // required options, and the server refused the order at checkout after
-    // everything else had been filled in.
-    has_sizes: s.has_sizes ?? false,
-    has_customizations: s.has_customizations ?? false,
-    sizes: [],
-    customization_groups: [],
-  };
-}
 
 const STARTERS = [
   "Something spicy and vegetarian",
@@ -621,27 +591,12 @@ function ConciergePage() {
                     </div>
                   </div>
 
-                  {isStreamingAnswer && turn.suggestions.length === 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <DishSkeleton key={i} />
-                      ))}
-                    </div>
-                  ) : (
-                    turn.suggestions.length > 0 && (
-                      <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {turn.suggestions.map((s, i) => (
-                          <div
-                            className="rise-in"
-                            style={{ "--i": i } as React.CSSProperties}
-                            key={s.id}
-                          >
-                            <DishCard item={suggestionToMenuItem(s)} />
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  )}
+                  {/* The dish grid that used to sit here is gone: the agent now
+                      recommends AND adds, so a second set of recommendations
+                      beside its reply asked the customer which of the two to
+                      believe. `suggestions` still arrives on the frame and is
+                      still kept on the turn — restoring the grid is this block
+                      again, nothing else. */}
 
                   {turn.proposals && turn.proposals.length > 0 && (
                     <div className="flex flex-col gap-2">
