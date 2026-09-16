@@ -844,3 +844,91 @@ class CreatePaymentLinkTests(unittest.TestCase):
         self.assertIn(str(order.id), provider.sessions[0]["success_url"])
         self.assertIn(str(order.id), provider.sessions[0]["cancel_url"])
 
+
+
+class ConfirmingAPaidOrderInChatTests(unittest.TestCase):
+    """A payment that lands is said out loud, in the right conversation.
+
+    The chain worked end to end before this and the customer heard none of
+    it: link, payment, `checkout.session.completed`, order PAYMENT_PENDING
+    -> PLACED, and a chat that just went quiet.
+    """
+
+    def order(self, total="261.45"):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total))
+
+    def test_an_order_placed_in_a_chat_is_confirmed_there(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        sent: list = []
+        with patch.object(order_channel, "phone_for", return_value="+916353100362"), patch.object(
+            order_channel, "forget", lambda order_id: sent.append(("forgotten", order_id))
+        ), patch("app.tasks.whatsapp.send_text", lambda to, body: sent.append((to, body)) or True):
+            service._confirm_in_chat(order)
+
+        to, body = sent[0]
+        self.assertEqual(to, "+916353100362")
+        self.assertIn("Payment received", body)
+        self.assertIn("$261.45", body)
+        self.assertIn(str(order.id)[:8], body)
+        self.assertEqual(sent[1][0], "forgotten", "said once, not on every later event")
+
+    def test_a_web_order_is_never_messaged(self) -> None:
+        # The whole reason a conversation is recorded rather than the order's
+        # own phone number being used: somebody who ordered on the web typed
+        # a number into a form and never opened a chat.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        sent: list = []
+        with patch.object(order_channel, "phone_for", return_value=None), patch(
+            "app.tasks.whatsapp.send_text", lambda to, body: sent.append(to) or True
+        ):
+            service._confirm_in_chat(self.order())
+        self.assertEqual(sent, [])
+
+    def test_a_send_that_fails_never_fails_the_payment(self) -> None:
+        # Stripe reads anything but a 200 as a delivery to retry.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        with patch.object(order_channel, "phone_for", return_value="+916353100362"), patch(
+            "app.tasks.whatsapp.send_text", side_effect=RuntimeError("Meta is down")
+        ):
+            service._confirm_in_chat(self.order())  # must not raise
+
+
+class OrderChannelTests(unittest.TestCase):
+    """What the placing turn writes down about where an order came from."""
+
+    def test_a_number_survives_the_round_trip(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        order_id = uuid.uuid4()
+        order_channel.remember(order_id, phone_number="+916353100362")
+        self.assertEqual(order_channel.phone_for(order_id), "+916353100362")
+        order_channel.forget(order_id)
+        self.assertIsNone(order_channel.phone_for(order_id))
+
+    def test_an_order_nobody_recorded_is_not_messaged(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        self.assertIsNone(order_channel.phone_for(uuid.uuid4()))
+
+    def test_an_empty_number_records_nothing(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        order_id = uuid.uuid4()
+        order_channel.remember(order_id, phone_number="")
+        self.assertIsNone(order_channel.phone_for(order_id))

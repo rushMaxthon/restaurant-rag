@@ -60,7 +60,7 @@ from app.schemas.order import (
 )
 from app.services import rag as ordering_rag
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
-from app.services.ordering_agent import order_draft
+from app.services.ordering_agent import order_channel, order_draft
 from app.services.ordering_agent.verified_phone import (
     EmailAlreadyUsed,
     PhoneNotVerified,
@@ -1513,6 +1513,12 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         except Exception:  # noqa: BLE001 - a refusal must still be returned
             logger.warning("Could not price a refused order for the customer", exc_info=True)
         return refusal
+
+    if scope.verified_phone:
+        # This order came out of a conversation, so there is somebody to
+        # tell when the payment lands. A web order records nothing here and
+        # is never messaged. See `order_channel`.
+        order_channel.remember(order.id, phone_number=scope.verified_phone)
 
     result: dict[str, Any] = {
         "outcome": "placed",

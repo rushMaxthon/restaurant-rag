@@ -600,6 +600,7 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         return {"status": "duplicate", "event_id": event.event_id}
 
     handled = "ignored"
+    paid_order: Order | None = None
     if event.intent_id:
         found = _order_for_intent(db, event.intent_id)
         if found is None:
@@ -611,6 +612,7 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
             if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
                 _mark_paid(db, order, transaction, event)
                 handled = "paid"
+                paid_order = order
             elif event.event_type == "payment_intent.payment_failed":
                 _mark_failed(db, order, transaction, event)
                 handled = "failed"
@@ -621,6 +623,9 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
                 _mark_refunded(db, order, transaction)
                 handled = "refunded"
 
+    if paid_order is not None:
+        _confirm_in_chat(paid_order)
+
     record = db.scalar(
         select(PaymentWebhookEvent).where(PaymentWebhookEvent.provider_event_id == event.event_id)
     )
@@ -630,6 +635,42 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         db.commit()
 
     return {"status": handled, "event_id": event.event_id}
+
+
+def _confirm_in_chat(order: Order) -> None:
+    """Say thank you where the order was placed, if it was placed in a chat.
+
+    Never raises, and never fails the webhook. Stripe reads anything but a
+    200 as a delivery to retry, and retrying a payment that was recorded
+    perfectly well because a message would not send is the tail wagging the
+    dog — so a failure here is logged and the payment stands.
+    """
+
+    from app.services.ordering_agent import order_channel
+
+    phone = order_channel.phone_for(order.id)
+    if not phone:
+        return  # A web order, or a chat order old enough to have expired.
+
+    try:
+        from app.tasks.whatsapp import send_text
+
+        body = (
+            "Payment received, thank you. Your order is confirmed and the kitchen "
+            f"has it.\n\nTotal paid: ${order.total_amount:.2f}\n"
+            f"Order reference: {str(order.id)[:8]}"
+        )
+        if send_text(phone, body):
+            logger.info("Confirmed a paid order in chat order_id=%s", order.id)
+            # Said once. A later event for the same order — a refund, a
+            # duplicate delivery — must not read as a second confirmation.
+            order_channel.forget(order.id)
+        else:
+            logger.warning("Could not confirm a paid order in chat order_id=%s", order.id)
+    except Exception:  # noqa: BLE001 - a payment is recorded whether or not we can say so
+        logger.warning(
+            "Confirming a paid order in chat raised order_id=%s", order.id, exc_info=True
+        )
 
 
 # --- cleanup ---------------------------------------------------------------
