@@ -7405,11 +7405,25 @@ def _run_ordering_agent(
     # client shows the agent's line; on a plain menu question it does not,
     # because two answers to one question read as two voices (reported live).
     asking = {"needs_choice", "not_for_diet", "empty_cart"}
+    # Tools whose subject the reply pipeline cannot answer at all. It has no
+    # cart and no totals, so "show me my cart" sent it hunting the menu for a
+    # dish called "cart" and it offered two noodle dishes instead. When the
+    # agent has used one of these, its answer IS the answer for this turn.
+    owned = {
+        "view_cart",
+        "price_quote",
+        "go_to_checkout",
+        "add_to_cart",
+        "remove_from_cart",
+        "set_quantity",
+        "clear_cart",
+    }
     return {
         "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
         "agent_reply": outcome.answer,
         "agent_asks": any(
-            isinstance(record.result, dict) and record.result.get("outcome") in asking
+            (isinstance(record.result, dict) and record.result.get("outcome") in asking)
+            or (record.tool in owned and record.error is None)
             for record in outcome.records
         ),
     }

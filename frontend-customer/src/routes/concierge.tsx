@@ -101,8 +101,6 @@ type Turn = {
   suggestions: ChatSuggestion[];
   /** The server's own id for this turn — required to confirm a proposal on it. */
   turnId?: string | undefined;
-  /** A short second line under the reply. Never a second full answer. */
-  agentReply?: string | undefined;
   proposals?: ProposalState[] | undefined;
   /** Whether anything referenced by this turn wasn't on this branch's menu. */
   hadDropped?: boolean;
@@ -364,10 +362,9 @@ function ConciergePage() {
 
             patchAnswer((turn) => ({
               ...turn,
-              text: actedOnCart && agentLine ? agentLine : done.reply,
+              text: (actedOnCart || agentHasMore) && agentLine ? agentLine : done.reply,
               suggestions: done.suggestions,
               turnId: done.turn_id,
-              agentReply: !actedOnCart && agentHasMore ? agentLine : undefined,
               proposals,
               hadDropped,
               cartUpdated,
@@ -594,9 +591,6 @@ function ConciergePage() {
                           </span>
                           Finding dishes for you…
                         </p>
-                      )}
-                      {turn.agentReply && (
-                        <p className="mt-1 text-base text-muted-foreground">{turn.agentReply}</p>
                       )}
                     </div>
                   </div>
