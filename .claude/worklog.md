@@ -17,6 +17,27 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (5) — Suggesting when they want more (commit fcc09ca)
+
+**Done:** "I want to add more item in my cart" was answered with the cart
+they had just been shown. The reading matched nothing in that sentence — no
+dish, no section — so the turn had nothing to do and fell back to
+`cart_readback`, the last resort in `_settled`.
+
+`read_order_intent` now reports `wants_to_add` (wanting more without saying
+what), and `tools.dishes_to_suggest` answers it from rows: bestsellers then
+popularity, excluding what is already in the cart and the sections it
+covers, **at most one item per section** — ordered by popularity alone the
+three suggestions came back as three main courses to a customer already
+holding a pizza. `loop._suggest_more` says them and holds an answerable
+question ("Tell me the name and I will add it"), so the next message lands
+on the add path.
+
+**Verified:** suite 1634 OK. Live: pizza list -> "I love Green Curry Pizza"
+-> yes -> cart -> "I want to add more item in my cart" -> three suggestions
+from three different sections -> "thai iced tea" -> offered -> yes -> added.
+Backend + worker restarted on fcc09ca; sessions cleared.
+
 ## 2026-09-17 (4) — Calling a customer by their name (commit 6bcb94b)
 
 **Done:** the name is said at three moments, not on every line: the
