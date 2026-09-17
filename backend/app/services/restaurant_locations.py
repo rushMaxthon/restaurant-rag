@@ -210,7 +210,18 @@ def _get_current_window_end_for_fulfillment(
             if _time_in_slot(current_time, slot.start_time, slot.end_time):
                 return _combine_local_datetime(current_local.date(), slot.end_time), None
         label = "delivery" if fulfillment_type == OrderFulfillmentType.DELIVERY else "pickup"
-        return None, f"{label.capitalize()} is outside the current branch schedule."
+        # The windows are right here; a refusal that withholds them leaves the
+        # customer with nothing to do next. Live at ten past midnight: "Pickup
+        # is outside the current branch schedule." — true, and not a word
+        # about when it would be inside it.
+        windows = ", ".join(
+            f"{slot.start_time:%H:%M}-{slot.end_time:%H:%M}"
+            for slot in sorted(todays_slots, key=lambda slot: slot.start_time)
+        )
+        return None, (
+            f"{label.capitalize()} is outside the current branch schedule. "
+            f"Today's {label} hours: {windows}."
+        )
 
     if location.opening_time is not None and location.closing_time is not None:
         if not _time_in_slot(current_time, location.opening_time, location.closing_time):
