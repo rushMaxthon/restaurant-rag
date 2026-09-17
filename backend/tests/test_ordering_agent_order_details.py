@@ -1178,3 +1178,266 @@ class ChooseThreeTests(unittest.TestCase):
             generate=lambda *a, **k: '{"chose": "Large (14\\")", "add": null, "details": {}, "checkout": false, "when": null, "confirms": null, "browse": null, "asks_hours": false}',
         )
         self.assertEqual(got["chose"], ['Large (14")'])
+
+
+class _Rows:
+    """What `db.scalars` gives back: something you iterate once."""
+
+    def __init__(self, items):
+        self.items = list(items)
+
+    def __iter__(self):
+        return iter(self.items)
+
+
+class _MenuDb:
+    """A database that answers the one query the menu helpers make."""
+
+    def __init__(self, *rows):
+        self.rows = list(rows)
+        self.statements = []
+        self.bound = []
+
+    def scalars(self, statement):
+        self.statements.append(str(statement))
+        try:
+            self.bound.append(statement.compile().params)
+        except Exception:  # noqa: BLE001 - a statement that will not compile is the test's problem
+            self.bound.append({})
+        return _Rows(self.rows)
+
+
+def _dish(name, price=4.5, is_veg=True):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(name=name, price=price, is_veg=is_veg)
+
+
+class TheQuestionWeEndedOnTests(unittest.TestCase):
+    """"Yes" means the question we just asked, in whatever words it arrives.
+
+    Live, from a customer's phone:
+
+        > I like Appetizer Sampler
+          Here is what we have: Appetizer Sampler - $18.99. Which one would
+          you like?
+        > Yes
+          Great! Your order is ready to be placed. To proceed, we need to
+          know the type of fulfillment (e.g., pickup or delivery)...
+
+    The dish they named was read back as a list of one, and the "Yes" that
+    answered it reached nobody: the turn had no memory of asking, so the
+    reply pipeline filled the silence with prose about a cart holding the
+    previous day's dessert. A question we ask is now held until it is
+    answered, and what agreeing DOES is written down as we ask it.
+    """
+
+    def scope(self):
+        import dataclasses
+
+        from tests.test_ordering_agent_loop import SCOPE
+
+        return dataclasses.replace(
+            SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001"
+        )
+
+    def turn(self, message, *, draft=None, intent, db=None, cart=None):
+        """One turn, with a draft that survives it the way Redis does."""
+
+        import dataclasses as dc
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft as od
+
+        held = {"draft": draft or od.OrderDraft()}
+        with patch.object(od, "load", lambda _s: dc.replace(held["draft"])), \
+                patch.object(od, "save", lambda _s, d: held.update(draft=d)):
+            outcome = loop.run_turn(
+                db=db,
+                scope=self.scope(),
+                message=message,
+                cart=cart if cart is not None else [
+                    CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)
+                ],
+                generate=ScriptedGenerate(intent=intent),
+                clock=ScriptedClock(0.0),
+                max_rounds=1,
+                budget_seconds=1000.0,
+            )
+        return outcome, held["draft"]
+
+    def agreeing(self, agreed=True):
+        import json
+
+        return json.dumps({
+            "add": None, "details": {}, "checkout": False, "when": None,
+            "chose": None, "confirms": agreed, "browse": None,
+            "asks_hours": False, "category": None,
+        })
+
+    def holding(self, yes, subject=None, question="Shall I?"):
+        import json
+
+        from app.services.ordering_agent import order_draft as od
+
+        return od.OrderDraft(
+            awaiting=json.dumps({"question": question, "yes": yes, "subject": subject})
+        )
+
+    def test_a_draft_remembers_the_question_it_is_waiting_on(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_draft as od
+
+        saved = {}
+        with patch.object(od, "cache_set_json", lambda k, v, ttl_seconds=None: saved.update(v)), \
+                patch.object(od, "cache_get_json", lambda k: dict(saved)):
+            od.save("s", od.OrderDraft(awaiting='{"question": "Anything else?", "yes": "more"}'))
+            back = od.load("s")
+        self.assertIn("Anything else?", back.awaiting or "")
+
+    def test_no_to_shall_i_add_one_asks_what_they_would_like_instead(self) -> None:
+        outcome, _ = self.turn(
+            "no thanks",
+            draft=self.holding("add", "Appetizer Sampler"),
+            intent=self.agreeing(False),
+        )
+        self.assertIn("What else can I get you?", outcome.answer or "")
+        self.assertNotIn("Appetizer Sampler", outcome.answer or "")
+
+    def test_yes_to_ready_to_check_out_checks_out(self) -> None:
+        outcome, _ = self.turn(
+            "yes please",
+            draft=self.holding("checkout", question="Ready to check out?"),
+            intent=self.agreeing(),
+        )
+        # Nothing is invented: with no details held, checking out asks for
+        # them. What matters is that a bare yes reached the order at all.
+        self.assertIn("still need", outcome.answer or "")
+
+    def test_no_to_ready_to_check_out_keeps_the_conversation_open(self) -> None:
+        outcome, _ = self.turn(
+            "not yet",
+            draft=self.holding("checkout", question="Ready to check out?"),
+            intent=self.agreeing(False),
+        )
+        self.assertIn("What else can I get you?", outcome.answer or "")
+
+    def test_yes_to_anything_else_asks_what(self) -> None:
+        outcome, _ = self.turn(
+            "yes",
+            draft=self.holding("more", question="Anything else?"),
+            intent=self.agreeing(),
+        )
+        self.assertIn("What else can I get you?", outcome.answer or "")
+
+    def test_no_to_anything_else_moves_on_to_the_order(self) -> None:
+        outcome, _ = self.turn(
+            "no that is all",
+            draft=self.holding("more", question="Anything else?"),
+            intent=self.agreeing(False),
+        )
+        self.assertIn("still need", outcome.answer or "")
+
+    def test_yes_to_which_one_is_not_answered_with_the_same_question(self) -> None:
+        # The screenshot: "Which one would you like?" answered "Yes". A real
+        # person does not repeat themselves; they make it answerable.
+        outcome, _ = self.turn(
+            "Yes",
+            draft=self.holding("name_one", question="Which one would you like?"),
+            intent=self.agreeing(),
+        )
+        said = outcome.answer or ""
+        self.assertIn("tell me the name", said)
+        self.assertNotIn("Which one would you like?", said)
+
+    def test_the_question_it_consumed_is_replaced_not_left_standing(self) -> None:
+        # Read once and dropped. Every turn that ends on a question writes a
+        # fresh one, so a question nobody answered never answers a later
+        # message by accident.
+        _, draft = self.turn(
+            "Yes",
+            draft=self.holding("name_one", question="Which one would you like?"),
+            intent=self.agreeing(),
+        )
+        self.assertNotIn("Which one would you like?", draft.awaiting or "")
+        self.assertIn("tell me the name", draft.awaiting or "")
+
+    def test_an_add_asks_one_question_so_yes_has_one_meaning(self) -> None:
+        from app.services.ordering_agent.loop import ToolCallRecord, describe_applied
+
+        said = describe_applied([
+            ToolCallRecord(
+                tool="add_to_cart", args={},
+                result={
+                    "outcome": "action", "name": "Corn Fritters", "quantity": 2,
+                    "action": {"kind": "add", "status": "applied", "quantity": 2},
+                },
+            )
+        ])
+        self.assertEqual(said, "Added 2 x Corn Fritters to your order. Anything else?")
+        # "Anything else, or shall we get it on its way?" asked two things at
+        # once, and the answer to both of them is yes.
+        self.assertNotIn(" or ", said)
+
+
+class TheSectionsThisBranchSellsTests(unittest.TestCase):
+    """"Some drink" finds Beverages, because the sections are rows.
+
+    Live: a question about drinks was matched by substring against a
+    category called Beverages, matched nothing, and was answered with the
+    first eight dishes on the menu — eight appetizers.
+    """
+
+    def scope(self):
+        from tests.test_ordering_agent_loop import SCOPE
+
+        return SCOPE
+
+    def test_a_named_section_is_matched_exactly_not_searched_for(self) -> None:
+        from app.services.ordering_agent import tools as tools_module
+
+        db = _MenuDb(_dish("Thai Iced Tea"))
+        shown = tools_module.dishes_to_show(
+            db, self.scope(), "some drink", category="Beverages"
+        )
+        self.assertEqual([d["name"] for d in shown], ["Thai Iced Tea"])
+        self.assertEqual(len(db.statements), 1, "the section answers; nothing is searched")
+
+    def test_a_plural_still_finds_the_menus_singular(self) -> None:
+        # "vegetarian pizzas" matched no dish called "pizzas" and no category
+        # called "pizzas" either, and answered with the whole menu.
+        from app.services.ordering_agent import tools as tools_module
+
+        db = _MenuDb(_dish("Margherita Pizza", price=249.0))
+        shown = tools_module.dishes_to_show(db, self.scope(), "pizzas")
+        self.assertEqual([d["name"] for d in shown], ["Margherita Pizza"])
+        self.assertIn("%pizza%", list(db.bound[0].values()), "matched on the singular")
+
+    def test_the_reading_is_told_which_sections_exist(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        seen = {}
+
+        def generate(prompt, timeout, max_tokens):
+            seen["prompt"] = prompt
+            return '{"category": "Beverages"}'
+
+        got = read_order_intent(
+            "do you have some drink?",
+            generate=generate,
+            categories=["Appetizer", "Beverages", "Pizza"],
+        )
+        self.assertIn("Beverages", seen["prompt"])
+        self.assertEqual(got["category"], "Beverages")
+
+    def test_a_section_this_branch_does_not_have_is_no_answer_at_all(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "sushi?",
+            generate=lambda *a, **k: '{"category": "Sushi"}',
+            categories=["Appetizer", "Beverages"],
+        )
+        self.assertIsNone(got["category"])

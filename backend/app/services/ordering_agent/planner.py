@@ -635,6 +635,8 @@ def read_order_intent(
     choice_question: str | None = None,
     choice_options: Sequence[str] = (),
     confirming: str | None = None,
+    asked: str | None = None,
+    categories: Sequence[str] = (),
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
 
@@ -658,6 +660,7 @@ def read_order_intent(
     empty: dict[str, Any] = {
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
+        "category": None,
     }
     if not message.strip():
         return empty
@@ -680,6 +683,29 @@ def read_order_intent(
             '"confirms" is false. New details they type belong in "details" as '
             "usual, and then \"confirms\" is null.\n"
         )
+    if asked:
+        # The question in our own words, so the model reads their reply
+        # against what was actually put to them. It was being smuggled into
+        # the details slot above, and "nothing else" came back as agreement.
+        still += (
+            f"You have just asked them: {asked!r}\n"
+            'If this message agrees to that — "yes", "sure", "go ahead", "please '
+            'do", "haan", "kar do" — then "confirms" is true. If it declines — '
+            '"no", "not yet", "nothing else", "that is all", "nahi" — then '
+            '"confirms" is false. If it is about something else entirely, '
+            '"confirms" is null and the other fields say what the message wants.\n'
+        )
+    if categories:
+        # The branch's own sections, so a customer's word for a kind of food
+        # is matched by meaning rather than by substring. "Some drink" is
+        # Beverages; no amount of string matching gets there.
+        still += (
+            f"This branch's menu sections are: {', '.join(categories)}. If they "
+            "are asking to see a kind of food that is one of these, however they "
+            'say it, put that section in "category", copied exactly. A customer '
+            'who names a particular dish ("I like Thai Iced Tea") is not asking '
+            'for a section: "category" is null and the dish is what they want.\n'
+        )
     if choice_question and choice_options:
         listed = "; ".join(choice_options)
         still += (
@@ -700,6 +726,8 @@ def read_order_intent(
         "else false\n"
         '  "browse": what they are asking to SEE on the menu ("pizza", "desserts", '
         '"the menu"), else null\n'
+        '  "category": the menu section they mean, copied exactly from the list '
+        "below, else null\n"
         '  "asks_hours": true if they are asking WHEN — when you open, when the '
         "order would arrive, what times are possible — else false\n"
         '  "chose": the options they picked from the list below, copied exactly, '
@@ -791,6 +819,16 @@ def read_order_intent(
 
     asks_hours = parsed.get("asks_hours") is True
 
+    category = parsed.get("category")
+    if not isinstance(category, str) or category.strip().lower() in {"null", "none", ""}:
+        category = None
+    elif categories:
+        # Only ever one of the branch's own sections. A model that answers with
+        # a section this branch does not have has answered with nothing.
+        category = next(
+            (c for c in categories if c.casefold() == category.strip().casefold()), None
+        )
+
     browse = parsed.get("browse")
     if not isinstance(browse, str) or not browse.strip() or browse.strip().lower() in {"null", "none"}:
         browse = None
@@ -817,6 +855,7 @@ def read_order_intent(
         "chose": chose,
         "confirms": confirms,
         "browse": browse.strip() if browse else None,
+        "category": category,
         "asks_hours": asks_hours,
     }
 

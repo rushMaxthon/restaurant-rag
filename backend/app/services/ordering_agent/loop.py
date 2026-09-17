@@ -290,7 +290,10 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
             said.append(f"Removed {name} from your order.")
     if not said:
         return None
-    return " ".join(said) + " Anything else, or shall we get it on its way?"
+    # One question, so that "yes" to it has one meaning. "Anything else, or
+    # shall we get it on its way?" put two to a customer at once, and the
+    # answer to both of them is yes.
+    return " ".join(said) + " Anything else?"
 
 
 _PLACE_FAILURE_LINES = {
@@ -818,7 +821,7 @@ def run_turn(
         )
         return branch_hours.describe_hours(location, fulfillment_type=wanted_type)
 
-    def _show_dishes(phrase: str) -> TurnOutcome | None:
+    def _show_dishes(phrase: str, category: str | None = None) -> TurnOutcome | None:
         """Read the menu out: their words, our rows, their diet.
 
         The reply pipeline answers a menu question well when it is about
@@ -829,13 +832,32 @@ def run_turn(
         """
 
         want_veg = True if (scope.diet or "").lower() == "veg" else None
-        shown = tools_module.dishes_to_show(db, scope, phrase, is_veg=want_veg)
+        shown = tools_module.dishes_to_show(db, scope, phrase, is_veg=want_veg, category=category)
         if not shown:
             return None
+        if len(shown) == 1:
+            # They named the one thing they want. Reading it back as a list
+            # of one and asking which they would like is not a conversation:
+            # live, "I like Appetizer Sampler" got exactly that, and the
+            # "Yes" that answered it reached nobody.
+            only = shown[0]
+            return TurnOutcome(
+                answer=_hold(
+                    f"{only['name']} is ${only['price']}. Shall I add one?",
+                    yes="add",
+                    subject=only["name"],
+                ),
+                answer_about="menu",
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
         listed = "\n".join(f"- {d['name']} - ${d['price']}" for d in shown)
         opening = "Here is what we have" if want_veg is None else "Here is what we have, all vegetarian"
+        asked = _hold("Which one would you like?", yes="name_one")
         return TurnOutcome(
-            answer=f"{opening}:\n{listed}\n\nWhich one would you like?",
+            answer=f"{opening}:\n{listed}\n\n{asked}",
             answer_about="menu",
             actions=actions,
             records=records,
@@ -921,6 +943,133 @@ def run_turn(
             fallback_reason=None,
             elapsed_seconds=clock() - start,
         )
+
+    def _awaiting() -> dict[str, Any] | None:
+        """The question this conversation is waiting on an answer to."""
+
+        if scope.session_id is None:
+            return None
+        raw = order_draft.load(scope.session_id).awaiting
+        if not raw:
+            return None
+        try:
+            held = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        return held if isinstance(held, dict) and held.get("question") else None
+
+    def _hold(question: str, *, yes: str, subject: str | None = None) -> str:
+        """Write down the question we are ending on, and return it to be said.
+
+        `yes` is what agreeing to it DOES — decided here, as we ask, not
+        guessed later from the customer's words. Their words are read
+        against `question` by the model on the next turn, so any way of
+        agreeing works and no word in this file decides anything.
+        """
+
+        if scope.session_id is not None:
+            draft_now = order_draft.load(scope.session_id)
+            draft_now.awaiting = json.dumps(
+                {"question": question, "yes": yes, "subject": subject}
+            )
+            order_draft.save(scope.session_id, draft_now)
+        return question
+
+    def _forget_awaiting() -> None:
+        """Nobody is waiting on an answer any more."""
+
+        if scope.session_id is None:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        if draft_now.awaiting:
+            draft_now.awaiting = None
+            order_draft.save(scope.session_id, draft_now)
+
+    def _answering(said: str) -> TurnOutcome:
+        """A turn that is only a sentence, said and over."""
+
+        return TurnOutcome(
+            answer=said,
+            answer_about="order",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
+    def _answer_standing(
+        standing: dict[str, Any], wanted: dict[str, Any], *, agreed: bool
+    ) -> TurnOutcome | None:
+        """Act on the answer to the question we ended the last turn on.
+
+        Returns the turn when the answer is the whole of it, or None having
+        acted, so that what it did reads itself back. Live, before this: a
+        customer shown one dish and asked "Which one would you like?" said
+        "Yes", and the turn had nothing to read it against — the reply
+        pipeline filled the silence with prose about fulfillment types, over
+        a cart holding yesterday's dessert.
+        """
+
+        kind = standing.get("yes")
+        subject = standing.get("subject")
+        # Agreeing and saying what they want in the same breath is normal
+        # speech. Live: "yes and add a thai iced tea too" was answered
+        # "Of course. What else can I get you?" — they had just said.
+        also_says = bool(
+            wanted["add"]
+            or wanted["details"]
+            or wanted.get("when")
+            or wanted.get("chose")
+            or wanted.get("browse")
+            or wanted.get("category")
+        )
+        if kind == "add" and subject:
+            if not agreed:
+                if also_says:
+                    return None
+                return _answering(
+                    _hold("No problem. What else can I get you?", yes="name_one")
+                )
+            added = _add_named_dish(subject, 1)
+            if added:
+                actions.extend(added)
+            # The reading names the dish too, having seen the question it
+            # was answering: "haan bhai kar do" came back with both the
+            # agreement and the drink, and the drink went in twice.
+            wanted["add"] = None
+            return None
+        if kind == "more":
+            if agreed:
+                if also_says:
+                    return None
+                return _answering(
+                    _hold("Of course. What else can I get you?", yes="name_one")
+                )
+            # Done adding, so the next thing is the order itself.
+            wanted["checkout"] = True
+            return None
+        if kind == "checkout":
+            if agreed:
+                wanted["checkout"] = True
+                return None
+            if also_says:
+                return None
+            return _answering(
+                _hold("No rush. What else can I get you?", yes="name_one")
+            )
+        if kind == "name_one":
+            # "Yes" to "which one would you like" answers nothing, and asking
+            # it again in the same words is how a customer decides nobody is
+            # there. The way out is to make it answerable.
+            if also_says:
+                return None
+            return _answering(
+                _hold(
+                    "Happy to. Which one — just tell me the name and I will add it.",
+                    yes="name_one",
+                )
+            )
+        return None
 
     def _pending_choice() -> dict[str, Any] | None:
         """The question this conversation is waiting on an answer to."""
@@ -1208,20 +1357,26 @@ def run_turn(
         """The turn as the rows alone can end it — no words from the model."""
 
         placed = placed_order_in(records)
-        return TurnOutcome(
-            answer=(
-                describe_placed_order(placed)
-                or describe_applied(records)
-                or _choice_question_in(records)
-                or describe_time_problem(records)
-                or describe_place_failure(records)
+        applied = describe_applied(records)
+        summary = _cart_summary_in(records) or cart_readback
+        answer = (
+            describe_placed_order(placed)
+            or applied
+            or _choice_question_in(records)
             or describe_time_problem(records)
             or describe_place_failure(records)
-        or describe_collecting(_still_missing())
-                or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
-                or _cart_summary_in(records)
-                or cart_readback
-            ),
+            or describe_collecting(_still_missing())
+            or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
+            or summary
+        )
+        # Whatever question this read-back ends on is held, so that the next
+        # message can be read against it rather than against nothing.
+        if answer and answer is applied:
+            _hold("Anything else?", yes="more")
+        elif answer and summary is not None and answer is summary:
+            _hold("Ready to check out?", yes="checkout")
+        return TurnOutcome(
+            answer=answer,
             placed_order=placed,
             ready_to_place=_still_missing() == [] and (_identifiable(scope) and bool(cart)) and placed is None,
             answer_about="order",
@@ -1238,7 +1393,18 @@ def run_turn(
     # each answered pleasantly with nothing done. See `read_order_intent`.
     # A sentence that plainly says one thing is read off the sentence. Only
     # ever a read, and only when it says nothing else — see `quick_read`.
+    held_question = _awaiting()
+    if held_question is not None:
+        _forget_awaiting()
     plain = quick_read(message)
+    if held_question is not None and plain == "checkout":
+        # "Go ahead", "done", "kar do" are how people agree, and a question
+        # of ours is standing — so this message is read as its answer rather
+        # than shortcut into an instruction. Live: "haan bhai kar do", a yes
+        # to "Shall I add one?", was answered "there is nothing in your order
+        # yet". Asking to SEE something is never an answer to yes or no, so
+        # "cart" and "menu" keep the fast path.
+        plain = None
     if plain in {"cart", "checkout"} and not cart:
         # Asking about an order that has nothing in it. Measured: "checkout"
         # on an empty cart spent 17.9 seconds arriving at a menu suggestion,
@@ -1279,8 +1445,22 @@ def run_turn(
     # "No", "No" and "what can I have for lunch?" with the same offer.
     placing_wanted = False
     asked_before = _pending_choice()
+    # The sections this branch actually sells, so "some drink" can find
+    # Beverages. Rows, given to the reading; the mapping is meaning.
+    sections: list[str] = []
+    if db is not None and scope.restaurant_location_id:
+        try:
+            sections = tools_module.menu_categories(db, scope)
+        except Exception:  # noqa: BLE001 - a menu we cannot list is not a broken turn
+            sections = []
     # Details of theirs we are holding but which nobody has stood behind.
     unconfirmed = _details_to_confirm()
+    # The question we ended the last turn on, if it is the thing outstanding.
+    # Read once and dropped: every turn that ends on a question writes a
+    # fresh one, so a question nobody answered never lingers into a third.
+    # A time the kitchen offered, or details read back, are the more
+    # specific thing outstanding and answer a "yes" first.
+    standing = held_question if not standing_offer and not unconfirmed else None
     wanted = (
         {"add": None, "details": {}, "checkout": True, "when": None,
          "chose": None, "confirms": None, "browse": None, "asks_hours": False}
@@ -1298,7 +1478,14 @@ def run_turn(
             # answered "yes" with nothing at all, the turn fell through to
             # six planner rounds, and the same offer came back word for
             # word — the loop this is here to end.
-            confirming=unconfirmed or (f"the order for {standing_offer}" if standing_offer else None),
+            confirming=(
+                unconfirmed
+                or (f"the order for {standing_offer}" if standing_offer else None)
+            ),
+            # The question we ended the last turn on. A bare "yes" has no
+            # meaning of its own; this is the meaning.
+            asked=standing["question"] if standing else None,
+            categories=sections,
         )
     )
 
@@ -1313,6 +1500,13 @@ def run_turn(
         and not wanted.get("when")
     ):
         wanted["when"] = standing_offer
+        wanted["confirms"] = None
+
+    # "Yes" means the question we ended on, whatever words it arrives in.
+    if standing is not None and wanted.get("confirms") is not None:
+        settled = _answer_standing(standing, wanted, agreed=wanted["confirms"] is True)
+        if settled is not None:
+            return settled
         wanted["confirms"] = None
 
     if wanted.get("when") and scope.session_id is not None:
@@ -1385,8 +1579,16 @@ def run_turn(
                 fallback_reason=None, elapsed_seconds=clock() - start,
             )
 
-    if wanted.get("browse") and db is not None and scope.restaurant_location_id:
-        shown = _show_dishes(wanted["browse"])
+    # A dish they named beats a section the reading also guessed at: a
+    # customer saying "add a thai iced tea too" wants the drink, not the
+    # list of drinks they would choose it from.
+    if (
+        (wanted.get("browse") or wanted.get("category"))
+        and not wanted["add"]
+        and db is not None
+        and scope.restaurant_location_id
+    ):
+        shown = _show_dishes(wanted.get("browse") or "", wanted.get("category"))
         if shown:
             return shown
 
@@ -1411,6 +1613,22 @@ def run_turn(
                 args=dict(wanted["details"]),
                 result={"outcome": "saved", "problems": problems, "missing": collecting},
             )
+        )
+
+    if wanted["checkout"] and not cart and not actions:
+        # Nothing to check out. Said plainly rather than left to a planner
+        # that answered "let me check the details to ensure everything is
+        # correct" over an order with nothing in it. `cart` is the turn's
+        # opening snapshot, so what this turn just added counts too —
+        # without that, "haan bhai kar do" added a drink and was answered
+        # "there is nothing in your order yet".
+        return TurnOutcome(
+            answer=_PLACE_FAILURE_LINES["empty_cart"],
+            answer_about="cart",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
         )
 
     if wanted["checkout"]:

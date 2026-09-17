@@ -75,6 +75,12 @@ class OrderDraft:
     # and the ids behind each option. A turn's records do not survive it, so
     # without this "large one" was a sentence about nothing.
     pending_choice: str | None = None
+    # The question this conversation is waiting on an answer to, as JSON:
+    # what we asked in our own words, and what agreeing to it acts on. A
+    # bare "yes" has no meaning by itself — live, "Which one would you like?"
+    # was answered "Yes" and the turn had nothing to read it against, so the
+    # reply pipeline filled the silence with prose about fulfillment types.
+    awaiting: str | None = None
     # What they said they eat, kept for the conversation. Stating it on a
     # guest channel was remembered nowhere at all — `_remember_stated_diet`
     # writes to an account and every WhatsApp customer is a guest — so a
@@ -100,6 +106,7 @@ class OrderDraft:
         "collecting",
         "offered_scheduled_at",
         "pending_choice",
+        "awaiting",
         "confirmed",
         "confirm_asks",
         "diet",

@@ -1053,6 +1053,29 @@ def dishes_matching_words(
     return [(str(row.id), row.name) for row in rows]
 
 
+def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
+    """The names of the categories this branch actually sells.
+
+    Given to the reading so a customer's own word for a kind of food can be
+    matched to one of them by meaning. Live: "Do you have some drink?" was
+    matched by substring against a category called Beverages, matched
+    nothing, and fell through to the first eight dishes on the menu — eight
+    appetizers, in answer to a question about drinks.
+    """
+
+    rows = db.scalars(
+        select(MenuItem.category)
+        .where(
+            MenuItem.restaurant_location_id == scope.restaurant_location_id,
+            MenuItem.is_available.is_(True),
+            MenuItem.category.is_not(None),
+        )
+        .distinct()
+        .order_by(MenuItem.category)
+    )
+    return [c for c in rows if c]
+
+
 def dishes_to_show(
     db: Session,
     scope: OrderingScope,
@@ -1060,6 +1083,7 @@ def dishes_to_show(
     *,
     is_veg: bool | None = None,
     limit: int = 8,
+    category: str | None = None,
 ) -> list[dict[str, Any]]:
     """Dishes to read out to a customer: name, price, and whether veg.
 
@@ -1078,7 +1102,11 @@ def dishes_to_show(
     if is_veg is not None:
         stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
     words = [
-        w
+        # Singular, because a menu is written in the singular and customers
+        # do not order one pizza: "vegetarian pizzas" matched no dish called
+        # "pizzas" and no category called "pizzas" either, and answered with
+        # the whole vegetarian menu.
+        w[:-1] if len(w) > 4 and w.endswith("s") and not w.endswith("ss") else w
         for w in "".join(c if c.isalnum() or c.isspace() else " " for c in phrase.lower()).split()
         if len(w) > 2
     ]
@@ -1086,6 +1114,14 @@ def dishes_to_show(
     for word in words:
         named = named.where(MenuItem.name.ilike(f"%{word}%"))
     rows = list(db.scalars(named.order_by(MenuItem.name).limit(limit))) if words else []
+    if not rows and category:
+        # No dish by that name, so the section they meant. Named by the
+        # reading from this branch's own list, so it is matched exactly
+        # rather than searched for — "some drink" is Beverages, which no
+        # amount of string matching gets to.
+        rows = list(
+            db.scalars(stmt.where(MenuItem.category == category).order_by(MenuItem.name).limit(limit))
+        )
     if not rows:
         # Nothing by name. A category, then the menu itself — both of which
         # are still the rows, never a guess about what they might have meant.
