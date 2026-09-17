@@ -3816,6 +3816,17 @@ def _with_closed_notice(
             availability.branch_name if availability else "?",
             prepared.retrieval_source,
         )
+        # A closed door loses the customer; "order now for when we open"
+        # keeps them. Said only where the branch really takes orders for
+        # later, so it is never a promise the checkout then breaks.
+        try:
+            from app.models.restaurant_location import RestaurantLocation
+
+            branch = db.get(RestaurantLocation, restaurant_location_id) if restaurant_location_id else None
+            if branch is not None and branch.future_order_enabled:
+                notice = f"{notice} You can still order now for when we open — just tell me what you'd like."
+        except Exception:  # noqa: BLE001 - the notice stands without the invitation
+            pass
         return f"{notice} {reply}".strip()
     except Exception:  # pragma: no cover - a notice must not cost the answer
         logger.exception("Closed-branch notice failed; returning the reply unchanged")

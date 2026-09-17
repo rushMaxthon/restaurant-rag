@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.enums import (
+    OrderScheduleType,
     OrderCancellationReason,
     OrderEventActor,
     OrderStatus,
@@ -672,6 +673,17 @@ def _return_urls(order: Order) -> tuple[str, str]:
     )
 
 
+def _scheduled_line(order: Order) -> str:
+    """' It is scheduled for Thu 10:30.' for an order placed for later."""
+
+    if getattr(order, "schedule_type", None) != OrderScheduleType.SCHEDULED or not order.scheduled_at:
+        return ""
+    from app.services.restaurant_locations import BUSINESS_TIMEZONE
+
+    when = order.scheduled_at.astimezone(BUSINESS_TIMEZONE).strftime("%a %H:%M")
+    return f" It is scheduled for {when}."
+
+
 def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:
     """Say something about this order where it was placed, if it was a chat.
 
@@ -713,7 +725,7 @@ def _confirm_in_chat(order: Order) -> None:
     _tell_in_chat(
         order,
         "Payment received, thank you. Your order is confirmed and the kitchen "
-        f"has it.\n\nTotal paid: ${order.total_amount:.2f}\n"
+        f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
         f"Order reference: {str(order.id)[:8]}",
         finished=True,
     )

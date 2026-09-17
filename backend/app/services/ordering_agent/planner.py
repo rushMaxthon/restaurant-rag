@@ -630,8 +630,15 @@ def read_order_intent(
     *,
     missing: Sequence[str] = (),
     generate: Generate | None = None,
+    now_local: str | None = None,
+    offered: str | None = None,
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
+
+    Four, now: "when" as well — a clock time the customer named for the
+    order, `"opening"` for "when you open", or None. `now_local` is the
+    branch's clock, so "tomorrow at one" has a date; `offered` is a time the
+    kitchen already proposed, so "yes" can mean that time.
 
     Returns {"add": (dish, quantity) | None, "details": {field: value},
     "checkout": bool}. Everything is what the message SAYS; nothing here is
@@ -645,13 +652,20 @@ def read_order_intent(
     agent started.
     """
 
-    empty: dict[str, Any] = {"add": None, "details": {}, "checkout": False}
+    empty: dict[str, Any] = {"add": None, "details": {}, "checkout": False, "when": None}
     if not message.strip():
         return empty
     fields = ", ".join(f'"{name}"' for name in _DETAIL_QUESTIONS)
     still = (
         f"They have already been asked for: {', '.join(missing)}.\n" if missing else ""
     )
+    if now_local:
+        still += f"The branch's local time now is {now_local}.\n"
+    if offered:
+        still += (
+            f"The branch has offered to make the order for {offered}. If they accept "
+            '(yes, ok, that works, fine) then "when" is exactly that time.\n'
+        )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
         "answer with one JSON object and nothing else.\n\n"
@@ -661,6 +675,8 @@ def read_order_intent(
         f'  "details": {{{fields}}}   // each one as stated, or null\n'
         '  "checkout": true if they are asking to place the order, check out or pay; '
         "else false\n"
+        '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
+        'the word "opening" if they mean whenever the branch next opens, else null\n'
         "}\n\n"
         "Rules:\n"
         "- Only what this message actually says. Never invent a dish, a name, an "
@@ -681,6 +697,9 @@ def read_order_intent(
         "do, order kar do, ho gaya, bas itna hi).\n"
         '- "checkout" is false while they are still choosing, and false for a '
         "question.\n"
+        '- "when" is only what they said about timing. A bare time ("at 11", '
+        '"11:30") is today if still ahead, otherwise tomorrow. "Tomorrow at one" '
+        "is tomorrow 13:00. Nothing about timing means null.\n"
         "- Anything not stated is null.\n"
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"
@@ -714,7 +733,19 @@ def read_order_intent(
             if isinstance(value, str) and value.strip() and value.strip().lower() not in {"null", "none"}:
                 details[field] = value.strip()
 
-    return {"add": add, "details": details, "checkout": parsed.get("checkout") is True}
+    when = parsed.get("when")
+    if not isinstance(when, str) or not when.strip() or when.strip().lower() in {"null", "none"}:
+        when = None
+    else:
+        when = when.strip()
+        when = "opening" if when.lower() == "opening" else when
+
+    return {
+        "add": add,
+        "details": details,
+        "checkout": parsed.get("checkout") is True,
+        "when": when,
+    }
 
 
 def extract_cart_request(

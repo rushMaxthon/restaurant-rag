@@ -522,3 +522,111 @@ class EmptyOrderIsAnsweredAtOnceTests(unittest.TestCase):
         got, generate = self.outcome("cart")
         self.assertIn("nothing in your order", got.answer or "")
         self.assertEqual(generate.prompts, [])
+
+
+class OrderForLaterTests(unittest.TestCase):
+    """A closed kitchen takes the order for when it opens.
+
+    Live at 08:24 with the branch shut: "We are closed for pickup right now.
+    The next time I can do is Thu 10:30 — shall I place it for then?" —
+    "yes that time is fine" — placed for Thu 10:30, paid, confirmed.
+    """
+
+    def test_a_time_with_a_zone_in_the_future_is_kept(self) -> None:
+        from app.services.ordering_agent import order_draft
+
+        draft, problems = order_draft.remember(
+            order_draft.OrderDraft(offered_scheduled_at="2099-01-01T10:30:00+05:30"),
+            scheduled_at="2099-01-01T10:30:00+05:30",
+        )
+        self.assertEqual(problems, [])
+        self.assertEqual(draft.scheduled_at, "2099-01-01T10:30:00+05:30")
+        self.assertIsNone(draft.offered_scheduled_at, "an offer taken up is no longer pending")
+
+    def test_a_past_time_and_a_naive_time_are_refused(self) -> None:
+        from app.services.ordering_agent import order_draft
+
+        _, past = order_draft.remember(order_draft.OrderDraft(), scheduled_at="2001-01-01T10:30:00+05:30")
+        _, naive = order_draft.remember(order_draft.OrderDraft(), scheduled_at="2099-01-01T10:30:00")
+        self.assertTrue(any("passed" in p for p in past))
+        self.assertTrue(any("could not be read" in p for p in naive))
+
+    def test_the_offered_time_survives_a_save_and_a_load(self) -> None:
+        # Live: saved on the refusing turn, dropped on the very next read,
+        # so "yes" had nothing to say yes to.
+        from app.services.ordering_agent import order_draft
+
+        sid = uuid.uuid4()
+        order_draft.save(sid, order_draft.OrderDraft(offered_scheduled_at="2099-01-01T10:30:00+05:30", collecting=True))
+        loaded = order_draft.load(sid)
+        order_draft.clear(sid)
+        self.assertEqual(loaded.offered_scheduled_at, "2099-01-01T10:30:00+05:30")
+        self.assertTrue(loaded.collecting)
+
+    def test_the_refusal_offers_the_next_opening(self) -> None:
+        from app.services.ordering_agent.loop import describe_place_failure
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        said = describe_place_failure([ToolCallRecord(
+            tool="place_order", args={},
+            result={"outcome": "refused", "reason": "Pickup is outside the current branch schedule.",
+                    "next_open": "2026-09-17T10:30:00+05:30", "fulfillment_label": "pickup"},
+        )])
+        self.assertIn("closed for pickup", said)
+        self.assertIn("Thu 10:30", said)
+        self.assertIn("shall I place it for then", said)
+
+    def test_a_placed_order_for_later_says_when(self) -> None:
+        from app.services.ordering_agent.loop import describe_placed_order
+
+        said = describe_placed_order({"total": "261.45", "scheduled_at": "2026-09-17T10:30:00+05:30"})
+        self.assertIn("placed for Thu 10:30", said)
+
+    def test_a_time_that_will_not_work_says_why_and_offers_the_nearest(self) -> None:
+        from app.services.ordering_agent.loop import describe_time_problem
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        said = describe_time_problem([ToolCallRecord(
+            tool="schedule_time", args={"when": "2026-09-17 09:00"},
+            result={"outcome": "unavailable", "reason": "Pickup is not available for the selected time.",
+                    "next_open": "2026-09-17T10:30:00+05:30"},
+        )])
+        self.assertIn("will not work", said)
+        self.assertIn("Thu 10:30", said)
+
+    def test_the_reader_carries_when(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        seen = {}
+        def generate(prompt, *a, **k):
+            seen["prompt"] = prompt
+            return '{"add": null, "details": {}, "checkout": false, "when": "2026-09-17 10:30"}'
+        got = read_order_intent("yes that time is fine", generate=generate,
+                                now_local="Thursday 2026-09-17 08:24", offered="2026-09-17 10:30")
+        self.assertEqual(got["when"], "2026-09-17 10:30")
+        self.assertIn("offered to make the order for 2026-09-17 10:30", seen["prompt"])
+        self.assertEqual(read_order_intent("x", generate=lambda *a, **k: '{"when": "opening"}')["when"], "opening")
+
+    def test_a_scheduled_draft_places_a_scheduled_order(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from app.models.enums import OrderScheduleType
+        from app.services.ordering_agent import order_draft, tools as T
+
+        captured = {}
+        def fake_create_order(db, customer, payload):
+            captured["payload"] = payload
+            return SimpleNamespace(id=uuid.uuid4(), total_amount=1, currency="CAD",
+                                   restaurant_id=uuid.uuid4(), restaurant_location_id=uuid.uuid4())
+        draft = order_draft.OrderDraft(contact_name="V", contact_phone="+919000000001", contact_email="v@example.com",
+                                       fulfillment_type="PICKUP", scheduled_at="2099-01-01T10:30:00+05:30")
+        scope = SimpleNamespace(session_id=uuid.uuid4(), customer=SimpleNamespace(id=uuid.uuid4()), verified_phone=None,
+                                restaurant_id=uuid.uuid4(), restaurant_location_id=uuid.uuid4(), app_client_id=None)
+        with patch.object(T, "_draft_for", return_value=draft), patch.object(T, "create_order", fake_create_order), \
+             patch.object(T, "create_payment_link", return_value=SimpleNamespace(url="https://pay.example.test/x")), \
+             patch.object(T.order_channel, "remember", lambda *a, **k: None), patch.object(T.order_draft, "clear", lambda *a, **k: None):
+            out = T._place_order(None, scope, T.PlaceOrderArgs(lines=[T.CartLineArgs(menu_item_id=uuid.uuid4(), quantity=1)]))
+        self.assertEqual(captured["payload"].schedule_type, OrderScheduleType.SCHEDULED)
+        self.assertEqual(captured["payload"].scheduled_at.isoformat(), "2099-01-01T10:30:00+05:30")
+        self.assertEqual(out["scheduled_at"], "2099-01-01T10:30:00+05:30")

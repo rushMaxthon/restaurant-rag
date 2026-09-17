@@ -59,6 +59,7 @@ from app.schemas.order import (
     OrderCreateRequest,
 )
 from app.services import rag as ordering_rag
+from app.services import restaurant_locations as branch_hours
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.ordering_agent import order_channel, order_draft
 from app.services.ordering_agent.verified_phone import (
@@ -1332,6 +1333,21 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def _parse_iso(value: str | None):
+    """An ISO datetime with a zone, or None — the draft only ever stores it
+    that way (`order_draft._parse_when`), so anything else is not ours."""
+
+    if not value:
+        return None
+    from datetime import datetime
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 def _draft_for(scope: OrderingScope):
     """The draft, with everything already known filled in.
 
@@ -1463,11 +1479,16 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         return {"outcome": "not_identified"}
 
     fulfillment = OrderFulfillmentType(draft.fulfillment_type or OrderFulfillmentType.DELIVERY.value)
+    # For later, when the customer said so. Every scheduled time has already
+    # been through the branch's slot rules once (`loop._take_time`); the
+    # backend checks it again on creation, which is the rule, not the UI.
+    scheduled_for = _parse_iso(draft.scheduled_at)
     payload = OrderCreateRequest(
         restaurant_id=scope.restaurant_id,
         restaurant_location_id=scope.restaurant_location_id,
         fulfillment_type=fulfillment,
-        schedule_type=OrderScheduleType.ASAP,
+        schedule_type=OrderScheduleType.SCHEDULED if scheduled_for else OrderScheduleType.ASAP,
+        scheduled_at=scheduled_for,
         items=[
             OrderCreateItem(
                 menu_item_id=line.menu_item_id,
@@ -1512,6 +1533,28 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
             )
         except Exception:  # noqa: BLE001 - a refusal must still be returned
             logger.warning("Could not price a refused order for the customer", exc_info=True)
+        # Closed now but open later is an invitation, not a wall: the next
+        # slot the branch could actually take rides on the refusal, and is
+        # remembered so that "yes" on the next turn means that time. Decided
+        # from the branch's status, never from the wording of the reason.
+        try:
+            if scheduled_for is None and scope.restaurant_location_id and scope.session_id:
+                location = db.get(RestaurantLocation, scope.restaurant_location_id)
+                open_now, _ = branch_hours.get_location_fulfillment_status(
+                    location, fulfillment_type=fulfillment
+                )
+                if location is not None and not open_now:
+                    nearest = branch_hours.next_available_slot_start(
+                        location, fulfillment_type=fulfillment
+                    )
+                    if nearest is not None:
+                        refusal["next_open"] = nearest.isoformat()
+                        refusal["fulfillment_label"] = fulfillment.value.lower()
+                        stored = order_draft.load(scope.session_id)
+                        stored.offered_scheduled_at = nearest.isoformat()
+                        order_draft.save(scope.session_id, stored)
+        except Exception:  # noqa: BLE001 - the refusal still stands without an offer
+            logger.warning("Could not offer a later time for a refused order", exc_info=True)
         return refusal
 
     if scope.verified_phone:
@@ -1525,6 +1568,7 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         "order_id": order.id,
         "total": order.total_amount,
         "currency": getattr(order, "currency", None),
+        "scheduled_at": scheduled_for.isoformat() if scheduled_for else None,
     }
     try:
         link = create_payment_link(db, customer, order.id)

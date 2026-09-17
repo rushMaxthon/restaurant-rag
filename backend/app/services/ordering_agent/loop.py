@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 import json
+from datetime import datetime
 from decimal import Decimal
 
 import logging
@@ -36,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
+from app.services import restaurant_locations as branch_hours
 from app.services.ordering_agent import guards, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
@@ -193,6 +195,9 @@ def describe_placed_order(placed: dict[str, Any] | None) -> str | None:
             "could not be created just now. It is saved and can be paid from "
             "your orders."
         )
+    when = _clock(placed.get("scheduled_at"))
+    if when:
+        return f"Your order is placed for {when} and comes to {total}. The payment link is just below."
     return f"Your order is placed and comes to {total}. The payment link is just below."
 
 
@@ -321,6 +326,34 @@ def _short_of_minimum(result: dict[str, Any]) -> tuple[str, str, str] | None:
     return (f"${subtotal:.2f}", f"${minimum:.2f}", f"${minimum - subtotal:.2f}")
 
 
+def _clock(iso: str | None) -> str | None:
+    """'Thu 10:30' from an ISO datetime, in the branch's own zone."""
+
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(iso).astimezone(branch_hours.BUSINESS_TIMEZONE).strftime("%a %H:%M")
+    except ValueError:
+        return None
+
+
+def describe_time_problem(records: list[ToolCallRecord]) -> str | None:
+    """A time that could not be kept, and the nearest one that could."""
+
+    for record in reversed(records):
+        if record.tool != "schedule_time":
+            continue
+        if isinstance(record.result, dict):
+            if record.result.get("outcome") == "kept":
+                return None
+            reason = str(record.result.get("reason") or "").rstrip(".")
+            nearest = _clock(record.result.get("next_open"))
+            offer = f" The earliest I can do is {nearest} — shall I make it that?" if nearest else ""
+            return f"That time will not work: {reason}.{offer}"
+        return "I could not read that time. Tell me it like 'at 11:30' or 'when you open'."
+    return None
+
+
 def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
     """Why the order was not placed, from the tool's own result.
 
@@ -352,6 +385,16 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
         if outcome == "needs_details":
             return describe_collecting(list(record.result.get("missing") or []))
         if outcome == "refused":
+            nearest = _clock(record.result.get("next_open"))
+            if nearest:
+                # Closed now, open later: the one refusal that is really an
+                # invitation. Everything the customer typed is kept; all
+                # they have to say is when.
+                label = str(record.result.get("fulfillment_label") or "your order")
+                return (
+                    f"We are closed for {label} right now. The next time I can do is "
+                    f"{nearest} — shall I place it for then, or would you like another time?"
+                )
             short = _short_of_minimum(record.result)
             if short is not None:
                 subtotal, minimum, gap = short
@@ -642,6 +685,63 @@ def run_turn(
     records: list[ToolCallRecord] = []
     actions: list[dict[str, Any]] = []
 
+    def _take_time(when: str) -> None:
+        """Keep the time the customer named, once the branch's own rules
+        accept it — or record why they do not, so the turn can say so."""
+
+        location = (
+            db.get(branch_hours.RestaurantLocation, scope.restaurant_location_id)
+            if db is not None and scope.restaurant_location_id
+            else None
+        )
+        draft_now = order_draft.load(scope.session_id)
+        fulfillment = branch_hours.OrderFulfillmentType(
+            draft_now.fulfillment_type or branch_hours.OrderFulfillmentType.PICKUP.value
+        )
+        chosen: datetime | None
+        if when == "opening":
+            chosen = (
+                branch_hours.next_available_slot_start(location, fulfillment_type=fulfillment)
+                if location is not None
+                else None
+            )
+            if chosen is None:
+                records.append(ToolCallRecord(tool="schedule_time", args={"when": when},
+                                              error="no_slot: nothing available to schedule"))
+                return
+        else:
+            try:
+                chosen = datetime.strptime(when, "%Y-%m-%d %H:%M").replace(
+                    tzinfo=branch_hours.BUSINESS_TIMEZONE
+                )
+            except ValueError:
+                records.append(ToolCallRecord(tool="schedule_time", args={"when": when},
+                                              error="unreadable: that time could not be read"))
+                return
+        if location is not None:
+            ok, reason = branch_hours.schedule_slot_is_available(
+                location, fulfillment_type=fulfillment, scheduled_at=chosen
+            )
+            if not ok:
+                alternative = branch_hours.next_available_slot_start(
+                    location, fulfillment_type=fulfillment
+                )
+                records.append(ToolCallRecord(
+                    tool="schedule_time", args={"when": when},
+                    result={"outcome": "unavailable", "reason": reason,
+                            "next_open": alternative.isoformat() if alternative else None},
+                ))
+                if alternative is not None:
+                    draft_now.offered_scheduled_at = alternative.isoformat()
+                    order_draft.save(scope.session_id, draft_now)
+                return
+        kept, problems = order_draft.remember(draft_now, scheduled_at=chosen.isoformat())
+        order_draft.save(scope.session_id, kept)
+        records.append(ToolCallRecord(
+            tool="schedule_time", args={"when": when},
+            result={"outcome": "kept", "scheduled_at": kept.scheduled_at, "problems": problems},
+        ))
+
     def _place_now() -> None:
         """Place the order, here, from rows that say it is ready."""
 
@@ -755,6 +855,7 @@ def run_turn(
         question = (
             describe_placed_order(placed_order_in(records))
             or describe_applied(records)
+            or describe_time_problem(records)
             or describe_place_failure(records)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
@@ -787,7 +888,9 @@ def run_turn(
             answer=(
                 describe_placed_order(placed)
                 or describe_applied(records)
+                or describe_time_problem(records)
                 or describe_place_failure(records)
+            or describe_time_problem(records)
             or describe_place_failure(records)
         or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
@@ -834,10 +937,28 @@ def run_turn(
             fallback_reason=None, elapsed_seconds=clock() - start,
         )
 
+    # The branch's clock and any time it already offered, for the reading.
+    now_local = branch_hours._localize_reference_datetime(None)
+    standing_offer = None
+    if scope.session_id is not None:
+        offered_iso = order_draft.load(scope.session_id).offered_scheduled_at
+        if offered_iso:
+            try:
+                standing_offer = datetime.fromisoformat(offered_iso).astimezone(
+                    branch_hours.BUSINESS_TIMEZONE
+                ).strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                standing_offer = None
     wanted = (
-        {"add": None, "details": {}, "checkout": True}
+        {"add": None, "details": {}, "checkout": True, "when": None}
         if plain == "checkout"
-        else read_order_intent(message, missing=collecting or (), generate=generate)
+        else read_order_intent(
+            message,
+            missing=collecting or (),
+            generate=generate,
+            now_local=now_local.strftime("%A %Y-%m-%d %H:%M"),
+            offered=standing_offer,
+        )
     )
 
     if wanted["add"]:
@@ -861,6 +982,9 @@ def run_turn(
                 result={"outcome": "saved", "problems": problems, "missing": collecting},
             )
         )
+
+    if wanted.get("when") and scope.session_id is not None:
+        _take_time(wanted["when"])
 
     if wanted["checkout"] and scope.session_id is not None and cart:
         prepared, guard_error = guards.prepare_tool_call(
@@ -1005,7 +1129,9 @@ def run_turn(
                 describe_placed_order(placed)
                 or said
                 or describe_applied(records)
+                or describe_time_problem(records)
                 or describe_place_failure(records)
+                or describe_time_problem(records)
                 or describe_place_failure(records)
             or describe_collecting(_still_missing())
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)

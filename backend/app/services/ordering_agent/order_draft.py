@@ -20,6 +20,7 @@ learns that the field is filled.
 
 from __future__ import annotations
 
+from datetime import datetime
 import re
 import uuid
 from dataclasses import asdict, dataclass, fields
@@ -59,6 +60,13 @@ class OrderDraft:
     contact_email: str | None = None
     delivery_address: str | None = None
     fulfillment_type: str | None = None
+    # When the order is for, as an ISO datetime with its zone. Empty means
+    # as soon as possible, which is every order until a closed kitchen makes
+    # "later" the only answer.
+    scheduled_at: str | None = None
+    # The time the kitchen offered when it refused "now" — so that "yes" on
+    # the next turn can mean that time. State, not a detail the customer gave.
+    offered_scheduled_at: str | None = None
     # Set once the customer has been asked for their details. It is what
     # tells a later turn that the conversation is mid-collection, rather
     # than leaving the model to infer it from a thread it may not read.
@@ -66,7 +74,7 @@ class OrderDraft:
 
     #: Not a detail, a state flag. Excluded everywhere the detail fields are
     #: counted, or "collecting" would report itself as something we hold.
-    _STATE_FIELDS = ("collecting",)
+    _STATE_FIELDS = ("collecting", "offered_scheduled_at")
 
     def known_fields(self) -> list[str]:
         return [
@@ -118,6 +126,12 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     }
     if isinstance(stored.get("collecting"), bool):
         kept["collecting"] = stored["collecting"]
+    # The other state fields are strings and round-trip as such. Live: the
+    # time the kitchen offered was saved here and dropped on the very next
+    # read, so "yes" on the following turn had nothing to say yes to.
+    for name in OrderDraft._STATE_FIELDS:
+        if name != "collecting" and isinstance(stored.get(name), str):
+            kept[name] = stored[name]
     return OrderDraft(**kept)
 
 
@@ -213,7 +227,31 @@ def remember(draft: OrderDraft, **given: str | None) -> tuple[OrderDraft, list[s
     if draft.delivery_address and not draft.fulfillment_type:
         draft.fulfillment_type = OrderFulfillmentType.DELIVERY.value
 
+    when = (given.get("scheduled_at") or "").strip()
+    if when:
+        parsed = _parse_when(when)
+        if parsed is None:
+            problems.append("that time could not be read")
+        elif parsed <= datetime.now(parsed.tzinfo):
+            problems.append("that time has already passed")
+        else:
+            draft.scheduled_at = parsed.isoformat()
+            # An offer taken up, or overridden, is no longer pending.
+            draft.offered_scheduled_at = None
+
     return draft, problems
+
+
+def _parse_when(value: str) -> datetime | None:
+    """An ISO datetime with a zone, or None. Naive times are refused rather
+    than guessed at: the branch, the customer and this server are not
+    promised to share a clock."""
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 __all__ = [
