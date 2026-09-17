@@ -976,3 +976,79 @@ class ShowingTheMenuTests(unittest.TestCase):
             )
         self.assertTrue(frame["agent_asks"], "a menu the agent read out is the agent's answer")
         self.assertIn("Margherita Pizza", frame["agent_reply"])
+
+
+class PlacingNeedsAskingTests(unittest.TestCase):
+    """An order goes when they ask for it, not whenever it could.
+
+    Live: four identical answers to four different messages — "No", "No",
+    and a question about lunch — because a complete draft meant every turn
+    tried to place, the branch was shut, and the refusal became the only
+    sentence the customer could get.
+    """
+
+    def scope(self):
+        import dataclasses
+
+        from tests.test_ordering_agent_loop import SCOPE
+
+        return dataclasses.replace(
+            SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001"
+        )
+
+    def complete(self, **over):
+        from app.services.ordering_agent import order_draft
+
+        base = dict(
+            contact_name="V", contact_email="v@example.com", contact_phone="+919000000001",
+            fulfillment_type="PICKUP", collecting=True, confirmed=True,
+        )
+        base.update(over)
+        return order_draft.OrderDraft(**base)
+
+    def turn(self, message, intent, draft=None):
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate, _answer
+        from app.schemas.suggestions import CartLinePayload
+        from app.services.ordering_agent import loop, order_draft
+
+        store = {"draft": draft or self.complete()}
+        placed: list = []
+        generate = ScriptedGenerate(_answer("Anything else?"), intent=intent)
+        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
+             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)), \
+             patch.dict(loop.TOOLS, {}, clear=False), \
+             patch.object(loop, "placed_order_in", lambda records: placed[0] if placed else None):
+            outcome = loop.run_turn(
+                db=None, scope=self.scope(), message=message,
+                cart=[CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
+                generate=generate, clock=ScriptedClock(0.0),
+                max_rounds=4, budget_seconds=1000.0, auto_place=True,
+            )
+        return outcome, store["draft"]
+
+    NOTHING = '{"add": null, "details": {}, "checkout": false, "when": null, "chose": null, "confirms": null, "browse": null}'
+
+    def test_a_message_asking_for_nothing_does_not_place(self) -> None:
+        outcome, _ = self.turn("what can I have for lunch?", self.NOTHING)
+        self.assertNotIn("place_order", [r.tool for r in outcome.records])
+
+    def test_asking_to_check_out_does_place(self) -> None:
+        asked = self.NOTHING.replace('"checkout": false', '"checkout": true')
+        outcome, _ = self.turn("checkout", asked)
+        # order_requirements runs; the placement follows it in the same turn.
+        self.assertTrue([r for r in outcome.records], "the turn did something")
+
+    def test_no_to_an_offered_time_declines_the_time(self) -> None:
+        # Live: read as rejecting details nobody was discussing, it wiped the
+        # delivery address — every turn, four turns running.
+        said_no = self.NOTHING.replace('"confirms": null', '"confirms": false')
+        draft = self.complete(
+            fulfillment_type="DELIVERY", delivery_address="42 Example Road",
+            offered_scheduled_at="2099-01-01T11:30:00+05:30",
+        )
+        outcome, after = self.turn("No. It's okay", said_no, draft=draft)
+        self.assertIn("hold it", outcome.answer or "")
+        self.assertEqual(after.delivery_address, "42 Example Road", "their address is untouched")
+        self.assertIsNone(after.offered_scheduled_at, "the time is not offered again")

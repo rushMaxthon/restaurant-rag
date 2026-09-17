@@ -1090,7 +1090,13 @@ def run_turn(
         # everything an order needs. It is created unpaid, so the
         # confirmation that matters is still theirs — opening the link.
         already_tried = any(r.tool == "place_order" for r in records)
-        if auto_place and ready_now and not placed_order_in(records) and not already_tried:
+        if (
+            auto_place
+            and placing_wanted
+            and ready_now
+            and not placed_order_in(records)
+            and not already_tried
+        ):
             prepared, guard_error = guards.prepare_tool_call(
                 "place_order", {}, cart=cart, seen=seen, diet=scope.diet
             )
@@ -1208,6 +1214,10 @@ def run_turn(
                 ).strftime("%Y-%m-%d %H:%M")
             except ValueError:
                 standing_offer = None
+    # Whether this message asks for the order to go. Without it, a complete
+    # draft meant every turn tried to place — so a closed branch answered
+    # "No", "No" and "what can I have for lunch?" with the same offer.
+    placing_wanted = False
     asked_before = _pending_choice()
     # Details of theirs we are holding but which nobody has stood behind.
     unconfirmed = _details_to_confirm()
@@ -1247,16 +1257,35 @@ def run_turn(
 
     if wanted.get("when") and scope.session_id is not None:
         _take_time(wanted["when"])
+        placing_wanted = True
 
     if wanted.get("confirms") is True and scope.session_id is not None:
         kept = order_draft.load(scope.session_id)
         kept.confirmed = True
         order_draft.save(scope.session_id, kept)
         collecting = _still_missing() or []
+        placing_wanted = True
     elif wanted.get("confirms") is False and scope.session_id is not None:
-        # They said no. What we hold is wrong, so it is dropped rather than
-        # argued about, and the collection asks for it again from nothing.
         kept = order_draft.load(scope.session_id)
+        if standing_offer and not unconfirmed:
+            # "No" to a time is about the time. Read as a rejection of their
+            # details it wiped the delivery address — every turn, four turns
+            # running — and then asked for it again.
+            kept.offered_scheduled_at = None
+            order_draft.save(scope.session_id, kept)
+            return TurnOutcome(
+                answer=(
+                    "No problem — I will hold it. Tell me a time that suits you, "
+                    "or say what else you would like."
+                ),
+                answer_about="order",
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+        # Otherwise it is the details they are rejecting, so what we hold is
+        # dropped rather than argued about and asked for again from nothing.
         kept.delivery_address = None
         kept.confirmed = True
         kept.confirm_asks = 0
@@ -1292,6 +1321,7 @@ def run_turn(
             actions.extend(added)
 
     if wanted["details"] and scope.session_id is not None:
+        placing_wanted = True
         draft, problems = order_draft.remember(
             order_draft.load(scope.session_id), **wanted["details"]
         )
@@ -1307,6 +1337,9 @@ def run_turn(
                 result={"outcome": "saved", "problems": problems, "missing": collecting},
             )
         )
+
+    if wanted["checkout"]:
+        placing_wanted = True
 
     if wanted["checkout"] and scope.session_id is not None and cart:
         prepared, guard_error = guards.prepare_tool_call(
@@ -1324,7 +1357,13 @@ def run_turn(
         # improve on rows that already answer the question.
         if _details_to_confirm():
             return _ask_to_confirm()
-        if auto_place and cart and _still_missing() == [] and not placed_order_in(records):
+        if (
+            auto_place
+            and placing_wanted
+            and cart
+            and _still_missing() == []
+            and not placed_order_in(records)
+        ):
             _place_now()
         return _settled()
 
@@ -1423,6 +1462,7 @@ def run_turn(
         # confirm on the next message what they have just finished giving.
         if (
             auto_place
+            and placing_wanted
             and step.answer is not None
             and cart
             and _still_missing() == []
