@@ -17,6 +17,35 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (2) — "Yes" means the question we just asked (commit e54972d)
+
+**Done:** the agent ended every turn with a question and remembered none
+of them, so a bare "Yes" fell through to the reply pipeline. `OrderDraft`
+now carries `awaiting` (JSON: the question in our own words, what agreeing
+does, and the dish in question). `loop._hold` writes it as each read-back
+asks; `_answer_standing` acts on the reply. `read_order_intent` gained an
+`asked` slot that states the question verbatim, so "haan bhai kar do",
+"nothing else" and "yes and add a thai iced tea too" are all read correctly
+— no word list in code.
+
+Also: `read_order_intent` gets the branch's real menu sections
+(`tools.menu_categories`) and returns `category`, so "some drink" finds
+Beverages; a named dish beats a guessed section; `dishes_to_show` stems
+plurals and matches a named section exactly; one matching dish is offered
+("Thai Iced Tea is $4.14. Shall I add one?") instead of listed; `describe_applied`
+asks one question ("Anything else?") not two; checking out an empty cart
+says so. The plain-sentence fast path yields to an open question for
+"checkout" only — "go ahead"/"kar do" are how people agree — while plain
+cart and menu reads keep it.
+
+**Verified:** suite 1610 OK. The screenshot conversation replayed live end
+to end: drinks, naming a dish, "Yes", cart, "haan bhai order kar do",
+details, minimum-order guidance. Backend + worker restarted; test sessions
+cleared.
+
+**Open:** no explicit read-back of items and total before placing (the user
+has asked about adding one); ngrok webhook still in place for Mr Tailor.
+
 ## 2026-09-17 — WhatsApp messages dressed for the phone (commit ec9a472)
 
 **Done:** `format_for_whatsapp` in `backend/app/services/whatsapp.py`, applied
