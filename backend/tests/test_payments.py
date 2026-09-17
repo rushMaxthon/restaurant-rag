@@ -993,7 +993,12 @@ class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
         body, forgotten = self.said(lambda: service._report_cancelled_in_chat(self.order()))
         self.assertIn("cancelled", body)
         self.assertIn("nothing has been charged", body)
-        self.assertTrue(forgotten)
+        # And what they chose is offered back. This used to end with "tell me
+        # when you would like to order again" and forget the conversation —
+        # with the cart emptied at placement and the order cancelled by the
+        # webhook, everything they had picked was gone.
+        self.assertIn("back in your basket", body)
+        self.assertFalse(forgotten, "the answer to that question arrives in this thread")
 
     def test_a_refund_says_where_the_money_went(self) -> None:
         from app.services.payments import service

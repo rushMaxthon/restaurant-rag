@@ -661,7 +661,8 @@ def read_order_intent(
     empty: dict[str, Any] = {
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
-        "category": None, "wants_to_add": False,
+        "category": None, "wants_to_add": False, "cancel_order": False,
+        "pay_now": False,
     }
     if not message.strip():
         return empty
@@ -747,6 +748,8 @@ def read_order_intent(
         "below, else null\n"
         '  "wants_to_add": true if they want to order something MORE but have not '
         "said what, else false\n"
+        '  "cancel_order": true if they want to call off an order they have already placed, else false\n'
+        '  "pay_now": true if they are asking to pay, or for the payment link again, else false\n'
         '  "asks_hours": true if they are asking WHEN — when you open, when the '
         "order would arrive, what times are possible — else false\n"
         '  "chose": the options they picked from the list below, copied exactly, '
@@ -770,6 +773,11 @@ def read_order_intent(
         # Measured: "I want to add more item in my cart" matched nothing at
         # all, so the turn had nothing to do and read the cart back — the
         # same cart, twice in a row.
+        '- "cancel_order" is dropping an order already placed: "cancel my order", '
+        '"forget it", "I do not want it any more". Removing one dish from a cart '
+        "is not this.\n"
+        '- "pay_now" is asking to pay or for the link again: "send the link", '
+        '"how do I pay", "I want to pay now", "payment link".\n'
         '- "wants_to_add" is wanting more without saying what: "I want to add '
         'more items", "can I add something else", "add one more thing". If they '
         'name a dish it belongs in "add" and "wants_to_add" is false.\n'
@@ -864,6 +872,8 @@ def read_order_intent(
 
     asks_hours = parsed.get("asks_hours") is True
     wants_to_add = parsed.get("wants_to_add") is True
+    cancel_order = parsed.get("cancel_order") is True
+    pay_now = parsed.get("pay_now") is True
 
     category = parsed.get("category")
     if not isinstance(category, str) or category.strip().lower() in {"null", "none", ""}:
@@ -904,6 +914,8 @@ def read_order_intent(
         "category": category,
         "asks_hours": asks_hours,
         "wants_to_add": wants_to_add,
+        "cancel_order": cancel_order,
+        "pay_now": pay_now,
     }
 
 

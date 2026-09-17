@@ -1922,3 +1922,265 @@ class OrderingForAnotherDayTests(unittest.TestCase):
         )
         self.assertIsNotNone(got)
         self.assertGreaterEqual(got, wanted.replace(hour=0, minute=0, second=0, microsecond=0))
+
+
+class AnOrderWaitingToBePaidTests(unittest.TestCase):
+    """Placed, unpaid, and still something the conversation can act on.
+
+    Placing a card order empties the cart and clears the draft, so for the
+    window between the payment link and the payment the order is the only
+    record of what somebody wanted — and nothing in the conversation could
+    reach it. "Sorry, I need that tomorrow", sent seconds after the link,
+    was a sentence about a row the turn could not see.
+    """
+
+    def order(self, **over):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        from app.models.enums import OrderStatus, PaymentStatus
+
+        fields = {
+            "id": uuid.uuid4(),
+            "status": OrderStatus.PAYMENT_PENDING,
+            "payment_status": PaymentStatus.PENDING,
+            "total_amount": Decimal("20.62"),
+            "scheduled_at": None,
+            "contact_name": "vishal",
+            "items": [],
+        }
+        fields.update(over)
+        return SimpleNamespace(**fields)
+
+    def item(self, **over):
+        from types import SimpleNamespace
+
+        fields = {
+            "menu_item_id": uuid.uuid4(),
+            "quantity": 2,
+            "menu_item_size_id": None,
+            "selected_options_snapshot": [],
+        }
+        fields.update(over)
+        return SimpleNamespace(**fields)
+
+    def test_its_items_become_a_basket_again(self) -> None:
+        from app.services.ordering_agent import open_orders
+
+        size = uuid.uuid4()
+        option = uuid.uuid4()
+        order = self.order(items=[
+            self.item(),
+            self.item(quantity=1, menu_item_size_id=size,
+                      selected_options_snapshot=[{"option_id": str(option)}]),
+        ])
+        lines = open_orders.lines_of(order)
+        self.assertEqual([line.quantity for line in lines], [2, 1])
+        self.assertEqual(lines[1].size_id, size)
+        self.assertEqual(lines[1].customization_option_ids, [option])
+
+    def test_a_snapshot_option_that_is_not_an_id_is_dropped_not_guessed(self) -> None:
+        from app.services.ordering_agent import open_orders
+
+        order = self.order(items=[
+            self.item(selected_options_snapshot=[{"option_id": "not-a-uuid"}, "junk"])
+        ])
+        self.assertEqual(open_orders.lines_of(order)[0].customization_option_ids, [])
+
+    def test_only_an_unpaid_order_is_the_conversations_to_move(self) -> None:
+        # Once money has changed hands the kitchen may have started, and a
+        # time change is a conversation with the restaurant, not a field edit.
+        from app.models.enums import OrderStatus, PaymentStatus
+        from app.services.ordering_agent import open_orders
+
+        self.assertTrue(open_orders.can_move(self.order()))
+        self.assertFalse(open_orders.can_move(self.order(payment_status=PaymentStatus.PAID)))
+        self.assertFalse(open_orders.can_move(self.order(status=OrderStatus.PLACED)))
+
+    def test_a_paid_order_is_not_moved_whatever_is_asked(self) -> None:
+        from datetime import datetime
+
+        from app.models.enums import PaymentStatus
+        from app.services.ordering_agent import open_orders
+
+        moved, why = open_orders.move_to(
+            None, self.order(payment_status=PaymentStatus.PAID), when=datetime.now()
+        )
+        self.assertFalse(moved)
+        self.assertIn("already paid", why)
+
+    def test_an_order_whose_money_landed_is_never_cancelled(self) -> None:
+        # Telling somebody their order is gone while their card has been
+        # charged is the one outcome worth a whole extra check, so the
+        # provider is asked before anything is written.
+        from unittest.mock import patch
+
+        from app.models.enums import PaymentStatus
+        from app.services.ordering_agent import open_orders
+        from app.services.payments import service
+
+        order = self.order()
+
+        def landed(db, o):
+            o.payment_status = PaymentStatus.PAID
+
+        with patch.object(service, "_reconcile_with_provider", landed):
+            self.assertFalse(open_orders.abandon(None, order))
+        self.assertEqual(order.status.value, "PAYMENT_PENDING")
+
+    def test_the_draft_counts_how_often_it_has_been_mentioned(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_draft as od
+
+        saved = {}
+        with patch.object(od, "cache_set_json", lambda k, v, ttl_seconds=None: saved.update(v)), \
+                patch.object(od, "cache_get_json", lambda k: dict(saved)):
+            od.save("s", od.OrderDraft(waiting_asks=2))
+            self.assertEqual(od.load("s").waiting_asks, 2)
+
+
+class TheQuestionAsksWhatTheyAskedTests(unittest.TestCase):
+    """"Cancel my order" is answered with "shall I cancel it?", not its opposite.
+
+    A customer who said "cancel my order" and was asked "Shall I keep that
+    order?" has to answer no to get what they asked for, and the yes they
+    will reach for does the opposite of what they said.
+    """
+
+    def turn(self, message, *, draft, intent, cart=None, db=None):
+        import dataclasses as dc
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft as od
+
+        scope = dc.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
+        held = {"draft": draft}
+        with patch.object(od, "load", lambda _s: dc.replace(held["draft"])), \
+                patch.object(od, "save", lambda _s, d: held.update(draft=d)):
+            outcome = loop.run_turn(
+                db=db, scope=scope, message=message, cart=cart or [],
+                generate=ScriptedGenerate(intent=intent),
+                clock=ScriptedClock(0.0), max_rounds=1, budget_seconds=1000.0,
+            )
+        return outcome, held["draft"]
+
+    def answering(self, agreed):
+        import json
+
+        return json.dumps({
+            "add": None, "details": {}, "checkout": False, "when": None,
+            "chose": None, "confirms": agreed, "browse": None,
+            "asks_hours": False, "category": None, "wants_to_add": False,
+            "cancel_order": False, "pay_now": False,
+        })
+
+    def waiting_on(self, kind, question):
+        import json
+
+        from app.services.ordering_agent import order_draft as od
+
+        return od.OrderDraft(
+            awaiting=json.dumps({"question": question, "yes": kind, "subject": None, "asks": question})
+        )
+
+    def test_no_to_putting_the_dishes_back_leaves_the_basket_alone(self) -> None:
+        outcome, _ = self.turn(
+            "no thanks",
+            draft=self.waiting_on("restore_cart", "Shall I put those dishes back in your basket?"),
+            intent=self.answering(False),
+        )
+        self.assertIn("whenever you would like to order", outcome.answer or "")
+        self.assertEqual(outcome.actions, [])
+
+    def cancelling(self, kind, agreed):
+        """One turn answering a question about a waiting order."""
+
+        import dataclasses as dc
+        from decimal import Decimal
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import loop, open_orders
+
+        order = SimpleNamespace(
+            id=uuid.uuid4(), total_amount=Decimal("20.62"), scheduled_at=None, items=[]
+        )
+        dropped = []
+        with patch.object(open_orders, "waiting_order", lambda db, scope: order),                 patch.object(open_orders, "abandon", lambda db, o: dropped.append(o) or True),                 patch.object(open_orders, "payment_link_for", lambda db, o: None):
+            outcome, _ = self.turn(
+                "yes" if agreed else "no",
+                draft=self.waiting_on(kind, "Shall I?"),
+                intent=self.answering(agreed),
+                db=object(),
+            )
+        return outcome, dropped
+
+    def test_yes_to_shall_i_cancel_it_cancels_it(self) -> None:
+        outcome, dropped = self.cancelling("drop_order", True)
+        self.assertEqual(len(dropped), 1)
+        self.assertIn("Cancelled", outcome.answer or "")
+
+    def test_yes_to_shall_i_keep_it_keeps_it(self) -> None:
+        # The same word, the opposite question, the opposite outcome.
+        outcome, dropped = self.cancelling("keep_order", True)
+        self.assertEqual(dropped, [])
+        self.assertIn("Kept", outcome.answer or "")
+
+    def test_no_to_shall_i_keep_it_cancels_it(self) -> None:
+        outcome, dropped = self.cancelling("keep_order", False)
+        self.assertEqual(len(dropped), 1)
+        self.assertIn("Cancelled", outcome.answer or "")
+
+    def test_no_to_shall_i_cancel_it_keeps_it(self) -> None:
+        outcome, dropped = self.cancelling("drop_order", False)
+        self.assertEqual(dropped, [])
+        self.assertIn("Kept", outcome.answer or "")
+
+
+class ADismissedPaymentKeepsTheirChoicesTests(unittest.TestCase):
+    """The cart was emptied at placement; a cancelled payment must not end there."""
+
+    def order(self):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id=uuid.uuid4(), contact_name="hitesh", total_amount=Decimal("20.62"),
+            scheduled_at=None, customer=None, items=[],
+        )
+
+    def test_it_offers_the_dishes_back_and_keeps_the_thread(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.payments import service
+
+        said = {}
+
+        def tell(order, body, finished=False):
+            said["body"] = body
+            said["finished"] = finished
+
+        with patch.object(service, "_tell_in_chat", tell), \
+                patch.object(service, "_offer_the_dishes_back", lambda order: None):
+            service._report_cancelled_in_chat(self.order())
+        self.assertIn("back in your basket", said["body"])
+        self.assertIn("nothing has been charged", said["body"])
+        self.assertFalse(said["finished"], "the answer arrives in this thread")
+
+    def test_the_question_is_held_where_the_conversation_will_look(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_draft
+        from app.services.payments import service
+
+        order = self.order()
+        held = {}
+        with patch.object(service, "order_channel", create=True), \
+                patch("app.services.ordering_agent.order_channel.phone_for", lambda _id: "916353100362"), \
+                patch.object(order_draft, "save", lambda session_id, draft: held.update(draft=draft)), \
+                patch.object(order_draft, "load", lambda session_id: order_draft.OrderDraft()):
+            service._offer_the_dishes_back(order)
+        self.assertIn("restore_cart", (held["draft"].awaiting or ""))
+        self.assertIn(str(order.id), (held["draft"].awaiting or ""))

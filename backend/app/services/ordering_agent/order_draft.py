@@ -84,6 +84,10 @@ class OrderDraft:
     # ever. The order is created unpaid, so the link is the confirmation
     # that actually spends money.
     place_asks: int = 0
+    # How many times we have mentioned an order that is waiting to be
+    # paid. A reminder that repeats every turn is nagging, and the link
+    # is in the thread either way.
+    waiting_asks: int = 0
     # The question this conversation is waiting on an answer to, as JSON:
     # what we asked in our own words, and what agreeing to it acts on. A
     # bare "yes" has no meaning by itself — live, "Which one would you like?"
@@ -118,6 +122,7 @@ class OrderDraft:
         "awaiting",
         "order_confirmed",
         "place_asks",
+        "waiting_asks",
         "confirmed",
         "confirm_asks",
         "diet",
@@ -174,7 +179,7 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     for flag in ("collecting", "confirmed", "order_confirmed"):
         if isinstance(stored.get(flag), bool):
             kept[flag] = stored[flag]
-    for counter in ("confirm_asks", "place_asks"):
+    for counter in ("confirm_asks", "place_asks", "waiting_asks"):
         if isinstance(stored.get(counter), int):
             kept[counter] = stored[counter]
     # The other state fields are strings and round-trip as such. Live: the
@@ -183,6 +188,7 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     for name in OrderDraft._STATE_FIELDS:
         if name not in {
             "collecting", "confirmed", "confirm_asks", "order_confirmed", "place_asks",
+            "waiting_asks",
         } and isinstance(stored.get(name), str):
             kept[name] = stored[name]
     return OrderDraft(**kept)

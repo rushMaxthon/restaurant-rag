@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 import json
+import uuid
 from datetime import datetime
 from decimal import Decimal
 
@@ -38,7 +39,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services import restaurant_locations as branch_hours
-from app.services.ordering_agent import guards, order_draft
+from app.models.order import Order
+from app.services.ordering_agent import guards, open_orders, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
     extract_cart_request,
@@ -766,6 +768,9 @@ def run_turn(
     seen: set[uuid.UUID] = guards.seed_seen_ids(cart)
     # Tools this turn has already answered with identical arguments.
     retired: set[str] = set()
+    # The unpaid order this conversation left behind, looked up at most
+    # once a turn and only when something asks about it.
+    _waiting_for: list = []
     # The cart resolved once, up front, by the same code the tool uses. It
     # goes into every prompt as a fact and costs one query per turn; the
     # alternative is a model that has to remember to look before it speaks,
@@ -963,6 +968,101 @@ def run_turn(
             or branch_hours.OrderFulfillmentType.DELIVERY.value
         )
         return branch_hours.describe_hours(location, fulfillment_type=wanted_type)
+
+    def _waiting_order():
+        """The order they placed and have not paid for, looked up once."""
+
+        if not _waiting_for:
+            _waiting_for.append(open_orders.waiting_order(db, scope))
+        return _waiting_for[0]
+
+    def _order_line(order) -> str:
+        """What that order is, in one sentence, from its own row."""
+
+        when = _clock(order.scheduled_at.isoformat()) if order.scheduled_at else None
+        for_when = f" for {when}" if when else ""
+        return f"Your order{for_when} comes to {_money(order.total_amount)}"
+
+    def _with_link(order, said: str) -> str:
+        """A sentence about an order, with the way to pay it."""
+
+        link = open_orders.payment_link_for(db, order) if db is not None else None
+        return f"{said}\n\nPay here:\n{link}" if link else said
+
+    def _ask_about_waiting(order, *, they_asked_to_cancel: bool = False) -> TurnOutcome:
+        """Put the waiting order to them, with the link and one question.
+
+        Asked the way round they raised it. A customer who said "cancel my
+        order" and was asked "Shall I keep that order?" has to answer no to
+        get what they asked for, and the yes they will reach for does the
+        opposite of what they said.
+        """
+
+        if they_asked_to_cancel:
+            question = "Shall I cancel it?"
+            asked = _hold(question, yes="drop_order", asks=question)
+        else:
+            question = "Shall I keep that order?"
+            asked = _hold(question, yes="keep_order", asks=question)
+        said = f"{_order_line(order)} and is waiting to be paid."
+        return _answering(f"{_with_link(order, said)}\n\n{asked}")
+
+    def _drop_the_order(order) -> TurnOutcome:
+        """Call it off, and offer back what it held."""
+
+        if db is None:
+            # Two different failures, and only one of them is about money.
+            # Saying the payment went through when the real trouble is a
+            # database we cannot reach would be a lie in the customer's
+            # favour, which is still a lie.
+            return _answering(
+                "I could not reach your order just then. Say that again in a moment "
+                "and I will sort it."
+            )
+        if not open_orders.abandon(db, order):
+            # The reconciliation found the money had landed after all.
+            # Telling somebody their order is gone while their card has been
+            # charged is the one outcome worth a whole extra check.
+            return _answering(
+                "That payment has actually gone through, so the order is confirmed. "
+                "Nothing has been cancelled."
+            )
+        _waiting_for[0] = None
+        return _answering(
+            "Cancelled, and nothing has been charged. "
+            + _hold(
+                "Shall I put those dishes back in your basket for another time?",
+                yes="restore_cart",
+                subject=str(order.id),
+            )
+        )
+
+    def _put_back(order) -> None:
+        """The order's dishes, back in the basket, through the same add path.
+
+        Re-resolved against the live menu rather than restored from the
+        order's snapshot: a dish that has since gone off the menu should be
+        refused here exactly as it would be for anybody else.
+        """
+
+        for line in open_orders.lines_of(order):
+            args: dict[str, Any] = {
+                "menu_item_id": str(line.menu_item_id),
+                "quantity": line.quantity,
+            }
+            if line.size_id:
+                args["menu_item_size_id"] = str(line.size_id)
+            if line.customization_option_ids:
+                args["selected_options"] = [
+                    {"option_id": str(option)} for option in line.customization_option_ids
+                ]
+            # The add guard refuses an id this turn has not looked up —
+            # the rule that stops a model inventing a menu item and
+            # putting it in somebody's cart. These ids are not an
+            # invention: they were resolved and priced when the order was
+            # written. Without this the basket came back empty.
+            guards.grow_seen_ids(seen, args)
+            actions.extend(_run_add(args))
 
     def _suggest_more() -> TurnOutcome | None:
         """A few things to offer somebody who wants more but has not said what.
@@ -1218,6 +1318,31 @@ def run_turn(
             # was answering: "haan bhai kar do" came back with both the
             # agreement and the drink, and the drink went in twice.
             wanted["add"] = None
+            return None
+        if kind in {"keep_order", "drop_order"}:
+            order = _waiting_order()
+            if order is None:
+                return None
+            # The two questions ask opposite things — one offers to keep it,
+            # the other to cancel it — so the same yes means each.
+            dropping = agreed if kind == "drop_order" else not agreed
+            if not dropping:
+                return _answering(
+                    _with_link(order, "Kept. It will be ready once the payment lands.")
+                )
+            return _drop_the_order(order)
+        if kind == "restore_cart":
+            if not agreed:
+                return _answering("No problem. Tell me whenever you would like to order.")
+            order = None
+            if db is not None and standing.get("subject"):
+                try:
+                    order = db.get(Order, uuid.UUID(str(standing["subject"])))
+                except (TypeError, ValueError):
+                    order = None
+            if order is None:
+                return _answering("Tell me what you would like and I will put it together.")
+            _put_back(order)
             return None
         if kind == "place":
             if also_says:
@@ -1775,6 +1900,47 @@ def run_turn(
             return settled
         wanted["confirms"] = None
 
+    # An order already placed, and a time for it: they are moving that
+    # order, not scheduling a basket they no longer have.
+    if wanted.get("when") and not cart and db is not None:
+        order = _waiting_order()
+        if order is not None and len(str(wanted["when"]).strip()) > 10:
+            try:
+                moved_to = datetime.strptime(wanted["when"], "%Y-%m-%d %H:%M").replace(
+                    tzinfo=branch_hours.BUSINESS_TIMEZONE
+                )
+            except ValueError:
+                moved_to = None
+            if moved_to is not None:
+                moved, why_not = open_orders.move_to(db, order, when=moved_to)
+                if moved:
+                    return _answering(
+                        _with_link(order, f"Moved — your order is now for {moved_to:%a %H:%M}.")
+                    )
+                return _answering(
+                    f"I could not move it to then: {str(why_not or '').rstrip('.')}. "
+                    "Tell me another time and I will try that."
+                )
+
+    if wanted.get("pay_now") and db is not None:
+        order = _waiting_order()
+        if order is not None:
+            return _answering(_with_link(order, f"{_order_line(order)} and is waiting to be paid."))
+
+    # Dropping an order is never assumed. A message naming a dish is a cart
+    # edit however it is read — live, "remove the corn fritters" came back as
+    # a cancellation — so only a message about nothing else gets this far,
+    # and even then it is a question rather than a deletion.
+    if (
+        wanted.get("cancel_order")
+        and not wanted["add"]
+        and not wanted.get("browse")
+        and db is not None
+    ):
+        order = _waiting_order()
+        if order is not None:
+            return _ask_about_waiting(order, they_asked_to_cancel=True)
+
     if wanted.get("when") and scope.session_id is not None:
         _take_time(wanted["when"])
         placing_wanted = True
@@ -1952,6 +2118,19 @@ def run_turn(
                     return asked
             _place_now()
         return _settled()
+
+    # Nothing to do, and an order of theirs sitting unpaid. Saying so beats
+    # handing the turn to a reply pipeline that knows nothing about orders
+    # and would answer about the menu while their food never arrives.
+    if not cart and db is not None and scope.session_id is not None:
+        order = _waiting_order()
+        if order is not None:
+            asked_before_now = int(order_draft.load(scope.session_id).waiting_asks or 0)
+            if asked_before_now < 2:
+                kept = order_draft.load(scope.session_id)
+                kept.waiting_asks = asked_before_now + 1
+                order_draft.save(scope.session_id, kept)
+                return _ask_about_waiting(order)
 
     for _round_index in range(rounds):
         # Checked before every model call, per the brief — a turn that is
