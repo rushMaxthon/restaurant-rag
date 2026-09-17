@@ -17,6 +17,43 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (7) — The order waiting to be paid (commit 580eb17)
+
+**Done:** new `app/services/ordering_agent/open_orders.py` — `waiting_order`,
+`lines_of`, `can_move`, `move_to`, `abandon`, `payment_link_for`. Placing a
+card order empties the cart and clears the draft, so between the link and the
+payment the order was the only record of what somebody wanted and nothing in
+the conversation could reach it.
+
+- **Move:** an unpaid order can be rescheduled; `schedule_slot_is_available`
+  decides, and `can_move` refuses once anything is charged.
+- **Pay:** `pay_now` in the reading resends the same Checkout session.
+- **Drop:** `PAYMENT_ABANDONED` (the reason the enum already has), actor
+  CUSTOMER, reconciled with the provider first exactly as the reaper does —
+  `abandon` returns False if the money actually landed, and the turn says so.
+- **Never on a guess:** cancelling is always a question, a message naming a
+  dish never reaches it ("remove the corn fritters" read as a cancellation),
+  and the question is asked the way round they raised it (`drop_order` vs
+  `keep_order`) so the natural yes does not do the opposite.
+- **Nothing lost:** a cancelled order's dishes are offered back and re-added
+  through `_run_add`, re-resolved against the live menu.
+- A dismissed Stripe payment offers the same instead of ending the thread;
+  `_offer_the_dishes_back` holds the standing question on the chat draft.
+- A turn with nothing else to do mentions an unpaid order, twice at most
+  (`OrderDraft.waiting_asks`).
+
+**Two real bugs found while testing:** `loop.py` never imported `uuid` (with
+`from __future__ import annotations` every `uuid.UUID` in a signature is a
+string, so nothing had needed it at runtime) — the NameError was swallowed by
+the rag fail-open seam and showed up as reply-pipeline prose. And `_run_add`
+was refusing the restored lines because the add guard only accepts ids this
+turn has seen; `guards.grow_seen_ids(seen, args)` first.
+
+**Verified:** suite 1655 OK. Live end to end: place -> "Sorry! I need this
+order tomorrow at 7 pm" -> moved, link reissued; "send me the payment link
+again"; "cancel that order" -> "Shall I cancel it?" -> yes -> cancelled ->
+"Shall I put those dishes back?" -> yes -> basket restored and readable.
+
 ## 2026-09-17 (6) — Ordering for a day that is not today (commit cc2fe86)
 
 **Done:** four faults in one screenshot.
