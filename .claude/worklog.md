@@ -17,6 +17,25 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 — WhatsApp messages dressed for the phone (commit ec9a472)
+
+**Done:** `format_for_whatsapp` in `backend/app/services/whatsapp.py`, applied
+inside `send_text` so every outgoing message (agent, payments notifications,
+reply pipeline prose) gets it. Bold on amounts, the dish just added, the time a
+scheduled order is for, and receipt labels; `- ` lists become `• `; ✅ / ❌ on a
+payment that landed / failed; 🛒 on the cart. The pipeline's `**markdown**`
+had been reaching phones as literal asterisks — it now becomes WhatsApp bold.
+`describe_cart` (loop.py) reads one dish per line on every channel with
+"Subtotal: $x" (was one run-on sentence). Idempotent; links untouched.
+
+**Verified:** suite 1597 OK; three real turns sent to the test number and the
+exact delivered bodies printed (menu list, add, cart) — all formatted.
+Backend + worker restarted on ec9a472; test sessions cleared.
+
+**Open:** qwen3 speed (menu ~11s, add ~8s, cart 1.7s); seed prices odd; Meta
+webhook still points at the ngrok tunnel — restore
+`https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when done.
+
 ## YYYY-MM-DD — short title
 
 **Goal:** what was asked.
