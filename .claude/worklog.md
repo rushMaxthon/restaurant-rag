@@ -17,6 +17,30 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (4) — Calling a customer by their name (commit 6bcb94b)
+
+**Done:** the name is said at three moments, not on every line: the
+greeting, the order read back before money is spent, and the payment
+landing or failing. `order_draft.first_name` decides what is worth saying —
+first word, capitalised only if typed all lower case, so "McDonald" and
+"d'Souza" survive; an email in the name box, a single initial or something
+absurdly long returns None and the sentence reads correctly without a name.
+`payments.service._called` does the same for an order row.
+
+**The trap:** the greeting response cache is keyed on the greeting ALONE
+(`_greeting_response_cache_key`) and shared by every customer who sends one.
+A name written into that text would be said to the next person who said
+hello. So `rag._greeting_with_name` is applied after the cache is read and
+written, and the stored copy stays impersonal. `_customer_first_name` reads
+the signed-in account or, for a guest, the account behind the verified
+phone.
+
+**Verified:** suite 1629 OK. Live: "hi" -> "Good afternoon, Vishal 👋 ...",
+then add / deliver / confirm details / read-back ("Here is your order,
+Vishal:") / placed with the link, total matching. Payment messages checked
+directly, with and without a name. Backend + worker restarted; sessions
+cleared.
+
 ## 2026-09-17 (3) — The order is read back before it goes (commit 87d21ca)
 
 **Done:** a real restaurant repeats the order before charging for it. The
