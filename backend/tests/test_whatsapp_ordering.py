@@ -267,3 +267,86 @@ class WaIdShapeTests(unittest.TestCase):
         ):
             wa.answer_whatsapp_message.__wrapped__(from_number="916353100362", text="hello")
         self.assertEqual(seen.get("verified_phone"), "+916353100362")
+
+
+class TypingIndicatorTests(unittest.TestCase):
+    """The blue ticks and the bubble, while the agent thinks.
+
+    A turn takes four to eight seconds. Without this the customer's screen
+    shows nothing — not even a read receipt — and a message sent twice
+    starts a second turn on a conversation still finishing its first.
+    """
+
+    def test_it_marks_read_and_asks_for_the_bubble_in_one_call(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        posted: dict = {}
+
+        class Response:
+            status_code = 200
+            text = ""
+
+        def fake_post(url, **kwargs):
+            posted["url"] = url
+            posted["json"] = kwargs["json"]
+            return Response()
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "123"
+        ), patch.object(service.httpx, "post", fake_post):
+            self.assertTrue(service.show_typing("wamid.TEST"))
+
+        self.assertEqual(posted["json"]["status"], "read")
+        self.assertEqual(posted["json"]["message_id"], "wamid.TEST")
+        self.assertEqual(posted["json"]["typing_indicator"], {"type": "text"})
+
+    def test_no_message_id_means_no_call(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        def explode(*a, **k):
+            raise AssertionError("should not be called")
+
+        with patch.object(service.httpx, "post", explode):
+            self.assertFalse(service.show_typing(""))
+
+    def test_a_refusal_never_reaches_the_customer(self) -> None:
+        # A bubble is a courtesy; the answer behind it is not.
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "123"
+        ), patch.object(service.httpx, "post", side_effect=service.httpx.ConnectError("down")):
+            self.assertFalse(service.show_typing("wamid.TEST"))
+
+    def test_the_turn_shows_it_before_doing_the_work(self) -> None:
+        from unittest.mock import patch
+
+        order: list = []
+
+        def fake_typing(message_id):
+            order.append(("typing", message_id))
+            return True
+
+        def fake_turn(db, **kwargs):
+            order.append(("worked", None))
+            return SimpleNamespace(
+                reply="hi", suggestions=[], agent_reply=None, agent_asks=False,
+                order_ready=False, placed_order=None, cart_actions=[],
+            )
+
+        with patch.object(wa.settings, "whatsapp_enabled", True), patch.object(
+            wa, "show_typing", fake_typing
+        ), patch.object(wa, "handle_chat_message", fake_turn), patch.object(
+            wa, "send_text", return_value=True
+        ), patch.object(wa.session_cart, "load", return_value=[]):
+            wa.answer_whatsapp_message.__wrapped__(
+                from_number="916353100362", text="hello", message_id="wamid.ABC"
+            )
+
+        self.assertEqual(order, [("typing", "wamid.ABC"), ("worked", None)])

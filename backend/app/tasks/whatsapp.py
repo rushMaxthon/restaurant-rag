@@ -31,7 +31,7 @@ from app.config.database import SessionLocal
 from app.services.chat_principal import guest_principal_for_session
 from app.services.ordering_agent import session_cart
 from app.services.rag import handle_chat_message
-from app.services.whatsapp import render_reply, send_text
+from app.services.whatsapp import render_reply, send_text, show_typing
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -166,6 +166,11 @@ def answer_whatsapp_message(
 ) -> dict[str, str]:
     if not settings.whatsapp_enabled:
         return {"status": "disabled"}
+
+    # Read receipt and typing bubble first, before the seconds of work: a
+    # customer watching an empty screen sends the message again, and a
+    # second turn starts on a conversation that has not finished its first.
+    show_typing(message_id)
 
     session_id = session_for(from_number)
     principal = guest_principal_for_session(session_id)

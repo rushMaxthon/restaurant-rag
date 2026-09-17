@@ -179,6 +179,56 @@ def render_reply(reply: str, suggestions: list[Any] | None = None) -> str:
     return body
 
 
+def show_typing(message_id: str) -> bool:
+    """Mark their message read and show the typing bubble. True if Meta took it.
+
+    One call does both — `status: read` with a `typing_indicator` — and the
+    bubble clears itself when the reply is sent, or after 25 seconds, which
+    is longer than any turn measured here.
+
+    Why it is worth a call at all: a turn takes four to eight seconds, and
+    for those seconds the customer sees nothing, not even a read receipt.
+    There is no way to tell a bot that is thinking from one that is broken,
+    so they send the message again and a second turn starts on a
+    conversation that has not finished its first.
+
+    Never raises and never blocks the answer. A customer who does not see a
+    bubble still gets their food; one whose answer failed because we were
+    drawing a bubble would not.
+    """
+
+    if not message_id or not settings.whatsapp_access_token or not settings.whatsapp_phone_number_id:
+        return False
+
+    url = f"{settings.whatsapp_api_base_url}/{settings.whatsapp_phone_number_id}/messages"
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+                "typing_indicator": {"type": "text"},
+            },
+            # Short on purpose: this is a courtesy, and the customer is
+            # waiting for the answer behind it.
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        logger.warning("WhatsApp typing indicator failed", exc_info=True)
+        return False
+
+    if response.status_code >= 400:
+        logger.warning(
+            "WhatsApp typing indicator refused status=%s body=%s",
+            response.status_code,
+            response.text[:200],
+        )
+        return False
+    return True
+
+
 def send_text(to: str, body: str) -> bool:
     """Send one message back. True if Meta accepted it.
 
