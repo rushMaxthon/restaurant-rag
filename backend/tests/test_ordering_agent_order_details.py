@@ -630,3 +630,74 @@ class OrderForLaterTests(unittest.TestCase):
         self.assertEqual(captured["payload"].schedule_type, OrderScheduleType.SCHEDULED)
         self.assertEqual(captured["payload"].scheduled_at.isoformat(), "2099-01-01T10:30:00+05:30")
         self.assertEqual(out["scheduled_at"], "2099-01-01T10:30:00+05:30")
+
+
+class TheDishTheyNamedTests(unittest.TestCase):
+    """An add spends money, so a guess is never good enough.
+
+    Live: "Please add four cheese pizza in my cart" put four Cheese Burst
+    Pizzas in a cart — $1396 of the wrong thing. The reading split the
+    dish's own name into a quantity, and `get_dish` reported the near miss
+    with `confidence: "named"`, which it also reports for a real match.
+    """
+
+    def matches(self, phrase):
+        import uuid as _uuid
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from app.services.ordering_agent import tools as T
+
+        rows = {
+            "cheese pizza": ["Cheese Burst Pizza", "Four Cheese Pizza"],
+            "four cheese pizza": ["Four Cheese Pizza"],
+            "margherita": ["Margherita Pizza"],
+        }.get(phrase.lower(), [])
+        db = MagicMock()
+        db.scalars.return_value = [SimpleNamespace(id=_uuid.uuid4(), name=n) for n in rows]
+        scope = SimpleNamespace(restaurant_location_id=_uuid.uuid4())
+        return [name for _, name in T.dishes_matching_words(db, scope, phrase)]
+
+    def test_a_name_that_fits_one_dish_is_that_dish(self) -> None:
+        self.assertEqual(self.matches("four cheese pizza"), ["Four Cheese Pizza"])
+        self.assertEqual(self.matches("margherita"), ["Margherita Pizza"])
+
+    def test_a_name_that_fits_two_dishes_is_a_question(self) -> None:
+        self.assertEqual(len(self.matches("cheese pizza")), 2)
+
+    def test_a_phrase_of_only_short_words_matches_nothing(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from app.services.ordering_agent import tools as T
+
+        db = MagicMock()
+        self.assertEqual(T.dishes_matching_words(db, SimpleNamespace(restaurant_location_id=None), "a x"), [])
+        db.scalars.assert_not_called()
+
+    def test_the_ambiguous_question_is_spoken(self) -> None:
+        from app.services.ordering_agent.loop import _choice_question_in
+        from app.services.ordering_agent.planner import ToolCallRecord
+
+        said = _choice_question_in([ToolCallRecord(
+            tool="get_dish", args={"name": "cheese pizza"},
+            result={"outcome": "ambiguous", "question": "Did you mean Cheese Burst Pizza or Four Cheese Pizza?"},
+        )])
+        self.assertIn("Did you mean", said)
+
+    def test_a_remembered_size_question_is_answered_by_the_next_message(self) -> None:
+        # Live: the size question was asked correctly and "large one" landed
+        # on nothing, because a turn's records do not survive it.
+        import json
+
+        from app.services.ordering_agent import order_draft
+
+        sid = uuid.uuid4()
+        order_draft.save(sid, order_draft.OrderDraft(pending_choice=json.dumps({
+            "menu_item_id": str(uuid.uuid4()), "quantity": 1,
+            "question": "Which size for Four Cheese Pizza?",
+            "options": [{"name": 'Large (14")', "size_id": str(uuid.uuid4())}],
+        })))
+        loaded = order_draft.load(sid)
+        order_draft.clear(sid)
+        self.assertIn("Four Cheese Pizza", loaded.pending_choice)

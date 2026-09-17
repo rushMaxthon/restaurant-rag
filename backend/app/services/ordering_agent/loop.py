@@ -434,9 +434,16 @@ def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
 
 
 def _choice_question_in(records: list[ToolCallRecord]) -> str | None:
-    """The most recent needs_choice result this turn, as a question — or None."""
+    """The most recent question this turn's rows raise — or None.
+
+    A dish that needs a size, or a name that fits more than one dish: both
+    are things only the customer can settle, and both are asked from the
+    rows rather than guessed at.
+    """
 
     for record in reversed(records):
+        if isinstance(record.result, dict) and record.result.get("outcome") == "ambiguous":
+            return str(record.result.get("question"))
         question = ask_for_choice(record.result)
         if question is not None:
             return question
@@ -476,6 +483,15 @@ def _as_tool_lines(cart: list[CartLinePayload]) -> list[Any]:
 # While details are being collected, these are the only useful moves. Every
 # other tool is a way to lose the thread of what the customer was in the
 # middle of doing.
+#: How a digit is spelled, so a phrase the customer wrote can be put back
+#: together and checked against the menu. Orthography, not meaning: nothing
+#: here decides what a message means, it only reconstructs "four cheese
+#: pizza" from a reading that split it into 4 and "cheese pizza".
+_NUMERALS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+    8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+}
+
 _COLLECTING_TOOLS = ("order_requirements", "save_order_details", "place_order", "view_cart")
 # The order can still change while its details are being gathered — "wait,
 # add a coke too" is a normal thing to say after giving an address. Without
@@ -763,6 +779,95 @@ def run_turn(
                 ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
             )
 
+    def _pending_choice() -> dict[str, Any] | None:
+        """The question this conversation is waiting on an answer to."""
+
+        if scope.session_id is None:
+            return None
+        raw = order_draft.load(scope.session_id).pending_choice
+        if not raw:
+            return None
+        try:
+            stored = json.loads(raw)
+        except ValueError:
+            return None
+        return stored if isinstance(stored, dict) and stored.get("options") else None
+
+    def _remember_choice(result: dict[str, Any]) -> None:
+        """Write down the question just asked, with the ids behind it.
+
+        A turn's records do not survive it. Without this the size question
+        was asked correctly and the answer had nothing to land on.
+        """
+
+        if scope.session_id is None:
+            return
+        options = [
+            {"name": str(size.get("name")), "size_id": str(size.get("size_id"))}
+            for size in (result.get("available_sizes") or [])
+            if size.get("size_id") and size.get("name")
+        ]
+        for group in result.get("customization_groups") or []:
+            if not group.get("needs_selection"):
+                continue
+            for option in group.get("options") or []:
+                if option.get("option_id") and option.get("name"):
+                    options.append({"name": str(option["name"]), "option_id": str(option["option_id"])})
+        if not options:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.pending_choice = json.dumps({
+            "menu_item_id": str(result.get("menu_item_id")),
+            "quantity": int(result.get("quantity") or 1),
+            "question": ask_for_choice(result) or "",
+            "options": options,
+        })
+        order_draft.save(scope.session_id, draft_now)
+
+    def _forget_choice() -> None:
+        if scope.session_id is None:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        if draft_now.pending_choice:
+            draft_now.pending_choice = None
+            order_draft.save(scope.session_id, draft_now)
+
+    def _answer_choice(asked: dict[str, Any], chose: str) -> list[dict[str, Any]]:
+        """Add the dish with the option the customer picked.
+
+        The name is matched against the options that were OFFERED, never
+        against the menu at large: an answer to a question nobody asked
+        must not put something in somebody's cart.
+        """
+
+        wanted_name = chose.strip().casefold()
+        picked = next(
+            (o for o in asked["options"] if o["name"].strip().casefold() == wanted_name),
+            None,
+        )
+        if picked is None:
+            picked = next(
+                (o for o in asked["options"]
+                 if wanted_name in o["name"].strip().casefold()
+                 or o["name"].strip().casefold().startswith(wanted_name)),
+                None,
+            )
+        if picked is None:
+            return []
+        args: dict[str, Any] = {
+            "menu_item_id": asked["menu_item_id"],
+            "quantity": asked.get("quantity") or 1,
+        }
+        if picked.get("size_id"):
+            args["menu_item_size_id"] = picked["size_id"]
+        else:
+            args["selected_options"] = [{"option_id": picked["option_id"]}]
+        guards.grow_seen_ids(seen, args)
+        added = _run_add(args)
+        if added:
+            _forget_choice()
+        return added
+
     def _add_named_dish(name: str, quantity: int) -> list[dict[str, Any]]:
         """Put a dish the customer named into the cart.
 
@@ -774,8 +879,36 @@ def run_turn(
 
         if db is None or not scope.restaurant_location_id:
             return []
+
+        # A number can belong to the name. "four cheese pizza" read as four
+        # of "cheese pizza" put four Cheese Burst Pizzas in a cart; the whole
+        # phrase names a real dish, so it is tried first and wins when the
+        # menu agrees. `_NUMERALS` is spelling, not meaning — it only lets
+        # the phrase be reassembled the way the customer wrote it.
+        if quantity > 1 and quantity in _NUMERALS:
+            whole = f"{_NUMERALS[quantity]} {name}"
+            if any(whole.casefold() == dish.casefold() for _, dish in
+                   tools_module.dishes_matching_words(db, scope, whole)):
+                name, quantity = whole, 1
+
+        # Which dishes could they have meant, from the menu's own words. The
+        # lookup below reports `confidence: "named"` for a near miss as
+        # readily as for the real thing, so a name that fits several dishes
+        # is a question, not a choice this agent gets to make with somebody's
+        # money.
+        candidates = tools_module.dishes_matching_words(db, scope, name)
+        exact = [c for c in candidates if c[1].casefold() == name.casefold()]
+        if not exact and len(candidates) > 1:
+            listed = ", ".join(dish for _, dish in candidates[:-1]) + f" or {candidates[-1][1]}"
+            records.append(ToolCallRecord(
+                tool="get_dish", args={"name": name},
+                result={"outcome": "ambiguous", "question": f"Did you mean {listed}?"},
+            ))
+            return []
+
         resolved_args, lookup = guards.resolve_dish_name(
-            db, scope, "add_to_cart", {"menu_item_id": name, "quantity": quantity}
+            db, scope, "add_to_cart",
+            {"menu_item_id": exact[0][0] if exact else name, "quantity": quantity},
         )
         if resolved_args.get("menu_item_id") == name:
             logger.info("Ordering agent could not resolve a dish the customer asked for: %r", name)
@@ -783,8 +916,17 @@ def run_turn(
         if lookup:
             guards.grow_seen_ids(seen, lookup)
             records.append(ToolCallRecord(tool="get_dish", args={"name": name}, result=lookup))
+        if exact:
+            guards.grow_seen_ids(seen, {"menu_item_id": exact[0][0]})
+        return _run_add(resolved_args)
+
+    def _run_add(args: dict[str, Any]) -> list[dict[str, Any]]:
+        """Run add_to_cart and keep what it says. A dish that needs a size
+        answers `needs_choice`; the question is written down so the next
+        message can answer it."""
+
         prepared, guard_error = guards.prepare_tool_call(
-            "add_to_cart", resolved_args, cart=cart, seen=seen, diet=scope.diet
+            "add_to_cart", args, cart=cart, seen=seen, diet=scope.diet
         )
         if guard_error is not None:
             logger.info("Ordering agent could not add what was asked for: %s", guard_error)
@@ -797,6 +939,8 @@ def run_turn(
         result = guards.enforce_destructive_policy(result)
         guards.grow_seen_ids(seen, result)
         records.append(ToolCallRecord(tool="add_to_cart", args=prepared.model_dump(), result=result))
+        if isinstance(result, dict) and result.get("outcome") == "needs_choice":
+            _remember_choice(result)
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
@@ -855,6 +999,7 @@ def run_turn(
         question = (
             describe_placed_order(placed_order_in(records))
             or describe_applied(records)
+            or _choice_question_in(records)
             or describe_time_problem(records)
             or describe_place_failure(records)
             or describe_collecting(_still_missing())
@@ -888,6 +1033,7 @@ def run_turn(
             answer=(
                 describe_placed_order(placed)
                 or describe_applied(records)
+                or _choice_question_in(records)
                 or describe_time_problem(records)
                 or describe_place_failure(records)
             or describe_time_problem(records)
@@ -949,8 +1095,9 @@ def run_turn(
                 ).strftime("%Y-%m-%d %H:%M")
             except ValueError:
                 standing_offer = None
+    asked_before = _pending_choice()
     wanted = (
-        {"add": None, "details": {}, "checkout": True, "when": None}
+        {"add": None, "details": {}, "checkout": True, "when": None, "chose": None}
         if plain == "checkout"
         else read_order_intent(
             message,
@@ -958,8 +1105,15 @@ def run_turn(
             generate=generate,
             now_local=now_local.strftime("%A %Y-%m-%d %H:%M"),
             offered=standing_offer,
+            choice_question=(asked_before or {}).get("question"),
+            choice_options=[o["name"] for o in (asked_before or {}).get("options", [])],
         )
     )
+
+    if wanted.get("chose") and asked_before:
+        answered = _answer_choice(asked_before, wanted["chose"])
+        if answered:
+            actions.extend(answered)
 
     if wanted["add"]:
         added = _add_named_dish(*wanted["add"])
@@ -1129,6 +1283,7 @@ def run_turn(
                 describe_placed_order(placed)
                 or said
                 or describe_applied(records)
+                or _choice_question_in(records)
                 or describe_time_problem(records)
                 or describe_place_failure(records)
                 or describe_time_problem(records)

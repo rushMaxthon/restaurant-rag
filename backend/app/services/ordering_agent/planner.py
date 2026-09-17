@@ -632,6 +632,8 @@ def read_order_intent(
     generate: Generate | None = None,
     now_local: str | None = None,
     offered: str | None = None,
+    choice_question: str | None = None,
+    choice_options: Sequence[str] = (),
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
 
@@ -652,7 +654,9 @@ def read_order_intent(
     agent started.
     """
 
-    empty: dict[str, Any] = {"add": None, "details": {}, "checkout": False, "when": None}
+    empty: dict[str, Any] = {
+        "add": None, "details": {}, "checkout": False, "when": None, "chose": None,
+    }
     if not message.strip():
         return empty
     fields = ", ".join(f'"{name}"' for name in _DETAIL_QUESTIONS)
@@ -666,6 +670,14 @@ def read_order_intent(
             f"The branch has offered to make the order for {offered}. If they accept "
             '(yes, ok, that works, fine) then "when" is exactly that time.\n'
         )
+    if choice_question and choice_options:
+        listed = "; ".join(choice_options)
+        still += (
+            f"They were just asked: {choice_question} The options are: {listed}. "
+            'If this message answers that question — however loosely ("large", "the '
+            'big one", "medium please") — put the matching option in "chose", copied '
+            "exactly from that list. If it does not answer it, \"chose\" is null.\n"
+        )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
         "answer with one JSON object and nothing else.\n\n"
@@ -675,6 +687,8 @@ def read_order_intent(
         f'  "details": {{{fields}}}   // each one as stated, or null\n'
         '  "checkout": true if they are asking to place the order, check out or pay; '
         "else false\n"
+        '  "chose": the option they picked from the list below, copied exactly, '
+        "else null\n"
         '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
         'the word "opening" if they mean whenever the branch next opens, else null\n'
         "}\n\n"
@@ -684,6 +698,15 @@ def read_order_intent(
         '- "add" is for asking for food ("add X", "I want X", "get me X", "X please"). '
         'A question about a dish ("what is X", "how much is X", "do you have X") is '
         "not an add.\n"
+        # Measured: "Please add four cheese pizza in my cart" was read as four
+        # of a dish called "cheese pizza", and four Cheese Burst Pizzas went
+        # into a cart — $1396 of the wrong thing. A number can belong to the
+        # name.
+        '- "dish" is copied exactly as the customer wrote it, including a '
+        "number that is part of the name (Four Cheese Pizza, Two Egg Omelette, "
+        "Seven Spice Chicken). Only treat a leading number as a quantity when "
+        "what follows still names a dish by itself — \"2 corn fritters\" is two "
+        "of Corn Fritters; \"four cheese pizza\" is one Four Cheese Pizza.\n"
         '- "fulfillment_type" is "DELIVERY" or "PICKUP" only if they say which.\n'
         # Measured: "chalo order kar do", "book it", "done" and "confirm my
         # order" all read as false while checkout was described only as
@@ -740,11 +763,16 @@ def read_order_intent(
         when = when.strip()
         when = "opening" if when.lower() == "opening" else when
 
+    chose = parsed.get("chose")
+    if not isinstance(chose, str) or not chose.strip() or chose.strip().lower() in {"null", "none"}:
+        chose = None
+
     return {
         "add": add,
         "details": details,
         "checkout": parsed.get("checkout") is True,
         "when": when,
+        "chose": chose.strip() if chose else None,
     }
 
 

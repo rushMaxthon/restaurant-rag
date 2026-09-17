@@ -1013,6 +1013,37 @@ def _build_dish_result(menu_item: MenuItem, *, confidence: str, args: GetDishArg
     return result
 
 
+def dishes_matching_words(
+    db: Session, scope: OrderingScope, phrase: str
+) -> list[tuple[str, str]]:
+    """Every dish at this branch whose NAME contains all of these words.
+
+    Text, not similarity. `get_dish` answers with one dish and reports
+    `confidence: "named"` for a near miss as readily as for the real thing,
+    which is how "cheese pizza" became Cheese Burst Pizza and "pizza"
+    became Build Your Own Pizza. When money is about to be spent, the
+    question "which dishes could they have meant?" has to be answered from
+    the menu's own words.
+
+    Returns (menu_item_id, name) pairs, alphabetically, capped — a customer
+    asked to choose between fifteen dishes has not been helped.
+    """
+
+    words = [w for w in "".join(
+        c if c.isalnum() or c.isspace() else " " for c in phrase.lower()
+    ).split() if len(w) > 1]
+    if not words:
+        return []
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    for word in words:
+        stmt = stmt.where(MenuItem.name.ilike(f"%{word}%"))
+    rows = list(db.scalars(stmt.order_by(MenuItem.name).limit(8)))
+    return [(str(row.id), row.name) for row in rows]
+
+
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
     """Resolves a named dish, exact name first, then exactly as the chat
     turn's dish-name guardrail would.

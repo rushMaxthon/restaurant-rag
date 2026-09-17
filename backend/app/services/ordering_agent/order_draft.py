@@ -67,6 +67,14 @@ class OrderDraft:
     # The time the kitchen offered when it refused "now" — so that "yes" on
     # the next turn can mean that time. State, not a detail the customer gave.
     offered_scheduled_at: str | None = None
+    # The choice the agent last asked for, as JSON: the dish, the quantity
+    # and the ids behind each option. A turn's records do not survive it, so
+    # without this "large one" was a sentence about nothing.
+    pending_choice: str | None = None
+    # The choice the agent last asked for, as JSON: the dish, the quantity
+    # and the ids behind each option. A turn's records do not survive it, so
+    # without this "large one" was a sentence about nothing.
+    pending_choice: str | None = None
     # Set once the customer has been asked for their details. It is what
     # tells a later turn that the conversation is mid-collection, rather
     # than leaving the model to infer it from a thread it may not read.
@@ -74,7 +82,7 @@ class OrderDraft:
 
     #: Not a detail, a state flag. Excluded everywhere the detail fields are
     #: counted, or "collecting" would report itself as something we hold.
-    _STATE_FIELDS = ("collecting", "offered_scheduled_at")
+    _STATE_FIELDS = ("collecting", "offered_scheduled_at", "pending_choice")
 
     def known_fields(self) -> list[str]:
         return [
