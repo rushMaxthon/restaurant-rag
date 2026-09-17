@@ -701,3 +701,101 @@ class TheDishTheyNamedTests(unittest.TestCase):
         loaded = order_draft.load(sid)
         order_draft.clear(sid)
         self.assertIn("Four Cheese Pizza", loaded.pending_choice)
+
+
+class AnswersAccumulateTests(unittest.TestCase):
+    """A dish needing two choices, and an answer nobody can map.
+
+    Live, both loops: "sweet chilli" went back to "Which size?" because the
+    size chosen a message earlier was gone; and "qqq" three times dropped
+    the question entirely, so the reply pipeline repeated itself.
+    """
+
+    def stored(self, **over):
+        import json
+
+        base = {
+            "base": {"menu_item_id": str(uuid.uuid4()), "quantity": 1,
+                     "menu_item_size_id": str(uuid.uuid4())},
+            "question": "Glaze for Chicken Wings: Sweet chilli, Tamarind garlic.",
+            "options": [{"name": "Sweet chilli", "option_id": str(uuid.uuid4())},
+                        {"name": "Tamarind garlic", "option_id": str(uuid.uuid4())}],
+            "asks": 1,
+        }
+        base.update(over)
+        return json.dumps(base)
+
+    def test_what_was_already_settled_travels_with_the_question(self) -> None:
+        import json
+
+        from app.services.ordering_agent import order_draft
+
+        sid = uuid.uuid4()
+        order_draft.save(sid, order_draft.OrderDraft(pending_choice=self.stored()))
+        asked = json.loads(order_draft.load(sid).pending_choice)
+        order_draft.clear(sid)
+        self.assertIn("menu_item_size_id", asked["base"], "the size already chosen is kept")
+        self.assertEqual(asked["asks"], 1)
+
+    def test_a_second_unanswered_asking_spells_the_options_out(self) -> None:
+        import json
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from unittest.mock import patch
+        from app.services.ordering_agent import loop, order_draft
+        import dataclasses
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4())
+        store = {"draft": order_draft.OrderDraft(pending_choice=self.stored(asks=1))}
+        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
+             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message="qqq", cart=[], generate=ScriptedGenerate(),
+                clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+            )
+        self.assertIn("did not catch that", outcome.answer)
+        self.assertIn("Sweet chilli", outcome.answer)
+        self.assertEqual(json.loads(store["draft"].pending_choice)["asks"], 2, "counted")
+
+    def test_there_is_never_a_third_asking(self) -> None:
+        import dataclasses
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4())
+        store = {"draft": order_draft.OrderDraft(pending_choice=self.stored(asks=2))}
+        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
+             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message="qqq", cart=[], generate=ScriptedGenerate(),
+                clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+            )
+        self.assertIn("start that one again", outcome.answer)
+        self.assertIsNone(store["draft"].pending_choice, "the question is let go of")
+
+    def test_an_answer_to_something_else_is_not_treated_as_a_miss(self) -> None:
+        # "actually add a coke too" answers nothing, but it is not a failure
+        # to understand — it is a new request, and must reach the reader.
+        import dataclasses
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft
+
+        scope = dataclasses.replace(SCOPE, session_id=uuid.uuid4())
+        store = {"draft": order_draft.OrderDraft(pending_choice=self.stored(asks=1))}
+        from tests.test_ordering_agent_loop import _answer
+
+        generate = ScriptedGenerate(
+            _answer("Sure, a Coke."),
+            intent='{"add": {"dish": "Coke", "quantity": 1}, "details": {}, "checkout": false, "when": null, "chose": null}',
+        )
+        with patch.object(order_draft, "load", lambda sid: store["draft"]), \
+             patch.object(order_draft, "save", lambda sid, d: store.__setitem__("draft", d)):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message="actually add a coke too", cart=[], generate=generate,
+                clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
+            )
+        self.assertNotIn("did not catch that", outcome.answer or "")

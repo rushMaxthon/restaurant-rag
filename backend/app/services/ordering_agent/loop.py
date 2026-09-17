@@ -779,6 +779,42 @@ def run_turn(
                 ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
             )
 
+    def _reask_or_give_up(asked: dict[str, Any]) -> TurnOutcome:
+        """Put the question again, differently — or stop asking it.
+
+        Live: an answer nobody could map dropped the question entirely and
+        the reply pipeline filled three turns with the same closed-branch
+        notice. A customer reading the same sentence twice has already
+        stopped believing anybody is there, so the second asking spells the
+        options out and there is no third.
+        """
+
+        options = ", ".join(o["name"] for o in asked["options"])
+        if int(asked.get("asks", 1)) >= 2:
+            _forget_choice()
+            answer = (
+                "Sorry — I did not follow that. Let's start that one again: tell me "
+                "the dish you would like and I will set it up."
+            )
+        else:
+            draft_now = order_draft.load(scope.session_id)
+            asked["asks"] = int(asked.get("asks", 1)) + 1
+            draft_now.pending_choice = json.dumps(asked)
+            order_draft.save(scope.session_id, draft_now)
+            question = str(asked.get("question") or "").rstrip()
+            answer = (
+                f"Sorry, I did not catch that. {question} "
+                f"Just reply with one of these: {options}."
+            )
+        return TurnOutcome(
+            answer=answer,
+            answer_about="cart",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
     def _pending_choice() -> dict[str, Any] | None:
         """The question this conversation is waiting on an answer to."""
 
@@ -793,7 +829,7 @@ def run_turn(
             return None
         return stored if isinstance(stored, dict) and stored.get("options") else None
 
-    def _remember_choice(result: dict[str, Any]) -> None:
+    def _remember_choice(result: dict[str, Any], base: dict[str, Any] | None = None) -> None:
         """Write down the question just asked, with the ids behind it.
 
         A turn's records do not survive it. Without this the size question
@@ -815,12 +851,20 @@ def run_turn(
                     options.append({"name": str(option["name"]), "option_id": str(option["option_id"])})
         if not options:
             return
+        # What has already been settled travels with the question. Live:
+        # "sweet chilli" was sent on its own, so the size chosen a message
+        # earlier was gone and the dish asked for a size again — a customer
+        # could answer correctly for ever and never finish.
+        settled = dict(base or {})
+        settled.setdefault("menu_item_id", str(result.get("menu_item_id")))
+        settled.setdefault("quantity", int(result.get("quantity") or 1))
         draft_now = order_draft.load(scope.session_id)
         draft_now.pending_choice = json.dumps({
-            "menu_item_id": str(result.get("menu_item_id")),
-            "quantity": int(result.get("quantity") or 1),
+            "base": {k: v for k, v in settled.items() if v is not None},
             "question": ask_for_choice(result) or "",
             "options": options,
+            # How many times this has been put to the customer.
+            "asks": int((_pending_choice() or {}).get("asks", 0)) + 1,
         })
         order_draft.save(scope.session_id, draft_now)
 
@@ -854,14 +898,14 @@ def run_turn(
             )
         if picked is None:
             return []
-        args: dict[str, Any] = {
-            "menu_item_id": asked["menu_item_id"],
-            "quantity": asked.get("quantity") or 1,
-        }
+        args: dict[str, Any] = dict(asked.get("base") or {})
+        args.setdefault("quantity", 1)
         if picked.get("size_id"):
             args["menu_item_size_id"] = picked["size_id"]
         else:
-            args["selected_options"] = [{"option_id": picked["option_id"]}]
+            chosen = list(args.get("selected_options") or [])
+            chosen.append({"option_id": picked["option_id"]})
+            args["selected_options"] = chosen
         guards.grow_seen_ids(seen, args)
         added = _run_add(args)
         if added:
@@ -940,7 +984,7 @@ def run_turn(
         guards.grow_seen_ids(seen, result)
         records.append(ToolCallRecord(tool="add_to_cart", args=prepared.model_dump(), result=result))
         if isinstance(result, dict) and result.get("outcome") == "needs_choice":
-            _remember_choice(result)
+            _remember_choice(result, args)
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
@@ -1109,6 +1153,19 @@ def run_turn(
             choice_options=[o["name"] for o in (asked_before or {}).get("options", [])],
         )
     )
+
+    # Nothing in this message answered anything. A question already asked is
+    # kept rather than dropped — and never repeated word for word.
+    if (
+        asked_before
+        and not wanted.get("chose")
+        and not wanted["add"]
+        and not wanted["details"]
+        and not wanted["checkout"]
+        and not wanted.get("when")
+        and scope.session_id is not None
+    ):
+        return _reask_or_give_up(asked_before)
 
     if wanted.get("chose") and asked_before:
         answered = _answer_choice(asked_before, wanted["chose"])
