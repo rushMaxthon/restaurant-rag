@@ -657,7 +657,7 @@ def read_order_intent(
 
     empty: dict[str, Any] = {
         "add": None, "details": {}, "checkout": False, "when": None,
-        "chose": None, "confirms": None, "browse": None,
+        "chose": None, "confirms": None, "browse": None, "asks_hours": False,
     }
     if not message.strip():
         return empty
@@ -685,8 +685,9 @@ def read_order_intent(
         still += (
             f"They were just asked: {choice_question} The options are: {listed}. "
             'If this message answers that question — however loosely ("large", "the '
-            'big one", "medium please") — put the matching option in "chose", copied '
-            "exactly from that list. If it does not answer it, \"chose\" is null.\n"
+            'big one", "medium please", "mango and banana") — put every matching '
+            'option in "chose" as a list, each copied exactly from that list. If it '
+            'does not answer it, "chose" is null.\n'
         )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
@@ -699,8 +700,10 @@ def read_order_intent(
         "else false\n"
         '  "browse": what they are asking to SEE on the menu ("pizza", "desserts", '
         '"the menu"), else null\n'
-        '  "chose": the option they picked from the list below, copied exactly, '
-        "else null\n"
+        '  "asks_hours": true if they are asking WHEN — when you open, when the '
+        "order would arrive, what times are possible — else false\n"
+        '  "chose": the options they picked from the list below, copied exactly, '
+        "as a list — several if they named several, else null\n"
         '  "confirms": true if they accept the details read back to them, false '
         "if they reject them, null if this message is about neither\n"
         '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
@@ -738,9 +741,14 @@ def read_order_intent(
         "do, order kar do, ho gaya, bas itna hi).\n"
         '- "checkout" is false while they are still choosing, and false for a '
         "question.\n"
-        '- "when" is only what they said about timing. A bare time ("at 11", '
+        '- "when" is only a time they CHOSE for the order. A bare time ("at 11", '
         '"11:30") is today if still ahead, otherwise tomorrow. "Tomorrow at one" '
         "is tomorrow 13:00. Nothing about timing means null.\n"
+        # Measured: "I'd like to know what time I'll receive my order" was
+        # read as choosing a time, and answered "that time will not work".
+        '- A QUESTION about time is not a time. "When will it arrive", "what '
+        'time do you open", "suggest another time" set "asks_hours" true and '
+        'leave "when" null.\n'
         "- Anything not stated is null.\n"
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"
@@ -781,13 +789,21 @@ def read_order_intent(
         when = when.strip()
         when = "opening" if when.lower() == "opening" else when
 
+    asks_hours = parsed.get("asks_hours") is True
+
     browse = parsed.get("browse")
     if not isinstance(browse, str) or not browse.strip() or browse.strip().lower() in {"null", "none"}:
         browse = None
 
-    chose = parsed.get("chose")
-    if not isinstance(chose, str) or not chose.strip() or chose.strip().lower() in {"null", "none"}:
-        chose = None
+    # A list, because a group can want three and a customer can name three.
+    raw_chose = parsed.get("chose")
+    if isinstance(raw_chose, str):
+        raw_chose = [raw_chose]
+    chose = [
+        c.strip()
+        for c in (raw_chose or [])
+        if isinstance(c, str) and c.strip() and c.strip().lower() not in {"null", "none"}
+    ] or None
 
     confirms = parsed.get("confirms")
     if not isinstance(confirms, bool):
@@ -798,9 +814,10 @@ def read_order_intent(
         "details": details,
         "checkout": parsed.get("checkout") is True,
         "when": when,
-        "chose": chose.strip() if chose else None,
+        "chose": chose,
         "confirms": confirms,
         "browse": browse.strip() if browse else None,
+        "asks_hours": asks_hours,
     }
 
 

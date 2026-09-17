@@ -745,6 +745,54 @@ def update_location_slot(
     return slot
 
 
+def describe_hours(
+    location: RestaurantLocation,
+    *,
+    fulfillment_type: OrderFulfillmentType,
+    reference_dt: datetime | None = None,
+) -> str:
+    """Today's hours for this kind of order, and the first time it could go.
+
+    Written for a customer who asked when, from the rows that decide it —
+    the same slots, buffer and horizon `schedule_slot_is_available`
+    enforces. Live, that question was answered two ways, both wrong: as an
+    instruction to schedule ("that time will not work"), and by a reply
+    pipeline that invented a "Place Order button" a chat has never had.
+    """
+
+    label = "Delivery" if fulfillment_type == OrderFulfillmentType.DELIVERY else "Pickup"
+    now_local = _localize_reference_datetime(reference_dt)
+    day = _weekday_for_datetime(now_local)
+    windows: list[tuple[time, time]] = []
+    if _slot_schedule_enabled(location, fulfillment_type):
+        windows = sorted(
+            (slot.start_time, slot.end_time)
+            for slot in _active_slots_for_fulfillment(location, fulfillment_type)
+            if slot.day_of_week == day
+        )
+    elif location.opening_time is not None and location.closing_time is not None:
+        windows = [(location.opening_time, location.closing_time)]
+
+    parts: list[str] = []
+    if windows:
+        listed = ", ".join(f"{start:%H:%M}-{end:%H:%M}" for start, end in windows)
+        parts.append(f"{label} today: {listed}.")
+    else:
+        parts.append(f"{label} is not running today.")
+
+    open_now, _ = get_location_fulfillment_status(location, fulfillment_type=fulfillment_type)
+    nearest = next_available_slot_start(
+        location, fulfillment_type=fulfillment_type, reference_dt=reference_dt
+    )
+    if open_now and nearest is not None:
+        # Open now, so the honest answer is how long the kitchen needs.
+        minutes = _get_prep_buffer_minutes(location, fulfillment_type)
+        parts.append(f"We are open now — about {minutes} minutes from when you order.")
+    elif nearest is not None:
+        parts.append(f"The earliest I can do is {nearest:%a %H:%M}.")
+    return " ".join(parts)
+
+
 def next_available_slot_start(
     location: RestaurantLocation,
     *,

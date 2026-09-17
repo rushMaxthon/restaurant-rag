@@ -121,16 +121,38 @@ def ask_for_choice(result: Any) -> str | None:
     for group in result.get("customization_groups") or []:
         if not group.get("needs_selection"):
             continue
-        options = []
+        # What they have already chosen is credited, and only what is left is
+        # offered. Live: a group wanting three answered the first correct
+        # pick with the identical question — the same list, the same count,
+        # no sign anybody had heard.
+        already = {str(o) for o in (group.get("selected_option_ids") or [])}
+        chosen_names, options = [], []
         for option in group.get("options") or []:
             extra = option.get("extra_price") or 0
             try:
                 extra_text = f" (+{_money(extra)})" if float(extra) > 0 else ""
             except (TypeError, ValueError):
                 extra_text = ""
-            options.append(f"{option.get('name')}{extra_text}")
-        if options:
-            parts.append(f"{group.get('title') or 'Choose'} for {name}: {', '.join(options)}.")
+            if str(option.get("option_id")) in already:
+                chosen_names.append(str(option.get("name")))
+            else:
+                options.append(f"{option.get('name')}{extra_text}")
+        if not options:
+            continue
+        title = group.get("title") or "Choose"
+        try:
+            still = max(1, int(group.get("min_selection") or 1) - len(already))
+        except (TypeError, ValueError):
+            still = 1
+        if chosen_names:
+            parts.append(
+                f"{title} for {name}: you have {', '.join(chosen_names)}. "
+                f"Pick {still} more: {', '.join(options)}."
+            )
+        elif still > 1:
+            parts.append(f"{title} for {name} — pick {still}: {', '.join(options)}.")
+        else:
+            parts.append(f"{title} for {name}: {', '.join(options)}.")
     if not parts:
         return None
     return " ".join(parts) + " Which would you like?"
@@ -779,6 +801,19 @@ def run_turn(
                 ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
             )
 
+    def _describe_hours() -> str | None:
+        """When this branch can do this kind of order, from its own schedule."""
+
+        location = db.get(branch_hours.RestaurantLocation, scope.restaurant_location_id)
+        if location is None:
+            return None
+        draft_now = order_draft.load(scope.session_id) if scope.session_id else None
+        wanted_type = branch_hours.OrderFulfillmentType(
+            (draft_now.fulfillment_type if draft_now else None)
+            or branch_hours.OrderFulfillmentType.DELIVERY.value
+        )
+        return branch_hours.describe_hours(location, fulfillment_type=wanted_type)
+
     def _show_dishes(phrase: str) -> TurnOutcome | None:
         """Read the menu out: their words, our rows, their diet.
 
@@ -932,9 +967,23 @@ def run_turn(
             "question": ask_for_choice(result) or "",
             "options": options,
             # How many times this has been put to the customer.
-            "asks": int((_pending_choice() or {}).get("asks", 0)) + 1,
+            # Reset whenever something was actually settled. A customer
+            # answering a three-part question correctly is not a customer
+            # who cannot answer, and the do-not-repeat rule would have given
+            # up on them two picks in.
+            "asks": 1 if _made_progress(base) else int((_pending_choice() or {}).get("asks", 0)) + 1,
         })
         order_draft.save(scope.session_id, draft_now)
+
+    def _made_progress(base: dict[str, Any] | None) -> bool:
+        """Whether this attempt settled something the last one had not."""
+
+        before = (_pending_choice() or {}).get("base") or {}
+        after = base or {}
+        return (
+            after.get("menu_item_size_id") != before.get("menu_item_size_id")
+            or len(after.get("selected_options") or []) != len(before.get("selected_options") or [])
+        )
 
     def _forget_choice() -> None:
         if scope.session_id is None:
@@ -944,35 +993,42 @@ def run_turn(
             draft_now.pending_choice = None
             order_draft.save(scope.session_id, draft_now)
 
-    def _answer_choice(asked: dict[str, Any], chose: str) -> list[dict[str, Any]]:
-        """Add the dish with the option the customer picked.
+    def _answer_choice(asked: dict[str, Any], chose: list[str]) -> list[dict[str, Any]]:
+        """Add the dish with the options the customer picked.
 
-        The name is matched against the options that were OFFERED, never
-        against the menu at large: an answer to a question nobody asked
-        must not put something in somebody's cart.
+        Every name is matched against the options that were OFFERED, never
+        against the menu at large: an answer to a question nobody asked must
+        not put something in somebody's cart. Several at once, because a
+        group can want three and a customer can name three.
         """
 
-        wanted_name = chose.strip().casefold()
-        picked = next(
-            (o for o in asked["options"] if o["name"].strip().casefold() == wanted_name),
-            None,
-        )
-        if picked is None:
-            picked = next(
-                (o for o in asked["options"]
-                 if wanted_name in o["name"].strip().casefold()
-                 or o["name"].strip().casefold().startswith(wanted_name)),
-                None,
-            )
-        if picked is None:
-            return []
         args: dict[str, Any] = dict(asked.get("base") or {})
         args.setdefault("quantity", 1)
-        if picked.get("size_id"):
-            args["menu_item_size_id"] = picked["size_id"]
-        else:
-            chosen = list(args.get("selected_options") or [])
-            chosen.append({"option_id": picked["option_id"]})
+        chosen = list(args.get("selected_options") or [])
+        taken = 0
+        for one in chose:
+            wanted_name = one.strip().casefold()
+            picked = next(
+                (o for o in asked["options"] if o["name"].strip().casefold() == wanted_name),
+                None,
+            )
+            if picked is None:
+                picked = next(
+                    (o for o in asked["options"]
+                     if wanted_name in o["name"].strip().casefold()
+                     or o["name"].strip().casefold().startswith(wanted_name)),
+                    None,
+                )
+            if picked is None:
+                continue
+            taken += 1
+            if picked.get("size_id"):
+                args["menu_item_size_id"] = picked["size_id"]
+            else:
+                chosen.append({"option_id": picked["option_id"]})
+        if not taken:
+            return []
+        if chosen:
             args["selected_options"] = chosen
         guards.grow_seen_ids(seen, args)
         added = _run_add(args)
@@ -1223,7 +1279,7 @@ def run_turn(
     unconfirmed = _details_to_confirm()
     wanted = (
         {"add": None, "details": {}, "checkout": True, "when": None,
-         "chose": None, "confirms": None, "browse": None}
+         "chose": None, "confirms": None, "browse": None, "asks_hours": False}
         if plain == "checkout"
         else read_order_intent(
             message,
@@ -1309,6 +1365,21 @@ def run_turn(
         answered = _answer_choice(asked_before, wanted["chose"])
         if answered:
             actions.extend(answered)
+
+    # Only when they have not named one. "Make it 12:30" reads as both a
+    # question about time and a time, and the time is the instruction.
+    if (
+        wanted.get("asks_hours")
+        and not wanted.get("when")
+        and db is not None
+        and scope.restaurant_location_id
+    ):
+        said = _describe_hours()
+        if said:
+            return TurnOutcome(
+                answer=said, answer_about="order", actions=actions, records=records,
+                fallback_reason=None, elapsed_seconds=clock() - start,
+            )
 
     if wanted.get("browse") and db is not None and scope.restaurant_location_id:
         shown = _show_dishes(wanted["browse"])

@@ -1052,3 +1052,129 @@ class PlacingNeedsAskingTests(unittest.TestCase):
         self.assertIn("hold it", outcome.answer or "")
         self.assertEqual(after.delivery_address, "42 Example Road", "their address is untouched")
         self.assertIsNone(after.offered_scheduled_at, "the time is not offered again")
+
+
+class AskingWhenTests(unittest.TestCase):
+    """A question about time is answered from the branch's schedule.
+
+    Live, two wrong answers to the same question: read as an instruction
+    ("that time will not work"), and answered by a reply pipeline that
+    invented a "Place Order button" a chat has never had — then "30 to 45
+    minutes" and "11 AM to 9 PM daily", neither of them from any row.
+    """
+
+    def branch(self, *, open_now=True, windows=(("11:00", "21:30"),)):
+        from datetime import time as T
+        from types import SimpleNamespace
+
+        slots = [
+            SimpleNamespace(
+                is_active=True,
+                fulfillment_type=__import__("app.models.enums", fromlist=["x"]).OrderFulfillmentType.DELIVERY,
+                day_of_week=None,
+                start_time=T(*(int(p) for p in s.split(":"))),
+                end_time=T(*(int(p) for p in e.split(":"))),
+            )
+            for s, e in windows
+        ]
+        return SimpleNamespace(
+            is_active=True, is_open=True, delivery_enabled=True, pickup_enabled=True,
+            future_order_enabled=True, slot_interval_minutes=30, max_future_days=7,
+            preparation_time_minutes=20, estimated_delivery_time=30, opening_time=None, closing_time=None,
+            fulfillment_slots=slots, temporary_closed_reason=None,
+        )
+
+    def test_it_reads_the_windows_out_of_the_rows(self) -> None:
+        from unittest.mock import patch
+
+        from app.models.enums import OrderFulfillmentType
+        from app.services import restaurant_locations as bh
+
+        branch = self.branch()
+        for slot in branch.fulfillment_slots:
+            slot.day_of_week = bh._weekday_for_datetime(bh._localize_reference_datetime(None))
+        said = bh.describe_hours(branch, fulfillment_type=OrderFulfillmentType.DELIVERY)
+        self.assertIn("11:00-21:30", said)
+        self.assertIn("Delivery today", said)
+
+    def test_a_day_with_no_window_says_so_rather_than_inventing_one(self) -> None:
+        from app.models.enums import OrderFulfillmentType
+        from app.services import restaurant_locations as bh
+
+        branch = self.branch()
+        branch.fulfillment_slots = []
+        said = bh.describe_hours(branch, fulfillment_type=OrderFulfillmentType.DELIVERY)
+        self.assertIn("not running today", said)
+
+    def test_a_named_time_is_an_instruction_not_a_question(self) -> None:
+        # "make it 12:30" reads as both; the time is what they meant.
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "make it 12:30",
+            generate=lambda *a, **k: '{"asks_hours": true, "when": "2026-09-17 12:30", "add": null, "details": {}, "checkout": false, "chose": null, "confirms": null, "browse": null}',
+        )
+        self.assertTrue(got["asks_hours"])
+        self.assertEqual(got["when"], "2026-09-17 12:30")
+
+
+class ChooseThreeTests(unittest.TestCase):
+    """A group that wants three, answered one at a time or all at once.
+
+    Live: "Choose three sweets... > Mango sticky rice" came back with the
+    identical sentence — same list, same count, no sign anybody had heard.
+    Answer it perfectly three times and it reads as broken every time.
+    """
+
+    def result(self, chosen=()):
+        return {
+            "outcome": "needs_choice",
+            "name": "Thai Dessert Platter",
+            "needs_size": False,
+            "available_sizes": [],
+            "customization_groups": [{
+                "title": "Choose three sweets",
+                "needs_selection": True,
+                "min_selection": 3,
+                "max_selection": 3,
+                "selected_option_ids": list(chosen),
+                "options": [
+                    {"option_id": "a", "name": "Mango sticky rice", "extra_price": 0},
+                    {"option_id": "b", "name": "Fried banana", "extra_price": 0},
+                    {"option_id": "c", "name": "Tub tim krob", "extra_price": 0},
+                ],
+            }],
+        }
+
+    def test_it_says_how_many_are_wanted(self) -> None:
+        from app.services.ordering_agent.loop import ask_for_choice
+
+        said = ask_for_choice(self.result())
+        self.assertIn("pick 3", said)
+        self.assertIn("Mango sticky rice", said)
+
+    def test_it_credits_what_is_already_chosen_and_counts_down(self) -> None:
+        from app.services.ordering_agent.loop import ask_for_choice
+
+        said = ask_for_choice(self.result(chosen=["a"]))
+        self.assertIn("you have Mango sticky rice", said)
+        self.assertIn("Pick 2 more", said)
+        self.assertNotIn("Mango sticky rice,", said.split("Pick 2 more")[1])
+
+    def test_the_reading_takes_several_at_once(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "mango sticky rice, fried banana and lod chong",
+            generate=lambda *a, **k: '{"chose": ["Mango sticky rice", "Fried banana", "Lod chong"], "add": null, "details": {}, "checkout": false, "when": null, "confirms": null, "browse": null, "asks_hours": false}',
+        )
+        self.assertEqual(got["chose"], ["Mango sticky rice", "Fried banana", "Lod chong"])
+
+    def test_one_pick_still_reads_as_a_list(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "large one",
+            generate=lambda *a, **k: '{"chose": "Large (14\\")", "add": null, "details": {}, "checkout": false, "when": null, "confirms": null, "browse": null, "asks_hours": false}',
+        )
+        self.assertEqual(got["chose"], ['Large (14")'])
