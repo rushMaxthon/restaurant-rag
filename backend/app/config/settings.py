@@ -308,6 +308,11 @@ class Settings(BaseSettings):
     # leave it empty and it behaves like the marketplace app, across all of
     # them.
     whatsapp_restaurant_id: str = ""
+    # Which branch a WhatsApp order is placed against. A chat thread has
+    # no branch picker, and an order cannot be placed without one — unset
+    # means the assistant answers about the menu but cannot take an order,
+    # which is better than guessing a branch on somebody's behalf.
+    whatsapp_restaurant_location_id: str = ""
 
     # Who may be answered, as a comma-separated list of sender numbers in the
     # form WhatsApp uses (country code, digits only, no +).
@@ -494,6 +499,47 @@ class Settings(BaseSettings):
     # is a property of the wording rather than of the data: what "was anything
     # out of stock" means does not change when an order arrives.
     chat_tool_plan_cache_ttl_seconds: int = 86400
+
+    # --- Customer-facing ordering agent's planner (Task 4) ------------------
+    #
+    # A sibling of the chat_tool_planner_* block above, not a reuse of it: this
+    # one is multi-round (the loop feeds each tool's result back and calls the
+    # planner again until it answers), so a plan here depends on the cart and
+    # on what already happened this turn, never on the question's wording
+    # alone — there is deliberately no cache_ttl setting to go with it, unlike
+    # chat_tool_plan_cache_ttl_seconds above, because caching by wording would
+    # serve one customer's half-built cart to a different customer who typed
+    # the same sentence.
+    ordering_agent_model: str = "qwen3:8b"
+    ordering_agent_planner_timeout_seconds: float = 45.0
+    # 400, not chat_tool_planner_max_tokens' 90: that budget only ever writes
+    # a tool name and a few arguments. This planner's other shape is the
+    # customer-facing reply itself (`{"answer": "..."}`), and a sentence or
+    # two of real prose needs more room than an owner-side tool pick ever did.
+    ordering_agent_planner_max_tokens: int = 400
+
+    # --- Customer-facing ordering agent's loop (Task 5) ----------------------
+    #
+    # Off by default per the house rule every AI flag here follows: with this
+    # false, `loop.run_turn` never calls the planner, never runs a tool, and
+    # returns `fallback_reason="flag_off"` immediately, so Task 6's chat turn
+    # can wire this in ahead of anyone actually turning it on.
+    enable_ordering_agent: bool = False
+    # A customer's turn is at most this many plan-then-tool rounds before the
+    # loop gives up and falls back — not measured yet, since nothing has run
+    # against a real model or a real cart: a placeholder chosen to be "enough
+    # rounds for get_dish -> add_to_cart or view_cart -> price_quote, plus one
+    # spare for a self-correction," never exercised end to end. Task 8
+    # measures a real turn's round count and may move this.
+    ordering_agent_max_tool_rounds: int = 6
+    # Wall-clock ceiling for a whole turn (every plan_step call plus every
+    # tool call), independent of `ordering_agent_planner_timeout_seconds`
+    # (which bounds one model call, not the turn). Also not measured yet —
+    # picked as "a customer will wait this long for a chat reply before it
+    # reads as broken," not from timing data. Task 8 measures and may move
+    # this alongside the round cap above.
+    ordering_agent_budget_seconds: float = 30.0
+
     ai_manager_router_timeout_seconds: float = 20.0
     ai_manager_router_max_tokens: int = 80
     # The window a chat question covers when the owner names no period at all.
@@ -554,6 +600,22 @@ class Settings(BaseSettings):
     # does not show charges the customer in a currency nobody quoted. It was
     # "cad" here while .env said "inr" and the apps rendered USD — three
     # currencies for one number.
+    # Where Stripe sends the customer back after a hosted checkout. The card
+    # sheet never needed this because it never left the page; a payment link
+    # does. Overridden per deployment — the default is this machine's dev
+    # server, which is where it is used today.
+    frontend_base_url: str = "http://localhost:5173"
+    # Where THIS API is reachable from a customer's phone — the tunnel while
+    # developing, the Render URL in production. An order placed in a chat is
+    # paid on a phone, and Stripe then sends the phone to `frontend_base_url`,
+    # which on the phone is the phone: the payment landed and the last thing
+    # the customer saw was a browser error. Empty means chat orders fall back
+    # to the frontend URLs, exactly as web orders always do.
+    public_base_url: str = ""
+    # The WhatsApp number customers message, digits only, for the "back to
+    # the chat" link on that page. Not derivable from the phone-number id
+    # Meta gives the API, which is an id and not the number.
+    whatsapp_business_number: str = ""
     payment_currency: str = "usd"
     # Whether this deployment takes cash on delivery at all. Off: this product
     # is card-only, and an always-available COD meant "Place order" completed

@@ -46,4 +46,10 @@ __pycache__/
 # implementer reports, review packages. Recoverable from git history and of no
 # use to anyone else, so it is never committed.
 .superpowers/
+
+# --- local worktrees -------------------------------------------------------------
+# Isolated checkouts used while executing a plan (see
+# superpowers:using-git-worktrees). Each is a full working copy of tracked
+# branches already in git history, so committing them would duplicate the repo.
+.worktrees/
 backend/*_tmp.py

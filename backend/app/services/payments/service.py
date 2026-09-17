@@ -8,6 +8,8 @@ the provider, not the reference.
 from __future__ import annotations
 
 import logging
+from functools import partial
+from typing import Callable
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -19,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.enums import (
+    OrderScheduleType,
     OrderCancellationReason,
     OrderEventActor,
     OrderStatus,
@@ -28,7 +31,7 @@ from app.models.enums import (
 from app.models.order import Order
 from app.models.payment import PaymentTransaction, PaymentWebhookEvent
 from app.models.user import User
-from app.schemas.payment import PaymentIntentResponse, PaymentStatusResponse
+from app.schemas.payment import PaymentIntentResponse, PaymentLinkResponse, PaymentStatusResponse
 from app.services.order_events import mark_order_cancelled, record_order_status_event
 from app.services.payments.base import (
     PaymentProviderError,
@@ -247,6 +250,121 @@ def create_payment_intent(
         amount=result.amount,
         currency=result.currency,
         publishable_key=settings.stripe_publishable_key,
+    )
+
+
+def create_payment_link(
+    db: Session,
+    customer: User,
+    order_id: uuid.UUID,
+    *,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+) -> PaymentLinkResponse:
+    """A link the customer can pay on, for an order that is theirs.
+
+    Every guard `create_payment_intent` applies is applied here, for the same
+    reasons: the amount is read off the stored order, a paid or cancelled
+    order is refused, and a provider that is not configured fails loudly
+    rather than handing back a dead link.
+
+    The idempotency key is per ORDER rather than per attempt, which is the one
+    real difference. An intent is consumed by the sheet that requested it; a
+    link is sent to someone and may be tapped later, twice, or forwarded. A
+    stable key means Stripe returns the SAME session every time, so a customer
+    can never be holding two payable links for one order.
+    """
+
+    order = _load_customer_order(
+        db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
+    )
+    if order.payment_method != PaymentMethod.CARD:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="This order is not a card order.",
+        )
+    if order.payment_status == PaymentStatus.PAID:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order has already been paid.",
+        )
+    if order.status == OrderStatus.CANCELLED:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order was cancelled and can no longer be paid.",
+        )
+    if order.payment_status not in RETRYABLE_PAYMENT_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This order cannot be paid right now.",
+        )
+
+    provider = resolve_provider(order.payment_method)
+    if provider is None or not provider.is_configured():
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Card payments are not available right now.",
+        )
+    if not hasattr(provider, "create_checkout_session"):
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment links are not available right now.",
+        )
+
+    success_url, cancel_url = _return_urls(order)
+    try:
+        result = provider.create_checkout_session(
+            order_id=order.id,
+            customer_id=customer.id,
+            restaurant_id=order.restaurant_id,
+            amount=order.total_amount,
+            currency=order.currency,
+            description=f"Order {str(order.id)[:8]}",
+            customer_email=getattr(customer, "email", None),
+            success_url=success_url,
+            cancel_url=cancel_url,
+            idempotency_key=f"order:{order.id}:checkout",
+            metadata={"restaurant_location_id": str(order.restaurant_location_id)},
+        )
+    except PaymentProviderError as error:
+        raise HTTPException(
+            status_code=http_status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
+
+    # The same session comes back on a repeat, and with it the same intent —
+    # so the transaction row is created once and found thereafter. The unique
+    # index on `provider_intent_id` would refuse a second anyway; this is what
+    # keeps that from being an error the customer sees.
+    existing = db.scalar(
+        select(PaymentTransaction).where(PaymentTransaction.provider_intent_id == result.intent_id)
+    )
+    if existing is None:
+        db.add(
+            PaymentTransaction(
+                order_id=order.id,
+                provider=provider.name,
+                provider_intent_id=result.intent_id,
+                status=PaymentStatus.PENDING,
+                amount=result.amount,
+                currency=result.currency,
+            )
+        )
+    order.payment_reference = result.intent_id
+    order.payment_status = PaymentStatus.PENDING
+    db.add(order)
+    db.commit()
+
+    logger.info(
+        "Payment link issued order_id=%s intent_id=%s", order.id, result.intent_id
+    )
+    return PaymentLinkResponse(
+        order_id=order.id,
+        url=result.url,
+        amount=result.amount,
+        currency=result.currency,
+        expires_at=(
+            datetime.fromtimestamp(result.expires_at, tz=UTC) if result.expires_at else None
+        ),
     )
 
 
@@ -485,6 +603,10 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         return {"status": "duplicate", "event_id": event.event_id}
 
     handled = "ignored"
+    # What to say once the change is safely recorded. Said after the commit
+    # below, never inside it: a message is not worth a database transaction
+    # held open on a call to Meta.
+    announce: Callable[[], None] | None = None
     if event.intent_id:
         found = _order_for_intent(db, event.intent_id)
         if found is None:
@@ -493,18 +615,22 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
             )
         else:
             order, transaction = found
-            if event.event_type == "payment_intent.succeeded":
+            if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
                 _mark_paid(db, order, transaction, event)
                 handled = "paid"
+                announce = partial(_confirm_in_chat, order)
             elif event.event_type == "payment_intent.payment_failed":
                 _mark_failed(db, order, transaction, event)
                 handled = "failed"
+                announce = partial(_report_failure_in_chat, db, order, transaction)
             elif event.event_type == "payment_intent.canceled":
                 _mark_cancelled(db, order, transaction)
                 handled = "cancelled"
+                announce = partial(_report_cancelled_in_chat, order)
             elif event.event_type == "charge.refunded":
                 _mark_refunded(db, order, transaction)
                 handled = "refunded"
+                announce = partial(_report_refunded_in_chat, order)
 
     record = db.scalar(
         select(PaymentWebhookEvent).where(PaymentWebhookEvent.provider_event_id == event.event_id)
@@ -514,7 +640,148 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         db.add(record)
         db.commit()
 
+    if announce is not None:
+        announce()
+
     return {"status": handled, "event_id": event.event_id}
+
+
+def _return_urls(order: Order) -> tuple[str, str]:
+    """Where Stripe sends the customer once they have paid, or given up.
+
+    A web order goes back to the web app, as it always has. An order placed
+    in a chat is being paid on a phone, and `frontend_base_url` on a phone is
+    the phone — so it returns to a page this API serves at its public
+    address instead, which says the payment landed and points back to the
+    chat. With no public address configured, chat orders take the web path
+    too, which is the behaviour this deployment had before.
+    """
+
+    web = settings.frontend_base_url.rstrip("/")
+    web_urls = (f"{web}/orders/{order.id}?paid=1", f"{web}/orders/{order.id}")
+
+    public = (settings.public_base_url or "").strip().rstrip("/")
+    if not public:
+        return web_urls
+    from app.services.ordering_agent import order_channel
+
+    if not order_channel.phone_for(order.id):
+        return web_urls
+    return (
+        f"{public}/api/payments/return/{order.id}?outcome=paid",
+        f"{public}/api/payments/return/{order.id}?outcome=cancelled",
+    )
+
+
+def _scheduled_line(order: Order) -> str:
+    """' It is scheduled for Thu 10:30.' for an order placed for later."""
+
+    if getattr(order, "schedule_type", None) != OrderScheduleType.SCHEDULED or not order.scheduled_at:
+        return ""
+    from app.services.restaurant_locations import BUSINESS_TIMEZONE
+
+    when = order.scheduled_at.astimezone(BUSINESS_TIMEZONE).strftime("%a %H:%M")
+    return f" It is scheduled for {when}."
+
+
+def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:
+    """Say something about this order where it was placed, if it was a chat.
+
+    Never raises, and never fails the webhook. Stripe reads anything but a
+    200 as a delivery to retry, and retrying a payment that was recorded
+    perfectly well because a message would not send is the tail wagging the
+    dog — so a failure here is logged and the payment stands.
+
+    `finished` says whether anything more can happen to this order. A paid,
+    cancelled or refunded order is done and the conversation is forgotten; a
+    failed one is not, because the next thing that happens may well be the
+    customer paying.
+    """
+
+    from app.services.ordering_agent import order_channel
+
+    phone = order_channel.phone_for(order.id)
+    if not phone:
+        return  # A web order, or a chat order old enough to have expired.
+
+    try:
+        from app.tasks.whatsapp import send_text
+
+        if send_text(phone, body):
+            logger.info("Told a customer about their order in chat order_id=%s", order.id)
+            if finished:
+                order_channel.forget(order.id)
+        else:
+            logger.warning("Could not reach a customer in chat order_id=%s", order.id)
+    except Exception:  # noqa: BLE001 - the payment is recorded whether or not we can say so
+        logger.warning(
+            "Telling a customer about their order raised order_id=%s", order.id, exc_info=True
+        )
+
+
+def _confirm_in_chat(order: Order) -> None:
+    """The payment landed."""
+
+    _tell_in_chat(
+        order,
+        "Payment received, thank you. Your order is confirmed and the kitchen "
+        f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
+        f"Order reference: {str(order.id)[:8]}",
+        finished=True,
+    )
+
+
+def _report_failure_in_chat(db: Session, order: Order, transaction: PaymentTransaction) -> None:
+    """The payment did not go through, and here is the way to try again.
+
+    Silence after a declined card reads exactly like a success, and the cart
+    was emptied when the order was placed — so without a link back there is
+    no way to pay through the conversation at all.
+    """
+
+    # The bank's own words when they are short enough to be useful; a card
+    # number in the wrong century is something only the customer can fix.
+    reason = (transaction.failure_message or "").strip().rstrip(".")
+    because = f" ({reason})" if 0 < len(reason) <= 90 else ""
+    retry = ""
+    try:
+        customer = order.customer
+        if customer is not None:
+            # Idempotent per order, and a Checkout session stays open after a
+            # declined attempt: this is the same page, ready for another card.
+            link = create_payment_link(db, customer, order.id)
+            if link.url:
+                from app.services.short_links import shorten
+
+                retry = f"\n\nTry again here:\n{shorten(link.url)}"
+    except Exception:  # noqa: BLE001 - a failure is worth reporting without a link
+        logger.warning("Could not offer a retry link order_id=%s", order.id, exc_info=True)
+
+    _tell_in_chat(
+        order,
+        f"Your payment did not go through{because}. Nothing has been charged and "
+        f"your order is still held.{retry}",
+        # Not finished: the next thing that happens may well be them paying.
+        finished=False,
+    )
+
+
+def _report_cancelled_in_chat(order: Order) -> None:
+    _tell_in_chat(
+        order,
+        "Your payment was cancelled, so the order has not gone to the kitchen and "
+        "nothing has been charged. Tell me when you would like to order again.",
+        finished=True,
+    )
+
+
+def _report_refunded_in_chat(order: Order) -> None:
+    _tell_in_chat(
+        order,
+        f"Your refund of ${order.total_amount:.2f} is on its way back to the card you "
+        "paid with. Banks usually take a few working days to show it.",
+        finished=True,
+    )
 
 
 # --- cleanup ---------------------------------------------------------------

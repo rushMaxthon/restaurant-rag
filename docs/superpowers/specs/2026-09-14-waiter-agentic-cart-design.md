@@ -38,12 +38,55 @@ validates; the client applies.
 delivery or pickup, pick a slot, or touch payment. A resolution mistake must
 stay a visible wrong cart, never a charge.
 
-**Not an LLM planner.** Actions are produced deterministically. See "The tier-2
-seam".
+**~~Not an LLM planner.~~ SUPERSEDED — see "Understanding is the model's job"
+below.** This originally said actions are produced deterministically. The
+customer overruled it, four separate times, and was right each time.
 
 **Not a chat screen bolted onto the home page.** See the next section — this is
 the constraint most likely to be violated, because the easy build is a message
 thread on every route.
+
+---
+
+## Understanding is the model's job; validating is not
+
+**Binding principle, set by the customer on 2026-09-15 after four separate
+objections to keyword matching:**
+
+> "don't depend on yes, no or something — our llm should understand what user
+> has say and based on it perform the action"
+> "user can ask anything we can't restrict them with word"
+
+No layer of this feature may decide *what a customer meant* by matching words.
+Not a verb list, not an affirmation list, not a synonym table. A person can say
+"go on then", "yeah why not", "nah I'm good", "scrap that", "make it two
+instead" — an exhaustive list of those phrasings does not exist. Every attempt
+to write one here produced a defect: `take .* out` read "do you do take out?"
+as a removal on a restaurant site, and a bare "never mind" would have cleared a
+cart.
+
+| Layer | Owns | Never does |
+|---|---|---|
+| **Model** | what the sentence means — the action, the dish referred to, the quantity, whether it replies to what was just offered | choose a menu item, invent a price, decide what is safe to apply |
+| **Deterministic** | validating that meaning against rows actually retrieved, and enforcing every safety rule | interpret phrasing |
+| **Fallback** | the regex tier, when the model is unreachable | run when the model answered |
+
+This preserves the house rule rather than breaking it. "The LLM never invents
+data" has always meant the model phrases or classifies over rows the backend
+retrieved — not that it is barred from reading a sentence. Retrieval,
+business-rule filtering, branch scoping, destructive-always-proposed and the
+confidence gate all stay where they are.
+
+**What this does not relax:** destructive actions are still always `proposed`;
+a choice-bearing dish is still never silently applied; actions still carry
+identifiers only; a stale offer is still not actionable; the feature still ships
+behind a flag defaulting off and degrades to the deterministic tier when the
+model is unreachable — `qwen3:8b` on `localhost:11434` IS reachable here,
+contrary to older notes.
+
+The regex work already built is not wasted: it is demoted from primary path to
+fallback tier, where every other AI feature in this repo keeps its
+deterministic twin.
 
 ---
 
@@ -180,13 +223,29 @@ It:
 `DISH_NAME_MAX_DISTANCE`. That signal decides:
 
 - `named` → `applied`, with undo
-- `unknown` or more than one candidate → `proposed`, rendered as a choice
+- more than one candidate → `proposed`, rendered as a choice
 - **anything destructive** (`clear`, or a `remove` matching several lines) →
   `proposed` always, whatever the confidence
 
 Reusing the guardrail's signal matters: it is measured and tested. A second
 threshold invented here would need its own calibration and would drift from the
 first one.
+
+**Amendment (Task 3 review, 2026-09-15):** `unknown` yields no action at all —
+not `proposed` as drafted above. The reasoning above treats `unknown` as one
+more point on the same confidence scale as `named`, just a weaker one, and a
+weak-but-present candidate is exactly what a confirm-card is for. But `unknown`
+isn't a weak signal — it's an absent one: no embedding distance to judge, or an
+empty retrieval. The only dish that can reach the resolver in that state comes
+from the keyword/trigram fallback tier, which `apply_dish_name_guardrail`'s own
+comment already distrusts for this reason — it would "score every keyword hit
+as a confident dish match" if the guardrail let it. A `proposed` card built on
+that tier doesn't ask the customer to confirm a fuzzy match; it asserts one
+specific, possibly nonsensical dish with the full visual authority of a real
+proposal. A prose reply built over the same non-match can hedge ("I couldn't
+find that dish"); a card cannot. So `resolve_cart_actions` folds `unknown` into
+the same silent path as `absent` — see the comment at the `dish_reference`
+gate in `cart_actions.py`.
 
 ---
 
@@ -345,7 +404,9 @@ deterministic tier is therefore never wasted work.
 - nothing qualifying, and the fallback also silent, yields no suggestion
 - the same item is not offered twice in a session; suggesting stops after two
   declines
-- `classify_dish_reference` returning `unknown` yields `proposed`, not `applied`
+- `classify_dish_reference` returning `unknown` yields no action at all — not
+  `applied`, and not `proposed` either (amended, see "`status` is decided by
+  confidence, not by the model")
 - `clear` is `proposed` even when confidence is high
 - a reply carrying actions is refused by `may_cache_globally`
 - a `cart` line naming an item from another branch is ignored, and the turn

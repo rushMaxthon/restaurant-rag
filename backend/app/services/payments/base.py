@@ -14,6 +14,19 @@ from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(slots=True)
+class CheckoutSessionResult:
+    """What a hosted payment page is, to this app: a URL to send someone, and
+    the intent id every existing payment path already knows how to finish."""
+
+    session_id: str
+    url: str
+    intent_id: str
+    amount: Decimal
+    currency: str
+    expires_at: int | None = None
+
+
+@dataclass(slots=True)
 class PaymentIntentResult:
     """What the client needs to present a payment sheet."""
 

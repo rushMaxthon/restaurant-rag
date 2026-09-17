@@ -210,7 +210,18 @@ def _get_current_window_end_for_fulfillment(
             if _time_in_slot(current_time, slot.start_time, slot.end_time):
                 return _combine_local_datetime(current_local.date(), slot.end_time), None
         label = "delivery" if fulfillment_type == OrderFulfillmentType.DELIVERY else "pickup"
-        return None, f"{label.capitalize()} is outside the current branch schedule."
+        # The windows are right here; a refusal that withholds them leaves the
+        # customer with nothing to do next. Live at ten past midnight: "Pickup
+        # is outside the current branch schedule." — true, and not a word
+        # about when it would be inside it.
+        windows = ", ".join(
+            f"{slot.start_time:%H:%M}-{slot.end_time:%H:%M}"
+            for slot in sorted(todays_slots, key=lambda slot: slot.start_time)
+        )
+        return None, (
+            f"{label.capitalize()} is outside the current branch schedule. "
+            f"Today's {label} hours: {windows}."
+        )
 
     if location.opening_time is not None and location.closing_time is not None:
         if not _time_in_slot(current_time, location.opening_time, location.closing_time):
@@ -732,6 +743,65 @@ def update_location_slot(
     db.flush()
     db.refresh(slot)
     return slot
+
+
+def next_available_slot_start(
+    location: RestaurantLocation,
+    *,
+    fulfillment_type: OrderFulfillmentType,
+    reference_dt: datetime | None = None,
+) -> datetime | None:
+    """The earliest moment a scheduled order of this kind could be for.
+
+    Computed from the same slots, prep buffer, interval and horizon that
+    `schedule_slot_is_available` enforces, so what the chat offers as "the
+    next time we can do" is a time the order will then actually be accepted
+    for. None when nothing in the horizon qualifies — a branch with
+    scheduling off, or no active slots at all.
+
+    Why it exists: a closed kitchen used to end the conversation. "Pickup is
+    outside the current branch schedule" is true at 01:43 and sends the
+    customer away with a cart they had already filled and details they had
+    already typed. Offering 10:30 keeps the order.
+    """
+
+    if not location.is_active or not location.is_open or not location.future_order_enabled:
+        return None
+    if fulfillment_type == OrderFulfillmentType.DELIVERY and not location.delivery_enabled:
+        return None
+    if fulfillment_type == OrderFulfillmentType.PICKUP and not location.pickup_enabled:
+        return None
+
+    now_local = _localize_reference_datetime(reference_dt)
+    buffer = timedelta(minutes=_get_prep_buffer_minutes(location, fulfillment_type))
+    interval = max(1, int(location.slot_interval_minutes))
+    earliest = now_local + buffer
+    # Up to the interval: a 20-minute buffer at 01:43 makes 02:03, and the
+    # slot rule wants 02:30.
+    rounded_minute = ((earliest.minute + interval - 1) // interval) * interval
+    earliest = earliest.replace(second=0, microsecond=0, minute=0) + timedelta(minutes=rounded_minute)
+
+    for day_offset in range(int(location.max_future_days) + 1):
+        day = now_local.date() + timedelta(days=day_offset)
+        weekday = _weekday_for_datetime(_combine_local_datetime(day, time(12, 0)))
+        windows: list[tuple[time, time]]
+        if _slot_schedule_enabled(location, fulfillment_type):
+            windows = sorted(
+                (slot.start_time, slot.end_time)
+                for slot in _active_slots_for_fulfillment(location, fulfillment_type)
+                if slot.day_of_week == weekday
+            )
+        elif location.opening_time is not None and location.closing_time is not None:
+            windows = [(location.opening_time, location.closing_time)]
+        else:
+            windows = []
+        for start_time, end_time in windows:
+            opens = _combine_local_datetime(day, start_time)
+            last = _combine_local_datetime(day, end_time) - buffer
+            candidate = max(opens, earliest)
+            if candidate <= last:
+                return candidate
+    return None
 
 
 def get_location_fulfillment_status(

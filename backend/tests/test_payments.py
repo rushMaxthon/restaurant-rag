@@ -54,6 +54,8 @@ class FakeProvider:
     def __init__(self, *, configured: bool = True) -> None:
         self._configured = configured
         self.created: list[dict] = []
+        self.sessions: list[dict] = []
+        self._session_ids: dict[str, int] = {}
         self.cancelled: list[str] = []
         self.retrieve_result: payments_base.PaymentIntentResult | None = None
 
@@ -68,6 +70,23 @@ class FakeProvider:
             amount=kwargs["amount"],
             currency=kwargs["currency"],
             status="requires_payment_method",
+        )
+
+    def create_checkout_session(self, **kwargs) -> payments_base.CheckoutSessionResult:
+        self.sessions.append(kwargs)
+        # Stripe returns the SAME session for a repeated idempotency key, and
+        # the reuse rule depends on that, so the fake behaves the same way.
+        key = kwargs["idempotency_key"]
+        index = self._session_ids.setdefault(key, len(self._session_ids) + 1)
+        return payments_base.CheckoutSessionResult(
+            session_id=f"cs_test_{index}",
+            url=f"https://checkout.stripe.test/cs_test_{index}",
+            # As Stripe does: no PaymentIntent until the customer starts
+            # paying, so the session id is the reference that exists now.
+            intent_id=f"cs_test_{index}",
+            amount=kwargs["amount"],
+            currency=kwargs["currency"],
+            expires_at=None,
         )
 
     def retrieve_intent(self, intent_id: str) -> payments_base.PaymentIntentResult:
@@ -747,3 +766,399 @@ class OrderPaymentWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- payment links ---------------------------------------------------------
+
+
+class CreatePaymentLinkTests(unittest.TestCase):
+    """A link is the sheet's amount and guards, on a page the customer can
+    reach from a chat. What is new is only where the card is typed."""
+
+    def _link(self, order, session=None, provider=None):
+        session = session or FakeSession(orders=[order])
+        provider = provider or FakeProvider()
+        with patch.object(payments_service, "resolve_provider", return_value=provider):
+            return payments_service.create_payment_link(session, make_customer(order), order.id), session, provider
+
+    def test_the_amount_comes_from_the_order_not_the_caller(self) -> None:
+        order = make_order(total="412.50")
+        result, session, provider = self._link(order)
+        self.assertEqual(provider.sessions[0]["amount"], Decimal("412.50"))
+        self.assertEqual(result.amount, Decimal("412.50"))
+        self.assertTrue(result.url.startswith("https://"))
+
+    def test_the_session_is_recorded_so_the_webhook_can_finish_it(self) -> None:
+        # Stripe has no PaymentIntent for a session until someone starts
+        # paying, so the session id is the reference recorded now and the
+        # one that comes back on checkout.session.completed.
+        order = make_order()
+        result, session, provider = self._link(order)
+        self.assertEqual(len(session.transactions), 1)
+        self.assertEqual(session.transactions[0].provider_intent_id, "cs_test_1")
+        self.assertEqual(session.transactions[0].status, PaymentStatus.PENDING)
+        self.assertEqual(order.payment_reference, "cs_test_1")
+
+    def test_asking_twice_returns_one_link_and_one_transaction(self) -> None:
+        # A link gets forwarded and tapped later. Two payable links for one
+        # order is a double charge waiting to happen.
+        order = make_order()
+        session = FakeSession(orders=[order])
+        provider = FakeProvider()
+        first, _, _ = self._link(order, session, provider)
+        second, _, _ = self._link(order, session, provider)
+        self.assertEqual(first.url, second.url)
+        self.assertEqual(len(session.transactions), 1)
+        self.assertEqual(
+            provider.sessions[0]["idempotency_key"], f"order:{order.id}:checkout"
+        )
+        self.assertEqual(provider.sessions[0]["idempotency_key"], provider.sessions[1]["idempotency_key"])
+
+    def test_a_paid_order_is_refused(self) -> None:
+        order = make_order(payment_status=PaymentStatus.PAID)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_a_cancelled_order_is_refused(self) -> None:
+        order = make_order(order_status=OrderStatus.CANCELLED)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_a_cash_order_is_refused(self) -> None:
+        order = make_order(payment_method=PaymentMethod.COD)
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order)
+        self.assertEqual(caught.exception.status_code, 400)
+
+    def test_an_unconfigured_provider_fails_loudly_rather_than_returning_a_dead_link(self) -> None:
+        order = make_order()
+        with self.assertRaises(HTTPException) as caught:
+            self._link(order, provider=FakeProvider(configured=False))
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_the_customer_is_returned_to_their_own_order(self) -> None:
+        order = make_order()
+        _, _, provider = self._link(order)
+        self.assertIn(str(order.id), provider.sessions[0]["success_url"])
+        self.assertIn(str(order.id), provider.sessions[0]["cancel_url"])
+
+
+
+class ConfirmingAPaidOrderInChatTests(unittest.TestCase):
+    """A payment that lands is said out loud, in the right conversation.
+
+    The chain worked end to end before this and the customer heard none of
+    it: link, payment, `checkout.session.completed`, order PAYMENT_PENDING
+    -> PLACED, and a chat that just went quiet.
+    """
+
+    def order(self, total="261.45"):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total))
+
+    def test_an_order_placed_in_a_chat_is_confirmed_there(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        sent: list = []
+        with patch.object(order_channel, "phone_for", return_value="+916353100362"), patch.object(
+            order_channel, "forget", lambda order_id: sent.append(("forgotten", order_id))
+        ), patch("app.tasks.whatsapp.send_text", lambda to, body: sent.append((to, body)) or True):
+            service._confirm_in_chat(order)
+
+        to, body = sent[0]
+        self.assertEqual(to, "+916353100362")
+        self.assertIn("Payment received", body)
+        self.assertIn("$261.45", body)
+        self.assertIn(str(order.id)[:8], body)
+        self.assertEqual(sent[1][0], "forgotten", "said once, not on every later event")
+
+    def test_a_web_order_is_never_messaged(self) -> None:
+        # The whole reason a conversation is recorded rather than the order's
+        # own phone number being used: somebody who ordered on the web typed
+        # a number into a form and never opened a chat.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        sent: list = []
+        with patch.object(order_channel, "phone_for", return_value=None), patch(
+            "app.tasks.whatsapp.send_text", lambda to, body: sent.append(to) or True
+        ):
+            service._confirm_in_chat(self.order())
+        self.assertEqual(sent, [])
+
+    def test_a_send_that_fails_never_fails_the_payment(self) -> None:
+        # Stripe reads anything but a 200 as a delivery to retry.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        with patch.object(order_channel, "phone_for", return_value="+916353100362"), patch(
+            "app.tasks.whatsapp.send_text", side_effect=RuntimeError("Meta is down")
+        ):
+            service._confirm_in_chat(self.order())  # must not raise
+
+
+class OrderChannelTests(unittest.TestCase):
+    """What the placing turn writes down about where an order came from."""
+
+    def test_a_number_survives_the_round_trip(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        order_id = uuid.uuid4()
+        order_channel.remember(order_id, phone_number="+916353100362")
+        self.assertEqual(order_channel.phone_for(order_id), "+916353100362")
+        order_channel.forget(order_id)
+        self.assertIsNone(order_channel.phone_for(order_id))
+
+    def test_an_order_nobody_recorded_is_not_messaged(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        self.assertIsNone(order_channel.phone_for(uuid.uuid4()))
+
+    def test_an_empty_number_records_nothing(self) -> None:
+        from app.services.ordering_agent import order_channel
+
+        order_id = uuid.uuid4()
+        order_channel.remember(order_id, phone_number="")
+        self.assertIsNone(order_channel.phone_for(order_id))
+
+
+class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
+    """Success was told; a decline, a cancellation and a refund were not.
+
+    Silence after a declined card reads exactly like a success, which is the
+    worst of the four to get wrong.
+    """
+
+    def order(self, total="261.45"):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total), customer=None)
+
+    def said(self, call, *, phone="+916353100362"):
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+
+        sent: list = []
+        forgotten: list = []
+        with patch.object(order_channel, "phone_for", return_value=phone), patch.object(
+            order_channel, "forget", lambda order_id: forgotten.append(order_id)
+        ), patch("app.tasks.whatsapp.send_text", lambda to, body: sent.append((to, body)) or True):
+            call()
+        return (sent[0][1] if sent else None), bool(forgotten)
+
+    def test_a_declined_payment_says_so_and_keeps_the_conversation(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        order = self.order()
+        transaction = SimpleNamespace(failure_message="Your card was declined")
+        body, forgotten = self.said(
+            lambda: service._report_failure_in_chat(None, order, transaction)
+        )
+        self.assertIn("did not go through", body)
+        self.assertIn("Your card was declined", body)
+        self.assertIn("Nothing has been charged", body)
+        self.assertFalse(forgotten, "they may still pay; the conversation is kept")
+
+    def test_a_bank_essay_is_not_repeated_at_the_customer(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        transaction = SimpleNamespace(failure_message="x" * 400)
+        body, _ = self.said(
+            lambda: service._report_failure_in_chat(None, self.order(), transaction)
+        )
+        self.assertNotIn("xxxx", body)
+        self.assertIn("did not go through", body)
+
+    def test_a_cancelled_payment_says_nothing_was_charged(self) -> None:
+        from app.services.payments import service
+
+        body, forgotten = self.said(lambda: service._report_cancelled_in_chat(self.order()))
+        self.assertIn("cancelled", body)
+        self.assertIn("nothing has been charged", body)
+        self.assertTrue(forgotten)
+
+    def test_a_refund_says_where_the_money_went(self) -> None:
+        from app.services.payments import service
+
+        body, forgotten = self.said(lambda: service._report_refunded_in_chat(self.order()))
+        self.assertIn("$261.45", body)
+        self.assertIn("refund", body.lower())
+        self.assertTrue(forgotten)
+
+    def test_a_web_order_hears_none_of_it(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments import service
+
+        for call in (
+            lambda: service._confirm_in_chat(self.order()),
+            lambda: service._report_cancelled_in_chat(self.order()),
+            lambda: service._report_refunded_in_chat(self.order()),
+            lambda: service._report_failure_in_chat(
+                None, self.order(), SimpleNamespace(failure_message=None)
+            ),
+        ):
+            body, _ = self.said(call, phone=None)
+            self.assertIsNone(body)
+
+
+class ReturnUrlTests(unittest.TestCase):
+    """Where Stripe sends the customer back, by where they ordered from."""
+
+    def order(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=uuid.uuid4())
+
+    def test_a_web_order_returns_to_the_web_app_as_before(self) -> None:
+        # The path that already works, and must keep working.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", "https://api.example.test"), \
+             patch.object(service.settings, "frontend_base_url", "http://localhost:5173"), \
+             patch.object(order_channel, "phone_for", return_value=None):
+            success, cancel = service._return_urls(order)
+        self.assertEqual(success, f"http://localhost:5173/orders/{order.id}?paid=1")
+        self.assertEqual(cancel, f"http://localhost:5173/orders/{order.id}")
+
+    def test_a_chat_order_returns_to_this_api_at_its_public_address(self) -> None:
+        # Live: the phone was sent to localhost:5173, which on a phone is the
+        # phone, and the last thing the customer saw was a browser error.
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", "https://api.example.test/"), \
+             patch.object(order_channel, "phone_for", return_value="+916353100362"):
+            success, cancel = service._return_urls(order)
+        self.assertEqual(success, f"https://api.example.test/api/payments/return/{order.id}?outcome=paid")
+        self.assertEqual(cancel, f"https://api.example.test/api/payments/return/{order.id}?outcome=cancelled")
+
+    def test_a_chat_order_with_no_public_address_takes_the_web_path(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_channel
+        from app.services.payments import service
+
+        order = self.order()
+        with patch.object(service.settings, "public_base_url", ""), \
+             patch.object(service.settings, "frontend_base_url", "http://localhost:5173"), \
+             patch.object(order_channel, "phone_for", return_value="+916353100362"):
+            success, _ = service._return_urls(order)
+        self.assertTrue(success.startswith("http://localhost:5173/orders/"))
+
+
+class ReturnPageTests(unittest.TestCase):
+    """The page a phone lands on: says the outcome, shows no personal data."""
+
+    def page(self, outcome, number="918758325037"):
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.api import payments as payments_api
+        from app.main import app
+
+        with patch.object(payments_api.settings, "whatsapp_business_number", number):
+            return TestClient(app).get(f"/api/payments/return/{uuid.uuid4()}?outcome={outcome}")
+
+    def test_paid_points_back_to_the_chat(self) -> None:
+        response = self.page("paid")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Payment received", response.text)
+        self.assertIn("https://wa.me/918758325037", response.text)
+
+    def test_cancelled_says_nothing_was_charged(self) -> None:
+        response = self.page("cancelled")
+        self.assertIn("Payment not completed", response.text)
+        self.assertIn("Nothing has been charged", response.text)
+
+    def test_no_business_number_still_renders(self) -> None:
+        response = self.page("paid", number="")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("wa.me", response.text)
+
+
+class ShortLinkTests(unittest.TestCase):
+    """A payment link a phone can read, served by this API."""
+
+    LONG = "https://checkout.stripe.com/c/pay/cs_test_abc#fidnandhYHdWcXxpYCc"
+
+    def test_a_long_link_becomes_one_short_line_that_leads_back_to_it(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", "https://api.example.test"):
+            short = short_links.shorten(self.LONG)
+        self.assertTrue(short.startswith("https://api.example.test/api/p/"), short)
+        self.assertLess(len(short), 60)
+        token = short.rsplit("/", 1)[-1]
+        self.assertEqual(short_links.resolve(token), self.LONG)
+
+    def test_without_a_public_address_the_long_link_is_sent_unchanged(self) -> None:
+        # Worse to read, but it pays.
+        from unittest.mock import patch
+
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", ""):
+            self.assertEqual(short_links.shorten(self.LONG), self.LONG)
+
+    def test_an_unknown_token_resolves_to_nothing(self) -> None:
+        from app.services import short_links
+
+        self.assertIsNone(short_links.resolve("never-issued"))
+        self.assertIsNone(short_links.resolve(""))
+
+    def test_the_route_sends_the_phone_on_to_stripe(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", "https://api.example.test"):
+            token = short_links.shorten(self.LONG).rsplit("/", 1)[-1]
+        response = TestClient(app).get(f"/api/p/{token}", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], self.LONG)
+
+    def test_an_expired_token_says_so_and_points_back_to_the_chat(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.api import short_links as route
+        from app.main import app
+
+        with patch.object(route.settings, "whatsapp_business_number", "918758325037"):
+            response = TestClient(app).get("/api/p/gone", follow_redirects=False)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("expired", response.text)
+        self.assertIn("wa.me/918758325037", response.text)

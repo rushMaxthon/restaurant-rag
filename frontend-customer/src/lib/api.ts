@@ -170,6 +170,27 @@ export type ChatResponse = {
   suggestions: ChatSuggestion[];
 };
 
+/**
+ * One cart edit the ordering agent decided on for this turn.
+ *
+ * Identifiers only — no name or price arrives, by the same rule as
+ * `ChatSuggestion`: the client renders from the menu it already loaded, so
+ * the reply can never disagree with the menu page about what something is
+ * called or costs. `status` is the gate: only "applied" may change the cart,
+ * and a missing/null value (a drifted response shape) must read as NOT
+ * applied. See `lib/cart-actions.ts` for how these are turned into cart
+ * lines.
+ */
+export type CartAction = {
+  kind: "add" | "remove" | "set_quantity" | "clear" | "checkout";
+  status: "applied" | "proposed";
+  reason: "named" | "ambiguous" | "destructive";
+  menu_item_id: string | null;
+  menu_item_size_id: string | null;
+  selected_option_ids: string[];
+  quantity: number | null;
+};
+
 export type ChatStreamMeta = {
   session_id: string;
   suggestions: ChatSuggestion[];
@@ -179,9 +200,31 @@ export type ChatStreamMeta = {
   // echoing them to a client that may not assert them would invite exactly the
   // round-trip the backend's trust boundary refuses.
   inferred_preferences?: GuestPreferences;
+  // Present only when the server's ordering-agent flag is on. Absent under
+  // the old contract, so every reader must treat it as optional.
+  turn_id?: string;
 };
 
-export type ChatStreamDone = ChatStreamMeta & { reply: string };
+export type ChatStreamDone = ChatStreamMeta & {
+  /** True when the agent asked the customer to choose or refused a dish for their diet. */
+  agent_asks?: boolean;
+  /** Set only on the turn that placed an order. The link is a field, not
+   *  text in the reply: a model repeating a long URL is a customer who
+   *  cannot pay. */
+  /** True when everything an order needs is gathered and only a confirmation is left. */
+  order_ready?: boolean;
+  placed_order?: {
+    order_id: string | null;
+    total: string | null;
+    currency: string | null;
+    payment_url: string | null;
+  } | null;
+  reply: string;
+  // Same flag-gated pair as `turn_id` above: both arrive together or not at
+  // all.
+  agent_reply?: string | null;
+  cart_actions?: CartAction[];
+};
 
 export type ChatHistoryItem = {
   id: string;
@@ -636,6 +679,14 @@ type ChatStreamPayload = {
   restaurant_id?: string | null | undefined;
   restaurant_location_id?: string | null | undefined;
   guest_preferences?: GuestPreferences | undefined;
+  // The cart as it stands when the message is sent, so the ordering agent can
+  // resolve "make it two" or "remove that" against what is actually in it.
+  // Identifiers only — see `cartLinesForRequest`.
+  cart?: CartLineRequest[];
+  /** The assistant line the customer last saw, so "yes" can be read against it. */
+  previous_reply?: string | undefined;
+  /** The tail of the thread as shown, newest last, so answers are read against their questions. */
+  recent_history?: { role: "customer" | "assistant"; text: string }[] | undefined;
 };
 
 type ChatStreamHandlers = {
@@ -654,6 +705,30 @@ type ChatStreamHandlers = {
  * then a stream of `token` frames with partial reply text, then `done` with
  * the full reply.
  */
+/**
+ * Place the order this conversation built.
+ *
+ * The contact details are not sent: they were collected and validated turn
+ * by turn and live server-side against this session. All this carries is
+ * which conversation, which branch, and the cart.
+ */
+export async function placeOrderFromChat(params: {
+  restaurant_id: string;
+  restaurant_location_id: string;
+  session_id: string;
+  cart: CartLineRequest[];
+}): Promise<{
+  outcome: string;
+  order_id: string | null;
+  total: string | null;
+  currency: string | null;
+  payment_url: string | null;
+  missing: string[];
+  reason: string | null;
+}> {
+  return request("/chat/place-order", { method: "POST", body: JSON.stringify(params), auth: true });
+}
+
 export async function streamChatMessage(
   payload: ChatStreamPayload,
   handlers: ChatStreamHandlers,

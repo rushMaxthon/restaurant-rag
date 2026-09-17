@@ -38,6 +38,17 @@ class MenuItemCustomizationOption(TimestampMixin, Base):
         default=False,
         server_default="false",
     )
+    # The option a customer gets without changing anything, within groups
+    # where that is a coherent idea at all (required + single-choice — see
+    # migration 0061). Never set for an optional or multi-select group: there
+    # the honest default is the empty selection, not one option chosen for
+    # the customer.
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     group: Mapped["MenuItemCustomizationGroup"] = relationship(back_populates="options")

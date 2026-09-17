@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
-from typing import Any, Iterator, Literal, Sequence
+from typing import TYPE_CHECKING, Any, Iterator, Literal, Sequence
 
 import httpx
 from fastapi import HTTPException, status
@@ -31,7 +31,12 @@ from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.schemas.chat import ChatHistoryItemResponse, ChatMessageResponse, ChatSuggestionItem
+from app.schemas.chat import (
+    CartActionResponse,
+    ChatHistoryItemResponse,
+    ChatMessageResponse,
+    ChatSuggestionItem,
+)
 from app.schemas.generated_combo import GeneratedComboResponse
 from app.schemas.personalized_offer import PersonalizedOfferCardResponse
 from app.schemas.suggestions import CartLinePayload, SellSuggestionResponse
@@ -775,6 +780,11 @@ class PreparedChatTurn:
     combo_suggestions: list[GeneratedComboResponse] = field(default_factory=list)
     offer_suggestions: list[PersonalizedOfferCardResponse] = field(default_factory=list)
     fallback_reply: str | None = None
+    # From `apply_dish_name_guardrail`'s own return value — captured here so
+    # `cart_actions.py` never re-derives it. Re-deriving would re-run the
+    # fallback vector query that function performs when no vector candidate
+    # survived, doubling a DB call on every turn a cart action might resolve.
+    dish_reference_verdict: DishReference = "unknown"
 
 
 @dataclass
@@ -1672,7 +1682,7 @@ def _parse_intent_payload(payload: dict[str, Any]) -> ExtractedIntent:
         category=_optional_text(payload.get("category")) if isinstance(payload.get("category"), str) else None,
         restaurant_query=_optional_text(payload.get("restaurant_query")) if isinstance(payload.get("restaurant_query"), str) else None,
         budget=budget,
-        diet=_optional_text(payload.get("diet")) if isinstance(payload.get("diet"), str) else None,
+        diet=_canonical_intent_diet(payload.get("diet")),
         spicy=spicy,
         mood=_optional_text(payload.get("mood")) if isinstance(payload.get("mood"), str) else None,
         show_more=bool(show_more_raw) if isinstance(show_more_raw, bool) else False,
@@ -2037,6 +2047,24 @@ def _merge_intent_with_session(intent: ExtractedIntent, session_state: SessionCo
         show_more=False,
         new_only=intent.new_only or (session_state.new_only if should_inherit_soft_context else False),
     )
+
+
+def _canonical_intent_diet(value: object | None) -> str | None:
+    """The one spelling the rest of this module compares against.
+
+    Two vocabularies grew up side by side: `DIET_ALIASES` canonicalises to
+    "VEG"/"NON_VEG" for stored preferences, while every retrieval check here
+    reads `intent.diet == "veg"`. A model that answered "vegetarian" — which
+    it does — matched neither, so the diet silently stopped filtering
+    anything. Everything funnels through here now; the lowercase form wins
+    because it is what the comparisons and the effective-query builder
+    already use.
+    """
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    canonical = _normalize_diet_value([value])
+    return canonical.lower() if canonical else None
 
 
 def _build_effective_query_from_intent(message: str, intent: ExtractedIntent, session_state: SessionConversationState) -> str:
@@ -3788,6 +3816,17 @@ def _with_closed_notice(
             availability.branch_name if availability else "?",
             prepared.retrieval_source,
         )
+        # A closed door loses the customer; "order now for when we open"
+        # keeps them. Said only where the branch really takes orders for
+        # later, so it is never a promise the checkout then breaks.
+        try:
+            from app.models.restaurant_location import RestaurantLocation
+
+            branch = db.get(RestaurantLocation, restaurant_location_id) if restaurant_location_id else None
+            if branch is not None and branch.future_order_enabled:
+                notice = f"{notice} You can still order now for when we open — just tell me what you'd like."
+        except Exception:  # noqa: BLE001 - the notice stands without the invitation
+            pass
         return f"{notice} {reply}".strip()
     except Exception:  # pragma: no cover - a notice must not cost the answer
         logger.exception("Closed-branch notice failed; returning the reply unchanged")
@@ -6249,6 +6288,7 @@ def _prepare_chat_turn(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None,
     guest_preferences: object | None = None,
+    intent_lightweight_only: bool = False,
 ) -> PreparedChatTurn:
     active_session_id = session_id or uuid.uuid4()
     timings = RagStageTimings()
@@ -6333,7 +6373,13 @@ def _prepare_chat_turn(
     extracted_intent = _extract_intent(
         message,
         session_state,
-        force_lightweight=requires_session_context and not session_state_cache_hit and likely_follow_up,
+        # The ordering agent has already read this message and claimed the
+        # turn: what it is about is settled, and the model round this
+        # extractor would spend classifying it — measured at 3.5 seconds,
+        # and answering "unsupported_domain" to "add 2 corn fritters" — buys
+        # a label the reply never uses.
+        force_lightweight=(requires_session_context and not session_state_cache_hit and likely_follow_up)
+        or intent_lightweight_only,
     )
     timings.intent_ms = round((perf_counter() - intent_started_at) * 1000, 2)
     resolved_intent = _merge_intent_with_session(extracted_intent, session_state)
@@ -6929,7 +6975,7 @@ def _prepare_chat_turn(
 
     # After retrieval, because the verdict comes from what the menu turned out to
     # contain; before filtering and ranking, which both trust `intent.dish`.
-    apply_dish_name_guardrail(
+    dish_reference_verdict = apply_dish_name_guardrail(
         resolved_intent,
         final_candidates,
         message=message,
@@ -7051,6 +7097,7 @@ def _prepare_chat_turn(
         context_block=context_block,
         prompt=prompt,
         timings=timings,
+        dish_reference_verdict=dish_reference_verdict,
     )
 
 
@@ -7212,6 +7259,288 @@ def _sse_frame(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
+# Imported at call time rather than at the top of this module, because
+# `ordering_agent/tools.py` imports THIS module: it reuses
+# `_resolve_final_candidates` and the dish-name guardrail instead of growing a
+# second retrieval path. A top-level import here would resolve only when rag.py
+# happens to be imported first; importing `ordering_agent.loop` directly would
+# then fail on planner -> tools -> rag -> loop. Binding the name at module level
+# anyway — rather than importing inside `_run_ordering_agent` — is what keeps
+# the seam patchable as `rag.run_turn`, which is how it is tested with no model.
+if TYPE_CHECKING:  # the same import, for the annotation only — never at runtime
+    from app.services.ordering_agent.loop import TurnOutcome
+
+
+def run_turn(db: Session, **kwargs: Any) -> "TurnOutcome":
+    from app.services.ordering_agent.loop import run_turn as _ordering_agent_run_turn
+
+    return _ordering_agent_run_turn(db, **kwargs)
+
+
+def _optional_id_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _json_safe_placed_order(placed: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The placed order as the wire carries it: an id, a total, and a link.
+
+    Enumerated rather than copied, for the same reason a cart action is —
+    whatever else a tool result grows, only these four fields leave here.
+    """
+
+    if not placed:
+        return None
+    return {
+        "order_id": _optional_id_str(placed.get("order_id")),
+        "total": str(placed["total"]) if placed.get("total") is not None else None,
+        "currency": placed.get("currency"),
+        "payment_url": placed.get("payment_url"),
+    }
+
+
+def _json_safe_cart_action(action: dict[str, Any]) -> dict[str, Any]:
+    """One of the agent's action dicts, rebuilt key by key for the wire.
+
+    Enumerated rather than copied wholesale so that a field added to the
+    agent's action shape later cannot reach a browser by accident: the rule
+    that an action carries identifiers and a quantity — never a name, never a
+    price — is re-applied here, at the one place actions leave the server, and
+    not only upstream where they are built. Ids become strings here rather than
+    relying on `_sse_frame`'s `default=str`, so the payload is JSON-safe on its
+    own terms and a test can assert the exact contract Task 7's client reads.
+    """
+
+    return {
+        "kind": action.get("kind"),
+        "status": action.get("status"),
+        "reason": action.get("reason"),
+        "menu_item_id": _optional_id_str(action.get("menu_item_id")),
+        "menu_item_size_id": _optional_id_str(action.get("menu_item_size_id")),
+        "selected_option_ids": [
+            str(option_id) for option_id in action.get("selected_option_ids") or []
+        ],
+        "quantity": action.get("quantity"),
+    }
+
+
+# Retrieval saying it matched nothing the customer named. `popular_fallback`
+# is the pipeline's own "I could not find that, here is what is popular"; a
+# reply built on it is about the menu in general, not about the question.
+_NOTHING_MATCHED_SOURCES = frozenset({"popular_fallback", "emergency_db_fallback", "no_more_matches"})
+
+
+def _remember_stated_diet(db: Session, user: ChatPrincipal, diet: str | None) -> None:
+    """A signed-in customer who says "I'm vegetarian" in the chat is remembered
+    on their account, the way a guest's durable traits are remembered in the
+    browser. Reported live: customer1 said it, and two turns later the
+    reply offered a seafood soup — the profile had no diet, so neither the
+    retrieval, the pairing service nor the ordering agent knew. Narrow on
+    purpose: only `dietary_preferences` is touched (the profile endpoint's
+    upsert rewrites cuisines too, which the chat has no business doing), and
+    only when it actually changes.
+    """
+
+    if not diet or is_guest(user):
+        return
+    try:
+        row = db.query(UserPreferences).filter(UserPreferences.user_id == user.id).first()
+        if row is None:
+            row = UserPreferences(user_id=user.id)
+            db.add(row)
+        if list(row.dietary_preferences or []) != [diet]:
+            row.dietary_preferences = [diet]
+            db.commit()
+            logger.info("Chat remembered a stated diet user_id=%s diet=%s", user.id, diet)
+    except Exception:  # noqa: BLE001 - a preference write must never break the turn
+        db.rollback()
+        logger.warning("Could not remember a stated diet user_id=%s", user.id, exc_info=True)
+
+
+def _run_ordering_agent(
+    db: Session,
+    *,
+    user: ChatPrincipal,
+    message: str,
+    cart: list[CartLinePayload] | None,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    turn_id: str | None,
+    previous_reply: str | None = None,
+    recent_history: list[dict[str, str]] | None = None,
+    guest_preferences: object | None = None,
+    stated_diet: str | None = None,
+    retrieval_matched_nothing: bool = False,
+    session_id: uuid.UUID | None = None,
+    verified_phone: str | None = None,
+    app_client_id: uuid.UUID | None = None,
+    auto_place: bool = False,
+) -> dict[str, Any] | None:
+    """Run the ordering agent for this turn and return ONLY what the `done`
+    frame adds. Never touches the reply, the suggestions or the response cache.
+
+    Additive to the point of paranoia, because this runs on a live chat turn
+    whose reply has already streamed: every failure below ends in the same
+    empty result rather than an exception, so a model outage, a budget overrun
+    or a bug inside a tool costs the customer their cart actions and nothing
+    else. A raise here could not un-send the tokens already written, but it
+    could turn a working turn into a broken stream.
+    """
+
+    if turn_id is None:
+        # The flag is off, and the gate is here rather than only inside
+        # `run_turn` (which has its own) so that "off" means the agent is never
+        # imported, never called and never logged on this path — not "called
+        # and returned early".
+        return None
+
+    if restaurant_id is None or restaurant_location_id is None:
+        # Every tool in the registry is branch-scoped, and the branch comes
+        # from the caller, never from the model. With no branch there is
+        # nothing to scope to. Debug, not warning: a visitor browsing the
+        # marketplace before choosing a branch is the ordinary case, not a bug.
+        logger.debug(
+            "Ordering agent skipped, no branch on this turn restaurant_id=%s restaurant_location_id=%s",
+            restaurant_id,
+            restaurant_location_id,
+        )
+        return {
+            "cart_actions": [],
+            "agent_reply": None,
+            "agent_asks": False,
+            "placed_order": None,
+            "order_ready": False,
+        }
+
+    try:
+        from app.services.ordering_agent.guards import scope_for
+
+        outcome = run_turn(
+            db,
+            # The same diet the reply pipeline applies, so the agent and the
+            # prose can never disagree about what this customer eats.
+            scope=scope_for(
+                user, restaurant_id, restaurant_location_id,
+                # A diet stated on THIS turn wins: the profile write above
+                # is only read on the next one.
+                diet=_canonical_intent_diet(stated_diet)
+                or preference_diet_for_cache(db, user, guest_preferences),
+                # The conversation the order draft belongs to.
+                session_id=session_id,
+                verified_phone=verified_phone,
+                app_client_id=app_client_id,
+            ),
+            message=message,
+            # The browser's cart, which is the only place it exists. `None`
+            # means the caller sent none, not an empty cart — both reach the
+            # agent as "nothing in the cart", which is what the tools expect.
+            cart=list(cart or []),
+            previous_reply=previous_reply,
+            recent_history=recent_history,
+            auto_place=auto_place,
+        )
+    except Exception:
+        logger.warning(
+            "Ordering agent turn failed, reply unaffected user_id=%s message=%s",
+            user.id,
+            _trim_text(message, 80),
+            exc_info=True,
+        )
+        return {
+            "cart_actions": [],
+            "agent_reply": None,
+            "agent_asks": False,
+            "placed_order": None,
+            "order_ready": False,
+        }
+
+    # One line per run, because the three numbers that explain a bad turn are
+    # how it ended, how many tool calls it took to get there, and how long the
+    # customer waited for it.
+    logger.info(
+        "Ordering agent turn fallback_reason=%s records=%d actions=%d elapsed=%.2fs tools=%s",
+        outcome.fallback_reason,
+        len(outcome.records),
+        len(outcome.actions),
+        outcome.elapsed_seconds,
+        # The sequence, not just the count: a turn that ended empty is only
+        # diagnosable if you can see what it chose to do with its rounds.
+        ",".join(
+            f"{record.tool or '?'}{'!' if record.error else ''}" for record in outcome.records
+        ),
+    )
+    # Whether the agent has something the reply does not: it asked the
+    # customer to choose, or refused a dish for their diet. On such turns the
+    # client shows the agent's line; on a plain menu question it does not,
+    # because two answers to one question read as two voices (reported live).
+    asking = {"needs_choice", "not_for_diet", "empty_cart"}
+    # Tools whose subject the reply pipeline cannot answer at all. It has no
+    # cart and no totals, so "show me my cart" sent it hunting the menu for a
+    # dish called "cart" and it offered two noodle dishes instead. When the
+    # agent has used one of these, its answer IS the answer for this turn.
+    owned = {
+        "view_cart",
+        "price_quote",
+        "go_to_checkout",
+        "add_to_cart",
+        "remove_from_cart",
+        "set_quantity",
+        "clear_cart",
+        # Gathering the details for an order, and placing it. Without these
+        # a customer giving their address was answered by the intent
+        # extractor, which quite reasonably reads an address as nothing to
+        # do with food and refuses it as off-topic.
+        "order_requirements",
+        "save_order_details",
+        "place_order",
+    }
+    return {
+        "cart_actions": [_json_safe_cart_action(action) for action in outcome.actions],
+        "agent_reply": outcome.answer,
+        # The order this turn placed, for the client to render a Pay button
+        # from and to empty the cart against. None on every other turn.
+        "turn_id": turn_id,
+        "placed_order": _json_safe_placed_order(outcome.placed_order),
+        # Everything is gathered and the customer has only to confirm.
+        "order_ready": outcome.ready_to_place,
+        # The reply pipeline reporting `popular_fallback` is it saying, in its
+        # own words, "I could not match that — here are some popular dishes".
+        # If the agent has an answer on such a turn, the agent's is the one
+        # grounded in something the customer asked about.
+        # The model naming its own answer's subject is the direct signal; the
+        # two below are safety nets for a model that omits it.
+        "agent_asks": (outcome.answer_about in {"cart", "order"} and bool(outcome.answer))
+        or (retrieval_matched_nothing and bool(outcome.answer))
+        or any(
+            (isinstance(record.result, dict) and record.result.get("outcome") in asking)
+            or (record.tool in owned and record.error is None)
+            for record in outcome.records
+        ),
+    }
+
+
+def _with_agent_turn(
+    payload: dict[str, Any],
+    turn_id: str | None,
+    agent_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add this turn's agent keys to a frame payload — or, with the flag off,
+    add nothing at all.
+
+    Absent rather than empty, deliberately: with the flag off a client written
+    against today's frames must receive today's bytes exactly, and an
+    always-present `"cart_actions": []` would quietly change every payload on
+    the endpoint for a feature nobody had switched on.
+    """
+
+    if turn_id is None:
+        return payload
+
+    payload["turn_id"] = turn_id
+    if agent_output is not None:
+        payload.update(agent_output)
+    return payload
+
+
 def _safe_suggestion_for_cart(
     db: Session,
     *,
@@ -7261,6 +7590,9 @@ def handle_chat_message(
     restaurant_location_id: uuid.UUID | None = None,
     guest_preferences: object | None = None,
     cart: list[CartLinePayload] | None = None,
+    verified_phone: str | None = None,
+    app_client_id: uuid.UUID | None = None,
+    auto_place: bool = False,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7424,6 +7756,32 @@ def handle_chat_message(
             ),
         )
 
+    # The agent goes first, and a turn it owns skips the pipeline's model call.
+    # Measured live: a cart read-back, an order detail, a placement — each
+    # spent 3 to 6 seconds on a pipeline reply that the channel then discarded
+    # in favour of the agent's line, before the agent had even started. What
+    # it returns is never cached: the cache holds prose about the menu, and
+    # this line is about one customer's cart on one turn.
+    # Before preparation, so the classification inside it can be skipped too.
+    # The conversation's id is the caller's: a channel that orders always has
+    # one, and a first turn without one has no draft to find under it anyway.
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=str(uuid.uuid4()) if settings.enable_ordering_agent else None,
+        recent_history=None,
+        guest_preferences=guest_preferences,
+        session_id=session_id,
+        verified_phone=verified_phone,
+        app_client_id=app_client_id,
+        auto_place=auto_place,
+    ) or {}
+    agent_owns = bool(agent_output.get("agent_asks") and agent_output.get("agent_reply"))
+
     try:
         prepared = _prepare_chat_turn(
             db,
@@ -7433,6 +7791,7 @@ def handle_chat_message(
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
             guest_preferences=guest_preferences,
+            intent_lightweight_only=agent_owns,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -7458,6 +7817,18 @@ def handle_chat_message(
         is_follow_up=prepared.is_follow_up,
     )
 
+    # A turn the agent answered but did not claim is still its turn when the
+    # pipeline matched nothing to say — only known now, after retrieval.
+    if (
+        not agent_owns
+        and agent_output.get("agent_reply")
+        and prepared.retrieval_source in _NOTHING_MATCHED_SOURCES
+    ):
+        agent_output["agent_asks"] = True
+        agent_owns = True
+    if agent_owns:
+        cacheable_response, cache_reason = False, "agent_owned"
+
     raw_reply = ""
     llm_strategy = "skipped"
     if prepared.should_bypass_llm:
@@ -7469,6 +7840,9 @@ def handle_chat_message(
             is_follow_up=prepared.is_follow_up,
             follow_up_base_message=prepared.effective_message,
         )
+    elif agent_owns:
+        reply = raw_reply = str(agent_output["agent_reply"])
+        llm_strategy = "agent_owned"
     else:
         llm_started_at = perf_counter()
         try:
@@ -7614,6 +7988,14 @@ def handle_chat_message(
     return ChatMessageResponse(
         reply=reply,
         session_id=prepared.active_session_id,
+        turn_id=agent_output.get("turn_id"),
+        cart_actions=[
+            CartActionResponse(**action) for action in (agent_output.get("cart_actions") or [])
+        ],
+        agent_reply=agent_output.get("agent_reply"),
+        agent_asks=bool(agent_output.get("agent_asks")),
+        order_ready=bool(agent_output.get("order_ready")),
+        placed_order=agent_output.get("placed_order"),
         suggestions=prepared.suggestions,
         combo_suggestions=prepared.combo_suggestions,
         offer_suggestions=prepared.offer_suggestions,
@@ -7639,6 +8021,12 @@ def stream_chat_message(
     restaurant_id: uuid.UUID | None,
     restaurant_location_id: uuid.UUID | None = None,
     guest_preferences: object | None = None,
+    # Untrusted, and the only place the cart exists: the ordering agent reasons
+    # about what the browser is holding right now. Optional so every existing
+    # caller keeps working unchanged.
+    cart: list[CartLinePayload] | None = None,
+    previous_reply: str | None = None,
+    recent_history: list[dict[str, str]] | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
     if _is_acknowledgement_message(message):
@@ -7758,6 +8146,13 @@ def stream_chat_message(
         )
         return
 
+    # Minted once per turn, past the two paths that never plan anything: an
+    # acknowledgement and a greeting have no question to answer, so there is no
+    # turn for the agent to run. `None` with the flag off, which is what keeps
+    # every frame below byte-identical to what this endpoint emitted before the
+    # agent existed.
+    turn_id = str(uuid.uuid4()) if settings.enable_ordering_agent else None
+
     cache_started_at = perf_counter()
     response_cache_key, cached_response_payload, cacheable_response, cache_reason = _lookup_global_response_cache(
         message=message,
@@ -7786,15 +8181,18 @@ def stream_chat_message(
         prepared.timings.cache_lookup_ms = cache_lookup_ms
         yield _sse_frame(
             "meta",
-            {
-                "session_id": str(prepared.active_session_id),
-                "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
-                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-                "inferred_preferences": (
-                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
-                ),
-            },
+            _with_agent_turn(
+                {
+                    "session_id": str(prepared.active_session_id),
+                    "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
+                    "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                    "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                    "inferred_preferences": (
+                        durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                    ),
+                },
+                turn_id,
+            ),
         )
         yield _sse_frame("token", {"text": reply})
         _persist_chat_exchange(
@@ -7807,20 +8205,69 @@ def stream_chat_message(
         )
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
+        # A cache hit still runs the agent: the cache holds prose, and what to
+        # do with THIS cart on THIS turn is not something another customer's
+        # cached reply can answer. Nothing the agent returns is ever written
+        # back into that cache.
+        agent_output = _run_ordering_agent(
+            db,
+            user=user,
+            message=message,
+            cart=cart,
+            restaurant_id=restaurant_id,
+            restaurant_location_id=restaurant_location_id,
+            turn_id=turn_id,
+            previous_reply=previous_reply,
+            recent_history=recent_history,
+            guest_preferences=guest_preferences,
+        )
         yield _sse_frame(
             "done",
-            {
-                "reply": reply,
-                "session_id": str(prepared.active_session_id),
-                "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
-                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-                "inferred_preferences": (
-                    durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
-                ),
-            },
+            _with_agent_turn(
+                {
+                    "reply": reply,
+                    "session_id": str(prepared.active_session_id),
+                    "suggestions": [item.model_dump(mode="json") for item in prepared.suggestions],
+                    "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                    "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+                    "inferred_preferences": (
+                        durable_traits_from_message(message, prepared.extracted_intent) if is_guest(user) else {}
+                    ),
+                },
+                turn_id,
+                agent_output,
+            ),
         )
         return
+
+    # The agent goes first, and a turn it owns skips the pipeline's model call.
+    # Measured live: a cart read-back, an order detail, a placement — each
+    # spent 3 to 6 seconds on a pipeline reply that the channel then discarded
+    # in favour of the agent's line, before the agent had even started. What
+    # it returns is never cached: the cache holds prose about the menu, and
+    # this line is about one customer's cart on one turn.
+    # Before preparation, so the classification inside it can be skipped too.
+    # The diet stated on this turn comes from the lightweight parser here;
+    # `stated_diet` is read again from the prepared turn further down.
+    stated_diet = durable_traits_from_message(
+        message, _fallback_extract_intent(message, SessionConversationState())
+    ).get("diet")
+    agent_output = _run_ordering_agent(
+        db,
+        user=user,
+        message=message,
+        cart=cart,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        turn_id=turn_id,
+        previous_reply=previous_reply,
+        recent_history=recent_history,
+        guest_preferences=guest_preferences,
+        stated_diet=stated_diet,
+                session_id=session_id,
+    )
+    agent_output = agent_output or {}
+    agent_owns = bool(agent_output.get("agent_asks") and agent_output.get("agent_reply"))
 
     try:
         prepared = _prepare_chat_turn(
@@ -7831,6 +8278,7 @@ def stream_chat_message(
             restaurant_id=restaurant_id,
             restaurant_location_id=restaurant_location_id,
             guest_preferences=guest_preferences,
+            intent_lightweight_only=agent_owns,
         )
     except Exception as exc:  # pragma: no cover - defensive fail-open path
         logger.exception(
@@ -7856,16 +8304,37 @@ def stream_chat_message(
         is_follow_up=prepared.is_follow_up,
     )
 
+    # What this message says about the customer, kept: guests get it back
+    # as `inferred_preferences` on the done frame; a signed-in customer gets
+    # it written to their account, and the agent gets it right now.
+    stated_diet = durable_traits_from_message(message, prepared.extracted_intent).get("diet")
+    _remember_stated_diet(db, user, stated_diet)
+
     response_suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
     yield _sse_frame(
         "meta",
-        {
-            "session_id": str(prepared.active_session_id),
-            "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
-            "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-            "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-        },
+        _with_agent_turn(
+            {
+                "session_id": str(prepared.active_session_id),
+                "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
+                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+            },
+            turn_id,
+        ),
     )
+
+    # A turn the agent answered but did not claim is still its turn when the
+    # pipeline matched nothing to say — only known now, after retrieval.
+    if (
+        not agent_owns
+        and agent_output.get("agent_reply")
+        and prepared.retrieval_source in _NOTHING_MATCHED_SOURCES
+    ):
+        agent_output["agent_asks"] = True
+        agent_owns = True
+    if agent_owns:
+        cacheable_response, cache_reason = False, "agent_owned"
 
     raw_reply = ""
     llm_strategy = "skipped"
@@ -7878,6 +8347,10 @@ def stream_chat_message(
             is_follow_up=prepared.is_follow_up,
             follow_up_base_message=prepared.effective_message,
         )
+        yield _sse_frame("token", {"text": reply})
+    elif agent_owns:
+        reply = raw_reply = str(agent_output["agent_reply"])
+        llm_strategy = "agent_owned"
         yield _sse_frame("token", {"text": reply})
     else:
         llm_strategy = "generated"
@@ -7986,13 +8459,20 @@ def stream_chat_message(
         )
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
+    # The agent already ran, before the reply (see above). It used to run
+    # here, after the cache write, to stay out of the cached payload; that is
+    # now done by `cacheable_response` being false on any turn it owns.
     yield _sse_frame(
         "done",
-        {
-            "reply": reply,
-            "session_id": str(prepared.active_session_id),
-            "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
-            "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
-            "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
-        },
+        _with_agent_turn(
+            {
+                "reply": reply,
+                "session_id": str(prepared.active_session_id),
+                "suggestions": [item.model_dump(mode="json") for item in response_suggestions],
+                "combo_suggestions": [item.model_dump(mode="json") for item in prepared.combo_suggestions],
+                "offer_suggestions": [item.model_dump(mode="json") for item in prepared.offer_suggestions],
+            },
+            turn_id,
+            agent_output,
+        ),
     )

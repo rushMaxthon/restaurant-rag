@@ -1,26 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DishCard } from "@/components/bangkok/dish-card";
-import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
   ApiError,
   getChatHistory,
+  placeOrderFromChat,
   getToken,
   streamChatMessage,
+  type CartAction,
+  type ChatStreamDone,
   type ChatSuggestion,
 } from "@/lib/api";
-import type { MenuItem } from "@/lib/bangkok-data";
+import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
+import { cartLinesForRequest } from "@/lib/suggestions";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 
 type ConciergeSearch = { q?: string };
+
+/**
+ * "Added Margherita Pizza ×1 to your cart." — from the action and the loaded
+ * menu, never from anything the server said, so the line cannot name a price
+ * or a dish the menu page would disagree with.
+ */
+function describeAppliedActions(actions: CartAction[], menu: MenuItem[]): string | undefined {
+  const nameOf = (id: string | null) => menu.find((item) => item.id === id)?.name ?? "that dish";
+  const lines = actions
+    .filter((action) => action.status === "applied")
+    .map((action) => {
+      const qty = action.quantity ?? 1;
+      switch (action.kind) {
+        case "add":
+          return `Added ${nameOf(action.menu_item_id)} ×${qty} to your cart.`;
+        case "remove":
+          return `Removed ${nameOf(action.menu_item_id)} from your cart.`;
+        case "set_quantity":
+          return `${nameOf(action.menu_item_id)} is now ×${qty}.`;
+        case "clear":
+          return "Cleared your cart.";
+        default:
+          return undefined;
+      }
+    })
+    .filter((line): line is string => Boolean(line));
+  if (!lines.length) return undefined;
+  const added = actions.some((action) => action.status === "applied" && action.kind === "add");
+  return lines.join(" ") + (added ? " Add more, or check out?" : "");
+}
 
 export const Route = createFileRoute("/concierge")({
   validateSearch: (search: Record<string, unknown>): ConciergeSearch =>
@@ -39,34 +73,6 @@ export const Route = createFileRoute("/concierge")({
   component: ConciergePage,
 });
 
-function suggestionToMenuItem(s: ChatSuggestion): MenuItem {
-  return {
-    id: s.id,
-    restaurant_id: s.restaurant_id,
-    restaurant_location_id: s.restaurant_location_id,
-    name: s.name,
-    category: s.category,
-    cuisine_type: s.cuisine_type ?? "",
-    description: s.description ?? "",
-    price: s.price,
-    is_veg: s.is_veg,
-    is_available: s.is_available,
-    is_bestseller: s.is_bestseller ?? false,
-    image_url: s.image_url,
-    rating: null,
-    rating_count: 0,
-    is_new: s.is_new ?? false,
-    is_favorite: s.is_favorite ?? false,
-    // From the suggestion, not hardcoded. A sized or customisable dish was
-    // being added straight to the cart at its base price with no size and no
-    // required options, and the server refused the order at checkout after
-    // everything else had been filled in.
-    has_sizes: s.has_sizes ?? false,
-    has_customizations: s.has_customizations ?? false,
-    sizes: [],
-    customization_groups: [],
-  };
-}
 
 const STARTERS = [
   "Something spicy and vegetarian",
@@ -84,11 +90,28 @@ type Status = "idle" | "waiting" | "streaming" | "done" | "error";
  * asking a second question used to overwrite the dishes from the first, so the
  * cards on screen could belong to a question no longer visible anywhere.
  */
+/** One cart-action proposal, plus whether the customer has already acted on it. */
+type ProposalState = {
+  action: CartAction;
+  resolution: "pending" | "confirmed" | "dismissed";
+};
+
 type Turn = {
   id: string;
   role: "user" | "assistant";
   text: string;
   suggestions: ChatSuggestion[];
+  /** The server's own id for this turn — required to confirm a proposal on it. */
+  turnId?: string | undefined;
+  proposals?: ProposalState[] | undefined;
+  /** Whether anything referenced by this turn wasn't on this branch's menu. */
+  hadDropped?: boolean;
+  /** Whether an applied change (auto or confirmed) has touched the cart. */
+  cartUpdated?: boolean;
+  /** The order this turn placed, with the link to pay it. */
+  placedOrder?: ChatStreamDone["placed_order"];
+  /** Everything an order needs is gathered; only a confirmation is left. */
+  orderReady?: boolean;
 };
 
 let turnSeq = 0;
@@ -117,15 +140,35 @@ function ConciergePage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const store = useBangkokStore();
+  const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+
+  // The same branch menu the menu page renders from — LOADED here, not just
+  // read from the cache. It used to be cache-only, on the reasoning that an
+  // id absent from the loaded menu should be dropped; but that conflated
+  // "this dish is not on the branch" with "nobody has opened the menu page
+  // yet". Landing straight on /concierge and asking for a real dish meant a
+  // correct add action was thrown away and the customer told the dish was
+  // not on the menu. Same query key as the menu page, so this is a cache hit
+  // whenever they have browsed, and one cheap fetch when they have not.
+  const menuQuery = useMenuItems(store.restaurantId, store.currentLocation?.id);
+  const resolveMenu = () =>
+    menuQuery.data ??
+    queryClient.getQueryData<MenuItem[]>(
+      queryKeys.menuItems(store.restaurantId ?? "", store.currentLocation?.id),
+    ) ??
+    [];
 
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [placing, setPlacing] = useState(false);
 
   const sessionIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** Tokens as they arrive, shown only once `done` says whose answer they are. */
+  const streamedRef = useRef("");
   const autoSentRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -209,6 +252,7 @@ function ConciergePage() {
     if (!text || status === "waiting" || status === "streaming") return;
 
     abortRef.current?.abort();
+    streamedRef.current = "";
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -246,6 +290,19 @@ function ConciergePage() {
           // sending it would be harmless — but not sending what cannot be used
           // keeps the request honest about who it is for.
           guest_preferences: getToken() ? undefined : guestPreferencesForRequest(),
+          // Identifiers only — see `cartLinesForRequest`. Lets the ordering
+          // agent resolve "make it two" or "remove that" against what is
+          // actually in the cart right now.
+          cart: cartLinesForRequest(store.cart),
+          // The line the customer is replying to, if they are replying.
+          previous_reply: turns[turns.length - 1]?.text,
+          recent_history: turns
+            .slice(-8)
+            .filter((t) => t.text.trim().length > 0)
+            .map((t) => ({
+              role: t.role === "user" ? ("customer" as const) : ("assistant" as const),
+              text: t.text.trim().slice(0, 600),
+            })),
         },
         {
           onMeta: (meta) => {
@@ -257,12 +314,85 @@ function ConciergePage() {
             setStatus((s) => (s === "waiting" ? "streaming" : s));
           },
           onToken: (chunk) => {
-            patchAnswer((turn) => ({ ...turn, text: turn.text + chunk }));
+            // Held, not shown. Two layers answer a turn and which one speaks
+            // is only known at `done` — so painting these tokens meant the
+            // customer watched the menu pipeline's answer type itself out and
+            // then get replaced by the agent's. One answer, once.
+            streamedRef.current += chunk;
           },
           onDone: (done) => {
             sessionIdRef.current = done.session_id;
             storeChatSession(done.session_id);
-            patchAnswer((turn) => ({ ...turn, text: done.reply, suggestions: done.suggestions }));
+
+            // Absent entirely unless the server's ordering-agent flag is on
+            // (see `ChatStreamDone`) — everything below is a no-op under the
+            // old contract.
+            let cartUpdated = false;
+            let hadDropped = false;
+            let proposals: ProposalState[] = [];
+            if (done.turn_id && done.cart_actions) {
+              const menu = resolveMenu();
+              const { dropped, proposals: pending } = store.applyCartActions(
+                done.turn_id,
+                done.cart_actions,
+                menu,
+              );
+              // Only a menu we actually hold can tell us a dish is missing
+              // from it. With an empty menu the drop is ours, not the
+              // branch's, and saying otherwise would be a lie.
+              hadDropped = dropped.length > 0 && menu.length > 0;
+              proposals = pending.map((action) => ({ action, resolution: "pending" as const }));
+              // Applied and not reported back as dropped or still pending
+              // means it actually changed the cart.
+              cartUpdated = done.cart_actions.some(
+                (action) =>
+                  action.status === "applied" &&
+                  !dropped.includes(action) &&
+                  !pending.includes(action),
+              );
+            }
+
+            // What the agent has to say, in its own words when it has them,
+            // otherwise a plain statement of what it did — named from the
+            // menu this page already holds, since no name crosses the wire.
+            const agentLine =
+              done.agent_reply?.trim() ||
+              (cartUpdated && done.cart_actions
+                ? describeAppliedActions(done.cart_actions, resolveMenu())
+                : undefined);
+
+            // A turn that changed the cart, or is asking to, is answered by
+            // the agent. The pipeline's reply for "add one more Margherita"
+            // was a paragraph about past-order suggestions — true of nothing
+            // the customer asked — so on those turns the agent's line is the
+            // answer and the paragraph is not shown. Every other turn keeps
+            // today's reply, with the agent's line beneath it if there is one.
+            // An order carries the cart away with it: those items are on the
+            // order now, and leaving them behind is how someone orders twice.
+            const placed = done.placed_order ?? null;
+            if (placed?.order_id) store.clearCart();
+
+            const actedOnCart = cartUpdated || proposals.length > 0;
+            // Beneath the reply only when the agent has something the reply
+            // does not - a question to answer, a dish refused for the diet.
+            // On a plain menu question the reply already answered it, and a
+            // second answer under it read as two voices (reported live).
+            const agentHasMore = Boolean(done.agent_asks);
+
+            patchAnswer((turn) => ({
+              ...turn,
+              text:
+                (actedOnCart || agentHasMore) && agentLine
+                  ? agentLine
+                  : done.reply || streamedRef.current,
+              suggestions: done.suggestions,
+              turnId: done.turn_id,
+              proposals,
+              hadDropped,
+              cartUpdated,
+              placedOrder: placed,
+              orderReady: Boolean(done.order_ready),
+            }));
             setStatus("done");
           },
         },
@@ -284,6 +414,139 @@ function ConciergePage() {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     void sendQuery(draft);
+  }
+
+  /**
+   * The customer explicitly agreeing to one proposed edit. The client forces
+   * `status: "applied"` only on this one action — every other proposal on the
+   * turn stays untouched until it gets its own tap.
+   */
+  function confirmProposal(turn: Turn, index: number) {
+    if (!turn.turnId) return;
+    const proposal = turn.proposals?.[index];
+    if (!proposal || proposal.resolution !== "pending") return;
+
+    if (proposal.action.kind === "checkout") {
+      // The hand-off: nothing to apply, the checkout page does the rest.
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id !== turn.id
+            ? t
+            : { ...t, proposals: t.proposals?.map((p, i) => (i === index ? { ...p, resolution: "confirmed" } : p)) },
+        ),
+      );
+      void navigate({ to: "/checkout" });
+      return;
+    }
+
+    const menu = resolveMenu();
+    const { dropped } = store.applyCartActions(
+      `${turn.turnId}:confirm:${index}`,
+      [{ ...proposal.action, status: "applied" }],
+      menu,
+    );
+    const applied = dropped.length === 0;
+
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id !== turn.id
+          ? t
+          : {
+              ...t,
+              proposals: t.proposals?.map((p, i) =>
+                i === index ? { ...p, resolution: applied ? "confirmed" : "dismissed" } : p,
+              ),
+              hadDropped: t.hadDropped || !applied,
+              cartUpdated: t.cartUpdated || applied,
+            },
+      ),
+    );
+  }
+
+  function dismissProposal(turn: Turn, index: number) {
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id !== turn.id
+          ? t
+          : {
+              ...t,
+              proposals: t.proposals?.map((p, i) =>
+                i === index ? { ...p, resolution: "dismissed" as const } : p,
+              ),
+            },
+      ),
+    );
+  }
+
+  function undoTurn(turn: Turn) {
+    if (!store.undoLastChatTurn()) return;
+    setTurns((prev) => prev.map((t) => (t.id === turn.id ? { ...t, cartUpdated: false } : t)));
+  }
+
+  /** "the Pad Thai", "your whole cart" for clear — the only two shapes a card names. */
+  function proposalDishLabel(action: CartAction, menu: MenuItem[]): string {
+    if (action.kind === "clear") return "your whole cart";
+    return menu.find((item) => item.id === action.menu_item_id)?.name ?? "this item";
+  }
+
+  /** One line naming what the card is asking, or what it already did. */
+  /**
+   * Place the order, from the details this conversation already gathered.
+   *
+   * Deliberately not routed through the model: with `place_order` as its
+   * only tool and the state spelled out, it answered "ready to be placed,
+   * proceed to checkout" and placed nothing, every time. The server runs
+   * the same handler either way.
+   */
+  async function placeOrder(turn: Turn) {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId || !store.restaurantId || !store.currentLocation?.id || placing) return;
+    setPlacing(true);
+    try {
+      const result = await placeOrderFromChat({
+        restaurant_id: store.restaurantId,
+        restaurant_location_id: store.currentLocation.id,
+        session_id: sessionId,
+        cart: cartLinesForRequest(store.cart),
+      });
+      if (result.outcome === "placed" && result.order_id) {
+        store.clearCart();
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id !== turn.id
+              ? t
+              : {
+                  ...t,
+                  orderReady: false,
+                  placedOrder: {
+                    order_id: result.order_id,
+                    total: result.total,
+                    currency: result.currency,
+                    payment_url: result.payment_url,
+                  },
+                },
+          ),
+        );
+      } else {
+        // Refused for a reason the customer can act on: a closed branch, a
+        // minimum not met, a detail still missing.
+        setError(result.reason || "That order could not be placed just yet.");
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That order could not be placed just yet.");
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  function proposalCopy(action: CartAction, menu: MenuItem[], confirmed: boolean): string {
+    const dish = proposalDishLabel(action, menu);
+    if (action.kind === "checkout") return confirmed ? "Taking you to checkout." : "Ready to check out?";
+    if (action.kind === "clear") return confirmed ? "Cleared your whole cart." : "Clear your whole cart?";
+    if (action.kind === "remove") return confirmed ? `Removed ${dish}.` : `Remove ${dish}?`;
+    if (action.kind === "set_quantity")
+      return confirmed ? `Updated ${dish}.` : `Update the quantity of ${dish}?`;
+    return confirmed ? `Added ${dish}.` : `Add ${dish}?`;
   }
 
   /**
@@ -367,8 +630,6 @@ function ConciergePage() {
 
           <div className="mb-8 flex flex-col gap-8">
             {turns.map((turn, index) => {
-              const isStreamingAnswer =
-                turn.role === "assistant" && index === turns.length - 1 && busy;
 
               if (turn.role === "user") {
                 return (
@@ -388,9 +649,6 @@ function ConciergePage() {
                       {turn.text ? (
                         <p className="concierge-reply" aria-live="polite">
                           {stripMarkdown(turn.text)}
-                          {isStreamingAnswer && (
-                            <span className="stream-caret" aria-hidden="true" />
-                          )}
                         </p>
                       ) : (
                         <p className="typing text-lg" role="status">
@@ -405,26 +663,87 @@ function ConciergePage() {
                     </div>
                   </div>
 
-                  {isStreamingAnswer && turn.suggestions.length === 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <DishSkeleton key={i} />
-                      ))}
-                    </div>
-                  ) : (
-                    turn.suggestions.length > 0 && (
-                      <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {turn.suggestions.map((s, i) => (
+                  {/* The dish grid that used to sit here is gone: the agent now
+                      recommends AND adds, so a second set of recommendations
+                      beside its reply asked the customer which of the two to
+                      believe. `suggestions` still arrives on the frame and is
+                      still kept on the turn — restoring the grid is this block
+                      again, nothing else. */}
+
+                  {turn.proposals && turn.proposals.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      {turn.proposals.map((p, i) =>
+                        p.resolution === "dismissed" ? null : (
                           <div
-                            className="rise-in"
-                            style={{ "--i": i } as React.CSSProperties}
-                            key={s.id}
+                            key={i}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
                           >
-                            <DishCard item={suggestionToMenuItem(s)} />
+                            <span className="text-base">
+                              {proposalCopy(p.action, resolveMenu(), p.resolution === "confirmed")}
+                            </span>
+                            {p.resolution === "pending" && (
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => confirmProposal(turn, i)}>
+                                  Confirm
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => dismissProposal(turn, i)}
+                                >
+                                  Not now
+                                </Button>
+                              </div>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )
+                        ),
+                      )}
+                    </div>
+                  )}
+
+                  {turn.orderReady && !turn.placedOrder && (
+                    <Button
+                      className="w-fit"
+                      disabled={placing}
+                      onClick={() => placeOrder(turn)}
+                    >
+                      {placing ? "Placing…" : "Place order"}
+                    </Button>
+                  )}
+
+                  {turn.placedOrder?.payment_url && (
+                    <a
+                      href={turn.placedOrder.payment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground"
+                    >
+                      Pay
+                      {turn.placedOrder.total ? ` ${formatMoney(turn.placedOrder.total)}` : ""}
+                    </a>
+                  )}
+
+                  {turn.cartUpdated && (
+                    <p className="text-base text-muted-foreground">
+                      Cart updated —{" "}
+                      <Link to="/checkout" className="underline underline-offset-2">
+                        Go to checkout
+                      </Link>
+                      {" · "}
+                      <button
+                        type="button"
+                        onClick={() => undoTurn(turn)}
+                        className="underline underline-offset-2"
+                      >
+                        Undo
+                      </button>
+                    </p>
+                  )}
+
+                  {turn.hadDropped && (
+                    <p className="text-base text-muted-foreground">
+                      Some items aren't on this branch's menu, so I left them out.
+                    </p>
                   )}
                 </div>
               );
