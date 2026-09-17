@@ -1390,7 +1390,12 @@ def _draft_for(scope: OrderingScope):
     """
 
     draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
-    if not draft.contact_phone and scope.verified_phone:
+    if scope.verified_phone:
+        # The channel's number wins over the account's. Meta verified this
+        # one and it is written the way an order is written; an account
+        # provisioned before that was true holds the plus-less wa_id, and
+        # seeding from it put '916353100362' on the order, which the schema
+        # reads as a malformed local number and refuses.
         draft.contact_phone = scope.verified_phone
     return draft
 
@@ -1594,6 +1599,23 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         # tell when the payment lands. A web order records nothing here and
         # is never messaged. See `order_channel`.
         order_channel.remember(order.id, phone_number=scope.verified_phone)
+
+    # What they settled on, kept for next time. The account had ordered
+    # several times with `default_address` still empty, because nothing ever
+    # wrote it — so every conversation asked for it again. The email is left
+    # alone deliberately: it identifies the account, and changing it here
+    # could collide with somebody else's.
+    try:
+        if draft.fulfillment_type == OrderFulfillmentType.DELIVERY.value and draft.delivery_address:
+            customer.default_address = draft.delivery_address
+        if draft.contact_name and not (getattr(customer, "full_name", "") or "").strip():
+            customer.full_name = draft.contact_name[:255]
+        db.add(customer)
+        db.commit()
+    except Exception:  # noqa: BLE001 - the order stands whether or not we remember
+        logger.warning("Could not save a customer's details for next time", exc_info=True)
+        if db is not None:
+            db.rollback()
 
     result: dict[str, Any] = {
         "outcome": "placed",

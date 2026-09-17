@@ -779,6 +779,49 @@ def run_turn(
                 ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
             )
 
+    def _details_to_confirm() -> str | None:
+        """Their details, if we are holding some nobody has stood behind.
+
+        Only when there is nothing left to ask for: a half-filled draft is
+        still being collected, and reading half of it back would be a
+        stranger question than asking for the rest.
+        """
+
+        if scope.session_id is None or not cart:
+            return None
+        draft_now = tools_module._draft_for(scope)
+        if draft_now.confirmed or draft_now.missing_fields():
+            return None
+        if int(draft_now.confirm_asks or 0) >= 2:
+            # Asked twice already. Taken as read rather than asked a third
+            # time, because the details came from their own account.
+            return None
+        parts = [draft_now.contact_name, draft_now.contact_email]
+        if draft_now.fulfillment_type == "DELIVERY":
+            parts.append(f"delivery to {draft_now.delivery_address}")
+        else:
+            parts.append("pickup")
+        return ", ".join(p for p in parts if p)
+
+    def _ask_to_confirm() -> TurnOutcome:
+        """Read their details back, once, before spending their money."""
+
+        held = _details_to_confirm() or ""
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.confirm_asks = int(draft_now.confirm_asks or 0) + 1
+        order_draft.save(scope.session_id, draft_now)
+        return TurnOutcome(
+            answer=(
+                f"I have these from last time: {held}. Shall I use them? "
+                "Say yes, or send me what to change."
+            ),
+            answer_about="order",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
     def _reask_or_give_up(asked: dict[str, Any]) -> TurnOutcome:
         """Put the question again, differently — or stop asking it.
 
@@ -1140,8 +1183,11 @@ def run_turn(
             except ValueError:
                 standing_offer = None
     asked_before = _pending_choice()
+    # Details of theirs we are holding but which nobody has stood behind.
+    unconfirmed = _details_to_confirm()
     wanted = (
-        {"add": None, "details": {}, "checkout": True, "when": None, "chose": None}
+        {"add": None, "details": {}, "checkout": True, "when": None,
+         "chose": None, "confirms": None}
         if plain == "checkout"
         else read_order_intent(
             message,
@@ -1151,8 +1197,45 @@ def run_turn(
             offered=standing_offer,
             choice_question=(asked_before or {}).get("question"),
             choice_options=[o["name"] for o in (asked_before or {}).get("options", [])],
+            # Whatever a bare "yes" would be agreeing to. Measured: with a
+            # time offered but nothing named as the question, the reading
+            # answered "yes" with nothing at all, the turn fell through to
+            # six planner rounds, and the same offer came back word for
+            # word — the loop this is here to end.
+            confirming=unconfirmed or (f"the order for {standing_offer}" if standing_offer else None),
         )
     )
+
+    # "Yes" means the thing that was last put to them. With a time offered
+    # and nothing else pending, that is the time — measured: a bare "yes"
+    # was read as a confirmation of nothing and the same offer came back
+    # word for word.
+    if (
+        wanted.get("confirms") is True
+        and standing_offer
+        and not unconfirmed
+        and not wanted.get("when")
+    ):
+        wanted["when"] = standing_offer
+        wanted["confirms"] = None
+
+    if wanted.get("when") and scope.session_id is not None:
+        _take_time(wanted["when"])
+
+    if wanted.get("confirms") is True and scope.session_id is not None:
+        kept = order_draft.load(scope.session_id)
+        kept.confirmed = True
+        order_draft.save(scope.session_id, kept)
+        collecting = _still_missing() or []
+    elif wanted.get("confirms") is False and scope.session_id is not None:
+        # They said no. What we hold is wrong, so it is dropped rather than
+        # argued about, and the collection asks for it again from nothing.
+        kept = order_draft.load(scope.session_id)
+        kept.delivery_address = None
+        kept.confirmed = True
+        kept.confirm_asks = 0
+        order_draft.save(scope.session_id, kept)
+        collecting = _still_missing() or []
 
     # Nothing in this message answered anything. A question already asked is
     # kept rather than dropped — and never repeated word for word.
@@ -1194,9 +1277,6 @@ def run_turn(
             )
         )
 
-    if wanted.get("when") and scope.session_id is not None:
-        _take_time(wanted["when"])
-
     if wanted["checkout"] and scope.session_id is not None and cart:
         prepared, guard_error = guards.prepare_tool_call(
             "order_requirements", {}, cart=cart, seen=seen, diet=scope.diet
@@ -1211,6 +1291,8 @@ def run_turn(
         # and nothing is missing; otherwise say what happened and what is
         # still needed. Either way the turn is over — no planning round can
         # improve on rows that already answer the question.
+        if _details_to_confirm():
+            return _ask_to_confirm()
         if auto_place and cart and _still_missing() == [] and not placed_order_in(records):
             _place_now()
         return _settled()

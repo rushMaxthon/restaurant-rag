@@ -36,7 +36,11 @@ settings = get_settings()
 # Long enough to survive a conversation with a slow typist and a sandwich
 # break; short enough that an abandoned draft does not sit in Redis holding
 # someone's address for a week.
-DRAFT_TTL_SECONDS = 2 * 60 * 60
+# As long as the cart it belongs to. They were two hours and twenty-four, so
+# a customer coming back at hour three still had their food and was asked for
+# their address again. A conversation abandoned for a day starts clean, which
+# is what anybody expects of a day-old chat.
+DRAFT_TTL_SECONDS = 24 * 60 * 60
 
 # Deliberately loose. This is a sanity check against "yes please" landing in
 # the email field, not an attempt to out-parse RFC 5322 — the receipt is
@@ -71,10 +75,15 @@ class OrderDraft:
     # and the ids behind each option. A turn's records do not survive it, so
     # without this "large one" was a sentence about nothing.
     pending_choice: str | None = None
-    # The choice the agent last asked for, as JSON: the dish, the quantity
-    # and the ids behind each option. A turn's records do not survive it, so
-    # without this "large one" was a sentence about nothing.
-    pending_choice: str | None = None
+    # Whether the customer has stood behind these details in THIS
+    # conversation — by typing them, or by saying yes to them. Details that
+    # came from their account have not been confirmed by anybody: an address
+    # is the thing most likely to be different tonight, and using last
+    # month's silently is how food arrives at the wrong door.
+    confirmed: bool = False
+    # How many times the confirmation has been put to them, so it is never
+    # asked a third time.
+    confirm_asks: int = 0
     # Set once the customer has been asked for their details. It is what
     # tells a later turn that the conversation is mid-collection, rather
     # than leaving the model to infer it from a thread it may not read.
@@ -82,7 +91,13 @@ class OrderDraft:
 
     #: Not a detail, a state flag. Excluded everywhere the detail fields are
     #: counted, or "collecting" would report itself as something we hold.
-    _STATE_FIELDS = ("collecting", "offered_scheduled_at", "pending_choice")
+    _STATE_FIELDS = (
+        "collecting",
+        "offered_scheduled_at",
+        "pending_choice",
+        "confirmed",
+        "confirm_asks",
+    )
 
     def known_fields(self) -> list[str]:
         return [
@@ -132,8 +147,11 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
         for key, value in stored.items()
         if key in detail_fields and isinstance(value, str)
     }
-    if isinstance(stored.get("collecting"), bool):
-        kept["collecting"] = stored["collecting"]
+    for flag in ("collecting", "confirmed"):
+        if isinstance(stored.get(flag), bool):
+            kept[flag] = stored[flag]
+    if isinstance(stored.get("confirm_asks"), int):
+        kept["confirm_asks"] = stored["confirm_asks"]
     # The other state fields are strings and round-trip as such. Live: the
     # time the kitchen offered was saved here and dropped on the very next
     # read, so "yes" on the following turn had nothing to say yes to.
@@ -234,6 +252,13 @@ def remember(draft: OrderDraft, **given: str | None) -> tuple[OrderDraft, list[s
     # after being told where to deliver reads as not having listened.
     if draft.delivery_address and not draft.fulfillment_type:
         draft.fulfillment_type = OrderFulfillmentType.DELIVERY.value
+
+    # An address they typed is theirs and needs no reading back. Saying
+    # "delivery" is not that: it settles how the food travels, not where to,
+    # and treating it as confirmation meant an address from last month went
+    # out unseen.
+    if (given.get("delivery_address") or "").strip():
+        draft.confirmed = True
 
     when = (given.get("scheduled_at") or "").strip()
     if when:

@@ -7356,6 +7356,25 @@ def _remember_stated_diet(db: Session, user: ChatPrincipal, diet: str | None) ->
         logger.warning("Could not remember a stated diet user_id=%s", user.id, exc_info=True)
 
 
+def _returning_customer(db: Session, phone: str | None, app_client_id: uuid.UUID | None):
+    """The account behind a verified number, if there is one already.
+
+    Never creates: an order provisions, a conversation does not. Never
+    raises — a customer asked their name twice is a worse conversation than
+    a customer whose turn failed.
+    """
+
+    if not phone:
+        return None
+    try:
+        from app.services.ordering_agent.verified_phone import find_customer
+
+        return find_customer(db, phone_number=phone, app_client_id=app_client_id)
+    except Exception:  # noqa: BLE001 - a lookup must not cost the turn
+        logger.warning("Could not look up a returning customer", exc_info=True)
+        return None
+
+
 def _run_ordering_agent(
     db: Session,
     *,
@@ -7428,6 +7447,10 @@ def _run_ordering_agent(
                 session_id=session_id,
                 verified_phone=verified_phone,
                 app_client_id=app_client_id,
+                # A returning customer, found by the number this channel
+                # verified. Looking them up only at the moment of placing is
+                # why every conversation began by asking their name again.
+                customer=_returning_customer(db, verified_phone, app_client_id),
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`

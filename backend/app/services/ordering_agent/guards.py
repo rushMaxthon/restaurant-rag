@@ -85,6 +85,7 @@ def scope_for(
     session_id: uuid.UUID | None = None,
     verified_phone: str | None = None,
     app_client_id: uuid.UUID | None = None,
+    customer: Any | None = None,
 ) -> OrderingScope:
     """The half of every tool call the model never supplies, built from the
     caller's already-authenticated session — never from anything the model
@@ -93,7 +94,12 @@ def scope_for(
     work; `price_quote` asks the guest to sign in instead of raising).
     """
 
-    customer = None if is_guest(principal) else principal
+    # A guest on the web is a guest. A guest on WhatsApp may be an account
+    # already — found by the number the channel verified, and passed in so
+    # the conversation starts knowing their name instead of asking for it
+    # at the end (`rag._returning_customer`).
+    resolved = customer if is_guest(principal) else principal
+    customer = resolved
     return OrderingScope(
         restaurant_id=restaurant_id,
         restaurant_location_id=restaurant_location_id,

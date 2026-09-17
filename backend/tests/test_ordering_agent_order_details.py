@@ -799,3 +799,85 @@ class AnswersAccumulateTests(unittest.TestCase):
                 clock=ScriptedClock(0.0), max_rounds=5, budget_seconds=1000.0,
             )
         self.assertNotIn("did not catch that", outcome.answer or "")
+
+
+class AReturningCustomerTests(unittest.TestCase):
+    """Somebody who has ordered before is not asked everything again.
+
+    Live, before this: an account existed with their name and email, and
+    every conversation still asked for both — the customer was only looked
+    up at the moment of placing. And `default_address` was empty after
+    several orders, because nothing ever wrote it.
+    """
+
+    def test_an_address_they_type_needs_no_reading_back(self) -> None:
+        from app.services.ordering_agent import order_draft
+
+        draft, _ = order_draft.remember(
+            order_draft.OrderDraft(), delivery_address="7 New Street"
+        )
+        self.assertTrue(draft.confirmed)
+
+    def test_saying_delivery_does_not_confirm_an_address_they_never_saw(self) -> None:
+        # Live: typing "delivery" marked the whole draft confirmed, so an
+        # address from last month went out unseen.
+        from app.services.ordering_agent import order_draft
+
+        draft, _ = order_draft.remember(
+            order_draft.OrderDraft(delivery_address="42 Old Road"), fulfillment_type="DELIVERY"
+        )
+        self.assertFalse(draft.confirmed)
+
+    def test_the_confirmation_flags_survive_a_save_and_a_load(self) -> None:
+        from app.services.ordering_agent import order_draft
+
+        sid = uuid.uuid4()
+        order_draft.save(sid, order_draft.OrderDraft(confirmed=True, confirm_asks=2))
+        loaded = order_draft.load(sid)
+        order_draft.clear(sid)
+        self.assertTrue(loaded.confirmed)
+        self.assertEqual(loaded.confirm_asks, 2)
+
+    def test_the_draft_lives_as_long_as_the_cart(self) -> None:
+        # They were two hours and twenty-four, so a customer back at hour
+        # three had their food and was asked for their address again.
+        from app.services.ordering_agent import order_draft, session_cart
+
+        self.assertEqual(order_draft.DRAFT_TTL_SECONDS, session_cart.CART_TTL_SECONDS)
+
+    def test_a_number_is_found_in_either_spelling_and_nobody_is_created(self) -> None:
+        from tests.test_ordering_agent_verified_phone import FakeDb, make_customer
+        from app.services.ordering_agent.verified_phone import find_customer
+
+        app_client_id = uuid.uuid4()
+        legacy = make_customer("916353100362", app_client_id)
+        db = FakeDb([legacy])
+        found = find_customer(db, phone_number="+916353100362", app_client_id=app_client_id)
+        self.assertIs(found, legacy)
+        self.assertEqual(db.added, [])
+
+    def test_an_unknown_number_is_nobody(self) -> None:
+        from tests.test_ordering_agent_verified_phone import FakeDb
+        from app.services.ordering_agent.verified_phone import find_customer
+
+        self.assertIsNone(find_customer(FakeDb([]), phone_number="+910000000000", app_client_id=None))
+
+    def test_the_verified_number_beats_the_accounts_copy(self) -> None:
+        # Live: the account held the plus-less wa_id, seeding put
+        # '916353100362' on the order, and the schema refused it.
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_draft, tools as T
+
+        account = SimpleNamespace(
+            full_name="vishal", email="test@gmail.com",
+            phone_number="916353100362", default_address="42 Example Road",
+        )
+        scope = SimpleNamespace(
+            session_id=uuid.uuid4(), customer=account, verified_phone="+916353100362",
+        )
+        with patch.object(order_draft, "load", return_value=order_draft.OrderDraft()):
+            draft = T._draft_for(scope)
+        self.assertEqual(draft.contact_phone, "+916353100362")
+        self.assertEqual(draft.delivery_address, "42 Example Road", "the rest still comes from the account")

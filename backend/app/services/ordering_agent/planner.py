@@ -634,6 +634,7 @@ def read_order_intent(
     offered: str | None = None,
     choice_question: str | None = None,
     choice_options: Sequence[str] = (),
+    confirming: str | None = None,
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
 
@@ -655,7 +656,8 @@ def read_order_intent(
     """
 
     empty: dict[str, Any] = {
-        "add": None, "details": {}, "checkout": False, "when": None, "chose": None,
+        "add": None, "details": {}, "checkout": False, "when": None,
+        "chose": None, "confirms": None,
     }
     if not message.strip():
         return empty
@@ -669,6 +671,14 @@ def read_order_intent(
         still += (
             f"The branch has offered to make the order for {offered}. If they accept "
             '(yes, ok, that works, fine) then "when" is exactly that time.\n'
+        )
+    if confirming:
+        still += (
+            f"These details were just read back to them: {confirming}. If this "
+            'message accepts them (yes, correct, that is right, go ahead) then '
+            '"confirms" is true. If it rejects them (no, wrong, change it) then '
+            '"confirms" is false. New details they type belong in "details" as '
+            "usual, and then \"confirms\" is null.\n"
         )
     if choice_question and choice_options:
         listed = "; ".join(choice_options)
@@ -689,6 +699,8 @@ def read_order_intent(
         "else false\n"
         '  "chose": the option they picked from the list below, copied exactly, '
         "else null\n"
+        '  "confirms": true if they accept the details read back to them, false '
+        "if they reject them, null if this message is about neither\n"
         '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
         'the word "opening" if they mean whenever the branch next opens, else null\n'
         "}\n\n"
@@ -767,12 +779,17 @@ def read_order_intent(
     if not isinstance(chose, str) or not chose.strip() or chose.strip().lower() in {"null", "none"}:
         chose = None
 
+    confirms = parsed.get("confirms")
+    if not isinstance(confirms, bool):
+        confirms = None
+
     return {
         "add": add,
         "details": details,
         "checkout": parsed.get("checkout") is True,
         "when": when,
         "chose": chose.strip() if chose else None,
+        "confirms": confirms,
     }
 
 
