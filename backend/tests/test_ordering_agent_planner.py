@@ -467,7 +467,7 @@ class ReadOrderIntentTests(unittest.TestCase):
             ' "details": {"contact_name": "Ravi", "contact_email": "r@example.com"},'
             ' "checkout": true}'
         )
-        self.assertEqual(got["add"], ("Pad Thai", 2))
+        self.assertEqual(got["add"], [("Pad Thai", 2)])
         self.assertEqual(got["details"], {"contact_name": "Ravi", "contact_email": "r@example.com"})
         self.assertTrue(got["checkout"])
 
@@ -495,7 +495,7 @@ class ReadOrderIntentTests(unittest.TestCase):
 
     def test_a_silly_quantity_is_brought_back_into_range(self) -> None:
         got = self.read('{"add": {"dish": "Pizza", "quantity": 900}, "details": {}, "checkout": false}')
-        self.assertEqual(got["add"][1], 20)
+        self.assertEqual(got["add"][0][1], 20)
 
     def test_what_is_still_missing_is_named_in_the_prompt(self) -> None:
         seen = {}

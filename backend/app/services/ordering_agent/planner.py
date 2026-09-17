@@ -694,6 +694,12 @@ def read_order_intent(
             '"no", "not yet", "nothing else", "that is all", "nahi" — then '
             '"confirms" is false. If it is about something else entirely, '
             '"confirms" is null and the other fields say what the message wants.\n'
+            # Measured: "no wait" and "hold on" were read as neither, and a
+            # customer pausing a payment fell through to a reply pipeline that
+            # asked whether they were ready to check out.
+            'Pausing or hesitating is declining for now, not saying nothing: '
+            '"no wait", "hold on", "one sec", "not now", "actually no" all '
+            'make "confirms" false.\n'
         )
     if categories:
         # The branch's own sections, so a customer's word for a kind of food
@@ -719,8 +725,8 @@ def read_order_intent(
         "A customer is talking to a restaurant over chat. Read this ONE message and "
         "answer with one JSON object and nothing else.\n\n"
         "{\n"
-        '  "add": {"dish": "the dish they are asking for, exactly as written, or null", '
-        '"quantity": 1},\n'
+        '  "add": [{"dish": "a dish they are asking for, exactly as written", '
+        '"quantity": 1}]   // one entry per dish, [] if they are asking for none\n'
         f'  "details": {{{fields}}}   // each one as stated, or null\n'
         '  "checkout": true if they are asking to place the order, check out or pay; '
         "else false\n"
@@ -791,16 +797,27 @@ def read_order_intent(
     if not isinstance(parsed, dict):
         return empty
 
-    add = None
+    # A list, because one English sentence orders more than one thing:
+    # "add 2 corn fritters and a thai iced tea" added the fritters and
+    # dropped the drink while this had room for a single dish.
     asked = parsed.get("add")
     if isinstance(asked, dict):
-        dish = asked.get("dish")
-        if isinstance(dish, str) and dish.strip() and dish.strip().lower() not in {"null", "none"}:
-            try:
-                quantity = int(asked.get("quantity") or 1)
-            except (TypeError, ValueError):
-                quantity = 1
-            add = (dish.strip(), max(1, min(quantity, 20)))
+        asked = [asked]
+    adds: list[tuple[str, int]] = []
+    for one in asked or []:
+        if not isinstance(one, dict):
+            continue
+        dish = one.get("dish")
+        if not isinstance(dish, str) or not dish.strip():
+            continue
+        if dish.strip().lower() in {"null", "none"}:
+            continue
+        try:
+            quantity = int(one.get("quantity") or 1)
+        except (TypeError, ValueError):
+            quantity = 1
+        adds.append((dish.strip(), max(1, min(quantity, 20))))
+    add = adds or None
 
     details: dict[str, str] = {}
     given = parsed.get("details")

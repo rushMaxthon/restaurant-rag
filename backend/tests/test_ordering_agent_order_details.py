@@ -1441,3 +1441,200 @@ class TheSectionsThisBranchSellsTests(unittest.TestCase):
             categories=["Appetizer", "Beverages"],
         )
         self.assertIsNone(got["category"])
+
+
+class TheOrderReadBackTests(unittest.TestCase):
+    """The order is repeated before it is created, and the figure is the real one.
+
+    A real restaurant reads the order back before charging for it. This
+    agent gathered a name, an email and an address, said "That is
+    everything I need to place your order", and created it — the first
+    sight a customer got of what they had agreed to was Stripe's page.
+
+    And the first read-back said "Total: $16.98" over an order placed for
+    $20.62: the delivery fee and the tax were added where they could not
+    see them. A read-back whose number is not the number is worse than
+    none — it is a figure a customer has stood behind and will not
+    recognise.
+    """
+
+    def cart(self, needs_choice=False):
+        return {
+            "lines": [
+                {"name": "Corn Fritters", "quantity": 2, "total_price": "16.98"},
+                {"name": "Thai Iced Tea", "quantity": 1, "total_price": "4.14"},
+            ],
+            "subtotal": "21.12",
+            "needs_choice": [{"name": "Build Your Own Pizza"}] if needs_choice else [],
+        }
+
+    def quote(self, **over):
+        priced = {
+            "priced": True, "subtotal": "21.12", "delivery_fee": "2.79",
+            "tax_amount": "1.06", "discount_amount": "0.00", "total_amount": "24.97",
+        }
+        priced.update(over)
+        return priced
+
+    def draft(self, **over):
+        from app.services.ordering_agent import order_draft as od
+
+        fields = {"fulfillment_type": "DELIVERY", "delivery_address": "12 Park Lane"}
+        fields.update(over)
+        return od.OrderDraft(**fields)
+
+    def test_every_line_the_total_and_where_it_is_going(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        said = describe_order_to_confirm(self.cart(), self.draft(), self.quote())
+        self.assertIn("2 x Corn Fritters - $16.98", said)
+        self.assertIn("1 x Thai Iced Tea - $4.14", said)
+        self.assertIn("Delivery to 12 Park Lane.", said)
+        self.assertTrue(said.endswith("Shall I place it?"))
+
+    def test_the_total_is_the_one_checkout_will_charge(self) -> None:
+        # Live: read back as $16.98, placed for $20.62.
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        said = describe_order_to_confirm(self.cart(), self.draft(), self.quote())
+        self.assertIn("Subtotal: $21.12.", said)
+        self.assertIn("Delivery: $2.79.", said)
+        self.assertIn("Tax: $1.06.", said)
+        self.assertIn("Total: $24.97.", said)
+
+    def test_a_fee_the_branch_does_not_charge_is_not_mentioned(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        said = describe_order_to_confirm(
+            self.cart(),
+            self.draft(fulfillment_type="PICKUP", delivery_address=None),
+            self.quote(delivery_fee="0.00", total_amount="22.18"),
+        )
+        self.assertNotIn("Delivery:", said)
+        self.assertIn("For pickup.", said)
+
+    def test_without_a_quote_the_only_figure_is_named_for_what_it_is(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        said = describe_order_to_confirm(self.cart(), self.draft(), None)
+        self.assertIn("Subtotal: $21.12.", said)
+        self.assertNotIn("Total:", said)
+
+    def test_an_order_that_cannot_be_priced_honestly_is_not_read_back(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        self.assertIsNone(
+            describe_order_to_confirm(self.cart(needs_choice=True), self.draft(), self.quote())
+        )
+
+    def test_a_scheduled_order_says_when(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        said = describe_order_to_confirm(
+            self.cart(), self.draft(scheduled_at="2026-09-18T12:30:00+05:30"), self.quote()
+        )
+        self.assertIn("12:30", said)
+
+    def test_the_draft_remembers_that_they_stood_behind_it(self) -> None:
+        from unittest.mock import patch
+
+        from app.services.ordering_agent import order_draft as od
+
+        saved = {}
+        with patch.object(od, "cache_set_json", lambda k, v, ttl_seconds=None: saved.update(v)), \
+                patch.object(od, "cache_get_json", lambda k: dict(saved)):
+            od.save("s", od.OrderDraft(order_confirmed=True, place_asks=2))
+            back = od.load("s")
+        self.assertTrue(back.order_confirmed)
+        self.assertEqual(back.place_asks, 2)
+
+
+class TheAnswerToTheReadBackTests(unittest.TestCase):
+    """Yes places it, no holds it, and it is never asked a third time."""
+
+    def turn(self, message, *, draft, intent, cart=None):
+        import dataclasses as dc
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft as od
+
+        scope = dc.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
+        held = {"draft": draft}
+        with patch.object(od, "load", lambda _s: dc.replace(held["draft"])), \
+                patch.object(od, "save", lambda _s, d: held.update(draft=d)):
+            outcome = loop.run_turn(
+                db=None, scope=scope, message=message,
+                cart=cart if cart is not None else [
+                    CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)
+                ],
+                generate=ScriptedGenerate(intent=intent),
+                clock=ScriptedClock(0.0), max_rounds=1, budget_seconds=1000.0,
+            )
+        return outcome, held["draft"]
+
+    def answering(self, agreed):
+        import json
+
+        return json.dumps({
+            "add": None, "details": {}, "checkout": False, "when": None,
+            "chose": None, "confirms": agreed, "browse": None,
+            "asks_hours": False, "category": None,
+        })
+
+    def waiting(self):
+        import json
+
+        from app.services.ordering_agent import order_draft as od
+
+        return od.OrderDraft(
+            awaiting=json.dumps({
+                "question": "Here is your order:\n- 1 x Corn Fritters - $8.49\nShall I place it?",
+                "yes": "place",
+                "subject": None,
+                "asks": "Shall I place your order?",
+            }),
+            place_asks=1,
+        )
+
+    def test_yes_marks_the_order_stood_behind(self) -> None:
+        _, draft = self.turn("yes", draft=self.waiting(), intent=self.answering(True))
+        self.assertTrue(draft.order_confirmed)
+
+    def test_no_holds_it_and_does_not_place(self) -> None:
+        outcome, draft = self.turn("no wait", draft=self.waiting(), intent=self.answering(False))
+        self.assertFalse(draft.order_confirmed)
+        self.assertIsNone(outcome.placed_order)
+        self.assertIn("hold it", outcome.answer or "")
+
+    def test_the_model_is_given_the_short_question_not_the_read_back(self) -> None:
+        # The read-back is long and full of the customer's own details.
+        # Handed to the model as "the question", it mined the address back
+        # out: "yes" arrived carrying a delivery address, was read as a new
+        # instruction, and the order was read back a second time.
+        import dataclasses as dc
+        from unittest.mock import patch
+
+        from tests.test_ordering_agent_loop import SCOPE, ScriptedClock, ScriptedGenerate
+        from app.services.ordering_agent import loop, order_draft as od
+
+        seen = {}
+        real = loop.read_order_intent
+
+        def watching(message, **kwargs):
+            seen.update(kwargs)
+            return real(message, **kwargs)
+
+        scope = dc.replace(SCOPE, session_id=uuid.uuid4(), verified_phone="+919000000001")
+        held = {"draft": self.waiting()}
+        with patch.object(od, "load", lambda _s: dc.replace(held["draft"])), \
+                patch.object(od, "save", lambda _s, d: held.update(draft=d)), \
+                patch.object(loop, "read_order_intent", watching):
+            loop.run_turn(
+                db=None, scope=scope, message="yes",
+                cart=[CartLinePayload(menu_item_id=uuid.uuid4(), quantity=1)],
+                generate=ScriptedGenerate(intent=self.answering(True)),
+                clock=ScriptedClock(0.0), max_rounds=1, budget_seconds=1000.0,
+            )
+        self.assertEqual(seen.get("asked"), "Shall I place your order?")
+        self.assertNotIn("Corn Fritters", seen.get("asked") or "")

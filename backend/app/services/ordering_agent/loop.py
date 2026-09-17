@@ -194,6 +194,77 @@ def describe_cart(result: Any) -> str | None:
     return f"Your cart:{said}Subtotal: {subtotal}.{tail}"
 
 
+def describe_order_to_confirm(
+    result: Any, draft: Any = None, quote: Any = None
+) -> str | None:
+    """The whole order read back, for a customer to stand behind before it goes.
+
+    Every line, the total, where it is going and when — from the cart's own
+    rows and the draft's own fields, so what they agree to is what will be
+    charged. A real restaurant repeats the order back; this agent said "that
+    is everything I need" and created it, and the first sight a customer got
+    of what they had agreed to was Stripe's payment page.
+    """
+
+    if not isinstance(result, dict):
+        return None
+    lines = result.get("lines") or []
+    if not lines or result.get("needs_choice"):
+        # A line still missing a required choice cannot be priced honestly,
+        # and an order nobody can total is not one to stand behind.
+        return None
+    said = []
+    for line in lines:
+        name = line.get("name") or "a dish"
+        size = line.get("size_name")
+        label = f"{name} ({size})" if size else name
+        said.append(f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}")
+    parts = ["Here is your order:", "\n".join(said)]
+
+    # The total is the one checkout will charge, from the same arithmetic —
+    # never the cart's subtotal. Live: a customer agreed to $16.98 and the
+    # order was placed for $20.62, the delivery fee and the tax having been
+    # added where they could not see them.
+    priced = quote if isinstance(quote, dict) and quote.get("priced") else None
+    if priced:
+        figures = [f"Subtotal: {_money(priced.get('subtotal'))}."]
+        for label, key in (
+            ("Delivery", "delivery_fee"),
+            ("Tax", "tax_amount"),
+        ):
+            try:
+                if float(priced.get(key) or 0) > 0:
+                    figures.append(f"{label}: {_money(priced.get(key))}.")
+            except (TypeError, ValueError):
+                pass
+        try:
+            if float(priced.get("discount_amount") or 0) > 0:
+                figures.append(f"Discount: -{_money(priced.get('discount_amount'))}.")
+        except (TypeError, ValueError):
+            pass
+        figures.append(f"Total: {_money(priced.get('total_amount'))}.")
+        parts.append("\n".join(figures))
+    else:
+        # No quote, so the only honest figure is the one the cart knows and
+        # it is named for what it is.
+        parts.append(f"Subtotal: {_money(result.get('subtotal'))}.")
+
+    where = None
+    if draft is not None:
+        if (getattr(draft, "fulfillment_type", None) or "") == "DELIVERY":
+            address = getattr(draft, "delivery_address", None)
+            where = f"Delivery to {address}." if address else "For delivery."
+        elif (getattr(draft, "fulfillment_type", None) or "") == "PICKUP":
+            where = "For pickup."
+        when = _clock(getattr(draft, "scheduled_at", None))
+        if when:
+            where = f"{where} For {when}." if where else f"For {when}."
+    if where:
+        parts.append(where)
+    parts.append("Shall I place it?")
+    return "\n".join(parts)
+
+
 def placed_order_in(records: list[ToolCallRecord]) -> dict[str, Any] | None:
     """The order this turn placed, if it placed one."""
 
@@ -675,9 +746,13 @@ def run_turn(
     cart_summary: str | None = None
     # The same read-back without the prompt's framing, for the customer.
     cart_readback: str | None = None
+    # The rows themselves, for the read-back that asks a customer to stand
+    # behind the order. A sentence cannot be turned back into figures.
+    cart_result: Any = None
     if cart:
         try:
-            cart_summary = describe_cart(TOOLS["view_cart"].handler(db, scope, ViewCartArgs(lines=_as_tool_lines(cart))))
+            cart_result = TOOLS["view_cart"].handler(db, scope, ViewCartArgs(lines=_as_tool_lines(cart)))
+            cart_summary = describe_cart(cart_result)
         except Exception:  # noqa: BLE001 - a prompt fact is never worth failing a turn for
             logger.warning("Ordering agent could not resolve the cart for the prompt", exc_info=True)
         if cart_summary:
@@ -958,7 +1033,9 @@ def run_turn(
             return None
         return held if isinstance(held, dict) and held.get("question") else None
 
-    def _hold(question: str, *, yes: str, subject: str | None = None) -> str:
+    def _hold(
+        question: str, *, yes: str, subject: str | None = None, asks: str | None = None
+    ) -> str:
         """Write down the question we are ending on, and return it to be said.
 
         `yes` is what agreeing to it DOES — decided here, as we ask, not
@@ -970,7 +1047,13 @@ def run_turn(
         if scope.session_id is not None:
             draft_now = order_draft.load(scope.session_id)
             draft_now.awaiting = json.dumps(
-                {"question": question, "yes": yes, "subject": subject}
+                # `asks` is the question as the model should see it next
+                # turn. A read-back is long and full of the customer's own
+                # details, and given to the model as "the question" it mined
+                # the address back out of it: "yes" arrived carrying a
+                # delivery address, read as a new instruction, and the order
+                # was read back a second time instead of being placed.
+                {"question": question, "yes": yes, "subject": subject, "asks": asks or question}
             )
             order_draft.save(scope.session_id, draft_now)
         return question
@@ -1038,6 +1121,23 @@ def run_turn(
             # agreement and the drink, and the drink went in twice.
             wanted["add"] = None
             return None
+        if kind == "place":
+            if also_says:
+                return None
+            if not agreed:
+                return _answering(
+                    _hold(
+                        "No problem, I will hold it. Tell me what to change, "
+                        "or what else you would like.",
+                        yes="name_one",
+                    )
+                )
+            if scope.session_id is not None:
+                kept = order_draft.load(scope.session_id)
+                kept.order_confirmed = True
+                order_draft.save(scope.session_id, kept)
+            wanted["checkout"] = True
+            return None
         if kind == "more":
             if agreed:
                 if also_says:
@@ -1070,6 +1170,63 @@ def run_turn(
                 )
             )
         return None
+
+    def _order_stood_behind() -> bool:
+        """Whether this exact order has been read back and agreed to.
+
+        True when there is no session to remember it in: a conversation with
+        no memory must still be able to order.
+        """
+
+        if scope.session_id is None:
+            return True
+        kept = order_draft.load(scope.session_id)
+        # Asked twice already. The order is created unpaid and the payment
+        # link is what spends money, so a customer stuck behind a question
+        # they have answered is the worse failure of the two.
+        return bool(kept.order_confirmed) or int(kept.place_asks or 0) >= 2
+
+    def _read_the_order_back() -> TurnOutcome | None:
+        """Put the whole order to them, once, and hold the question."""
+
+        held = tools_module._draft_for(scope) if scope.session_id is not None else None
+        # The same arithmetic checkout runs, so the figure they agree to is
+        # the figure they are charged.
+        quote = None
+        if db is not None and cart:
+            try:
+                wanted_type = tools_module.OrderFulfillmentType(
+                    (held.fulfillment_type if held else None)
+                    or tools_module.OrderFulfillmentType.DELIVERY.value
+                )
+                quote = TOOLS["price_quote"].handler(
+                    db,
+                    scope,
+                    tools_module.PriceQuoteArgs(
+                        lines=_as_tool_lines(cart), fulfillment_type=wanted_type
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - an unpriced read-back still reads back
+                logger.warning("Ordering agent could not price the order to read back", exc_info=True)
+        said = describe_order_to_confirm(cart_result, held, quote)
+        if said is None:
+            return None
+        if scope.session_id is not None:
+            kept = order_draft.load(scope.session_id)
+            kept.place_asks = int(kept.place_asks or 0) + 1
+            order_draft.save(scope.session_id, kept)
+        return _answering(_hold(said, yes="place", asks="Shall I place your order?"))
+
+    def _order_changed_under_them() -> None:
+        """A cart that changed is not the order they agreed to."""
+
+        if scope.session_id is None:
+            return
+        kept = order_draft.load(scope.session_id)
+        if kept.order_confirmed or kept.place_asks:
+            kept.order_confirmed = False
+            kept.place_asks = 0
+            order_draft.save(scope.session_id, kept)
 
     def _pending_choice() -> dict[str, Any] | None:
         """The question this conversation is waiting on an answer to."""
@@ -1305,6 +1462,9 @@ def run_turn(
             and ready_now
             and not placed_order_in(records)
             and not already_tried
+            # Not at the cap either. An order nobody has agreed to is not
+            # improved by the turn having run out of rounds.
+            and _order_stood_behind()
         ):
             prepared, guard_error = guards.prepare_tool_call(
                 "place_order", {}, cart=cart, seen=seen, diet=scope.diet
@@ -1484,7 +1644,7 @@ def run_turn(
             ),
             # The question we ended the last turn on. A bare "yes" has no
             # meaning of its own; this is the meaning.
-            asked=standing["question"] if standing else None,
+            asked=(standing.get("asks") or standing["question"]) if standing else None,
             categories=sections,
         )
     )
@@ -1519,6 +1679,13 @@ def run_turn(
         order_draft.save(scope.session_id, kept)
         collecting = _still_missing() or []
         placing_wanted = True
+        # Their details were read back in order to place the order, so
+        # agreeing to them is agreeing to get on with it. Live: "yes" to
+        # "Shall I use them?" ran no tool at all and the turn fell through to
+        # a reply pipeline that said "please proceed to pay" — with nothing
+        # to pay for and no link.
+        if collecting == []:
+            wanted["checkout"] = True
     elif wanted.get("confirms") is False and scope.session_id is not None:
         kept = order_draft.load(scope.session_id)
         if standing_offer and not unconfirmed:
@@ -1592,10 +1759,12 @@ def run_turn(
         if shown:
             return shown
 
-    if wanted["add"]:
-        added = _add_named_dish(*wanted["add"])
+    for one_dish in wanted["add"] or []:
+        # One sentence can order more than one thing.
+        added = _add_named_dish(*one_dish)
         if added:
             actions.extend(added)
+            _order_changed_under_them()
 
     if wanted["details"] and scope.session_id is not None:
         placing_wanted = True
@@ -1657,6 +1826,10 @@ def run_turn(
             and _still_missing() == []
             and not placed_order_in(records)
         ):
+            if not _order_stood_behind():
+                asked = _read_the_order_back()
+                if asked is not None:
+                    return asked
             _place_now()
         return _settled()
 
@@ -1683,6 +1856,10 @@ def run_turn(
             "save_order_details",
         )
         if auto_place and after_checkout_request and _still_missing() == [] and not placed_order_in(records):
+            if not _order_stood_behind():
+                asked = _read_the_order_back()
+                if asked is not None:
+                    return asked
             step = PlanStep(tool="place_order", args={})
         else:
             step = plan_step(
@@ -1762,6 +1939,10 @@ def run_turn(
             and not placed_order_in(records)
             and "place_order" in TOOLS
         ):
+            if not _order_stood_behind():
+                asked = _read_the_order_back()
+                if asked is not None:
+                    return asked
             step = PlanStep(tool="place_order", args={})
 
         if step.answer is not None:

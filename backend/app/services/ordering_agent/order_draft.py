@@ -75,6 +75,15 @@ class OrderDraft:
     # and the ids behind each option. A turn's records do not survive it, so
     # without this "large one" was a sentence about nothing.
     pending_choice: str | None = None
+    # Whether they have seen THIS order read back and said go ahead. Not
+    # the same as `confirmed`, which is about their contact details: an
+    # address can be right and the order still be wrong.
+    order_confirmed: bool = False
+    # How many times the order has been read back to them, so a yes that
+    # goes astray cannot leave a customer answering the same question for
+    # ever. The order is created unpaid, so the link is the confirmation
+    # that actually spends money.
+    place_asks: int = 0
     # The question this conversation is waiting on an answer to, as JSON:
     # what we asked in our own words, and what agreeing to it acts on. A
     # bare "yes" has no meaning by itself — live, "Which one would you like?"
@@ -107,6 +116,8 @@ class OrderDraft:
         "offered_scheduled_at",
         "pending_choice",
         "awaiting",
+        "order_confirmed",
+        "place_asks",
         "confirmed",
         "confirm_asks",
         "diet",
@@ -160,16 +171,19 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
         for key, value in stored.items()
         if key in detail_fields and isinstance(value, str)
     }
-    for flag in ("collecting", "confirmed"):
+    for flag in ("collecting", "confirmed", "order_confirmed"):
         if isinstance(stored.get(flag), bool):
             kept[flag] = stored[flag]
-    if isinstance(stored.get("confirm_asks"), int):
-        kept["confirm_asks"] = stored["confirm_asks"]
+    for counter in ("confirm_asks", "place_asks"):
+        if isinstance(stored.get(counter), int):
+            kept[counter] = stored[counter]
     # The other state fields are strings and round-trip as such. Live: the
     # time the kitchen offered was saved here and dropped on the very next
     # read, so "yes" on the following turn had nothing to say yes to.
     for name in OrderDraft._STATE_FIELDS:
-        if name not in {"collecting", "confirmed", "confirm_asks"} and isinstance(stored.get(name), str):
+        if name not in {
+            "collecting", "confirmed", "confirm_asks", "order_confirmed", "place_asks",
+        } and isinstance(stored.get(name), str):
             kept[name] = stored[name]
     return OrderDraft(**kept)
 
@@ -271,6 +285,15 @@ def remember(draft: OrderDraft, **given: str | None) -> tuple[OrderDraft, list[s
     # and treating it as confirmation meant an address from last month went
     # out unseen.
     if (given.get("delivery_address") or "").strip():
+        draft.confirmed = True
+    elif draft.fulfillment_type == OrderFulfillmentType.PICKUP.value and any(
+        (given.get(field) or "").strip()
+        for field in ("contact_name", "contact_email", "contact_phone")
+    ):
+        # Pickup has no address, so the field most likely to be stale and
+        # unseen is not in play at all. Live: a customer collecting their own
+        # food typed their name and email and was asked, on the very next
+        # turn, whether those were the details to use.
         draft.confirmed = True
 
     when = (given.get("scheduled_at") or "").strip()
