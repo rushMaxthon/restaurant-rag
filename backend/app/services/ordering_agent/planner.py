@@ -636,6 +636,7 @@ def read_order_intent(
     choice_options: Sequence[str] = (),
     confirming: str | None = None,
     asked: str | None = None,
+    for_day: str | None = None,
     categories: Sequence[str] = (),
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
@@ -682,6 +683,16 @@ def read_order_intent(
             '"confirms" is true. If it rejects them (no, wrong, change it) then '
             '"confirms" is false. New details they type belong in "details" as '
             "usual, and then \"confirms\" is null.\n"
+        )
+    if for_day:
+        # They have been asked which time on a particular day, so a bare
+        # time in this message belongs to that day. Live: asked "what time
+        # would you like it?" about Friday, "3 PM" came back attached to
+        # nothing and the turn answered about today.
+        still += (
+            f"They are choosing a time on {for_day}. A time in this message "
+            '("3 PM", "at 7", "half seven", "around eight") is on THAT day: '
+            f'"when" is "{for_day} HH:MM".\n'
         )
     if asked:
         # The question in our own words, so the model reads their reply
@@ -742,8 +753,9 @@ def read_order_intent(
         "as a list — several if they named several, else null\n"
         '  "confirms": true if they accept the details read back to them, false '
         "if they reject them, null if this message is about neither\n"
-        '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
-        'the word "opening" if they mean whenever the branch next opens, else null\n'
+        '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, just '
+        '"YYYY-MM-DD" if they name a DAY without a clock time, the word "opening" '
+        "if they mean whenever the branch next opens, else null\n"
         "}\n\n"
         "Rules:\n"
         "- Only what this message actually says. Never invent a dish, a name, an "
@@ -786,11 +798,19 @@ def read_order_intent(
         '- "when" is only a time they CHOSE for the order. A bare time ("at 11", '
         '"11:30") is today if still ahead, otherwise tomorrow. "Tomorrow at one" '
         "is tomorrow 13:00. Nothing about timing means null.\n"
+        # Measured: "Sorry! I need thos order tomorrow" came back as no time at
+        # all plus a question about opening hours, and was answered with
+        # today's.
+        '- A DAY with no clock time is still a time they chose: "tomorrow", '
+        '"18th Sep", "on Friday", "next Monday" are the date alone, '
+        '"YYYY-MM-DD", with nothing after it. Never invent a clock time they '
+        "did not say.\n"
         # Measured: "I'd like to know what time I'll receive my order" was
         # read as choosing a time, and answered "that time will not work".
         '- A QUESTION about time is not a time. "When will it arrive", "what '
         'time do you open", "suggest another time" set "asks_hours" true and '
-        'leave "when" null.\n'
+        'leave "when" null. Naming a day or a time is not a question: '
+        '"asks_hours" is false whenever "when" is filled in.\n'
         "- Anything not stated is null.\n"
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"

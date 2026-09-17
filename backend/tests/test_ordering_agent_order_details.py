@@ -1789,3 +1789,136 @@ class WantingMoreWithoutSayingWhatTests(unittest.TestCase):
         from tests.test_ordering_agent_loop import SCOPE
 
         self.assertEqual(tools_module.dishes_to_suggest(_MenuDb(), SCOPE), [])
+
+
+class OrderingForAnotherDayTests(unittest.TestCase):
+    """A day is a time, its hours are its own, and a refusal looks forward.
+
+    Live, four answers and four faults:
+
+        > Sorry! I need thos order tomorrow
+          Delivery today: 11:00-21:30. We are open now...
+        > I want to place order for 18th Sep
+          That time will not work... The earliest I can do is Thu 15:00
+        > I want to place order for 18th Sep, 3 PM
+          Yes — Bangkok Bowl Bodakdev can take a delivery order at 3 pm.
+        > Just confirm I will get order tomorrow 3 PM
+          Not at 3 pm — ... takes delivery until 9:10 pm
+
+    "Tomorrow" had nowhere to go, so it came back as no time at all plus a
+    question about opening hours. "18th Sep" became midnight, which no
+    kitchen is open for, and the refusal offered the day BEFORE. And the one
+    that was accepted was answered with nothing at all, which handed the
+    reply to a pipeline that knew nothing about it — hence the last two
+    answers contradicting each other.
+    """
+
+    def test_a_day_without_a_clock_time_is_the_date_alone(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "I need this order tomorrow",
+            generate=lambda *a, **k: '{"when": "2026-09-18", "asks_hours": false}',
+        )
+        self.assertEqual(got["when"], "2026-09-18")
+        self.assertFalse(got["asks_hours"])
+
+    def test_the_day_being_chosen_is_given_to_the_reading(self) -> None:
+        # "3 PM" on its own is a time attached to nothing. Asked which time
+        # on Friday, it belongs to Friday.
+        from app.services.ordering_agent.planner import read_order_intent
+
+        seen = {}
+
+        def generate(prompt, timeout, max_tokens):
+            seen["prompt"] = prompt
+            return '{"when": "2026-09-18 15:00"}'
+
+        read_order_intent("3 PM", generate=generate, for_day="2026-09-18")
+        self.assertIn("choosing a time on 2026-09-18", seen["prompt"])
+
+    def record(self, **result):
+        from app.services.ordering_agent.loop import ToolCallRecord
+
+        return [ToolCallRecord(tool="schedule_time", args={}, result=result)]
+
+    def test_a_day_that_still_needs_a_time_is_asked_about(self) -> None:
+        from app.services.ordering_agent.loop import describe_time_settled
+
+        said = describe_time_settled(self.record(
+            outcome="needs_a_time",
+            day="Friday 18 September",
+            hours="Delivery on Friday: 11:00-22:30.",
+        ))
+        self.assertIn("Friday 18 September", said)
+        self.assertIn("What time", said)
+        self.assertIn("11:00-22:30", said)
+
+    def test_a_time_that_was_kept_is_said_back(self) -> None:
+        # It was kept and answered with silence, and the reply pipeline
+        # filled the gap with two answers that disagreed.
+        from app.services.ordering_agent.loop import describe_time_settled
+
+        said = describe_time_settled(self.record(
+            outcome="kept", scheduled_at="2026-09-18T15:00:00+05:30", problems=[]
+        ))
+        self.assertIn("15:00", said)
+
+    def test_a_refusal_is_still_the_refusal(self) -> None:
+        from app.services.ordering_agent.loop import describe_time_problem, describe_time_settled
+
+        refused = self.record(outcome="unavailable", reason="Pickup is not available", next_open=None)
+        self.assertIsNone(describe_time_settled(refused))
+        self.assertIn("will not work", describe_time_problem(refused))
+
+    def branch(self):
+        from datetime import time as T
+        from types import SimpleNamespace
+
+        from app.models.enums import OrderFulfillmentType
+
+        return SimpleNamespace(
+            is_active=True, is_open=True, delivery_enabled=True, pickup_enabled=True,
+            future_order_enabled=True, slot_interval_minutes=30, max_future_days=7,
+            preparation_time_minutes=20, estimated_delivery_time=30,
+            opening_time=T(11, 0), closing_time=T(21, 30),
+            fulfillment_slots=[], temporary_closed_reason=None,
+        )
+
+    def test_a_future_day_is_named_not_called_today(self) -> None:
+        from datetime import timedelta
+
+        from app.models.enums import OrderFulfillmentType
+        from app.services import restaurant_locations as bh
+
+        later = bh._localize_reference_datetime(None) + timedelta(days=2)
+        said = bh.describe_hours(
+            self.branch(), fulfillment_type=OrderFulfillmentType.DELIVERY, reference_dt=later
+        )
+        self.assertIn(f"on {later:%A}", said)
+        self.assertNotIn("today", said)
+        # Whether the kitchen is open right now says nothing about a day two
+        # days away, so it is not mentioned.
+        self.assertNotIn("open now", said)
+
+    def test_today_still_reads_as_today(self) -> None:
+        from app.models.enums import OrderFulfillmentType
+        from app.services import restaurant_locations as bh
+
+        said = bh.describe_hours(self.branch(), fulfillment_type=OrderFulfillmentType.DELIVERY)
+        self.assertIn("today", said)
+
+    def test_the_next_slot_is_measured_from_the_time_they_asked_for(self) -> None:
+        # The refusal for the 18th offered Thu 15:00 — the day before, and no
+        # use to anybody — because the nearest slot was measured from now.
+        from datetime import timedelta
+
+        from app.models.enums import OrderFulfillmentType
+        from app.services import restaurant_locations as bh
+
+        wanted = bh._localize_reference_datetime(None) + timedelta(days=3)
+        got = bh.next_available_slot_start(
+            self.branch(), fulfillment_type=OrderFulfillmentType.DELIVERY, reference_dt=wanted
+        )
+        self.assertIsNotNone(got)
+        self.assertGreaterEqual(got, wanted.replace(hour=0, minute=0, second=0, microsecond=0))

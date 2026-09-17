@@ -440,6 +440,30 @@ def _clock(iso: str | None) -> str | None:
         return None
 
 
+def describe_time_settled(records: list[ToolCallRecord]) -> str | None:
+    """A time this turn settled, said back — or the day it still needs.
+
+    Live: "18th Sep, 3 PM" was accepted, kept, and answered with nothing at
+    all. A turn that settles the time and falls silent hands the reply to a
+    pipeline that knows nothing about it, and the two answers that came back
+    contradicted each other — one saying 3 pm worked, the next saying it did
+    not.
+    """
+
+    for record in reversed(records):
+        if record.tool != "schedule_time" or not isinstance(record.result, dict):
+            continue
+        if record.result.get("outcome") == "needs_a_time":
+            day = record.result.get("day") or "that day"
+            hours = str(record.result.get("hours") or "").strip()
+            return f"{day} it is. What time would you like it? {hours}".strip()
+        if record.result.get("outcome") == "kept":
+            when = _clock(record.result.get("scheduled_at"))
+            return f"Right — I have that down for {when}." if when else None
+        return None
+    return None
+
+
 def describe_time_problem(records: list[ToolCallRecord]) -> str | None:
     """A time that could not be kept, and the nearest one that could."""
 
@@ -447,7 +471,7 @@ def describe_time_problem(records: list[ToolCallRecord]) -> str | None:
         if record.tool != "schedule_time":
             continue
         if isinstance(record.result, dict):
-            if record.result.get("outcome") == "kept":
+            if record.result.get("outcome") in {"kept", "needs_a_time"}:
                 return None
             reason = str(record.result.get("reason") or "").rstrip(".")
             nearest = _clock(record.result.get("next_open"))
@@ -819,7 +843,10 @@ def run_turn(
         )
         draft_now = order_draft.load(scope.session_id)
         fulfillment = branch_hours.OrderFulfillmentType(
-            draft_now.fulfillment_type or branch_hours.OrderFulfillmentType.PICKUP.value
+            # Delivery when nobody has said, as everywhere else that has to
+            # guess — the hours read back said "Pickup" to a customer who
+            # went on to ask for delivery.
+            draft_now.fulfillment_type or branch_hours.OrderFulfillmentType.DELIVERY.value
         )
         chosen: datetime | None
         if when == "opening":
@@ -832,6 +859,39 @@ def run_turn(
                 records.append(ToolCallRecord(tool="schedule_time", args={"when": when},
                                               error="no_slot: nothing available to schedule"))
                 return
+        elif len(when.strip()) == 10:
+            # A day and no clock time. Live: "18th Sep" became midnight on
+            # the 18th, which no kitchen is open for, and the refusal then
+            # offered a time earlier than the day they had asked about.
+            # A day is an answerable question, not a refusal.
+            try:
+                that_day = datetime.strptime(when.strip(), "%Y-%m-%d").replace(
+                    tzinfo=branch_hours.BUSINESS_TIMEZONE
+                )
+            except ValueError:
+                records.append(ToolCallRecord(tool="schedule_time", args={"when": when},
+                                              error="unreadable: that time could not be read"))
+                return
+            hours = (
+                branch_hours.describe_hours(
+                    location, fulfillment_type=fulfillment, reference_dt=that_day
+                )
+                if location is not None
+                else None
+            )
+            records.append(ToolCallRecord(
+                tool="schedule_time", args={"when": when},
+                result={"outcome": "needs_a_time", "day": f"{that_day:%A %d %B}", "hours": hours},
+            ))
+            # The day is held with the question, so the time they answer with
+            # lands on it. Without this, "3 PM" after "what time on Friday?"
+            # was a time attached to nothing and read as today.
+            _hold(
+                f"What time on {that_day:%A %d %B}?",
+                yes="time_on_day",
+                subject=that_day.date().isoformat(),
+            )
+            return
         else:
             try:
                 chosen = datetime.strptime(when, "%Y-%m-%d %H:%M").replace(
@@ -846,8 +906,13 @@ def run_turn(
                 location, fulfillment_type=fulfillment, scheduled_at=chosen
             )
             if not ok:
+                # Measured from the time they asked for, not from now: a
+                # refusal for the 18th offered Thu 15:00, which is the day
+                # before and no use to anybody.
                 alternative = branch_hours.next_available_slot_start(
-                    location, fulfillment_type=fulfillment
+                    location,
+                    fulfillment_type=fulfillment,
+                    reference_dt=max(chosen, branch_hours._localize_reference_datetime(None)),
                 )
                 records.append(ToolCallRecord(
                     tool="schedule_time", args={"when": when},
@@ -1522,6 +1587,7 @@ def run_turn(
             or describe_applied(records)
             or _choice_question_in(records)
             or describe_time_problem(records)
+            or describe_time_settled(records)
             or describe_place_failure(records)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
@@ -1557,6 +1623,7 @@ def run_turn(
             or applied
             or _choice_question_in(records)
             or describe_time_problem(records)
+            or describe_time_settled(records)
             or describe_place_failure(records)
             or describe_collecting(_still_missing())
             or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
@@ -1678,6 +1745,12 @@ def run_turn(
             # The question we ended the last turn on. A bare "yes" has no
             # meaning of its own; this is the meaning.
             asked=(standing.get("asks") or standing["question"]) if standing else None,
+            # The day they are choosing a time on, if that is the question.
+            for_day=(
+                standing.get("subject")
+                if standing and standing.get("yes") == "time_on_day"
+                else None
+            ),
             categories=sections,
         )
     )

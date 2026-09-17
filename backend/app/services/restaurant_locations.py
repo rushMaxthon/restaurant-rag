@@ -762,6 +762,10 @@ def describe_hours(
 
     label = "Delivery" if fulfillment_type == OrderFulfillmentType.DELIVERY else "Pickup"
     now_local = _localize_reference_datetime(reference_dt)
+    today = _localize_reference_datetime(None)
+    # "Delivery today" is a lie about any day but this one, and a customer
+    # asking about Friday is owed Friday's hours under Friday's name.
+    when_word = "today" if now_local.date() == today.date() else f"on {now_local:%A}"
     day = _weekday_for_datetime(now_local)
     windows: list[tuple[time, time]] = []
     if _slot_schedule_enabled(location, fulfillment_type):
@@ -776,9 +780,14 @@ def describe_hours(
     parts: list[str] = []
     if windows:
         listed = ", ".join(f"{start:%H:%M}-{end:%H:%M}" for start, end in windows)
-        parts.append(f"{label} today: {listed}.")
+        parts.append(f"{label} {when_word}: {listed}.")
     else:
-        parts.append(f"{label} is not running today.")
+        parts.append(f"{label} is not running {when_word}.")
+
+    if now_local.date() != today.date():
+        # A future day: its hours are the whole answer. Whether the kitchen
+        # happens to be open right now says nothing about Friday.
+        return " ".join(parts)
 
     open_now, _ = get_location_fulfillment_status(location, fulfillment_type=fulfillment_type)
     nearest = next_available_slot_start(
