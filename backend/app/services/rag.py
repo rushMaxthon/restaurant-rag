@@ -7633,6 +7633,52 @@ def _safe_suggestion_for_cart(
         return None
 
 
+def _greeting_with_name(reply: str, name: str | None) -> str:
+    """The greeting we were going to send, with their name in it.
+
+    Applied AFTER the response cache is read and written: that cache is
+    keyed on the greeting alone, shared by every customer who sends one, so
+    a name stored in it would be said to the next person who said hello.
+
+    The opener is ours and ends in a wave, so the name goes where a person
+    would put it. A reply of any other shape is left exactly as it is.
+    """
+
+    if not name or "\U0001f44b" not in reply:
+        return reply
+    opener, rest = reply.split("\U0001f44b", 1)
+    opener = opener.rstrip().rstrip(",")
+    if not opener:
+        return reply
+    return f"{opener}, {name} \U0001f44b{rest}"
+
+
+def _customer_first_name(
+    db: Session,
+    user: ChatPrincipal,
+    *,
+    verified_phone: str | None,
+    app_client_id: uuid.UUID | None,
+) -> str | None:
+    """What to call this customer, or None to call them nothing.
+
+    Their account, whether they are signed in or known by the number the
+    channel verified. Never raises and never guesses: being called by the
+    wrong name is worse than being called by none.
+    """
+
+    from app.services.ordering_agent.order_draft import first_name
+
+    try:
+        if not is_guest(user):
+            return first_name(getattr(user, "full_name", None))
+        account = _returning_customer(db, verified_phone, app_client_id)
+        return first_name(getattr(account, "full_name", None)) if account else None
+    except Exception:  # noqa: BLE001 - a courtesy is never worth a failed turn
+        logger.warning("Could not work out what to call a customer", exc_info=True)
+        return None
+
+
 def handle_chat_message(
     db: Session,
     *,
@@ -7726,6 +7772,13 @@ def handle_chat_message(
             prepared.retrieval_source = "greeting_cache"
             logger.info("RAG greeting response generated key=%s", greeting_cache_key)
 
+        # After the cache, so the stored greeting stays impersonal.
+        reply = _greeting_with_name(
+            reply,
+            _customer_first_name(
+                db, user, verified_phone=verified_phone, app_client_id=app_client_id
+            ),
+        )
         _persist_chat_exchange(
             db,
             user=user,

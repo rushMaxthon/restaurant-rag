@@ -311,6 +311,29 @@ def remember(draft: OrderDraft, **given: str | None) -> tuple[OrderDraft, list[s
     return draft, problems
 
 
+def first_name(full: str | None) -> str | None:
+    """What to call them, from the name they gave — or None.
+
+    The first word of it: "Hitesh Kachariya" is Hitesh. Capitalised only
+    when they typed it all in lower case, so "McDonald" and "d'Souza" come
+    back as they wrote them; a name is the one word a customer notices
+    being got wrong.
+
+    None for anything that is not a name to say out loud — an email typed
+    into the name box, a single initial, something absurdly long. Saying
+    nothing is always available and never wrong.
+    """
+
+    if not full or not full.strip():
+        return None
+    word = full.strip().split()[0]
+    if len(word) < 2 or len(word) > 20:
+        return None
+    if not word[0].isalpha() or not all(c.isalpha() or c in "'-." for c in word):
+        return None
+    return word.capitalize() if word.islower() else word
+
+
 def _parse_when(value: str) -> datetime | None:
     """An ISO datetime with a zone, or None. Naive times are refused rather
     than guessed at: the branch, the customer and this server are not

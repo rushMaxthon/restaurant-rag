@@ -719,12 +719,25 @@ def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:
         )
 
 
+def _called(order: Order) -> str:
+    """How to address this customer in a message, including the space.
+
+    Empty when we have no name worth saying, so every line it appears in
+    reads correctly without one.
+    """
+
+    from app.services.ordering_agent.order_draft import first_name
+
+    name = first_name(getattr(order, "contact_name", None))
+    return f" {name}" if name else ""
+
+
 def _confirm_in_chat(order: Order) -> None:
     """The payment landed."""
 
     _tell_in_chat(
         order,
-        "Payment received, thank you. Your order is confirmed and the kitchen "
+        f"Payment received, thank you{_called(order)}. Your order is confirmed and the kitchen "
         f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
         f"Order reference: {str(order.id)[:8]}",
         finished=True,
@@ -760,7 +773,7 @@ def _report_failure_in_chat(db: Session, order: Order, transaction: PaymentTrans
     _tell_in_chat(
         order,
         f"Your payment did not go through{because}. Nothing has been charged and "
-        f"your order is still held.{retry}",
+        f"your order is still held{_called(order)}.{retry}",
         # Not finished: the next thing that happens may well be them paying.
         finished=False,
     )

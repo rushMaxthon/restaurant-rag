@@ -219,7 +219,10 @@ def describe_order_to_confirm(
         size = line.get("size_name")
         label = f"{name} ({size})" if size else name
         said.append(f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}")
-    parts = ["Here is your order:", "\n".join(said)]
+    # Their name at the moment it means most: the last thing said before
+    # money is asked for.
+    called = order_draft.first_name(getattr(draft, "contact_name", None)) if draft is not None else None
+    parts = [f"Here is your order, {called}:" if called else "Here is your order:", "\n".join(said)]
 
     # The total is the one checkout will charge, from the same arithmetic —
     # never the cart's subtotal. Live: a customer agreed to $16.98 and the

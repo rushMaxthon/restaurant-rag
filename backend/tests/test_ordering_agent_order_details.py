@@ -1638,3 +1638,74 @@ class TheAnswerToTheReadBackTests(unittest.TestCase):
             )
         self.assertEqual(seen.get("asked"), "Shall I place your order?")
         self.assertNotIn("Corn Fritters", seen.get("asked") or "")
+
+
+class CallingThemByNameTests(unittest.TestCase):
+    """A restaurant that knows you says your name — and never the wrong one."""
+
+    def name(self, raw):
+        from app.services.ordering_agent.order_draft import first_name
+
+        return first_name(raw)
+
+    def test_the_first_word_of_the_name_they_gave(self) -> None:
+        self.assertEqual(self.name("Hitesh Kachariya"), "Hitesh")
+
+    def test_a_name_typed_in_lower_case_is_said_properly(self) -> None:
+        self.assertEqual(self.name("hitesh"), "Hitesh")
+
+    def test_a_name_they_capitalised_themselves_is_left_alone(self) -> None:
+        # "McDonald" and "d'Souza" are not ours to re-spell.
+        self.assertEqual(self.name("McDonald"), "McDonald")
+        self.assertEqual(self.name("d'Souza"), "d'Souza")
+
+    def test_nothing_worth_saying_is_said(self) -> None:
+        # Saying nothing is always available; being called "Test@gmail.com"
+        # is not a warmer conversation than being called nothing.
+        for raw in (None, "", "   ", "X", "test@gmail.com", "a" * 30, "12345"):
+            self.assertIsNone(self.name(raw), raw)
+
+    def test_the_order_is_read_back_to_them_by_name(self) -> None:
+        from app.services.ordering_agent import order_draft as od
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        cart = {"lines": [{"name": "Corn Fritters", "quantity": 1, "total_price": "8.49"}],
+                "subtotal": "8.49", "needs_choice": []}
+        said = describe_order_to_confirm(
+            cart, od.OrderDraft(contact_name="hitesh", fulfillment_type="PICKUP"), None
+        )
+        self.assertTrue(said.startswith("Here is your order, Hitesh:"))
+
+    def test_an_order_with_no_name_reads_back_exactly_as_before(self) -> None:
+        from app.services.ordering_agent import order_draft as od
+        from app.services.ordering_agent.loop import describe_order_to_confirm
+
+        cart = {"lines": [{"name": "Corn Fritters", "quantity": 1, "total_price": "8.49"}],
+                "subtotal": "8.49", "needs_choice": []}
+        said = describe_order_to_confirm(cart, od.OrderDraft(fulfillment_type="PICKUP"), None)
+        self.assertTrue(said.startswith("Here is your order:"))
+
+    def test_a_greeting_carries_their_name_without_the_cache_carrying_it(self) -> None:
+        # The greeting cache is keyed on the greeting alone and shared by
+        # every customer who sends one. A name stored in it would be said to
+        # the next person who said hello.
+        from app.services.rag import _build_greeting_reply, _greeting_with_name
+
+        plain = _build_greeting_reply("good evening")
+        self.assertNotIn("Hitesh", plain)
+        self.assertIn("Hitesh", _greeting_with_name(plain, "Hitesh"))
+        self.assertEqual(_greeting_with_name(plain, None), plain)
+
+    def test_a_reply_that_is_not_our_greeting_is_left_alone(self) -> None:
+        from app.services.rag import _greeting_with_name
+
+        said = "Your order is placed and comes to $8.49."
+        self.assertEqual(_greeting_with_name(said, "Hitesh"), said)
+
+    def test_the_payment_messages_address_them(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.payments.service import _called
+
+        self.assertEqual(_called(SimpleNamespace(contact_name="hitesh kachariya")), " Hitesh")
+        self.assertEqual(_called(SimpleNamespace(contact_name=None)), "")
