@@ -178,8 +178,12 @@ def describe_cart(result: Any) -> str | None:
         quantity = line.get("quantity") or 1
         total = line.get("total_price")
         label = f"{name} ({size})" if size else name
-        parts.append(f"{quantity} x {label} - {_money(total)}")
-    said = "; ".join(parts)
+        parts.append(f"- {quantity} x {label} - {_money(total)}")
+    # One line per dish. As a single sentence — "1 x Margherita Pizza -
+    # $249.00; 2 x Corn Fritters - $16.98" — a cart was hard to read on a
+    # phone and harder to trust with money. Plain dashes, so the web reads
+    # it too; the phone turns them into bullets on the way out.
+    said = "\n" + "\n".join(parts) + "\n"
     subtotal = _money(result.get("subtotal"))
     tail = " Ready to check out?"
     if result.get("needs_choice"):
@@ -187,7 +191,7 @@ def describe_cart(result: Any) -> str | None:
         # honestly, so the subtotal is not the whole story and saying "ready
         # to check out" would be.
         tail = " One of those still needs a choice before it can be ordered."
-    return f"You have {said}. Subtotal {subtotal}.{tail}"
+    return f"Your cart:{said}Subtotal: {subtotal}.{tail}"
 
 
 def placed_order_in(records: list[ToolCallRecord]) -> dict[str, Any] | None:

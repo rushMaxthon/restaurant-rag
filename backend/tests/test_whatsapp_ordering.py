@@ -350,3 +350,68 @@ class TypingIndicatorTests(unittest.TestCase):
             )
 
         self.assertEqual(order, [("typing", "wamid.ABC"), ("worked", None)])
+
+
+class PhoneFormattingTests(unittest.TestCase):
+    """What a message looks like on the phone: presentation, never meaning."""
+
+    def fmt(self, text):
+        from app.services.whatsapp import format_for_whatsapp
+
+        return format_for_whatsapp(text)
+
+    def test_amounts_and_the_dish_just_added_are_bold(self) -> None:
+        self.assertEqual(
+            self.fmt("Added 2 x Corn Fritters to your order."),
+            "Added 2 x *Corn Fritters* to your order.",
+        )
+        self.assertIn("*$261.45*", self.fmt("Your order is placed and comes to $261.45."))
+
+    def test_a_receipt_has_bold_labels_and_a_tick(self) -> None:
+        body = self.fmt(
+            "Payment received, thank you. Your order is confirmed.\n\n"
+            "Total paid: $261.45\nOrder reference: 92f3d325"
+        )
+        self.assertTrue(body.startswith("✅ Payment received"))
+        self.assertIn("*Total paid: $261.45*", body)
+        self.assertIn("*Order reference:* 92f3d325", body)
+
+    def test_dashes_become_bullets_and_a_cart_gets_its_icon(self) -> None:
+        body = self.fmt("Your cart:\n- 1 x Margherita Pizza - $249.00\nSubtotal: $249.00.")
+        self.assertTrue(body.startswith("🛒 Your cart:"))
+        self.assertIn("• 1 x Margherita Pizza - *$249.00*", body)
+        self.assertIn("*Subtotal: $249.00*", body)
+
+    def test_the_pipelines_markdown_stops_arriving_as_asterisks(self) -> None:
+        # Live: "the **Build Your Own Curry** is a crowd-pleaser" reached a
+        # phone with all four asterisks showing.
+        self.assertEqual(self.fmt("the **Build Your Own Curry** is good"), "the *Build Your Own Curry* is good")
+
+    def test_it_is_idempotent(self) -> None:
+        once = self.fmt("Added 1 x Roti Canai to your order. Subtotal: $6.49.")
+        self.assertEqual(self.fmt(once), once)
+
+    def test_a_scheduled_time_is_bold(self) -> None:
+        self.assertIn("placed for *Thu 12:30*", self.fmt("Your order is placed for Thu 12:30 and comes to $14.64."))
+
+    def test_the_link_is_left_exactly_as_it_is(self) -> None:
+        url = "https://x.test/api/p/qYA8AOS-eOHZ"
+        body = self.fmt(f"Pay here:\n{url}")
+        self.assertIn("*Pay here:*\n" + url, body)
+
+    def test_every_message_leaves_through_the_formatter(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        posted = {}
+
+        class Response:
+            status_code = 200
+            text = ""
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "1"
+        ), patch.object(service.httpx, "post", lambda url, **kw: posted.update(kw["json"]) or Response()):
+            service.send_text("916353100362", "Added 1 x Roti Canai to your order.")
+        self.assertEqual(posted["text"]["body"], "Added 1 x *Roti Canai* to your order.")

@@ -876,7 +876,7 @@ class CartReadBackTests(OrderingAgentLoopTestCase):
         said = loop.describe_cart(self._result())
         self.assertIn("2 x Corn Fritters - $16.98", said)
         self.assertIn("1 x Margherita Pizza (Large) - $12.00", said)
-        self.assertIn("Subtotal $28.98", said)
+        self.assertIn("Subtotal: $28.98", said)
         self.assertIn("Ready to check out?", said)
 
     def test_an_empty_cart_says_so(self) -> None:
@@ -901,5 +901,5 @@ class CartReadBackTests(OrderingAgentLoopTestCase):
             db=None, scope=SCOPE, message="remind me what I picked so far", cart=[], generate=generate,
             clock=ScriptedClock(0.0), max_rounds=4, budget_seconds=1000.0,
         )
-        self.assertIn("Subtotal $28.98", outcome.answer or "")
+        self.assertIn("Subtotal: $28.98", outcome.answer or "")
 
