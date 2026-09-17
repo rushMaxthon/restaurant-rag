@@ -75,6 +75,11 @@ class OrderDraft:
     # and the ids behind each option. A turn's records do not survive it, so
     # without this "large one" was a sentence about nothing.
     pending_choice: str | None = None
+    # What they said they eat, kept for the conversation. Stating it on a
+    # guest channel was remembered nowhere at all — `_remember_stated_diet`
+    # writes to an account and every WhatsApp customer is a guest — so a
+    # vegetarian was offered chicken two messages later.
+    diet: str | None = None
     # Whether the customer has stood behind these details in THIS
     # conversation — by typing them, or by saying yes to them. Details that
     # came from their account have not been confirmed by anybody: an address
@@ -97,6 +102,7 @@ class OrderDraft:
         "pending_choice",
         "confirmed",
         "confirm_asks",
+        "diet",
     )
 
     def known_fields(self) -> list[str]:
@@ -156,7 +162,7 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     # time the kitchen offered was saved here and dropped on the very next
     # read, so "yes" on the following turn had nothing to say yes to.
     for name in OrderDraft._STATE_FIELDS:
-        if name != "collecting" and isinstance(stored.get(name), str):
+        if name not in {"collecting", "confirmed", "confirm_asks"} and isinstance(stored.get(name), str):
             kept[name] = stored[name]
     return OrderDraft(**kept)
 

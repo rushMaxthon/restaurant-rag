@@ -657,7 +657,7 @@ def read_order_intent(
 
     empty: dict[str, Any] = {
         "add": None, "details": {}, "checkout": False, "when": None,
-        "chose": None, "confirms": None,
+        "chose": None, "confirms": None, "browse": None,
     }
     if not message.strip():
         return empty
@@ -697,6 +697,8 @@ def read_order_intent(
         f'  "details": {{{fields}}}   // each one as stated, or null\n'
         '  "checkout": true if they are asking to place the order, check out or pay; '
         "else false\n"
+        '  "browse": what they are asking to SEE on the menu ("pizza", "desserts", '
+        '"the menu"), else null\n'
         '  "chose": the option they picked from the list below, copied exactly, '
         "else null\n"
         '  "confirms": true if they accept the details read back to them, false '
@@ -710,6 +712,10 @@ def read_order_intent(
         '- "add" is for asking for food ("add X", "I want X", "get me X", "X please"). '
         'A question about a dish ("what is X", "how much is X", "do you have X") is '
         "not an add.\n"
+        '- "browse" is for being shown things: "do you have pizza", "show me the '
+        'menu", "what desserts are there", "I am asking for pizza". Put the thing '
+        "they want to see, in their own words. It is null when they are asking for "
+        "one named dish to be added.\n"
         # Measured: "Please add four cheese pizza in my cart" was read as four
         # of a dish called "cheese pizza", and four Cheese Burst Pizzas went
         # into a cart — $1396 of the wrong thing. A number can belong to the
@@ -775,6 +781,10 @@ def read_order_intent(
         when = when.strip()
         when = "opening" if when.lower() == "opening" else when
 
+    browse = parsed.get("browse")
+    if not isinstance(browse, str) or not browse.strip() or browse.strip().lower() in {"null", "none"}:
+        browse = None
+
     chose = parsed.get("chose")
     if not isinstance(chose, str) or not chose.strip() or chose.strip().lower() in {"null", "none"}:
         chose = None
@@ -790,6 +800,7 @@ def read_order_intent(
         "when": when,
         "chose": chose.strip() if chose else None,
         "confirms": confirms,
+        "browse": browse.strip() if browse else None,
     }
 
 

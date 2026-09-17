@@ -779,6 +779,31 @@ def run_turn(
                 ToolCallRecord(tool="place_order", args={}, error=f"tool_error: {error}")
             )
 
+    def _show_dishes(phrase: str) -> TurnOutcome | None:
+        """Read the menu out: their words, our rows, their diet.
+
+        The reply pipeline answers a menu question well when it is about
+        flavour or a recommendation. It answers "do you have pizza" with
+        Coconut Ice Cream, because semantic similarity matched dishes that
+        take extras. When a customer names something the menu has, the menu
+        is the answer.
+        """
+
+        want_veg = True if (scope.diet or "").lower() == "veg" else None
+        shown = tools_module.dishes_to_show(db, scope, phrase, is_veg=want_veg)
+        if not shown:
+            return None
+        listed = "\n".join(f"- {d['name']} - ${d['price']}" for d in shown)
+        opening = "Here is what we have" if want_veg is None else "Here is what we have, all vegetarian"
+        return TurnOutcome(
+            answer=f"{opening}:\n{listed}\n\nWhich one would you like?",
+            answer_about="menu",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
     def _details_to_confirm() -> str | None:
         """Their details, if we are holding some nobody has stood behind.
 
@@ -983,7 +1008,8 @@ def run_turn(
         # readily as for the real thing, so a name that fits several dishes
         # is a question, not a choice this agent gets to make with somebody's
         # money.
-        candidates = tools_module.dishes_matching_words(db, scope, name)
+        want_veg = True if (scope.diet or "").lower() == "veg" else None
+        candidates = tools_module.dishes_matching_words(db, scope, name, is_veg=want_veg)
         exact = [c for c in candidates if c[1].casefold() == name.casefold()]
         if not exact and len(candidates) > 1:
             listed = ", ".join(dish for _, dish in candidates[:-1]) + f" or {candidates[-1][1]}"
@@ -1187,7 +1213,7 @@ def run_turn(
     unconfirmed = _details_to_confirm()
     wanted = (
         {"add": None, "details": {}, "checkout": True, "when": None,
-         "chose": None, "confirms": None}
+         "chose": None, "confirms": None, "browse": None}
         if plain == "checkout"
         else read_order_intent(
             message,
@@ -1254,6 +1280,11 @@ def run_turn(
         answered = _answer_choice(asked_before, wanted["chose"])
         if answered:
             actions.extend(answered)
+
+    if wanted.get("browse") and db is not None and scope.restaurant_location_id:
+        shown = _show_dishes(wanted["browse"])
+        if shown:
+            return shown
 
     if wanted["add"]:
         added = _add_named_dish(*wanted["add"])

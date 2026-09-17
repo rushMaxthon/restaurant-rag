@@ -881,3 +881,98 @@ class AReturningCustomerTests(unittest.TestCase):
             draft = T._draft_for(scope)
         self.assertEqual(draft.contact_phone, "+916353100362")
         self.assertEqual(draft.delivery_address, "42 Example Road", "the rest still comes from the account")
+
+
+class ShowingTheMenuTests(unittest.TestCase):
+    """A question about the menu is answered from the menu.
+
+    Live, all four wrong: "here is the vegetarian menu for you:" with no
+    list behind it; a list that ignored a diet stated two messages earlier;
+    "do you have pizza with extra cheese" answered with Coconut Ice Cream;
+    and "I am asking for pizza" answered with a question back.
+    """
+
+    def rows(self, names_and_veg):
+        import uuid as _uuid
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return [
+            SimpleNamespace(id=_uuid.uuid4(), name=n, price=Decimal("9.99"),
+                            is_veg=v, category="Mains")
+            for n, v in names_and_veg
+        ]
+
+    def shown(self, rows, phrase, is_veg=None):
+        import uuid as _uuid
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from app.services.ordering_agent import tools as T
+
+        db = MagicMock()
+        db.scalars.return_value = rows
+        scope = SimpleNamespace(restaurant_location_id=_uuid.uuid4())
+        return T.dishes_to_show(db, scope, phrase, is_veg=is_veg)
+
+    def test_dishes_come_back_with_their_names_and_prices(self) -> None:
+        shown = self.shown(self.rows([("Margherita Pizza", True)]), "pizza")
+        self.assertEqual(shown, [{"name": "Margherita Pizza", "price": "9.99", "is_veg": True}])
+
+    def test_a_diet_is_asked_of_the_query_not_remembered_by_a_model(self) -> None:
+        import uuid as _uuid
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from app.services.ordering_agent import tools as T
+
+        db = MagicMock()
+        db.scalars.return_value = self.rows([("Veggie Garden Pizza", True)])
+        scope = SimpleNamespace(restaurant_location_id=_uuid.uuid4())
+        T.dishes_to_show(db, scope, "pizza", is_veg=True)
+        # The filter is in the statement, so no model can forget it.
+        self.assertIn("is_veg", str(db.scalars.call_args[0][0]))
+
+    def test_a_phrase_matching_nothing_still_shows_the_menu(self) -> None:
+        # "Here is the vegetarian menu for you:" with nothing after it was
+        # the worst of the four: a promise with no list behind it.
+        shown = self.shown(self.rows([("Corn Fritters", True)]), "something lovely")
+        self.assertEqual([d["name"] for d in shown], ["Corn Fritters"])
+
+    def test_the_diet_lasts_the_conversation(self) -> None:
+        # Stating it on a guest channel was remembered nowhere at all.
+        from app.services.ordering_agent import order_draft
+
+        sid = uuid.uuid4()
+        order_draft.save(sid, order_draft.OrderDraft(diet="veg"))
+        loaded = order_draft.load(sid)
+        order_draft.clear(sid)
+        self.assertEqual(loaded.diet, "veg")
+
+    def test_a_menu_answer_from_the_rows_is_the_agents_to_give(self) -> None:
+        # It was labelled "menu", the seam owned only "cart" and "order", so
+        # the pipeline's prose won and the list the customer asked for never
+        # reached them.
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from app.services import rag
+        from app.services.ordering_agent.loop import TurnOutcome
+
+        outcome = TurnOutcome(
+            answer="Here is what we have:\n- Margherita Pizza - $12.99",
+            answer_about="menu", actions=[], records=[],
+            fallback_reason=None, elapsed_seconds=0.1,
+        )
+        with patch.object(rag.settings, "enable_ordering_agent", True),              patch.object(rag, "run_turn", return_value=outcome),              patch.object(rag, "_remember_stated_diet", lambda *a, **k: None),              patch.object(rag, "_diet_for_session", lambda *a, **k: None),              patch.object(rag, "_returning_customer", lambda *a, **k: None):
+            frame = rag._run_ordering_agent(
+                None,
+                user=SimpleNamespace(id=uuid.uuid4(), is_guest=True),
+                message="do you have pizza",
+                cart=[],
+                restaurant_id=uuid.uuid4(),
+                restaurant_location_id=uuid.uuid4(),
+                turn_id="t",
+            )
+        self.assertTrue(frame["agent_asks"], "a menu the agent read out is the agent's answer")
+        self.assertIn("Margherita Pizza", frame["agent_reply"])

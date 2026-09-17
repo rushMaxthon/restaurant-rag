@@ -1014,7 +1014,12 @@ def _build_dish_result(menu_item: MenuItem, *, confidence: str, args: GetDishArg
 
 
 def dishes_matching_words(
-    db: Session, scope: OrderingScope, phrase: str
+    db: Session,
+    scope: OrderingScope,
+    phrase: str,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 8,
 ) -> list[tuple[str, str]]:
     """Every dish at this branch whose NAME contains all of these words.
 
@@ -1038,10 +1043,62 @@ def dishes_matching_words(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
         MenuItem.is_available.is_(True),
     )
+    if is_veg is not None:
+        # A vegetarian asking for pizza wants the vegetarian pizzas. The
+        # filter belongs in the query, not in whatever the model remembers.
+        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
     for word in words:
         stmt = stmt.where(MenuItem.name.ilike(f"%{word}%"))
-    rows = list(db.scalars(stmt.order_by(MenuItem.name).limit(8)))
+    rows = list(db.scalars(stmt.order_by(MenuItem.name).limit(limit)))
     return [(str(row.id), row.name) for row in rows]
+
+
+def dishes_to_show(
+    db: Session,
+    scope: OrderingScope,
+    phrase: str,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Dishes to read out to a customer: name, price, and whether veg.
+
+    By name when the word they used is a dish's word ("pizza"), and by the
+    branch's whole menu when it is not ("the menu", "something vegetarian").
+    Either way the rows answer, because a question about the menu is not a
+    search problem — semantic retrieval answered "do you have pizza with
+    extra cheese" with Coconut Ice Cream, having matched dishes that take
+    extras rather than the word the customer said.
+    """
+
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
+    words = [
+        w
+        for w in "".join(c if c.isalnum() or c.isspace() else " " for c in phrase.lower()).split()
+        if len(w) > 2
+    ]
+    named = stmt
+    for word in words:
+        named = named.where(MenuItem.name.ilike(f"%{word}%"))
+    rows = list(db.scalars(named.order_by(MenuItem.name).limit(limit))) if words else []
+    if not rows:
+        # Nothing by name. A category, then the menu itself — both of which
+        # are still the rows, never a guess about what they might have meant.
+        by_category = stmt
+        for word in words:
+            by_category = by_category.where(MenuItem.category.ilike(f"%{word}%"))
+        rows = list(db.scalars(by_category.order_by(MenuItem.name).limit(limit))) if words else []
+    if not rows:
+        rows = list(db.scalars(stmt.order_by(MenuItem.category, MenuItem.name).limit(limit)))
+    return [
+        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+        for row in rows
+    ]
 
 
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
