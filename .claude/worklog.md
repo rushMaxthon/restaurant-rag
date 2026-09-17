@@ -17,6 +17,38 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (3) — The order is read back before it goes (commit 87d21ca)
+
+**Done:** a real restaurant repeats the order before charging for it. The
+last thing before an order exists is now the order itself — every line, the
+total, where it is going and when, and one question ("Shall I place it?").
+`loop.describe_order_to_confirm` builds it; the total comes from
+`price_quote` -> `validate_order_draft`, the same arithmetic checkout runs,
+with the fee and the tax on their own lines. The first cut read back $16.98
+over an order placed for $20.62.
+
+Every path that can place is gated on `_order_stood_behind()`: the
+`if records:` path, the top-of-round place, the answer path and the round
+cap. `OrderDraft` carries `order_confirmed` and `place_asks` (asked at most
+twice — the order is created unpaid and the link is what spends money).
+A cart that changes after they agreed clears the flag and is read back again.
+
+Also: `read_order_intent` returns `add` as a LIST, so one English sentence
+can order several dishes; pausing ("no wait", "hold on", "one sec") is a
+decline rather than silence; `_hold(..., asks=...)` gives the model a short
+question instead of the read-back, which it was mining for the customer's
+own address (a "yes" came back carrying a delivery address, was read as a
+new instruction, and the order was read back a second time); agreeing to
+details now gets on with the order instead of falling to the reply pipeline;
+and details typed for a pickup are not read back again.
+
+**Verified:** suite 1620 OK. Live on the test number: delivery, pickup,
+returning customer, pausing and resuming, Hinglish agreement, declining then
+adding more — every one ending in a placed order whose total matches the one
+read back. Backend + worker restarted on 87d21ca; sessions cleared.
+
+**Open:** ngrok webhook still in place for Mr Tailor; qwen3 turn times 3-8s.
+
 ## 2026-09-17 (2) — "Yes" means the question we just asked (commit e54972d)
 
 **Done:** the agent ended every turn with a question and remembered none
