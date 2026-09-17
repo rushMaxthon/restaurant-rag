@@ -660,7 +660,7 @@ def read_order_intent(
     empty: dict[str, Any] = {
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
-        "category": None,
+        "category": None, "wants_to_add": False,
     }
     if not message.strip():
         return empty
@@ -734,6 +734,8 @@ def read_order_intent(
         '"the menu"), else null\n'
         '  "category": the menu section they mean, copied exactly from the list '
         "below, else null\n"
+        '  "wants_to_add": true if they want to order something MORE but have not '
+        "said what, else false\n"
         '  "asks_hours": true if they are asking WHEN — when you open, when the '
         "order would arrive, what times are possible — else false\n"
         '  "chose": the options they picked from the list below, copied exactly, '
@@ -753,6 +755,12 @@ def read_order_intent(
         'menu", "what desserts are there", "I am asking for pizza". Put the thing '
         "they want to see, in their own words. It is null when they are asking for "
         "one named dish to be added.\n"
+        # Measured: "I want to add more item in my cart" matched nothing at
+        # all, so the turn had nothing to do and read the cart back — the
+        # same cart, twice in a row.
+        '- "wants_to_add" is wanting more without saying what: "I want to add '
+        'more items", "can I add something else", "add one more thing". If they '
+        'name a dish it belongs in "add" and "wants_to_add" is false.\n'
         # Measured: "Please add four cheese pizza in my cart" was read as four
         # of a dish called "cheese pizza", and four Cheese Burst Pizzas went
         # into a cart — $1396 of the wrong thing. A number can belong to the
@@ -835,6 +843,7 @@ def read_order_intent(
         when = "opening" if when.lower() == "opening" else when
 
     asks_hours = parsed.get("asks_hours") is True
+    wants_to_add = parsed.get("wants_to_add") is True
 
     category = parsed.get("category")
     if not isinstance(category, str) or category.strip().lower() in {"null", "none", ""}:
@@ -874,6 +883,7 @@ def read_order_intent(
         "browse": browse.strip() if browse else None,
         "category": category,
         "asks_hours": asks_hours,
+        "wants_to_add": wants_to_add,
     }
 
 

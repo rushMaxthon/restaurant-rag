@@ -1709,3 +1709,83 @@ class CallingThemByNameTests(unittest.TestCase):
 
         self.assertEqual(_called(SimpleNamespace(contact_name="hitesh kachariya")), " Hitesh")
         self.assertEqual(_called(SimpleNamespace(contact_name=None)), "")
+
+
+class WantingMoreWithoutSayingWhatTests(unittest.TestCase):
+    """A restaurant suggests; it does not read the cart back.
+
+    Live, with one pizza in the basket:
+
+        > I want to add more item in my cart
+        🛒 Your cart:
+        • 1 x Green Curry Pizza - $18.99
+        Subtotal: $18.99. Ready to check out?
+
+    The same cart they had just been shown, in answer to a request to add
+    to it. The reading found nothing in the sentence — no dish named, no
+    section asked for — so the turn had nothing to do and fell back to the
+    cart, which is what a turn does when it has nothing to say.
+    """
+
+    def test_the_reading_knows_they_want_more_without_naming_it(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "I want to add more item in my cart",
+            generate=lambda *a, **k: '{"wants_to_add": true}',
+        )
+        self.assertTrue(got["wants_to_add"])
+        self.assertIsNone(got["add"])
+
+    def test_naming_a_dish_is_not_wanting_more_in_the_abstract(self) -> None:
+        from app.services.ordering_agent.planner import read_order_intent
+
+        got = read_order_intent(
+            "add a thai iced tea",
+            generate=lambda *a, **k: '{"add": [{"dish": "thai iced tea", "quantity": 1}]}',
+        )
+        self.assertFalse(got["wants_to_add"])
+        self.assertEqual(got["add"], [("thai iced tea", 1)])
+
+    def rows(self, *names_and_categories):
+        from types import SimpleNamespace
+
+        return [
+            SimpleNamespace(
+                id=uuid.uuid4(), name=name, category=category, price=9.99,
+                is_veg=True, is_bestseller=False, popularity_score=1,
+            )
+            for name, category in names_and_categories
+        ]
+
+    def test_three_suggestions_are_three_different_parts_of_the_menu(self) -> None:
+        # Ordered by popularity alone they came back as three main courses
+        # to a customer who already had a pizza. A waiter offers a drink, a
+        # side and something sweet; variety is the suggestion.
+        from app.services.ordering_agent import tools as tools_module
+        from tests.test_ordering_agent_loop import SCOPE
+
+        db = _MenuDb(*self.rows(
+            ("Pad Thai", "Noodles"),
+            ("Pad See Ew", "Noodles"),
+            ("Thai Iced Tea", "Beverages"),
+            ("Mango Sticky Rice", "Dessert"),
+        ))
+        got = tools_module.dishes_to_suggest(db, SCOPE)
+        self.assertEqual(
+            [d["name"] for d in got], ["Pad Thai", "Thai Iced Tea", "Mango Sticky Rice"]
+        )
+
+    def test_a_menu_with_one_section_still_suggests_something(self) -> None:
+        from app.services.ordering_agent import tools as tools_module
+        from tests.test_ordering_agent_loop import SCOPE
+
+        db = _MenuDb(*self.rows(("Pad Thai", "Noodles"), ("Pad See Ew", "Noodles")))
+        got = tools_module.dishes_to_suggest(db, SCOPE)
+        self.assertEqual([d["name"] for d in got], ["Pad Thai"])
+
+    def test_nothing_on_the_menu_means_nothing_offered(self) -> None:
+        from app.services.ordering_agent import tools as tools_module
+        from tests.test_ordering_agent_loop import SCOPE
+
+        self.assertEqual(tools_module.dishes_to_suggest(_MenuDb(), SCOPE), [])

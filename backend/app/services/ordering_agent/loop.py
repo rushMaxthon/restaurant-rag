@@ -899,6 +899,36 @@ def run_turn(
         )
         return branch_hours.describe_hours(location, fulfillment_type=wanted_type)
 
+    def _suggest_more() -> TurnOutcome | None:
+        """A few things to offer somebody who wants more but has not said what.
+
+        Wanting more without naming it is one of the commonest things a
+        customer says, and a restaurant answers it by suggesting. Live, the
+        turn found nothing in the sentence, had nothing to do, and read the
+        cart back — the same cart, twice in a row.
+        """
+
+        want_veg = True if (scope.diet or "").lower() == "veg" else None
+        shown = tools_module.dishes_to_suggest(
+            db,
+            scope,
+            in_cart=[line.menu_item_id for line in cart],
+            is_veg=want_veg,
+        )
+        if not shown:
+            return None
+        listed = "\n".join(f"- {d['name']} - ${d['price']}" for d in shown)
+        opening = "Of course. People often add:" if cart else "Of course. These go quickly:"
+        asked = _hold("Tell me the name and I will add it.", yes="name_one")
+        return TurnOutcome(
+            answer=f"{opening}\n{listed}\n\n{asked}",
+            answer_about="menu",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
     def _show_dishes(phrase: str, category: str | None = None) -> TurnOutcome | None:
         """Read the menu out: their words, our rows, their diet.
 
@@ -1761,6 +1791,20 @@ def run_turn(
         shown = _show_dishes(wanted.get("browse") or "", wanted.get("category"))
         if shown:
             return shown
+
+    # They want more and have not said what. A restaurant suggests; it does
+    # not read the cart back at somebody who just asked to add to it.
+    if (
+        wanted.get("wants_to_add")
+        and not wanted["add"]
+        and not wanted.get("browse")
+        and not wanted.get("category")
+        and db is not None
+        and scope.restaurant_location_id
+    ):
+        offered = _suggest_more()
+        if offered is not None:
+            return offered
 
     for one_dish in wanted["add"] or []:
         # One sentence can order more than one thing.

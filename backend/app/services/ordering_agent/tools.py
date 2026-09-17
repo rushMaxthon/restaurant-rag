@@ -39,7 +39,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, time
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, get_args, Callable
+from typing import Any, get_args, Callable, Sequence
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -1051,6 +1051,77 @@ def dishes_matching_words(
         stmt = stmt.where(MenuItem.name.ilike(f"%{word}%"))
     rows = list(db.scalars(stmt.order_by(MenuItem.name).limit(limit)))
     return [(str(row.id), row.name) for row in rows]
+
+
+def dishes_to_suggest(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    in_cart: Sequence[Any] = (),
+    is_veg: bool | None = None,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """A few things to offer a customer who wants more but has not said what.
+
+    What people actually order here — bestsellers first, then popularity —
+    from the parts of the menu this cart does not already cover: somebody
+    holding a pizza is offered a drink and a dessert, not another pizza.
+    Rows, ordered by the branch's own columns; nothing here is a guess about
+    taste.
+    """
+
+    base = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        base = base.where(MenuItem.is_veg.is_(is_veg))
+    ids = [i for i in in_cart if i]
+    if ids:
+        base = base.where(MenuItem.id.not_in(ids))
+    order = (
+        MenuItem.is_bestseller.desc(),
+        MenuItem.popularity_score.desc().nullslast(),
+        MenuItem.name,
+    )
+    def spread(found: Sequence[MenuItem]) -> list[MenuItem]:
+        """At most one per section, so three suggestions are three ideas.
+
+        Ordered by popularity alone they came back as three main courses to
+        a customer who already had a pizza. A waiter offers a drink, a side
+        and something sweet — variety is the suggestion.
+        """
+
+        picked: list[MenuItem] = []
+        seen_sections: set[str] = set()
+        for row in found:
+            section = row.category or ""
+            if section in seen_sections:
+                continue
+            seen_sections.add(section)
+            picked.append(row)
+            if len(picked) == limit:
+                break
+        return picked
+
+    # Enough rows that one per section can still fill the list.
+    reach = max(limit * 8, 24)
+    rows: list[MenuItem] = []
+    if ids:
+        covered = [
+            c
+            for c in db.scalars(
+                select(MenuItem.category).where(MenuItem.id.in_(ids)).distinct()
+            )
+            if c
+        ]
+        if covered:
+            rows = spread(
+                list(db.scalars(base.where(MenuItem.category.not_in(covered)).order_by(*order).limit(reach)))
+            )
+    if not rows:
+        rows = spread(list(db.scalars(base.order_by(*order).limit(reach))))
+    return [{"name": row.name, "price": f"{row.price:.2f}"} for row in rows]
 
 
 def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
