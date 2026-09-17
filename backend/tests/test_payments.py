@@ -1101,3 +1101,64 @@ class ReturnPageTests(unittest.TestCase):
         response = self.page("paid", number="")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("wa.me", response.text)
+
+
+class ShortLinkTests(unittest.TestCase):
+    """A payment link a phone can read, served by this API."""
+
+    LONG = "https://checkout.stripe.com/c/pay/cs_test_abc#fidnandhYHdWcXxpYCc"
+
+    def test_a_long_link_becomes_one_short_line_that_leads_back_to_it(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", "https://api.example.test"):
+            short = short_links.shorten(self.LONG)
+        self.assertTrue(short.startswith("https://api.example.test/api/p/"), short)
+        self.assertLess(len(short), 60)
+        token = short.rsplit("/", 1)[-1]
+        self.assertEqual(short_links.resolve(token), self.LONG)
+
+    def test_without_a_public_address_the_long_link_is_sent_unchanged(self) -> None:
+        # Worse to read, but it pays.
+        from unittest.mock import patch
+
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", ""):
+            self.assertEqual(short_links.shorten(self.LONG), self.LONG)
+
+    def test_an_unknown_token_resolves_to_nothing(self) -> None:
+        from app.services import short_links
+
+        self.assertIsNone(short_links.resolve("never-issued"))
+        self.assertIsNone(short_links.resolve(""))
+
+    def test_the_route_sends_the_phone_on_to_stripe(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+        from app.services import short_links
+
+        with patch.object(short_links.settings, "public_base_url", "https://api.example.test"):
+            token = short_links.shorten(self.LONG).rsplit("/", 1)[-1]
+        response = TestClient(app).get(f"/api/p/{token}", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], self.LONG)
+
+    def test_an_expired_token_says_so_and_points_back_to_the_chat(self) -> None:
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.api import short_links as route
+        from app.main import app
+
+        with patch.object(route.settings, "whatsapp_business_number", "918758325037"):
+            response = TestClient(app).get("/api/p/gone", follow_redirects=False)
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("expired", response.text)
+        self.assertIn("wa.me/918758325037", response.text)

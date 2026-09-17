@@ -59,6 +59,7 @@ from app.schemas.order import (
     OrderCreateRequest,
 )
 from app.services import rag as ordering_rag
+from app.services import short_links
 from app.services import restaurant_locations as branch_hours
 from app.services.cart_actions import CartAction, ExistingCartLine, _matching_lines
 from app.services.ordering_agent import order_channel, order_draft
@@ -1572,7 +1573,10 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
     }
     try:
         link = create_payment_link(db, customer, order.id)
-        result["payment_url"] = link.url
+        # The chat's copy is the short one. Web clients get the real URL from
+        # `create_payment_link` directly and render it as a button; a phone
+        # has to read this one as a line of text.
+        result["payment_url"] = short_links.shorten(link.url)
     except HTTPException as error:
         # The order exists and is theirs; only the link failed. Saying so is
         # better than pretending the order did not happen.

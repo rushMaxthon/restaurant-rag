@@ -12,6 +12,7 @@ from app.api.menu_items import router as menu_items_router
 from app.api.notifications import router as notifications_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
+from app.api.short_links import router as short_links_router
 from app.api.personalized_offers import router as personalized_offers_router
 from app.api.preferences import router as preferences_router
 from app.api.profile import router as profile_router
@@ -35,6 +36,7 @@ api_router.include_router(menu_items_router)
 api_router.include_router(notifications_router)
 api_router.include_router(orders_router)
 api_router.include_router(payments_router)
+api_router.include_router(short_links_router)
 api_router.include_router(personalized_offers_router)
 api_router.include_router(preferences_router)
 api_router.include_router(profile_router)

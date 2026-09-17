@@ -751,7 +751,9 @@ def _report_failure_in_chat(db: Session, order: Order, transaction: PaymentTrans
             # declined attempt: this is the same page, ready for another card.
             link = create_payment_link(db, customer, order.id)
             if link.url:
-                retry = f"\n\nTry again here:\n{link.url}"
+                from app.services.short_links import shorten
+
+                retry = f"\n\nTry again here:\n{shorten(link.url)}"
     except Exception:  # noqa: BLE001 - a failure is worth reporting without a link
         logger.warning("Could not offer a retry link order_id=%s", order.id, exc_info=True)
 
