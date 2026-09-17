@@ -17,6 +17,39 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (6) — Ordering for a day that is not today (commit cc2fe86)
+
+**Done:** four faults in one screenshot.
+- "I need this order tomorrow" had nowhere to go: the reading had no shape
+  for a day without a clock time, so it returned `when=None` plus
+  `asks_hours=True` and was answered with TODAY's hours. `when` now accepts
+  a bare `"YYYY-MM-DD"`, and `asks_hours` is false whenever `when` is filled.
+- `loop._take_time` treats a 10-character `when` as a day that still needs a
+  time: it records `needs_a_time` with that day's own hours and holds the day
+  on the standing question (`yes="time_on_day"`, subject=the ISO date). The
+  loop passes it to `read_order_intent(for_day=...)`, so the "3 PM" that
+  comes back lands on Friday rather than on nothing.
+- `describe_time_settled` (new, in both answer chains) says a time that was
+  kept and asks about a day that still needs one. Previously a kept time was
+  answered with silence, and the reply pipeline filled it with two answers
+  that contradicted each other ("yes at 3 pm" then "not at 3 pm").
+- A refused time offers `next_available_slot_start(reference_dt=max(chosen,
+  now))` — the refusal for the 18th had offered Thu 15:00, the day before.
+- `restaurant_locations.describe_hours` names a future day ("Delivery on
+  Friday") instead of "today", and omits "we are open now" for another day.
+- `_take_time` defaults to DELIVERY when nobody has said, like everywhere
+  else that guesses; it had said "Pickup" to a customer who wanted delivery.
+
+**Verified:** suite 1642 OK. Live: "18th Sep" -> asks the time with Friday's
+hours -> "3 PM" -> "Right, I have that down for Fri 15:00" -> details ->
+read-back showing "For Fri 15:00" -> placed for Fri 15:00 with the link.
+Also "tomorrow at 7 pm" in one sentence, a closed future time (offers Sat
+10:30, never earlier), and a real hours question still answered as one.
+
+**Not done:** changing the time of an order ALREADY placed. The screenshot
+began with that ("Sorry! I need thos order tomorrow" after the payment link),
+and there is no path for it — the cart is emptied at placement. Worth adding.
+
 ## 2026-09-17 (5) — Suggesting when they want more (commit fcc09ca)
 
 **Done:** "I want to add more item in my cart" was answered with the cart
