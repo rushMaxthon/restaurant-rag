@@ -17,6 +17,119 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## YYYY-MM-DD — short title
+
+**Goal:** what was asked.
+**Changed:** files/areas touched, one line each.
+**Verified:** exact commands run and their result. "Not verified" if not run.
+**Open:** anything unfinished, deferred, or uncertain.
+**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
+```
+
+## 2026-09-18 (5) — An audit: what the panel and the storefront actually do (9dc5730, da6e9ed, 335e115, a7ddd29, d6db242)
+
+User asked me to check the admin and the storefront, polish, and find and fix
+bugs. No feature to build — so the method was to look rather than to reason:
+open every page in Chrome, read the network panel and the console, and go and
+find the code behind anything that looked off.
+
+**What looking found that thinking would not have.**
+
+`/api/app-clients` was requested four times per admin page load. Two callers —
+the tenant switcher loading the list to render names, and the store loading the
+same list to read each restaurant's currency — neither knowing about the other,
+doubled again by StrictMode in dev. Nothing was broken on screen. Two identical
+200s look exactly like one working feature. The store owns the rows now; the
+switcher reads them; the Tenants page keeps its own copy (it filters, sorts and
+pages over it, and has its own error state) but tells the store to reload after
+a lifecycle change.
+
+The currency work from earlier in the week was half done, and the half that was
+missing is the half that misleads. Rows that name one restaurant — the
+dashboard's revenue leaders, its top items, both recent-order lists, the
+Reports tables — all called the money formatter with no restaurant, so every
+figure took the view's currency. The dashboard's aggregation showed the shape
+of it: it grouped orders into a Map keyed by restaurant id and then returned
+`map.values()`, throwing away the key it had just grouped by. Summed figures
+are left alone on purpose; the mixed-currency notice says what they are, and
+Generated Combos had such a total with no notice above it.
+
+The AI Manager was worse, because it writes sentences. `money()` — 116 call
+sites across seven modules — read `settings.payment_currency`, so a Surat
+kitchen's ₹1,20,000 week was narrated to its owner as "$120,000". Bound as a
+ContextVar now, set at the two doors a restaurant comes through, and rebound
+INSIDE both batch loops: briefing generation walks every restaurant on the
+platform, and a binding hoisted above that loop would stamp the first
+restaurant's currency on everybody's numbers.
+
+And the storefront, which is the one a customer sees: four pages each imported
+a bundled photograph from `src/assets` — Bangkok Bowl's hero, its pad thai, its
+green curry, its mango sticky rice — and showed it to every tenant. A Surat
+dhokla shop's website opened on a bowl of Thai noodle salad. The page titles
+and hero copy had been made per-tenant weeks ago; the picture above them had
+not, which is exactly why nobody noticed. It renders the restaurant's own
+`cover_image_url` now, or no photograph at all — a wash from that tenant's
+brand colour. Showing nothing beats showing a competitor's biryani.
+
+Checking that fix turned up another: two fields are spelled `cover_image_url`,
+one on the app client and one on the restaurant, and the admin's restaurant
+edit form writes the one the storefront does not read. An operator could type a
+cover URL, get a success toast, and change no page.
+
+**Changed:**
+- `frontend-admin/src/store/AdminStore.tsx`, `AdminStoreContext.ts`,
+  `components/TenantSwitcher.tsx`, `pages/TenantsPage.tsx` — one owner of the
+  tenant list, plus `tenantsLoaded` so nothing says "0 restaurants" mid-flight.
+- `frontend-admin/src/pages/DashboardPage.tsx`, `ReportsPage.tsx`,
+  `components/RestaurantOffersManager.tsx`, `pages/GeneratedCombosPage.tsx` —
+  per-restaurant money, and a mixed-currency notice where a total spans tenants.
+- `backend/app/services/currency.py` — `format_rounded_amount`, and the digit
+  grouping extracted so prose and prices share one implementation.
+- `backend/app/services/insights/rules.py`, `scope.py`, `generation.py`,
+  `outcomes.py`, `backend/app/tasks/insights.py` — narration currency.
+- `frontend-customer/src/components/bangkok/storefront-hero.tsx` (new),
+  `lib/storefront.ts`, `lib/storefront.server.ts`, `styles.css`,
+  `routes/{index,login,register,concierge,cart}.tsx`.
+- `backend/app/services/app_clients.py` — the restaurant's cover as fallback.
+- `backend/app/models/order.py` — a comment that described the bug, not the code.
+- `.claude/worklog.md` — the template's code fence had been open since
+  2026-09-13, so every entry written since rendered as source.
+
+**Verified:** backend `unittest discover` 1,811 OK (was 1,802; +7 narration
+currency, +2 cover fallback). `frontend-admin`: tsc clean, 131 tests, build OK,
+lint unchanged at its 60-problem baseline. `frontend-customer`: tsc clean, 236
+tests (+6), build OK. In Chrome: `/api/app-clients` down from 4 requests per
+load to 2 (StrictMode's double; 1 in production); every admin page walked with
+a clean console; Radhe Dhokla's storefront renders ₹ throughout, 136 dishes,
+six Surat branches, the brand wash instead of Thai food; Bangkok Bowl unchanged.
+Narration verified against the real rows: Radhe Dhokla ₹1,20,000, Bangkok Bowl
+$120,000.
+
+**Open:**
+- No tenant has a `cover_image_url` set, so every storefront shows the brand
+  wash. Setting one per restaurant in the admin is now the way to get a photo
+  back — the path is tested but has never run against real data.
+- Still nobody has completed a real payment. Razorpay refunds and
+  `create_payment_link` remain Stripe-only.
+- The Meta webhook still points at the ngrok tunnel; Mr Tailor production is
+  not receiving messages until it is restored to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+- Reports, Offers, Generated Combos and the AI Manager each still own a
+  restaurant `<select>` beside the rail's tenant switcher, which drives the
+  same state. Redundant, and the plan's §5B said one control. Not touched.
+
+**Learned:**
+- The bugs an audit finds are the ones that look like success: a duplicate
+  request is two green 200s, and a wrong currency symbol is a well-formatted
+  number. Reading the network panel and comparing a figure against what the
+  business actually charges found both; reading the code would not have.
+- When a fix makes something per-tenant, the neighbours of that thing are where
+  the rest of the bug is. Copy was fixed; the image above the copy, the symbol
+  beside the number, and the sentence the AI writes were all the same bug
+  wearing different clothes.
+- A batch loop is where per-tenant state goes wrong, and it goes wrong
+  invisibly while every tenant still shares a value.
+
 ## 2026-09-18 (4) — Five restaurants, five websites (a3d6376, fe7487e, 0208cd3)
 
 User pushed back on the tenant switcher ("looks not good") and then asked the
@@ -484,14 +597,6 @@ Backend + worker restarted on ec9a472; test sessions cleared.
 webhook still points at the ngrok tunnel — restore
 `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when done.
 
-## YYYY-MM-DD — short title
-
-**Goal:** what was asked.
-**Changed:** files/areas touched, one line each.
-**Verified:** exact commands run and their result. "Not verified" if not run.
-**Open:** anything unfinished, deferred, or uncertain.
-**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
-```
 
 ---
 
