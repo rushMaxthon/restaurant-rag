@@ -800,7 +800,11 @@ def build_app_config_response(
     and the two must not disagree on screen.
     """
 
-    branding = dict(app_client.branding or {})
+    from app.services.app_branding import read_branding
+
+    # Completed with platform defaults, so a storefront never has to decide
+    # what to do about a key a half-onboarded tenant has not filled in yet.
+    branding = read_branding(app_client)
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
 
     restaurant = app_client.restaurant

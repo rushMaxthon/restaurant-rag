@@ -293,5 +293,121 @@ class HoldingSomebodyElsesCredentialsTests(unittest.TestCase):
                 secrets.encrypt_secret("EAAG-a-whatsapp-token")
 
 
+class WhatAStorefrontLooksLikeTests(unittest.TestCase):
+    """Branding an operator sets up once, refused on the way in when unusable.
+
+    The person filling this form is onboarding somebody else's business and
+    will never see the result, so anything that would render badly has to be
+    caught here rather than discovered by that restaurant's customers.
+    """
+
+    def client(self, branding=None, display_name="Bangkok Bowl"):
+        return SimpleNamespace(branding=branding or {}, display_name=display_name)
+
+    def test_a_blank_record_still_describes_a_working_storefront(self) -> None:
+        from app.services import app_branding
+
+        read = app_branding.read_branding(self.client())
+        self.assertEqual(read["primary_color"], "#FF5200")
+        self.assertEqual(read["font_family"], "manrope")
+        self.assertIn("Manrope", read["font_stack"])
+        # The name falls back to the client's own, so a tab is never blank.
+        self.assertEqual(read["app_name"], "Bangkok Bowl")
+
+    def test_every_key_a_storefront_reads_is_always_present(self) -> None:
+        from app.services import app_branding
+
+        read = app_branding.read_branding(self.client())
+        for key in (
+            "primary_color", "accent_color", "logo_url", "logo_dark_url",
+            "favicon_url", "cover_image_url", "font_family", "font_stack",
+            "app_name", "tagline",
+        ):
+            self.assertIn(key, read)
+
+    def test_a_stored_colour_is_normalised_not_trusted(self) -> None:
+        from app.services import app_branding
+
+        read = app_branding.read_branding(self.client({"primary_color": "#0f6a51"}))
+        self.assertEqual(read["primary_color"], "#0F6A51")
+
+    def test_rubbish_in_the_record_falls_back_rather_than_rendering(self) -> None:
+        from app.services import app_branding
+
+        read = app_branding.read_branding(
+            self.client({"primary_color": "chartreuse", "font_family": "comic-sans"})
+        )
+        self.assertEqual(read["primary_color"], "#FF5200")
+        self.assertEqual(read["font_family"], "manrope")
+
+    def test_a_script_url_is_refused(self) -> None:
+        # These end up in src and href attributes on a page served under the
+        # tenant's own domain.
+        from app.services import app_branding
+
+        for bad in ("javascript:alert(1)", "data:text/html;base64,PHN2Zz4=", "/relative.png"):
+            with self.assertRaises(app_branding.BrandingValidationError, msg=bad):
+                app_branding.resolve_branding({"logo_url": bad})
+
+    def test_an_unknown_font_is_refused_rather_than_written_into_css(self) -> None:
+        from app.services import app_branding
+
+        with self.assertRaises(app_branding.BrandingValidationError):
+            app_branding.resolve_branding({"font_family": chr(34) + "; background: url(evil)"})
+
+    def test_editing_one_field_leaves_the_rest_alone(self) -> None:
+        # A form that edits the logo must not silently clear a tagline it
+        # never showed.
+        from app.services import app_branding
+
+        existing = {"logo_url": "https://a.test/old.png", "tagline": "Real Thai, fast"}
+        updated = app_branding.resolve_branding(
+            {"logo_url": "https://a.test/new.png"}, existing=existing
+        )
+        self.assertEqual(updated["logo_url"], "https://a.test/new.png")
+        self.assertEqual(updated["tagline"], "Real Thai, fast")
+
+    def test_clearing_a_field_removes_it(self) -> None:
+        from app.services import app_branding
+
+        updated = app_branding.resolve_branding(
+            {"tagline": ""}, existing={"tagline": "Real Thai, fast"}
+        )
+        self.assertNotIn("tagline", updated)
+
+    def test_a_name_cannot_smuggle_a_paragraph_into_a_browser_tab(self) -> None:
+        from app.services import app_branding
+
+        with self.assertRaises(app_branding.BrandingValidationError):
+            app_branding.resolve_branding({"app_name": "x" * 200})
+
+    def test_control_characters_do_not_survive(self) -> None:
+        from app.services import app_branding
+
+        updated = app_branding.resolve_branding(
+            {"app_name": "Bangkok" + chr(0) + " Bowl" + chr(10)}
+        )
+        self.assertEqual(updated["app_name"], "Bangkok Bowl")
+
+    def test_the_owners_own_theme_still_wins_on_the_colour(self) -> None:
+        # The precedence `build_app_config_response` already documents: the
+        # restaurant is what the owner controls, this record is what an
+        # administrator set up.
+        from app.services import app_clients
+
+        restaurant = SimpleNamespace(theme={"primary_color": "#0F766E", "preset": "teal"})
+        client = SimpleNamespace(
+            id=uuid.uuid4(), key="bangkok_bowl", display_name="Bangkok Bowl",
+            app_mode=AppMode.SINGLE_RESTAURANT, restaurant_id=uuid.uuid4(),
+            status=AppClientStatus.ACTIVE, restaurant=restaurant,
+            branding={"primary_color": "#FF5200", "logo_url": "https://a.test/l.png"},
+            order_number_prefix="BB", minimum_supported_version="1.0.0",
+        )
+        built = app_clients.build_app_config_response(client, host="bangkok-bowl.example.com")
+        self.assertEqual(built.branding["primary_color"], "#0F766E")
+        # And everything the owner does not control survives the override.
+        self.assertEqual(built.branding["logo_url"], "https://a.test/l.png")
+
+
 if __name__ == "__main__":
     unittest.main()
