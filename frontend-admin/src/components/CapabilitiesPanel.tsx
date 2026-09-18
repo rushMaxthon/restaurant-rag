@@ -34,6 +34,11 @@ export function CapabilitiesPanel({
   onToast,
 }: CapabilitiesPanelProps) {
   const [rows, setRows] = useState<RestaurantCapability[]>([]);
+  // Starts true and is only ever cleared. Setting it back to true at the top
+  // of the effect below was a synchronous setState in an effect body, and it
+  // bought nothing: the first render already says "loading", and on a switch
+  // to another restaurant keeping the previous list on screen for a moment
+  // reads better than a flash of skeletons.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -41,7 +46,6 @@ export function CapabilitiesPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     void api
       .getRestaurantCapabilities(token, restaurantId)
       .then((loaded) => {
