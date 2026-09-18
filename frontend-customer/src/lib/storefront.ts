@@ -19,7 +19,17 @@ import {
  * The server half lives in `storefront.server.ts`, because reading the
  * incoming request is something only the server can do.
  */
-export type StorefrontConfig = StorefrontCopy & { currency: CurrencyFormat };
+export type StorefrontConfig = StorefrontCopy & {
+  currency: CurrencyFormat;
+  /**
+   * The restaurant's own hero photograph, or null.
+   *
+   * It rides the root loader alongside the copy because a hero image is the
+   * largest thing on the page and a client-side fetch for it would mean every
+   * storefront painting an empty band first.
+   */
+  cover_image_url: string | null;
+};
 
 export type StorefrontCopy = {
   /**
@@ -61,6 +71,38 @@ export const UNKNOWN_STOREFRONT: StorefrontCopy = {
   login_blurb: "Sign in to place your order.",
 };
 
+/** The shape `/app-config` answers with, as far as a storefront cares. */
+export type AppConfigPayload = {
+  display_name?: string;
+  storefront?: Partial<StorefrontCopy>;
+  currency?: CurrencyFormat;
+  branding?: { cover_image_url?: string | null };
+};
+
+/**
+ * One `/app-config` answer, turned into what the root loader carries.
+ *
+ * Pure, and separate from the server function that fetches it, so the
+ * decisions in it can be tested: which fields are merged rather than trusted
+ * wholesale, and what counts as "this restaurant has no cover image".
+ */
+export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfig {
+  return {
+    // Merged rather than trusted wholesale: the backend fills every key for a
+    // restaurant, but a MARKETPLACE client legitimately sends none.
+    ...UNKNOWN_STOREFRONT,
+    name: payload.display_name || UNKNOWN_STOREFRONT.name,
+    ...(payload.storefront ?? {}),
+    currency: payload.currency ?? FALLBACK_CURRENCY,
+    // An unset branding field arrives as "", which is not a URL. Left as-is it
+    // would render an <img> with an empty src — a broken-image icon where the
+    // hero should be — so blank and absent both mean "no cover", and the hero
+    // falls back to this restaurant's brand colour rather than another
+    // restaurant's food.
+    cover_image_url: payload.branding?.cover_image_url?.trim() || null,
+  };
+}
+
 /** The meta tags a storefront's copy produces, shared by every route. */
 export function storefrontMeta(copy: StorefrontCopy) {
   return [
@@ -95,6 +137,20 @@ export function useStorefrontCopy(): StorefrontCopy {
  * would end up on another tenant's dollars, and only under load. The currency
  * rides the root loader, so it is already correct in the server-rendered HTML.
  */
+/**
+ * This restaurant's own hero photograph, or null when it has not set one.
+ *
+ * Null is a real answer, not a missing one. Three pages used to import a
+ * bundled photograph of Bangkok Bowl's pad thai and show it on every tenant's
+ * site, so a Surat dhokla shop's home page, login page and sign-up page all
+ * opened on a picture of Thai noodles. Showing a different restaurant's food
+ * is worse than showing none: it is a claim about what this kitchen makes.
+ */
+export function useStorefrontCover(): string | null {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return data?.cover_image_url ?? null;
+}
+
 export function useMoney(): (value: Money | number) => string {
   const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
   const currency = data?.currency ?? FALLBACK_CURRENCY;

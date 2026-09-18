@@ -100,7 +100,7 @@ function CartPage() {
             Your bowl is empty
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
-            Add a curry, a bowl of noodles or a snack to get started — or let the concierge pick for
+            Add something from the menu to get started — or let the concierge pick for
             you.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

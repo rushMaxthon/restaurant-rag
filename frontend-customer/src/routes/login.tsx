@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import heroImage from "@/assets/pad-thai.jpg";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { useAuth } from "@/lib/auth";
 import { PasswordInput } from "@/components/bangkok/password-input";
 import { sanitizeRedirect } from "@/lib/require-auth";
@@ -62,12 +62,7 @@ function LoginPage() {
 
   return (
     <div className="grid lg:grid-cols-2">
-      <div className="relative hidden lg:block lg:min-h-[calc(100svh-4rem)]">
-        <img
-          src={heroImage}
-          alt={`Food from ${copy.name}`}
-          className="absolute inset-0 size-full object-cover"
-        />
+      <StorefrontHero className="hidden lg:block lg:min-h-[calc(100svh-4rem)]">
         <div className="hero-overlay absolute inset-0" />
         <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
           <Sparkles className="mb-4 size-10" />
@@ -76,10 +71,10 @@ function LoginPage() {
             Sign in for the full menu
           </h1>
           <p className="mt-5 max-w-md text-lg font-medium">
-            Save favourites, track live orders and reorder your go-to bowl in a tap.
+            Save favourites, track live orders and reorder what you always get, in a tap.
           </p>
         </div>
-      </div>
+      </StorefrontHero>
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">

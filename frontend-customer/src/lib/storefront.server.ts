@@ -4,9 +4,10 @@ import { getRequestHost } from "@tanstack/react-start/server";
 import { API_BASE_URL } from "@/lib/api";
 import { FALLBACK_CURRENCY, type CurrencyFormat } from "@/lib/bangkok-data";
 import {
+  storefrontConfigFrom,
   UNKNOWN_STOREFRONT,
+  type AppConfigPayload,
   type StorefrontConfig,
-  type StorefrontCopy,
 } from "@/lib/storefront";
 
 /**
@@ -46,6 +47,7 @@ import {
 const UNKNOWN_CONFIG: StorefrontConfig = {
   ...UNKNOWN_STOREFRONT,
   currency: FALLBACK_CURRENCY,
+  cover_image_url: null,
 };
 
 const TTL_MS = 30_000;
@@ -66,19 +68,7 @@ export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
       );
       if (!response.ok) return UNKNOWN_CONFIG;
 
-      const payload = (await response.json()) as {
-        display_name?: string;
-        storefront?: Partial<StorefrontCopy>;
-        currency?: CurrencyFormat;
-      };
-      // Merged rather than trusted wholesale: the backend fills every key for
-      // a restaurant, but a MARKETPLACE client legitimately sends none.
-      const copy: StorefrontConfig = {
-        ...UNKNOWN_STOREFRONT,
-        name: payload.display_name || UNKNOWN_STOREFRONT.name,
-        ...(payload.storefront ?? {}),
-        currency: payload.currency ?? FALLBACK_CURRENCY,
-      };
+      const copy = storefrontConfigFrom((await response.json()) as AppConfigPayload);
       // Only a real answer is cached. Caching the fallback would pin a
       // nameless page in place for half a minute after a blip.
       cache.set(host, { at: Date.now(), copy });

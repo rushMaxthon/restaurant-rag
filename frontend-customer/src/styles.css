@@ -131,6 +131,30 @@
     color-mix(in srgb, var(--overlay) 50%, transparent)
   );
 }
+/*
+ * What stands in for a hero photograph when a restaurant has not uploaded one.
+ *
+ * Built from --primary, which is written at startup from this tenant's own
+ * branding, so it is their colour on their site. Two layers: a diagonal
+ * lightening so the block is not flat, and a soft radial that gives the type
+ * in the lower-left something darker to sit on. It deliberately depicts
+ * nothing — the alternative, and the bug this replaces, was showing another
+ * restaurant's food.
+ */
+.storefront-hero-wash {
+  background:
+    radial-gradient(
+      120% 90% at 15% 100%,
+      color-mix(in srgb, #000 42%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--primary) 82%, #000),
+      var(--primary) 45%,
+      color-mix(in srgb, var(--primary) 72%, #fff)
+    );
+}
 .category-pill {
   min-height: 44px;
   white-space: nowrap;

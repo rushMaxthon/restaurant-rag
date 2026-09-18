@@ -10,12 +10,12 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import heroImage from "@/assets/bangkok-bowl-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
@@ -68,14 +68,7 @@ function Home() {
 
   return (
     <div className="pb-20 lg:pb-0">
-      <section className="relative min-h-[70svh] overflow-hidden">
-        <img
-          src={heroImage}
-          alt={`Food from ${copy.hero_headline}`}
-          width={1600}
-          height={912}
-          className="absolute inset-0 size-full object-cover"
-        />
+      <StorefrontHero className="min-h-[70svh]">
         <div className="hero-overlay absolute inset-0" />
         <div className="hero-copy page-pad relative flex min-h-[70svh] max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16">
           <div className="mb-5 flex flex-wrap gap-2">
@@ -118,7 +111,7 @@ function Home() {
             ) : null}
           </div>
         </div>
-      </section>
+      </StorefrontHero>
 
       <WaiterPrompt placement="home" />
 
@@ -217,8 +210,8 @@ function Home() {
           <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
           <h2 className="font-display text-4xl font-extrabold">
             {Number.isFinite(heroEta) && heroEta > 0
-              ? `Dinner from wok to door in about ${heroEta} minutes.`
-              : "Dinner from wok to door, cooked fresh to order."}
+              ? `Cooked to order and at your door in about ${heroEta} minutes.`
+              : "Cooked fresh to order, and on its way the moment it is ready."}
           </h2>
           <div className="mt-7 flex flex-wrap gap-3">
             {locations.map((l) => (
