@@ -105,7 +105,7 @@ function Home() {
               </span>
             )}
           </div>
-          <h1 className="font-display text-5xl font-black leading-[.98] sm:text-7xl">
+          <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-7xl">
             {store.restaurantName ?? "Bangkok Bowl"}
           </h1>
           <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">
@@ -133,7 +133,7 @@ function Home() {
         <section className="page-pad section-pad !pb-0">
           <div className="mb-6">
             <p className="eyebrow">Picked for you</p>
-            <h2 className="font-display text-3xl font-black sm:text-4xl">
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
               Your personalised picks
             </h2>
           </div>
@@ -155,7 +155,7 @@ function Home() {
         <div className="mb-7 flex items-end justify-between gap-4">
           <div>
             <p className="eyebrow">Most loved</p>
-            <h2 className="font-display text-3xl font-black sm:text-4xl">Crowd favourites</h2>
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">Crowd favourites</h2>
           </div>
           <Button variant="outline" asChild>
             <Link to="/menu">See all</Link>
@@ -189,7 +189,7 @@ function Home() {
         <div className="page-pad section-pad">
           <Sparkles className="mb-5 size-10 text-primary" />
           <p className="eyebrow">Not sure what to order?</p>
-          <h2 className="font-display text-4xl font-black">
+          <h2 className="font-display text-4xl font-extrabold">
             Not sure what to eat? Tell us your craving.
           </h2>
           <p className="mt-4 max-w-xl text-muted">
@@ -217,7 +217,7 @@ function Home() {
         <div className="page-pad section-pad bg-primary text-primary-foreground">
           <Clock3 className="mb-5 size-10" />
           <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
-          <h2 className="font-display text-4xl font-black">
+          <h2 className="font-display text-4xl font-extrabold">
             {Number.isFinite(heroEta) && heroEta > 0
               ? `Dinner from wok to door in about ${heroEta} minutes.`
               : "Dinner from wok to door, cooked fresh to order."}

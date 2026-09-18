@@ -68,7 +68,7 @@ export function DishCard({ item }: { item: MenuItem }) {
         )}
         {!item.is_available && (
           <div className="absolute inset-0 grid place-items-center bg-overlay">
-            <span className="rounded-full bg-surface px-3 py-1.5 text-xs font-black uppercase tracking-wide">
+            <span className="rounded-full bg-surface px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide">
               Unavailable
             </span>
           </div>

@@ -34,7 +34,7 @@ export function BranchGate() {
     <div className="branch-gate" role="dialog" aria-modal="true" aria-labelledby="branch-gate-title">
       <div className="branch-gate__panel">
         <span className="brand-mark">BB</span>
-        <h1 id="branch-gate-title" className="font-display text-3xl font-black sm:text-4xl">
+        <h1 id="branch-gate-title" className="font-display text-3xl font-extrabold sm:text-4xl">
           Which branch are you ordering from?
         </h1>
         <p className="mt-2 text-muted">

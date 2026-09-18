@@ -397,7 +397,7 @@ function Checkout() {
         <div className="mt-4">
           <StepRail step={2} />
         </div>
-        <h1 className="mt-5 font-display text-4xl font-black">Pay for your order</h1>
+        <h1 className="mt-5 font-display text-4xl font-extrabold">Pay for your order</h1>
         <p className="mt-2 text-muted">
           Order {pending.orderNumber} is held for you. It reaches the kitchen once this payment
           clears.
@@ -423,7 +423,7 @@ function Checkout() {
           <div className="mx-auto grid size-24 place-items-center rounded-full bg-success/10">
             <CheckCircle2 className="size-12 text-success" />
           </div>
-          <h1 className="mt-7 font-display text-4xl font-black sm:text-5xl">Order placed</h1>
+          <h1 className="mt-7 font-display text-4xl font-extrabold sm:text-5xl">Order placed</h1>
           <p className="mt-4 text-lg text-muted">
             Your Thai feast is on its way. Track{" "}
             <b className="text-foreground">{placedOrderNumber ?? "your order"}</b> for live updates.
@@ -597,7 +597,7 @@ function Checkout() {
       <div className="mt-4">
         <StepRail step={2} />
       </div>
-      <h1 className="mt-5 font-display text-4xl font-black sm:text-5xl">Checkout</h1>
+      <h1 className="mt-5 font-display text-4xl font-extrabold sm:text-5xl">Checkout</h1>
       <p className="mt-2 text-lg text-muted">Almost there — just confirm where this is headed.</p>
 
       {error && (
@@ -624,7 +624,7 @@ function Checkout() {
       <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
           <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-black">
+            <h2 className="font-display text-xl font-extrabold">
               Contact &amp; {isDelivery ? "delivery" : "pickup"}
             </h2>
             <p className="mt-1 text-sm text-muted">
@@ -810,7 +810,7 @@ function Checkout() {
           </section>
 
           <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-black">When would you like it?</h2>
+            <h2 className="font-display text-xl font-extrabold">When would you like it?</h2>
 
             {mustSchedule ? (
               <div className="closed-notice mt-4" data-tone="soft">
@@ -1029,7 +1029,7 @@ function Checkout() {
           </section>
 
           <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-black">Payment</h2>
+            <h2 className="font-display text-xl font-extrabold">Payment</h2>
             <p className="mt-1 text-sm text-muted">
               Paid securely by card before your order reaches the kitchen.
             </p>
@@ -1071,7 +1071,7 @@ function Checkout() {
         </div>
 
         <aside className="elevated-panel h-fit p-5 lg:sticky lg:top-24">
-          <h2 className="font-display text-xl font-black">Your order</h2>
+          <h2 className="font-display text-xl font-extrabold">Your order</h2>
           <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
             <MapPin className="size-3.5 shrink-0 text-primary" />
             {isDelivery ? "Delivery" : "Pickup"} from {branch?.branch_name ?? "your branch"}
@@ -1139,8 +1139,8 @@ function Checkout() {
           </dl>
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
-            <span className="text-lg font-black">Total</span>
-            <span className="font-display text-3xl font-black">{formatMoney(total)}</span>
+            <span className="text-lg font-extrabold">Total</span>
+            <span className="font-display text-3xl font-extrabold">{formatMoney(total)}</span>
           </div>
 
           <Button
@@ -1170,7 +1170,7 @@ function Checkout() {
             <p className="text-xs font-bold text-muted">
               {s.totalItems} {s.totalItems === 1 ? "item" : "items"}
             </p>
-            <p className="money font-display text-xl font-black leading-tight">
+            <p className="money font-display text-xl font-extrabold leading-tight">
               {formatMoney(total)}
             </p>
           </div>

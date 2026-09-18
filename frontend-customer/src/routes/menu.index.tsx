@@ -24,7 +24,7 @@ function MenuPage() {
   return (
     <div className="page-pad pb-24 pt-10">
       <p className="eyebrow">Cooked to order</p>
-      <h1 className="font-display text-4xl font-black sm:text-6xl">The Bangkok menu</h1>
+      <h1 className="font-display text-4xl font-extrabold sm:text-6xl">The Bangkok menu</h1>
       <p className="mt-3 max-w-2xl text-muted">
         Fragrant, punchy and made fresh. Pick a favourite or discover something new.
       </p>

@@ -1,0 +1,98 @@
+/*
+  The colours, shapes and timings both apps share.
+  ------------------------------------------------
+
+  The storefront a customer orders from and the panel an operator runs the
+  platform from are one product, and they were drifting: two files, two sets
+  of the same names, two people editing one of them. This is the one place
+  either app gets `--primary` from, so a brand decision is made once.
+
+  Imported FIRST by both apps, which is what makes adopting it safe. An app
+  that redeclares a name after this import keeps its own value, so pointing a
+  stylesheet here changes nothing until a line is deliberately deleted from
+  the app's own `:root`. Adoption is per token, reviewable one at a time.
+
+  Only names that genuinely mean the same thing in both places live here.
+  A storefront's `--mobile-nav-h` and an operator panel's `--sidebar` are not
+  shared vocabulary, and putting them here would make this a junk drawer.
+
+  Dark mode is a `.dark` class on the root element rather than a media query,
+  because it is a choice the person makes, not one their operating system
+  makes for them.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* The brand. `--primary` is the only one a restaurant ever changes, and
+     the storefront rewrites it at runtime per tenant — see
+     frontend-customer/src/lib/theme.ts. */
+  --primary: #ff5200;
+  --primary-soft: #fff0e8;
+  --on-primary: #ffffff;
+
+  /* Surfaces, from the page backwards. `--bg` is the page, `--surface` is
+     anything sitting on it, `--surface-alt` is a well inside that. */
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-alt: #f4f4f5;
+
+  --text: #14171f;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  /* Meaning, not decoration. An owner owns their accent; nobody owns what
+     "delivered" or "cancelled" looks like. */
+  --success: #16a34a;
+  --danger: #dc2626;
+
+  --radius: 0.5rem;
+  --overlay: rgb(20 23 31 / 0.55);
+  --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
+
+  /* One easing and two durations for the whole product. A page where every
+     transition has its own timing reads as several pages. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.16s;
+  --dur: 0.24s;
+
+  --scrollbar-thumb: #c9cdd4;
+  --scrollbar-thumb-hover: #a2a8b3;
+
+  /* Named once so neither app has to spell the fallback chain out again.
+     Plus Jakarta Sans is self-hosted through @fontsource-variable; the rest
+     of the stack is what shows while it loads. */
+  --font-stack: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "Segoe UI",
+    system-ui, -apple-system, sans-serif;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Lifted, not inverted. The light primary is too dense to read as a
+     button on a dark ground, and the soft tint has to become a shadow of
+     the brand rather than a wash of it. */
+  --primary: #ff6b26;
+  --primary-soft: #3a2118;
+  --on-primary: #ffffff;
+
+  --bg: #111216;
+  --surface: #191b20;
+  --surface-alt: #23262d;
+
+  --text: #f8fafc;
+  --muted: #a7adb7;
+  --border: #343740;
+
+  --success: #4ade80;
+  --danger: #f87171;
+
+  /* A drop shadow tinted near-black is invisible on a dark ground, so it
+     goes heavier and fully black instead of being dropped — panels still
+     need to sit above the page. */
+  --overlay: rgb(0 0 0 / 0.62);
+  --shadow: 0 12px 34px rgb(0 0 0 / 0.4);
+
+  --scrollbar-thumb: #3e434d;
+  --scrollbar-thumb-hover: #565c68;
+}

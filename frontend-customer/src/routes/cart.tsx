@@ -98,7 +98,7 @@ function CartPage() {
           <div className="empty-state-icon">
             <ShoppingBag className="size-9" />
           </div>
-          <h1 className="mt-8 font-display text-3xl font-black tracking-tight sm:text-4xl">
+          <h1 className="mt-8 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
             Your bowl is empty
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
@@ -124,7 +124,7 @@ function CartPage() {
     <div className="page-pad mx-auto max-w-7xl pb-32 pt-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-black tracking-tight sm:text-5xl">Your cart</h1>
+          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">Your cart</h1>
           <p className="mt-2 text-muted">
             {s.totalItems} {s.totalItems === 1 ? "item" : "items"} from{" "}
             <span className="font-semibold text-foreground">
@@ -285,7 +285,7 @@ function CartPage() {
           </dl>
 
           <div className="sum-total">
-            <span className="text-lg font-black">Total</span>
+            <span className="text-lg font-extrabold">Total</span>
             <span className="sum-total-figure">{formatMoney(total)}</span>
           </div>
 

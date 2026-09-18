@@ -1,3 +1,9 @@
+/* The colours, shapes and timings this panel shares with the storefront.
+   Imported first on purpose: anything redeclared in the `:root` below keeps
+   this app's own value, so adopting a shared token is deleting a line here
+   rather than a change that lands everywhere at once. */
+@import "../../frontend-shared/tokens.css";
+
 :root {
   /* `… Variable` is the family name @fontsource-variable registers; the
      static name after it picks up a locally-installed copy if there is one.

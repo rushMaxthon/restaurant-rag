@@ -194,7 +194,7 @@ function DishPage() {
   if (itemQuery.isError || !item) {
     return (
       <div className="state-panel page-pad mx-auto max-w-xl py-24 text-center">
-        <h1 className="font-display text-3xl font-black">We couldn't find that dish</h1>
+        <h1 className="font-display text-3xl font-extrabold">We couldn't find that dish</h1>
         <p className="mt-3 text-muted">It may have been taken off the menu.</p>
         <Button className="mt-7 h-12 px-6" asChild>
           <Link to="/menu">Back to menu</Link>
@@ -250,7 +250,7 @@ function DishPage() {
               )}
               {!item.is_available && (
                 <div className="absolute inset-0 grid place-items-center bg-overlay">
-                  <span className="rounded-full bg-surface px-4 py-2 font-black uppercase tracking-wide">
+                  <span className="rounded-full bg-surface px-4 py-2 font-extrabold uppercase tracking-wide">
                     Unavailable
                   </span>
                 </div>
@@ -274,7 +274,7 @@ function DishPage() {
                 </span>
               </div>
 
-              <h1 className="mt-3 font-display text-4xl font-black leading-[1.05]">{item.name}</h1>
+              <h1 className="mt-3 font-display text-4xl font-extrabold leading-[1.05]">{item.name}</h1>
 
               {(dishRestaurant.data?.name || item.cuisine_type) && (
                 <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
@@ -294,7 +294,7 @@ function DishPage() {
                   up there asks the customer to keep discounting the headline. */}
               {sizes.length > 0 && (
                 <div className="dish-lede__price">
-                  <p className="money font-display text-3xl font-black">
+                  <p className="money font-display text-3xl font-extrabold">
                     {chosenSize ? (
                       formatMoney(chosenSize.price)
                     ) : (
@@ -595,7 +595,7 @@ function DishPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
-                  <p className="money total-figure font-display text-3xl font-black leading-tight">
+                  <p className="money total-figure font-display text-3xl font-extrabold leading-tight">
                     {formatMoney(total)}
                   </p>
                 </div>
@@ -660,7 +660,7 @@ function DishPage() {
 
       {related.length > 0 && (
         <section className="page-pad section-pad mx-auto max-w-7xl">
-          <h2 className="mb-6 font-display text-3xl font-black">Goes well with this</h2>
+          <h2 className="mb-6 font-display text-3xl font-extrabold">Goes well with this</h2>
           <div className="menu-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {related.map((dish, i) => (
               <div className="rise-in" style={{ "--i": i } as React.CSSProperties} key={dish.id}>

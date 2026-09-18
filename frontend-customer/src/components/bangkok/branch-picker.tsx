@@ -41,7 +41,7 @@ export function BranchPicker({ className }: { className?: string }) {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-[min(92vw,22rem)] p-1.5">
-        <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-xs font-black uppercase tracking-wide text-muted">
+        <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-xs font-extrabold uppercase tracking-wide text-muted">
           {store.restaurantName ?? "Branches"}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
