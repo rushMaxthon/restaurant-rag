@@ -17,6 +17,48 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-18 (2) — One design layer for both apps (4a53cd5, b71fb43)
+
+User: "we have frontend-customer folder where i like that UI so i preffer to
+use that type of UI and common component to the frontend-admin". Plan updated
+(§5A in `~/.claude/plans/vivid-tumbling-whistle.md`). Decisions: Tailwind v4
+only (not shadcn/Radix), one shared stylesheet, first pass = shell + the 9
+shared components + form vocabulary + new SaaS screens, Plus Jakarta Sans.
+
+**The finding that made this cheap:** the customer app's look is NOT its 50
+shadcn primitives (`<Card>` is imported in 2 files). It is `styles.css` (1,417
+lines) + `polish.css` (1,781) — `.elevated-panel`, `.empty-state`, `.skeleton`,
+`.status-chip`, the focus halo. That ports as CSS with zero dependencies.
+`--primary: #ff5200` was already identical in both apps.
+
+**Done — `frontend-shared/tokens.css`.** Imported FIRST by both apps, so an app
+redeclaring a name keeps its own value. Adoption is per token, by deleting a
+line. Verified in the built CSS: shared tokens present, admin's values still
+winning. Customer dropped its duplicated `:root`/`.dark`, kept its extras.
+
+**Done — the font, which was a real bug.** `--font-sans` named Manrope since
+the storefront was written, with no font file, package or stylesheet link ever
+shipped. Every visitor had been reading the system fallback — including in the
+screenshots that made us like the design. Both apps now self-host Plus Jakarta
+Sans. It carries weights 200-800 and 63 places asked for 900 (12 CSS rules +
+51 `font-black` utilities), which browsers fake by smearing outlines; all now
+800. Page reports zero elements at 900.
+
+**Done — Tailwind v4 in admin, no preflight.** `theme.css` + `utilities.css`
+imported separately; the build is grepped for preflight fingerprints. Old CSS
+moved to `legacy.css` in `@layer legacy` declared before utilities, so
+utilities can override it. **Gotcha:** the admin's `:root` had to be moved back
+OUT of that layer — layered loses to unlayered, so the shared tokens would have
+silently won and turned a no-op into a visual change.
+
+**Verified empirically, not from the spec:** a throwaway `outline-2
+outline-red-500` on `.page-intro` (which a legacy rule already styles) won —
+computed `oklch(0.637 0.237 25.331)`, Tailwind's red-500 — then removed. Pages
+unchanged, 129 admin tests, typecheck clean, CSS +3.7 KB.
+
+**Next:** `frontend-shared/polish.css` (the signature classes), then the shell
+and the 9 shared components, then the SaaS screens.
+
 ## 2026-09-18 — SaaS conversion, steps 1-3 backend (a0d1dc6, aacab0a)
 
 Plan approved: multi-tenant SaaS. Subdomain per tenant, each restaurant brings
