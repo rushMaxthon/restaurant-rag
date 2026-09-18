@@ -17,6 +17,95 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-18 (3) — The panel adopts the storefront's language, and grows a tenant list (21beb05, ef0ed57, 153c953)
+
+Continuing the approved plan (`~/.claude/plans/vivid-tumbling-whistle.md`).
+Steps 2 and 3 of the sequencing are done. User instruction was "go with the
+recommand plan" — no new direction this session.
+
+**Step 2 — shared components and the form vocabulary (`21beb05`).**
+`frontend-shared/components.css` now carries the classes that mean the same
+thing in both products. Two checks before wiring it in, both worth repeating
+before adding a global rule to `legacy.css`: there were **0** existing
+`:active` rules (so the press-scale is purely additive) and **40**
+`focus-visible` rules (which outrank a zero-specificity `:where()` halo, so
+existing focus styles survive and only unstyled elements gain it).
+
+Nine token names deleted from the admin's `:root` so `tokens.css` supplies
+them. Four visible changes, listed because each is a judgement somebody may
+want to reverse: the page ground went flat (it was a radial orange wash —
+the single most recognisable thing keeping the two apps apart);
+`--shadow-ring` went from 10% alpha to the storefront's 22% mixed from
+`--primary`, so focus is actually visible and a tenant's accent carries into
+it; `.field span` labels went from 11px uppercase 700 tracked to 13px
+sentence case; the primary button lost its 16px coloured glow.
+
+**Not done, deliberately:** `.status-pill` was left alone. It has already
+converged with `.status-chip` on its own, and it dropped uppercase
+deliberately because SCREAMING_CASE order statuses rendered too wide. My own
+plan line said to force uppercase; the recorded decision is better.
+
+**Step 3a — tenants (`ef0ed57`).** `app_clients.status` has existed since
+migration `0032` with three values and **nothing had ever written it** —
+there was no endpoint. New `api/app_clients.py`: `GET /app-clients` (counts
+from four grouped queries, not four per tenant) and
+`PATCH /app-clients/{id}/status`. Migration `0063` adds `status_note`,
+`status_changed_at`, `status_changed_by_user_id`.
+
+Two guards, both about not doing this by accident: off-air requires a note,
+and OFFBOARDED is terminal. Verified against the running API, not just in
+tests — a suspension really does take `/app-config` to 403 for that host, and
+a restore brings it back.
+
+**Step 3b — the tenant switcher (`153c953`).** Four screens each kept their
+own answer to "which restaurant am I looking at". `AdminStore` now holds
+`activeRestaurantId`, and `useScopedRestaurantFilter` lets the three list
+screens follow it while keeping their own dropdown.
+
+`PlatformLayout.tsx` from the plan was **not** built: the switcher in the
+existing sidebar plus a "Platform" nav section achieves the separation, and a
+second layout would have been a shell with one screen in it.
+
+**Verified:** 1,703 backend tests (was 1,692), 131 admin tests (was 129),
+`tsc --noEmit` and `npm run build` clean, lint unchanged from its 53-error
+baseline. Walked Offers (with its editor open), Restaurants, Notifications,
+Tenants, Reports, AI Manager and the dashboard in the browser.
+
+**Open / next:**
+- Plan steps 4-9: onboarding wizard and tenant settings, dark-mode toggle,
+  per-restaurant capability (§6), WhatsApp channels (§3), Stripe Connect (§4),
+  second restyle pass (Login first).
+- **The login page has not been looked at since the ground went flat.** It
+  sits outside the main layout and had no background of its own, so it now
+  renders on `--bg` instead of the old gradient. Reasoned about, not seen —
+  I could not log out without handling a password.
+- **The plan's "dashboard lands showing zeros" note did not reproduce.** A
+  cold tab showed real figures with a fresh timestamp. Left in the plan
+  rather than deleted, since it may depend on the backend being cold.
+- Two live bugs still outstanding, both already in the plan: every newly
+  onboarded restaurant inherits Bangkok Bowl's page title and hero copy
+  (`frontend-customer/src/routes/index.tsx:31,112`), and one restaurant
+  editing branch settings flushes every restaurant's offer cache
+  (`api/restaurants.py:634`).
+- **Mr Tailor's Meta webhook still points at the ngrok tunnel.** Restore to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when
+  WhatsApp testing here is finished.
+
+**Learned:**
+- The admin table already wraps cell content in `.admin-table__cell-content`,
+  a grid whose nested `<span>` is muted caption text. A two-line cell is a
+  bare fragment — `<><strong>x</strong><span>y</span></>` — not a new class.
+  Worth checking before inventing `cell-stack`/`cell-sub`, which I did first.
+- Mirroring a value into state with `useEffect` is what
+  `react-hooks/set-state-in-effect` flags, and it is a real bug here, not
+  lint noise: the list paints one frame of the previous restaurant's rows
+  before correcting. Adjust during render instead.
+- The dev server binds IPv6 only, so `127.0.0.1:5174` returns nothing while
+  `localhost:5174` works.
+- A stale Vite module cache can keep rendering a class that has been deleted
+  from the source. `node_modules/.vite` has to be cleared, not just the
+  server restarted.
+
 ## 2026-09-18 (2) — One design layer for both apps (4a53cd5, b71fb43)
 
 User: "we have frontend-customer folder where i like that UI so i preffer to
