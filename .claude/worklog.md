@@ -26,6 +26,89 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-19 — The WhatsApp thread that could not take an order (dc87f6b)
+
+User sent three screenshots of a real conversation on the live number and
+asked for it to be fixed. Five messages, four of them answered wrongly:
+
+    Hi          -> greeting, fine
+    Please      -> "I didn't quite catch that."
+    menus       -> eight appetizers, "Which one would you like?"
+    Money Bags  -> "Hello, Money Bags! It seems you're interested in placing
+                   an order..."
+    That's all  -> "There is nothing in your order yet."
+    Money Bags  -> the same paragraph again, word for word
+
+**Three of those are one bug.** `_show_dishes` reads the menu out and ends on
+a question, recording it through `_hold` — which stores the words of the
+question and nothing else. It never records the dishes it just listed.
+Everything that handles "they picked one of the things we offered" hangs off
+`pending_choice`: the reading is told the options through it,
+`_answer_choice` maps a pick onto it, and the never-ask-twice guard is keyed
+on it. With it unset, all three are inert, so the message fell through to the
+general reader — whose `details` schema offers "the customer's name", with a
+capitalised two-word phrase in front of it. From there `collecting = True`
+("giving your name is starting to check out") explains both the reply and why
+the repeat was identical.
+
+Worth noting for the next session: the mechanism to fix it already existed
+and was being used for sizes. The fix is one extra write at each of the two
+places that read a list out, plus a branch at the one place a pick is
+consumed. Nothing new was designed.
+
+"Please" is separate and dumber: `_is_invalid_or_spam_message` drops every
+word under three characters and every stopword, then reads an empty token
+list as evidence of gibberish. It is evidence of a SHORT message. That guard
+could only ever fire on plain English, because everything else is caught by
+the rules above it.
+
+**Changed:**
+- `app/services/ordering_agent/loop.py` — `_remember_dish_choice` and
+  `_answer_dish_choice`; both list-reading paths record what they offered; a
+  pick routes by `kind`; `_money` binds the restaurant's currency per turn;
+  a truncated list says "Here are a few" instead of "Here is what we have".
+- `app/services/rag.py` — the gibberish guard narrowed to messages that are
+  not words.
+- `tests/test_ordering_agent_dish_choice.py`, `test_chat_short_replies.py`,
+  `test_chat_currency.py` (new, 12 tests).
+
+**Verified:** `unittest discover` 1,842 OK. Then the transcript replayed
+against the live Supabase rows with only `read_order_intent` scripted (no
+Ollama here): "Please" classifies as `recommendation`; "menus" lists eight
+dishes priced in rupees under "Here are a few"; "Bombay Bhel" is recognised
+as the pick, resolved against the branch menu, and answered "Which size for
+Bombay Bhel? 500 gm (₹145), 1 Kg (₹280)". `contact_name` stays None and
+`collecting` stays False.
+
+**Open:**
+- **Radhe Dhokla's 136 menu items are all on Rushtampura.** The other five
+  Surat branches have zero available items, so a customer who picks Citylight,
+  Nanpura, Katargam, Vesu or Adajan gets an empty menu on the web and nothing
+  at all from the chat. Data, not code — the PDF import attached everything to
+  one branch. Nobody has been told to fix it yet.
+- The live WhatsApp number still answers for ONE restaurant, from env vars
+  (`whatsapp_restaurant_id` / `whatsapp_restaurant_location_id`): Bangkok
+  Bowl, Bodakdev. Per-tenant WhatsApp channels are §3 of the plan and not
+  started. Until then the currency fix is invisible on that number, because
+  Bangkok Bowl charges CAD and CAD's symbol is "$".
+- Meta's webhook still points at the ngrok tunnel; Mr Tailor production is not
+  receiving messages until it goes back to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+- Nobody has completed a real payment on any channel.
+
+**Learned:**
+- A conversation bug reads as a model problem and usually is not. Every one of
+  these was a fact the code failed to write down, and the model then did the
+  only thing left open to it. The prompt was never wrong; its input was.
+- `_hold` and `_remember_choice` look like two spellings of the same idea and
+  are not: one records a question, the other records the answers to it. Only
+  the second makes a reply mean anything. Any new place that ends a turn on a
+  list needs both.
+- When Ollama is missing, `read_order_intent` returns empty and the agent
+  silently stops reading messages at all. Scripting that one seam is enough to
+  replay a whole conversation against real rows, which is how all of this was
+  confirmed rather than argued.
+
 ## 2026-09-18 (5) — An audit: what the panel and the storefront actually do (9dc5730, da6e9ed, 335e115, a7ddd29, d6db242)
 
 User asked me to check the admin and the storefront, polish, and find and fix
