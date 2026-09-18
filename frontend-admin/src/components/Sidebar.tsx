@@ -1,35 +1,7 @@
-import type { LucideIcon } from "lucide-react";
+import { ChevronLeft, LogOut } from "lucide-react";
 import { useAdminStore } from "../hooks/useAdminStore";
-import {
-  BarChart3,
-  BellRing,
-  Bot,
-  ChevronLeft,
-  Layers3,
-  LayoutDashboard,
-  LogOut,
-  Palette,
-  ReceiptText,
-  Settings,
-  SlidersHorizontal,
-  Sparkles,
-  Store,
-  TicketPercent,
-  Users,
-  UtensilsCrossed,
-} from "lucide-react";
+import { activeNavPathFor, navFor } from "../routes";
 import type { UserRole } from "../types/app";
-
-interface SidebarItem {
-  path: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface SidebarSection {
-  label: string;
-  items: SidebarItem[];
-}
 
 interface SidebarProps {
   currentPath: string;
@@ -41,102 +13,20 @@ interface SidebarProps {
   restaurantId: string | null;
 }
 
-const sidebarSections: SidebarSection[] = [
-  {
-    label: "Overview",
-    items: [
-      { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { path: "/reports", label: "Reports", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "Intelligence",
-    items: [{ path: "/ai-manager", label: "AI Manager", icon: Sparkles }],
-  },
-  {
-    label: "Manage",
-    items: [
-      { path: "/restaurants", label: "Restaurants", icon: Store },
-      { path: "/branding", label: "Branding", icon: Palette },
-      { path: "/orders", label: "Orders", icon: ReceiptText },
-      { path: "/menu-items", label: "Menu Items", icon: UtensilsCrossed },
-      { path: "/offers", label: "Offers", icon: TicketPercent },
-      { path: "/generated-combos", label: "Generated Combos", icon: Layers3 },
-      { path: "/users", label: "Users", icon: Users },
-      { path: "/preferences", label: "Preferences", icon: SlidersHorizontal },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { path: "/ai-logs", label: "AI Logs", icon: Bot },
-      { path: "/notifications", label: "Notifications", icon: BellRing },
-      { path: "/settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
-
-const ownerVisiblePaths = new Set([
-  "/dashboard",
-  "/restaurants",
-  "/branding",
-  "/offers",
-  "/generated-combos",
-  "/menu-items",
-  "/orders",
-  "/users",
-  "/reports",
-  "/ai-manager",
-  "/preferences",
-  "/settings",
-]);
-
-const adminVisiblePaths = new Set([
-  "/dashboard",
-  "/restaurants",
-  "/offers",
-  "/orders",
-  "/users",
-  "/ai-logs",
-  "/reports",
-  "/ai-manager",
-  "/notifications",
-  "/preferences",
-  "/settings",
-]);
-
-function isItemActive(
-  currentPath: string,
-  itemPath: string,
-  role: UserRole,
-  restaurantId: string | null,
-): boolean {
-  if (currentPath === itemPath) {
-    return true;
+/**
+ * Which entry looks selected.
+ *
+ * A route says where it belongs in the navigation, so a page reached from
+ * somewhere else — one branch, one order, the menu editor — keeps its
+ * section lit without this file knowing the shape of those addresses.
+ * `/locations/...` is the one exception: it is a retired address that
+ * redirects, and the highlight should not flicker on the way through.
+ */
+function isItemActive(currentPath: string, itemPath: string): boolean {
+  if (currentPath.startsWith("/locations")) {
+    return itemPath === "/restaurants";
   }
-
-  if (itemPath === "/restaurants" && currentPath.startsWith("/admin/restaurants/")) {
-    return true;
-  }
-
-  if (itemPath === "/restaurants" && currentPath.startsWith("/locations/")) {
-    return true;
-  }
-
-  if (itemPath === "/orders" && currentPath.startsWith("/orders/")) {
-    return true;
-  }
-
-  if (
-    role === "OWNER" &&
-    itemPath === "/restaurants" &&
-    restaurantId &&
-    currentPath === `/admin/restaurants/${restaurantId}`
-  ) {
-    return true;
-  }
-
-  return false;
+  return activeNavPathFor(currentPath) === itemPath;
 }
 
 function getInitials(name: string): string {
@@ -159,24 +49,9 @@ export function Sidebar({
   restaurantId,
 }: SidebarProps) {
   const { user } = useAdminStore();
-  const visibleSections =
-    role === "OWNER"
-      ? sidebarSections
-          .map((section) => ({
-            ...section,
-            items: section.items.filter((item) =>
-              ownerVisiblePaths.has(item.path),
-            ),
-          }))
-          .filter((section) => section.items.length > 0)
-      : sidebarSections
-          .map((section) => ({
-            ...section,
-            items: section.items.filter((item) =>
-              adminVisiblePaths.has(item.path),
-            ),
-          }))
-          .filter((section) => section.items.length > 0);
+  // Built from the routes themselves, so nothing can be offered that this
+  // role cannot open and nothing they can open is missing.
+  const visibleSections = navFor(role);
 
   return (
     <>
@@ -236,12 +111,7 @@ export function Sidebar({
               <div className="admin-sidebar__links">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = isItemActive(
-                    currentPath,
-                    item.path,
-                    role,
-                    restaurantId,
-                  );
+                  const isActive = isItemActive(currentPath, item.path);
 
                   return (
                     <button

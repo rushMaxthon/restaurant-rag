@@ -2,27 +2,14 @@ import { useEffect, useState } from "react";
 import { ToastViewport } from "./components/ToastViewport";
 import { useAdminStore } from "./hooks/useAdminStore";
 import { AdminLayout } from "./layouts/AdminLayout";
-import { AIManagerPage } from "./pages/AIManagerPage";
-import { AILogsPage } from "./pages/AILogsPage";
-import { AdminRestaurantsPage } from "./pages/AdminRestaurantsPage";
-import { BrandingPage } from "./pages/BrandingPage";
-import { AdminUsersPage } from "./pages/AdminUsersPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
-import { PreferencesPage } from "./pages/PreferencesPage";
 import { LoginPage } from "./pages/LoginPage";
-import { LocationDetailPage } from "./pages/LocationDetailPage";
-import { LocationsPage } from "./pages/LocationsPage";
-import { MenuItemEditorPage } from "./pages/MenuItemEditorPage";
-import { MenuItemsPage } from "./pages/MenuItemsPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
-import { OffersPage } from "./pages/OffersPage";
-import { OrderDetailPage } from "./pages/OrderDetailPage";
-import { OrdersPage } from "./pages/OrdersPage";
-import { RestaurantDetailPage } from "./pages/RestaurantDetailPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import type { UserRole } from "./types/app";
+import {
+  defaultPathFor,
+  matchRoute,
+  mayOpen,
+  redirectFor,
+  type RouteContext,
+} from "./routes";
 
 function usePathname() {
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -44,189 +31,14 @@ function usePathname() {
   return { pathname, navigate };
 }
 
-function getRestaurantDetailId(pathname: string): string | null {
-  const match = pathname.match(/^\/admin\/restaurants\/([^/]+)$/);
-  return match?.[1] ?? null;
-}
-
-function getOrderDetailId(pathname: string): string | null {
-  const match = pathname.match(/^\/orders\/([^/]+)$/);
-  return match?.[1] ?? null;
-}
-
-function getRestaurantLocationsId(pathname: string): string | null {
-  const match = pathname.match(/^\/admin\/restaurants\/([^/]+)\/locations$/);
-  return match?.[1] ?? null;
-}
-
-function getRestaurantAppClientId(pathname: string): string | null {
-  const match = pathname.match(/^\/admin\/restaurants\/([^/]+)\/app-client$/);
-  return match?.[1] ?? null;
-}
-
-function getLocationDetailParams(pathname: string): {
-  restaurantId: string;
-  locationId: string;
-} | null {
-  const nestedMatch = pathname.match(
-    /^\/admin\/restaurants\/([^/]+)\/locations\/([^/]+)$/,
-  );
-  if (nestedMatch) {
-    return {
-      restaurantId: nestedMatch[1],
-      locationId: nestedMatch[2],
-    };
-  }
-
-  const legacyMatch = pathname.match(/^\/locations\/([^/]+)\/([^/]+)$/);
-  if (!legacyMatch) {
-    return null;
-  }
-  return {
-    restaurantId: legacyMatch[1],
-    locationId: legacyMatch[2],
-  };
-}
-
-function getMenuItemEditorParams(pathname: string): {
-  restaurantId: string;
-  locationId: string | null;
-  itemId: string | null;
-} | null {
-  const globalCreateMatch = pathname.match(
-    /^\/admin\/restaurants\/([^/]+)\/menu-items\/create$/,
-  );
-  if (globalCreateMatch) {
-    return {
-      restaurantId: globalCreateMatch[1],
-      locationId: null,
-      itemId: null,
-    };
-  }
-
-  const createMatch = pathname.match(
-    /^\/admin\/restaurants\/([^/]+)\/locations\/([^/]+)\/menu-items\/create$/,
-  );
-  if (createMatch) {
-    return {
-      restaurantId: createMatch[1],
-      locationId: createMatch[2],
-      itemId: null,
-    };
-  }
-
-  const editMatch = pathname.match(
-    /^\/admin\/restaurants\/([^/]+)\/locations\/([^/]+)\/menu-items\/([^/]+)\/edit$/,
-  );
-  if (!editMatch) {
-    return null;
-  }
-
-  return {
-    restaurantId: editMatch[1],
-    locationId: editMatch[2],
-    itemId: editMatch[3],
-  };
-}
-
-function getDefaultPath(role: UserRole, restaurantId: string | null): string {
-  if (role === "OWNER" && restaurantId) {
-    return `/admin/restaurants/${restaurantId}/locations`;
-  }
-
-  if (role === "ADMIN") {
-    return "/dashboard";
-  }
-
-  return "/login";
-}
-
-function isAllowedPath(
-  role: UserRole,
-  pathname: string,
-  restaurantId: string | null,
-): boolean {
-  const staticAllowed: Record<UserRole, string[]> = {
-    ADMIN: [
-      "/dashboard",
-      "/restaurants",
-      "/offers",
-      "/generated-combos",
-      "/menu-items",
-      "/orders",
-      "/users",
-      "/ai-logs",
-      "/reports",
-      "/ai-manager",
-      "/notifications",
-      "/preferences",
-      "/settings",
-    ],
-    OWNER: [
-      "/dashboard",
-      "/restaurants",
-      "/branding",
-      "/offers",
-      "/generated-combos",
-      "/menu-items",
-      "/orders",
-      "/users",
-      "/reports",
-      "/ai-manager",
-      "/preferences",
-      "/settings",
-    ],
-    CUSTOMER: [],
-  };
-
-  if (staticAllowed[role].includes(pathname)) {
-    return true;
-  }
-
-  if (getOrderDetailId(pathname)) {
-    return role === "ADMIN" || role === "OWNER";
-  }
-
-  const detailId = getRestaurantDetailId(pathname);
-  if (detailId) {
-    if (role === "ADMIN") {
-      return true;
-    }
-    return role === "OWNER" && restaurantId === detailId;
-  }
-
-  const restaurantLocationsId = getRestaurantLocationsId(pathname);
-  if (restaurantLocationsId) {
-    if (role === "ADMIN") {
-      return true;
-    }
-    return role === "OWNER" && restaurantId === restaurantLocationsId;
-  }
-
-  // App client configuration is platform-level, so it stays admin-only.
-  if (getRestaurantAppClientId(pathname)) {
-    return role === "ADMIN";
-  }
-
-  const locationDetail = getLocationDetailParams(pathname);
-  if (locationDetail) {
-    if (role === "ADMIN") {
-      return true;
-    }
-    return role === "OWNER" && restaurantId === locationDetail.restaurantId;
-  }
-
-  const menuItemEditor = getMenuItemEditorParams(pathname);
-  if (menuItemEditor) {
-    if (role === "ADMIN") {
-      return true;
-    }
-    return role === "OWNER" && restaurantId === menuItemEditor.restaurantId;
-  }
-
-  return false;
-}
-
+/**
+ * The shell: who is signed in, where they are, and the page that answers.
+ *
+ * Everything about *which* addresses exist, who may open them and what they
+ * render lives in `routes.tsx`. This file used to hold all of it as a
+ * nested ternary and two hand-maintained allowlists that had already drifted
+ * apart from the sidebar's own two.
+ */
 function App() {
   const { pathname, navigate } = usePathname();
   const {
@@ -240,6 +52,7 @@ function App() {
     dismissToast,
     pushToast,
   } = useAdminStore();
+
   useEffect(() => {
     if (!isAuthenticated || !user || !role) {
       return;
@@ -267,69 +80,9 @@ function App() {
       return;
     }
 
-    if (pathname === "/restaurants" && role === "OWNER" && restaurantId) {
-      navigate(`/admin/restaurants/${restaurantId}/locations`);
-      return;
-    }
-
-    if (pathname === "/locations") {
-      if (role === "OWNER" && restaurantId) {
-        navigate(`/admin/restaurants/${restaurantId}/locations`);
-      } else if (role === "ADMIN") {
-        navigate("/restaurants");
-      }
-      return;
-    }
-
-    const legacyLocationDetail = pathname.match(/^\/locations\/([^/]+)\/([^/]+)$/);
-    if (legacyLocationDetail) {
-      navigate(
-        `/admin/restaurants/${legacyLocationDetail[1]}/locations/${legacyLocationDetail[2]}`,
-      );
-      return;
-    }
-
-    const detailId = getRestaurantDetailId(pathname);
-    if (role === "OWNER" && detailId && restaurantId && detailId !== restaurantId) {
-      navigate(`/admin/restaurants/${restaurantId}/locations`);
-      return;
-    }
-
-    const restaurantLocationsId = getRestaurantLocationsId(pathname);
-    if (
-      role === "OWNER" &&
-      restaurantLocationsId &&
-      restaurantId &&
-      restaurantLocationsId !== restaurantId
-    ) {
-      navigate(`/admin/restaurants/${restaurantId}/locations`);
-      return;
-    }
-
-    const locationDetail = getLocationDetailParams(pathname);
-    if (
-      role === "OWNER" &&
-      locationDetail &&
-      restaurantId &&
-      locationDetail.restaurantId !== restaurantId
-    ) {
-      navigate(`/admin/restaurants/${restaurantId}/locations`);
-      return;
-    }
-
-    const menuItemEditor = getMenuItemEditorParams(pathname);
-    if (
-      role === "OWNER" &&
-      menuItemEditor &&
-      restaurantId &&
-      menuItemEditor.restaurantId !== restaurantId
-    ) {
-      navigate(`/admin/restaurants/${restaurantId}/locations`);
-      return;
-    }
-
-    if (!isAllowedPath(role, pathname, restaurantId)) {
-      navigate(getDefaultPath(role, restaurantId));
+    const elsewhere = redirectFor(pathname, role, restaurantId);
+    if (elsewhere && elsewhere !== pathname) {
+      navigate(elsewhere);
     }
   }, [
     isAuthenticated,
@@ -342,13 +95,6 @@ function App() {
     user,
   ]);
 
-  const restaurantDetailId = getRestaurantDetailId(pathname);
-  const restaurantLocationsId = getRestaurantLocationsId(pathname);
-  const restaurantAppClientId = getRestaurantAppClientId(pathname);
-  const locationDetail = getLocationDetailParams(pathname);
-  const menuItemEditor = getMenuItemEditorParams(pathname);
-  const orderDetailId = getOrderDetailId(pathname);
-
   if (!isAuthenticated || !token || !user || !role) {
     return (
       <>
@@ -358,159 +104,23 @@ function App() {
     );
   }
 
-  const content =
-    menuItemEditor ? (
-      <MenuItemEditorPage
-        itemId={menuItemEditor.itemId}
-        locationId={menuItemEditor.locationId}
-        onNavigate={navigate}
-        onToast={pushToast}
-        restaurantId={menuItemEditor.restaurantId}
-        role={role}
-        token={token}
-      />
-    ) : locationDetail ? (
-      <LocationDetailPage
-        assignedRestaurantId={restaurantId}
-        key={`${locationDetail.restaurantId}:${locationDetail.locationId}`}
-        locationId={locationDetail.locationId}
-        onNavigate={navigate}
-        onToast={pushToast}
-        restaurantId={locationDetail.restaurantId}
-        role={role}
-        token={token}
-      />
-    ) : restaurantAppClientId ? (
-      <RestaurantDetailPage
-        assignedRestaurantId={restaurantId}
-        initialSection="app_client"
-        key={`${restaurantAppClientId}:app-client`}
-        onNavigate={navigate}
-        onToast={pushToast}
-        restaurantId={restaurantAppClientId}
-        role={role}
-        token={token}
-      />
-    ) : restaurantLocationsId ? (
-      <LocationsPage
-        token={token}
-        role={role}
-        assignedRestaurantId={restaurantId}
-        scopedRestaurantId={restaurantLocationsId}
-        onNavigate={navigate}
-        onToast={pushToast}
-      />
-    ) : restaurantDetailId ? (
-      <RestaurantDetailPage
-        assignedRestaurantId={restaurantId}
-        initialSection="details"
-        onNavigate={navigate}
-        onToast={pushToast}
-        key={restaurantDetailId}
-        restaurantId={restaurantDetailId}
-        role={role}
-        token={token}
-      />
-    ) : pathname === "/restaurants" ? (
-      role === "OWNER" && restaurantId ? (
-        <LocationsPage
-          token={token}
-          role={role}
-          assignedRestaurantId={restaurantId}
-          scopedRestaurantId={restaurantId}
-          onNavigate={navigate}
-          onToast={pushToast}
-        />
-      ) : (
-        <AdminRestaurantsPage token={token} onNavigate={navigate} onToast={pushToast} />
-      )
-    ) : pathname === "/locations" ? (
-      <LocationsPage
-        token={token}
-        role={role}
-        assignedRestaurantId={restaurantId}
-        onNavigate={navigate}
-        onToast={pushToast}
-      />
-    ) : pathname === "/menu-items" ? (
-      <MenuItemsPage
-        token={token}
-        role={role}
-        restaurantId={restaurantId}
-        onNavigate={navigate}
-        onToast={pushToast}
-      />
-    ) : pathname === "/offers" ? (
-      <OffersPage
-        token={token}
-        role={role}
-        restaurantId={restaurantId}
-        onNavigate={navigate}
-        onToast={pushToast}
-      />
-    ) : pathname === "/preferences" ? (
-      <PreferencesPage onToast={pushToast} role={role} token={token} />
-    ) : pathname === "/generated-combos" ? (
-      <GeneratedCombosPage
-        onToast={pushToast}
-        restaurantId={role === "OWNER" ? restaurantId : undefined}
-        role={role}
-        token={token}
-      />
-    ) : orderDetailId ? (
-      <OrderDetailPage
-        key={orderDetailId}
-        onNavigate={navigate}
-        onToast={pushToast}
-        orderId={orderDetailId}
-        role={role}
-        token={token}
-      />
-    ) : pathname === "/orders" ? (
-      <OrdersPage
-        token={token}
-        role={role}
-        onNavigate={navigate}
-        onToast={pushToast}
-      />
-    ) : pathname === "/users" ? (
-      <AdminUsersPage
-        token={token}
-        currentUserId={user.id}
-        role={role}
-        onToast={pushToast}
-      />
-    ) : pathname === "/ai-manager" ? (
-      <AIManagerPage />
-    ) : pathname === "/ai-logs" ? (
-      <AILogsPage token={token} onToast={pushToast} />
-    ) : pathname === "/reports" ? (
-      <ReportsPage
-        token={token}
-        role={role}
-        restaurantId={restaurantId}
-        onToast={pushToast}
-      />
-    ) : pathname === "/notifications" ? (
-      <NotificationsPage onToast={pushToast} />
-    ) : pathname === "/branding" ? (
-      <BrandingPage
-        onToast={pushToast}
-        restaurantId={restaurantId}
-        restaurantName={user?.restaurant_name ?? null}
-        token={token}
-      />
-    ) : pathname === "/settings" ? (
-      <SettingsPage onToast={pushToast} />
-    ) : (
-      <DashboardPage
-        onNavigate={navigate}
-        token={token}
-        role={role}
-        restaurantId={restaurantId}
-        onToast={pushToast}
-      />
-    );
+  const context: RouteContext = {
+    token,
+    role,
+    restaurantId,
+    user,
+    navigate,
+    pushToast,
+  };
+
+  // The redirect above settles an address this role cannot open, but it runs
+  // in an effect and this render happens first. Falling back to their own
+  // home page means the in-between frame is a page they are allowed to see
+  // rather than one they are not.
+  const found = matchRoute(pathname);
+  const allowed = found && mayOpen(found.route, role) ? found : null;
+  const home = allowed ? null : matchRoute(defaultPathFor(role, restaurantId));
+  const showing = allowed ?? home;
 
   return (
     <>
@@ -524,7 +134,7 @@ function App() {
         role={role}
         restaurantId={restaurantId}
       >
-        {content}
+        {showing ? showing.route.render(context, showing.params) : null}
       </AdminLayout>
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </>
