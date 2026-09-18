@@ -889,12 +889,25 @@ def build_app_config_response(
     currency = currency_for(get_settings().payment_currency)
     restaurant = app_client.restaurant
     if restaurant is not None:
+        from app.services.app_branding import COVER_IMAGE_URL_KEY
         from app.services.restaurant_storefront import read_storefront
         from app.services.restaurant_theme import read_theme
 
         stored = read_theme(restaurant)
         branding[BRANDING_PRIMARY_COLOR_KEY] = stored["primary_color"]
         branding["theme_preset"] = stored["preset"]
+        # Two fields are spelled `cover_image_url`: one on the APP CLIENT,
+        # which an operator sets on the branding screen, and one on the
+        # RESTAURANT, which is where the restaurant edit form writes. The
+        # storefront reads the app client's, so a cover typed into the
+        # restaurant form reached nothing — an edit that saved, showed a
+        # success toast, and changed no page.
+        #
+        # The app client's wins where it is set, because it is the more
+        # specific of the two: a single-restaurant app may deliberately front
+        # the same restaurant with different artwork.
+        if not branding.get(COVER_IMAGE_URL_KEY) and restaurant.cover_image_url:
+            branding[COVER_IMAGE_URL_KEY] = restaurant.cover_image_url
         # Every key filled in, derived from this restaurant's own name,
         # cuisine and city where nobody has written anything.
         storefront = read_storefront(restaurant)

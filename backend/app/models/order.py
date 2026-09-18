@@ -112,14 +112,16 @@ class Order(TimestampMixin, Base):
         server_default="0.00",
     )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    # Real orders stamp this from `payment_currency` at creation; the default
-    # only covers inserts that forget to. It must match that setting, or a
-    # forgotten stamp silently charges in a currency nobody displayed.
+    # Real orders stamp this from the RESTAURANT's own currency at creation
+    # (`services/orders.py`), not from `payment_currency` — that global was
+    # right while the platform served one restaurant, and would have a Surat
+    # kitchen charging dollars now. The default here only covers inserts that
+    # forget to stamp it.
     #
-    # USD as of 0059. Existing CAD rows are left as they are on purpose — the
-    # Stripe intent is built from this column, so rewriting a settled order's
-    # currency would falsify what was actually charged. The table holding both
-    # is the point of the column.
+    # Existing rows are left as they are on purpose, including ones written
+    # under the old global: the gateway intent is built from this column, so
+    # rewriting a settled order's currency would falsify what was actually
+    # charged. The table holding several at once is the point of the column.
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD", server_default="USD")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_address: Mapped[str] = mapped_column(Text, nullable=False)

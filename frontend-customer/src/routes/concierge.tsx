@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
   ApiError,
   getChatHistory,
@@ -604,12 +604,7 @@ function ConciergePage() {
     <div className="pb-32">
       {!hasResult ? (
         <>
-          <section className="relative min-h-[38svh] overflow-hidden">
-            <img
-              src={heroImage}
-              alt={`Food from ${copy.name}`}
-              className="absolute inset-0 size-full object-cover"
-            />
+          <StorefrontHero className="min-h-[38svh]">
             <div className="hero-overlay absolute inset-0" />
             <div className="hero-copy page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24 text-primary-foreground">
               <Sparkles className="mb-4 size-10" />
@@ -620,7 +615,7 @@ function ConciergePage() {
                 {copy.concierge_intro}
               </p>
             </div>
-          </section>
+          </StorefrontHero>
           <div className="page-pad mx-auto max-w-5xl py-10">
             <div className="mb-8 flex flex-wrap gap-2">
               {STARTERS.map((s, i) => (
