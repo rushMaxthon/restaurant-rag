@@ -13,10 +13,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
+import { lineSelections, orderCode, scheduledFor} from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
-import { pageMeta } from "@/lib/storefront";
+import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /**
@@ -60,6 +60,8 @@ function placedAt(iso: string): string {
 }
 
 function OrderDetail() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const { orderId } = Route.useParams();
   const isAuthenticated = useRequireAuth();
   const orderQuery = useOrder(orderId, isAuthenticated);
@@ -233,10 +235,10 @@ function OrderDetail() {
                     <p className="mt-0.5 text-sm text-muted">{lineSelections(item)}</p>
                   )}
                   <p className="money mt-0.5 text-sm text-muted">
-                    {item.quantity} × {formatMoney(item.unit_price)}
+                    {item.quantity} × {money(item.unit_price)}
                   </p>
                 </div>
-                <span className="money shrink-0 font-bold">{formatMoney(item.total_price)}</span>
+                <span className="money shrink-0 font-bold">{money(item.total_price)}</span>
               </li>
             ))}
           </ul>
@@ -246,27 +248,27 @@ function OrderDetail() {
           <dl className="mt-5 space-y-2.5 text-sm">
             <div className="sum-row">
               <dt>Subtotal</dt>
-              <dd>{formatMoney(o.subtotal)}</dd>
+              <dd>{money(o.subtotal)}</dd>
             </div>
             <div className="sum-row">
               <dt>{isDelivery ? "Delivery fee" : "Pickup"}</dt>
-              <dd>{Number(o.delivery_fee) === 0 ? "Free" : formatMoney(o.delivery_fee)}</dd>
+              <dd>{Number(o.delivery_fee) === 0 ? "Free" : money(o.delivery_fee)}</dd>
             </div>
             <div className="sum-row">
               <dt>Tax</dt>
-              <dd>{formatMoney(o.tax_amount)}</dd>
+              <dd>{money(o.tax_amount)}</dd>
             </div>
             {discount > 0 && (
               <div className="sum-row" data-tone="success">
                 <dt>Discount</dt>
-                <dd>−{formatMoney(discount)}</dd>
+                <dd>−{money(discount)}</dd>
               </div>
             )}
           </dl>
 
           <div className="sum-total">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="sum-total-figure">{formatMoney(o.total_amount)}</span>
+            <span className="sum-total-figure">{money(o.total_amount)}</span>
           </div>
 
           {/* Inferring "cash" from "not yet PAID" told a card customer their

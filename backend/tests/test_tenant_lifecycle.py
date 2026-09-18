@@ -86,6 +86,9 @@ def make_tenant(
             cuisine_type="Chinese",
             city="Ahmedabad",
             is_approved=True,
+            # The console labels each tenant's money with its own symbol, so
+            # the summary reads this now.
+            currency="CAD",
         ),
         domains=[
             SimpleNamespace(

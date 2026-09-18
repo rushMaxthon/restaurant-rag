@@ -25,6 +25,18 @@ export interface AdminStoreValue {
    */
   activeRestaurantId: string | null;
   setActiveRestaurantId: (restaurantId: string | null) => void;
+  /**
+   * Each restaurant's currency, by restaurant id.
+   *
+   * Held here rather than resolved per screen because one panel shows several
+   * restaurants' money and every figure has to be labelled with the right
+   * symbol. `useMoney()` is what reads it; nothing else should need to.
+   *
+   * Empty until the first load, which is why `useMoney` falls back rather
+   * than waiting — a figure arriving a moment before its symbol is better
+   * than a blank screen.
+   */
+  tenantCurrencies: Record<string, string>;
   user: User | null;
   isAuthenticated: boolean;
   toasts: ToastMessage[];

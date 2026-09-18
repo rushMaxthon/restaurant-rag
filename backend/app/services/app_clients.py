@@ -18,6 +18,7 @@ from app.models.app_client import (
     AppClientIdentifier,
     AppClientOrderSequence,
 )
+from app.services.currency import currency_for
 from app.models.enums import (
     AppClientDomainKind,
     AppClientEnvironment,
@@ -26,7 +27,7 @@ from app.models.enums import (
     AppMode,
 )
 from app.models.restaurant import Restaurant
-from app.schemas.app_config import AppConfigResponse
+from app.schemas.app_config import AppConfigResponse, CurrencyResponse
 from app.schemas.restaurant import (
     APP_KEY_MAX_LENGTH,
     ORDER_NUMBER_PREFIX_MAX_LENGTH,
@@ -882,6 +883,9 @@ def build_app_config_response(
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
 
     storefront: dict[str, str] = {}
+    # The marketplace spans restaurants that may charge in different money, so
+    # it gets the platform default rather than one tenant's answer.
+    currency = currency_for(get_settings().payment_currency)
     restaurant = app_client.restaurant
     if restaurant is not None:
         from app.services.restaurant_storefront import read_storefront
@@ -893,6 +897,7 @@ def build_app_config_response(
         # Every key filled in, derived from this restaurant's own name,
         # cuisine and city where nobody has written anything.
         storefront = read_storefront(restaurant)
+        currency = currency_for(restaurant.currency)
 
     return AppConfigResponse(
         app_client_id=app_client.id,
@@ -909,6 +914,12 @@ def build_app_config_response(
         host=normalize_host(host),
         business_timezone=get_settings().business_timezone,
         storefront=storefront,
+        currency=CurrencyResponse(
+            code=currency.code,
+            symbol=currency.symbol,
+            locale=currency.locale,
+            min_fraction_digits=currency.min_fraction_digits,
+        ),
     )
 
 

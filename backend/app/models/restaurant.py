@@ -86,6 +86,18 @@ class Restaurant(TimestampMixin, Base):
         default=dict,
         server_default="{}",
     )
+    # What this restaurant charges in. Not a preference and not an owner's to
+    # change: switching it converts no prices, it relabels every one of them,
+    # so onboarding sets it and an administrator changes it.
+    #
+    # `orders.currency` is stamped per order from this, which is what makes a
+    # change safe — past orders keep the currency they were charged in.
+    currency: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        default="USD",
+        server_default="USD",
+    )
     # The restaurant's own words: page title, meta description, hero copy.
     # Beside `theme` and owned by the same person, for the same reason — these
     # were literals in the customer web app, so every tenant's website and

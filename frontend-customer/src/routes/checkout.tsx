@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CardPayment } from "@/components/bangkok/card-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
-import { formatMoney, orderCode } from "@/lib/bangkok-data";
+import { orderCode} from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import {
   activeSlots,
@@ -56,7 +56,7 @@ import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
-import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
+import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /** Shown beside the phone field; matches the backend's own default. */
@@ -161,6 +161,8 @@ function AddressField({
 }
 
 function Checkout() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   // This restaurant's own name, resolved from the address in the root route.
   const copy = useStorefrontCopy();
   const s = useBangkokStore();
@@ -1108,11 +1110,11 @@ function Checkout() {
                     </p>
                   )}
                   <p className="money text-sm text-muted">
-                    {line.quantity} × {formatMoney(line.unitPrice)}
+                    {line.quantity} × {money(line.unitPrice)}
                   </p>
                 </div>
                 <span className="money shrink-0 font-bold">
-                  {formatMoney(line.unitPrice * line.quantity)}
+                  {money(line.unitPrice * line.quantity)}
                 </span>
               </div>
             ))}
@@ -1127,7 +1129,7 @@ function Checkout() {
               <div className="flex justify-between" key={String(label)}>
                 <dt className="text-muted">{label}</dt>
                 <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : formatMoney(Number(value))}
+                  {Number(value) === 0 ? "Free" : money(Number(value))}
                 </dd>
               </div>
             ))}
@@ -1135,7 +1137,7 @@ function Checkout() {
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="font-display text-3xl font-extrabold">{formatMoney(total)}</span>
+            <span className="font-display text-3xl font-extrabold">{money(total)}</span>
           </div>
 
           <Button
@@ -1147,7 +1149,7 @@ function Checkout() {
               ? payingCard
                 ? "Opening payment…"
                 : "Preparing your order…"
-              : `Pay ${formatMoney(total)}`}
+              : `Pay ${money(total)}`}
           </Button>
         </aside>
       </div>
@@ -1166,7 +1168,7 @@ function Checkout() {
               {s.totalItems} {s.totalItems === 1 ? "item" : "items"}
             </p>
             <p className="money font-display text-xl font-extrabold leading-tight">
-              {formatMoney(total)}
+              {money(total)}
             </p>
           </div>
           <Button

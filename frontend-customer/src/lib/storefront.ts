@@ -1,5 +1,12 @@
 import { useLoaderData } from "@tanstack/react-router";
 
+import {
+  FALLBACK_CURRENCY,
+  formatMoney,
+  type CurrencyFormat,
+  type Money,
+} from "@/lib/bangkok-data";
+
 /**
  * This restaurant's own words.
  *
@@ -12,6 +19,8 @@ import { useLoaderData } from "@tanstack/react-router";
  * The server half lives in `storefront.server.ts`, because reading the
  * incoming request is something only the server can do.
  */
+export type StorefrontConfig = StorefrontCopy & { currency: CurrencyFormat };
+
 export type StorefrontCopy = {
   /**
    * The restaurant's name, for page titles like "Your cart — Radhe Dhokla".
@@ -76,6 +85,20 @@ export function storefrontMeta(copy: StorefrontCopy) {
 export function useStorefrontCopy(): StorefrontCopy {
   const data = useLoaderData({ from: "__root__" }) as StorefrontCopy | undefined;
   return data ?? UNKNOWN_STOREFRONT;
+}
+
+/**
+ * A price formatter bound to what THIS restaurant charges in.
+ *
+ * A hook rather than a module-level "current currency", which would be shared
+ * across every request the server is rendering at once — one tenant's rupees
+ * would end up on another tenant's dollars, and only under load. The currency
+ * rides the root loader, so it is already correct in the server-rendered HTML.
+ */
+export function useMoney(): (value: Money | number) => string {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  const currency = data?.currency ?? FALLBACK_CURRENCY;
+  return (value) => formatMoney(value, currency);
 }
 
 /**

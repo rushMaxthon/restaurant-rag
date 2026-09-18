@@ -22,12 +22,11 @@ import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
   api,
-  formatCompactCurrency,
-  formatCurrency,
   formatDate,
   toNumber,
 } from "../services/api";
 import { formatResponseTime, pluralize } from "../services/format";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -219,6 +218,8 @@ function DashboardBarsChart({
   subtitle: string;
   data: ChartDatum[];
 }) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   return (
     <section className="admin-surface dashboard-admin-panel dashboard-admin-panel--chart">
       <div className="admin-surface__header">
@@ -232,7 +233,7 @@ function DashboardBarsChart({
         <SharedVerticalBarsChart
           className="dashboard-admin-bars"
           data={data}
-          valueFormatter={formatCompactCurrency}
+          valueFormatter={money.compact}
         />
       ) : (
         <EmptyPanel description="Revenue bars appear when paid orders are available." title="No revenue data yet" />
@@ -273,6 +274,8 @@ export function DashboardPage({
   onNavigate,
   onToast,
 }: DashboardPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const scope = tokenScope(token);
   const dashboardKey = buildDashboardKey(scope, isAdmin, restaurantId ?? null);
@@ -814,7 +817,7 @@ export function DashboardPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (item) => formatCurrency(item.revenue),
+      render: (item) => money.format(item.revenue),
       mobileLabel: "Revenue",
       align: "right",
     },
@@ -848,7 +851,7 @@ export function DashboardPage({
             icon={<DollarSign size={18} />}
             label="Revenue"
             trend={revenueTrend}
-            value={formatCurrency(stats?.total_revenue ?? 0)}
+            value={money.format(stats?.total_revenue ?? 0)}
           />
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--approvals"
@@ -984,7 +987,7 @@ export function DashboardPage({
                         </span>
                       </div>
                       <div className="dashboard-admin-list__meta">
-                        <strong>{formatCurrency(order.total_amount)}</strong>
+                        <strong>{money.format(order.total_amount)}</strong>
                       </div>
                     </article>
                   ))}
@@ -1020,7 +1023,7 @@ export function DashboardPage({
                       </div>
                       <div className="dashboard-admin-list__meta">
                         <span>{pluralize(restaurant.orders, 'order')}</span>
-                        <strong>{formatCurrency(restaurant.revenue)}</strong>
+                        <strong>{money.format(restaurant.revenue)}</strong>
                       </div>
                     </article>
                   ))}
@@ -1190,7 +1193,7 @@ export function DashboardPage({
           icon={<DollarSign size={18} />}
           label="Today's revenue"
           trend="Gross value for today"
-          value={formatCurrency(todaysRevenue)}
+          value={money.format(todaysRevenue)}
         />
         <DashboardMetricCard
           accentClass="dashboard-admin-metric--approvals"
@@ -1282,7 +1285,7 @@ export function DashboardPage({
                     </div>
                     <div className="insight-row__meta">
                       <StatusPill status={order.status} />
-                      <span>{formatCurrency(order.total_amount)}</span>
+                      <span>{money.format(order.total_amount)}</span>
                     </div>
                   </article>
                 ))}

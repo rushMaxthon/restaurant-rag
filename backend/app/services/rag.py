@@ -29,6 +29,7 @@ from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
+from app.services.currency import format_amount
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.chat import (
@@ -3952,14 +3953,20 @@ def _service_info_reply(
     if location is None:
         return None
 
-    currency = settings.payment_currency.upper()
+    # The branch's own restaurant decides what this is quoted in. It was one
+    # global setting, which told a Surat customer their delivery cost "USD
+    # 20.00" — the right number under the wrong currency, which is worse than
+    # either being wrong alone because it reads as a price they could agree to.
+    restaurant_currency = db.scalar(
+        select(Restaurant.currency).where(Restaurant.id == location.restaurant_id)
+    )
     parts: list[str] = []
 
     if location.delivery_enabled:
         fee = Decimal(str(location.delivery_fee or 0))
         eta = location.estimated_delivery_time
         if fee > 0:
-            line = f"Delivery is {currency} {fee:.2f}"
+            line = f"Delivery is {format_amount(float(fee), restaurant_currency)}"
         else:
             line = "Delivery is free"
         if eta:
@@ -3974,7 +3981,9 @@ def _service_info_reply(
 
     minimum = Decimal(str(location.minimum_order_amount or 0))
     if minimum > 0:
-        parts.append(f"the minimum order is {currency} {minimum:.2f}")
+        parts.append(
+            f"the minimum order is {format_amount(float(minimum), restaurant_currency)}"
+        )
 
     if not parts:
         return None

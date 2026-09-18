@@ -52,6 +52,7 @@ from app.services.app_clients import (
     get_app_client_for_restaurant,
     upsert_app_client_for_restaurant,
 )
+from app.services.currency import CurrencyNotSupported, normalize_currency
 from app.services.restaurant_storefront import (
     STOREFRONT_KEYS,
     STOREFRONT_LIMITS,
@@ -357,6 +358,23 @@ def update_restaurant_settings(
         restaurant.is_active = payload.is_active
         if not payload.is_active:
             restaurant.is_open = False
+
+    if payload.currency is not None:
+        # Admin-only for the same reason `is_active` is: this relabels every
+        # price the restaurant has without converting a single one, so it is a
+        # platform decision made at onboarding, not a setting an owner flips
+        # while looking at something else.
+        if current_user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can change a restaurant's currency",
+            )
+        try:
+            restaurant.currency = normalize_currency(payload.currency)
+        except CurrencyNotSupported as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
 
     db.add(restaurant)
     db.commit()

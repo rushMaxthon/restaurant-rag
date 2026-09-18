@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHost } from "@tanstack/react-start/server";
 
 import { API_BASE_URL } from "@/lib/api";
-import { UNKNOWN_STOREFRONT, type StorefrontCopy } from "@/lib/storefront";
+import { FALLBACK_CURRENCY, type CurrencyFormat } from "@/lib/bangkok-data";
+import {
+  UNKNOWN_STOREFRONT,
+  type StorefrontConfig,
+  type StorefrontCopy,
+} from "@/lib/storefront";
 
 /**
  * Resolve this restaurant's copy from the address the request arrived on.
@@ -37,13 +42,19 @@ import { UNKNOWN_STOREFRONT, type StorefrontCopy } from "@/lib/storefront";
  * seconds so an owner editing their page title sees it on the next reload
  * rather than wondering whether the save worked.
  */
+/** The nameless fallback, with a currency attached so a formatter always has one. */
+const UNKNOWN_CONFIG: StorefrontConfig = {
+  ...UNKNOWN_STOREFRONT,
+  currency: FALLBACK_CURRENCY,
+};
+
 const TTL_MS = 30_000;
-const cache = new Map<string, { at: number; copy: StorefrontCopy }>();
+const cache = new Map<string, { at: number; copy: StorefrontConfig }>();
 
 export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
-  async (): Promise<StorefrontCopy> => {
+  async (): Promise<StorefrontConfig> => {
     const host = getRequestHost();
-    if (!host) return UNKNOWN_STOREFRONT;
+    if (!host) return UNKNOWN_CONFIG;
 
     const hit = cache.get(host);
     if (hit && Date.now() - hit.at < TTL_MS) return hit.copy;
@@ -53,18 +64,20 @@ export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
         `${API_BASE_URL}/app-config?host=${encodeURIComponent(host)}`,
         { headers: { Accept: "application/json", "X-Forwarded-Host": host } },
       );
-      if (!response.ok) return UNKNOWN_STOREFRONT;
+      if (!response.ok) return UNKNOWN_CONFIG;
 
       const payload = (await response.json()) as {
         display_name?: string;
         storefront?: Partial<StorefrontCopy>;
+        currency?: CurrencyFormat;
       };
       // Merged rather than trusted wholesale: the backend fills every key for
       // a restaurant, but a MARKETPLACE client legitimately sends none.
-      const copy = {
+      const copy: StorefrontConfig = {
         ...UNKNOWN_STOREFRONT,
         name: payload.display_name || UNKNOWN_STOREFRONT.name,
         ...(payload.storefront ?? {}),
+        currency: payload.currency ?? FALLBACK_CURRENCY,
       };
       // Only a real answer is cached. Caching the fallback would pin a
       // nameless page in place for half a minute after a blip.
@@ -73,7 +86,7 @@ export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
     } catch {
       // An unreachable backend must not fail the render. The page still
       // works; only the meta degrades.
-      return UNKNOWN_STOREFRONT;
+      return UNKNOWN_CONFIG;
     }
   },
 );

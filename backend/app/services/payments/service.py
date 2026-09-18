@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.services.currency import currency_for
 from app.models.enums import (
     OrderScheduleType,
     OrderCancellationReason,
@@ -896,15 +897,20 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
     return cancelled
 
 
-def payment_config() -> dict[str, object]:
-    """Client bootstrap: publishable key and the methods this deployment offers."""
+def payment_config(*, currency: str | None = None) -> dict[str, object]:
+    """Client bootstrap: publishable key, methods on offer, and the currency.
+
+    `currency` is the calling app's restaurant's. None — the marketplace, the
+    admin panel, curl — falls back to the platform default, because there is
+    no single right answer across restaurants that charge in different money.
+    """
 
     return {
         "publishable_key": settings.stripe_publishable_key
         if settings.stripe_is_configured
         else "",
         "stripe_enabled": settings.stripe_is_configured,
-        "currency": settings.payment_currency.upper(),
+        "currency": currency_for(currency or settings.payment_currency).code,
         "supported_methods": [method.value for method in available_payment_methods()],
     }
 

@@ -7,8 +7,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatMoney } from "@/lib/bangkok-data";
+
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { useMoney } from "@/lib/storefront";
 
 /**
  * Branch switcher.
@@ -21,6 +22,8 @@ import { useBangkokStore } from "@/lib/bangkok-store";
  * branch at all.
  */
 export function BranchPicker({ className }: { className?: string }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const store = useBangkokStore();
   if (store.locations.length === 0) return null;
 
@@ -79,7 +82,7 @@ export function BranchPicker({ className }: { className?: string }) {
                     <Bike className="size-3 text-primary" />
                     {Number(location.delivery_fee) === 0
                       ? "Free delivery"
-                      : `${formatMoney(location.delivery_fee)} delivery`}
+                      : `${money(location.delivery_fee)} delivery`}
                   </span>
                 </p>
               </div>

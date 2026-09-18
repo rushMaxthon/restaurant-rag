@@ -52,6 +52,10 @@ class _StubRestaurant:
     is_approved = True
     is_open = True
     is_active = True
+    # What this restaurant charges in. On the response since currency stopped
+    # being one global setting — the panel shows several restaurants' money on
+    # one screen and has to label each figure with the right symbol.
+    currency = "CAD"
     created_at = datetime.now(timezone.utc)
     updated_at = datetime.now(timezone.utc)
 

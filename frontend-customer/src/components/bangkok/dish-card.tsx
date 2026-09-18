@@ -3,12 +3,15 @@ import { Heart, Minus, Plus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
-import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
+import { type MenuItem} from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
+import { useMoney } from "@/lib/storefront";
 
 export function DishCard({ item }: { item: MenuItem }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const { addItem, cart, changeQuantity, conflictsWithCart } = useBangkokStore();
   const { isAuthenticated } = useAuth();
   const favorites = useFavoriteIds(isAuthenticated);
@@ -104,7 +107,7 @@ export function DishCard({ item }: { item: MenuItem }) {
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">
-            {item.has_sizes ? `From ${formatMoney(item.price)}` : formatMoney(item.price)}
+            {item.has_sizes ? `From ${money(item.price)}` : money(item.price)}
           </span>
 
           {!item.is_available ? (

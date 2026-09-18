@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, Info, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
-import { formatCurrency } from "../../services/api";
 import { percentIsMisleading } from "../../services/insightFormat";
 import type { DiagnosticsSnapshot, MetricDelta, OwnerBriefing } from "../../types/app";
+import { useMoney } from '../../hooks/useMoney';
 
 /**
  * The nightly briefing, said rather than displayed.
@@ -27,14 +27,22 @@ const HEADLINE_METRICS: { metric: string; label: string }[] = [
   { metric: "customers", label: "Customers" },
 ];
 
-function formatMetric(metric: string, value: number): string {
+// `money` is passed in rather than imported: this is a plain function, and
+// the currency belongs to whichever restaurant the caller is scoped to.
+function formatMetric(
+  metric: string,
+  value: number,
+  money: (value: number | string) => string,
+): string {
   if (MONEY_METRICS.has(metric)) {
-    return formatCurrency(value);
+    return money(value);
   }
   return new Intl.NumberFormat("en-CA", { maximumFractionDigits: 0 }).format(value);
 }
 
 function MetricTile({ label, delta }: { label: string; delta: MetricDelta }) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   // A missing baseline is not growth. Showing a green arrow because the previous
   // period was zero invents a comparison that was never made.
   const hasBaseline = delta.percent_change !== null;
@@ -47,18 +55,18 @@ function MetricTile({ label, delta }: { label: string; delta: MetricDelta }) {
   // the tile and the briefing headline above it cannot disagree.
   const misleading = percentIsMisleading(delta.previous, delta.percent_change);
   const movement = misleading
-    ? formatMetric(delta.metric, Math.abs(delta.absolute_change))
+    ? formatMetric(delta.metric, Math.abs(delta.absolute_change), money.format)
     : `${Math.abs(delta.percent_change ?? 0).toFixed(1)}%`;
 
   return (
     <article className="ai-tile">
       <span className="ai-tile__label">{label}</span>
-      <strong className="ai-tile__value">{formatMetric(delta.metric, delta.current)}</strong>
+      <strong className="ai-tile__value">{formatMetric(delta.metric, delta.current, money.format)}</strong>
       {hasBaseline ? (
         <span className={`ai-tile__delta ai-tile__delta--${delta.direction}`}>
           <Icon size={13} strokeWidth={2.4} />
           {movement}
-          <em>vs {formatMetric(delta.metric, delta.previous)}</em>
+          <em>vs {formatMetric(delta.metric, delta.previous, money.format)}</em>
         </span>
       ) : (
         <span className="ai-tile__delta ai-tile__delta--none">no prior period</span>

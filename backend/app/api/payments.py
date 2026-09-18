@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.config.database import get_db
+from app.models.restaurant import Restaurant
 from app.models.user import User
 from app.schemas.payment import PaymentConfigResponse
 from app.services.auth import get_current_user
+from app.dependencies import AppScopeDep
 from app.services.payments import handle_stripe_webhook, payment_config
 
 settings = get_settings()
@@ -21,11 +23,26 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 
 @router.get("/config", response_model=PaymentConfigResponse)
 def get_payment_config(
+    db: Annotated[Session, Depends(get_db)],
     # Authenticated so the publishable key is not handed to anonymous callers,
     # even though it is not secret.
     current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
 ) -> PaymentConfigResponse:
-    return PaymentConfigResponse(**payment_config())
+    """The publishable key, the methods on offer, and the currency of THIS app.
+
+    The currency used to come from one global setting, which was right while
+    the platform served one restaurant. A branded app resolves to its own
+    restaurant, so it is told what that restaurant charges in; a caller with
+    no app scope — the marketplace, the admin panel — gets the platform
+    default, because there is no single right answer for "every restaurant".
+    """
+
+    restaurant_id = app_scope.restaurant_filter_id
+    restaurant = db.get(Restaurant, restaurant_id) if restaurant_id else None
+    return PaymentConfigResponse(
+        **payment_config(currency=restaurant.currency if restaurant else None)
+    )
 
 
 @router.post("/stripe/webhook", include_in_schema=False)

@@ -21,7 +21,7 @@ import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
-import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { ApiError, api, formatDate } from "../services/api";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { invalidateRestaurantDetailCache } from "./RestaurantDetailPage";
 import {
@@ -31,6 +31,7 @@ import {
   tokenScope,
 } from "../services/pageCache";
 import type { Restaurant, RestaurantDetail, RestaurantLocation, UserRole } from "../types/app";
+import { useMoney } from '../hooks/useMoney';
 
 interface LocationsPageProps {
   token: string;
@@ -120,6 +121,8 @@ export function LocationsPage({
   onNavigate,
   onToast,
 }: LocationsPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const isScopedToRestaurant = scopedRestaurantId !== null;
   const scope = tokenScope(token);
@@ -344,14 +347,14 @@ export function LocationsPage({
     {
       id: "delivery_fee",
       header: "Delivery Fee",
-      render: (location) => formatCurrency(location.delivery_fee),
+      render: (location) => money.format(location.delivery_fee, location.restaurant_id),
       mobileLabel: "Delivery Fee",
       align: "right",
     },
     {
       id: "minimum_order",
       header: "Minimum Order",
-      render: (location) => formatCurrency(location.minimum_order_amount),
+      render: (location) => money.format(location.minimum_order_amount, location.restaurant_id),
       mobileLabel: "Minimum Order",
       align: "right",
     },

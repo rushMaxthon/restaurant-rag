@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import { formatMoney } from "@/lib/bangkok-data";
+
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
@@ -26,7 +26,7 @@ import {
   nextOpening,
 } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
-import { pageMeta } from "@/lib/storefront";
+import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/cart")({
@@ -38,6 +38,8 @@ export const Route = createFileRoute("/cart")({
 });
 
 function CartPage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const s = useBangkokStore();
   // The cart itself is guest-visible; it lives in localStorage and belongs to
   // the browser, not the account. The account is only needed to place the order.
@@ -176,11 +178,11 @@ function CartPage() {
                       </div>
                     )}
                     <p className="money mt-2 text-sm text-muted">
-                      {formatMoney(line.unitPrice)} each
+                      {money(line.unitPrice)} each
                     </p>
                   </div>
                   <b className="money shrink-0 text-lg font-extrabold leading-tight">
-                    {formatMoney(line.unitPrice * line.quantity)}
+                    {money(line.unitPrice * line.quantity)}
                   </b>
                 </div>
 
@@ -258,8 +260,8 @@ function CartPage() {
           {shortfall > 0 && (
             <div className="mt-4 rounded-xl bg-primary-soft p-3.5">
               <p className="text-sm font-semibold leading-snug">
-                Add <b className="money">{formatMoney(shortfall)}</b> to reach the{" "}
-                {formatMoney(minimumOrder)} minimum.
+                Add <b className="money">{money(shortfall)}</b> to reach the{" "}
+                {money(minimumOrder)} minimum.
               </p>
               <div className="meter mt-2.5">
                 <div className="meter-fill" style={{ width: `${progress}%` }} />
@@ -275,14 +277,14 @@ function CartPage() {
             ].map(([label, value]) => (
               <div className="sum-row" key={String(label)}>
                 <dt>{label}</dt>
-                <dd>{Number(value) === 0 ? "Free" : formatMoney(Number(value))}</dd>
+                <dd>{Number(value) === 0 ? "Free" : money(Number(value))}</dd>
               </div>
             ))}
           </dl>
 
           <div className="sum-total">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="sum-total-figure">{formatMoney(total)}</span>
+            <span className="sum-total-figure">{money(total)}</span>
           </div>
 
           {blocked && !loadingBranch && (
@@ -332,7 +334,7 @@ function CartPage() {
             ) : blocked && !canSchedule ? (
               <span>Closed right now</span>
             ) : shortfall > 0 ? (
-              <span>Minimum {formatMoney(minimumOrder)} to order</span>
+              <span>Minimum {money(minimumOrder)} to order</span>
             ) : isAuthenticated ? (
               <Link to="/checkout">
                 {canSchedule ? "Schedule for later" : "Continue to checkout"}{" "}

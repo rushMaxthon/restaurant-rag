@@ -200,6 +200,8 @@ export interface TenantSummary {
   custom_host_count: number;
 
   brand_primary_color: string | null;
+  /** What this tenant charges in, so the console can label its money. */
+  currency: string;
 
   /** Null on a tenant nothing has happened to since onboarding. */
   status_note: string | null;
@@ -435,6 +437,8 @@ export interface Restaurant {
   created_at: string;
   updated_at: string;
   locations?: RestaurantLocation[];
+  /** What this restaurant charges in, e.g. "INR". */
+  currency: string;
 }
 
 export interface RestaurantLocation {

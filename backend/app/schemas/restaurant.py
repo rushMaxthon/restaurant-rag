@@ -309,6 +309,11 @@ class RestaurantLocationUpdate(BaseModel):
     cash_on_delivery_enabled: bool | None = None
     is_open: bool | None = None
     is_active: bool | None = None
+    # Admin-only, and enforced as such in the endpoint: changing this converts
+    # no prices, it relabels every one of them, so it is not an owner's to
+    # flip. Validated against the catalog in `services/currency.py` — a
+    # free-text code reaches Stripe, where a wrong one is a declined charge.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     temporary_closed_reason: str | None = Field(default=None, max_length=255)
     preparation_time_minutes: int | None = Field(default=None, ge=0, le=240)
     service_radius_km: Decimal | None = Field(default=None, ge=0)
@@ -435,6 +440,10 @@ class RestaurantResponse(RestaurantBase):
 
     id: uuid.UUID
     owner_id: uuid.UUID
+    # What this restaurant charges in. On the response rather than derived
+    # client-side, because the panel shows several restaurants' money on one
+    # screen and has to label each figure with the right symbol.
+    currency: str
     is_approved: bool
     is_open: bool
     is_active: bool

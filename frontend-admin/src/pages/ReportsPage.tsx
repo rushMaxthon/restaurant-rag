@@ -28,12 +28,11 @@ import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
   api,
-  formatCompactCurrency,
-  formatCurrency,
-} from "../services/api";
+  } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { useScopedRestaurantFilter } from "../hooks/useScopedFilter";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -227,6 +226,8 @@ export function ReportsPage({
   restaurantId,
   onToast,
 }: ReportsPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const defaultRange = useMemo(() => getPresetRange("30d"), []);
   const scope = tokenScope(token);
@@ -440,9 +441,9 @@ export function ReportsPage({
       reports?.order_status_summary.map((item) => ({
         label: item.status.replaceAll("_", " "),
         value: item.count,
-        meta: formatCurrency(item.revenue),
+        meta: money.format(item.revenue),
       })) ?? [],
-    [reports?.order_status_summary],
+    [money, reports?.order_status_summary],
   );
 
   const cuisineChartData = useMemo(
@@ -450,9 +451,9 @@ export function ReportsPage({
       reports?.popular_cuisines.map((item) => ({
         label: item.label,
         value: item.orders,
-        meta: formatCurrency(item.revenue),
+        meta: money.format(item.revenue),
       })) ?? [],
-    [reports?.popular_cuisines],
+    [money, reports?.popular_cuisines],
   );
 
   const categoryChartData = useMemo(
@@ -460,9 +461,9 @@ export function ReportsPage({
       reports?.popular_categories.map((item) => ({
         label: item.label,
         value: item.orders,
-        meta: formatCurrency(item.revenue),
+        meta: money.format(item.revenue),
       })) ?? [],
-    [reports?.popular_categories],
+    [money, reports?.popular_categories],
   );
 
   const rankedTopRestaurants = useMemo<RankedRestaurantPerformance[]>(
@@ -652,14 +653,14 @@ export function ReportsPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (row) => formatCurrency(row.revenue),
+      render: (row) => money.format(row.revenue),
       mobileLabel: "Revenue",
       align: "right",
     },
     {
       id: "aov",
       header: "Avg order",
-      render: (row) => formatCurrency(row.average_order_value),
+      render: (row) => money.format(row.average_order_value),
       mobileLabel: "Avg order",
       align: "right",
     },
@@ -695,7 +696,7 @@ export function ReportsPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (row) => formatCurrency(row.revenue),
+      render: (row) => money.format(row.revenue),
       mobileLabel: "Revenue",
       align: "right",
     },
@@ -930,12 +931,12 @@ export function ReportsPage({
           value={formatCompactNumber(summary?.total_orders ?? 0)}
         />
         <StatTile
-          hint={`${formatCurrency(summary?.average_order_value ?? 0)} average order value`}
+          hint={`${money.format(summary?.average_order_value ?? 0)} average order value`}
           icon={DollarSign}
           label="Revenue"
           loading={loading}
           tone="accent"
-          value={formatCompactCurrency(summary?.total_revenue ?? 0)}
+          value={money.compact(summary?.total_revenue ?? 0)}
         />
         <StatTile
           hint={
@@ -949,7 +950,7 @@ export function ReportsPage({
           value={
             isAdmin
               ? averageOrdersPerRestaurant
-              : formatCurrency(summary?.average_order_value ?? 0)
+              : money.format(summary?.average_order_value ?? 0)
           }
         />
         {isAdmin ? (
@@ -1037,9 +1038,9 @@ export function ReportsPage({
                     data={revenueChart}
                     height={200}
                     seriesLabel="Revenue"
-                    valueFormatter={formatCurrency}
+                    valueFormatter={money.format}
                     width={560}
-                    yTickFormatter={formatCompactCurrency}
+                    yTickFormatter={money.compact}
                   />
                 </ChartPanel>
                 <ChartPanel
@@ -1087,9 +1088,9 @@ export function ReportsPage({
                   meta={
                     isAdmin
                       ? bestPerformingRestaurant
-                        ? `${pluralize(bestPerformingRestaurant.orders, 'order')} · ${formatCurrency(bestPerformingRestaurant.revenue)}`
+                        ? `${pluralize(bestPerformingRestaurant.orders, 'order')} · ${money.format(bestPerformingRestaurant.revenue)}`
                         : "No performance data yet"
-                      : `${pluralize(summary?.total_orders ?? 0, 'order')} · ${formatCurrency(summary?.total_revenue ?? 0)}`
+                      : `${pluralize(summary?.total_orders ?? 0, 'order')} · ${money.format(summary?.total_revenue ?? 0)}`
                   }
                   title={
                     isAdmin
@@ -1102,7 +1103,7 @@ export function ReportsPage({
                   label="Best selling item"
                   meta={
                     topRevenueGenerator
-                      ? `${pluralize(topRevenueGenerator.quantity, 'unit')} · ${formatCurrency(topRevenueGenerator.revenue)}`
+                      ? `${pluralize(topRevenueGenerator.quantity, 'unit')} · ${money.format(topRevenueGenerator.revenue)}`
                       : "Appears after matching orders arrive"
                   }
                   title={topRevenueGenerator?.name ?? "—"}
@@ -1132,7 +1133,7 @@ export function ReportsPage({
                     emptyTitle="No restaurant performance yet"
                     keyExtractor={(row) => row.restaurant_id}
                     loading={loading}
-                    mobileStatus={(row) => <strong>{formatCurrency(row.revenue)}</strong>}
+                    mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
                     mobileSubtitle={(row) => row.cuisine_type}
                     mobileTitle={(row) => row.restaurant_name}
                     rows={rankedTopRestaurants}
@@ -1155,7 +1156,7 @@ export function ReportsPage({
                   emptyTitle="No item performance yet"
                   keyExtractor={(row) => row.menu_item_id}
                   loading={loading}
-                  mobileStatus={(row) => <strong>{formatCurrency(row.revenue)}</strong>}
+                  mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
                   mobileSubtitle={(row) => row.restaurant_name}
                   mobileTitle={(row) => row.name}
                   rows={rankedTopSellingItems}
@@ -1174,7 +1175,7 @@ export function ReportsPage({
                     emptyTitle="No least-selling items yet"
                     keyExtractor={(row) => row.menu_item_id}
                     loading={loading}
-                    mobileStatus={(row) => <strong>{formatCurrency(row.revenue)}</strong>}
+                    mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
                     mobileSubtitle={(row) => row.restaurant_name}
                     mobileTitle={(row) => row.name}
                     rows={rankedLeastSellingItems}

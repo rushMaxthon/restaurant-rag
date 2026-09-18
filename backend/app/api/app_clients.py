@@ -29,6 +29,7 @@ from app.models.order import Order
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.app_clients import TenantStatusUpdate, TenantSummaryResponse
+from app.services.currency import currency_for
 from app.services.auth import require_admin
 
 router = APIRouter(prefix="/app-clients", tags=["App Clients"])
@@ -128,6 +129,7 @@ def _summarize(
         primary_host=platform_host,
         custom_host_count=custom_hosts,
         brand_primary_color=app_client.brand_primary_color,
+        currency=currency_for(restaurant.currency if restaurant else None).code,
         status_note=app_client.status_note,
         status_changed_at=app_client.status_changed_at,
         status_changed_by=changed_by,

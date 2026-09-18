@@ -402,6 +402,7 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         restaurant = SimpleNamespace(
             theme={"primary_color": "#0F766E", "preset": "teal"},
             storefront={},
+            currency="CAD",
             name="Bangkok Bowl",
             cuisine_type="Thai",
             city="Ahmedabad",

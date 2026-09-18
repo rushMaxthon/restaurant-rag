@@ -16,14 +16,14 @@ import {
   type ChatStreamDone,
   type ChatSuggestion,
 } from "@/lib/api";
-import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
+import { type MenuItem} from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
-import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
+import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 type ConciergeSearch = { q?: string };
@@ -132,6 +132,8 @@ function stripMarkdown(text: string): string {
 }
 
 function ConciergePage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   // This restaurant's own words, resolved by the root route from the
   // address the page was opened on.
   const copy = useStorefrontCopy();
@@ -717,7 +719,7 @@ function ConciergePage() {
                       className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground"
                     >
                       Pay
-                      {turn.placedOrder.total ? ` ${formatMoney(turn.placedOrder.total)}` : ""}
+                      {turn.placedOrder.total ? ` ${money(turn.placedOrder.total)}` : ""}
                     </a>
                   )}
 

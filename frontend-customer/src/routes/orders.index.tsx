@@ -10,18 +10,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import {
-  formatMoney,
-  lineSelections,
+import { lineSelections,
   orderCode,
   scheduledFor,
-  type Order,
-} from "@/lib/bangkok-data";
+  type Order,} from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
 import { useState } from "react";
-import { pageMeta } from "@/lib/storefront";
+import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/orders/")({
@@ -57,6 +54,8 @@ function placedAt(iso: string): string {
 }
 
 function OrderRow({ order, index }: { order: Order; index: number }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary";
   // An unpaid order has not started, so it gets no pulse and no progress bar.
   const unpaid = order.status === "PAYMENT_PENDING" && order.payment_status !== "COD";
@@ -135,7 +134,7 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
 
         <div className="flex shrink-0 flex-col items-end gap-3 sm:min-w-36">
           <b className="money font-display text-2xl font-extrabold leading-none tracking-tight">
-            {formatMoney(order.total_amount)}
+            {money(order.total_amount)}
           </b>
           <Button variant={live ? "default" : "outline"} className="font-bold" asChild>
             <Link to="/orders/$orderId" params={{ orderId: order.id }}>
@@ -173,6 +172,8 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
  * the same line the account screen uses, so the two agree.
  */
 function PastLine({ order }: { order: Order }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const when = new Date(order.placed_at);
   const date = Number.isNaN(when.getTime())
     ? ""
@@ -182,7 +183,7 @@ function PastLine({ order }: { order: Order }) {
   return (
     <Link to="/orders/$orderId" params={{ orderId: order.id }} className="line">
       <span className="line__code">{orderCode(order)}</span>
-      <span className="money line__total">{formatMoney(order.total_amount)}</span>
+      <span className="money line__total">{money(order.total_amount)}</span>
       <span className="line__when">
         {date} · {items} {items === 1 ? "item" : "items"}
         {order.status === "CANCELLED" && " · cancelled"}

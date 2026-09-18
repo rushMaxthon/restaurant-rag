@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { VegMark } from "@/components/bangkok/veg-mark";
 import { api } from "@/lib/api";
-import { formatMoney } from "@/lib/bangkok-data";
+
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { readChatSession, storeChatSession } from "@/lib/chat-session";
 import { useMenuItem } from "@/lib/queries";
@@ -17,6 +17,7 @@ import {
   suggestionReason,
   type SellSuggestion,
 } from "@/lib/suggestions";
+import { useMoney } from "@/lib/storefront";
 
 /**
  * One suggestion, rendered where the customer already is.
@@ -31,6 +32,8 @@ import {
  * session — which is why the dismiss button posts rather than only hiding.
  */
 export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat" }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const store = useBangkokStore();
   const [suggestion, setSuggestion] = useState<SellSuggestion | null>(null);
 
@@ -125,7 +128,7 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
       className={`waiter-prompt waiter-prompt--${placement}`}
       role="note"
       aria-live="polite"
-      aria-label={suggestionCopy(suggestion, item.name, item.category)}
+      aria-label={suggestionCopy(suggestion, item.name, item.category, money)}
     >
       {/*
         The same DishImage the menu grid and dish page use, so a null
@@ -146,7 +149,7 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
           <VegMark veg={item.is_veg} />
           {item.name}
         </span>
-        <span className="waiter-prompt__price">{formatMoney(item.price)}</span>
+        <span className="waiter-prompt__price">{money(item.price)}</span>
       </div>
       <div className="waiter-prompt__actions">
         {needsChoice ? (

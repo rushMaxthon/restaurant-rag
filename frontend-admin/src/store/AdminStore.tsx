@@ -6,7 +6,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
-import { ApiError, AUTH_INVALID_EVENT } from '../services/api';
+import { ApiError, AUTH_INVALID_EVENT, api } from '../services/api';
 import { clearPageSnapshots } from '../services/pageCache';
 import { storage } from '../services/storage';
 import type { AuthSession, ToastMessage, User, UserRole } from '../types/app';
@@ -68,6 +68,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(() =>
     storedAuth?.role === "ADMIN" ? readActiveRestaurantId() : null,
   );
+  const [tenantCurrencies, setTenantCurrencies] = useState<Record<string, string>>({});
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const nextToastId = useRef(1);
 
@@ -89,6 +90,38 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       // a reload. Not worth interrupting anyone over.
     }
   }, []);
+
+  // What each restaurant charges in, so every figure on every screen can be
+  // labelled with the right symbol. An admin reads it off the tenants list;
+  // an owner has exactly one restaurant and reads it off that.
+  useEffect(() => {
+    if (!token || !role) {
+      return;
+    }
+    let cancelled = false;
+    const load = role === "ADMIN" ? api.listTenants(token) : api.getOwnerRestaurants(token);
+    void load
+      .then((rows: Array<{ restaurant_id?: string | null; id?: string; currency?: string }>) => {
+        if (cancelled) {
+          return;
+        }
+        const next: Record<string, string> = {};
+        for (const row of rows) {
+          const id = row.restaurant_id ?? row.id;
+          if (id && row.currency) {
+            next[id] = row.currency;
+          }
+        }
+        setTenantCurrencies(next);
+      })
+      .catch(() => {
+        // Labels, not data. A failure leaves every figure in the platform
+        // default rather than blocking the screen that needed the figure.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [role, token]);
 
   const pushToast = useCallback((title: string, description: string, tone: ToastMessage['tone'] = 'info') => {
     const id = nextToastId.current;
@@ -129,6 +162,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       restaurantId,
       activeRestaurantId: role === "ADMIN" ? activeRestaurantId : null,
       setActiveRestaurantId,
+      tenantCurrencies,
       user,
       isAuthenticated: Boolean(token && role && user),
       toasts,
@@ -156,6 +190,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
         setRestaurantId(null);
         setUser(null);
         setActiveRestaurantIdState(null);
+        setTenantCurrencies({});
         // Anything remembered about which restaurant was being looked at goes
         // with the session. Left behind, the next person to log in on this
         // machine opens the AI Manager pointed at the previous owner's
@@ -171,7 +206,16 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       pushToast,
       dismissToast,
     }),
-    [activeRestaurantId, restaurantId, role, setActiveRestaurantId, token, toasts, user],
+    [
+      activeRestaurantId,
+      restaurantId,
+      role,
+      setActiveRestaurantId,
+      tenantCurrencies,
+      token,
+      toasts,
+      user,
+    ],
   );
 
   return <AdminStoreContext.Provider value={value}>{children}</AdminStoreContext.Provider>;

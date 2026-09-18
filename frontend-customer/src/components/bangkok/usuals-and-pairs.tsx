@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { DishImage } from "./dish-image";
-import { formatMoney } from "@/lib/bangkok-data";
+
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 import { useFavorites, useGeneratedCombos } from "@/lib/queries";
+import { useMoney } from "@/lib/storefront";
 
 /**
  * Two short strips above the menu: what you always order, and what other
@@ -29,6 +30,8 @@ function Usual({
 }: {
   item: { id: string; name: string; price: string | number; image_url?: string | null };
 }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const { addItem, conflictsWithCart } = useBangkokStore();
   const menuItem = item as never;
   const needsChoices =
@@ -41,7 +44,7 @@ function Usual({
       <Link to="/menu/$itemId" params={{ itemId: item.id }} className="usual">
         <DishImage src={item.image_url ?? null} name={item.name} className="usual__photo" />
         <span className="usual__name">{item.name}</span>
-        <span className="usual__price money">{formatMoney(item.price)}</span>
+        <span className="usual__price money">{money(item.price)}</span>
       </Link>
     );
   }
@@ -59,7 +62,7 @@ function Usual({
         aria-label={`Add ${item.name} to your order`}
       >
         <Plus className="size-3.5" />
-        {formatMoney(item.price)}
+        {money(item.price)}
       </button>
     </div>
   );
@@ -86,6 +89,8 @@ function Pair({
     savings_amount: string | number;
   };
 }) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const saving = Number(combo.savings_amount || 0);
   const people = combo.unique_user_count;
 
@@ -110,9 +115,9 @@ function Pair({
         {people === 1 ? "Someone ordered" : `${people} people ordered`} these together
       </p>
       <p className="pair__price">
-        <span className="money">{formatMoney(combo.suggested_combo_price)}</span>
+        <span className="money">{money(combo.suggested_combo_price)}</span>
         {saving > 0 && (
-          <span className="pair__saving">{formatMoney(saving)} less than separately</span>
+          <span className="pair__saving">{money(saving)} less than separately</span>
         )}
       </p>
     </article>

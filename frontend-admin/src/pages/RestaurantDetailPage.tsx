@@ -36,10 +36,10 @@ import { StatusPill } from "../components/StatusPill";
 import { GeneratedCombosPage } from "./GeneratedCombosPage";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
+import { useMoney } from '../hooks/useMoney';
 import {
   ApiError,
   api,
-  formatCurrency,
   formatDate,
 } from "../services/api";
 import {
@@ -73,10 +73,29 @@ interface RestaurantDetailPageProps {
   ) => void;
 }
 
+/**
+ * What this platform will charge in. Mirrors `services/currency.py`, which is
+ * the authority — a code that is not in that catalog reaches Stripe, where a
+ * wrong one is a declined charge rather than a rendering glitch.
+ *
+ * Per restaurant, not per branch: currency follows the country a business
+ * trades in, and one storefront cannot show two of them in a single branch
+ * picker. A chain operating in two countries is two restaurants here.
+ */
+const SUPPORTED_CURRENCIES = [
+  { code: "INR", symbol: "₹", label: "Indian rupee" },
+  { code: "USD", symbol: "$", label: "US dollar" },
+  { code: "CAD", symbol: "$", label: "Canadian dollar" },
+  { code: "GBP", symbol: "£", label: "Pound sterling" },
+  { code: "EUR", symbol: "€", label: "Euro" },
+  { code: "AED", symbol: "د.إ", label: "UAE dirham" },
+];
+
 type RestaurantForm = {
   name: string;
   description: string;
   cuisine_type: string;
+  currency: string;
   address_line_1: string;
   address_line_2: string;
   city: string;
@@ -129,6 +148,7 @@ function toEditForm(restaurant: RestaurantDetail): RestaurantForm {
     name: restaurant.name,
     description: restaurant.description ?? "",
     cuisine_type: restaurant.cuisine_type,
+    currency: restaurant.currency,
     address_line_1: restaurant.address_line_1,
     address_line_2: restaurant.address_line_2 ?? "",
     city: restaurant.city,
@@ -193,6 +213,8 @@ export function RestaurantDetailPage({
   onNavigate,
   onToast,
 }: RestaurantDetailPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const backPath = isAdmin
     ? "/restaurants"
@@ -571,6 +593,14 @@ export function RestaurantDetailPage({
     try {
       const updated = isAdmin
         ? await (async () => {
+            // Currency is admin-only and lives on the settings PATCH rather
+            // than this full update, so it goes in its own call. Sent only
+            // when it actually changed, so an ordinary edit does not touch it.
+            if (editForm.currency !== restaurant.currency) {
+              await api.updateRestaurantSettings(token, restaurant.id, {
+                currency: editForm.currency,
+              });
+            }
             await api.updateRestaurant(token, restaurant.id, {
               name: editForm.name.trim(),
               description: editForm.description.trim() || null,
@@ -822,7 +852,7 @@ export function RestaurantDetailPage({
     {
       id: "amount",
       header: "Amount",
-      render: (order) => formatCurrency(order.total_amount),
+      render: (order) => money.format(order.total_amount, restaurant?.id),
       mobileLabel: "Amount",
       align: "right",
     },
@@ -907,7 +937,7 @@ export function RestaurantDetailPage({
             <span>Orders tracked</span>
           </div>
           <div className="restaurant-metric-card">
-            <strong>{formatCurrency(restaurant.minimum_order_amount)}</strong>
+            <strong>{money.format(restaurant.minimum_order_amount, restaurant.id)}</strong>
             <span>Minimum order</span>
           </div>
           <div className="restaurant-metric-card">
@@ -1217,7 +1247,7 @@ export function RestaurantDetailPage({
                 <strong>{location.branch_name}</strong>
                 <span>{location.address_line_1}, {location.city}</span>
                 <span>
-                  {formatCurrency(location.delivery_fee)} delivery · Min {formatCurrency(location.minimum_order_amount)} · {location.estimated_delivery_time} min
+                  {money.format(location.delivery_fee, restaurant.id)} delivery · Min {money.format(location.minimum_order_amount, restaurant.id)} · {location.estimated_delivery_time} min
                 </span>
                 <span className="status-stack">
                   <StatusPill status={location.is_active ? "ACTIVE" : "INACTIVE"} />
@@ -1457,6 +1487,30 @@ export function RestaurantDetailPage({
                   }
                 />
               </label>
+              {isAdmin ? (
+                <label className="field">
+                  <span>Currency</span>
+                  <select
+                    value={editForm.currency}
+                    onChange={(event) =>
+                      setEditForm((current) =>
+                        current ? { ...current, currency: event.target.value } : current,
+                      )
+                    }
+                  >
+                    {SUPPORTED_CURRENCIES.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.symbol} {option.code} — {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    Every price this restaurant shows, and every charge it makes, in this
+                    currency. It relabels prices, it does not convert them — orders already
+                    placed keep the currency they were charged in.
+                  </small>
+                </label>
+              ) : null}
               <label className="field">
                 <span>City</span>
                 <input

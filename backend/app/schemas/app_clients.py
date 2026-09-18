@@ -47,6 +47,8 @@ class TenantSummaryResponse(BaseModel):
     custom_host_count: int
 
     brand_primary_color: str | None
+    # What this tenant charges in, so the console can label its money.
+    currency: str
 
     # Why this tenant is in the state it is. Null on one that has never been
     # touched since onboarding, which is the common case and reads correctly

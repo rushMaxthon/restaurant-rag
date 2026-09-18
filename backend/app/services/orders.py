@@ -29,6 +29,7 @@ from app.models.personalized_offer import GeneratedOffer, PersonalizedOffer
 from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
+from app.services.currency import currency_for
 from app.models.user import User
 from app.schemas.order import (
     OrderCreateRequest,
@@ -498,10 +499,11 @@ def validate_order_draft(
         tax_amount=draft.tax_amount,
         discount_amount=draft.discount_amount,
         total_amount=draft.total_amount,
-        # Same source as the order this validates and the charge that
-        # follows it — a literal here meant the quote and the bill could
-        # name different currencies for the same number.
-        currency=settings.payment_currency.upper(),
+        # The restaurant's own currency, which is also what the order below
+        # stamps and what the charge is made in — a literal here meant the
+        # quote and the bill could name different currencies for the same
+        # number, and a global setting meant a Surat kitchen quoted dollars.
+        currency=normalize_stored_currency(draft.restaurant.currency),
         item_count=sum(item.quantity for item in draft.order_items),
     )
 
@@ -570,9 +572,11 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         tax_amount=draft.tax_amount,
         discount_amount=draft.discount_amount,
         total_amount=draft.total_amount,
-        # Stamped from config so the order and the charge can never disagree
-        # about what currency the amount is in.
-        currency=settings.payment_currency.upper(),
+        # Stamped from the restaurant so the order and the charge can never
+        # disagree about what currency the amount is in — and so this stays
+        # true after the restaurant's currency is ever changed, because the
+        # order keeps what it was actually charged in.
+        currency=normalize_stored_currency(draft.restaurant.currency),
         special_instructions=payload.special_instructions,
         delivery_address=payload.delivery_address,
         # Who to ring about this delivery. Asked for at checkout since the
@@ -868,3 +872,14 @@ def update_order_status(
     rebuild_generated_offers(db, restaurant_id=updated_order.restaurant_id)
     db.commit()
     return _serialize_order(updated_order)
+
+
+def normalize_stored_currency(code: str | None) -> str:
+    """A restaurant's stored currency code, as an order stamps it.
+
+    Through `currency_for` rather than `.upper()` so a row carrying something
+    the catalog does not know falls back to the platform default instead of
+    reaching Stripe, where an unknown code is a declined charge at checkout.
+    """
+
+    return currency_for(code).code

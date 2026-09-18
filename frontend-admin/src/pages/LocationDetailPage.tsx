@@ -24,10 +24,11 @@ import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { RestaurantMenuTable } from "../components/RestaurantMenuTable";
 import { StatusPill } from "../components/StatusPill";
-import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { ApiError, api, formatDate } from "../services/api";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
 import { invalidateRestaurantDetailCache } from "./RestaurantDetailPage";
 import { buildLocationsRestaurantKey } from "./LocationsPage";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -239,6 +240,8 @@ export function LocationDetailPage({
   onNavigate,
   onToast,
 }: LocationDetailPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const scope = tokenScope(token);
   const detailKey = buildLocationDetailKey(scope, restaurantId, locationId);
   const cachedDetail = getPageSnapshot<LocationDetailSnapshot>(detailKey);
@@ -725,7 +728,7 @@ export function LocationDetailPage({
     {
       id: "amount",
       header: "Amount",
-      render: (order) => formatCurrency(order.total_amount),
+      render: (order) => money.format(order.total_amount, restaurantId),
       mobileLabel: "Amount",
       align: "right",
     },
@@ -893,11 +896,11 @@ export function LocationDetailPage({
             </div>
             <div>
               <strong>Delivery fee</strong>
-              <span>{formatCurrency(location.delivery_fee)}</span>
+              <span>{money.format(location.delivery_fee, restaurantId)}</span>
             </div>
             <div>
               <strong>Minimum order</strong>
-              <span>{formatCurrency(location.minimum_order_amount)}</span>
+              <span>{money.format(location.minimum_order_amount, restaurantId)}</span>
             </div>
             <div>
               <strong>Delivery</strong>

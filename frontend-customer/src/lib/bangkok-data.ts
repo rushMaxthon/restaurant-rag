@@ -172,12 +172,55 @@ export type Order = {
 export const orderCode = (order: Pick<Order, "id">) => `#${order.id.slice(0, 8).toUpperCase()}`;
 
 /** Every price the customer sees goes through here — one place to change the currency. */
-export const formatMoney = (value: Money | number) =>
-  new Intl.NumberFormat("en-CA", {
+/**
+ * What a restaurant charges in, as `/app-config` sends it.
+ *
+ * `locale` carries the GROUPING rule, not the symbol — which matters more
+ * than it looks: Indian grouping is 2-2-3, so formatting ₹1234567 with an
+ * `en-US` locale writes ₹1,234,567 where the customer reads ₹12,34,567.
+ */
+export type CurrencyFormat = {
+  code: string;
+  locale: string;
+  min_fraction_digits: number;
+  max_fraction_digits: number;
+};
+
+/**
+ * The currency a storefront falls back to before `/app-config` has answered.
+ *
+ * Every price on the page comes from that same response, so in practice
+ * nothing is rendered with this — it exists so the formatter has an answer
+ * rather than a crash if a price ever reaches it first.
+ */
+export const FALLBACK_CURRENCY: CurrencyFormat = {
+  code: "USD",
+  locale: "en-US",
+  min_fraction_digits: 2,
+  max_fraction_digits: 2,
+};
+
+/**
+ * A price, written the way the restaurant charging it writes prices.
+ *
+ * `currency` is a parameter rather than a constant because one deployment
+ * serves every tenant: a Surat kitchen's menu was rendering as "$35.00",
+ * which is the right number under the wrong symbol — worse than either being
+ * wrong alone, because it reads as a price a customer could agree to.
+ *
+ * Components should reach for `useMoney()` instead, which binds this to the
+ * tenant the page resolved. This stays exported for the handful of callers
+ * outside React, which are handed a formatter by their caller.
+ */
+export const formatMoney = (
+  value: Money | number,
+  currency: CurrencyFormat = FALLBACK_CURRENCY,
+) =>
+  new Intl.NumberFormat(currency.locale, {
     style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    currency: currency.code,
+    minimumFractionDigits: currency.min_fraction_digits,
+    maximumFractionDigits: currency.max_fraction_digits,
   }).format(Number(value));
 
 /** Derives the "All" + unique category list from a live menu-items response. */
