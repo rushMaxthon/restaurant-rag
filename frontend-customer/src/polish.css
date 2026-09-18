@@ -790,7 +790,7 @@ textarea.flex:focus-visible {
 }
 .picker-label {
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -983,7 +983,7 @@ html {
 }
 .half-summary__title {
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -1058,7 +1058,7 @@ html {
   align-items: center;
   gap: 0.5rem;
   font-size: 1.05rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: -0.01em;
 }
 .choice-card__hint {
@@ -1118,7 +1118,7 @@ html {
 }
 .size-tile__price {
   font-size: 0.95rem;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 /* --- Option list -----------------------------------------------------------
@@ -1368,7 +1368,7 @@ html {
 /* The name, set large enough to be the greeting rather than a field value. */
 .tab__name {
   font-size: clamp(2.1rem, 7vw, 3.1rem);
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 1.02;
 }
@@ -1626,7 +1626,7 @@ html {
   align-items: center;
   gap: 0.45rem;
   font-size: 1.05rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: -0.015em;
 }
 .strip__rail {

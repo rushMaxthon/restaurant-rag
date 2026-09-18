@@ -71,7 +71,7 @@ function LoginPage() {
         <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
           <Sparkles className="mb-4 size-10" />
           <p className="eyebrow eyebrow--inherit">Bangkok Bowl</p>
-          <h1 className="font-display text-5xl font-black leading-[.98] sm:text-6xl">
+          <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">
             Sign in for the full menu
           </h1>
           <p className="mt-5 max-w-md text-lg font-medium">
@@ -81,7 +81,7 @@ function LoginPage() {
       </div>
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
-          <h1 className="auth-heading font-display text-5xl font-black sm:text-6xl">
+          <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
             Welcome back
           </h1>
           <p className="auth-sub mt-3 text-lg text-muted">Sign in to order from Bangkok Bowl.</p>

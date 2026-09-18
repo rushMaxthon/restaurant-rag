@@ -192,7 +192,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
 
       {!loading && failed && (
         <div className="state-panel elevated-panel px-6 py-16 text-center">
-          <h3 className="font-display text-xl font-black">The menu didn't load</h3>
+          <h3 className="font-display text-xl font-extrabold">The menu didn't load</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
             We couldn't load the menu right now. Please try again shortly.
           </p>
@@ -215,7 +215,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
 
       {!loading && !failed && shown.length === 0 && (
         <div className="state-panel elevated-panel px-6 py-20 text-center">
-          <h3 className="font-display text-2xl font-black">Nothing matches that</h3>
+          <h3 className="font-display text-2xl font-extrabold">Nothing matches that</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
             Try a different word, or clear the filters to see the whole menu.
           </p>

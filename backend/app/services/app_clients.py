@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
+from app.models.app_client_domain import AppClientDomain
 from app.models.app_client import (
     BRANDING_PRIMARY_COLOR_KEY,
     CONFIG_MINIMUM_SUPPORTED_VERSION_KEY,
@@ -17,7 +18,13 @@ from app.models.app_client import (
     AppClientIdentifier,
     AppClientOrderSequence,
 )
-from app.models.enums import AppClientEnvironment, AppClientPlatform, AppClientStatus, AppMode
+from app.models.enums import (
+    AppClientDomainKind,
+    AppClientEnvironment,
+    AppClientPlatform,
+    AppClientStatus,
+    AppMode,
+)
 from app.models.restaurant import Restaurant
 from app.schemas.app_config import AppConfigResponse
 from app.schemas.restaurant import (
@@ -134,6 +141,18 @@ def _conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+def is_host_taken(db: Session, *, host: str, exclude_app_client_id: uuid.UUID | None = None) -> bool:
+    """Whether some other tenant already answers on this address."""
+
+    normalized = normalize_host(host)
+    if not normalized:
+        return False
+    query = select(AppClientDomain.id).where(AppClientDomain.host == normalized)
+    if exclude_app_client_id is not None:
+        query = query.where(AppClientDomain.app_client_id != exclude_app_client_id)
+    return db.scalar(query.limit(1)) is not None
+
+
 def validate_app_client_identity_is_available(
     db: Session,
     *,
@@ -154,6 +173,15 @@ def validate_app_client_identity_is_available(
         exclude_app_client_id=exclude_app_client_id,
     ):
         raise _conflict(f"iOS bundle ID '{ios_bundle_id}' is already used by another app client")
+
+    # Checked here with the rest of the identity so a clash is reported as a
+    # conflict the form can show, rather than surfacing as an integrity error
+    # from the unique constraint halfway through creating a restaurant.
+    storefront_host = platform_host_for(app_key)
+    if is_host_taken(db, host=storefront_host):
+        raise _conflict(
+            f"The storefront address '{storefront_host}' is already used by another app client"
+        )
 
     if _is_identifier_taken(
         db,
@@ -241,6 +269,22 @@ def create_app_client(
     )
     app_client.identifiers = _new_prod_identifiers(identity)
     app_client.order_sequence = AppClientOrderSequence(last_value=0)
+    # The address its storefront answers on, issued at the same moment as the
+    # bundle ids. Without this a tenant onboarded after host resolution
+    # shipped would have a working mobile identity and a storefront that
+    # 404s — the backfill covered the restaurants that already existed and
+    # nothing covered the next one.
+    app_client.domains = [
+        AppClientDomain(
+            host=platform_host_for(identity.app_key),
+            kind=AppClientDomainKind.PLATFORM_SUBDOMAIN,
+            is_primary=True,
+            # Ours to issue, so there is nothing for anyone to prove. A
+            # domain the restaurant already owns is the case that needs
+            # verifying, and that is added later.
+            is_verified=True,
+        )
+    ]
     return app_client
 
 
@@ -363,11 +407,22 @@ def resolve_app_client_by_bundle_id(
         platform=platform,
     )
 
+    return _assert_client_usable(
+        app_client,
+        missing=f"No app is registered for bundle ID '{normalized_bundle_id}'",
+    )
+
+
+def _assert_client_usable(app_client: AppClient | None, *, missing: str) -> AppClient:
+    """The client, or the reason it cannot serve this request.
+
+    Shared by the bundle-id and host paths so a suspended tenant is refused
+    identically however it was looked up — one of them silently working would
+    be the worst version of this.
+    """
+
     if app_client is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No app is registered for bundle ID '{normalized_bundle_id}'",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing)
 
     if app_client.status != AppClientStatus.ACTIVE:
         raise HTTPException(
@@ -376,6 +431,108 @@ def resolve_app_client_by_bundle_id(
         )
 
     return app_client
+
+
+def normalize_host(value: str | None) -> str:
+    """A host reduced to the one form stored in `app_client_domains`.
+
+    Lowercased, port removed, trailing dot removed, a leading `www.` removed.
+    Browsers, proxies and people all vary these freely — `Bangkokbowl.example.com:443`
+    and `www.bangkokbowl.example.com.` are the same address — and a lookup
+    that missed on any of them would serve the marketplace fallback to a
+    tenant's own customers.
+
+    IPv6 literals keep their brackets and lose only the port, which is enough
+    for them never to match a real domain rather than matching the wrong one.
+    """
+
+    host = (value or "").strip().lower()
+    if not host:
+        return ""
+    if host.startswith("["):
+        closing = host.find("]")
+        if closing != -1:
+            host = host[: closing + 1]
+    elif ":" in host:
+        host = host.split(":", 1)[0]
+    host = host.rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def find_app_client_by_host(db: Session, *, host: str) -> AppClient | None:
+    """Look up the app client a web address belongs to, or None.
+
+    Only active, verified domains resolve. Verification is what stops somebody
+    pointing a name they do not own at this platform and being served another
+    brand's storefront; a subdomain this platform issued is created verified,
+    because there is nothing to prove about an address we handed out.
+    """
+
+    normalized = normalize_host(host)
+    if not normalized:
+        return None
+
+    return db.scalar(
+        select(AppClient)
+        .join(AppClientDomain, AppClientDomain.app_client_id == AppClient.id)
+        .where(
+            AppClientDomain.host == normalized,
+            AppClientDomain.is_active.is_(True),
+            AppClientDomain.is_verified.is_(True),
+        )
+        .limit(1)
+    )
+
+
+def resolve_app_client_by_host(db: Session, *, host: str) -> AppClient:
+    """Resolve a web address to its app client, raising when it cannot be used.
+
+    Used by `/app-config`, which a storefront calls before it renders
+    anything. An address nobody has claimed is a 404 rather than a silent
+    fallback to the marketplace: a tenant whose domain row was never created
+    should see that plainly, not serve somebody else's brand.
+    """
+
+    normalized = normalize_host(host)
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide the storefront host via the X-Forwarded-Host header or the host query parameter",
+        )
+
+    return _assert_client_usable(
+        find_app_client_by_host(db, host=normalized),
+        missing=f"No storefront is registered for '{normalized}'",
+    )
+
+
+def _to_host_label(app_key: str) -> str:
+    """An app key as a DNS label.
+
+    App keys carry underscores (`bangkok_bowl`) and hostnames cannot, the same
+    way bundle id segments cannot — see `_to_bundle_segment`. Hyphens rather
+    than removal, because `bangkok-bowl` is the address a restaurant would
+    expect to be given and `bangkokbowl` is not.
+    """
+
+    label = re.sub(r"[^a-z0-9-]+", "-", _to_app_key(app_key).replace("_", "-")).strip("-")
+    if not label or not label[0].isalpha():
+        label = f"app-{label}".rstrip("-")
+    return label[:63]
+
+
+def platform_host_for(app_key: str) -> str:
+    """The address this platform issues a newly onboarded tenant.
+
+    One wildcard certificate covers every one of them, which is what makes
+    onboarding a restaurant a database row rather than a release.
+    """
+
+    suffix = (get_settings().platform_domain or "").strip().lstrip(".")
+    label = _to_host_label(app_key)
+    return normalize_host(f"{label}.{suffix}" if suffix else label)
 
 
 @dataclass(frozen=True)
@@ -669,7 +826,12 @@ def upsert_app_client_for_restaurant(
     return app_client
 
 
-def build_app_config_response(app_client: AppClient, *, bundle_id: str) -> AppConfigResponse:
+def build_app_config_response(
+    app_client: AppClient,
+    *,
+    bundle_id: str | None = None,
+    host: str | None = None,
+) -> AppConfigResponse:
     """Flatten an app client into the startup payload the mobile app consumes.
 
     Records written before a field existed fall back to defaults so that a build
@@ -681,7 +843,11 @@ def build_app_config_response(app_client: AppClient, *, bundle_id: str) -> AppCo
     and the two must not disagree on screen.
     """
 
-    branding = dict(app_client.branding or {})
+    from app.services.app_branding import read_branding
+
+    # Completed with platform defaults, so a storefront never has to decide
+    # what to do about a key a half-onboarded tenant has not filled in yet.
+    branding = read_branding(app_client)
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
 
     restaurant = app_client.restaurant
@@ -703,7 +869,8 @@ def build_app_config_response(app_client: AppClient, *, bundle_id: str) -> AppCo
         minimum_supported_version=(
             app_client.minimum_supported_version or DEFAULT_MINIMUM_SUPPORTED_VERSION
         ),
-        bundle_id=bundle_id.strip(),
+        bundle_id=(bundle_id or "").strip(),
+        host=normalize_host(host),
         business_timezone=get_settings().business_timezone,
     )
 

@@ -25,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link to="/" className="mr-auto flex items-center gap-2" aria-label="Bangkok Bowl home">
             <span className="brand-mark">BB</span>
-            <span className="brand-name font-display text-xl font-black">
+            <span className="brand-name font-display text-xl font-extrabold">
               {store.restaurantName ?? "Bangkok Bowl"}
             </span>
           </Link>

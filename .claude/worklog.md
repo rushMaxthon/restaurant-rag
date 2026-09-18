@@ -17,6 +17,111 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-18 (2) — One design layer for both apps (4a53cd5, b71fb43)
+
+User: "we have frontend-customer folder where i like that UI so i preffer to
+use that type of UI and common component to the frontend-admin". Plan updated
+(§5A in `~/.claude/plans/vivid-tumbling-whistle.md`). Decisions: Tailwind v4
+only (not shadcn/Radix), one shared stylesheet, first pass = shell + the 9
+shared components + form vocabulary + new SaaS screens, Plus Jakarta Sans.
+
+**The finding that made this cheap:** the customer app's look is NOT its 50
+shadcn primitives (`<Card>` is imported in 2 files). It is `styles.css` (1,417
+lines) + `polish.css` (1,781) — `.elevated-panel`, `.empty-state`, `.skeleton`,
+`.status-chip`, the focus halo. That ports as CSS with zero dependencies.
+`--primary: #ff5200` was already identical in both apps.
+
+**Done — `frontend-shared/tokens.css`.** Imported FIRST by both apps, so an app
+redeclaring a name keeps its own value. Adoption is per token, by deleting a
+line. Verified in the built CSS: shared tokens present, admin's values still
+winning. Customer dropped its duplicated `:root`/`.dark`, kept its extras.
+
+**Done — the font, which was a real bug.** `--font-sans` named Manrope since
+the storefront was written, with no font file, package or stylesheet link ever
+shipped. Every visitor had been reading the system fallback — including in the
+screenshots that made us like the design. Both apps now self-host Plus Jakarta
+Sans. It carries weights 200-800 and 63 places asked for 900 (12 CSS rules +
+51 `font-black` utilities), which browsers fake by smearing outlines; all now
+800. Page reports zero elements at 900.
+
+**Done — Tailwind v4 in admin, no preflight.** `theme.css` + `utilities.css`
+imported separately; the build is grepped for preflight fingerprints. Old CSS
+moved to `legacy.css` in `@layer legacy` declared before utilities, so
+utilities can override it. **Gotcha:** the admin's `:root` had to be moved back
+OUT of that layer — layered loses to unlayered, so the shared tokens would have
+silently won and turned a no-op into a visual change.
+
+**Verified empirically, not from the spec:** a throwaway `outline-2
+outline-red-500` on `.page-intro` (which a legacy rule already styles) won —
+computed `oklch(0.637 0.237 25.331)`, Tailwind's red-500 — then removed. Pages
+unchanged, 129 admin tests, typecheck clean, CSS +3.7 KB.
+
+**Next:** `frontend-shared/polish.css` (the signature classes), then the shell
+and the 9 shared components, then the SaaS screens.
+
+## 2026-09-18 — SaaS conversion, steps 1-3 backend (a0d1dc6, aacab0a)
+
+Plan approved: multi-tenant SaaS. Subdomain per tenant, each restaurant brings
+its own WhatsApp number, Stripe Connect, admin shell before page migration.
+Plan file: `~/.claude/plans/vivid-tumbling-whistle.md`.
+
+**Done — tenant resolution by host.** New `app_client_domains` (host globally
+unique) + `AppClientDomainKind`. Deliberately NOT a `WEB` row in
+`app_client_identifiers`: that table is keyed `(platform, identifier,
+environment)` so STAGING and PROD could both claim one host, and its platform
+enum is load-bearing in ~6 places that assume iOS/Android only.
+`app_clients.normalize_host` / `find_app_client_by_host` /
+`resolve_app_client_by_host` / `platform_host_for`, and the status checks both
+lookups share moved into `_assert_client_usable` so a SUSPENDED tenant cannot
+still serve through whichever path was used. `/app-config` resolves bundle id
+first (mobile untouched), then **`X-Forwarded-Host`** — never raw `Host`, which
+the client controls. Unknown host is 404, not a silent marketplace fallback.
+
+**Done — credentials at rest.** `services/secrets.py`, Fernet, keyed by
+`SECRETS_ENCRYPTION_KEY`. Refuses rather than storing plaintext when unset;
+a value that will not authenticate raises rather than being returned as-is.
+`cryptography` named directly in requirements (was transitive via python-jose).
+
+**Done — branding per tenant.** `services/app_branding.py`: logo, dark logo,
+favicon, cover, accent, font (allowlist + resolved CSS stack), app name,
+tagline. Validated on the way in (`javascript:`/`data:` URLs refused, control
+characters stripped, length caps); every key always present on read so a
+half-onboarded tenant still renders. Wired into `build_app_config_response`,
+which keeps its existing precedence — `Restaurant.theme` wins on
+`primary_color` because that is what the owner controls.
+
+**Gotcha:** the migration backfilled hosts from `lower(app_key)`, which keeps
+underscores — invalid in DNS and not what `platform_host_for` generates. Fixed
+in the migration and repaired in place. `_to_host_label` hyphenates.
+
+**Verified:** suite 1688 OK (was 1655). Migration 0062 applied to Supabase; all
+six seeded restaurants now resolve by host. Live: `bangkok-bowl.localhost` and
+`dragon-wok.localhost` return different restaurants from `/app-config`,
+`nobody.localhost` 404s, bundle id still works, neither gives a 400.
+
+**Scope note (user, same day):** hosting is out for now — development and
+management only. No DNS, certificates or deploy work. Subdomains already work
+in development because browsers resolve `*.localhost` to 127.0.0.1 unaided.
+
+**Done — admin route table (step 4, commit f4f0dae).** The same decision was
+being made in four places: a 150-line nested ternary in `App.tsx`, a
+`staticAllowed` map, and two `Set`s in `Sidebar.tsx`. They had drifted —
+ADMIN could open `/menu-items` and `/generated-combos` (both pages have
+deliberate admin-wide branches) and the sidebar offered neither. New
+`src/routes.tsx`: one `RouteDef` per address carrying pattern, roles,
+`restaurantOf`, nav entry and render. `navFor(role)` builds the sidebar from
+the routes themselves. Owner scoping was five near-identical id checks, now
+one rule. `App.tsx` 534 -> 144 lines. No new dependencies.
+
+**Verified:** `tsc --noEmit` clean, `npm run build` clean, 129 vitest tests
+(20 new). In the browser as an owner: navigation, the bounce from Dragon
+Wok's URL back to their own restaurant, the sidebar highlight holding on an
+order detail, no console errors.
+
+**Next:** admin shell + tenant switcher + tenants list (step 5), then the
+onboarding wizard. Customer app SSR + de-Bangkok rename (step 3 frontend) is
+lower priority while hosting is out of scope.
+
 ## 2026-09-17 (7) — The order waiting to be paid (commit 580eb17)
 
 **Done:** new `app/services/ordering_agent/open_orders.py` — `waiting_order`,

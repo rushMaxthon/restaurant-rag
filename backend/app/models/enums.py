@@ -25,6 +25,19 @@ class AppClientPlatform(StrEnum):
     ANDROID = "ANDROID"
 
 
+class AppClientDomainKind(StrEnum):
+    """Who owns the address a storefront answers on.
+
+    A subdomain we issue is ours: it resolves the moment the row exists, and
+    there is nothing to prove. A domain the restaurant already owns has to be
+    verified before it is served, or anyone could claim a name that is not
+    theirs and be handed that brand's storefront.
+    """
+
+    PLATFORM_SUBDOMAIN = "PLATFORM_SUBDOMAIN"
+    CUSTOM = "CUSTOM"
+
+
 class AppClientEnvironment(StrEnum):
     PROD = "PROD"
     STAGING = "STAGING"

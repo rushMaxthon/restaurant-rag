@@ -23,7 +23,11 @@ class AppConfigResponse(BaseModel):
     branding: dict[str, Any] = Field(default_factory=dict)
     order_prefix: str
     minimum_supported_version: str
-    bundle_id: str
+    # How this configuration was resolved, echoed back. A mobile build gets
+    # the bundle id it asked with; a storefront gets the host. Both are
+    # optional because a caller only ever supplies one of them.
+    bundle_id: str = ""
+    host: str = ""
     # The clock every opening hour, slot and cutoff in this system is written
     # in. Sent because the client cannot guess it: a browser builds dates in
     # the DEVICE's zone, so a customer in Toronto reading a branch in Ahmedabad

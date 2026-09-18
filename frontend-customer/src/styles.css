@@ -1,10 +1,17 @@
+/* Self-hosted, and the reason this line exists: `--font-sans` has named
+   Manrope since the app was written, but no font file, package or
+   stylesheet link ever shipped with it — every visitor has been reading
+   the system fallback. Imported as CSS rather than from a route module
+   because this app injects stylesheets as URL assets, and a JS-side
+   import would never reach the document. */
+@import "@fontsource-variable/plus-jakarta-sans";
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 @theme inline {
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-stack);
+  --font-display: var(--font-stack);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -33,48 +40,21 @@
   --color-success: var(--success);
   --color-danger: var(--danger);
 }
+/* Every colour, radius and timing below comes from the shared file, so the
+   storefront and the operator's panel cannot drift apart. Anything this app
+   needs that the panel does not — the phone tab bar's height, the placeholder
+   tints — stays here. */
+@import "../../frontend-shared/tokens.css";
+
 :root {
-  --primary: #ff5200;
-  --primary-soft: #fff0e8;
-  --on-primary: #ffffff;
-  --bg: #fafafa;
-  --surface: #ffffff;
-  --surface-alt: #f4f4f5;
-  --text: #14171f;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --radius: 0.5rem;
   /* The phone tab bar's height. Pinned controls above it need a number to
      offset by, and a bar whose height is only whatever its icons add up to
      cannot give them one. */
   --mobile-nav-h: 58px;
-  --overlay: rgb(20 23 31 / 0.55);
-  --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
   --placeholder-a: color-mix(in srgb, var(--primary) 15%, var(--surface));
   --placeholder-b: color-mix(in srgb, var(--primary) 25%, var(--surface));
   --placeholder-c: color-mix(in srgb, var(--success) 16%, var(--surface));
   --placeholder-d: color-mix(in srgb, var(--text) 10%, var(--primary-soft));
-  --scrollbar-thumb: #c9cdd4;
-  --scrollbar-thumb-hover: #a2a8b3;
-}
-.dark {
-  --primary: #ff6b26;
-  --primary-soft: #3a2118;
-  --on-primary: #ffffff;
-  --bg: #111216;
-  --surface: #191b20;
-  --surface-alt: #23262d;
-  --text: #f8fafc;
-  --muted: #a7adb7;
-  --border: #343740;
-  --success: #4ade80;
-  --danger: #f87171;
-  --overlay: rgb(0 0 0 / 0.62);
-  --shadow: 0 12px 34px rgb(0 0 0 / 0.4);
-  --scrollbar-thumb: #3e434d;
-  --scrollbar-thumb-hover: #565c68;
 }
 @layer base {
   * {
@@ -119,7 +99,7 @@
   border-radius: 50%;
   background: var(--primary);
   color: var(--on-primary);
-  font-weight: 900;
+  font-weight: 800;
   font-size: 0.82rem;
 }
 .cart-count {
@@ -460,7 +440,7 @@
 .sum-total .sum-total-figure {
   font-family: var(--font-display);
   font-size: 1.75rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -747,7 +727,7 @@
   background: var(--primary);
   color: var(--on-primary);
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 800;
 }
 .step-pill[data-done="true"] {
   background: var(--success);
@@ -840,7 +820,7 @@ html {
   border-radius: 999px;
   padding: 0.2rem 0.55rem;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   backdrop-filter: blur(4px);
@@ -1071,7 +1051,7 @@ html {
   border-radius: 999px;
   padding: 0.3rem 0.7rem;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   line-height: 1.2;
@@ -1134,7 +1114,7 @@ html {
   border-radius: 999px;
   padding: 0.1rem 0.45rem;
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }

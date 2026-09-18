@@ -11,6 +11,10 @@ pgvector==0.3.6
 pydantic==2.10.2
 pydantic-settings==2.6.1
 python-jose[cryptography]==3.3.0
+# Direct dependency since tenant credentials are encrypted at rest
+# (app/services/secrets.py). It arrived transitively via python-jose
+# first; named here so an upgrade there cannot quietly remove it.
+cryptography==50.0.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 python-multipart==0.0.18

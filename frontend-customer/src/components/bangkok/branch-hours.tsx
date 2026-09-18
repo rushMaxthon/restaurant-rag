@@ -33,7 +33,7 @@ export function BranchHours({
 
   return (
     <div className={className}>
-      <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-muted">
+      <h3 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-muted">
         <Clock className="size-4 text-primary" />
         {fulfillment === "DELIVERY" ? "Delivery hours" : "Pickup hours"}
       </h3>

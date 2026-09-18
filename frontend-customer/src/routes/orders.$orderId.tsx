@@ -93,7 +93,7 @@ function OrderDetail() {
           <div className="empty-state-icon">
             <XCircle className="size-9" />
           </div>
-          <h1 className="mt-8 font-display text-3xl font-black tracking-tight">
+          <h1 className="mt-8 font-display text-3xl font-extrabold tracking-tight">
             We couldn't find that order
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
@@ -132,7 +132,7 @@ function OrderDetail() {
           <p className="text-sm font-extrabold uppercase tracking-wider text-primary">
             Order {orderCode(o)}
           </p>
-          <h1 className="mt-2 font-display text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl">
+          <h1 className="mt-2 font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">
             {cancelled
               ? "This order was cancelled"
               : `Your order is ${o.status.toLowerCase().replaceAll("_", " ")}`}
@@ -189,7 +189,7 @@ function OrderDetail() {
                         {state === "done" ? (
                           <Check className="size-3.5" strokeWidth={3} />
                         ) : (
-                          <span className="text-xs font-black">{i + 1}</span>
+                          <span className="text-xs font-extrabold">{i + 1}</span>
                         )}
                       </span>
                       <div className="min-w-0 pt-0.5">
@@ -219,7 +219,7 @@ function OrderDetail() {
         </section>
 
         <aside className="elevated-panel h-fit p-5 sm:p-6 lg:sticky lg:top-24">
-          <h2 className="font-display text-xl font-black tracking-tight">Order summary</h2>
+          <h2 className="font-display text-xl font-extrabold tracking-tight">Order summary</h2>
 
           <ul className="mt-5 space-y-3.5 border-b border-border pb-5">
             {o.items.map((item) => (
@@ -269,7 +269,7 @@ function OrderDetail() {
           </dl>
 
           <div className="sum-total">
-            <span className="text-lg font-black">Total</span>
+            <span className="text-lg font-extrabold">Total</span>
             <span className="sum-total-figure">{formatMoney(o.total_amount)}</span>
           </div>
 

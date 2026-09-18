@@ -617,6 +617,19 @@ class Settings(BaseSettings):
     # Meta gives the API, which is an id and not the number.
     whatsapp_business_number: str = ""
     payment_currency: str = "usd"
+    # The key that protects credentials this platform holds on behalf of a
+    # tenant — a restaurant's WhatsApp access token, its webhook verify token.
+    # Kept out of the database on purpose, so a dump of the channels table is
+    # useless on its own. Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Unset means this deployment refuses to store somebody else's secret,
+    # which is the honest failure — see `services/secrets.py`.
+    secrets_encryption_key: str = ""
+    # The domain tenant storefronts hang off: a restaurant onboarded with the
+    # app key "bangkokbowl" is served at bangkokbowl.<this>. One deployment,
+    # one wildcard certificate, and onboarding a restaurant is a row rather
+    # than a release. A tenant's own domain is a second row on the same client.
+    platform_domain: str = "localhost"
     # Whether this deployment takes cash on delivery at all. Off: this product
     # is card-only, and an always-available COD meant "Place order" completed
     # without any payment step, which read as the payment being skipped.

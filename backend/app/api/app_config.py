@@ -11,9 +11,16 @@ from app.config.database import get_db
 from app.schemas.app_config import AppConfigResponse
 from app.services.app_clients import (
     build_app_config_response,
+    normalize_host,
     parse_app_client_platform,
     resolve_app_client_by_bundle_id,
+    resolve_app_client_by_host,
 )
+
+# The proxy sets this from the address the browser actually asked for. The
+# raw `Host` header is whatever the client typed and must never decide which
+# tenant a request belongs to; nginx overwrites this one.
+FORWARDED_HOST_HEADER = "X-Forwarded-Host"
 
 router = APIRouter(prefix="/app-config", tags=["App Config"])
 logger = logging.getLogger(__name__)
@@ -24,10 +31,12 @@ def get_app_config(
     db: Annotated[Session, Depends(get_db)],
     x_app_bundle_id: Annotated[str | None, Header(alias=APP_BUNDLE_ID_HEADER)] = None,
     x_app_platform: Annotated[str | None, Header(alias=APP_PLATFORM_HEADER)] = None,
+    x_forwarded_host: Annotated[str | None, Header(alias=FORWARDED_HOST_HEADER)] = None,
     bundle_id: Annotated[str | None, Query(max_length=255)] = None,
     platform: Annotated[str | None, Query(max_length=16)] = None,
+    host: Annotated[str | None, Query(max_length=255)] = None,
 ) -> AppConfigResponse:
-    """Resolve a mobile build's bundle ID to its app configuration.
+    """Resolve a build to its app configuration, by bundle ID or by web address.
 
     Public on purpose: the app calls this at startup, before any login, to learn
     which brand it is and whether it runs in marketplace or single-restaurant
@@ -41,25 +50,45 @@ def get_app_config(
     value is ignored rather than rejected.
     """
 
-    resolved_bundle_id = x_app_bundle_id or bundle_id
-    if not resolved_bundle_id or not resolved_bundle_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide the app bundle ID via the X-App-Bundle-Id header or the bundle_id query parameter",
-        )
+    resolved_bundle_id = (x_app_bundle_id or bundle_id or "").strip()
+    # A forwarded host only ever names one address; a proxy chain writes a
+    # comma-separated list, and the first entry is the one the browser asked
+    # for.
+    forwarded = (x_forwarded_host or "").split(",")[0]
+    resolved_host = normalize_host(forwarded or host)
 
-    resolved_platform = parse_app_client_platform(x_app_platform or platform)
-    app_client = resolve_app_client_by_bundle_id(
-        db,
-        bundle_id=resolved_bundle_id,
-        platform=resolved_platform,
+    if resolved_bundle_id:
+        resolved_platform = parse_app_client_platform(x_app_platform or platform)
+        app_client = resolve_app_client_by_bundle_id(
+            db,
+            bundle_id=resolved_bundle_id,
+            platform=resolved_platform,
+        )
+        logger.info(
+            "App config resolved bundle_id=%s platform=%s app_key=%s app_mode=%s restaurant_id=%s",
+            resolved_bundle_id,
+            resolved_platform.value if resolved_platform else "any",
+            app_client.key,
+            app_client.app_mode.value,
+            app_client.restaurant_id,
+        )
+        return build_app_config_response(app_client, bundle_id=resolved_bundle_id)
+
+    if resolved_host:
+        app_client = resolve_app_client_by_host(db, host=resolved_host)
+        logger.info(
+            "App config resolved host=%s app_key=%s app_mode=%s restaurant_id=%s",
+            resolved_host,
+            app_client.key,
+            app_client.app_mode.value,
+            app_client.restaurant_id,
+        )
+        return build_app_config_response(app_client, host=resolved_host)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            "Provide the app bundle ID via the X-App-Bundle-Id header, or the "
+            "storefront host via X-Forwarded-Host"
+        ),
     )
-    logger.info(
-        "App config resolved bundle_id=%s platform=%s app_key=%s app_mode=%s restaurant_id=%s",
-        resolved_bundle_id.strip(),
-        resolved_platform.value if resolved_platform else "any",
-        app_client.key,
-        app_client.app_mode.value,
-        app_client.restaurant_id,
-    )
-    return build_app_config_response(app_client, bundle_id=resolved_bundle_id)

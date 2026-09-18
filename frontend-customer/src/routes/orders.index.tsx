@@ -88,7 +88,7 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="whitespace-nowrap font-display text-xl font-black leading-none tracking-tight">
+            <h2 className="whitespace-nowrap font-display text-xl font-extrabold leading-none tracking-tight">
               Order {orderCode(order)}
             </h2>
             {/* Neither the date nor the item list was shown before, which made
@@ -138,7 +138,7 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-3 sm:min-w-36">
-          <b className="money font-display text-2xl font-black leading-none tracking-tight">
+          <b className="money font-display text-2xl font-extrabold leading-none tracking-tight">
             {formatMoney(order.total_amount)}
           </b>
           <Button variant={live ? "default" : "outline"} className="font-bold" asChild>
@@ -249,7 +249,7 @@ function Orders() {
     <div className="page-pad mx-auto max-w-6xl pb-24 pt-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-black tracking-tight sm:text-5xl">
+          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">
             Your orders
           </h1>
           {user && (
@@ -289,7 +289,7 @@ function Orders() {
           <div className="empty-state-icon">
             <ReceiptText className="size-9" />
           </div>
-          <h2 className="mt-8 font-display text-3xl font-black tracking-tight">No orders yet</h2>
+          <h2 className="mt-8 font-display text-3xl font-extrabold tracking-tight">No orders yet</h2>
           <p className="mx-auto mt-3 max-w-sm text-muted">
             Your order history will show up here once you place one.
           </p>
@@ -303,7 +303,7 @@ function Orders() {
 
       {live.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
+          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
             <span className="relative flex size-2.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-70" />
               <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
@@ -325,7 +325,7 @@ function Orders() {
 
       {unpaid.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-2 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
+          <h2 className="mb-2 flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
             <WalletCards className="size-5 text-muted" />
             Not paid for
             <span className="section-count">{unpaid.length}</span>
@@ -357,7 +357,7 @@ function Orders() {
 
       {past.length > 0 && (
         <section className="mt-12">
-          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-black tracking-tight">
+          <h2 className="mb-4 flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
             Past orders
             <span className="section-count">{past.length}</span>
           </h2>
