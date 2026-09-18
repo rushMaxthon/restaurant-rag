@@ -2238,8 +2238,30 @@ select:focus-visible {
 
 .admin-table__actions-head,
 .admin-table__actions-cell {
-  /* width: 1%; */
+  /* Shrink to the buttons. Measured on Orders: this column was 145px holding
+     one 32px button, and on Tenants 242px holding three — 100px+ of dead space
+     in the widest column of the table, taken from the columns carrying the
+     actual content.
+
+     `width: 1%` was here before, commented out with no note. It is disabled
+     for a real reason: on its own it squeezes the cell until the buttons,
+     which are flex ITEMS, shrink into each other — three of them ended up
+     stacked at the same coordinate. The two rules below are what was missing,
+     so it can be turned back on. */
+  width: 1%;
   white-space: nowrap;
+}
+
+/* Give the group its intrinsic width so the cell above cannot compress it,
+   and keep it against the right edge now that the cell is only as wide as
+   its contents. */
+.admin-table__actions-cell .table-actions {
+  width: max-content;
+  margin-left: auto;
+}
+
+.admin-table__actions-cell .table-actions > * {
+  flex-shrink: 0;
 }
 
 .offer-table__title,
