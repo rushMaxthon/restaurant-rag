@@ -1,4 +1,5 @@
 from app.models.app_client import AppClient, AppClientIdentifier, AppClientOrderSequence
+from app.models.app_client_domain import AppClientDomain
 from app.models.base import Base, TimestampMixin
 from app.models.chat_history import ChatHistory
 from app.models.favorite import Favorite
@@ -50,6 +51,7 @@ __all__ = [
     "Restaurant",
     "RestaurantLocation",
     "AppClient",
+    "AppClientDomain",
     "AppClientIdentifier",
     "AppClientOrderSequence",
     "MenuItem",

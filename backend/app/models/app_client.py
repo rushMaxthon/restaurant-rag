@@ -16,6 +16,7 @@ from app.models.enums import (
 )
 
 if TYPE_CHECKING:
+    from app.models.app_client_domain import AppClientDomain
     from app.models.restaurant import Restaurant
 
 BRANDING_PRIMARY_COLOR_KEY = "primary_color"
@@ -76,6 +77,13 @@ class AppClient(TimestampMixin, Base):
         back_populates="app_client",
         cascade="all, delete-orphan",
         order_by="AppClientIdentifier.platform.asc()",
+    )
+    # Ordered so the canonical address is first: several may resolve to this
+    # client, but only one belongs in a link sent to a customer.
+    domains: Mapped[list["AppClientDomain"]] = relationship(
+        back_populates="app_client",
+        cascade="all, delete-orphan",
+        order_by="(AppClientDomain.is_primary.desc(), AppClientDomain.host.asc())",
     )
     order_sequence: Mapped["AppClientOrderSequence | None"] = relationship(
         back_populates="app_client",
