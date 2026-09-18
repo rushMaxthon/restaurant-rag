@@ -1,22 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MenuGrid } from "@/components/bangkok/menu-grid";
 import { UsualsAndPairs } from "@/components/bangkok/usuals-and-pairs";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 export const Route = createFileRoute("/menu/")({
-  head: () => ({
-    meta: [
-      { title: "Thai Menu — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Browse Thai curries, noodles, rice bowls, starters, desserts and drinks.",
-      },
-      { property: "og:title", content: "Thai Menu — Bangkok Bowl" },
-      {
-        property: "og:description",
-        content: "Explore the complete Bangkok Bowl menu in Ahmedabad.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Menu", "Browse the full menu and order online."),
   }),
   component: MenuPage,
 });

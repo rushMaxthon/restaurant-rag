@@ -26,17 +26,13 @@ import {
   nextOpening,
 } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/cart")({
-  head: () => ({
-    meta: [
-      { title: "Your Cart — Bangkok Bowl" },
-      { name: "description", content: "Review your Bangkok Bowl order and continue to checkout." },
-      { property: "og:title", content: "Your Cart — Bangkok Bowl" },
-      { property: "og:description", content: "Review your Thai food order." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your cart", "Review your order and continue to checkout."),
   }),
   component: CartPage,
 });

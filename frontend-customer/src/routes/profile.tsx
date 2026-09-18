@@ -10,9 +10,14 @@ import { useAuth } from "@/lib/auth";
 import { formatPhoneAsTyped, validatePhone } from "@/lib/delivery-address";
 import { useFavorites, useProfile, useToggleFavorite } from "@/lib/queries";
 import { useRequireAuth } from "@/lib/require-auth";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/profile")({
-  head: () => ({ meta: [{ title: "Your tab · Bangkok Bowl" }] }),
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your tab", "Your account, addresses and saved details."),
+  }),
   component: ProfilePage,
 });
 

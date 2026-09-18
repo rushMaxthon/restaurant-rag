@@ -25,6 +25,7 @@ import unittest
 from types import SimpleNamespace
 
 from app.main import app  # noqa: F401 - imported first to settle import order
+from app.models.restaurant import PLACEHOLDER_CITY, PLACEHOLDER_CUISINE
 from app.services.restaurant_storefront import (
     STOREFRONT_KEYS,
     STOREFRONT_LIMITS,
@@ -164,6 +165,49 @@ class WhatAnOwnerWritesTests(unittest.TestCase):
 
         restaurant = a_restaurant()
         self.assertEqual(default_storefront(restaurant), read_storefront(restaurant))
+
+
+class AFreshlyOnboardedRestaurantTests(unittest.TestCase):
+    """Onboarding asks for a name and an owner, not an address.
+
+    The columns it cannot answer are NOT NULL, so it writes placeholders. Those
+    placeholders reached the page: a restaurant created through the admin was
+    titled "Radhe Dhokla — General food delivery in Pending", live in its tab,
+    its link previews and its search listing from the moment it existed.
+
+    Found by onboarding a real tenant and reading the result, not by a test —
+    which is why there is one now.
+    """
+
+    def onboarded(self, **overrides):
+        base = {
+            "name": "Radhe Dhokla",
+            "cuisine_type": PLACEHOLDER_CUISINE,
+            "city": PLACEHOLDER_CITY,
+            "description": None,
+            "storefront": {},
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    def test_the_placeholders_never_reach_a_page(self) -> None:
+        copy = read_storefront(self.onboarded())
+        for key, value in copy.items():
+            self.assertNotIn(PLACEHOLDER_CITY, value, key)
+            self.assertNotIn(PLACEHOLDER_CUISINE, value, key)
+
+    def test_it_still_reads_as_a_sentence(self) -> None:
+        copy = read_storefront(self.onboarded())
+        self.assertEqual(copy["meta_title"], "Radhe Dhokla — Food delivery")
+        self.assertEqual(copy["login_blurb"], "Sign in to order from Radhe Dhokla.")
+
+    def test_a_real_city_is_not_mistaken_for_the_placeholder(self) -> None:
+        copy = read_storefront(self.onboarded(city="Ahmedabad", cuisine_type="Gujarati"))
+        self.assertEqual(copy["meta_title"], "Radhe Dhokla — Gujarati food delivery in Ahmedabad")
+
+    def test_filling_in_one_of_the_two_is_enough_to_use_it(self) -> None:
+        copy = read_storefront(self.onboarded(city="Ahmedabad"))
+        self.assertEqual(copy["meta_title"], "Radhe Dhokla — Food delivery in Ahmedabad")
 
 
 if __name__ == "__main__":

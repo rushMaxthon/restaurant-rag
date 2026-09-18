@@ -20,6 +20,25 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
+# What onboarding writes into the NOT NULL columns it has no answer for yet.
+#
+# Creating a restaurant asks for four things — its name and its owner's
+# details — because asking for a full address before the owner has even signed
+# in is how onboarding gets abandoned. The columns below are NOT NULL, so
+# something has to go in them, and these are that something.
+#
+# Named rather than written inline at the one call site, because they are read
+# somewhere else: `restaurant_storefront.py` has to recognise them, or a
+# newly onboarded restaurant's page title says "General food delivery in
+# Pending" — in its tab, its link previews and its search listing, live from
+# the moment it is created.
+PLACEHOLDER_CUISINE = "General"
+PLACEHOLDER_CITY = "Pending"
+PLACEHOLDER_STATE = "Pending"
+PLACEHOLDER_ADDRESS = "Pending restaurant setup"
+PLACEHOLDER_POSTAL_CODE = "000000"
+
+
 class Restaurant(TimestampMixin, Base):
     __tablename__ = "restaurants"
 

@@ -25,7 +25,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.restaurant import Restaurant
+from app.models.restaurant import (
+    PLACEHOLDER_CITY,
+    PLACEHOLDER_CUISINE,
+    Restaurant,
+)
 
 META_TITLE_KEY = "meta_title"
 META_DESCRIPTION_KEY = "meta_description"
@@ -122,8 +126,17 @@ def default_storefront(restaurant: Restaurant) -> dict[str, str]:
     """
 
     name = (restaurant.name or "").strip() or "Our kitchen"
+    # Onboarding asks for a name and an owner, not an address — so a
+    # restaurant created five minutes ago carries the placeholders those NOT
+    # NULL columns needed. Treated as the absences they are, because
+    # "General food delivery in Pending" is worse in a search listing than
+    # saying less, and it is live from the moment the tenant is created.
     cuisine = (restaurant.cuisine_type or "").strip()
+    if cuisine == PLACEHOLDER_CUISINE:
+        cuisine = ""
     city = (restaurant.city or "").strip()
+    if city == PLACEHOLDER_CITY:
+        city = ""
 
     # "Thai food delivery in Ahmedabad" reads as a sentence; each half is
     # dropped rather than left as a dangling preposition when it is missing.

@@ -23,6 +23,8 @@ import { cartLinesForRequest } from "@/lib/suggestions";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
+import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 type ConciergeSearch = { q?: string };
 
@@ -59,16 +61,9 @@ function describeAppliedActions(actions: CartAction[], menu: MenuItem[]): string
 export const Route = createFileRoute("/concierge")({
   validateSearch: (search: Record<string, unknown>): ConciergeSearch =>
     typeof search["q"] === "string" ? { q: search["q"] as string } : {},
-  head: () => ({
-    meta: [
-      { title: "Food Concierge — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Tell our AI food concierge your mood and get Bangkok Bowl dish picks.",
-      },
-      { property: "og:title", content: "Food Concierge — Bangkok Bowl" },
-      { property: "og:type", content: "website" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Food concierge", "Ask about the menu and get help choosing what to order."),
   }),
   component: ConciergePage,
 });
@@ -137,6 +132,9 @@ function stripMarkdown(text: string): string {
 }
 
 function ConciergePage() {
+  // This restaurant's own words, resolved by the root route from the
+  // address the page was opened on.
+  const copy = useStorefrontCopy();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const store = useBangkokStore();
@@ -584,7 +582,7 @@ function ConciergePage() {
           <section className="relative min-h-[38svh] overflow-hidden">
             <img
               src={heroImage}
-              alt="Mango sticky rice at Bangkok Bowl"
+              alt={`Food from ${copy.name}`}
               className="absolute inset-0 size-full object-cover"
             />
             <div className="hero-overlay absolute inset-0" />
@@ -594,7 +592,7 @@ function ConciergePage() {
                 Ask the food concierge
               </h1>
               <p className="mt-4 max-w-xl text-lg font-medium">
-                Describe what you're craving and get real picks from the Bangkok Bowl menu.
+                {copy.concierge_intro}
               </p>
             </div>
           </section>

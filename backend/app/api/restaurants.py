@@ -15,7 +15,14 @@ from app.api.deps import AppScopeDep, ensure_restaurant_readable
 from app.config.database import get_db
 from app.models.enums import OrderFulfillmentType, UserRole
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
-from app.models.restaurant import Restaurant
+from app.models.restaurant import (
+    PLACEHOLDER_ADDRESS,
+    PLACEHOLDER_CITY,
+    PLACEHOLDER_CUISINE,
+    PLACEHOLDER_POSTAL_CODE,
+    PLACEHOLDER_STATE,
+    Restaurant,
+)
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.restaurant import (
@@ -181,13 +188,13 @@ def create_restaurant(
         name=payload.name,
         slug=_generate_unique_slug(db, payload.name),
         description=None,
-        cuisine_type="General",
-        address_line_1="Pending restaurant setup",
+        cuisine_type=PLACEHOLDER_CUISINE,
+        address_line_1=PLACEHOLDER_ADDRESS,
         address_line_2=None,
-        city="Pending",
-        state="Pending",
+        city=PLACEHOLDER_CITY,
+        state=PLACEHOLDER_STATE,
         country="India",
-        postal_code="000000",
+        postal_code=PLACEHOLDER_POSTAL_CODE,
         phone_number=None,
         minimum_order_amount=0,
         delivery_fee=0,

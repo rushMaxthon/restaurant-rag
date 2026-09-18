@@ -56,23 +56,16 @@ import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /** Shown beside the phone field; matches the backend's own default. */
 const PHONE_COUNTRY_CODE = "+1";
 
 export const Route = createFileRoute("/checkout")({
-  head: () => ({
-    meta: [
-      { title: "Checkout — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Choose delivery or pickup and place your Bangkok Bowl order.",
-      },
-      { property: "og:title", content: "Checkout — Bangkok Bowl" },
-      { property: "og:description", content: "Complete your Bangkok Bowl order." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Checkout", "Choose delivery or pickup and place your order."),
   }),
   component: Checkout,
 });

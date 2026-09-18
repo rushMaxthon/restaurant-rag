@@ -22,10 +22,31 @@ import { UNKNOWN_STOREFRONT, type StorefrontCopy } from "@/lib/storefront";
  * Kept in its own module so the server-only import above cannot be pulled
  * into the browser bundle by anything that wants the types or the hook.
  */
+/**
+ * Resolved copy, per host, briefly.
+ *
+ * Every route resolves this for its own `<title>`, because a child route's
+ * `head` runs while the root's loader is still pending — `matches` carries the
+ * root match with `status: "pending"` and no data, so reading the parent's
+ * result is not an option. Each route asking for itself is correct and would
+ * otherwise mean two `/app-config` calls to render one page, plus one for
+ * every visitor of every storefront.
+ *
+ * Safe to share across requests: this is a tenant's public branding keyed by
+ * the address that selects it, with nothing user-specific in it. Thirty
+ * seconds so an owner editing their page title sees it on the next reload
+ * rather than wondering whether the save worked.
+ */
+const TTL_MS = 30_000;
+const cache = new Map<string, { at: number; copy: StorefrontCopy }>();
+
 export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
   async (): Promise<StorefrontCopy> => {
     const host = getRequestHost();
     if (!host) return UNKNOWN_STOREFRONT;
+
+    const hit = cache.get(host);
+    if (hit && Date.now() - hit.at < TTL_MS) return hit.copy;
 
     try {
       const response = await fetch(
@@ -35,11 +56,20 @@ export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
       if (!response.ok) return UNKNOWN_STOREFRONT;
 
       const payload = (await response.json()) as {
+        display_name?: string;
         storefront?: Partial<StorefrontCopy>;
       };
       // Merged rather than trusted wholesale: the backend fills every key for
       // a restaurant, but a MARKETPLACE client legitimately sends none.
-      return { ...UNKNOWN_STOREFRONT, ...(payload.storefront ?? {}) };
+      const copy = {
+        ...UNKNOWN_STOREFRONT,
+        name: payload.display_name || UNKNOWN_STOREFRONT.name,
+        ...(payload.storefront ?? {}),
+      };
+      // Only a real answer is cached. Caching the fallback would pin a
+      // nameless page in place for half a minute after a blip.
+      cache.set(host, { at: Date.now(), copy });
+      return copy;
     } catch {
       // An unreachable backend must not fail the render. The page still
       // works; only the meta degrades.

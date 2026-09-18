@@ -16,6 +16,8 @@ import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { formatMoney, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /**
  * The tracker, worded for how the food actually reaches the customer.
@@ -39,15 +41,9 @@ function stepsFor(isDelivery: boolean) {
 }
 
 export const Route = createFileRoute("/orders/$orderId")({
-  head: () => ({
-    meta: [
-      { title: "Track Order — Bangkok Bowl" },
-      { name: "description", content: "Follow your Bangkok Bowl order from kitchen to doorstep." },
-      { property: "og:title", content: "Track Order — Bangkok Bowl" },
-      { property: "og:description", content: "Live Bangkok Bowl order status." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Track order", "Follow your order from the kitchen to your doorstep."),
   }),
   component: OrderDetail,
 });

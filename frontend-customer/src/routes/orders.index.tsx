@@ -21,17 +21,13 @@ import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
 import { useState } from "react";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/orders/")({
-  head: () => ({
-    meta: [
-      { title: "Your Orders — Bangkok Bowl" },
-      { name: "description", content: "Track current Bangkok Bowl orders and view past orders." },
-      { property: "og:title", content: "Your Orders — Bangkok Bowl" },
-      { property: "og:description", content: "Track and review your Bangkok Bowl orders." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your orders", "Track current orders and look back at past ones."),
   }),
   component: Orders,
 });

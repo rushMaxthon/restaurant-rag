@@ -37,16 +37,13 @@ import {
   visibleGroups,
 } from "@/lib/customization";
 import { useMenuItem, useMenuItems, useRestaurant } from "@/lib/queries";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/menu/$itemId")({
-  head: () => ({
-    meta: [
-      { title: "Dish — Bangkok Bowl" },
-      { name: "description", content: "Explore a Bangkok Bowl Thai dish." },
-      { property: "og:title", content: "Dish — Bangkok Bowl" },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Dish", "Explore a dish from the menu."),
   }),
   component: DishPage,
 });
