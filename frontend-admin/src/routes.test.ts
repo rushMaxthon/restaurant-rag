@@ -75,6 +75,26 @@ describe("the navigation and the permission check are the same list", () => {
     expect(paths("OWNER")).not.toContain("/notifications");
     expect(paths("ADMIN")).not.toContain("/branding");
   });
+
+  it("keeps the tenants list to the operator", () => {
+    // The one screen that lists every restaurant on the platform, and the
+    // only place a storefront can be taken off the air. An owner reaching it
+    // would be reading every competitor's order volume off one table.
+    expect(paths("ADMIN")).toContain("/tenants");
+    expect(paths("OWNER")).not.toContain("/tenants");
+
+    const tenants = ROUTES.find((route) => route.id === "tenants");
+    expect(tenants).toBeDefined();
+    expect(mayOpen(tenants!, "OWNER")).toBe(false);
+  });
+
+  it("gives the platform section to nobody who cannot open it", () => {
+    // `navFor` drops an empty section rather than rendering a heading with
+    // nothing under it — which is what an owner would otherwise see.
+    const sections = (role: UserRole) => navFor(role).map((group) => group.label);
+    expect(sections("ADMIN")).toContain("Platform");
+    expect(sections("OWNER")).not.toContain("Platform");
+  });
 });
 
 describe("matching an address", () => {

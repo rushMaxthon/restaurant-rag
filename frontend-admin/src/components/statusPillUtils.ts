@@ -45,6 +45,16 @@ export function resolveStatusPillTone(status: string | OrderStatus): StatusPillT
   if (normalized === 'ENABLED') {
     return 'success';
   }
+  // Tenant lifecycle. The two off-air states are deliberately different
+  // colours: a suspension is something somebody will undo this week, an
+  // offboarding is a restaurant that has left. Rendering both in red would
+  // put the same urgency on a dormant record as on a live problem.
+  if (normalized === 'SUSPENDED') {
+    return 'warning';
+  }
+  if (normalized === 'OFFBOARDED') {
+    return 'muted';
+  }
   // The dashboard's AI-health indicator is `failures > 0 ? AMBER : CLEAR`. Both
   // fell through to `muted`, so the two opposite outcomes rendered identically
   // and the indicator said nothing at all.

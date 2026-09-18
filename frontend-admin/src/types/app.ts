@@ -171,6 +171,56 @@ export interface AppClient {
   updated_at: string;
 }
 
+/**
+ * A tenant as the platform console lists it.
+ *
+ * Distinct from `AppClient`, which is one restaurant's app configuration —
+ * bundle ids, a version floor, the things an admin edits on a detail page.
+ * This is the other question: who is on this platform, what state are they in,
+ * and how much is riding on it. Lighter on purpose; the tenants list renders
+ * a row per restaurant and the switcher renders a name.
+ */
+export interface TenantSummary {
+  id: string;
+  app_key: string;
+  display_name: string;
+  app_mode: AppMode;
+  status: AppClientStatus;
+
+  /** Null for the marketplace client: a tenant that is not a restaurant. */
+  restaurant_id: string | null;
+  restaurant_name: string | null;
+  restaurant_slug: string | null;
+  cuisine_type: string | null;
+  city: string | null;
+  is_approved: boolean | null;
+
+  /** The subdomain this platform issued. Custom domains are counted, not shown. */
+  primary_host: string | null;
+  custom_host_count: number;
+
+  brand_primary_color: string | null;
+
+  /** Null on a tenant nothing has happened to since onboarding. */
+  status_note: string | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
+
+  location_count: number;
+  menu_item_count: number;
+  order_count: number;
+  customer_count: number;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantStatusPayload {
+  status: AppClientStatus;
+  /** Required by the server for anything other than ACTIVE. */
+  note?: string | null;
+}
+
 export interface AdminCreateRestaurantPayload {
   name: string;
   owner_name: string;

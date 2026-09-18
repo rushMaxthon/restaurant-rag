@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, Boolean, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +61,21 @@ class AppClient(TimestampMixin, Base):
         default=AppClientStatus.ACTIVE,
         server_default=AppClientStatus.ACTIVE.value,
         index=True,
+    )
+    # Why the status is what it is. Written together with `status` by the one
+    # endpoint that changes it, so a suspended storefront can explain itself
+    # instead of the answer living in whoever happened to click.
+    status_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # SET NULL rather than RESTRICT: a suspension outlives the admin who made
+    # it, and a departing colleague should not take the reason with them.
+    status_changed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     order_number_prefix: Mapped[str] = mapped_column(
         String(8),

@@ -9937,3 +9937,50 @@ summary:focus-visible,
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* --- Tenants ---------------------------------------------------------------
+   The platform console's own two shapes. Everything else on that page is
+   already shared vocabulary; only these two are about tenants specifically. */
+
+/* A storefront address reads as an address rather than as a name, so the
+   globe sits on the same line as the host instead of in its own column. */
+.tenant-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tenant-host svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Which tenant a lifecycle dialog is about. Named in the dialog because the
+   action is irreversible-ish and taken from a table row: by the time the
+   dialog is open, the row it came from is behind an overlay. */
+.tenant-subject {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.tenant-subject svg {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.tenant-subject div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tenant-subject span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}

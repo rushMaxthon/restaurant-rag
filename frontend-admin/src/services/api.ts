@@ -11,6 +11,8 @@ import type {
   AdminDashboardStats,
   AppClient,
   AppClientUpsertPayload,
+  TenantStatusPayload,
+  TenantSummary,
   ReportsSnapshot,
   GeneratedCombo,
   AdminMenuItem,
@@ -758,6 +760,28 @@ export const api = {
   ): Promise<AppClient> {
     return request<AppClient>(`/restaurants/${restaurantId}/app-client`, {
       method: 'PUT',
+      token,
+      body: payload,
+    });
+  },
+  /** Every tenant on the platform. ADMIN only; an owner gets a 403. */
+  listTenants(token: string): Promise<TenantSummary[]> {
+    return request<TenantSummary[]>('/app-clients', { token });
+  },
+  /**
+   * Suspend, offboard or reactivate a tenant.
+   *
+   * The server refuses anything other than ACTIVE without a note, and refuses
+   * to revive an offboarded tenant at all — both deliberately, so the UI can
+   * ask plainly rather than guard silently.
+   */
+  updateTenantStatus(
+    token: string,
+    tenantId: string,
+    payload: TenantStatusPayload,
+  ): Promise<TenantSummary> {
+    return request<TenantSummary>(`/app-clients/${tenantId}/status`, {
+      method: 'PATCH',
       token,
       body: payload,
     });
