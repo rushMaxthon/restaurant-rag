@@ -654,14 +654,17 @@ export function ReportsPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (row) => money.format(row.revenue),
+      // A row that names one restaurant is written in that restaurant's own
+      // money. Only the summary tiles above, which add several together, fall
+      // back to the view's currency — and say so when the view is mixed.
+      render: (row) => money.format(row.revenue, row.restaurant_id),
       mobileLabel: "Revenue",
       align: "right",
     },
     {
       id: "aov",
       header: "Avg order",
-      render: (row) => money.format(row.average_order_value),
+      render: (row) => money.format(row.average_order_value, row.restaurant_id),
       mobileLabel: "Avg order",
       align: "right",
     },
@@ -697,7 +700,7 @@ export function ReportsPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (row) => money.format(row.revenue),
+      render: (row) => money.format(row.revenue, row.restaurant_id),
       mobileLabel: "Revenue",
       align: "right",
     },
@@ -1091,7 +1094,7 @@ export function ReportsPage({
                   meta={
                     isAdmin
                       ? bestPerformingRestaurant
-                        ? `${pluralize(bestPerformingRestaurant.orders, 'order')} · ${money.format(bestPerformingRestaurant.revenue)}`
+                        ? `${pluralize(bestPerformingRestaurant.orders, 'order')} · ${money.format(bestPerformingRestaurant.revenue, bestPerformingRestaurant.restaurant_id)}`
                         : "No performance data yet"
                       : `${pluralize(summary?.total_orders ?? 0, 'order')} · ${money.format(summary?.total_revenue ?? 0)}`
                   }
@@ -1106,7 +1109,7 @@ export function ReportsPage({
                   label="Best selling item"
                   meta={
                     topRevenueGenerator
-                      ? `${pluralize(topRevenueGenerator.quantity, 'unit')} · ${money.format(topRevenueGenerator.revenue)}`
+                      ? `${pluralize(topRevenueGenerator.quantity, 'unit')} · ${money.format(topRevenueGenerator.revenue, topRevenueGenerator.restaurant_id)}`
                       : "Appears after matching orders arrive"
                   }
                   title={topRevenueGenerator?.name ?? "—"}
@@ -1136,7 +1139,7 @@ export function ReportsPage({
                     emptyTitle="No restaurant performance yet"
                     keyExtractor={(row) => row.restaurant_id}
                     loading={loading}
-                    mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
+                    mobileStatus={(row) => <strong>{money.format(row.revenue, row.restaurant_id)}</strong>}
                     mobileSubtitle={(row) => row.cuisine_type}
                     mobileTitle={(row) => row.restaurant_name}
                     rows={rankedTopRestaurants}
@@ -1159,7 +1162,7 @@ export function ReportsPage({
                   emptyTitle="No item performance yet"
                   keyExtractor={(row) => row.menu_item_id}
                   loading={loading}
-                  mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
+                  mobileStatus={(row) => <strong>{money.format(row.revenue, row.restaurant_id)}</strong>}
                   mobileSubtitle={(row) => row.restaurant_name}
                   mobileTitle={(row) => row.name}
                   rows={rankedTopSellingItems}
@@ -1178,7 +1181,7 @@ export function ReportsPage({
                     emptyTitle="No least-selling items yet"
                     keyExtractor={(row) => row.menu_item_id}
                     loading={loading}
-                    mobileStatus={(row) => <strong>{money.format(row.revenue)}</strong>}
+                    mobileStatus={(row) => <strong>{money.format(row.revenue, row.restaurant_id)}</strong>}
                     mobileSubtitle={(row) => row.restaurant_name}
                     mobileTitle={(row) => row.name}
                     rows={rankedLeastSellingItems}

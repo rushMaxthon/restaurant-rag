@@ -77,6 +77,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
   // The whole tenant list, so the switcher can render names and the money
   // formatter can read currencies from the same load.
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [tenantsLoaded, setTenantsLoaded] = useState(false);
   // An owner sees no tenant list at all — only their own restaurant's
   // currency, which comes from a different endpoint.
   const [ownerCurrencies, setOwnerCurrencies] = useState<Record<string, string>>({});
@@ -137,6 +138,11 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
     } catch {
       // Labels and navigation, not data. A failure leaves every figure in the
       // platform default rather than blocking the screen that needed it.
+    } finally {
+      // Settled either way. Until it is, an empty list means "not known yet",
+      // not "none" — the switcher would otherwise say "0 restaurants" for the
+      // first moment of every page load on a platform that has seven.
+      setTenantsLoaded(true);
     }
   }, [role, token]);
 
@@ -189,6 +195,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       setActiveRestaurantId,
       tenantCurrencies,
       tenants: role === "ADMIN" ? tenants : [],
+      tenantsLoaded,
       refreshTenants: loadTenants,
       user,
       isAuthenticated: Boolean(token && role && user),
@@ -218,6 +225,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
         setUser(null);
         setActiveRestaurantIdState(null);
         setTenants([]);
+        setTenantsLoaded(false);
         setOwnerCurrencies({});
         // Anything remembered about which restaurant was being looked at goes
         // with the session. Left behind, the next person to log in on this
@@ -242,6 +250,7 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       loadTenants,
       tenantCurrencies,
       tenants,
+      tenantsLoaded,
       token,
       toasts,
       user,

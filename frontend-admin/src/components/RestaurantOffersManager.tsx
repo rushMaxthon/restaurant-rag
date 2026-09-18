@@ -337,12 +337,12 @@ export function RestaurantOffersManager({
     if (offer.discount_type === 'PERCENTAGE') {
       return `${offer.discount_value}% off`;
     }
-    return `${money.format(offer.discount_value)} off`;
+    return `${money.format(offer.discount_value, restaurant.id)} off`;
   }
 
   function formatDiscountSupport(offer: ManagedPersonalizedOffer): string {
     if (offer.discount_type === 'PERCENTAGE' && offer.max_discount_amount) {
-      return `Up to ${money.format(offer.max_discount_amount)}`;
+      return `Up to ${money.format(offer.max_discount_amount, restaurant.id)}`;
     }
     if (offer.discount_type === 'FREE_DELIVERY') {
       return offer.restaurant_location_name ?? 'Eligible branches';
@@ -424,7 +424,7 @@ export function RestaurantOffersManager({
       header: 'Min order',
       render: (offer) => (
         <div className="offer-table__stack">
-          <strong>{money.format(offer.minimum_order_amount)}</strong>
+          <strong>{money.format(offer.minimum_order_amount, restaurant.id)}</strong>
           <span>{describeOfferSegment(offer)}</span>
         </div>
       ),
@@ -756,7 +756,7 @@ export function RestaurantOffersManager({
                 </div>
                 <div>
                   <strong>Discount</strong>
-                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {money.format(selectedOfferDetails.minimum_order_amount)}</span>
+                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {money.format(selectedOfferDetails.minimum_order_amount, restaurant.id)}</span>
                 </div>
                 <div>
                   <strong>Performance</strong>

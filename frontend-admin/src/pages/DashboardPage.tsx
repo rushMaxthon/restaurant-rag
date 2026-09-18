@@ -686,7 +686,11 @@ export function DashboardPage({
       });
     }
 
-    return Array.from(map.values())
+    // The id is carried out, not just used to group. It was dropped here
+    // before, so each row's revenue — one restaurant's own takings — was
+    // written in the platform's currency rather than that restaurant's.
+    return Array.from(map.entries())
+      .map(([restaurantId, value]) => ({ restaurantId, ...value }))
       .sort((left, right) => right.revenue - left.revenue)
       .slice(0, 5);
   }, [windowOrders]);
@@ -698,6 +702,7 @@ export function DashboardPage({
         name: string;
         quantity: number;
         revenue: number;
+        restaurantId: string;
         category?: string;
         description?: string | null;
       }
@@ -713,6 +718,9 @@ export function DashboardPage({
           name: item.item_name_snapshot,
           quantity: (current?.quantity ?? 0) + item.quantity,
           revenue: (current?.revenue ?? 0) + toNumber(item.total_price),
+          // A menu item belongs to exactly one restaurant, so this never
+          // mixes: it is the currency the item is actually priced in.
+          restaurantId: order.restaurant_id,
           category: sourceMenu?.category ?? current?.category,
           description: sourceMenu?.description ?? current?.description ?? null,
         });
@@ -787,6 +795,7 @@ export function DashboardPage({
       name: string;
       quantity: number;
       revenue: number;
+      restaurantId: string;
       category?: string;
       description?: string | null;
     }>
@@ -818,7 +827,7 @@ export function DashboardPage({
     {
       id: "revenue",
       header: "Revenue",
-      render: (item) => money.format(item.revenue),
+      render: (item) => money.format(item.revenue, item.restaurantId),
       mobileLabel: "Revenue",
       align: "right",
     },
@@ -989,7 +998,7 @@ export function DashboardPage({
                         </span>
                       </div>
                       <div className="dashboard-admin-list__meta">
-                        <strong>{money.format(order.total_amount)}</strong>
+                        <strong>{money.format(order.total_amount, order.restaurant_id)}</strong>
                       </div>
                     </article>
                   ))}
@@ -1012,12 +1021,10 @@ export function DashboardPage({
               </div>
               {topRestaurants.length > 0 ? (
                 <div className="dashboard-admin-list">
-                  {topRestaurants.map((restaurant, index) => (
+                  {topRestaurants.map((restaurant) => (
                     <article
                       className="dashboard-admin-list__row"
-                      // Names repeat across the platform, so the name alone is
-                      // not a stable identity for this list.
-                      key={`${restaurant.name}-${index}`}
+                      key={restaurant.restaurantId}
                     >
                       <div>
                         <strong>{restaurant.name}</strong>
@@ -1025,7 +1032,7 @@ export function DashboardPage({
                       </div>
                       <div className="dashboard-admin-list__meta">
                         <span>{pluralize(restaurant.orders, 'order')}</span>
-                        <strong>{money.format(restaurant.revenue)}</strong>
+                        <strong>{money.format(restaurant.revenue, restaurant.restaurantId)}</strong>
                       </div>
                     </article>
                   ))}
@@ -1287,7 +1294,7 @@ export function DashboardPage({
                     </div>
                     <div className="insight-row__meta">
                       <StatusPill status={order.status} />
-                      <span>{money.format(order.total_amount)}</span>
+                      <span>{money.format(order.total_amount, order.restaurant_id)}</span>
                     </div>
                   </article>
                 ))}

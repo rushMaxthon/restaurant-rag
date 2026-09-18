@@ -47,6 +47,12 @@ export interface AdminStoreValue {
    * Empty for an owner, who has one restaurant and no list to switch between.
    */
   tenants: TenantSummary[];
+  /**
+   * Whether that load has finished. An empty `tenants` means "not known yet"
+   * until this is true, so nothing renders a count or an empty state over a
+   * list that is merely still in flight.
+   */
+  tenantsLoaded: boolean;
   /** Reload it — after a lifecycle change on the Tenants page, say. */
   refreshTenants: () => Promise<void>;
   user: User | null;

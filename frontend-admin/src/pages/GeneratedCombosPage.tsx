@@ -18,6 +18,7 @@ import { StatTiles, type StatTileItem } from '../components/StatTiles';
 import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { pluralize } from '../services/format';
 import { ErrorPanel } from '../components/ErrorPanel';
+import { MixedCurrencyNotice } from '../components/MixedCurrencyNotice';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
@@ -657,6 +658,8 @@ function GeneratedCombosWorkspace({
         eyebrow={isAdmin ? 'AI Combos' : 'Assigned restaurant'}
         title="Generated Combos"
       />
+
+      <MixedCurrencyNotice subject="Revenue influence" />
 
       <StatTiles<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>
         active={statusFilter}

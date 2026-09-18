@@ -61,7 +61,8 @@ export function TenantSwitcher({ onNavigate, onPicked }: TenantSwitcherProps) {
   // Read, not fetched. This component used to load the tenant list for
   // itself while the store loaded the same list for its currencies, so every
   // admin page made two identical requests for it.
-  const { role, activeRestaurantId, setActiveRestaurantId, tenants } = useAdminStore();
+  const { role, activeRestaurantId, setActiveRestaurantId, tenants, tenantsLoaded } =
+    useAdminStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -149,7 +150,9 @@ export function TenantSwitcher({ onNavigate, onPicked }: TenantSwitcherProps) {
           <span>
             {active
               ? branchesOf(active)
-              : `${withRestaurant.length} restaurant${withRestaurant.length === 1 ? '' : 's'}`}
+              : tenantsLoaded
+                ? `${withRestaurant.length} restaurant${withRestaurant.length === 1 ? '' : 's'}`
+                : 'Every restaurant'}
           </span>
         </span>
         <ChevronDown
@@ -229,9 +232,11 @@ export function TenantSwitcher({ onNavigate, onPicked }: TenantSwitcherProps) {
 
             {matches.length === 0 ? (
               <p className="workspace__empty">
-                {withRestaurant.length === 0
-                  ? 'No restaurants onboarded yet.'
-                  : `Nothing matches “${query.trim()}”.`}
+                {withRestaurant.length > 0
+                  ? `Nothing matches “${query.trim()}”.`
+                  : tenantsLoaded
+                    ? 'No restaurants onboarded yet.'
+                    : 'Loading restaurants…'}
               </p>
             ) : null}
           </div>
