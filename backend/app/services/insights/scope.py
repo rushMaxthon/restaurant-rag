@@ -20,6 +20,7 @@ from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.services.auth import resolve_owner_restaurant_id
+from app.services.insights.rules import bind_narration_currency
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,10 +95,28 @@ def resolve_insights_scope(
                 detail="Restaurant location not found for this restaurant",
             )
 
+    bind_narration_currency_for(db, resolved_restaurant_id)
+
     return InsightsScope(
         restaurant_id=resolved_restaurant_id,
         restaurant_location_id=restaurant_location_id,
     )
 
 
-__all__ = ["InsightsScope", "resolve_insights_scope"]
+def bind_narration_currency_for(db: Session, restaurant_id: uuid.UUID) -> None:
+    """Write this restaurant's figures in this restaurant's money.
+
+    Bound here, and not on `InsightsScope`, because a scope is built in seven
+    places — branch scopes, analyst tool scopes, the nightly task — and most of
+    them derive from a scope that is already resolved and have no session to
+    look a currency up with. A binding made once at the door is inherited by
+    every one of them for free.
+
+    A missing restaurant leaves the platform default rather than raising: this
+    decides a symbol, and no figure is worth failing a briefing over.
+    """
+
+    bind_narration_currency(db.scalar(select(Restaurant.currency).where(Restaurant.id == restaurant_id)))
+
+
+__all__ = ["InsightsScope", "bind_narration_currency_for", "resolve_insights_scope"]

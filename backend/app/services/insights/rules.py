@@ -15,6 +15,8 @@ Two guards apply throughout:
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Iterable
@@ -27,6 +29,7 @@ from app.schemas.insights import (
     DiagnosticsSnapshotResponse,
     MetricDeltaResponse,
 )
+from app.services.currency import format_rounded_amount
 
 settings = get_settings()
 
@@ -43,7 +46,6 @@ SEVERITY_ORDER = {
 # each currency's own symbol, not the one currently configured. The gap
 # that mattered was "cad": with no entry, `money()` fell through to the
 # code-prefixed form and owners read "CAD 1,260" instead of "$1,260".
-CURRENCY_SYMBOLS = {"inr": "₹", "usd": "$", "cad": "$", "aud": "$", "eur": "€", "gbp": "£"}
 
 
 @dataclass(slots=True)
@@ -62,13 +64,45 @@ class CandidateInsight:
     root_cause: str | None = None
 
 
+# What the restaurant currently being narrated charges in.
+#
+# A ContextVar rather than an argument because `money()` has 116 call sites
+# across seven modules, and not one of them holds a database session or a
+# restaurant — they are sentence builders. The currency is a property of the
+# analysis as a whole, not of each figure inside it.
+#
+# Until this existed every owner read their takings under `payment_currency`,
+# so a Surat kitchen's ₹1,20,000 week was narrated as "$120,000" — the right
+# number under the wrong symbol, and off by two orders of magnitude to anyone
+# who did not notice the symbol.
+#
+# Nothing resets it. A FastAPI request runs in its own context — including a
+# sync endpoint, whose threadpool call gets a copy — and so does a Celery
+# task, so a binding cannot outlive the analysis that made it or reach the
+# next restaurant's.
+_narration_currency: ContextVar[str | None] = ContextVar("narration_currency", default=None)
+
+
+def bind_narration_currency(code: str | None) -> None:
+    """Write every figure from here on in this currency.
+
+    Called once where a restaurant is resolved. `None` falls back to the
+    platform setting, which is what a path with no restaurant in hand gets.
+    """
+
+    _narration_currency.set(code)
+
+
+def narration_currency() -> str:
+    """The currency figures are being written in right now."""
+
+    return _narration_currency.get() or settings.payment_currency
+
+
 def money(value: float) -> str:
-    symbol = CURRENCY_SYMBOLS.get(settings.payment_currency.lower())
-    rounded = round(abs(value))
-    formatted = f"{rounded:,}"
-    if symbol is None:
-        return f"{settings.payment_currency.upper()} {formatted}"
-    return f"{symbol}{formatted}"
+    """A figure as it belongs in a sentence: whole units, no sign."""
+
+    return format_rounded_amount(value, narration_currency())
 
 
 def percent(value: float | None) -> str:

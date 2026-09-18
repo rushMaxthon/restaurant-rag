@@ -103,30 +103,56 @@ def format_amount(amount: float, code: str | None) -> str:
     currency = currency_for(code)
     quantized = round(float(amount), 2)
     whole, fraction = divmod(round(abs(quantized) * 100), 100)
-
-    if currency.locale == "en-IN":
-        digits = str(whole)
-        # The last three digits group normally; everything above them goes in
-        # pairs. 1234567 -> "12,34,567".
-        if len(digits) > 3:
-            head, tail = digits[:-3], digits[-3:]
-            pairs = []
-            while len(head) > 2:
-                pairs.insert(0, head[-2:])
-                head = head[:-2]
-            if head:
-                pairs.insert(0, head)
-            grouped = ",".join(pairs) + "," + tail
-        else:
-            grouped = digits
-    else:
-        grouped = f"{whole:,}"
+    grouped = _group(whole, currency)
 
     if fraction or currency.min_fraction_digits:
         grouped = f"{grouped}.{fraction:02d}"
 
     sign = "-" if quantized < 0 else ""
     return f"{sign}{currency.symbol}{grouped}"
+
+
+def format_rounded_amount(amount: float, code: str | None) -> str:
+    """The same money, to the nearest whole unit, for prose.
+
+    "Dinner took $12,340 last week" is how a person says it; "$12,340.00" is
+    how a ledger says it, and the AI Manager is writing sentences. Separate
+    from `format_amount` rather than a flag on it because the two have
+    different readers, and a flag would let a price list quietly lose its
+    cents.
+
+    Sign is dropped: the narration's wording carries direction ("down by"),
+    and a minus in the middle of a sentence reads as a typo.
+    """
+
+    currency = currency_for(code)
+    return f"{currency.symbol}{_group(round(abs(float(amount))), currency)}"
+
+
+def _group(whole: int, currency: Currency) -> str:
+    """Digit grouping for one currency's locale.
+
+    Indian grouping is 2-2-3, not 3-3-3, so this cannot be `f"{whole:,}"`
+    for every currency: that writes ₹1,234,567 for a number read as
+    ₹12,34,567.
+    """
+
+    if currency.locale != "en-IN":
+        return f"{whole:,}"
+
+    digits = str(whole)
+    if len(digits) <= 3:
+        return digits
+    # The last three digits group normally; everything above them goes in
+    # pairs. 1234567 -> "12,34,567".
+    head, tail = digits[:-3], digits[-3:]
+    pairs: list[str] = []
+    while len(head) > 2:
+        pairs.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        pairs.insert(0, head)
+    return ",".join(pairs) + "," + tail
 
 
 __all__ = [

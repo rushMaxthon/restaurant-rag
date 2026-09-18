@@ -276,7 +276,7 @@ export function AIManagerPage() {
             onChange={(event) => setActiveRestaurantId(event.target.value || null)}
             value={selectedRestaurantId}
           >
-            <option value="">All restaurants — pick one to analyse</option>
+            <option value="">Pick a restaurant</option>
             {restaurants.map((restaurant) => (
               <option key={restaurant.id} value={restaurant.id}>
                 {restaurant.name}

@@ -10,7 +10,7 @@ from app.config.database import SessionLocal
 from app.services.insights.generation import RunSummary, generate_all_briefings
 from app.services.insights.outcomes import measure_due_outcomes
 from app.services.insights.analyst.runner import run_analysis
-from app.services.insights.scope import InsightsScope
+from app.services.insights.scope import InsightsScope, bind_narration_currency_for
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -120,6 +120,9 @@ def run_shadow_analysis_task(
     )
 
     with SessionLocal() as db:
+        # No request resolved this one, so the narration would otherwise be
+        # written in the platform's currency for every restaurant it runs on.
+        bind_narration_currency_for(db, scope.restaurant_id)
         result = run_analysis(db, scope=scope, enabled=True)
 
     return result.to_dict()

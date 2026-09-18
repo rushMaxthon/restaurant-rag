@@ -49,7 +49,7 @@ from app.services.insights.root_cause import (
 from app.services.insights.periods import PeriodComparison, resolve_period_comparison
 from app.services.insights.rules import CandidateInsight, evaluate_rules
 from app.services.insights.analyst.persistence import visible_origins
-from app.services.insights.scope import InsightsScope
+from app.services.insights.scope import InsightsScope, bind_narration_currency_for
 from app.services.insights.service import build_diagnostics_snapshot
 
 settings = get_settings()
@@ -562,6 +562,10 @@ def generate_all_briefings(
     for restaurant_id in _active_restaurant_ids(db, limit=limit):
         summary.restaurants_scanned += 1
         scope = InsightsScope(restaurant_id=restaurant_id)
+        # Inside the loop, not above it. One run writes briefings for every
+        # restaurant on the platform, so a binding made once would put the
+        # first restaurant's currency on all of them.
+        bind_narration_currency_for(db, restaurant_id)
         try:
             result = generate_for_restaurant(
                 db,

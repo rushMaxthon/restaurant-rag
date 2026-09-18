@@ -31,7 +31,7 @@ from app.models.owner_action import OwnerActionProposal
 from app.services.insights.offer_performance import fetch_offer_performance
 from app.services.insights.periods import build_period, local_today
 from app.services.insights.rules import money
-from app.services.insights.scope import InsightsScope
+from app.services.insights.scope import InsightsScope, bind_narration_currency_for
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -247,6 +247,9 @@ def measure_due_outcomes(
         if not is_mature(proposal, now=resolved_now):
             summary.not_yet_mature += 1
             continue
+        # Per proposal: one batch spans restaurants, and the verdict this
+        # writes quotes money in a sentence.
+        bind_narration_currency_for(db, proposal.restaurant_id)
 
         had_outcome = (
             db.scalars(

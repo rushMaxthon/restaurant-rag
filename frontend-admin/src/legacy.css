@@ -6609,7 +6609,11 @@ summary:focus-visible,
 
 .ai-bar__scope {
   min-height: var(--control-h-sm);
-  max-width: 220px;
+  /* Wide enough for the longest restaurant on the platform. The label it
+     carries is kept short for the same reason — a select clips its text with
+     no ellipsis and no tooltip, so an option that does not fit is simply a
+     sentence cut in half. */
+  max-width: 260px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
