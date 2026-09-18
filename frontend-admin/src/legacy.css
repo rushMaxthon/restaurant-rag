@@ -376,8 +376,7 @@ button {
 .panel,
 .insight-list,
 .login-card,
-.field,
-.empty-panel {
+.field {
   display: grid;
   gap: 18px;
 }
@@ -1311,7 +1310,7 @@ input:where(:not([type='checkbox'],
 [type='color'])):focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring);
 }
 
@@ -1329,7 +1328,7 @@ select:focus-visible {
 .form-grid input:focus,
 .form-grid textarea:focus,
 .form-grid select:focus {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring);
 }
 
@@ -1393,12 +1392,17 @@ select:focus-visible {
   max-width: 220px;
 }
 
+/* A form label, in sentence case. It was 11px uppercase at 700 with 0.07em
+   tracking — a treatment that belongs on a table header, above 183 fields.
+   Set that way a label reads as a category marker rather than as the name of
+   the thing below it, and a two-word label ran wider than its own input.
+   The storefront's label is 13px medium in sentence case; this is that,
+   half a step darker because a panel is read for longer than a menu. */
 .field span {
-  color: var(--hint);
-  font-size: var(--fs-tiny);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .field small {
@@ -2050,8 +2054,17 @@ select:focus-visible {
   padding: 0 14px;
   border-radius: var(--radius-sm);
   font-size: var(--fs-label);
-  font-weight: 700;
-  transition: 150ms ease;
+  /* 700 → 600. At 13px, bold is the weight a label shouts in; the storefront
+     sets its buttons at medium and they read as more confident, not less.
+     The press-scale and the focus halo both arrive from the shared
+     stylesheet, so they are not restated here. */
+  font-weight: 600;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    opacity var(--dur-fast) ease;
 }
 
 /* Keyboard focus. `:focus-visible` rather than `:focus`, so the ring appears
@@ -2072,13 +2085,18 @@ select:focus-visible {
   justify-content: center;
   gap: 8px;
   background: var(--primary);
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(255, 82, 0, 0.2);
+  /* `--on-primary`, not white: a tenant whose accent is pale needs dark text
+     on it, and that decision belongs to the brand, not to this rule. */
+  color: var(--on-primary);
+  /* A 16px coloured glow under every primary button made a form with three of
+     them look lit from below. The storefront's button carries an ordinary
+     drop shadow and lets the fill do the work. */
+  box-shadow: 0 1px 2px rgb(20 23 31 / 0.08);
 }
 
 .primary-button--danger {
   background: var(--danger);
-  box-shadow: 0 6px 16px rgba(214, 59, 67, 0.18);
+  box-shadow: 0 1px 2px rgb(20 23 31 / 0.08);
 }
 
 /* The pagination ellipsis, on its own. It used to share this rule with every
@@ -2113,7 +2131,7 @@ select:focus-visible {
 .secondary-button,
 .pagination__page {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -2772,7 +2790,9 @@ select:focus-visible {
 .form-grid input::placeholder,
 .form-grid textarea::placeholder,
 .page-search::placeholder {
-  color: #a0a8bb;
+  /* Lighter than `--hint`, which names real help text. A placeholder that
+     reads as strongly as a filled value makes an empty form look complete. */
+  color: color-mix(in srgb, var(--muted) 62%, transparent);
 }
 
 .field input:disabled,
@@ -2781,8 +2801,8 @@ select:focus-visible {
 .form-grid input:disabled,
 .form-grid textarea:disabled,
 .form-grid select:disabled {
-  background: #f5f7fb;
-  color: #8b93a8;
+  background: var(--surface-alt);
+  color: var(--hint);
   cursor: not-allowed;
 }
 
@@ -3083,46 +3103,29 @@ select:focus-visible {
   color: var(--primary);
 }
 
-.empty-panel {
-  justify-items: start;
-  padding: 20px;
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--border);
-  background: var(--surface-subtle);
-}
-
-.empty-panel__icon {
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 4px;
-  border-radius: var(--radius-4);
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
+/* The box, the halo and the wash now come from the shared `.empty-state`.
+   What stays here is the type and rhythm inside it: the storefront's version
+   is composed per page, and this one has a fixed title / description /
+   action stack that every one of its eighteen call sites relies on. */
 .empty-panel strong {
-  font-size: var(--fs-body-lg);
+  display: block;
+  margin-top: 18px;
+  font-size: var(--fs-title-sm);
+  letter-spacing: -0.01em;
 }
 
-/* The failure variant of the same shell. A solid border rather than the
-   empty state's dashed one: dashed reads as "a space waiting to be filled",
-   which is the opposite of what a failed request means. */
-.empty-panel--error {
-  border-style: solid;
-  border-color: rgba(213, 59, 67, 0.22);
-  background: var(--danger-soft);
+.empty-panel > span:not(.empty-state-icon) {
+  display: block;
+  max-width: 34rem;
+  margin-inline: auto;
+  margin-top: 6px;
 }
 
-.empty-panel--error .empty-panel__icon {
-  background: rgba(213, 59, 67, 0.12);
-  color: var(--danger);
-}
-
+/* The failure variant changes hue only — the shared `--error` modifier does
+   the wash and the halo, so a failed request and an empty list are
+   recognisably the same kind of screen rather than two designs. */
 .empty-panel--error strong {
-  color: #c22e37;
+  color: var(--danger);
 }
 
 .settings-list {
@@ -4345,7 +4348,7 @@ select:focus-visible {
 .rpt-field select:focus-visible {
   outline: 2px solid rgba(230, 74, 0, 0.35);
   outline-offset: 1px;
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
 }
 
 /* --- stat tiles -------------------------------- */
@@ -6237,7 +6240,7 @@ select:focus-visible {
 }
 
 .empty-panel__action {
-  margin-top: 6px;
+  margin-top: 22px;
 }
 
 .admin-table__sort {
@@ -6961,7 +6964,7 @@ summary:focus-visible,
 }
 
 .ai-composer__form:focus-within {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring), var(--shadow-md);
 }
 

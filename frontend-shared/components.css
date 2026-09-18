@@ -1,0 +1,279 @@
+/*
+  The handful of classes that make both apps look like one product.
+  ------------------------------------------------------------------
+
+  Written for the storefront first and lifted here unchanged, because the
+  operator's panel and the restaurant's storefront should not disagree about
+  what a panel, an empty state or a status chip looks like.
+
+  Only the shapes that mean the same thing in both places. A dish card and a
+  branch picker belong to the storefront; a sidebar belongs to the panel.
+  Putting either here would make this a junk drawer instead of a vocabulary.
+
+  Everything is built from the tokens in `tokens.css`, so dark mode is almost
+  entirely free — the two exceptions are the drop shadows, which are tinted
+  near-black and vanish on a dark ground, and so are restated under `.dark`.
+
+  Imported after `tokens.css` and before either app's own CSS.
+*/
+
+/* --- Surfaces --------------------------------------------------------------
+   The real card of both products. Not a border-plus-radius: the two-layer
+   shadow is what stops a panel reading as a flat rectangle drawn on the page.
+*/
+.elevated-panel {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgb(20 23 31 / 0.04),
+    0 8px 24px -12px rgb(20 23 31 / 0.12);
+}
+.dark .elevated-panel {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+/* --- Labels ----------------------------------------------------------------
+   The small uppercase line above a heading. Tracked out, because uppercase
+   set at normal tracking reads as shouting rather than as a label.
+*/
+.eyebrow {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.eyebrow--inherit {
+  color: inherit;
+  opacity: 0.9;
+}
+.eyebrow--muted {
+  color: var(--muted);
+}
+
+/* --- Status ----------------------------------------------------------------
+   A pill with a leading dot. The dot carries the colour, so the same chip
+   works for eight different states without eight different treatments.
+*/
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.status-chip:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* --- Nothing here yet ------------------------------------------------------
+   An empty screen is an invitation, not an error. The radial wash and the
+   haloed icon are what separate "you have no orders yet" from "something
+   went wrong" without either of them having to say so.
+*/
+.empty-state {
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  padding: 5rem 1.5rem;
+}
+.empty-state:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 60% 55% at 50% 0%,
+    color-mix(in srgb, var(--primary-soft) 80%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.empty-state > * {
+  position: relative;
+}
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin-inline: auto;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow:
+    0 0 0 10px color-mix(in srgb, var(--primary-soft) 55%, transparent),
+    0 0 0 20px color-mix(in srgb, var(--primary-soft) 25%, transparent);
+}
+/* The same shape when the news is bad. Only the hue changes, so an error and
+   an empty list are recognisably the same kind of screen. */
+.empty-state--error:before {
+  background: radial-gradient(
+    ellipse 60% 55% at 50% 0%,
+    color-mix(in srgb, var(--danger) 12%, transparent),
+    transparent 70%
+  );
+}
+.empty-state--error .empty-state-icon {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+  box-shadow:
+    0 0 0 10px color-mix(in srgb, var(--danger) 7%, transparent),
+    0 0 0 20px color-mix(in srgb, var(--danger) 3%, transparent);
+}
+
+/* --- Waiting ---------------------------------------------------------------
+   A shape where the content will be, with a sheen crossing it. A spinner
+   says "something is happening"; this says "something is happening HERE",
+   and the page does not jump when the data lands.
+*/
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--surface-alt);
+}
+.skeleton:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: sheen 1.6s linear infinite;
+}
+@keyframes sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* --- Fields ----------------------------------------------------------------
+   An icon inside the input rather than beside it, tinting to the brand when
+   the field has focus — so the eye is told where it is without a second
+   element having to light up.
+*/
+.field-wrap {
+  position: relative;
+}
+.field-wrap > svg {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.field-wrap:focus-within > svg {
+  color: var(--primary);
+}
+.field-wrap input {
+  padding-left: 2.6rem;
+}
+.field-wrap[data-invalid="true"] > svg {
+  color: var(--danger);
+}
+
+/* What went wrong, in the interface's voice. Never an apology, never vague. */
+.inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* --- Keyboard focus --------------------------------------------------------
+   A two-ring halo rather than a single outline: the inner ring is the
+   surface colour, so the marker survives on a primary button, on a white
+   panel and on a dark ground alike, where a one-colour ring disappears
+   against one of the three.
+
+   Deliberately NOT keyed on the shadcn utility classes the storefront's own
+   copy used — the panel has no `.inline-flex` on its buttons. Written
+   against the elements themselves so it applies in both apps.
+*/
+:where(button, a[href], summary, [role="button"], [tabindex]):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--primary);
+}
+:where(input, textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* --- Motion ----------------------------------------------------------------
+   A press that moves is a press that registered, on a touch screen where
+   there is no hover to confirm it.
+*/
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Rows arriving in sequence rather than all at once. The index is set inline
+   as `--i`, so the stagger costs no extra markup. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise-in {
+  animation: rise-in 0.42s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+/* Money lines up in a column or it is not a column. */
+.money,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Somebody who has asked their system to stop moving things means it. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton:after,
+  .rise-in {
+    animation: none;
+  }
+  .rise-in {
+    opacity: 1;
+    transform: none;
+  }
+  button:not(:disabled):active {
+    transform: none;
+  }
+}
