@@ -9985,151 +9985,298 @@ summary:focus-visible,
   font-size: var(--fs-caption);
 }
 
-/* --- Tenant switcher -------------------------------------------------------
-   Sits on the dark sidebar, so its colours come from white at low alpha
-   rather than from the surface tokens: `--surface` on `--sidebar` would be a
-   white card floating in a dark rail. The menu that drops out of it is a
-   real surface, and does use them. */
+/* --- The workspace control ------------------------------------------------
+   The top of the rail, and the panel's identity while somebody is working.
 
-.tenant-switcher {
+   It sits on the dark sidebar, so its own colours come from white at low
+   alpha rather than from the surface tokens — `--surface` on `--sidebar`
+   would be a white card floating in a dark rail. The menu that drops out of
+   it IS a surface, and does use them.
+
+   `--tenant-accent` is set inline from the restaurant's own brand colour and
+   defaults to the platform's, so every rule below works whether or not a
+   tenant is picked and whether or not that tenant has chosen a colour. */
+
+.workspace {
+  --tenant-accent: var(--primary);
   position: relative;
-  margin: 0 14px 4px;
+  flex: 1;
+  min-width: 0;
 }
 
-.tenant-switcher__trigger {
+.workspace__trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  padding: 9px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-4);
+  background: transparent;
+  color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out),
+  transition:
+    background var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out);
 }
 
-.tenant-switcher__trigger:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.1);
+.workspace__trigger:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.tenant-switcher__trigger > svg {
-  margin-left: auto;
-  color: rgba(255, 255, 255, 0.5);
-  flex-shrink: 0;
+/* Once a restaurant is picked the control carries that restaurant's colour.
+   Ambient rather than stated: an operator three screens deep should know
+   whose data they are about to change without reading a label. */
+.workspace--scoped .workspace__trigger {
+  border-color: color-mix(in srgb, var(--tenant-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--tenant-accent) 16%, transparent);
 }
 
-.tenant-switcher__mark {
+.workspace__avatar {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--primary);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-3);
+  background: linear-gradient(135deg, #ff5200, #ff7a28);
   color: #fff;
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
-.tenant-switcher__copy {
+.workspace--scoped .workspace__avatar {
+  background: linear-gradient(
+    135deg,
+    var(--tenant-accent),
+    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+  );
+}
+
+.workspace__copy {
   display: grid;
   gap: 1px;
   min-width: 0;
 }
 
-/* The one place a tracked-out uppercase label still earns its keep: it names
-   the control rather than the thing, and sits directly above the thing. */
-.tenant-switcher__label {
-  font-size: var(--fs-micro);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.tenant-switcher__copy strong {
-  font-size: var(--fs-caption);
-  font-weight: 700;
-  color: #fff;
+.workspace__copy strong,
+.workspace__copy > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tenant-switcher__menu {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  display: grid;
-  gap: 2px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  box-shadow: var(--shadow-xl);
+.workspace__copy strong {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: #fff;
 }
 
-.tenant-switcher__option {
+.workspace__copy > span {
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.workspace__chevron {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.workspace__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* --- The menu -------------------------------------------------------------
+   Dark, like the rail it drops out of, rather than a white card.
+
+   The first version was a `--surface` panel, which is `#ffffff` sitting on a
+   `#fafafa` page: a hairline and a soft shadow were the only things saying
+   where it ended, and on screen it read as a smudge rather than as a menu.
+   Taking the sidebar's own colour gives it contrast against the content area
+   for free, and makes it look like the rail extending rather than like a
+   dialog that happened to appear there.
+
+   Wider than the rail and overhanging it, because a restaurant name cut to
+   the width of a sidebar is a restaurant name nobody can read. */
+
+.workspace__menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 296px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-4);
+  background: var(--sidebar-2);
+  box-shadow:
+    0 16px 40px -12px rgb(10 12 24 / 0.55),
+    0 4px 12px -4px rgb(10 12 24 / 0.35);
+  overflow: hidden;
+  animation: workspace-drop var(--dur) var(--ease-out) both;
+}
+
+@keyframes workspace-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.workspace__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.workspace__search input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: var(--fs-label);
+}
+
+.workspace__search input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.workspace__search input:focus-visible {
+  border: 0;
+  box-shadow: none;
+}
+
+.workspace__list {
+  display: grid;
+  gap: 1px;
+  /* Seven restaurants and the "all" row fit without scrolling, which is the
+     size this platform actually is today. Past that it scrolls, and past six
+     there is a search field above it. */
+  max-height: 364px;
+  overflow-y: auto;
+  padding: 6px;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.workspace__item {
+  --tenant-accent: var(--primary);
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-2);
   background: transparent;
-  color: var(--text);
+  color: #fff;
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
 }
 
-.tenant-switcher__option:hover {
-  background: var(--surface-alt);
+.workspace__item:hover {
+  background: rgba(255, 255, 255, 0.07);
 }
 
-.tenant-switcher__option > svg {
+.workspace__item > svg {
   margin-left: auto;
-  color: var(--primary);
+  color: var(--tenant-accent);
   flex-shrink: 0;
 }
 
-.tenant-switcher__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
+/* The same brand mark as the trigger, at menu scale — so the thing you click
+   and the thing you end up with are visibly the same object. */
+.workspace__item-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(
+    135deg,
+    var(--tenant-accent),
+    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+  );
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 800;
   flex-shrink: 0;
 }
 
-.tenant-switcher__option-copy {
+.workspace__item-avatar--all {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.workspace__item-copy {
   display: grid;
   gap: 1px;
   min-width: 0;
 }
 
-.tenant-switcher__option-copy strong {
-  font-size: var(--fs-label);
-  font-weight: 600;
+.workspace__item-copy strong,
+.workspace__item-copy > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tenant-switcher__option-copy span {
-  font-size: var(--fs-caption);
-  color: var(--muted);
+.workspace__item-copy strong {
+  font-size: var(--fs-label);
+  font-weight: 600;
 }
 
-.tenant-switcher__empty {
-  margin: 0;
-  padding: 10px;
+.workspace__item-copy > span {
   font-size: var(--fs-caption);
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* A tenant that is off the air, named in its own colour rather than in the
+   grey of a city name — the one thing in this list that is not incidental. */
+.workspace__flag {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.workspace__empty {
+  margin: 0;
+  padding: 16px 10px;
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.workspace__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--primary);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.workspace__footer:hover {
+  background: rgba(0, 0, 0, 0.3);
 }

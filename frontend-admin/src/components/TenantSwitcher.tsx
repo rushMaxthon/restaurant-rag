@@ -1,50 +1,81 @@
-import { Building2, Check, ChevronsUpDown, Layers } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Check, ChevronDown, Layers, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAdminStore } from '../hooks/useAdminStore';
 import { api } from '../services/api';
-import {
-  getPageSnapshot,
-  setPageSnapshot,
-  tokenScope,
-} from '../services/pageCache';
+import { getPageSnapshot, setPageSnapshot, tokenScope } from '../services/pageCache';
 import type { TenantSummary } from '../types/app';
 
 /**
- * Which restaurant the operator is working on, decided once.
+ * Which restaurant the operator is working on — and, while they are, whose
+ * panel this is.
  *
- * Four screens each used to keep their own answer — the AI Manager in its own
- * localStorage key, Reports, Offers and Generated Combos each in a `<select>`
- * that reset on navigation — so moving between them meant re-picking the same
- * restaurant up to four times, and two screens could be showing two different
- * restaurants at once with nothing on either saying so.
+ * It replaces the sidebar's brand block rather than sitting underneath it.
+ * The first version was a labelled `<select>` bolted below the logo, which
+ * put two identity blocks on top of each other and made the most important
+ * control in the panel look like a form field. A workspace switcher is not a
+ * filter: it is the panel's own identity, so it takes the place where the
+ * identity already was.
+ *
+ * When a restaurant is picked the avatar takes that restaurant's brand colour
+ * and a hairline of it runs along the top of the rail — ambient rather than
+ * stated, so an operator three screens deep still knows whose data they are
+ * changing without reading a label.
  *
  * ADMIN only. An owner has exactly one restaurant and the backend scopes them
- * to it whatever any client asks for, so a switcher would be furniture.
- *
- * Suspended and offboarded tenants stay in the list, labelled. They are
- * exactly the ones somebody needs to look at.
+ * to it whatever any client asks, so they get the plain brand block instead —
+ * this returns null and `Sidebar` renders it.
  */
 interface TenantSwitcherProps {
-  /** Closes the mobile drawer when a choice is made inside it. */
+  onNavigate: (path: string) => void;
+  /** Closes the mobile drawer once a choice is made inside it. */
   onPicked?: () => void;
 }
+
+/** Above this many, hunting beats reading, so the menu grows a search field. */
+const SEARCH_THRESHOLD = 6;
 
 function tenantsCacheKey(scope: string): string {
   return `platform-tenants:${scope}`;
 }
 
-export function TenantSwitcher({ onPicked }: TenantSwitcherProps) {
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return '··';
+  }
+  const first = parts[0][0] ?? '';
+  const second = parts.length > 1 ? (parts[1][0] ?? '') : (parts[0][1] ?? '');
+  return `${first}${second}`.toUpperCase();
+}
+
+function branchesOf(tenant: TenantSummary): string {
+  return `${tenant.location_count} branch${tenant.location_count === 1 ? '' : 'es'}`;
+}
+
+/**
+ * What sits under the tenant's name in the MENU, which is 296px wide and can
+ * afford the city. The trigger lives in a 220px rail and gets the branch
+ * count alone — "Ahmedabad · 3 branches" arrived there as "3 branc…", and a
+ * word cut in half looks careless in a way that saying less does not.
+ */
+function subtitleOf(tenant: TenantSummary): string {
+  return tenant.city ? `${tenant.city} · ${branchesOf(tenant)}` : branchesOf(tenant);
+}
+
+export function TenantSwitcher({ onNavigate, onPicked }: TenantSwitcherProps) {
   const { token, role, activeRestaurantId, setActiveRestaurantId } = useAdminStore();
   const scope = tokenScope(token ?? '');
 
   // Shares the Tenants page's cache entry, so opening one warms the other and
-  // a lifecycle change made there is reflected here without a second fetch.
+  // a lifecycle change made there shows up here without a second fetch.
   const [tenants, setTenants] = useState<TenantSummary[]>(
     () => getPageSnapshot<TenantSummary[]>(tenantsCacheKey(scope)) ?? [],
   );
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!token || role !== 'ADMIN') {
@@ -61,21 +92,22 @@ export function TenantSwitcher({ onPicked }: TenantSwitcherProps) {
         setPageSnapshot(tenantsCacheKey(scope), rows);
       })
       .catch(() => {
-        // The switcher is navigation, not data. A failure here leaves the
-        // panel on whatever scope it already had rather than interrupting
-        // whatever the operator came to do.
+        // This is navigation, not data. A failure leaves the panel on the
+        // scope it already had rather than interrupting whatever the operator
+        // came here to do.
       });
     return () => {
       cancelled = true;
     };
   }, [role, scope, token]);
 
-  // Click-away and Escape, because this is a menu rather than a dialog: it
-  // should not trap focus or lock the page behind it.
+  // Click-away and Escape. A menu, not a dialog: it should not trap focus or
+  // lock the page behind it.
   useEffect(() => {
     if (!open) {
       return;
     }
+    searchRef.current?.focus();
     const onPointerDown = (event: MouseEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) {
         setOpen(false);
@@ -94,97 +126,163 @@ export function TenantSwitcher({ onPicked }: TenantSwitcherProps) {
     };
   }, [open]);
 
+  const withRestaurant = useMemo(
+    () => tenants.filter((tenant) => tenant.restaurant_id !== null),
+    [tenants],
+  );
+  const active = withRestaurant.find((tenant) => tenant.restaurant_id === activeRestaurantId);
+
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return withRestaurant;
+    }
+    return withRestaurant.filter((tenant) =>
+      [tenant.display_name, tenant.city, tenant.cuisine_type, tenant.app_key]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [query, withRestaurant]);
+
   if (role !== 'ADMIN') {
     return null;
   }
 
-  const withRestaurant = tenants.filter((tenant) => tenant.restaurant_id !== null);
-  const active = withRestaurant.find((tenant) => tenant.restaurant_id === activeRestaurantId);
+  const accent = active?.brand_primary_color ?? null;
 
-  function pick(restaurantId: string | null): void {
+  function choose(restaurantId: string | null): void {
     setActiveRestaurantId(restaurantId);
     setOpen(false);
+    setQuery('');
     onPicked?.();
   }
 
   return (
-    <div className="tenant-switcher" ref={wrapRef}>
+    <div
+      className={active ? 'workspace workspace--scoped' : 'workspace'}
+      ref={wrapRef}
+      style={accent ? ({ '--tenant-accent': accent } as React.CSSProperties) : undefined}
+    >
       <button
         aria-expanded={open}
-        aria-haspopup="listbox"
-        className="tenant-switcher__trigger"
+        aria-haspopup="menu"
+        aria-label={
+          active ? `Working on ${active.display_name}. Switch restaurant` : 'Switch restaurant'
+        }
+        className="workspace__trigger"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <span
-          className="tenant-switcher__mark"
-          style={
-            active?.brand_primary_color
-              ? { background: active.brand_primary_color }
-              : undefined
-          }
-        >
-          {active ? <Building2 size={13} strokeWidth={2.2} /> : <Layers size={13} strokeWidth={2.2} />}
+        <span className="workspace__avatar">
+          {active ? initialsOf(active.display_name) : 'RR'}
         </span>
-        <span className="tenant-switcher__copy">
-          <span className="tenant-switcher__label">Working on</span>
-          <strong>{active ? active.display_name : 'All restaurants'}</strong>
+        <span className="workspace__copy">
+          <strong>{active ? active.display_name : 'Restaurant RAG'}</strong>
+          <span>
+            {active
+              ? branchesOf(active)
+              : `${withRestaurant.length} restaurant${withRestaurant.length === 1 ? '' : 's'}`}
+          </span>
         </span>
-        <ChevronsUpDown size={14} strokeWidth={2.2} />
+        <ChevronDown
+          className={open ? 'workspace__chevron workspace__chevron--open' : 'workspace__chevron'}
+          size={15}
+          strokeWidth={2.4}
+        />
       </button>
 
       {open ? (
-        <div className="tenant-switcher__menu" role="listbox">
-          <button
-            aria-selected={activeRestaurantId === null}
-            className="tenant-switcher__option"
-            onClick={() => pick(null)}
-            role="option"
-            type="button"
-          >
-            <span className="tenant-switcher__option-copy">
-              <strong>All restaurants</strong>
-              <span>Everything on the platform</span>
-            </span>
-            {activeRestaurantId === null ? <Check size={14} strokeWidth={2.6} /> : null}
-          </button>
+        <div className="workspace__menu" role="menu">
+          {withRestaurant.length > SEARCH_THRESHOLD ? (
+            <div className="workspace__search">
+              <Search size={14} strokeWidth={2.2} />
+              <input
+                aria-label="Find a restaurant"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find a restaurant"
+                ref={searchRef}
+                type="search"
+                value={query}
+              />
+            </div>
+          ) : null}
 
-          {withRestaurant.map((tenant) => (
+          <div className="workspace__list">
             <button
-              aria-selected={tenant.restaurant_id === activeRestaurantId}
-              className="tenant-switcher__option"
-              key={tenant.id}
-              onClick={() => pick(tenant.restaurant_id)}
-              role="option"
+              className="workspace__item"
+              onClick={() => choose(null)}
+              role="menuitem"
               type="button"
             >
-              <span
-                className="tenant-switcher__dot"
+              <span className="workspace__item-avatar workspace__item-avatar--all">
+                <Layers size={13} strokeWidth={2.3} />
+              </span>
+              <span className="workspace__item-copy">
+                <strong>All restaurants</strong>
+                <span>Everything on the platform</span>
+              </span>
+              {activeRestaurantId === null ? <Check size={15} strokeWidth={2.8} /> : null}
+            </button>
+
+            {matches.map((tenant) => (
+              <button
+                className="workspace__item"
+                key={tenant.id}
+                onClick={() => choose(tenant.restaurant_id)}
+                role="menuitem"
                 style={
                   tenant.brand_primary_color
-                    ? { background: tenant.brand_primary_color }
+                    ? ({ '--tenant-accent': tenant.brand_primary_color } as React.CSSProperties)
                     : undefined
                 }
-              />
-              <span className="tenant-switcher__option-copy">
-                <strong>{tenant.display_name}</strong>
-                <span>
-                  {tenant.status === 'ACTIVE'
-                    ? (tenant.city ?? tenant.app_key)
-                    : tenant.status === 'SUSPENDED'
-                      ? 'Suspended'
-                      : 'Offboarded'}
+                type="button"
+              >
+                <span className="workspace__item-avatar">{initialsOf(tenant.display_name)}</span>
+                <span className="workspace__item-copy">
+                  <strong>{tenant.display_name}</strong>
+                  <span>
+                    {/* Suspended and offboarded tenants stay in the list,
+                        labelled. They are exactly the ones somebody needs to
+                        look at, and hiding them would make a storefront that
+                        is down harder to find, not easier. */}
+                    {tenant.status === 'ACTIVE' ? subtitleOf(tenant) : null}
+                    {tenant.status !== 'ACTIVE' ? (
+                      <em className="workspace__flag">
+                        {tenant.status === 'SUSPENDED' ? 'Suspended' : 'Offboarded'}
+                      </em>
+                    ) : null}
+                  </span>
                 </span>
-              </span>
-              {tenant.restaurant_id === activeRestaurantId ? (
-                <Check size={14} strokeWidth={2.6} />
-              ) : null}
-            </button>
-          ))}
+                {tenant.restaurant_id === activeRestaurantId ? (
+                  <Check size={15} strokeWidth={2.8} />
+                ) : null}
+              </button>
+            ))}
 
-          {withRestaurant.length === 0 ? (
-            <p className="tenant-switcher__empty">No restaurants onboarded yet.</p>
-          ) : null}
+            {matches.length === 0 ? (
+              <p className="workspace__empty">
+                {withRestaurant.length === 0
+                  ? 'No restaurants onboarded yet.'
+                  : `Nothing matches “${query.trim()}”.`}
+              </p>
+            ) : null}
+          </div>
+
+          <button
+            className="workspace__footer"
+            onClick={() => {
+              setOpen(false);
+              onNavigate('/tenants');
+              onPicked?.();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            Manage tenants
+            <ArrowRight size={13} strokeWidth={2.4} />
+          </button>
         </div>
       ) : null}
     </div>
