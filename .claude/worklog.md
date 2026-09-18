@@ -17,6 +17,49 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-18 — SaaS conversion, steps 1-3 backend (a0d1dc6, aacab0a)
+
+Plan approved: multi-tenant SaaS. Subdomain per tenant, each restaurant brings
+its own WhatsApp number, Stripe Connect, admin shell before page migration.
+Plan file: `~/.claude/plans/vivid-tumbling-whistle.md`.
+
+**Done — tenant resolution by host.** New `app_client_domains` (host globally
+unique) + `AppClientDomainKind`. Deliberately NOT a `WEB` row in
+`app_client_identifiers`: that table is keyed `(platform, identifier,
+environment)` so STAGING and PROD could both claim one host, and its platform
+enum is load-bearing in ~6 places that assume iOS/Android only.
+`app_clients.normalize_host` / `find_app_client_by_host` /
+`resolve_app_client_by_host` / `platform_host_for`, and the status checks both
+lookups share moved into `_assert_client_usable` so a SUSPENDED tenant cannot
+still serve through whichever path was used. `/app-config` resolves bundle id
+first (mobile untouched), then **`X-Forwarded-Host`** — never raw `Host`, which
+the client controls. Unknown host is 404, not a silent marketplace fallback.
+
+**Done — credentials at rest.** `services/secrets.py`, Fernet, keyed by
+`SECRETS_ENCRYPTION_KEY`. Refuses rather than storing plaintext when unset;
+a value that will not authenticate raises rather than being returned as-is.
+`cryptography` named directly in requirements (was transitive via python-jose).
+
+**Done — branding per tenant.** `services/app_branding.py`: logo, dark logo,
+favicon, cover, accent, font (allowlist + resolved CSS stack), app name,
+tagline. Validated on the way in (`javascript:`/`data:` URLs refused, control
+characters stripped, length caps); every key always present on read so a
+half-onboarded tenant still renders. Wired into `build_app_config_response`,
+which keeps its existing precedence — `Restaurant.theme` wins on
+`primary_color` because that is what the owner controls.
+
+**Gotcha:** the migration backfilled hosts from `lower(app_key)`, which keeps
+underscores — invalid in DNS and not what `platform_host_for` generates. Fixed
+in the migration and repaired in place. `_to_host_label` hyphenates.
+
+**Verified:** suite 1688 OK (was 1655). Migration 0062 applied to Supabase; all
+six seeded restaurants now resolve by host. Live: `bangkok-bowl.localhost` and
+`dragon-wok.localhost` return different restaurants from `/app-config`,
+`nobody.localhost` 404s, bundle id still works, neither gives a 400.
+
+**Next:** customer app SSR host resolution + de-Bangkok rename (step 3 frontend),
+then the admin route table (step 4).
+
 ## 2026-09-17 (7) — The order waiting to be paid (commit 580eb17)
 
 **Done:** new `app/services/ordering_agent/open_orders.py` — `waiting_order`,
