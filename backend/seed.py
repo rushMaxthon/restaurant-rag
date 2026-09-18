@@ -11,6 +11,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from passlib.context import CryptContext
 
 from app.config.database import SessionLocal
+from app.models.app_client_domain import AppClientDomain
+
+# The address a developer opens when they have not set up tenant subdomains.
+# `normalize_host` strips the port, so this covers 5173 and anything else.
+DEVELOPMENT_HOST = "localhost"
+# Named rather than "whichever restaurant seeds first": bare `localhost` has
+# always shown Bangkok Bowl, it carries by far the most seeded data, and the
+# customer app's own modules are built around it (`lib/bangkok-store.tsx`,
+# `components/bangkok/`). Tying the dev address to list order would move it
+# the next time somebody reorders the seed.
+DEVELOPMENT_HOST_RESTAURANT_SLUG = "bangkok-bowl"
 from app.services.app_clients import (
     create_app_client,
     ensure_default_app_client,
@@ -20,6 +31,7 @@ from app.services.app_clients import (
 )
 from app.models.chat_history import ChatHistory
 from app.models.enums import (
+    AppClientDomainKind,
     ChatMessageRole,
     LocationDayOfWeek,
     OrderStatus,
@@ -1313,6 +1325,51 @@ def ensure_restaurant_app_client(db, *, restaurant: Restaurant) -> tuple[object,
     return app_client, True
 
 
+
+def ensure_development_host(db, *, restaurant: Restaurant) -> bool:
+    """Make bare `localhost` a real tenant address.
+
+    Every storefront now identifies itself by the address it was opened on,
+    because one deployment serves all of them and the host is the only thing
+    separating one request from another. That works out of the box for
+    `dragon-wok.localhost`, which migration `0062` and `create_app_client`
+    issue — but not for plain `http://localhost:5173`, which belongs to nobody
+    and would answer 404 at `/app-config`.
+
+    Rather than give the web app a fallback constant — the exact thing being
+    removed, and the reason every tenant's storefront served Bangkok Bowl —
+    the bare host becomes an ordinary domain row like any other. Development
+    then exercises the same lookup production does, instead of a special case
+    that only development takes.
+
+    CUSTOM rather than PLATFORM_SUBDOMAIN because it is not a subdomain this
+    platform issued, and marked verified because there is nothing to prove
+    about an address that only resolves on the machine running this seed.
+    Never primary: the restaurant's own subdomain is the address to put in a
+    link.
+    """
+
+    existing = db.query(AppClientDomain).filter(AppClientDomain.host == DEVELOPMENT_HOST).first()
+    if existing is not None:
+        return False
+
+    app_client = get_app_client_for_restaurant(db, restaurant_id=restaurant.id)
+    if app_client is None:
+        return False
+
+    db.add(
+        AppClientDomain(
+            app_client_id=app_client.id,
+            host=DEVELOPMENT_HOST,
+            kind=AppClientDomainKind.CUSTOM,
+            is_verified=True,
+            is_active=True,
+            is_primary=False,
+        )
+    )
+    return True
+
+
 def ensure_primary_location(
     db,
     *,
@@ -2178,6 +2235,12 @@ def run_seed():
         for restaurant in restaurants:
             _, app_client_created = ensure_restaurant_app_client(db, restaurant=restaurant)
             created_app_clients += int(app_client_created)
+        # One restaurant also answers on bare `localhost`, so a developer who
+        # has not set up subdomains still gets a working storefront through
+        # the same host lookup every tenant uses.
+        development_restaurant = restaurant_by_slug.get(DEVELOPMENT_HOST_RESTAURANT_SLUG)
+        if development_restaurant is not None:
+            ensure_development_host(db, restaurant=development_restaurant)
         db.commit()
 
         print("Creating restaurant locations and branch-wise menu items...")

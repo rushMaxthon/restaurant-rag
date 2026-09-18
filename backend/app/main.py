@@ -52,7 +52,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.backend_cors_origins_list,
-    allow_origin_regex=settings.backend_cors_origin_regex or None,
+    # Includes every tenant subdomain of `platform_domain`, so onboarding a
+    # restaurant does not need a redeploy to let its storefront call the API.
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

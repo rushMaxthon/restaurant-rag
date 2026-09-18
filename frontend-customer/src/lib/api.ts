@@ -5,7 +5,34 @@ import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
 
-export const BUNDLE_ID = "com.quickbite.bangkokbowl";
+/**
+ * Which restaurant this storefront is.
+ *
+ * It used to be `BUNDLE_ID = "com.quickbite.bangkokbowl"`, a constant sent on
+ * every request — so one deployment served six tenants and all six of them
+ * were Bangkok Bowl. `dragon-wok.localhost` rendered Bangkok Bowl's name,
+ * logo, hero copy and menu.
+ *
+ * A mobile build can carry a constant: the app store fixed its bundle id at
+ * release, and one build is one restaurant. A web build cannot. One
+ * deployment answers every tenant's address, so the address IS the identity,
+ * and it has to be read per request rather than compiled in.
+ *
+ * Sent as a header on every call, not just `/app-config`, because identifying
+ * the brand and restricting the data are two different jobs. The backend
+ * resolves this host to an app client and narrows every query to that
+ * restaurant — see `get_app_scope`. A storefront asking for another
+ * restaurant's menu is refused server-side; picking is the client's job,
+ * refusing is the server's.
+ *
+ * Empty during server rendering, where there is no `window`. The only thing
+ * fetched before hydration is the page shell, and every data query runs on
+ * the client.
+ */
+function storefrontHost(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.host;
+}
 
 const TOKEN_KEY = "bangkok-bowl-token";
 const USER_KEY = "bangkok-bowl-user";
@@ -476,6 +503,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
+  // In production a proxy writes this. In development the browser talks to
+  // the API directly, so the page sends its own address — `Host` would name
+  // the API on a cross-origin call, not the storefront.
+  const host = storefrontHost();
+  if (host) headers["X-Forwarded-Host"] = host;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (auth) {
     const token = getToken();
@@ -521,7 +553,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  getAppConfig: () => request<AppConfig>("/app-config", { query: { bundle_id: BUNDLE_ID } }),
+  getAppConfig: () => request<AppConfig>("/app-config", { query: { host: storefrontHost() } }),
 
   getRestaurant: (restaurantId: string) =>
     request<Restaurant & { locations: RestaurantLocation[] }>(`/restaurants/${restaurantId}`),

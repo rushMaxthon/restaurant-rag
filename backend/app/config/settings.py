@@ -5,6 +5,8 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import re
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -659,6 +661,38 @@ class Settings(BaseSettings):
     @property
     def backend_cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def cors_origin_regex(self) -> str:
+        """The origin pattern, including every tenant's own storefront.
+
+        Naming origins exactly stops being possible the moment onboarding a
+        restaurant issues it a subdomain: the list would need a new entry, and
+        a redeploy, per restaurant — which is the release-per-tenant this whole
+        design exists to avoid. So the pattern is derived from
+        `platform_domain`, the same setting that generates those subdomains.
+        One source of truth: an address this platform issues is an address this
+        platform accepts.
+
+        It admits one label of subdomain, not `.*`, so it matches what
+        `platform_host_for` actually produces and nothing deeper.
+
+        `backend_cors_origin_regex` still wins when set, because it exists for
+        the case this cannot know about — a LAN address during device testing,
+        or a tenant's own domain.
+        """
+
+        configured = (self.backend_cors_origin_regex or "").strip()
+        domain = (self.platform_domain or "").strip().lstrip(".")
+        if not domain:
+            return configured
+
+        # A port is optional and only ever appears in development; production
+        # storefronts answer on 80 and 443, which browsers omit.
+        tenants = rf"https?://[a-z0-9-]+\.{re.escape(domain)}(:\d+)?"
+        if not configured:
+            return tenants
+        return f"({configured})|({tenants})"
 
     @property
     def stripe_is_configured(self) -> bool:

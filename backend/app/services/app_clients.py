@@ -577,41 +577,72 @@ def resolve_app_scope(
     *,
     bundle_id: str | None,
     platform_value: str | None = None,
+    host: str | None = None,
 ) -> AppScope:
     """Resolve the request's app scope. Never raises.
 
-    An unknown bundle ID resolves to the unscoped marketplace scope rather than
-    an error, so that data endpoints stay available to every existing client.
-    A suspended or offboarded app keeps its restaurant scope instead of being
-    widened to the whole marketplace; whether such an app should be blocked
-    outright is enforced separately, not here.
+    Two ways in, matching the two kinds of client. A mobile build says who it
+    is with a bundle id the app store fixed at release time. A web build
+    cannot: one deployment serves every tenant, and the only thing separating
+    one request from another is the address it arrived on.
+
+    The bundle id wins when both are present. A phone's identity is fixed at
+    release and is the stronger claim; the host is whatever reached the proxy.
+
+    This is the half that makes a per-tenant storefront real rather than
+    cosmetic. `/app-config` already resolved a host — that told the page which
+    brand to paint. This tells every *data* endpoint which restaurant the
+    caller may see, so a storefront on one restaurant's address cannot read
+    another's menu by asking for it. Choosing is the client's job; refusing is
+    this function's.
+
+    An unknown bundle id or an unclaimed host resolves to the unscoped
+    marketplace scope rather than an error, so the admin panel, curl and the
+    marketplace app are unaffected. A suspended or offboarded app keeps its
+    restaurant scope instead of being widened to the whole marketplace;
+    whether such an app should be blocked outright is enforced separately,
+    not here.
     """
 
-    if not bundle_id or not bundle_id.strip():
-        return UNSCOPED_APP_SCOPE
+    normalized_bundle_id = (bundle_id or "").strip()
+    platform = parse_app_client_platform(platform_value) if normalized_bundle_id else None
+    app_client: AppClient | None = None
 
-    normalized_bundle_id = bundle_id.strip()
-    platform = parse_app_client_platform(platform_value)
-    app_client = find_app_client_by_bundle_id(
-        db,
-        bundle_id=normalized_bundle_id,
-        platform=platform,
-    )
-
-    if app_client is None:
-        logger.warning(
-            "App scope unresolved bundle_id=%s platform=%s; falling back to marketplace",
-            normalized_bundle_id,
-            platform.value if platform else "unknown",
+    if normalized_bundle_id:
+        app_client = find_app_client_by_bundle_id(
+            db,
+            bundle_id=normalized_bundle_id,
+            platform=platform,
         )
-        return UNSCOPED_APP_SCOPE
+        if app_client is None:
+            logger.warning(
+                "App scope unresolved bundle_id=%s platform=%s; falling back to marketplace",
+                normalized_bundle_id,
+                platform.value if platform else "unknown",
+            )
+            return UNSCOPED_APP_SCOPE
+    else:
+        normalized_host = normalize_host(host)
+        if not normalized_host:
+            return UNSCOPED_APP_SCOPE
+        app_client = find_app_client_by_host(db, host=normalized_host)
+        if app_client is None:
+            # Not a warning. Every request from the admin panel and every curl
+            # against a dev machine arrives on an address no tenant claims,
+            # and logging each one at WARNING would bury the bundle-id case
+            # above, which really does mean a misconfigured build.
+            logger.debug(
+                "App scope unresolved host=%s; falling back to marketplace",
+                normalized_host,
+            )
+            return UNSCOPED_APP_SCOPE
 
     return AppScope(
         mode=app_client.app_mode,
         restaurant_id=app_client.restaurant_id,
         app_client_id=app_client.id,
         app_key=app_client.key,
-        bundle_id=normalized_bundle_id,
+        bundle_id=normalized_bundle_id or None,
         platform=platform,
         status=app_client.status,
     )
