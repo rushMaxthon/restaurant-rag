@@ -10430,3 +10430,105 @@ summary:focus-visible,
     width: 100%;
   }
 }
+
+/* --- Sign in --------------------------------------------------------------
+   The first screen anyone sees, including a client being shown the product.
+
+   It was a white card on a near-white page. `--bg` is `#fafafa` and `--card`
+   is `#ffffff`, so the only thing saying where the card ended was a hairline
+   and a soft shadow — the card did not read as a card, it read as a faint
+   rectangle floating in an empty field. That is a consequence of the page
+   ground going flat, and this is the screen that needed the ground most.
+
+   So the page gets a real one: the rail's own colour. Not a new invention —
+   `--sidebar` is what this panel already looks like, it is just usually a
+   220px strip rather than the whole window. A white card on it separates
+   without needing a shadow to do the work, and somebody who signs in
+   recognises the colour they are about to be looking at all day. */
+
+.login-shell {
+  position: relative;
+  overflow: hidden;
+  background: var(--sidebar);
+}
+
+/* One quiet brand glow behind the card, off-centre. Enough that the ground
+   is not a flat rectangle; far short of the radial wash that used to sit
+   behind every page of this panel and was removed for shouting. */
+.login-shell:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 34% 42% at 50% 8%,
+    color-mix(in srgb, var(--primary) 34%, transparent),
+    transparent 62%
+  );
+  pointer-events: none;
+}
+
+.login-shell > * {
+  position: relative;
+}
+
+.lg-card {
+  width: min(100%, 420px);
+  gap: 18px;
+  /* Roomier than a panel embedded in a page: this one is the whole screen,
+     and 16px of padding on a 420px card reads as cramped when there is
+     nothing else competing for the space. */
+  padding: 30px 28px;
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 24px 60px -20px rgb(0 0 0 / 0.55);
+}
+
+.lg-heading h1 {
+  font-size: var(--fs-display);
+  line-height: 1.15;
+}
+
+.lg-heading p {
+  color: var(--muted);
+  /* Both of these wrapped with their last word alone on the second line —
+     "and AI / activity." and "restaurant / owners." A single orphan on a
+     screen with four lines of text on it is most of the text looking wrong. */
+  text-wrap: pretty;
+}
+
+/* Chrome paints autofilled fields its own pale blue and ignores `background`,
+   which left two blue-grey boxes in the middle of an otherwise designed card
+   — the single most obvious thing wrong with this screen on a machine where
+   the password is remembered. The inset shadow is the documented way to win:
+   it paints over the browser's fill without fighting it. */
+.lg-input input:-webkit-autofill,
+.lg-input input:-webkit-autofill:hover,
+.lg-input input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 100px var(--field-bg) inset;
+  caret-color: var(--text);
+  /* Chrome's own fade-in of the blue is what gets caught on first paint;
+     a long transition outlives it. */
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+.lg-input input:-webkit-autofill:focus {
+  -webkit-box-shadow:
+    0 0 0 100px var(--field-bg) inset,
+    var(--shadow-ring);
+}
+
+.lg-submit {
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+
+.lg-footnote {
+  color: var(--muted);
+  text-wrap: pretty;
+  /* Narrower than the card so the balancer has somewhere to break, and so
+     the sentence reads as a footnote rather than as another field label. */
+  max-width: 30ch;
+  margin-inline: auto;
+}
