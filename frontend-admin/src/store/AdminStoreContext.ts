@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { ToastMessage, User, UserRole } from '../types/app';
+import type { TenantSummary, ToastMessage, User, UserRole } from '../types/app';
 
 export interface AdminStoreValue {
   token: string | null;
@@ -37,6 +37,18 @@ export interface AdminStoreValue {
    * than a blank screen.
    */
   tenantCurrencies: Record<string, string>;
+  /**
+   * Every tenant on the platform, loaded once per session.
+   *
+   * Here rather than in the switcher that renders it, because the money
+   * formatter needs the same rows for their currencies — two components
+   * fetching the same list meant two identical requests on every admin page.
+   *
+   * Empty for an owner, who has one restaurant and no list to switch between.
+   */
+  tenants: TenantSummary[];
+  /** Reload it — after a lifecycle change on the Tenants page, say. */
+  refreshTenants: () => Promise<void>;
   user: User | null;
   isAuthenticated: boolean;
   toasts: ToastMessage[];

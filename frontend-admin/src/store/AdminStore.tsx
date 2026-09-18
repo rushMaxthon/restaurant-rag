@@ -9,7 +9,13 @@ import {
 import { ApiError, AUTH_INVALID_EVENT, api } from '../services/api';
 import { clearPageSnapshots } from '../services/pageCache';
 import { storage } from '../services/storage';
-import type { AuthSession, ToastMessage, User, UserRole } from '../types/app';
+import type {
+  AuthSession,
+  TenantSummary,
+  ToastMessage,
+  User,
+  UserRole,
+} from '../types/app';
 import { AdminStoreContext, type AdminStoreValue } from './AdminStoreContext';
 
 function isAdminPanelRole(role: UserRole): boolean {
@@ -68,7 +74,23 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(() =>
     storedAuth?.role === "ADMIN" ? readActiveRestaurantId() : null,
   );
-  const [tenantCurrencies, setTenantCurrencies] = useState<Record<string, string>>({});
+  // The whole tenant list, so the switcher can render names and the money
+  // formatter can read currencies from the same load.
+  const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  // An owner sees no tenant list at all — only their own restaurant's
+  // currency, which comes from a different endpoint.
+  const [ownerCurrencies, setOwnerCurrencies] = useState<Record<string, string>>({});
+  const tenantCurrencies = useMemo(
+    () =>
+      role === "ADMIN"
+        ? Object.fromEntries(
+            tenants
+              .filter((tenant) => tenant.restaurant_id && tenant.currency)
+              .map((tenant) => [tenant.restaurant_id as string, tenant.currency]),
+          )
+        : ownerCurrencies,
+    [ownerCurrencies, role, tenants],
+  );
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const nextToastId = useRef(1);
 
@@ -94,34 +116,37 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
   // What each restaurant charges in, so every figure on every screen can be
   // labelled with the right symbol. An admin reads it off the tenants list;
   // an owner has exactly one restaurant and reads it off that.
-  useEffect(() => {
+  //
+  // **Fetched here and nowhere else.** The tenant switcher used to load the
+  // same list for itself, so every admin page made two identical requests for
+  // it — found by reading the network panel, not by anything going wrong.
+  // One owner, and the switcher reads what is already here.
+  const loadTenants = useCallback(async () => {
     if (!token || !role) {
       return;
     }
-    let cancelled = false;
-    const load = role === "ADMIN" ? api.listTenants(token) : api.getOwnerRestaurants(token);
-    void load
-      .then((rows: Array<{ restaurant_id?: string | null; id?: string; currency?: string }>) => {
-        if (cancelled) {
-          return;
-        }
-        const next: Record<string, string> = {};
-        for (const row of rows) {
-          const id = row.restaurant_id ?? row.id;
-          if (id && row.currency) {
-            next[id] = row.currency;
-          }
-        }
-        setTenantCurrencies(next);
-      })
-      .catch(() => {
-        // Labels, not data. A failure leaves every figure in the platform
-        // default rather than blocking the screen that needed the figure.
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      if (role === "ADMIN") {
+        setTenants(await api.listTenants(token));
+      } else {
+        const own = await api.getOwnerRestaurants(token);
+        setOwnerCurrencies(
+          Object.fromEntries(own.filter((row) => row.currency).map((row) => [row.id, row.currency])),
+        );
+      }
+    } catch {
+      // Labels and navigation, not data. A failure leaves every figure in the
+      // platform default rather than blocking the screen that needed it.
+    }
   }, [role, token]);
+
+  useEffect(() => {
+    // The lint rule reads `loadTenants` as a synchronous setState because it
+    // cannot see that every write in it sits after an `await`. The cascading
+    // render it warns about cannot happen here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadTenants();
+  }, [loadTenants]);
 
   const pushToast = useCallback((title: string, description: string, tone: ToastMessage['tone'] = 'info') => {
     const id = nextToastId.current;
@@ -163,6 +188,8 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       activeRestaurantId: role === "ADMIN" ? activeRestaurantId : null,
       setActiveRestaurantId,
       tenantCurrencies,
+      tenants: role === "ADMIN" ? tenants : [],
+      refreshTenants: loadTenants,
       user,
       isAuthenticated: Boolean(token && role && user),
       toasts,
@@ -190,7 +217,8 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
         setRestaurantId(null);
         setUser(null);
         setActiveRestaurantIdState(null);
-        setTenantCurrencies({});
+        setTenants([]);
+        setOwnerCurrencies({});
         // Anything remembered about which restaurant was being looked at goes
         // with the session. Left behind, the next person to log in on this
         // machine opens the AI Manager pointed at the previous owner's
@@ -211,7 +239,9 @@ export function AdminStoreProvider({ children }: PropsWithChildren) {
       restaurantId,
       role,
       setActiveRestaurantId,
+      loadTenants,
       tenantCurrencies,
+      tenants,
       token,
       toasts,
       user,

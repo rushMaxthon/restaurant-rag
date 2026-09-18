@@ -16,6 +16,7 @@ import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
 import { StatusPill } from '../components/StatusPill';
+import { useAdminStore } from '../hooks/useAdminStore';
 import { ApiError, api, formatDate } from '../services/api';
 import {
   getPageSnapshot,
@@ -100,6 +101,7 @@ function haystack(tenant: TenantSummary): string {
 }
 
 export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
+  const { refreshTenants } = useAdminStore();
   const scope = tokenScope(token);
   const key = cacheKey(scope);
 
@@ -301,6 +303,9 @@ export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
       const rows = tenants.map((tenant) => (tenant.id === updated.id ? updated : tenant));
       setTenants(rows);
       setPageSnapshot(key, rows);
+      // The switcher in the rail reads the store's copy, so a tenant suspended
+      // here would otherwise keep its old pill until the next full reload.
+      void refreshTenants();
       setLifecycle(null);
       onToast(
         `${updated.display_name} is ${updated.status.toLowerCase()}`,

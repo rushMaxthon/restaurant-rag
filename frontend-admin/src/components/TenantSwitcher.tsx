@@ -2,8 +2,6 @@ import { ArrowRight, Check, ChevronDown, Layers, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAdminStore } from '../hooks/useAdminStore';
-import { api } from '../services/api';
-import { getPageSnapshot, setPageSnapshot, tokenScope } from '../services/pageCache';
 import type { TenantSummary } from '../types/app';
 
 /**
@@ -35,10 +33,6 @@ interface TenantSwitcherProps {
 /** Above this many, hunting beats reading, so the menu grows a search field. */
 const SEARCH_THRESHOLD = 6;
 
-function tenantsCacheKey(scope: string): string {
-  return `platform-tenants:${scope}`;
-}
-
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -64,42 +58,14 @@ function subtitleOf(tenant: TenantSummary): string {
 }
 
 export function TenantSwitcher({ onNavigate, onPicked }: TenantSwitcherProps) {
-  const { token, role, activeRestaurantId, setActiveRestaurantId } = useAdminStore();
-  const scope = tokenScope(token ?? '');
-
-  // Shares the Tenants page's cache entry, so opening one warms the other and
-  // a lifecycle change made there shows up here without a second fetch.
-  const [tenants, setTenants] = useState<TenantSummary[]>(
-    () => getPageSnapshot<TenantSummary[]>(tenantsCacheKey(scope)) ?? [],
-  );
+  // Read, not fetched. This component used to load the tenant list for
+  // itself while the store loaded the same list for its currencies, so every
+  // admin page made two identical requests for it.
+  const { role, activeRestaurantId, setActiveRestaurantId, tenants } = useAdminStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!token || role !== 'ADMIN') {
-      return;
-    }
-    let cancelled = false;
-    void api
-      .listTenants(token)
-      .then((rows) => {
-        if (cancelled) {
-          return;
-        }
-        setTenants(rows);
-        setPageSnapshot(tenantsCacheKey(scope), rows);
-      })
-      .catch(() => {
-        // This is navigation, not data. A failure leaves the panel on the
-        // scope it already had rather than interrupting whatever the operator
-        // came here to do.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [role, scope, token]);
 
   // Click-away and Escape. A menu, not a dialog: it should not trap focus or
   // lock the page behind it.
