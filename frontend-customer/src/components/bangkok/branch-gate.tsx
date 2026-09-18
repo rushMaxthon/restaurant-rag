@@ -1,7 +1,6 @@
-import { Bike, Clock, MapPin } from "lucide-react";
+import { Clock, MapPin } from "lucide-react";
 
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { useMoney } from "@/lib/storefront";
 
 /**
  * Pick a branch before seeing a menu.
@@ -23,8 +22,6 @@ import { useMoney } from "@/lib/storefront";
  * changes it afterwards.
  */
 export function BranchGate() {
-  // Prices in whatever this restaurant charges in.
-  const money = useMoney();
   const store = useBangkokStore();
 
   // Nothing to choose between yet. Rendering a gate with no options would trap
@@ -41,8 +38,8 @@ export function BranchGate() {
           Which branch are you ordering from?
         </h1>
         <p className="mt-2 text-muted">
-          Menus, delivery fees and opening hours differ by branch, so we will only
-          show you what this kitchen can actually make.
+          Menus and opening hours differ by branch, so we will only show you what
+          this kitchen can actually make.
         </p>
 
         <ul className="branch-gate__list">
@@ -62,8 +59,6 @@ export function BranchGate() {
                     <span className="branch-gate__meta">
                       <Clock className="size-3.5" />
                       {location.is_open ? "Open now" : "Closed"}
-                      <Bike className="size-3.5" />
-                      {money(location.delivery_fee)} delivery
                     </span>
                   </span>
                   {suggested && <span className="branch-gate__hint">Nearest</span>}

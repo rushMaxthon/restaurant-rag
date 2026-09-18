@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
@@ -109,9 +109,11 @@ function CartPage() {
                 Browse the menu <ArrowRight className="size-4" />
               </Link>
             </Button>
-            <Button variant="outline" className="h-12 px-6 text-base font-bold" asChild>
-              <Link to="/concierge">Ask the concierge</Link>
-            </Button>
+            {hasCapability(s.capabilities, "ask_ai") ? (
+              <Button variant="outline" className="h-12 px-6 text-base font-bold" asChild>
+                <Link to="/concierge">Ask the concierge</Link>
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

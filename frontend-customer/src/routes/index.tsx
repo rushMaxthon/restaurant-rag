@@ -16,7 +16,7 @@ import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
@@ -43,6 +43,8 @@ function Home() {
   // than after a client fetch.
   const copy = useStorefrontCopy();
   const store = useBangkokStore();
+  // Nothing invites a customer to a page this restaurant has switched off.
+  const askAi = hasCapability(store.capabilities, "ask_ai");
   const { restaurantId, branchId, locations } = store;
   const { isAuthenticated } = useAuth();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
@@ -106,12 +108,14 @@ function Home() {
                 Explore the menu <ArrowRight />
               </Link>
             </Button>
-            <Button size="lg" variant="secondary" asChild>
-              <Link to="/concierge">
-                <Sparkles />
-                Ask the food concierge
-              </Link>
-            </Button>
+            {askAi ? (
+              <Button size="lg" variant="secondary" asChild>
+                <Link to="/concierge">
+                  <Sparkles />
+                  Ask the food concierge
+                </Link>
+              </Button>
+            ) : null}
           </div>
         </div>
       </section>
@@ -174,7 +178,11 @@ function Home() {
         )}
       </section>
 
-      <section className="grid bg-surface-alt lg:grid-cols-2">
+      {/* The left half of this band is entirely about the concierge, so a
+          restaurant without it gets the right half full-width rather than an
+          invitation to a page that is not there. */}
+      <section className={askAi ? "grid bg-surface-alt lg:grid-cols-2" : "grid bg-surface-alt"}>
+        {askAi ? (
         <div className="page-pad section-pad">
           <Sparkles className="mb-5 size-10 text-primary" />
           <p className="eyebrow">Not sure what to order?</p>
@@ -203,6 +211,7 @@ function Home() {
             </Link>
           </Button>
         </div>
+        ) : null}
         <div className="page-pad section-pad bg-primary text-primary-foreground">
           <Clock3 className="mb-5 size-10" />
           <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
