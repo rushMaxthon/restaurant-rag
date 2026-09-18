@@ -409,5 +409,83 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         self.assertEqual(built.branding["logo_url"], "https://a.test/l.png")
 
 
+class OnboardingIssuesAnAddressTests(unittest.TestCase):
+    """A restaurant onboarded today has a storefront today.
+
+    `create_app_client` hands a new tenant its iOS bundle id, its Android
+    package name and its order sequence. Until host resolution shipped there
+    was no web address to hand it, because the one storefront knew which
+    restaurant it was from a constant in its own source. The backfill
+    migration covered the six restaurants that already existed; nothing
+    covered the seventh, so every tenant onboarded afterwards would have had
+    a working mobile identity and a storefront that 404s.
+    """
+
+    def built(self, app_key="tandoori_nights", domain="example.com"):
+        from app.models.enums import AppMode
+        from app.services import app_clients
+
+        identity = app_clients.AppClientIdentity(
+            app_key=app_key,
+            app_mode=AppMode.SINGLE_RESTAURANT,
+            ios_bundle_id=f"com.quickbite.{app_key.replace('_', '')}",
+            android_package_name=f"com.quickbite.{app_key.replace('_', '')}",
+            order_number_prefix="TN",
+            brand_primary_color="#FF5200",
+            minimum_supported_version="1.0.0",
+        )
+        with patch.object(
+            app_clients, "get_settings", lambda: SimpleNamespace(platform_domain=domain)
+        ):
+            return app_clients.create_app_client(
+                restaurant_id=uuid.uuid4(),
+                display_name="Tandoori Nights",
+                identity=identity,
+            )
+
+    def test_a_new_tenant_is_issued_its_storefront_address(self) -> None:
+        client = self.built()
+        self.assertEqual([d.host for d in client.domains], ["tandoori-nights.example.com"])
+
+    def test_the_address_needs_no_proving_because_we_issued_it(self) -> None:
+        # A domain the restaurant already owns is the case that needs
+        # verifying. A subdomain we handed out is not.
+        domain = self.built().domains[0]
+        self.assertTrue(domain.is_verified)
+        self.assertTrue(domain.is_primary)
+
+    def test_it_still_gets_its_mobile_identity(self) -> None:
+        client = self.built()
+        self.assertEqual(len(client.identifiers), 2)
+        self.assertIsNotNone(client.order_sequence)
+
+    def test_a_clashing_address_is_a_conflict_the_form_can_show(self) -> None:
+        # Rather than an integrity error from the unique constraint, raised
+        # halfway through creating a restaurant.
+        from fastapi import HTTPException
+
+        from app.services import app_clients
+
+        # Answers only the domain query, so the app key and bundle id read as
+        # free and the host is the one thing clashing.
+        class OnlyTheHostIsTaken:
+            def scalar(self, statement):
+                return uuid.uuid4() if "app_client_domains" in str(statement) else None
+
+        db = OnlyTheHostIsTaken()
+        with patch.object(
+            app_clients, "get_settings", lambda: SimpleNamespace(platform_domain="example.com")
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                app_clients.validate_app_client_identity_is_available(
+                    db,
+                    app_key="tandoori_nights",
+                    ios_bundle_id="com.quickbite.brandnew",
+                    android_package_name="com.quickbite.brandnew",
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("tandoori-nights.example.com", raised.exception.detail)
+
+
 if __name__ == "__main__":
     unittest.main()

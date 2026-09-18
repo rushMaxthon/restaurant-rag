@@ -18,7 +18,13 @@ from app.models.app_client import (
     AppClientIdentifier,
     AppClientOrderSequence,
 )
-from app.models.enums import AppClientEnvironment, AppClientPlatform, AppClientStatus, AppMode
+from app.models.enums import (
+    AppClientDomainKind,
+    AppClientEnvironment,
+    AppClientPlatform,
+    AppClientStatus,
+    AppMode,
+)
 from app.models.restaurant import Restaurant
 from app.schemas.app_config import AppConfigResponse
 from app.schemas.restaurant import (
@@ -135,6 +141,18 @@ def _conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+def is_host_taken(db: Session, *, host: str, exclude_app_client_id: uuid.UUID | None = None) -> bool:
+    """Whether some other tenant already answers on this address."""
+
+    normalized = normalize_host(host)
+    if not normalized:
+        return False
+    query = select(AppClientDomain.id).where(AppClientDomain.host == normalized)
+    if exclude_app_client_id is not None:
+        query = query.where(AppClientDomain.app_client_id != exclude_app_client_id)
+    return db.scalar(query.limit(1)) is not None
+
+
 def validate_app_client_identity_is_available(
     db: Session,
     *,
@@ -155,6 +173,15 @@ def validate_app_client_identity_is_available(
         exclude_app_client_id=exclude_app_client_id,
     ):
         raise _conflict(f"iOS bundle ID '{ios_bundle_id}' is already used by another app client")
+
+    # Checked here with the rest of the identity so a clash is reported as a
+    # conflict the form can show, rather than surfacing as an integrity error
+    # from the unique constraint halfway through creating a restaurant.
+    storefront_host = platform_host_for(app_key)
+    if is_host_taken(db, host=storefront_host):
+        raise _conflict(
+            f"The storefront address '{storefront_host}' is already used by another app client"
+        )
 
     if _is_identifier_taken(
         db,
@@ -242,6 +269,22 @@ def create_app_client(
     )
     app_client.identifiers = _new_prod_identifiers(identity)
     app_client.order_sequence = AppClientOrderSequence(last_value=0)
+    # The address its storefront answers on, issued at the same moment as the
+    # bundle ids. Without this a tenant onboarded after host resolution
+    # shipped would have a working mobile identity and a storefront that
+    # 404s — the backfill covered the restaurants that already existed and
+    # nothing covered the next one.
+    app_client.domains = [
+        AppClientDomain(
+            host=platform_host_for(identity.app_key),
+            kind=AppClientDomainKind.PLATFORM_SUBDOMAIN,
+            is_primary=True,
+            # Ours to issue, so there is nothing for anyone to prove. A
+            # domain the restaurant already owns is the case that needs
+            # verifying, and that is added later.
+            is_verified=True,
+        )
+    ]
     return app_client
 
 
