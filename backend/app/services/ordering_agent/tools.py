@@ -39,7 +39,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, time
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, get_args, Callable
+from typing import Any, get_args, Callable, Sequence
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -1013,6 +1013,201 @@ def _build_dish_result(menu_item: MenuItem, *, confidence: str, args: GetDishArg
     return result
 
 
+def dishes_matching_words(
+    db: Session,
+    scope: OrderingScope,
+    phrase: str,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 8,
+) -> list[tuple[str, str]]:
+    """Every dish at this branch whose NAME contains all of these words.
+
+    Text, not similarity. `get_dish` answers with one dish and reports
+    `confidence: "named"` for a near miss as readily as for the real thing,
+    which is how "cheese pizza" became Cheese Burst Pizza and "pizza"
+    became Build Your Own Pizza. When money is about to be spent, the
+    question "which dishes could they have meant?" has to be answered from
+    the menu's own words.
+
+    Returns (menu_item_id, name) pairs, alphabetically, capped — a customer
+    asked to choose between fifteen dishes has not been helped.
+    """
+
+    words = [w for w in "".join(
+        c if c.isalnum() or c.isspace() else " " for c in phrase.lower()
+    ).split() if len(w) > 1]
+    if not words:
+        return []
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        # A vegetarian asking for pizza wants the vegetarian pizzas. The
+        # filter belongs in the query, not in whatever the model remembers.
+        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
+    for word in words:
+        stmt = stmt.where(MenuItem.name.ilike(f"%{word}%"))
+    rows = list(db.scalars(stmt.order_by(MenuItem.name).limit(limit)))
+    return [(str(row.id), row.name) for row in rows]
+
+
+def dishes_to_suggest(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    in_cart: Sequence[Any] = (),
+    is_veg: bool | None = None,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """A few things to offer a customer who wants more but has not said what.
+
+    What people actually order here — bestsellers first, then popularity —
+    from the parts of the menu this cart does not already cover: somebody
+    holding a pizza is offered a drink and a dessert, not another pizza.
+    Rows, ordered by the branch's own columns; nothing here is a guess about
+    taste.
+    """
+
+    base = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        base = base.where(MenuItem.is_veg.is_(is_veg))
+    ids = [i for i in in_cart if i]
+    if ids:
+        base = base.where(MenuItem.id.not_in(ids))
+    order = (
+        MenuItem.is_bestseller.desc(),
+        MenuItem.popularity_score.desc().nullslast(),
+        MenuItem.name,
+    )
+    def spread(found: Sequence[MenuItem]) -> list[MenuItem]:
+        """At most one per section, so three suggestions are three ideas.
+
+        Ordered by popularity alone they came back as three main courses to
+        a customer who already had a pizza. A waiter offers a drink, a side
+        and something sweet — variety is the suggestion.
+        """
+
+        picked: list[MenuItem] = []
+        seen_sections: set[str] = set()
+        for row in found:
+            section = row.category or ""
+            if section in seen_sections:
+                continue
+            seen_sections.add(section)
+            picked.append(row)
+            if len(picked) == limit:
+                break
+        return picked
+
+    # Enough rows that one per section can still fill the list.
+    reach = max(limit * 8, 24)
+    rows: list[MenuItem] = []
+    if ids:
+        covered = [
+            c
+            for c in db.scalars(
+                select(MenuItem.category).where(MenuItem.id.in_(ids)).distinct()
+            )
+            if c
+        ]
+        if covered:
+            rows = spread(
+                list(db.scalars(base.where(MenuItem.category.not_in(covered)).order_by(*order).limit(reach)))
+            )
+    if not rows:
+        rows = spread(list(db.scalars(base.order_by(*order).limit(reach))))
+    return [{"name": row.name, "price": f"{row.price:.2f}"} for row in rows]
+
+
+def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
+    """The names of the categories this branch actually sells.
+
+    Given to the reading so a customer's own word for a kind of food can be
+    matched to one of them by meaning. Live: "Do you have some drink?" was
+    matched by substring against a category called Beverages, matched
+    nothing, and fell through to the first eight dishes on the menu — eight
+    appetizers, in answer to a question about drinks.
+    """
+
+    rows = db.scalars(
+        select(MenuItem.category)
+        .where(
+            MenuItem.restaurant_location_id == scope.restaurant_location_id,
+            MenuItem.is_available.is_(True),
+            MenuItem.category.is_not(None),
+        )
+        .distinct()
+        .order_by(MenuItem.category)
+    )
+    return [c for c in rows if c]
+
+
+def dishes_to_show(
+    db: Session,
+    scope: OrderingScope,
+    phrase: str,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 8,
+    category: str | None = None,
+) -> list[dict[str, Any]]:
+    """Dishes to read out to a customer: name, price, and whether veg.
+
+    By name when the word they used is a dish's word ("pizza"), and by the
+    branch's whole menu when it is not ("the menu", "something vegetarian").
+    Either way the rows answer, because a question about the menu is not a
+    search problem — semantic retrieval answered "do you have pizza with
+    extra cheese" with Coconut Ice Cream, having matched dishes that take
+    extras rather than the word the customer said.
+    """
+
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
+    words = [
+        # Singular, because a menu is written in the singular and customers
+        # do not order one pizza: "vegetarian pizzas" matched no dish called
+        # "pizzas" and no category called "pizzas" either, and answered with
+        # the whole vegetarian menu.
+        w[:-1] if len(w) > 4 and w.endswith("s") and not w.endswith("ss") else w
+        for w in "".join(c if c.isalnum() or c.isspace() else " " for c in phrase.lower()).split()
+        if len(w) > 2
+    ]
+    named = stmt
+    for word in words:
+        named = named.where(MenuItem.name.ilike(f"%{word}%"))
+    rows = list(db.scalars(named.order_by(MenuItem.name).limit(limit))) if words else []
+    if not rows and category:
+        # No dish by that name, so the section they meant. Named by the
+        # reading from this branch's own list, so it is matched exactly
+        # rather than searched for — "some drink" is Beverages, which no
+        # amount of string matching gets to.
+        rows = list(
+            db.scalars(stmt.where(MenuItem.category == category).order_by(MenuItem.name).limit(limit))
+        )
+    if not rows:
+        # Nothing by name. A category, then the menu itself — both of which
+        # are still the rows, never a guess about what they might have meant.
+        by_category = stmt
+        for word in words:
+            by_category = by_category.where(MenuItem.category.ilike(f"%{word}%"))
+        rows = list(db.scalars(by_category.order_by(MenuItem.name).limit(limit))) if words else []
+    if not rows:
+        rows = list(db.scalars(stmt.order_by(MenuItem.category, MenuItem.name).limit(limit)))
+    return [
+        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+        for row in rows
+    ]
+
+
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
     """Resolves a named dish, exact name first, then exactly as the chat
     turn's dish-name guardrail would.
@@ -1359,7 +1554,12 @@ def _draft_for(scope: OrderingScope):
     """
 
     draft = order_draft.seed_from_profile(order_draft.load(scope.session_id), scope.customer)
-    if not draft.contact_phone and scope.verified_phone:
+    if scope.verified_phone:
+        # The channel's number wins over the account's. Meta verified this
+        # one and it is written the way an order is written; an account
+        # provisioned before that was true holds the plus-less wa_id, and
+        # seeding from it put '916353100362' on the order, which the schema
+        # reads as a malformed local number and refuses.
         draft.contact_phone = scope.verified_phone
     return draft
 
@@ -1563,6 +1763,23 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         # tell when the payment lands. A web order records nothing here and
         # is never messaged. See `order_channel`.
         order_channel.remember(order.id, phone_number=scope.verified_phone)
+
+    # What they settled on, kept for next time. The account had ordered
+    # several times with `default_address` still empty, because nothing ever
+    # wrote it — so every conversation asked for it again. The email is left
+    # alone deliberately: it identifies the account, and changing it here
+    # could collide with somebody else's.
+    try:
+        if draft.fulfillment_type == OrderFulfillmentType.DELIVERY.value and draft.delivery_address:
+            customer.default_address = draft.delivery_address
+        if draft.contact_name and not (getattr(customer, "full_name", "") or "").strip():
+            customer.full_name = draft.contact_name[:255]
+        db.add(customer)
+        db.commit()
+    except Exception:  # noqa: BLE001 - the order stands whether or not we remember
+        logger.warning("Could not save a customer's details for next time", exc_info=True)
+        if db is not None:
+            db.rollback()
 
     result: dict[str, Any] = {
         "outcome": "placed",

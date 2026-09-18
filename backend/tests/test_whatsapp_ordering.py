@@ -267,3 +267,151 @@ class WaIdShapeTests(unittest.TestCase):
         ):
             wa.answer_whatsapp_message.__wrapped__(from_number="916353100362", text="hello")
         self.assertEqual(seen.get("verified_phone"), "+916353100362")
+
+
+class TypingIndicatorTests(unittest.TestCase):
+    """The blue ticks and the bubble, while the agent thinks.
+
+    A turn takes four to eight seconds. Without this the customer's screen
+    shows nothing — not even a read receipt — and a message sent twice
+    starts a second turn on a conversation still finishing its first.
+    """
+
+    def test_it_marks_read_and_asks_for_the_bubble_in_one_call(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        posted: dict = {}
+
+        class Response:
+            status_code = 200
+            text = ""
+
+        def fake_post(url, **kwargs):
+            posted["url"] = url
+            posted["json"] = kwargs["json"]
+            return Response()
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "123"
+        ), patch.object(service.httpx, "post", fake_post):
+            self.assertTrue(service.show_typing("wamid.TEST"))
+
+        self.assertEqual(posted["json"]["status"], "read")
+        self.assertEqual(posted["json"]["message_id"], "wamid.TEST")
+        self.assertEqual(posted["json"]["typing_indicator"], {"type": "text"})
+
+    def test_no_message_id_means_no_call(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        def explode(*a, **k):
+            raise AssertionError("should not be called")
+
+        with patch.object(service.httpx, "post", explode):
+            self.assertFalse(service.show_typing(""))
+
+    def test_a_refusal_never_reaches_the_customer(self) -> None:
+        # A bubble is a courtesy; the answer behind it is not.
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "123"
+        ), patch.object(service.httpx, "post", side_effect=service.httpx.ConnectError("down")):
+            self.assertFalse(service.show_typing("wamid.TEST"))
+
+    def test_the_turn_shows_it_before_doing_the_work(self) -> None:
+        from unittest.mock import patch
+
+        order: list = []
+
+        def fake_typing(message_id):
+            order.append(("typing", message_id))
+            return True
+
+        def fake_turn(db, **kwargs):
+            order.append(("worked", None))
+            return SimpleNamespace(
+                reply="hi", suggestions=[], agent_reply=None, agent_asks=False,
+                order_ready=False, placed_order=None, cart_actions=[],
+            )
+
+        with patch.object(wa.settings, "whatsapp_enabled", True), patch.object(
+            wa, "show_typing", fake_typing
+        ), patch.object(wa, "handle_chat_message", fake_turn), patch.object(
+            wa, "send_text", return_value=True
+        ), patch.object(wa.session_cart, "load", return_value=[]):
+            wa.answer_whatsapp_message.__wrapped__(
+                from_number="916353100362", text="hello", message_id="wamid.ABC"
+            )
+
+        self.assertEqual(order, [("typing", "wamid.ABC"), ("worked", None)])
+
+
+class PhoneFormattingTests(unittest.TestCase):
+    """What a message looks like on the phone: presentation, never meaning."""
+
+    def fmt(self, text):
+        from app.services.whatsapp import format_for_whatsapp
+
+        return format_for_whatsapp(text)
+
+    def test_amounts_and_the_dish_just_added_are_bold(self) -> None:
+        self.assertEqual(
+            self.fmt("Added 2 x Corn Fritters to your order."),
+            "Added 2 x *Corn Fritters* to your order.",
+        )
+        self.assertIn("*$261.45*", self.fmt("Your order is placed and comes to $261.45."))
+
+    def test_a_receipt_has_bold_labels_and_a_tick(self) -> None:
+        body = self.fmt(
+            "Payment received, thank you. Your order is confirmed.\n\n"
+            "Total paid: $261.45\nOrder reference: 92f3d325"
+        )
+        self.assertTrue(body.startswith("✅ Payment received"))
+        self.assertIn("*Total paid: $261.45*", body)
+        self.assertIn("*Order reference:* 92f3d325", body)
+
+    def test_dashes_become_bullets_and_a_cart_gets_its_icon(self) -> None:
+        body = self.fmt("Your cart:\n- 1 x Margherita Pizza - $249.00\nSubtotal: $249.00.")
+        self.assertTrue(body.startswith("🛒 Your cart:"))
+        self.assertIn("• 1 x Margherita Pizza - *$249.00*", body)
+        self.assertIn("*Subtotal: $249.00*", body)
+
+    def test_the_pipelines_markdown_stops_arriving_as_asterisks(self) -> None:
+        # Live: "the **Build Your Own Curry** is a crowd-pleaser" reached a
+        # phone with all four asterisks showing.
+        self.assertEqual(self.fmt("the **Build Your Own Curry** is good"), "the *Build Your Own Curry* is good")
+
+    def test_it_is_idempotent(self) -> None:
+        once = self.fmt("Added 1 x Roti Canai to your order. Subtotal: $6.49.")
+        self.assertEqual(self.fmt(once), once)
+
+    def test_a_scheduled_time_is_bold(self) -> None:
+        self.assertIn("placed for *Thu 12:30*", self.fmt("Your order is placed for Thu 12:30 and comes to $14.64."))
+
+    def test_the_link_is_left_exactly_as_it_is(self) -> None:
+        url = "https://x.test/api/p/qYA8AOS-eOHZ"
+        body = self.fmt(f"Pay here:\n{url}")
+        self.assertIn("*Pay here:*\n" + url, body)
+
+    def test_every_message_leaves_through_the_formatter(self) -> None:
+        from unittest.mock import patch
+
+        from app.services import whatsapp as service
+
+        posted = {}
+
+        class Response:
+            status_code = 200
+            text = ""
+
+        with patch.object(service.settings, "whatsapp_access_token", "t"), patch.object(
+            service.settings, "whatsapp_phone_number_id", "1"
+        ), patch.object(service.httpx, "post", lambda url, **kw: posted.update(kw["json"]) or Response()):
+            service.send_text("916353100362", "Added 1 x Roti Canai to your order.")
+        self.assertEqual(posted["text"]["body"], "Added 1 x *Roti Canai* to your order.")

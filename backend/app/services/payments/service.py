@@ -7,6 +7,7 @@ the provider, not the reference.
 
 from __future__ import annotations
 
+import json
 import logging
 from functools import partial
 from typing import Callable
@@ -719,12 +720,25 @@ def _tell_in_chat(order: Order, body: str, *, finished: bool) -> None:
         )
 
 
+def _called(order: Order) -> str:
+    """How to address this customer in a message, including the space.
+
+    Empty when we have no name worth saying, so every line it appears in
+    reads correctly without one.
+    """
+
+    from app.services.ordering_agent.order_draft import first_name
+
+    name = first_name(getattr(order, "contact_name", None))
+    return f" {name}" if name else ""
+
+
 def _confirm_in_chat(order: Order) -> None:
     """The payment landed."""
 
     _tell_in_chat(
         order,
-        "Payment received, thank you. Your order is confirmed and the kitchen "
+        f"Payment received, thank you{_called(order)}. Your order is confirmed and the kitchen "
         f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
         f"Order reference: {str(order.id)[:8]}",
         finished=True,
@@ -760,19 +774,58 @@ def _report_failure_in_chat(db: Session, order: Order, transaction: PaymentTrans
     _tell_in_chat(
         order,
         f"Your payment did not go through{because}. Nothing has been charged and "
-        f"your order is still held.{retry}",
+        f"your order is still held{_called(order)}.{retry}",
         # Not finished: the next thing that happens may well be them paying.
         finished=False,
     )
 
 
 def _report_cancelled_in_chat(order: Order) -> None:
+    """The payment sheet was dismissed, and what they chose is not lost.
+
+    This used to end the conversation — "tell me when you would like to
+    order again" — with the cart emptied at placement and the order
+    cancelled by the webhook. Everything they had chosen was gone, and
+    starting from nothing is how a customer decides not to bother.
+    """
+
+    _offer_the_dishes_back(order)
     _tell_in_chat(
         order,
-        "Your payment was cancelled, so the order has not gone to the kitchen and "
-        "nothing has been charged. Tell me when you would like to order again.",
-        finished=True,
+        f"Your payment was cancelled{_called(order)}, so the order has not gone to the "
+        "kitchen and nothing has been charged.\n\n"
+        "Shall I put those dishes back in your basket?",
+        # Not finished: the answer to that question arrives in this thread.
+        finished=False,
     )
+
+
+def _offer_the_dishes_back(order: Order) -> None:
+    """Hold the question, so "yes" on the next turn means these dishes.
+
+    The conversation's own mechanism — the same standing question the agent
+    uses — reached from here because this is where the news arrives.
+    """
+
+    from app.services.ordering_agent import order_channel, order_draft
+
+    phone = order_channel.phone_for(order.id)
+    if not phone:
+        return
+    try:
+        from app.tasks.whatsapp import session_for
+
+        session_id = session_for(phone)
+        draft = order_draft.load(session_id)
+        draft.awaiting = json.dumps({
+            "question": "Shall I put those dishes back in your basket?",
+            "yes": "restore_cart",
+            "subject": str(order.id),
+            "asks": "Shall I put those dishes back in your basket?",
+        })
+        order_draft.save(session_id, draft)
+    except Exception:  # noqa: BLE001 - an offer that cannot be held is still made
+        logger.warning("Could not hold the basket question for %s", order.id, exc_info=True)
 
 
 def _report_refunded_in_chat(order: Order) -> None:

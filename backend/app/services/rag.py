@@ -7356,6 +7356,50 @@ def _remember_stated_diet(db: Session, user: ChatPrincipal, diet: str | None) ->
         logger.warning("Could not remember a stated diet user_id=%s", user.id, exc_info=True)
 
 
+def _diet_for_session(session_id: uuid.UUID | None, stated: str | None) -> str | None:
+    """What this customer eats, for as long as the conversation lasts.
+
+    A diet stated on a guest channel was remembered nowhere: the account
+    writer skips guests, and every WhatsApp customer is one — so "I am
+    vegetarian" filtered the message that said it and nothing after. It is
+    kept beside the draft, which is the only thing in this design that knows
+    a conversation from a message.
+    """
+
+    if session_id is None:
+        return stated
+    try:
+        from app.services.ordering_agent import order_draft
+
+        draft = order_draft.load(session_id)
+        if stated and draft.diet != stated:
+            draft.diet = stated
+            order_draft.save(session_id, draft)
+        return stated or draft.diet
+    except Exception:  # noqa: BLE001 - a preference must never cost the turn
+        logger.warning("Could not read a stated diet for this conversation", exc_info=True)
+        return stated
+
+
+def _returning_customer(db: Session, phone: str | None, app_client_id: uuid.UUID | None):
+    """The account behind a verified number, if there is one already.
+
+    Never creates: an order provisions, a conversation does not. Never
+    raises — a customer asked their name twice is a worse conversation than
+    a customer whose turn failed.
+    """
+
+    if not phone:
+        return None
+    try:
+        from app.services.ordering_agent.verified_phone import find_customer
+
+        return find_customer(db, phone_number=phone, app_client_id=app_client_id)
+    except Exception:  # noqa: BLE001 - a lookup must not cost the turn
+        logger.warning("Could not look up a returning customer", exc_info=True)
+        return None
+
+
 def _run_ordering_agent(
     db: Session,
     *,
@@ -7422,12 +7466,16 @@ def _run_ordering_agent(
                 user, restaurant_id, restaurant_location_id,
                 # A diet stated on THIS turn wins: the profile write above
                 # is only read on the next one.
-                diet=_canonical_intent_diet(stated_diet)
+                diet=_diet_for_session(session_id, _canonical_intent_diet(stated_diet))
                 or preference_diet_for_cache(db, user, guest_preferences),
                 # The conversation the order draft belongs to.
                 session_id=session_id,
                 verified_phone=verified_phone,
                 app_client_id=app_client_id,
+                # A returning customer, found by the number this channel
+                # verified. Looking them up only at the moment of placing is
+                # why every conversation began by asking their name again.
+                customer=_returning_customer(db, verified_phone, app_client_id),
             ),
             message=message,
             # The browser's cart, which is the only place it exists. `None`
@@ -7508,7 +7556,12 @@ def _run_ordering_agent(
         # grounded in something the customer asked about.
         # The model naming its own answer's subject is the direct signal; the
         # two below are safety nets for a model that omits it.
-        "agent_asks": (outcome.answer_about in {"cart", "order"} and bool(outcome.answer))
+        # "menu" joined these once the agent could read the menu out of the
+        # rows. It only ever does that when the customer asked to SEE dishes,
+        # and the rows carry the names, the prices and the diet — where this
+        # pipeline answered "do you have pizza with extra cheese" with
+        # Coconut Ice Cream, having matched dishes that take extras.
+        "agent_asks": (outcome.answer_about in {"cart", "order", "menu"} and bool(outcome.answer))
         or (retrieval_matched_nothing and bool(outcome.answer))
         or any(
             (isinstance(record.result, dict) and record.result.get("outcome") in asking)
@@ -7577,6 +7630,52 @@ def _safe_suggestion_for_cart(
             user_id,
             session_id,
         )
+        return None
+
+
+def _greeting_with_name(reply: str, name: str | None) -> str:
+    """The greeting we were going to send, with their name in it.
+
+    Applied AFTER the response cache is read and written: that cache is
+    keyed on the greeting alone, shared by every customer who sends one, so
+    a name stored in it would be said to the next person who said hello.
+
+    The opener is ours and ends in a wave, so the name goes where a person
+    would put it. A reply of any other shape is left exactly as it is.
+    """
+
+    if not name or "\U0001f44b" not in reply:
+        return reply
+    opener, rest = reply.split("\U0001f44b", 1)
+    opener = opener.rstrip().rstrip(",")
+    if not opener:
+        return reply
+    return f"{opener}, {name} \U0001f44b{rest}"
+
+
+def _customer_first_name(
+    db: Session,
+    user: ChatPrincipal,
+    *,
+    verified_phone: str | None,
+    app_client_id: uuid.UUID | None,
+) -> str | None:
+    """What to call this customer, or None to call them nothing.
+
+    Their account, whether they are signed in or known by the number the
+    channel verified. Never raises and never guesses: being called by the
+    wrong name is worse than being called by none.
+    """
+
+    from app.services.ordering_agent.order_draft import first_name
+
+    try:
+        if not is_guest(user):
+            return first_name(getattr(user, "full_name", None))
+        account = _returning_customer(db, verified_phone, app_client_id)
+        return first_name(getattr(account, "full_name", None)) if account else None
+    except Exception:  # noqa: BLE001 - a courtesy is never worth a failed turn
+        logger.warning("Could not work out what to call a customer", exc_info=True)
         return None
 
 
@@ -7673,6 +7772,13 @@ def handle_chat_message(
             prepared.retrieval_source = "greeting_cache"
             logger.info("RAG greeting response generated key=%s", greeting_cache_key)
 
+        # After the cache, so the stored greeting stays impersonal.
+        reply = _greeting_with_name(
+            reply,
+            _customer_first_name(
+                db, user, verified_phone=verified_phone, app_client_id=app_client_id
+            ),
+        )
         _persist_chat_exchange(
             db,
             user=user,
@@ -7775,6 +7881,12 @@ def handle_chat_message(
         turn_id=str(uuid.uuid4()) if settings.enable_ordering_agent else None,
         recent_history=None,
         guest_preferences=guest_preferences,
+        # What they said they eat. The streaming route reads this from the
+        # prepared turn; this one is reached before preparation, so it is
+        # read from the message the same way.
+        stated_diet=durable_traits_from_message(
+            message, _fallback_extract_intent(message, SessionConversationState())
+        ).get("diet"),
         session_id=session_id,
         verified_phone=verified_phone,
         app_client_id=app_client_id,

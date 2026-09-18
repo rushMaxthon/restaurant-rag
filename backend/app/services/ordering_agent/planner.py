@@ -632,6 +632,12 @@ def read_order_intent(
     generate: Generate | None = None,
     now_local: str | None = None,
     offered: str | None = None,
+    choice_question: str | None = None,
+    choice_options: Sequence[str] = (),
+    confirming: str | None = None,
+    asked: str | None = None,
+    for_day: str | None = None,
+    categories: Sequence[str] = (),
 ) -> dict[str, Any]:
     """The three things a message can want from an order, read in one pass.
 
@@ -652,7 +658,12 @@ def read_order_intent(
     agent started.
     """
 
-    empty: dict[str, Any] = {"add": None, "details": {}, "checkout": False, "when": None}
+    empty: dict[str, Any] = {
+        "add": None, "details": {}, "checkout": False, "when": None,
+        "chose": None, "confirms": None, "browse": None, "asks_hours": False,
+        "category": None, "wants_to_add": False, "cancel_order": False,
+        "pay_now": False,
+    }
     if not message.strip():
         return empty
     fields = ", ".join(f'"{name}"' for name in _DETAIL_QUESTIONS)
@@ -666,17 +677,88 @@ def read_order_intent(
             f"The branch has offered to make the order for {offered}. If they accept "
             '(yes, ok, that works, fine) then "when" is exactly that time.\n'
         )
+    if confirming:
+        still += (
+            f"These details were just read back to them: {confirming}. If this "
+            'message accepts them (yes, correct, that is right, go ahead) then '
+            '"confirms" is true. If it rejects them (no, wrong, change it) then '
+            '"confirms" is false. New details they type belong in "details" as '
+            "usual, and then \"confirms\" is null.\n"
+        )
+    if for_day:
+        # They have been asked which time on a particular day, so a bare
+        # time in this message belongs to that day. Live: asked "what time
+        # would you like it?" about Friday, "3 PM" came back attached to
+        # nothing and the turn answered about today.
+        still += (
+            f"They are choosing a time on {for_day}. A time in this message "
+            '("3 PM", "at 7", "half seven", "around eight") is on THAT day: '
+            f'"when" is "{for_day} HH:MM".\n'
+        )
+    if asked:
+        # The question in our own words, so the model reads their reply
+        # against what was actually put to them. It was being smuggled into
+        # the details slot above, and "nothing else" came back as agreement.
+        still += (
+            f"You have just asked them: {asked!r}\n"
+            'If this message agrees to that — "yes", "sure", "go ahead", "please '
+            'do", "haan", "kar do" — then "confirms" is true. If it declines — '
+            '"no", "not yet", "nothing else", "that is all", "nahi" — then '
+            '"confirms" is false. If it is about something else entirely, '
+            '"confirms" is null and the other fields say what the message wants.\n'
+            # Measured: "no wait" and "hold on" were read as neither, and a
+            # customer pausing a payment fell through to a reply pipeline that
+            # asked whether they were ready to check out.
+            'Pausing or hesitating is declining for now, not saying nothing: '
+            '"no wait", "hold on", "one sec", "not now", "actually no" all '
+            'make "confirms" false.\n'
+        )
+    if categories:
+        # The branch's own sections, so a customer's word for a kind of food
+        # is matched by meaning rather than by substring. "Some drink" is
+        # Beverages; no amount of string matching gets there.
+        still += (
+            f"This branch's menu sections are: {', '.join(categories)}. If they "
+            "are asking to see a kind of food that is one of these, however they "
+            'say it, put that section in "category", copied exactly. A customer '
+            'who names a particular dish ("I like Thai Iced Tea") is not asking '
+            'for a section: "category" is null and the dish is what they want.\n'
+        )
+    if choice_question and choice_options:
+        listed = "; ".join(choice_options)
+        still += (
+            f"They were just asked: {choice_question} The options are: {listed}. "
+            'If this message answers that question — however loosely ("large", "the '
+            'big one", "medium please", "mango and banana") — put every matching '
+            'option in "chose" as a list, each copied exactly from that list. If it '
+            'does not answer it, "chose" is null.\n'
+        )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
         "answer with one JSON object and nothing else.\n\n"
         "{\n"
-        '  "add": {"dish": "the dish they are asking for, exactly as written, or null", '
-        '"quantity": 1},\n'
+        '  "add": [{"dish": "a dish they are asking for, exactly as written", '
+        '"quantity": 1}]   // one entry per dish, [] if they are asking for none\n'
         f'  "details": {{{fields}}}   // each one as stated, or null\n'
         '  "checkout": true if they are asking to place the order, check out or pay; '
         "else false\n"
-        '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, '
-        'the word "opening" if they mean whenever the branch next opens, else null\n'
+        '  "browse": what they are asking to SEE on the menu ("pizza", "desserts", '
+        '"the menu"), else null\n'
+        '  "category": the menu section they mean, copied exactly from the list '
+        "below, else null\n"
+        '  "wants_to_add": true if they want to order something MORE but have not '
+        "said what, else false\n"
+        '  "cancel_order": true if they want to call off an order they have already placed, else false\n'
+        '  "pay_now": true if they are asking to pay, or for the payment link again, else false\n'
+        '  "asks_hours": true if they are asking WHEN — when you open, when the '
+        "order would arrive, what times are possible — else false\n"
+        '  "chose": the options they picked from the list below, copied exactly, '
+        "as a list — several if they named several, else null\n"
+        '  "confirms": true if they accept the details read back to them, false '
+        "if they reject them, null if this message is about neither\n"
+        '  "when": "YYYY-MM-DD HH:MM" if they say when they want the order, just '
+        '"YYYY-MM-DD" if they name a DAY without a clock time, the word "opening" '
+        "if they mean whenever the branch next opens, else null\n"
         "}\n\n"
         "Rules:\n"
         "- Only what this message actually says. Never invent a dish, a name, an "
@@ -684,6 +766,30 @@ def read_order_intent(
         '- "add" is for asking for food ("add X", "I want X", "get me X", "X please"). '
         'A question about a dish ("what is X", "how much is X", "do you have X") is '
         "not an add.\n"
+        '- "browse" is for being shown things: "do you have pizza", "show me the '
+        'menu", "what desserts are there", "I am asking for pizza". Put the thing '
+        "they want to see, in their own words. It is null when they are asking for "
+        "one named dish to be added.\n"
+        # Measured: "I want to add more item in my cart" matched nothing at
+        # all, so the turn had nothing to do and read the cart back — the
+        # same cart, twice in a row.
+        '- "cancel_order" is dropping an order already placed: "cancel my order", '
+        '"forget it", "I do not want it any more". Removing one dish from a cart '
+        "is not this.\n"
+        '- "pay_now" is asking to pay or for the link again: "send the link", '
+        '"how do I pay", "I want to pay now", "payment link".\n'
+        '- "wants_to_add" is wanting more without saying what: "I want to add '
+        'more items", "can I add something else", "add one more thing". If they '
+        'name a dish it belongs in "add" and "wants_to_add" is false.\n'
+        # Measured: "Please add four cheese pizza in my cart" was read as four
+        # of a dish called "cheese pizza", and four Cheese Burst Pizzas went
+        # into a cart — $1396 of the wrong thing. A number can belong to the
+        # name.
+        '- "dish" is copied exactly as the customer wrote it, including a '
+        "number that is part of the name (Four Cheese Pizza, Two Egg Omelette, "
+        "Seven Spice Chicken). Only treat a leading number as a quantity when "
+        "what follows still names a dish by itself — \"2 corn fritters\" is two "
+        "of Corn Fritters; \"four cheese pizza\" is one Four Cheese Pizza.\n"
         '- "fulfillment_type" is "DELIVERY" or "PICKUP" only if they say which.\n'
         # Measured: "chalo order kar do", "book it", "done" and "confirm my
         # order" all read as false while checkout was described only as
@@ -697,9 +803,22 @@ def read_order_intent(
         "do, order kar do, ho gaya, bas itna hi).\n"
         '- "checkout" is false while they are still choosing, and false for a '
         "question.\n"
-        '- "when" is only what they said about timing. A bare time ("at 11", '
+        '- "when" is only a time they CHOSE for the order. A bare time ("at 11", '
         '"11:30") is today if still ahead, otherwise tomorrow. "Tomorrow at one" '
         "is tomorrow 13:00. Nothing about timing means null.\n"
+        # Measured: "Sorry! I need thos order tomorrow" came back as no time at
+        # all plus a question about opening hours, and was answered with
+        # today's.
+        '- A DAY with no clock time is still a time they chose: "tomorrow", '
+        '"18th Sep", "on Friday", "next Monday" are the date alone, '
+        '"YYYY-MM-DD", with nothing after it. Never invent a clock time they '
+        "did not say.\n"
+        # Measured: "I'd like to know what time I'll receive my order" was
+        # read as choosing a time, and answered "that time will not work".
+        '- A QUESTION about time is not a time. "When will it arrive", "what '
+        'time do you open", "suggest another time" set "asks_hours" true and '
+        'leave "when" null. Naming a day or a time is not a question: '
+        '"asks_hours" is false whenever "when" is filled in.\n'
         "- Anything not stated is null.\n"
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"
@@ -714,16 +833,27 @@ def read_order_intent(
     if not isinstance(parsed, dict):
         return empty
 
-    add = None
+    # A list, because one English sentence orders more than one thing:
+    # "add 2 corn fritters and a thai iced tea" added the fritters and
+    # dropped the drink while this had room for a single dish.
     asked = parsed.get("add")
     if isinstance(asked, dict):
-        dish = asked.get("dish")
-        if isinstance(dish, str) and dish.strip() and dish.strip().lower() not in {"null", "none"}:
-            try:
-                quantity = int(asked.get("quantity") or 1)
-            except (TypeError, ValueError):
-                quantity = 1
-            add = (dish.strip(), max(1, min(quantity, 20)))
+        asked = [asked]
+    adds: list[tuple[str, int]] = []
+    for one in asked or []:
+        if not isinstance(one, dict):
+            continue
+        dish = one.get("dish")
+        if not isinstance(dish, str) or not dish.strip():
+            continue
+        if dish.strip().lower() in {"null", "none"}:
+            continue
+        try:
+            quantity = int(one.get("quantity") or 1)
+        except (TypeError, ValueError):
+            quantity = 1
+        adds.append((dish.strip(), max(1, min(quantity, 20))))
+    add = adds or None
 
     details: dict[str, str] = {}
     given = parsed.get("details")
@@ -740,11 +870,52 @@ def read_order_intent(
         when = when.strip()
         when = "opening" if when.lower() == "opening" else when
 
+    asks_hours = parsed.get("asks_hours") is True
+    wants_to_add = parsed.get("wants_to_add") is True
+    cancel_order = parsed.get("cancel_order") is True
+    pay_now = parsed.get("pay_now") is True
+
+    category = parsed.get("category")
+    if not isinstance(category, str) or category.strip().lower() in {"null", "none", ""}:
+        category = None
+    elif categories:
+        # Only ever one of the branch's own sections. A model that answers with
+        # a section this branch does not have has answered with nothing.
+        category = next(
+            (c for c in categories if c.casefold() == category.strip().casefold()), None
+        )
+
+    browse = parsed.get("browse")
+    if not isinstance(browse, str) or not browse.strip() or browse.strip().lower() in {"null", "none"}:
+        browse = None
+
+    # A list, because a group can want three and a customer can name three.
+    raw_chose = parsed.get("chose")
+    if isinstance(raw_chose, str):
+        raw_chose = [raw_chose]
+    chose = [
+        c.strip()
+        for c in (raw_chose or [])
+        if isinstance(c, str) and c.strip() and c.strip().lower() not in {"null", "none"}
+    ] or None
+
+    confirms = parsed.get("confirms")
+    if not isinstance(confirms, bool):
+        confirms = None
+
     return {
         "add": add,
         "details": details,
         "checkout": parsed.get("checkout") is True,
         "when": when,
+        "chose": chose,
+        "confirms": confirms,
+        "browse": browse.strip() if browse else None,
+        "category": category,
+        "asks_hours": asks_hours,
+        "wants_to_add": wants_to_add,
+        "cancel_order": cancel_order,
+        "pay_now": pay_now,
     }
 
 

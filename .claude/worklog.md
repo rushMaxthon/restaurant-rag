@@ -17,6 +17,201 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-17 (7) — The order waiting to be paid (commit 580eb17)
+
+**Done:** new `app/services/ordering_agent/open_orders.py` — `waiting_order`,
+`lines_of`, `can_move`, `move_to`, `abandon`, `payment_link_for`. Placing a
+card order empties the cart and clears the draft, so between the link and the
+payment the order was the only record of what somebody wanted and nothing in
+the conversation could reach it.
+
+- **Move:** an unpaid order can be rescheduled; `schedule_slot_is_available`
+  decides, and `can_move` refuses once anything is charged.
+- **Pay:** `pay_now` in the reading resends the same Checkout session.
+- **Drop:** `PAYMENT_ABANDONED` (the reason the enum already has), actor
+  CUSTOMER, reconciled with the provider first exactly as the reaper does —
+  `abandon` returns False if the money actually landed, and the turn says so.
+- **Never on a guess:** cancelling is always a question, a message naming a
+  dish never reaches it ("remove the corn fritters" read as a cancellation),
+  and the question is asked the way round they raised it (`drop_order` vs
+  `keep_order`) so the natural yes does not do the opposite.
+- **Nothing lost:** a cancelled order's dishes are offered back and re-added
+  through `_run_add`, re-resolved against the live menu.
+- A dismissed Stripe payment offers the same instead of ending the thread;
+  `_offer_the_dishes_back` holds the standing question on the chat draft.
+- A turn with nothing else to do mentions an unpaid order, twice at most
+  (`OrderDraft.waiting_asks`).
+
+**Two real bugs found while testing:** `loop.py` never imported `uuid` (with
+`from __future__ import annotations` every `uuid.UUID` in a signature is a
+string, so nothing had needed it at runtime) — the NameError was swallowed by
+the rag fail-open seam and showed up as reply-pipeline prose. And `_run_add`
+was refusing the restored lines because the add guard only accepts ids this
+turn has seen; `guards.grow_seen_ids(seen, args)` first.
+
+**Verified:** suite 1655 OK. Live end to end: place -> "Sorry! I need this
+order tomorrow at 7 pm" -> moved, link reissued; "send me the payment link
+again"; "cancel that order" -> "Shall I cancel it?" -> yes -> cancelled ->
+"Shall I put those dishes back?" -> yes -> basket restored and readable.
+
+## 2026-09-17 (6) — Ordering for a day that is not today (commit cc2fe86)
+
+**Done:** four faults in one screenshot.
+- "I need this order tomorrow" had nowhere to go: the reading had no shape
+  for a day without a clock time, so it returned `when=None` plus
+  `asks_hours=True` and was answered with TODAY's hours. `when` now accepts
+  a bare `"YYYY-MM-DD"`, and `asks_hours` is false whenever `when` is filled.
+- `loop._take_time` treats a 10-character `when` as a day that still needs a
+  time: it records `needs_a_time` with that day's own hours and holds the day
+  on the standing question (`yes="time_on_day"`, subject=the ISO date). The
+  loop passes it to `read_order_intent(for_day=...)`, so the "3 PM" that
+  comes back lands on Friday rather than on nothing.
+- `describe_time_settled` (new, in both answer chains) says a time that was
+  kept and asks about a day that still needs one. Previously a kept time was
+  answered with silence, and the reply pipeline filled it with two answers
+  that contradicted each other ("yes at 3 pm" then "not at 3 pm").
+- A refused time offers `next_available_slot_start(reference_dt=max(chosen,
+  now))` — the refusal for the 18th had offered Thu 15:00, the day before.
+- `restaurant_locations.describe_hours` names a future day ("Delivery on
+  Friday") instead of "today", and omits "we are open now" for another day.
+- `_take_time` defaults to DELIVERY when nobody has said, like everywhere
+  else that guesses; it had said "Pickup" to a customer who wanted delivery.
+
+**Verified:** suite 1642 OK. Live: "18th Sep" -> asks the time with Friday's
+hours -> "3 PM" -> "Right, I have that down for Fri 15:00" -> details ->
+read-back showing "For Fri 15:00" -> placed for Fri 15:00 with the link.
+Also "tomorrow at 7 pm" in one sentence, a closed future time (offers Sat
+10:30, never earlier), and a real hours question still answered as one.
+
+**Not done:** changing the time of an order ALREADY placed. The screenshot
+began with that ("Sorry! I need thos order tomorrow" after the payment link),
+and there is no path for it — the cart is emptied at placement. Worth adding.
+
+## 2026-09-17 (5) — Suggesting when they want more (commit fcc09ca)
+
+**Done:** "I want to add more item in my cart" was answered with the cart
+they had just been shown. The reading matched nothing in that sentence — no
+dish, no section — so the turn had nothing to do and fell back to
+`cart_readback`, the last resort in `_settled`.
+
+`read_order_intent` now reports `wants_to_add` (wanting more without saying
+what), and `tools.dishes_to_suggest` answers it from rows: bestsellers then
+popularity, excluding what is already in the cart and the sections it
+covers, **at most one item per section** — ordered by popularity alone the
+three suggestions came back as three main courses to a customer already
+holding a pizza. `loop._suggest_more` says them and holds an answerable
+question ("Tell me the name and I will add it"), so the next message lands
+on the add path.
+
+**Verified:** suite 1634 OK. Live: pizza list -> "I love Green Curry Pizza"
+-> yes -> cart -> "I want to add more item in my cart" -> three suggestions
+from three different sections -> "thai iced tea" -> offered -> yes -> added.
+Backend + worker restarted on fcc09ca; sessions cleared.
+
+## 2026-09-17 (4) — Calling a customer by their name (commit 6bcb94b)
+
+**Done:** the name is said at three moments, not on every line: the
+greeting, the order read back before money is spent, and the payment
+landing or failing. `order_draft.first_name` decides what is worth saying —
+first word, capitalised only if typed all lower case, so "McDonald" and
+"d'Souza" survive; an email in the name box, a single initial or something
+absurdly long returns None and the sentence reads correctly without a name.
+`payments.service._called` does the same for an order row.
+
+**The trap:** the greeting response cache is keyed on the greeting ALONE
+(`_greeting_response_cache_key`) and shared by every customer who sends one.
+A name written into that text would be said to the next person who said
+hello. So `rag._greeting_with_name` is applied after the cache is read and
+written, and the stored copy stays impersonal. `_customer_first_name` reads
+the signed-in account or, for a guest, the account behind the verified
+phone.
+
+**Verified:** suite 1629 OK. Live: "hi" -> "Good afternoon, Vishal 👋 ...",
+then add / deliver / confirm details / read-back ("Here is your order,
+Vishal:") / placed with the link, total matching. Payment messages checked
+directly, with and without a name. Backend + worker restarted; sessions
+cleared.
+
+## 2026-09-17 (3) — The order is read back before it goes (commit 87d21ca)
+
+**Done:** a real restaurant repeats the order before charging for it. The
+last thing before an order exists is now the order itself — every line, the
+total, where it is going and when, and one question ("Shall I place it?").
+`loop.describe_order_to_confirm` builds it; the total comes from
+`price_quote` -> `validate_order_draft`, the same arithmetic checkout runs,
+with the fee and the tax on their own lines. The first cut read back $16.98
+over an order placed for $20.62.
+
+Every path that can place is gated on `_order_stood_behind()`: the
+`if records:` path, the top-of-round place, the answer path and the round
+cap. `OrderDraft` carries `order_confirmed` and `place_asks` (asked at most
+twice — the order is created unpaid and the link is what spends money).
+A cart that changes after they agreed clears the flag and is read back again.
+
+Also: `read_order_intent` returns `add` as a LIST, so one English sentence
+can order several dishes; pausing ("no wait", "hold on", "one sec") is a
+decline rather than silence; `_hold(..., asks=...)` gives the model a short
+question instead of the read-back, which it was mining for the customer's
+own address (a "yes" came back carrying a delivery address, was read as a
+new instruction, and the order was read back a second time); agreeing to
+details now gets on with the order instead of falling to the reply pipeline;
+and details typed for a pickup are not read back again.
+
+**Verified:** suite 1620 OK. Live on the test number: delivery, pickup,
+returning customer, pausing and resuming, Hinglish agreement, declining then
+adding more — every one ending in a placed order whose total matches the one
+read back. Backend + worker restarted on 87d21ca; sessions cleared.
+
+**Open:** ngrok webhook still in place for Mr Tailor; qwen3 turn times 3-8s.
+
+## 2026-09-17 (2) — "Yes" means the question we just asked (commit e54972d)
+
+**Done:** the agent ended every turn with a question and remembered none
+of them, so a bare "Yes" fell through to the reply pipeline. `OrderDraft`
+now carries `awaiting` (JSON: the question in our own words, what agreeing
+does, and the dish in question). `loop._hold` writes it as each read-back
+asks; `_answer_standing` acts on the reply. `read_order_intent` gained an
+`asked` slot that states the question verbatim, so "haan bhai kar do",
+"nothing else" and "yes and add a thai iced tea too" are all read correctly
+— no word list in code.
+
+Also: `read_order_intent` gets the branch's real menu sections
+(`tools.menu_categories`) and returns `category`, so "some drink" finds
+Beverages; a named dish beats a guessed section; `dishes_to_show` stems
+plurals and matches a named section exactly; one matching dish is offered
+("Thai Iced Tea is $4.14. Shall I add one?") instead of listed; `describe_applied`
+asks one question ("Anything else?") not two; checking out an empty cart
+says so. The plain-sentence fast path yields to an open question for
+"checkout" only — "go ahead"/"kar do" are how people agree — while plain
+cart and menu reads keep it.
+
+**Verified:** suite 1610 OK. The screenshot conversation replayed live end
+to end: drinks, naming a dish, "Yes", cart, "haan bhai order kar do",
+details, minimum-order guidance. Backend + worker restarted; test sessions
+cleared.
+
+**Open:** no explicit read-back of items and total before placing (the user
+has asked about adding one); ngrok webhook still in place for Mr Tailor.
+
+## 2026-09-17 — WhatsApp messages dressed for the phone (commit ec9a472)
+
+**Done:** `format_for_whatsapp` in `backend/app/services/whatsapp.py`, applied
+inside `send_text` so every outgoing message (agent, payments notifications,
+reply pipeline prose) gets it. Bold on amounts, the dish just added, the time a
+scheduled order is for, and receipt labels; `- ` lists become `• `; ✅ / ❌ on a
+payment that landed / failed; 🛒 on the cart. The pipeline's `**markdown**`
+had been reaching phones as literal asterisks — it now becomes WhatsApp bold.
+`describe_cart` (loop.py) reads one dish per line on every channel with
+"Subtotal: $x" (was one run-on sentence). Idempotent; links untouched.
+
+**Verified:** suite 1597 OK; three real turns sent to the test number and the
+exact delivered bodies printed (menu list, add, cart) — all formatted.
+Backend + worker restarted on ec9a472; test sessions cleared.
+
+**Open:** qwen3 speed (menu ~11s, add ~8s, cart 1.7s); seed prices odd; Meta
+webhook still points at the ngrok tunnel — restore
+`https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when done.
+
 ## YYYY-MM-DD — short title
 
 **Goal:** what was asked.

@@ -45,6 +45,38 @@ class EmailAlreadyUsed(Exception):
     """
 
 
+def find_customer(
+    db: Session,
+    *,
+    phone_number: str,
+    app_client_id: uuid.UUID | None,
+) -> User | None:
+    """The customer this number already belongs to, or None. Creates nothing.
+
+    `customer_for_verified_phone` provisions, which is right at the moment
+    an order is placed and wrong at the start of a conversation: asking a
+    returning customer for their name because we only look them up at the
+    end is how every conversation started as a stranger.
+
+    Both spellings of the number are accepted, for the same reason they are
+    there — a wa_id arrives without its plus, and accounts provisioned
+    before that was restored hold the plus-less form.
+    """
+
+    normalized = normalize_phone_number(phone_number)
+    if not normalized:
+        return None
+    return db.scalars(
+        select(User)
+        .where(
+            User.phone_number.in_({normalized, normalized.lstrip("+")}),
+            User.role == UserRole.CUSTOMER,
+            User.app_client_id == app_client_id,
+        )
+        .order_by(User.phone_number.desc())
+    ).first()
+
+
 def customer_for_verified_phone(
     db: Session,
     *,
@@ -131,4 +163,9 @@ def customer_for_verified_phone(
     return user
 
 
-__all__ = ["EmailAlreadyUsed", "PhoneNotVerified", "customer_for_verified_phone"]
+__all__ = [
+    "EmailAlreadyUsed",
+    "PhoneNotVerified",
+    "customer_for_verified_phone",
+    "find_customer",
+]
