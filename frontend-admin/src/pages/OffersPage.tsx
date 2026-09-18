@@ -21,6 +21,7 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { StatusPill } from "../components/StatusPill";
 import { pluralize } from "../services/format";
 import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { useScopedRestaurantFilter } from "../hooks/useScopedFilter";
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -301,7 +302,12 @@ export function OffersPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<"ALL" | PersonalizedOfferState>("ALL");
-  const [restaurantFilter, setRestaurantFilter] = useState<"ALL" | string>("ALL");
+  // Follows the shell's tenant switcher, so picking a restaurant up there
+  // carries into this list instead of being asked for twice. Still a filter
+  // rather than a lock: "All restaurants" is a real answer here, and changing
+  // it below leaves the shell alone — the more specific control wins.
+  const [restaurantFilter, setRestaurantFilter] = useScopedRestaurantFilter("ALL");
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [isModalOpen, setIsModalOpen] = useState(false);

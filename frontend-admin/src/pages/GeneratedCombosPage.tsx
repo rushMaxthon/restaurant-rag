@@ -10,6 +10,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
+import { useScopedRestaurantFilter } from '../hooks/useScopedFilter';
 import { Modal } from '../components/Modal';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
@@ -128,7 +130,12 @@ function GeneratedCombosWorkspace({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>('ALL');
-  const [restaurantFilter, setRestaurantFilter] = useState<string>('ALL');
+  // Follows the shell's tenant switcher, so picking a restaurant up there
+  // carries into this list instead of being asked for twice. Still a filter
+  // rather than a lock: "All restaurants" is a real answer here, and changing
+  // it below leaves the shell alone — the more specific control wins.
+  const [restaurantFilter, setRestaurantFilter] = useScopedRestaurantFilter('ALL');
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [rebuilding, setRebuilding] = useState(false);

@@ -1,5 +1,6 @@
 import { ChevronLeft, LogOut } from "lucide-react";
 import { useAdminStore } from "../hooks/useAdminStore";
+import { TenantSwitcher } from "./TenantSwitcher";
 import { activeNavPathFor, navFor } from "../routes";
 import type { UserRole } from "../types/app";
 
@@ -103,6 +104,11 @@ export function Sidebar({
             <ChevronLeft size={18} strokeWidth={2.2} />
           </button>
         </div>
+
+        {/* Between the brand and the navigation, because it scopes everything
+            below it. An owner gets nothing here — the component returns null
+            rather than this file knowing the rule twice. */}
+        <TenantSwitcher onPicked={onCloseMobile} />
 
         <div className="admin-sidebar__sections">
           {visibleSections.map((section) => (

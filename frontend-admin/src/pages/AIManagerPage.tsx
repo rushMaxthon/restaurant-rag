@@ -22,7 +22,6 @@ import type {
   Restaurant,
 } from "../types/app";
 
-const RESTAURANT_STORAGE_KEY = "ai-manager:restaurant";
 
 interface AIManagerSnapshot {
   briefing: OwnerBriefing | null;
@@ -38,7 +37,13 @@ function buildAIManagerKey(scope: string, scopeId: string | null, periodDays: nu
 }
 
 export function AIManagerPage() {
-  const { token: sessionToken, role, pushToast } = useAdminStore();
+  const {
+    token: sessionToken,
+    role,
+    pushToast,
+    activeRestaurantId,
+    setActiveRestaurantId,
+  } = useAdminStore();
   const token = sessionToken ?? "";
   const isAdmin = role === "ADMIN";
   const scope = tokenScope(token);
@@ -49,12 +54,16 @@ export function AIManagerPage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>(
     () => getPageSnapshot<Restaurant[]>(adminRestaurantsKey) ?? [],
   );
-  // Remembered across reloads: an admin working through one restaurant's
-  // numbers had to re-pick it after every refresh, and the page silently
-  // reverted to whichever restaurant happened to sort first.
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>(
-    () => window.localStorage.getItem(RESTAURANT_STORAGE_KEY) ?? "",
-  );
+  // Which restaurant this screen is about now comes from the shell's tenant
+  // switcher rather than from a `<select>` and a localStorage key of this
+  // page's own. It was already remembered across reloads for the reason
+  // below; what changes is that Reports, Offers and Generated Combos now
+  // remember the same thing, so moving between them keeps the restaurant.
+  //
+  // (The original reason, still true: an admin working through one
+  // restaurant's numbers had to re-pick it after every refresh, and the page
+  // silently reverted to whichever restaurant happened to sort first.)
+  const selectedRestaurantId = activeRestaurantId ?? "";
 
   // One period for the whole screen. Every panel used to pick its own — the
   // briefing described 60 days, the KPI tiles followed it, offers showed 7, and
@@ -65,6 +74,23 @@ export function AIManagerPage() {
   const [periodDays, setPeriodDays] = useState<number>(
     () => readWorkspaceSettings().defaultPeriodDays,
   );
+
+  // A remembered restaurant this admin can no longer see must not stick.
+  // Adjusted during render rather than in an effect: the alternative renders
+  // once against a restaurant that is gone, which means one frame of somebody
+  // else's numbers before it corrects itself.
+  //
+  // Unset stays unset. This writes the whole panel's working scope now, and
+  // opening the AI Manager should not silently repoint Reports, Offers and
+  // Generated Combos at whichever restaurant happens to sort first.
+  if (
+    isAdmin &&
+    activeRestaurantId &&
+    restaurants.length > 0 &&
+    !restaurants.some((row) => row.id === activeRestaurantId)
+  ) {
+    setActiveRestaurantId(null);
+  }
 
   const scopeId = useMemo(
     () => (isAdmin ? selectedRestaurantId || null : null),
@@ -90,13 +116,6 @@ export function AIManagerPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAdmin || !selectedRestaurantId) {
-      return;
-    }
-    window.localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId);
-  }, [isAdmin, selectedRestaurantId]);
-
-  useEffect(() => {
     if (!isAdmin || !token) {
       return;
     }
@@ -104,10 +123,6 @@ export function AIManagerPage() {
     const cachedRestaurants = getPageSnapshot<Restaurant[]>(adminRestaurantsKey);
     if (cachedRestaurants) {
       setRestaurants(cachedRestaurants);
-      setSelectedRestaurantId((current) => {
-        const remembered = cachedRestaurants.some((row) => row.id === current) ? current : "";
-        return remembered || cachedRestaurants[0]?.id || "";
-      });
       return;
     }
 
@@ -116,11 +131,6 @@ export function AIManagerPage() {
       .then((rows) => {
         setRestaurants(rows);
         setPageSnapshot(adminRestaurantsKey, rows);
-        setSelectedRestaurantId((current) => {
-          // A remembered id the admin can no longer see must not stick.
-          const remembered = rows.some((row) => row.id === current) ? current : "";
-          return remembered || rows[0]?.id || "";
-        });
       })
       .catch(() => {
         // Non-fatal: the page still works once a restaurant is chosen.
@@ -263,10 +273,10 @@ export function AIManagerPage() {
           <select
             aria-label="Restaurant"
             className="ai-bar__scope"
-            onChange={(event) => setSelectedRestaurantId(event.target.value)}
+            onChange={(event) => setActiveRestaurantId(event.target.value || null)}
             value={selectedRestaurantId}
           >
-            <option value="">Select a restaurant…</option>
+            <option value="">All restaurants — pick one to analyse</option>
             {restaurants.map((restaurant) => (
               <option key={restaurant.id} value={restaurant.id}>
                 {restaurant.name}

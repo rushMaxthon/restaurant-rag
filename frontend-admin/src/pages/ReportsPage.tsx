@@ -33,6 +33,7 @@ import {
 } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
+import { useScopedRestaurantFilter } from "../hooks/useScopedFilter";
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -268,7 +269,13 @@ export function ReportsPage({
   const [preset, setPreset] = useState<DatePreset>("30d");
   const [dateFrom, setDateFrom] = useState(defaultRange.from);
   const [dateTo, setDateTo] = useState(defaultRange.to);
-  const [restaurantFilter, setRestaurantFilter] = useState<string>(restaurantId ?? "");
+  // An owner is pinned to their own restaurant; an admin follows the shell's
+  // tenant switcher, and `""` means every restaurant — so a report is about
+  // whatever the operator is working on rather than asking a second time.
+  const [restaurantFilter, setRestaurantFilter] = useScopedRestaurantFilter(
+    "",
+    restaurantId,
+  );
   const [cuisineFilter, setCuisineFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
@@ -323,7 +330,7 @@ export function ReportsPage({
         onToast("Filter options unavailable", message, "error");
       }
     },
-    [isAdmin, onToast, restaurantId, restaurantsKey, token],
+    [isAdmin, onToast, restaurantId, restaurantsKey, setRestaurantFilter, token],
   );
 
   const loadReports = useCallback(
@@ -549,7 +556,7 @@ export function ReportsPage({
     setCategoryFilter("");
     setStatusFilter("");
     setRestaurantFilter(isAdmin ? "" : restaurantId ?? "");
-  }, [defaultRange.from, defaultRange.to, isAdmin, restaurantId]);
+  }, [defaultRange.from, defaultRange.to, isAdmin, restaurantId, setRestaurantFilter]);
 
   const exportSnapshot = useCallback(() => {
     if (!reports) {
