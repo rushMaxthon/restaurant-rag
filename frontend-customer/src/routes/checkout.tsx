@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CardPayment } from "@/components/bangkok/card-payment";
+import { RazorpayPayment } from "@/components/bangkok/razorpay-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { orderCode} from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
@@ -260,22 +261,39 @@ function Checkout() {
   // Pinned once per render pass so the day list, the slot list and the
   // validity check cannot disagree about what "now" is.
   const now = new Date();
-  const method = "CARD" as const;
-  // Set once the order and its intent exist; swaps the form for Stripe's
-  // Payment Element. The cart is deliberately still full at this point — a
+  // Set once the order and its intent exist; swaps the form for the gateway's
+  // own payment UI. The cart is deliberately still full at this point — a
   // cancelled payment must leave the basket intact.
   const [pending, setPending] = useState<{
     orderId: string;
     orderNumber: string;
     clientSecret: string;
     publishableKey: string;
+    method: "CARD" | "RAZORPAY";
   } | null>(null);
 
-  // Which methods this deployment can actually take. Card stays unavailable
-  // until a Stripe key is configured, and saying so beats offering a button
-  // that dead-ends.
+  // Which methods THIS RESTAURANT can actually take. Not the deployment's:
+  // one deployment serves every tenant, and a Surat kitchen settling through
+  // its own Razorpay account and a Toronto one on Stripe are both correct at
+  // the same time. A method appears here only when the branch has it switched
+  // on and a gateway is configured that can settle it, so nothing on this
+  // screen is a button that dead-ends.
   const paymentConfig = usePaymentConfig(isAuthenticated);
-  const cardAvailable = Boolean(paymentConfig.data?.stripe_enabled);
+  const supported = paymentConfig.data?.supported_methods ?? [];
+  const gatewayKeys = paymentConfig.data?.gateway_keys ?? {};
+  const cardAvailable = supported.includes("CARD");
+  const razorpayAvailable = supported.includes("RAZORPAY") && Boolean(gatewayKeys["RAZORPAY"]);
+  const payableMethods = [
+    ...(razorpayAvailable ? (["RAZORPAY"] as const) : []),
+    ...(cardAvailable ? (["CARD"] as const) : []),
+  ];
+
+  // Chosen rather than assumed, but only where there is a choice. With one
+  // method available this is invisible; the customer is not asked to pick
+  // from a list of one.
+  const [chosenMethod, setChosenMethod] = useState<"CARD" | "RAZORPAY" | null>(null);
+  const method = chosenMethod ?? payableMethods[0] ?? "CARD";
+  const canPay = payableMethods.length > 0;
   // Three different situations, not two. While the config is in flight, and if
   // the request fails, `stripe_enabled` is falsy too — and the page used to
   // blame the restaurant for both, in red, on every single load.
@@ -400,14 +418,30 @@ function Checkout() {
           clears.
         </p>
         <div className="elevated-panel mt-6 p-5 sm:p-6">
-          <CardPayment
-            publishableKey={pending.publishableKey}
-            clientSecret={pending.clientSecret}
-            amount={total}
-            returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
-            onCancel={abandonPayment}
-            onPaid={s.clearCart}
-          />
+          {pending.method === "RAZORPAY" ? (
+            <RazorpayPayment
+              amount={total}
+              customerEmail={profile.data?.user.email ?? null}
+              customerName={fullName.trim() || profile.data?.user.full_name || null}
+              customerPhone={phone.trim() || profile.data?.user.phone_number || null}
+              keyId={pending.publishableKey}
+              onCancel={abandonPayment}
+              onPaid={s.clearCart}
+              orderId={pending.orderId}
+              orderNumber={pending.orderNumber}
+              razorpayOrderId={pending.clientSecret}
+              restaurantName={s.restaurantName ?? "your order"}
+            />
+          ) : (
+            <CardPayment
+              publishableKey={pending.publishableKey}
+              clientSecret={pending.clientSecret}
+              amount={total}
+              returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
+              onCancel={abandonPayment}
+              onPaid={s.clearCart}
+            />
+          )}
         </div>
       </div>
     );
@@ -550,8 +584,13 @@ function Checkout() {
       setPending({
         orderId: order.id,
         orderNumber: orderCode(order),
+        // For Razorpay this carries the Razorpay ORDER id rather than a
+        // secret: that gateway has no client secret, and the browser needs
+        // the order id to open Checkout. The field name comes from the
+        // provider contract, not from Razorpay.
         clientSecret: intent.client_secret,
         publishableKey: intent.publishable_key,
+        method,
       });
     } catch (err) {
       setError(
@@ -1046,7 +1085,7 @@ function Checkout() {
               <p className="mt-3 text-sm text-muted">Checking payment options…</p>
             )}
 
-            {!paymentConfigPending && !cardAvailable && (
+            {!paymentConfigPending && !canPay && (
               <div
                 className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
                 role="alert"
@@ -1055,14 +1094,44 @@ function Checkout() {
                 <span>
                   {paymentConfigFailed
                     ? "We couldn't check the payment options just now. Check your connection and try again."
-                    : "Card payments aren't switched on for this restaurant yet, so orders can't be placed. Please try again shortly."}
+                    : "This restaurant hasn't switched on a way to pay yet, so orders can't be placed. Please try again shortly."}
                 </span>
+              </div>
+            )}
+
+            {/* Only where there is a choice. One method is not a list to pick
+                from, and rendering it as one asks the customer to make a
+                decision that does not exist. */}
+            {payableMethods.length > 1 && (
+              <div className="mt-4 grid gap-2" role="radiogroup" aria-label="How to pay">
+                {payableMethods.map((option) => (
+                  <button
+                    aria-checked={method === option}
+                    className="pay-option"
+                    data-selected={method === option}
+                    key={option}
+                    onClick={() => setChosenMethod(option)}
+                    role="radio"
+                    type="button"
+                  >
+                    <span className="font-bold">
+                      {option === "RAZORPAY" ? "UPI, cards and wallets" : "Card"}
+                    </span>
+                    <span className="text-sm text-muted">
+                      {option === "RAZORPAY"
+                        ? "Pay with any UPI app, card, netbanking or wallet"
+                        : "Pay by card"}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
 
             <p className="mt-3 flex items-center gap-2 text-sm text-muted">
               <ShieldCheck className="size-4 shrink-0 text-success" />
-              Your card details go straight to Stripe — this app never sees them.
+              {method === "RAZORPAY"
+                ? "Your payment details go straight to Razorpay — this app never sees them."
+                : "Your card details go straight to Stripe — this app never sees them."}
             </p>
           </section>
         </div>

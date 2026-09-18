@@ -364,7 +364,17 @@ export type PaymentConfig = {
   publishable_key: string;
   stripe_enabled: boolean;
   currency: string;
+  /** What this restaurant can actually settle right now. */
   supported_methods: string[];
+  /**
+   * The PUBLIC key of each gateway, by gateway name — Razorpay Checkout
+   * cannot open without its `key_id`, and the browser has no other source
+   * for it.
+   *
+   * Public by design: every one of these is in the page source of the
+   * checkout that uses it. The matching secrets never leave the server.
+   */
+  gateway_keys?: Record<string, string>;
 };
 
 export type PaymentIntent = {
@@ -616,6 +626,27 @@ export const api = {
 
   createPaymentIntent: (orderId: string) =>
     request<PaymentIntent>(`/orders/${orderId}/payment-intent`, { method: "POST", auth: true }),
+
+  /**
+   * Hand back what Razorpay Checkout gave the browser.
+   *
+   * Worth nothing until the server checks it: the signature is an HMAC of the
+   * order and payment ids with the restaurant's own API secret, and without
+   * that check a customer could post a made-up payment id and have their
+   * order marked paid.
+   */
+  confirmRazorpayPayment: (
+    orderId: string,
+    payload: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    },
+  ) =>
+    request<{ status: string; order_id: string }>(
+      `/payments/razorpay/confirm/${orderId}`,
+      { method: "POST", auth: true, body: payload },
+    ),
 
   getPaymentStatus: (orderId: string) =>
     request<PaymentStatus>(`/orders/${orderId}/payment-status`, { auth: true }),

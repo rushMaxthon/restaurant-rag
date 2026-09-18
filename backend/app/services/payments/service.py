@@ -1092,10 +1092,31 @@ def payment_config(
     no single right answer across restaurants that charge in different money.
     """
 
+    # The public key of every gateway this restaurant can settle through.
+    # Razorpay Checkout cannot open without its `key_id`, and the browser has
+    # no other way to obtain it. Nothing secret is in here — each of these is
+    # already in the page source of the checkout that uses it.
+    gateway_keys: dict[str, str] = {}
+    if db is not None and restaurant_id is not None:
+        for method in available_payment_methods(
+            db, restaurant_id=restaurant_id, location=location
+        ):
+            gateway = GATEWAY_FOR_METHOD.get(method)
+            if gateway is None:
+                continue
+            credentials = read_credentials(db, restaurant_id=restaurant_id, gateway=gateway)
+            if credentials is not None and credentials.public_key:
+                gateway_keys[gateway.value] = credentials.public_key
+
     return {
-        "publishable_key": settings.stripe_publishable_key
-        if settings.stripe_is_configured
-        else "",
+        "gateway_keys": gateway_keys,
+        # Stripe's own, still separate: a restaurant with no Stripe account of
+        # its own is settled through the platform's, and that key is not in
+        # `gateway_keys` because it does not belong to the restaurant.
+        "publishable_key": (
+            gateway_keys.get(PaymentGateway.STRIPE.value)
+            or (settings.stripe_publishable_key if settings.stripe_is_configured else "")
+        ),
         "stripe_enabled": settings.stripe_is_configured,
         "currency": currency_for(currency or settings.payment_currency).code,
         # This restaurant's methods, not the deployment's. A caller with no
