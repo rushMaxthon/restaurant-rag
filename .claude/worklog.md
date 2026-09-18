@@ -57,8 +57,28 @@ six seeded restaurants now resolve by host. Live: `bangkok-bowl.localhost` and
 `dragon-wok.localhost` return different restaurants from `/app-config`,
 `nobody.localhost` 404s, bundle id still works, neither gives a 400.
 
-**Next:** customer app SSR host resolution + de-Bangkok rename (step 3 frontend),
-then the admin route table (step 4).
+**Scope note (user, same day):** hosting is out for now — development and
+management only. No DNS, certificates or deploy work. Subdomains already work
+in development because browsers resolve `*.localhost` to 127.0.0.1 unaided.
+
+**Done — admin route table (step 4, commit f4f0dae).** The same decision was
+being made in four places: a 150-line nested ternary in `App.tsx`, a
+`staticAllowed` map, and two `Set`s in `Sidebar.tsx`. They had drifted —
+ADMIN could open `/menu-items` and `/generated-combos` (both pages have
+deliberate admin-wide branches) and the sidebar offered neither. New
+`src/routes.tsx`: one `RouteDef` per address carrying pattern, roles,
+`restaurantOf`, nav entry and render. `navFor(role)` builds the sidebar from
+the routes themselves. Owner scoping was five near-identical id checks, now
+one rule. `App.tsx` 534 -> 144 lines. No new dependencies.
+
+**Verified:** `tsc --noEmit` clean, `npm run build` clean, 129 vitest tests
+(20 new). In the browser as an owner: navigation, the bounce from Dragon
+Wok's URL back to their own restaurant, the sidebar highlight holding on an
+order detail, no console errors.
+
+**Next:** admin shell + tenant switcher + tenants list (step 5), then the
+onboarding wizard. Customer app SSR + de-Bangkok rename (step 3 frontend) is
+lower priority while hosting is out of scope.
 
 ## 2026-09-17 (7) — The order waiting to be paid (commit 580eb17)
 
