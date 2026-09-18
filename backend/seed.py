@@ -1326,6 +1326,56 @@ def ensure_restaurant_app_client(db, *, restaurant: Restaurant) -> tuple[object,
 
 
 
+def ensure_tenant_customer(db, *, restaurant: Restaurant, default_pwd: str) -> tuple[User | None, bool]:
+    """A customer who can actually sign in on this restaurant's storefront.
+
+    Customer identity is per app client — that is the whole point of
+    `docs/per-app-identity.md`, and a partial unique index on
+    `(app_client_id, lower(email))` enforces it. The seeded
+    `customer1@example.com` belongs to the MARKETPLACE client, so it cannot
+    sign in at `dragon-wok.localhost` however correct its password is. Before
+    storefronts resolved by host that never came up: every address served the
+    marketplace, so the marketplace account worked everywhere.
+
+    The address IS the account boundary now, so each tenant needs its own
+    test login or nobody can sign in anywhere to check an order.
+
+    Named for the tenant's app key rather than numbered, so
+    `dragon_wok@example.com` says which storefront it belongs to — there is no
+    other way to tell two accounts with the same shape apart.
+    """
+
+    app_client = get_app_client_for_restaurant(db, restaurant_id=restaurant.id)
+    if app_client is None:
+        return None, False
+
+    email = f"{app_client.key}@example.com"
+    existing = (
+        db.query(User)
+        .filter(User.email == email, User.app_client_id == app_client.id)
+        .first()
+    )
+    if existing is not None:
+        return existing, False
+
+    user = User(
+        id=uuid.uuid4(),
+        email=email,
+        app_client_id=app_client.id,
+        full_name=f"{restaurant.name} Customer",
+        # Distinct per tenant: phone is unique per app client too, and a
+        # shared number would collide the moment two of these seed.
+        phone_number=f"9{abs(hash(app_client.key)) % 1000000000:09d}",
+        hashed_password=default_pwd,
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_verified=True,
+        default_address=f"1 Test Street, {restaurant.city}",
+    )
+    db.add(user)
+    return user, True
+
+
 def ensure_development_host(db, *, restaurant: Restaurant) -> bool:
     """Make bare `localhost` a real tenant address.
 
@@ -2241,6 +2291,16 @@ def run_seed():
         development_restaurant = restaurant_by_slug.get(DEVELOPMENT_HOST_RESTAURANT_SLUG)
         if development_restaurant is not None:
             ensure_development_host(db, restaurant=development_restaurant)
+        db.commit()
+
+        # One signable customer per storefront. The marketplace customers above
+        # cannot sign in on a tenant's own address — see the docstring.
+        created_tenant_customers = 0
+        for restaurant in restaurants:
+            _, tenant_customer_created = ensure_tenant_customer(
+                db, restaurant=restaurant, default_pwd=default_pwd
+            )
+            created_tenant_customers += int(tenant_customer_created)
         db.commit()
 
         print("Creating restaurant locations and branch-wise menu items...")

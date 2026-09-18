@@ -67,6 +67,20 @@ class Restaurant(TimestampMixin, Base):
         default=dict,
         server_default="{}",
     )
+    # The restaurant's own words: page title, meta description, hero copy.
+    # Beside `theme` and owned by the same person, for the same reason — these
+    # were literals in the customer web app, so every tenant's website and
+    # every tenant's search listing described Bangkok Bowl.
+    #
+    # Empty is the normal state. `read_storefront` derives every key from this
+    # restaurant's name, cuisine and city, so a tenant onboarded a minute ago
+    # reads correctly without anybody writing a word.
+    storefront: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
 
     owner: Mapped["User"] = relationship(back_populates="owned_restaurant", foreign_keys=[owner_id])
     # One app client per restaurant is a product rule, not a DB constraint:

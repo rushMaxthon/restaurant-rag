@@ -35,3 +35,12 @@ class AppConfigResponse(BaseModel):
     # nine and a half hours off, and be refused by a server that was right.
     # An IANA name rather than an offset, so DST is the platform's problem.
     business_timezone: str
+    # The restaurant's own words — page title, meta description, hero copy.
+    # Sent here because this is the one call a storefront makes before it
+    # renders anything, and the title has to be right in the FIRST response or
+    # a crawler indexes the wrong business.
+    #
+    # Empty for a MARKETPLACE client, which is not a restaurant and has no
+    # marketing of its own. Every key is always present for one that is, so no
+    # client has to decide what to do about a missing field.
+    storefront: dict[str, str] = Field(default_factory=dict)

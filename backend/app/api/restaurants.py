@@ -31,6 +31,8 @@ from app.schemas.restaurant import (
     LocationFulfillmentSlotResponse,
     LocationFulfillmentSlotUpdate,
     RestaurantDetailResponse,
+    RestaurantStorefrontResponse,
+    RestaurantStorefrontUpdate,
     RestaurantLocationCreate,
     RestaurantLocationGeneralSettingsUpdate,
     RestaurantLocationResponse,
@@ -42,6 +44,14 @@ from app.services.app_clients import (
     build_app_client_for_restaurant,
     get_app_client_for_restaurant,
     upsert_app_client_for_restaurant,
+)
+from app.services.restaurant_storefront import (
+    STOREFRONT_KEYS,
+    STOREFRONT_LIMITS,
+    StorefrontValidationError,
+    default_storefront,
+    read_storefront,
+    resolve_storefront,
 )
 from app.services.restaurant_theme import (
     THEME_PRESETS,
@@ -797,6 +807,74 @@ def get_restaurant_theme(
         preset=stored["preset"],
         primary_color=stored["primary_color"],
         presets=[ThemePresetResponse(**vars(preset)) for preset in THEME_PRESETS],
+    )
+
+
+@router.get("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)
+def get_restaurant_storefront(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantStorefrontResponse:
+    """The words on this restaurant's website, and what they fall back to."""
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    stored = restaurant.storefront or {}
+    return RestaurantStorefrontResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        storefront=read_storefront(restaurant),
+        defaults=default_storefront(restaurant),
+        limits=dict(STOREFRONT_LIMITS),
+        customized=sorted(
+            key
+            for key in STOREFRONT_KEYS
+            if isinstance(stored.get(key), str) and stored[key].strip()
+        ),
+    )
+
+
+@router.put("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)
+def put_restaurant_storefront(
+    restaurant_id: uuid.UUID,
+    payload: RestaurantStorefrontUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantStorefrontResponse:
+    """Change what this restaurant's website says.
+
+    Owner-writable for the same reason the theme is: this is the restaurant's
+    own marketing, not the build configuration an administrator set up, and an
+    owner should not need a support ticket to fix their own page title.
+
+    `exclude_unset` is load-bearing. Without it every absent field arrives as
+    None and clears the copy an owner wrote on another screen — which is the
+    whole-object-write failure this shape exists to avoid.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    try:
+        resolved = resolve_storefront(
+            payload.model_dump(exclude_unset=True),
+            existing=restaurant.storefront,
+        )
+    except StorefrontValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    restaurant.storefront = resolved
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    return RestaurantStorefrontResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        storefront=read_storefront(restaurant),
+        defaults=default_storefront(restaurant),
+        limits=dict(STOREFRONT_LIMITS),
+        customized=sorted(resolved),
     )
 
 

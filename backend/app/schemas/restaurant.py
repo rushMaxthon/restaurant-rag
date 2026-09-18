@@ -195,6 +195,47 @@ class RestaurantThemeUpdate(BaseModel):
     )
 
 
+class RestaurantStorefrontUpdate(BaseModel):
+    """The restaurant's own words for its website.
+
+    Every field optional, and only the ones sent are changed — a form that
+    edits the hero must not blank the meta description. Sending a field as an
+    empty string clears it, which means "go back to the derived default"
+    rather than "this restaurant's hero has no words".
+
+    Validation of length and shape belongs to `restaurant_storefront.py`, so
+    the rules are the same wherever copy is written, rather than half here and
+    half there.
+    """
+
+    meta_title: str | None = None
+    meta_description: str | None = None
+    og_title: str | None = None
+    og_description: str | None = None
+    hero_headline: str | None = None
+    hero_subcopy: str | None = None
+    concierge_intro: str | None = None
+    login_blurb: str | None = None
+
+
+class RestaurantStorefrontResponse(BaseModel):
+    """What this restaurant's website says, and what it would say by itself."""
+
+    restaurant_id: uuid.UUID
+    restaurant_name: str
+    # Every key filled in: stored values over derived ones.
+    storefront: dict[str, str]
+    # What each field falls back to when cleared. Shown beside the input so an
+    # owner can see what they are replacing before they replace it, and what
+    # clearing it would restore.
+    defaults: dict[str, str]
+    # Per field, so a form can say "62 / 70" rather than refusing on save.
+    limits: dict[str, int]
+    # Which keys the owner has actually written, so the UI can mark the rest
+    # as derived rather than showing eight fields that all look authored.
+    customized: list[str]
+
+
 class RestaurantOwnerSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

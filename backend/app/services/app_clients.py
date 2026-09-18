@@ -881,13 +881,18 @@ def build_app_config_response(
     branding = read_branding(app_client)
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
 
+    storefront: dict[str, str] = {}
     restaurant = app_client.restaurant
     if restaurant is not None:
+        from app.services.restaurant_storefront import read_storefront
         from app.services.restaurant_theme import read_theme
 
         stored = read_theme(restaurant)
         branding[BRANDING_PRIMARY_COLOR_KEY] = stored["primary_color"]
         branding["theme_preset"] = stored["preset"]
+        # Every key filled in, derived from this restaurant's own name,
+        # cuisine and city where nobody has written anything.
+        storefront = read_storefront(restaurant)
 
     return AppConfigResponse(
         app_client_id=app_client.id,
@@ -903,6 +908,7 @@ def build_app_config_response(
         bundle_id=(bundle_id or "").strip(),
         host=normalize_host(host),
         business_timezone=get_settings().business_timezone,
+        storefront=storefront,
     )
 
 

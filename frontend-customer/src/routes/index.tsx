@@ -20,25 +20,12 @@ import { useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
+import { useStorefrontCopy } from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Bangkok Bowl — Thai Food Delivery Ahmedabad" },
-      {
-        name: "description",
-        content:
-          "Order fresh Thai noodles, curries and bowls from three Bangkok Bowl branches in Ahmedabad.",
-      },
-      { property: "og:title", content: "Bangkok Bowl — Thai Food Delivery Ahmedabad" },
-      {
-        property: "og:description",
-        content: "Big Thai flavour, cooked fresh and delivered across Ahmedabad.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  // The root route already resolves this restaurant's copy from the request
+  // host; the home page renders the hero from the same nine strings, so the
+  // words in the tab and the words on the page cannot disagree.
   component: Home,
 });
 
@@ -51,6 +38,10 @@ const CRAVING_CHIPS = [
 ];
 
 function Home() {
+  // From the root route's loader, which read it off the request host — so the
+  // hero is this restaurant's own words in the server-rendered HTML rather
+  // than after a client fetch.
+  const copy = useStorefrontCopy();
   const store = useBangkokStore();
   const { restaurantId, branchId, locations } = store;
   const { isAuthenticated } = useAuth();
@@ -78,7 +69,7 @@ function Home() {
       <section className="relative min-h-[70svh] overflow-hidden">
         <img
           src={heroImage}
-          alt="A colourful Bangkok Bowl Thai food spread"
+          alt={`Food from ${copy.hero_headline}`}
           width={1600}
           height={912}
           className="absolute inset-0 size-full object-cover"
@@ -106,11 +97,9 @@ function Home() {
             )}
           </div>
           <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-7xl">
-            {store.restaurantName ?? "Bangkok Bowl"}
+            {copy.hero_headline}
           </h1>
-          <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">
-            Wok-fired noodles, velvety curries and bold Bangkok street flavours—made fresh for you.
-          </p>
+          <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">{copy.hero_subcopy}</p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Button size="lg" asChild>
               <Link to="/menu">

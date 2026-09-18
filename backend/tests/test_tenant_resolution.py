@@ -395,7 +395,18 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         # administrator set up.
         from app.services import app_clients
 
-        restaurant = SimpleNamespace(theme={"primary_color": "#0F766E", "preset": "teal"})
+        # `storefront` and the three fields its defaults derive from are part
+        # of the shape `/app-config` reads now: the response carries the
+        # restaurant's own page title and hero copy, so that a tenant's
+        # website is not titled for somebody else's.
+        restaurant = SimpleNamespace(
+            theme={"primary_color": "#0F766E", "preset": "teal"},
+            storefront={},
+            name="Bangkok Bowl",
+            cuisine_type="Thai",
+            city="Ahmedabad",
+            description="",
+        )
         client = SimpleNamespace(
             id=uuid.uuid4(), key="bangkok_bowl", display_name="Bangkok Bowl",
             app_mode=AppMode.SINGLE_RESTAURANT, restaurant_id=uuid.uuid4(),
@@ -407,6 +418,10 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         self.assertEqual(built.branding["primary_color"], "#0F766E")
         # And everything the owner does not control survives the override.
         self.assertEqual(built.branding["logo_url"], "https://a.test/l.png")
+        # The copy travels on the same response, derived from the restaurant
+        # rather than from whichever tenant was hardcoded in the web app.
+        self.assertEqual(built.storefront["hero_headline"], "Bangkok Bowl")
+        self.assertIn("Thai", built.storefront["meta_title"])
 
 
 class OnboardingIssuesAnAddressTests(unittest.TestCase):
