@@ -6263,7 +6263,19 @@ select:focus-visible {
 }
 
 .admin-table__sort-arrow {
-  font-size: var(--fs-caption);
+  display: inline-flex;
+  align-items: center;
+  /* Invisible until wanted. Every sortable header showing a marker at rest
+     made twelve tables look busier than they are; the affordance still
+     arrives the moment the pointer or the keyboard does. */
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.admin-table__sort:hover .admin-table__sort-arrow,
+.admin-table__sort:focus-visible .admin-table__sort-arrow,
+.admin-table__sort--active .admin-table__sort-arrow {
+  opacity: 1;
 }
 
 /* A11y + login redesign */

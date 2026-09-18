@@ -146,7 +146,17 @@
      panel's control corners now come from the same token the storefront's
      do, and a brand that changes one changes both. */
   --radius-sm: var(--radius);
-  --accent: #e64a00;
-  --accent-soft: #ffefe6;
-  --accent-track: #ffe3d4;
+  /* Aliases, now pointing at the brand rather than beside it.
+     `#e64a00` and `--primary`'s `#ff5200` are two different oranges, and they
+     sat next to each other across 52 rules — a link hover in one, a chip in
+     the other, close enough to look like a rendering artefact rather than a
+     choice. Worse, `--primary` is the token a tenant's brand colour flows
+     into and `--accent` was a literal, so half the panel could never follow a
+     restaurant's colour.
+
+     Kept as names rather than replaced at every call site: the call sites are
+     right, they were just pointed at the wrong value. */
+  --accent: var(--primary);
+  --accent-soft: var(--primary-soft);
+  --accent-track: color-mix(in srgb, var(--primary) 18%, var(--surface));
 }
