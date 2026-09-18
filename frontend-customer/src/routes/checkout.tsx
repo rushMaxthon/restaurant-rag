@@ -56,7 +56,7 @@ import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
-import { pageMeta } from "@/lib/storefront";
+import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /** Shown beside the phone field; matches the backend's own default. */
@@ -161,6 +161,8 @@ function AddressField({
 }
 
 function Checkout() {
+  // This restaurant's own name, resolved from the address in the root route.
+  const copy = useStorefrontCopy();
   const s = useBangkokStore();
   const isAuthenticated = useRequireAuth();
   const validateOrder = useValidateOrder();
@@ -418,7 +420,7 @@ function Checkout() {
           </div>
           <h1 className="mt-7 font-display text-4xl font-extrabold sm:text-5xl">Order placed</h1>
           <p className="mt-4 text-lg text-muted">
-            Your Thai feast is on its way. Track{" "}
+            Your order from {copy.name} is on its way. Track{" "}
             <b className="text-foreground">{placedOrderNumber ?? "your order"}</b> for live updates.
           </p>
           {eta != null && eta !== "" && (
