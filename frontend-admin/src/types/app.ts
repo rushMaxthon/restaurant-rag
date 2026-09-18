@@ -1300,3 +1300,55 @@ export interface RestaurantCapability {
   granted_at: string | null;
   note: string | null;
 }
+
+export type PaymentGateway = 'STRIPE' | 'RAZORPAY';
+
+/**
+ * One gateway a restaurant holds an account with.
+ *
+ * **No secret is ever in here.** `secret_last4` is enough to tell two keys
+ * apart when checking which one is live, and useless to anyone who obtains
+ * it. The key itself is encrypted server-side and no endpoint decrypts it for
+ * a reader — which is why the form submits a blank secret whenever nobody
+ * retypes one, and the server reads that as "leave what is there".
+ */
+export interface PaymentGatewayAccount {
+  gateway: PaymentGateway;
+  label: string;
+  /** The checkout button this gateway puts in front of a customer. */
+  settles_method: PaymentMethod;
+  /** Credentials are stored. Separate from enabled, so keys survive a pause. */
+  is_configured: boolean;
+  is_enabled: boolean;
+  public_key: string;
+  secret_last4: string | null;
+  has_webhook_secret: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+/** One checkout button, and whether a customer would really see it. */
+export interface PaymentMethodAvailability {
+  method: PaymentMethod;
+  label: string;
+  is_available: boolean;
+  /** "this restaurant" or "the platform" — never left to assumption. */
+  settled_by: string | null;
+  blocked_reason: string | null;
+}
+
+export interface RestaurantPaymentSettings {
+  restaurant_id: string;
+  gateways: PaymentGatewayAccount[];
+  methods: PaymentMethodAvailability[];
+  /** True while this restaurant's money still lands in the platform account. */
+  platform_fallback_in_use: boolean;
+}
+
+export interface PaymentGatewayPayload {
+  public_key: string;
+  /** Omitted when nobody retyped it: the server keeps the stored one. */
+  secret_key?: string | null;
+  webhook_secret?: string | null;
+  is_enabled: boolean;
+}

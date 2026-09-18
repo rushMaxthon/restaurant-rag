@@ -38,6 +38,7 @@ import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
 import { useMoney } from '../hooks/useMoney';
 import { CapabilitiesPanel } from "../components/CapabilitiesPanel";
+import { PaymentSettingsPanel } from "../components/PaymentSettingsPanel";
 import {
   ApiError,
   api,
@@ -1165,6 +1166,27 @@ export function RestaurantDetailPage({
             </div>
           </div>
           <CapabilitiesPanel
+            onToast={onToast}
+            restaurantId={restaurant.id}
+            role={role}
+            token={token}
+          />
+
+          {/* Whose bank account this restaurant's customers pay into. Beside
+              the features rather than buried, because "which of my
+              restaurants is still settling through my own Stripe account" is
+              a question with a real cost attached. */}
+          <div className="admin-surface__header">
+            <div>
+              <span className="eyebrow">Payments</span>
+              <h2>Where the money goes</h2>
+              <p className="hint-text">
+                This restaurant's own gateway accounts. Keys are encrypted and never shown
+                again once saved.
+              </p>
+            </div>
+          </div>
+          <PaymentSettingsPanel
             onToast={onToast}
             restaurantId={restaurant.id}
             role={role}

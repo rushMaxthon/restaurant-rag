@@ -12,6 +12,7 @@ from app.models.enums import (
     LocationDayOfWeek,
     OrderFulfillmentType,
     OrderScheduleType,
+    PaymentGateway,
     PaymentMethod,
 )
 
@@ -234,6 +235,77 @@ class RestaurantStorefrontResponse(BaseModel):
     # Which keys the owner has actually written, so the UI can mark the rest
     # as derived rather than showing eight fields that all look authored.
     customized: list[str]
+
+
+class PaymentGatewayResponse(BaseModel):
+    """One gateway a restaurant holds an account with.
+
+    **No secret appears here, ever.** `secret_last4` is enough to tell two
+    keys apart when somebody is checking which one is live and useless to
+    anyone who obtains it; the key itself is Fernet ciphertext that no
+    endpoint decrypts for a reader.
+    """
+
+    gateway: PaymentGateway
+    label: str
+    # What the customer sees this gateway as on the checkout screen.
+    settles_method: PaymentMethod
+    # Credentials are stored. Separate from `is_enabled`, so a restaurant can
+    # keep its keys while pausing the gateway.
+    is_configured: bool
+    is_enabled: bool
+    public_key: str
+    secret_last4: str | None
+    # Webhooks are wired separately from the API key and rotated separately.
+    # A gateway can take payments before its webhook exists — it just will not
+    # hear about them asynchronously.
+    has_webhook_secret: bool
+    updated_by: str | None = None
+    updated_at: datetime | None = None
+
+
+class PaymentMethodAvailability(BaseModel):
+    """One checkout button, and whether it is really there.
+
+    `is_available` is the answer to the only question the screen is asking:
+    would a customer standing at this restaurant's checkout right now see this
+    button. It needs the branch toggle and a working gateway to agree, and
+    `blocked_reason` says which half is missing rather than leaving an
+    operator to guess.
+    """
+
+    method: PaymentMethod
+    label: str
+    is_available: bool
+    # "this restaurant" or "the platform" — visible rather than assumed,
+    # because being settled through the platform's account is a temporary
+    # arrangement somebody should notice they are still in.
+    settled_by: str | None = None
+    blocked_reason: str | None = None
+
+
+class RestaurantPaymentSettingsResponse(BaseModel):
+    restaurant_id: uuid.UUID
+    gateways: list[PaymentGatewayResponse]
+    methods: list[PaymentMethodAvailability]
+    # True while a restaurant without its own account is still settled through
+    # the deployment's keys. The screen says so plainly.
+    platform_fallback_in_use: bool
+
+
+class RestaurantPaymentGatewayUpdate(BaseModel):
+    """Store or update one gateway's credentials.
+
+    `secret_key` and `webhook_secret` of null mean "leave what is there". The
+    screen cannot show a stored secret, so it submits nothing whenever nobody
+    retyped one — and treating that as "clear it" would wipe a live gateway
+    every time an operator toggled it off and on.
+    """
+
+    public_key: str = Field(min_length=4, max_length=255)
+    secret_key: str | None = Field(default=None, min_length=8, max_length=512)
+    webhook_secret: str | None = Field(default=None, max_length=512)
+    is_enabled: bool = False
 
 
 class RestaurantCapabilityResponse(BaseModel):

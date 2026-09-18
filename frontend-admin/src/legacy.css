@@ -10554,3 +10554,111 @@ summary:focus-visible,
   max-width: 30ch;
   margin-inline: auto;
 }
+
+/* --- Payment gateways -----------------------------------------------------
+   Reuses the capability card, because a gateway and a feature are the same
+   shape of thing on this screen: a thing that is on or off, with the reason
+   beside it. Only the parts that differ live here. */
+
+.gateway__keys {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.gateway__keys svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* The public key, shown in full and deliberately: it is in the page source of
+   every checkout that uses it, and seeing it is how somebody confirms the
+   right account is wired up. */
+.gateway__keys code {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  color: var(--text);
+}
+
+.gateway__form {
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.gateway__toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.gateway__toggle input {
+  width: 16px;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+/* --- What a customer sees -------------------------------------------------
+   A flat list rather than cards: these are the outcome of the settings above,
+   not more settings, and dressing them as cards invites somebody to click. */
+
+.method-list {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.method-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  background: var(--surface);
+}
+
+.method-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.method-row strong {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.method-row span {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.method-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.method-row--off {
+  background: var(--surface-alt);
+}
+
+.method-row--off .method-row__dot {
+  background: var(--border);
+}
+
+.method-row--off strong {
+  color: var(--muted);
+}

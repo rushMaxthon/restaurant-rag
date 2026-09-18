@@ -11,7 +11,10 @@ import type {
   AdminDashboardStats,
   AppClient,
   AppClientUpsertPayload,
+  PaymentGateway,
+  PaymentGatewayPayload,
   RestaurantCapability,
+  RestaurantPaymentSettings,
   TenantStatusPayload,
   TenantSummary,
   ReportsSnapshot,
@@ -814,6 +817,38 @@ export const api = {
     return request<RestaurantCapability[]>(
       `/restaurants/${restaurantId}/capabilities/${encodeURIComponent(key)}`,
       { method: 'PUT', token, body: payload },
+    );
+  },
+  /** Which gateways this restaurant holds, and which buttons its customers see. */
+  getRestaurantPaymentSettings(token: string, restaurantId: string): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(`/restaurants/${restaurantId}/payment-settings`, { token });
+  },
+  /**
+   * Store or update one gateway. ADMIN only.
+   *
+   * Leave `secret_key` out to keep the stored one — the screen cannot show it,
+   * so an empty field means "unchanged", never "clear it".
+   */
+  saveRestaurantPaymentGateway(
+    token: string,
+    restaurantId: string,
+    gateway: PaymentGateway,
+    payload: PaymentGatewayPayload,
+  ): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(
+      `/restaurants/${restaurantId}/payment-settings/${gateway}`,
+      { method: 'PUT', token, body: payload },
+    );
+  },
+  /** Forget a gateway's credentials. Distinct from switching it off. */
+  deleteRestaurantPaymentGateway(
+    token: string,
+    restaurantId: string,
+    gateway: PaymentGateway,
+  ): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(
+      `/restaurants/${restaurantId}/payment-settings/${gateway}`,
+      { method: 'DELETE', token },
     );
   },
   getMenuItems(token: string, restaurantId: string, locationId?: string | null): Promise<MenuItem[]> {
