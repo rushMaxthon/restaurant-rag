@@ -1298,10 +1298,28 @@ def _is_invalid_or_spam_message(message: str) -> bool:
         return True
     if re.search(r"(.)\1{5,}", normalized):
         return True
-    tokens = _query_tokens(message)
-    if not tokens and not _is_greeting_message(message):
-        return True
-    return False
+    if _query_tokens(message):
+        return False
+    if _is_greeting_message(message) or _is_acknowledgement_message(message):
+        return False
+    # Nothing survived tokenising. That used to end the function, and it read
+    # the evidence backwards: `_query_tokens` drops every word under three
+    # characters and every query stopword, so "Please", "ok", "go on" and
+    # "do it" all tokenise to nothing. An empty token list describes a message
+    # that is SHORT and ORDINARY, not one that is unparseable.
+    #
+    # Live, from a WhatsApp thread: the assistant offered to help by cuisine,
+    # budget or spice level, the customer answered "Please", and the second
+    # message of the conversation was "I didn't quite catch that."
+    #
+    # Real gibberish is already caught above — punctuation alone, a held-down
+    # key, a message too short to be anything. What reaches here is words, so
+    # the only question left is whether this message IS words: a few of them,
+    # all letters. Anything else (bare digits, symbols mixed in) keeps the
+    # old answer.
+    return not (
+        re.fullmatch(r"[a-z]+(?: [a-z]+)*", normalized) and len(normalized.split()) <= 4
+    )
 
 
 def _is_role_override_attempt(message: str) -> bool:

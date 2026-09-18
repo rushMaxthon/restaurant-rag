@@ -22,6 +22,8 @@ facing sentence of its own to paper over one.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 import re
 import json
 import uuid
@@ -34,11 +36,13 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services import restaurant_locations as branch_hours
+from app.services.currency import format_amount
 from app.models.order import Order
 from app.services.ordering_agent import guards, open_orders, order_draft
 from app.services.ordering_agent import tools as tools_module
@@ -92,9 +96,39 @@ class TurnOutcome:
     answer_about: str = "other"
 
 
+# What the restaurant this conversation belongs to charges in.
+#
+# A ContextVar for the same reason the AI Manager's narration uses one:
+# `_money` is called from a dozen sentence builders and from closures inside
+# `run_turn`, none of which has a restaurant to hand, and the currency is a
+# property of the conversation rather than of each figure in it.
+#
+# Until this existed every chat wrote "$". Live, on a +91 number: a menu was
+# read out as "Money Bags - $9.49" for a kitchen that charges rupees — the
+# right number under the wrong symbol, which reads as a real price a customer
+# could agree to.
+#
+# Bound once at the top of `run_turn` and never reset: a request runs in its
+# own context (a sync endpoint's threadpool call gets a copy) and so does a
+# Celery task, so a binding cannot outlive the turn that made it or reach
+# another restaurant's.
+_chat_currency: ContextVar[str | None] = ContextVar("chat_currency", default=None)
+
+
+def bind_chat_currency(code: str | None) -> None:
+    """Write every price from here on in this currency."""
+
+    _chat_currency.set(code)
+
+
+#: How many dishes are read out at once. A chat message nobody scrolls is
+#: worth less than a short list and an offer to narrow it down.
+_DISHES_READ_OUT = 8
+
+
 def _money(value: Any) -> str:
     try:
-        return f"${float(value):.2f}"
+        return format_amount(float(value), _chat_currency.get())
     except (TypeError, ValueError):
         return str(value)
 
@@ -428,7 +462,7 @@ def _short_of_minimum(result: dict[str, Any]) -> tuple[str, str, str] | None:
         return None
     if subtotal >= minimum:
         return None
-    return (f"${subtotal:.2f}", f"${minimum:.2f}", f"${minimum - subtotal:.2f}")
+    return (_money(subtotal), _money(minimum), _money(minimum - subtotal))
 
 
 def _clock(iso: str | None) -> str | None:
@@ -719,6 +753,27 @@ def _error_record(step: PlanStep) -> ToolCallRecord:
     return ToolCallRecord(tool=step.tool or "", args=step.args, error=detail)
 
 
+def _currency_for(db: Any, scope: Any) -> str | None:
+    """What this conversation's restaurant charges in, or None.
+
+    None leaves the platform default, which is the honest answer when there
+    is no database to ask — a test drives `run_turn` with `db=None` — and is
+    never worth failing a turn over.
+    """
+
+    if db is None or getattr(scope, "restaurant_id", None) is None:
+        return None
+    try:
+        from app.models.restaurant import Restaurant
+
+        return db.scalar(
+            select(Restaurant.currency).where(Restaurant.id == scope.restaurant_id)
+        )
+    except Exception:  # noqa: BLE001 - a symbol is not worth a failed turn
+        logger.warning("Ordering agent could not read the restaurant's currency", exc_info=True)
+        return None
+
+
 def run_turn(
     db: Session,
     *,
@@ -753,6 +808,9 @@ def run_turn(
     """
 
     start = clock()
+    # Before anything is said, so every figure in this turn is written in the
+    # money this restaurant actually charges.
+    bind_chat_currency(_currency_for(db, scope))
     if not settings.enable_ordering_agent:
         return TurnOutcome(
             answer=None,
@@ -1082,9 +1140,10 @@ def run_turn(
         )
         if not shown:
             return None
-        listed = "\n".join(f"- {d['name']} - ${d['price']}" for d in shown)
+        listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
         opening = "Of course. People often add:" if cart else "Of course. These go quickly:"
         asked = _hold("Tell me the name and I will add it.", yes="name_one")
+        _remember_dish_choice(asked, shown)
         return TurnOutcome(
             answer=f"{opening}\n{listed}\n\n{asked}",
             answer_about="menu",
@@ -1105,9 +1164,17 @@ def run_turn(
         """
 
         want_veg = True if (scope.diet or "").lower() == "veg" else None
-        shown = tools_module.dishes_to_show(db, scope, phrase, is_veg=want_veg, category=category)
-        if not shown:
+        # One more than we will read out, purely to learn whether there IS
+        # one more. "Here is what we have" over eight rows of a 136-dish
+        # menu is a claim about the menu, and it was false for every
+        # restaurant big enough to matter.
+        found = tools_module.dishes_to_show(
+            db, scope, phrase, is_veg=want_veg, category=category, limit=_DISHES_READ_OUT + 1
+        )
+        if not found:
             return None
+        more = len(found) > _DISHES_READ_OUT
+        shown = found[:_DISHES_READ_OUT]
         if len(shown) == 1:
             # They named the one thing they want. Reading it back as a list
             # of one and asking which they would like is not a conversation:
@@ -1116,7 +1183,7 @@ def run_turn(
             only = shown[0]
             return TurnOutcome(
                 answer=_hold(
-                    f"{only['name']} is ${only['price']}. Shall I add one?",
+                    f"{only['name']} is {_money(only['price'])}. Shall I add one?",
                     yes="add",
                     subject=only["name"],
                 ),
@@ -1126,9 +1193,17 @@ def run_turn(
                 fallback_reason=None,
                 elapsed_seconds=clock() - start,
             )
-        listed = "\n".join(f"- {d['name']} - ${d['price']}" for d in shown)
-        opening = "Here is what we have" if want_veg is None else "Here is what we have, all vegetarian"
+        listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
+        # Only a complete list gets to say it is one.
+        if more:
+            opening = "Here are a few" if want_veg is None else "Here are a few, all vegetarian"
+        else:
+            opening = (
+                "Here is what we have" if want_veg is None
+                else "Here is what we have, all vegetarian"
+            )
         asked = _hold("Which one would you like?", yes="name_one")
+        _remember_dish_choice(asked, shown)
         return TurnOutcome(
             answer=f"{opening}:\n{listed}\n\n{asked}",
             answer_about="menu",
@@ -1507,6 +1582,68 @@ def run_turn(
             "asks": 1 if _made_progress(base) else int((_pending_choice() or {}).get("asks", 0)) + 1,
         })
         order_draft.save(scope.session_id, draft_now)
+
+    def _remember_dish_choice(question: str, shown: list[dict[str, Any]]) -> None:
+        """Write down the dishes just read out, so the next message can pick one.
+
+        `_hold` already records the QUESTION. It does not record the answers,
+        and the answers are the half that matters: everything handling "they
+        picked one of the things we offered" hangs off `pending_choice` — the
+        reading is told the options through it, `_answer_dish_choice` maps a
+        name onto it, and the never-ask-twice guard is keyed on it.
+
+        Live, without this: eight appetizers were read out, "Which one would
+        you like?" was asked, and "Money Bags" came back — the name of one of
+        the eight. With nothing written down the reading had only its general
+        schema to fall through to, which offers "the customer's name". The
+        dish was filed as the customer's name, the cart stayed empty, and
+        saying it again produced the same paragraph word for word.
+
+        Names only. A dish is resolved against the branch's own menu when it
+        is picked, through the same guarded lookup a typed name goes through,
+        so an id recorded here would be a second source of truth for no gain.
+        """
+
+        options = [{"name": str(dish["name"])} for dish in shown if dish.get("name")]
+        if scope.session_id is None or not options:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.pending_choice = json.dumps(
+            {"kind": "dish", "question": question, "options": options, "asks": 1}
+        )
+        order_draft.save(scope.session_id, draft_now)
+
+    def _answer_dish_choice(asked: dict[str, Any], chose: list[str]) -> list[dict[str, Any]]:
+        """Add the dishes they picked out of the list we read them.
+
+        Matched against what was OFFERED and nothing else, exactly as
+        `_answer_choice` matches a size: an answer to a question nobody asked
+        must not put something in somebody's cart. The matched name then goes
+        through `_add_named_dish`, so the add is resolved and guarded the way
+        a dish typed from nowhere would be. This decides WHICH of our own
+        words they meant, never what is on the menu.
+        """
+
+        added: list[dict[str, Any]] = []
+        for one in chose:
+            wanted_name = one.strip().casefold()
+            if not wanted_name:
+                continue
+            picked = next(
+                (o for o in asked["options"] if o["name"].strip().casefold() == wanted_name),
+                None,
+            ) or next(
+                (o for o in asked["options"]
+                 if wanted_name in o["name"].strip().casefold()
+                 or o["name"].strip().casefold().startswith(wanted_name)),
+                None,
+            )
+            if picked is None:
+                continue
+            added.extend(_add_named_dish(picked["name"], 1))
+        if added:
+            _forget_choice()
+        return added
 
     def _made_progress(base: dict[str, Any] | None) -> bool:
         """Whether this attempt settled something the last one had not."""
@@ -1999,7 +2136,15 @@ def run_turn(
         return _reask_or_give_up(asked_before)
 
     if wanted.get("chose") and asked_before:
-        answered = _answer_choice(asked_before, wanted["chose"])
+        # Two kinds of question end on a list. A size or a customization
+        # option carries the id that settles it; a dish carries only its
+        # name, and is resolved against the menu when it is picked. Sending
+        # one to the other's handler raised KeyError on `option_id`.
+        answered = (
+            _answer_dish_choice(asked_before, wanted["chose"])
+            if asked_before.get("kind") == "dish"
+            else _answer_choice(asked_before, wanted["chose"])
+        )
         if answered:
             actions.extend(answered)
 
