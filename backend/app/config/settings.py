@@ -618,6 +618,19 @@ class Settings(BaseSettings):
     # the chat" link on that page. Not derivable from the phone-number id
     # Meta gives the API, which is an id and not the number.
     whatsapp_business_number: str = ""
+    # Whether a restaurant must hold its own gateway account to take card.
+    #
+    # Off during the transition, and that is the honest default: every
+    # restaurant onboarded before gateway accounts existed is still settled
+    # through this deployment's own Stripe keys, and flipping this without
+    # warning would stop their checkout. The admin screen says which account
+    # is settling a restaurant, so the fallback is visible rather than
+    # assumed.
+    #
+    # On is the correct end state: a restaurant with no account of its own
+    # cannot take card, because the alternative is its customers' money
+    # landing in the platform's account.
+    payments_require_restaurant_account: bool = False
     payment_currency: str = "usd"
     # The key that protects credentials this platform holds on behalf of a
     # tenant — a restaurant's WhatsApp access token, its webhook verify token.

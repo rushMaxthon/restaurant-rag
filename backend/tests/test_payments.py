@@ -33,7 +33,7 @@ from app.services.payments.registry import (
     available_payment_methods,
     is_method_supported,
     provider_name_for,
-    resolve_provider,
+    provider_for,
 )
 from app.services.payments.stripe_provider import (
     StripeProvider,
@@ -263,24 +263,32 @@ def make_event(
 
 
 class PaymentRegistryTests(unittest.TestCase):
-    def test_only_card_and_cod_are_supported(self) -> None:
+    def test_card_razorpay_and_cod_are_supported(self) -> None:
         self.assertEqual(
             SUPPORTED_PAYMENT_METHODS,
-            frozenset({PaymentMethod.CARD, PaymentMethod.COD}),
+            frozenset({PaymentMethod.CARD, PaymentMethod.RAZORPAY, PaymentMethod.COD}),
         )
         self.assertTrue(is_method_supported(PaymentMethod.CARD))
         self.assertTrue(is_method_supported(PaymentMethod.COD))
         self.assertFalse(is_method_supported(PaymentMethod.GOOGLE_PAY))
-        self.assertFalse(is_method_supported(PaymentMethod.RAZORPAY))
+        # Razorpay stopped being a historical enum value the moment a
+        # restaurant could hold its own account with it.
+        self.assertTrue(is_method_supported(PaymentMethod.RAZORPAY))
 
     def test_cod_resolves_to_no_provider(self) -> None:
-        self.assertIsNone(resolve_provider(PaymentMethod.COD))
+        # COD is the absence of a gateway, not a gateway. The caller tells the
+        # two apart by the method, never by the None.
+        self.assertIsNone(provider_for(None, restaurant_id=None, method=PaymentMethod.COD))
         self.assertEqual(provider_name_for(PaymentMethod.COD), "cod")
         self.assertEqual(provider_name_for(PaymentMethod.CARD), "stripe")
+        self.assertEqual(provider_name_for(PaymentMethod.RAZORPAY), "razorpay")
 
-    def test_unsupported_method_raises(self) -> None:
+    def test_a_method_with_no_gateway_raises(self) -> None:
+        # GOOGLE_PAY stays out: Razorpay's own checkout already offers it
+        # through UPI, so a second button would be a second door to the same
+        # place with its own integration to keep working.
         with self.assertRaises(ValueError):
-            resolve_provider(PaymentMethod.RAZORPAY)
+            provider_for(None, restaurant_id=None, method=PaymentMethod.GOOGLE_PAY)
 
     def test_card_drops_out_when_stripe_is_unconfigured(self) -> None:
         # COD is no longer an automatic consolation for missing Stripe keys.
@@ -289,26 +297,37 @@ class PaymentRegistryTests(unittest.TestCase):
         # customer pressed "Place order" and the order went straight to PLACED.
         # Taking cash is a business decision now, so it is its own setting.
         with patch(
-            "app.services.payments.registry.get_stripe_provider",
+            "app.services.payments.registry.platform_provider_for",
             return_value=FakeProvider(configured=False),
         ):
-            self.assertEqual(available_payment_methods(), [])
+            self.assertEqual(available_payment_methods(None, restaurant_id=None), [])
+        # CARD only. The real `platform_provider_for` answers None for
+        # RAZORPAY — there is no platform Razorpay account and there should
+        # not be one, because a restaurant taking UPI is taking its own money
+        # — so the double mirrors that rather than answering for everything.
         with patch(
-            "app.services.payments.registry.get_stripe_provider",
-            return_value=FakeProvider(configured=True),
+            "app.services.payments.registry.platform_provider_for",
+            side_effect=lambda method: (
+                FakeProvider(configured=True) if method == PaymentMethod.CARD else None
+            ),
         ):
-            self.assertEqual(available_payment_methods(), [PaymentMethod.CARD])
+            self.assertEqual(
+                available_payment_methods(None, restaurant_id=None), [PaymentMethod.CARD]
+            )
 
     def test_cash_on_delivery_appears_only_when_the_deployment_enables_it(self) -> None:
         with (
             patch(
-                "app.services.payments.registry.get_stripe_provider",
+                "app.services.payments.registry.platform_provider_for",
                 return_value=FakeProvider(configured=False),
             ),
             patch("app.services.payments.registry.get_settings") as settings_mock,
         ):
             settings_mock.return_value.enable_cash_on_delivery = True
-            self.assertEqual(available_payment_methods(), [PaymentMethod.COD])
+            settings_mock.return_value.payments_require_restaurant_account = False
+            self.assertEqual(
+                available_payment_methods(None, restaurant_id=None), [PaymentMethod.COD]
+            )
 
 
 class StripeAmountConversionTests(unittest.TestCase):
@@ -333,7 +352,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
         session = FakeSession(orders=[order])
         provider = FakeProvider()
 
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             result = payments_service.create_payment_intent(
                 session, make_customer(order), order.id
             )
@@ -351,7 +370,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
         order.payment_status = PaymentStatus.FAILED
         provider = FakeProvider()
 
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             payments_service.create_payment_intent(session, make_customer(order), order.id)
 
         self.assertEqual(
@@ -371,7 +390,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
             status="requires_payment_method",
         )
 
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             result = payments_service.create_payment_intent(
                 session, make_customer(order), order.id
             )
@@ -384,7 +403,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
         order = make_order(payment_status=PaymentStatus.PAID, order_status=OrderStatus.PLACED)
         session = FakeSession(orders=[order])
 
-        with patch.object(payments_service, "resolve_provider", return_value=FakeProvider()):
+        with patch.object(payments_service, "provider_for", return_value=FakeProvider()):
             with self.assertRaises(HTTPException) as ctx:
                 payments_service.create_payment_intent(session, make_customer(order), order.id)
 
@@ -407,7 +426,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
         order = make_order()
         session = FakeSession(orders=[order])
 
-        with patch.object(payments_service, "resolve_provider", return_value=FakeProvider()):
+        with patch.object(payments_service, "provider_for", return_value=FakeProvider()):
             with self.assertRaises(HTTPException) as ctx:
                 payments_service.create_payment_intent(
                     session,
@@ -424,7 +443,7 @@ class CreatePaymentIntentTests(unittest.TestCase):
         session = FakeSession(orders=[order])
 
         with patch.object(
-            payments_service, "resolve_provider", return_value=FakeProvider(configured=False)
+            payments_service, "provider_for", return_value=FakeProvider(configured=False)
         ):
             with self.assertRaises(HTTPException) as ctx:
                 payments_service.create_payment_intent(session, make_customer(order), order.id)
@@ -442,7 +461,7 @@ class CancelPaymentTests(unittest.TestCase):
         session = FakeSession(orders=[order], transactions=[transaction])
         provider = FakeProvider()
 
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             payments_service.cancel_payment(session, make_customer(order), order.id)
 
         self.assertEqual(order.payment_status, PaymentStatus.CANCELLED)
@@ -469,7 +488,7 @@ class WebhookTests(unittest.TestCase):
     def _handle(self, session: FakeSession, event: payments_base.WebhookEvent, *, duplicate=False):
         provider = FakeProvider()
         provider.parse_webhook = lambda **_: event  # type: ignore[assignment]
-        with patch.object(payments_service, "get_stripe_provider", return_value=provider), patch.object(
+        with patch.object(payments_service, "platform_provider_for", return_value=provider), patch.object(
             payments_service, "_record_webhook_event", return_value=not duplicate
         ), patch("app.services.orders.run_order_placed_side_effects") as side_effects:
             result = payments_service.handle_stripe_webhook(
@@ -553,7 +572,7 @@ class WebhookTests(unittest.TestCase):
             raise payments_base.WebhookVerificationError()
 
         provider.parse_webhook = _raise  # type: ignore[assignment]
-        with patch.object(payments_service, "get_stripe_provider", return_value=provider):
+        with patch.object(payments_service, "platform_provider_for", return_value=provider):
             with self.assertRaises(HTTPException) as ctx:
                 payments_service.handle_stripe_webhook(session, payload=b"{}", signature="bad")
 
@@ -590,7 +609,7 @@ class ProviderReconciliationTests(unittest.TestCase):
 
     def _status(self, session, order, provider):
         with patch.object(
-            payments_service, "resolve_provider", return_value=provider
+            payments_service, "provider_for", return_value=provider
         ), patch("app.services.orders.run_order_placed_side_effects"):
             return payments_service.get_payment_status(
                 session, make_customer(order), order.id
@@ -682,7 +701,7 @@ class ReaperTests(unittest.TestCase):
         session = FakeSession(orders=[order], transactions=[transaction])
         provider = FakeProvider()
 
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             cancelled = payments_service.reap_expired_unpaid_orders(session)
 
         self.assertEqual(cancelled, 1)
@@ -704,7 +723,7 @@ class ReaperTests(unittest.TestCase):
         )
 
         with patch.object(
-            payments_service, "resolve_provider", return_value=provider
+            payments_service, "provider_for", return_value=provider
         ), patch("app.services.orders.run_order_placed_side_effects"):
             cancelled = payments_service.reap_expired_unpaid_orders(session)
 
@@ -720,7 +739,7 @@ class ReaperTests(unittest.TestCase):
         )
         session = FakeSession(orders=[order], transactions=[])
 
-        with patch.object(payments_service, "resolve_provider", return_value=FakeProvider()):
+        with patch.object(payments_service, "provider_for", return_value=FakeProvider()):
             cancelled = payments_service.reap_expired_unpaid_orders(session)
 
         self.assertEqual(cancelled, 0)
@@ -778,7 +797,7 @@ class CreatePaymentLinkTests(unittest.TestCase):
     def _link(self, order, session=None, provider=None):
         session = session or FakeSession(orders=[order])
         provider = provider or FakeProvider()
-        with patch.object(payments_service, "resolve_provider", return_value=provider):
+        with patch.object(payments_service, "provider_for", return_value=provider):
             return payments_service.create_payment_link(session, make_customer(order), order.id), session, provider
 
     def test_the_amount_comes_from_the_order_not_the_caller(self) -> None:

@@ -357,7 +357,17 @@ def _prepare_order_draft(
     # so an order could be placed with no payment step whenever Stripe was
     # unconfigured — the client asked for cash, the server agreed, and nobody
     # was ever charged.
-    if require_payment_validation and payload.payment_method not in available_payment_methods():
+    # This restaurant's branch, not the deployment's. A method is available
+    # only when the branch has it switched on AND a gateway is configured that
+    # can settle it — see `available_payment_methods`. Checking the deployment
+    # instead was correct while one account settled everything and is exactly
+    # how a customer would have been offered a card button that charged the
+    # wrong account.
+    if require_payment_validation and payload.payment_method not in available_payment_methods(
+        db,
+        restaurant_id=draft.restaurant.id,
+        location=draft.restaurant_location,
+    ):
         detail = (
             "Card payments are not available right now."
             if payload.payment_method == PaymentMethod.CARD

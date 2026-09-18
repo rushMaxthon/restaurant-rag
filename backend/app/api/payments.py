@@ -36,12 +36,22 @@ def get_payment_config(
     restaurant, so it is told what that restaurant charges in; a caller with
     no app scope — the marketplace, the admin panel — gets the platform
     default, because there is no single right answer for "every restaurant".
+
+    `supported_methods` is the same story: it names what THIS restaurant can
+    actually settle, so a storefront shows a card button only where a gateway
+    exists behind it. The branch is not narrowed here — a customer has not
+    chosen one yet at bootstrap — so this is the restaurant's ceiling, and
+    checkout re-checks against the branch they end up ordering from.
     """
 
     restaurant_id = app_scope.restaurant_filter_id
     restaurant = db.get(Restaurant, restaurant_id) if restaurant_id else None
     return PaymentConfigResponse(
-        **payment_config(currency=restaurant.currency if restaurant else None)
+        **payment_config(
+            db,
+            currency=restaurant.currency if restaurant else None,
+            restaurant_id=restaurant_id,
+        )
     )
 
 

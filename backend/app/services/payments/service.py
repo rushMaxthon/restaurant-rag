@@ -42,9 +42,9 @@ from app.services.payments.base import (
 )
 from app.services.payments.registry import (
     available_payment_methods,
-    get_stripe_provider,
+    platform_provider_for,
+    provider_for,
     provider_name_for,
-    resolve_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -181,7 +181,7 @@ def create_payment_intent(
             detail="This order cannot be paid right now.",
         )
 
-    provider = resolve_provider(order.payment_method)
+    provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
     if provider is None or not provider.is_configured():
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -300,7 +300,7 @@ def create_payment_link(
             detail="This order cannot be paid right now.",
         )
 
-    provider = resolve_provider(order.payment_method)
+    provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
     if provider is None or not provider.is_configured():
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -397,7 +397,7 @@ def cancel_payment(
 
     transaction = _latest_transaction(db, order.id)
     if transaction is not None and transaction.status in RETRYABLE_PAYMENT_STATUSES:
-        provider = resolve_provider(order.payment_method)
+        provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
         if provider is not None and provider.is_configured():
             provider.cancel_intent(transaction.provider_intent_id)
         transaction.status = PaymentStatus.CANCELLED
@@ -547,7 +547,7 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     if transaction is None or not transaction.provider_intent_id:
         return
 
-    provider = resolve_provider(PaymentMethod.CARD)
+    provider = provider_for(db, restaurant_id=order.restaurant_id, method=PaymentMethod.CARD)
     if provider is None or not provider.is_configured():
         return
 
@@ -592,7 +592,16 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
     Stripe stops retrying an event we have durably recorded.
     """
 
-    provider = get_stripe_provider()
+    # Still the platform's own Stripe endpoint. Per-restaurant webhooks need
+    # the order looked up from the payload FIRST, to know whose secret to
+    # verify with — see `handle_gateway_webhook` below, which does that for
+    # restaurants holding their own accounts.
+    provider = platform_provider_for(PaymentMethod.CARD)
+    if provider is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This deployment has no platform payment account.",
+        )
     try:
         event = provider.parse_webhook(payload=payload, signature=signature)
     except WebhookVerificationError as error:
@@ -863,9 +872,15 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
     if not stale_orders:
         return 0
 
-    provider = resolve_provider(PaymentMethod.CARD)
     cancelled = 0
     for order in stale_orders:
+        # Resolved per order, not once for the batch. These orders come from
+        # every restaurant on the platform and each one settles through its
+        # own gateway account — a single provider hoisted out of the loop
+        # would cancel one restaurant's intents against another's account.
+        provider = provider_for(
+            db, restaurant_id=order.restaurant_id, method=PaymentMethod.CARD
+        )
         # Confirm with the provider before cancelling. Cancelling an order whose
         # webhook was merely lost would leave the customer charged for an order
         # we told them was cancelled.
@@ -897,7 +912,13 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
     return cancelled
 
 
-def payment_config(*, currency: str | None = None) -> dict[str, object]:
+def payment_config(
+    db: Session | None = None,
+    *,
+    currency: str | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    location: "RestaurantLocation | None" = None,
+) -> dict[str, object]:
     """Client bootstrap: publishable key, methods on offer, and the currency.
 
     `currency` is the calling app's restaurant's. None — the marketplace, the
@@ -911,7 +932,19 @@ def payment_config(*, currency: str | None = None) -> dict[str, object]:
         else "",
         "stripe_enabled": settings.stripe_is_configured,
         "currency": currency_for(currency or settings.payment_currency).code,
-        "supported_methods": [method.value for method in available_payment_methods()],
+        # This restaurant's methods, not the deployment's. A caller with no
+        # database session — there is one, in a test — gets the empty list
+        # rather than a wrong one.
+        "supported_methods": (
+            [
+                method.value
+                for method in available_payment_methods(
+                    db, restaurant_id=restaurant_id, location=location
+                )
+            ]
+            if db is not None
+            else []
+        ),
     }
 
 
