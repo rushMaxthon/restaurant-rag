@@ -17,6 +17,84 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-18 (4) — Five restaurants, five websites (a3d6376, fe7487e, 0208cd3)
+
+User pushed back on the tenant switcher ("looks not good") and then asked the
+question that mattered: five restaurants with different UI and branding, each
+with their own locations — how do we run all five together, and how do we fix
+something for one of them?
+
+**The finding.** I opened `dragon-wok.localhost:5173` and it served Bangkok
+Bowl. Name, logo, hero, menu, everything. Cause was one line —
+`frontend-customer/src/lib/api.ts:8` exported
+`BUNDLE_ID = "com.quickbite.bangkokbowl"` and sent it on every request, so
+the storefront TOLD the backend which tenant it was instead of being told.
+Host resolution had shipped two commits earlier and was tested; nothing ever
+called it.
+
+**The distinction that shaped the fix.** `/app-config` resolving a host only
+decided which brand to paint — a storefront could still read any restaurant
+by asking. Choosing is the client's job; refusing is the server's. So
+`resolve_app_scope` took a `host` alongside the bundle id and `get_app_scope`
+reads `X-Forwarded-Host`, which narrows every query on every endpoint that
+already depends on it. `GET /api/restaurants` from `dragon-wok.localhost`
+returns one restaurant.
+
+Bundle id still beats host (a phone's identity was fixed at release), and an
+unknown bundle id does NOT fall through to the host — a build with a typo
+would otherwise adopt whatever tenant its webview was pointed at.
+
+**Two consequences that were not obvious up front:**
+- CORS could no longer be a list. Onboarding a restaurant would have needed a
+  redeploy just to let its own website call the API. The pattern is derived
+  from `platform_domain`, the same setting that generates the subdomains.
+- Bare `localhost` had to become a real domain row (seeded to Bangkok Bowl).
+  The alternative was a fallback constant in the web app, which is the exact
+  thing being deleted.
+
+**Then the copy.** `restaurants.storefront` (migration 0064), beside
+`theme` and owner-writable for the same reason. Nine strings. The column is
+empty on every row: `read_storefront` derives all of it from the
+restaurant's own name, cuisine and city, per key rather than
+all-or-nothing. Root route loader is a server fn reading `getRequestHost()`,
+so the `<title>` is correct in the first HTML response — a crawler never
+waits for hydration, and a search listing describing the wrong business
+outlives the fix.
+
+**Per-tenant customers.** Customer identity is per app client, so
+`customer1@example.com` (MARKETPLACE) cannot sign in at a tenant address. It
+never came up before because every address served the marketplace. Seed now
+issues `<app_key>@example.com` / `password123` per tenant.
+
+**Also, the switcher.** Rebuilt: it replaces the sidebar's brand block
+instead of sitting under it (two identity blocks stacked, most important
+control dressed as a form field). Avatar and tint take the tenant's brand
+colour; menu is dark like the rail, because as a `--surface` card it was
+`#ffffff` on `#fafafa` and read as a smudge.
+
+**Verified:** 1,731 backend tests (was 1,692 at session start). Live checks
+rather than only tests — suspension really 403s `/app-config`; each tenant
+customer signs in on its own address and 401s on another's; SSR titles
+differ per host; the admin build, typecheck and 131 tests pass.
+
+**Open / next:**
+- No admin UI for the storefront copy yet — the endpoints exist, nothing
+  renders them. Natural home is beside the theme editor.
+- Plan steps 4-9 unchanged: onboarding wizard, dark mode, capabilities (§6),
+  WhatsApp channels (§3), Stripe Connect (§4), second restyle pass.
+- **Login page still unseen** since the admin ground went flat.
+- **Mr Tailor webhook still on the ngrok tunnel** — restore to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+
+**Learned:**
+- `platform_domain` is the right source for the CORS regex, not a second
+  setting. One place issues tenant addresses and authorises them.
+- A quoted bash heredoc still broke on an em dash inside a curl `-d`; the API
+  was fine. Write the body to a file before blaming the endpoint.
+- `getRequestHost` lives in `@tanstack/start-server-core`, re-exported by
+  `@tanstack/react-start/server`. Server fns go in their own module so the
+  server-only import cannot be pulled into the browser bundle.
+
 ## 2026-09-18 (3) — The panel adopts the storefront's language, and grows a tenant list (21beb05, ef0ed57, 153c953)
 
 Continuing the approved plan (`~/.claude/plans/vivid-tumbling-whistle.md`).
