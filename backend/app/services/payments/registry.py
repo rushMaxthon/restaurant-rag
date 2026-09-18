@@ -58,7 +58,15 @@ GATEWAY_FOR_METHOD: dict[PaymentMethod, PaymentGateway] = {
 }
 
 
-def _build(gateway: PaymentGateway, credentials) -> PaymentProvider:
+def build_provider(gateway: PaymentGateway, credentials) -> PaymentProvider:
+    """A provider bound to one restaurant's credentials.
+
+    Public because the webhook path needs it too: it has already resolved the
+    restaurant from the URL and holds the credentials, so it builds directly
+    rather than going back through `provider_for`, which would re-read them
+    and apply the enabled check a webhook must not apply.
+    """
+
     if gateway == PaymentGateway.STRIPE:
         return StripeProvider(
             secret_key=credentials.secret_key,
@@ -118,7 +126,7 @@ def provider_for(
 
         credentials = read_credentials(db, restaurant_id=restaurant_id, gateway=gateway)
         if credentials is not None:
-            provider = _build(gateway, credentials)
+            provider = build_provider(gateway, credentials)
             return provider if provider.is_configured() else None
 
     if get_settings().payments_require_restaurant_account:
@@ -211,6 +219,7 @@ def is_method_supported(method: PaymentMethod) -> bool:
 
 __all__ = [
     "COD_PROVIDER_NAME",
+    "build_provider",
     "GATEWAY_FOR_METHOD",
     "SUPPORTED_PAYMENT_METHODS",
     "available_payment_methods",

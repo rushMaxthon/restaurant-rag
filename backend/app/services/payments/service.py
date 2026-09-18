@@ -40,8 +40,12 @@ from app.services.payments.base import (
     WebhookEvent,
     WebhookVerificationError,
 )
+from app.models.enums import PaymentGateway
+from app.services.payment_accounts import read_credentials
 from app.services.payments.registry import (
+    GATEWAY_FOR_METHOD,
     available_payment_methods,
+    build_provider,
     platform_provider_for,
     provider_for,
     provider_name_for,
@@ -585,6 +589,212 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     )
 
 
+# What an event means, in the two vocabularies that reach this module.
+#
+# Stripe's own event names on the left of each set; the normalised words on the
+# right come from `razorpay_provider`, which cannot use Stripe's names because
+# Razorpay does not have PaymentIntents. Both are accepted here rather than
+# forcing one gateway to speak the other's language, which is how a mapping
+# quietly stops matching after somebody renames a constant.
+_PAID_EVENTS = frozenset(
+    {"payment_intent.succeeded", "checkout.session.completed", "succeeded"}
+)
+_FAILED_EVENTS = frozenset({"payment_intent.payment_failed", "failed"})
+_CANCELLED_EVENTS = frozenset({"payment_intent.canceled", "cancelled"})
+_REFUNDED_EVENTS = frozenset({"charge.refunded", "refunded"})
+
+
+def _apply_webhook_event(
+    db: Session, *, provider_name: str, event: WebhookEvent
+) -> dict[str, str]:
+    """Record a verified event and move the order it refers to.
+
+    Shared by the platform's Stripe endpoint and the per-restaurant one, so
+    the two cannot drift into treating the same outcome differently. Verifying
+    the signature is the caller's job and has already happened by here — this
+    function trusts its `event` completely, which is exactly why nothing
+    unverified may reach it.
+    """
+
+    if not _record_webhook_event(db, provider_name, event):
+        return {"status": "duplicate", "event_id": event.event_id}
+
+    handled = "ignored"
+    # What to say once the change is safely recorded. Said after the commit
+    # below, never inside it: a message is not worth a database transaction
+    # held open on a call to Meta.
+    announce: Callable[[], None] | None = None
+    if event.intent_id:
+        found = _order_for_intent(db, event.intent_id)
+        if found is None:
+            logger.warning(
+                "%s event %s references unknown intent %s",
+                provider_name,
+                event.event_id,
+                event.intent_id,
+            )
+        else:
+            order, transaction = found
+            if event.event_type in _PAID_EVENTS:
+                _mark_paid(db, order, transaction, event)
+                handled = "paid"
+                announce = partial(_confirm_in_chat, order)
+            elif event.event_type in _FAILED_EVENTS:
+                _mark_failed(db, order, transaction, event)
+                handled = "failed"
+                announce = partial(_report_failure_in_chat, db, order, transaction)
+            elif event.event_type in _CANCELLED_EVENTS:
+                _mark_cancelled(db, order, transaction)
+                handled = "cancelled"
+                announce = partial(_report_cancelled_in_chat, order)
+            elif event.event_type in _REFUNDED_EVENTS:
+                _mark_refunded(db, order, transaction)
+                handled = "refunded"
+                announce = partial(_report_refunded_in_chat, order)
+
+    record = db.scalar(
+        select(PaymentWebhookEvent).where(PaymentWebhookEvent.provider_event_id == event.event_id)
+    )
+    if record is not None:
+        record.processed_at = datetime.now(UTC)
+        db.add(record)
+        db.commit()
+
+    if announce is not None:
+        announce()
+
+    return {"status": handled, "event_id": event.event_id}
+
+
+def handle_gateway_webhook(
+    db: Session,
+    *,
+    gateway: PaymentGateway,
+    restaurant_id: uuid.UUID,
+    payload: bytes,
+    signature: str | None,
+) -> dict[str, str]:
+    """A webhook for one restaurant's own gateway account.
+
+    **The restaurant comes from the URL, not from the body.** Each restaurant
+    holds its own webhook secret, so the secret to verify with has to be known
+    before anything in the payload is believed — and the only thing available
+    before verification is the address the request arrived at. Every gateway
+    lets an account configure its own webhook URL, so each restaurant's
+    dashboard points at its own path here.
+
+    The alternative — read the order id out of the body, find our order, learn
+    the restaurant, then verify — means making a database decision on an
+    unverified payload. It works, and it is the shape to avoid: it puts a
+    lookup driven by attacker-controlled input in front of the check that
+    exists to establish whether the input is trustworthy at all.
+
+    Posting to another restaurant's URL fails, because the signature will not
+    match that restaurant's secret. A restaurant with no webhook secret stored
+    refuses everything rather than trusting anything, which is a configuration
+    problem the admin screen already reports.
+    """
+
+    method = next(
+        (m for m, g in GATEWAY_FOR_METHOD.items() if g == gateway),
+        None,
+    )
+    if method is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Unknown payment gateway.",
+        )
+
+    # `require_enabled=False`: a gateway that has just been paused is still
+    # owed the confirmations for money it already took. Refusing them would
+    # leave paid orders sitting unpaid in this database.
+    credentials = read_credentials(
+        db, restaurant_id=restaurant_id, gateway=gateway, require_enabled=False
+    )
+    if credentials is None:
+        # Deliberately not 404: the caller is a gateway, not a person, and
+        # what it needs to know is that this delivery cannot be accepted.
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="This restaurant has no credentials for that gateway.",
+        )
+
+    provider = build_provider(gateway, credentials)
+    try:
+        event = provider.parse_webhook(payload=payload, signature=signature)
+    except WebhookVerificationError as error:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(error)
+        ) from error
+
+    return _apply_webhook_event(db, provider_name=provider.name, event=event)
+
+
+def confirm_razorpay_checkout(
+    db: Session,
+    *,
+    order: Order,
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+) -> dict[str, str]:
+    """Believe a success the browser reported, once it is signed.
+
+    Razorpay Checkout hands the browser three values and the browser posts
+    them back. Without this check a customer could post a made-up payment id
+    and have an order marked paid — so the signature is verified against the
+    restaurant's own API secret before anything moves.
+
+    This is the fast path, not the source of truth. The webhook is what
+    settles an order whose customer closed the tab before the callback ran,
+    and both routes end at `_mark_paid`, which is idempotent.
+    """
+
+    credentials = read_credentials(
+        db, restaurant_id=order.restaurant_id, gateway=PaymentGateway.RAZORPAY
+    )
+    if credentials is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Razorpay is not available for this restaurant.",
+        )
+
+    provider = build_provider(PaymentGateway.RAZORPAY, credentials)
+    if not provider.verify_checkout_signature(
+        razorpay_order_id=razorpay_order_id,
+        razorpay_payment_id=razorpay_payment_id,
+        razorpay_signature=razorpay_signature,
+    ):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="That payment could not be verified.",
+        )
+
+    transaction = _latest_transaction(db, order.id)
+    if transaction is None or transaction.provider_intent_id != razorpay_order_id:
+        # The signature was genuine but names an order that is not this one.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="That payment belongs to a different order.",
+        )
+
+    _mark_paid(
+        db,
+        order,
+        transaction,
+        WebhookEvent(
+            event_id=f"checkout:{razorpay_payment_id}",
+            event_type="succeeded",
+            intent_id=razorpay_order_id,
+            amount=order.total_amount,
+            currency=order.currency,
+        ),
+    )
+    db.commit()
+    _confirm_in_chat(order)
+    return {"status": "paid", "order_id": str(order.id)}
+
+
 def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None) -> dict[str, str]:
     """Verify, deduplicate, and apply a Stripe event.
 
@@ -610,51 +820,7 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
             detail=str(error),
         ) from error
 
-    if not _record_webhook_event(db, provider.name, event):
-        return {"status": "duplicate", "event_id": event.event_id}
-
-    handled = "ignored"
-    # What to say once the change is safely recorded. Said after the commit
-    # below, never inside it: a message is not worth a database transaction
-    # held open on a call to Meta.
-    announce: Callable[[], None] | None = None
-    if event.intent_id:
-        found = _order_for_intent(db, event.intent_id)
-        if found is None:
-            logger.warning(
-                "Stripe event %s references unknown intent %s", event.event_id, event.intent_id
-            )
-        else:
-            order, transaction = found
-            if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
-                _mark_paid(db, order, transaction, event)
-                handled = "paid"
-                announce = partial(_confirm_in_chat, order)
-            elif event.event_type == "payment_intent.payment_failed":
-                _mark_failed(db, order, transaction, event)
-                handled = "failed"
-                announce = partial(_report_failure_in_chat, db, order, transaction)
-            elif event.event_type == "payment_intent.canceled":
-                _mark_cancelled(db, order, transaction)
-                handled = "cancelled"
-                announce = partial(_report_cancelled_in_chat, order)
-            elif event.event_type == "charge.refunded":
-                _mark_refunded(db, order, transaction)
-                handled = "refunded"
-                announce = partial(_report_refunded_in_chat, order)
-
-    record = db.scalar(
-        select(PaymentWebhookEvent).where(PaymentWebhookEvent.provider_event_id == event.event_id)
-    )
-    if record is not None:
-        record.processed_at = datetime.now(UTC)
-        db.add(record)
-        db.commit()
-
-    if announce is not None:
-        announce()
-
-    return {"status": handled, "event_id": event.event_id}
+    return _apply_webhook_event(db, provider_name=provider.name, event=event)
 
 
 def _return_urls(order: Order) -> tuple[str, str]:
