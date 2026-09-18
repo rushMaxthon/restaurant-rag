@@ -10280,3 +10280,141 @@ summary:focus-visible,
 .workspace__footer:hover {
   background: rgba(0, 0, 0, 0.3);
 }
+
+/* --- Mixed currency -------------------------------------------------------
+   Shown above a total that adds rupees to dollars. `--warning` rather than
+   `--danger`: nothing is broken and no action is required — the number is
+   simply not the kind of number it looks like, and the reader needs to know
+   before they quote it to somebody. */
+
+.mixed-currency {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.mixed-currency svg {
+  margin-top: 1px;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.mixed-currency strong {
+  font-weight: 700;
+}
+
+/* --- Capabilities ---------------------------------------------------------
+   One card per switchable feature. The reason line is not decoration: the
+   allowlist this replaces was deleted for being a permanent split that
+   nothing on screen explained, so every card carries why it is what it is. */
+
+.capability-list {
+  display: grid;
+  gap: 12px;
+}
+
+.capability-skeleton {
+  height: 92px;
+  border-radius: var(--radius-md);
+}
+
+.capability {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  /* A hairline of the brand down the edge of anything that is on, so the
+     answer is readable before any of the words are. */
+  border-left: 3px solid var(--success);
+}
+
+.capability--off {
+  border-left-color: var(--border);
+  background: var(--surface-alt);
+}
+
+.capability__copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.capability__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.capability__title strong {
+  font-size: var(--fs-body-lg);
+  font-weight: 700;
+}
+
+.capability__copy p {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.capability__why {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.capability__actor {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.capability__note {
+  font-style: italic;
+}
+
+.capability__actions {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  flex-shrink: 0;
+}
+
+.capability__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.capability__reset:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .capability {
+    flex-direction: column;
+  }
+
+  .capability__actions {
+    width: 100%;
+  }
+}

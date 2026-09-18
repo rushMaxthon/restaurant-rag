@@ -33,6 +33,7 @@ import { humanizeEnum, pluralize } from "../services/format";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { useScopedRestaurantFilter } from "../hooks/useScopedFilter";
 import { useMoney } from '../hooks/useMoney';
+import { MixedCurrencyNotice } from "../components/MixedCurrencyNotice";
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -810,6 +811,8 @@ export function ReportsPage({
           </button>
         </div>
       </header>
+
+      <MixedCurrencyNotice subject="Revenue figures" />
 
       <section className="rpt-card rpt-filters">
         <div className="rpt-filters__row">

@@ -67,3 +67,9 @@ class AppConfigResponse(BaseModel):
     # it before it renders its first price and this is the one call it makes
     # before rendering anything.
     currency: CurrencyResponse
+    # Which optional features this restaurant has, already combined with the
+    # deployment's own flags. A client never learns a global flag exists and
+    # never sees an operator-only capability — only the answer.
+    #
+    # Empty for the marketplace, which is not a restaurant and has no grants.
+    capabilities: dict[str, bool] = Field(default_factory=dict)

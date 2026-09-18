@@ -27,6 +27,7 @@ import {
 } from "../services/api";
 import { formatResponseTime, pluralize } from "../services/format";
 import { useMoney } from '../hooks/useMoney';
+import { MixedCurrencyNotice } from '../components/MixedCurrencyNotice';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -835,6 +836,7 @@ export function DashboardPage({
           }}
           timeWindow={timeWindow}
         />
+        <MixedCurrencyNotice subject="Revenue and order values" />
 
         <section className="dashboard-admin-metrics">
           <DashboardMetricCard

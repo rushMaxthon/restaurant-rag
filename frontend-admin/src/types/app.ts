@@ -1273,3 +1273,30 @@ export interface PreferenceQuestionDraft {
   is_active: boolean;
   options: PreferenceOptionDraft[];
 }
+
+/**
+ * One switchable feature, for one restaurant, with the reason it is what it is.
+ *
+ * `reason` and `explanation` are not decoration. A per-restaurant allowlist
+ * existed in this codebase before and was deleted for becoming a permanent
+ * split that nothing on screen explained — see `config/capabilities.py`.
+ */
+export interface RestaurantCapability {
+  key: string;
+  label: string;
+  /** The sentence the restaurant's owner reads. */
+  owner_description: string;
+  enabled: boolean;
+  reason:
+    | 'granted'
+    | 'revoked'
+    | 'default_on'
+    | 'default_off'
+    | 'build_flag_off';
+  explanation: string;
+  /** False when the platform has made no decision and this follows the default. */
+  is_customized: boolean;
+  granted_by: string | null;
+  granted_at: string | null;
+  note: string | null;
+}

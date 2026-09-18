@@ -20,7 +20,7 @@ import { type MenuItem} from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
@@ -576,6 +576,29 @@ function ConciergePage() {
   const busy = status === "waiting" || status === "streaming";
   const lastSuggestions =
     [...turns].reverse().find((t) => t.suggestions.length > 0)?.suggestions ?? [];
+
+  // Hiding the nav entry is not the same as closing the door: this address is
+  // bookmarkable, linkable and guessable. A restaurant that has switched Ask
+  // AI off has switched it off.
+  //
+  // Below every hook rather than at the top of the component, because an early
+  // return above them would change how many hooks run between renders — React
+  // requires the count to be stable, and "it worked when I tried it" is how
+  // that bug hides until the capability is actually toggled.
+  if (!hasCapability(store.capabilities, "ask_ai")) {
+    return (
+      <div className="page-pad flex min-h-[60svh] flex-col items-center justify-center text-center">
+        <h1 className="font-display text-3xl font-extrabold">Not available here</h1>
+        <p className="mt-3 max-w-md text-muted">
+          {copy.name} does not offer the food concierge. Browse the menu and order as
+          usual.
+        </p>
+        <Button className="mt-6" asChild>
+          <Link to="/menu">See the menu</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-32">

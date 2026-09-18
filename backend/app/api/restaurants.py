@@ -37,6 +37,8 @@ from app.schemas.restaurant import (
     LocationFulfillmentSlotCreate,
     LocationFulfillmentSlotResponse,
     LocationFulfillmentSlotUpdate,
+    RestaurantCapabilityResponse,
+    RestaurantCapabilityUpdate,
     RestaurantDetailResponse,
     RestaurantStorefrontResponse,
     RestaurantStorefrontUpdate,
@@ -51,6 +53,14 @@ from app.services.app_clients import (
     build_app_client_for_restaurant,
     get_app_client_for_restaurant,
     upsert_app_client_for_restaurant,
+)
+from app.config.capabilities import CAPABILITIES
+from app.models.restaurant_capability import RestaurantCapability
+from app.services.capabilities import (
+    UnknownCapability,
+    clear_capability,
+    resolve_capabilities,
+    set_capability,
 )
 from app.services.currency import CurrencyNotSupported, normalize_currency
 from app.services.restaurant_storefront import (
@@ -833,6 +843,117 @@ def get_restaurant_theme(
         primary_color=stored["primary_color"],
         presets=[ThemePresetResponse(**vars(preset)) for preset in THEME_PRESETS],
     )
+
+
+def _capability_rows(
+    db: Session, *, restaurant_id: uuid.UUID
+) -> list[RestaurantCapabilityResponse]:
+    """Every capability for one restaurant, decided and explained."""
+
+    decisions = resolve_capabilities(db, restaurant_id=restaurant_id)
+    stored = {
+        row.capability_key: row
+        for row in db.scalars(
+            select(RestaurantCapability).where(
+                RestaurantCapability.restaurant_id == restaurant_id
+            )
+        ).all()
+    }
+    actors = {
+        user_id: name
+        for user_id, name in db.execute(
+            select(User.id, func.coalesce(User.full_name, User.email)).where(
+                User.id.in_(
+                    {row.granted_by_user_id for row in stored.values() if row.granted_by_user_id}
+                )
+            )
+        ).all()
+    } if stored else {}
+
+    rows: list[RestaurantCapabilityResponse] = []
+    for key, capability in CAPABILITIES.items():
+        decision = decisions[key]
+        row = stored.get(key)
+        rows.append(
+            RestaurantCapabilityResponse(
+                key=key,
+                label=capability.label,
+                owner_description=capability.owner_description,
+                enabled=decision.enabled,
+                reason=decision.reason.value,
+                explanation=decision.explanation,
+                is_customized=row is not None,
+                granted_by=actors.get(row.granted_by_user_id) if row else None,
+                granted_at=row.updated_at if row else None,
+                note=row.note if row else None,
+            )
+        )
+    return rows
+
+
+@router.get(
+    "/{restaurant_id}/capabilities",
+    response_model=list[RestaurantCapabilityResponse],
+)
+def get_restaurant_capabilities(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[RestaurantCapabilityResponse]:
+    """What this restaurant has, and why.
+
+    Readable by the owner as well as the operator — deliberately. "Nothing on
+    screen to explain why" is the failure the deleted allowlist is remembered
+    for, and an owner who cannot see what they have cannot ask for what they
+    do not.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    return _capability_rows(db, restaurant_id=restaurant.id)
+
+
+@router.put(
+    "/{restaurant_id}/capabilities/{capability_key}",
+    response_model=list[RestaurantCapabilityResponse],
+)
+def put_restaurant_capability(
+    restaurant_id: uuid.UUID,
+    capability_key: str,
+    payload: RestaurantCapabilityUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> list[RestaurantCapabilityResponse]:
+    """Switch one capability for one restaurant.
+
+    ADMIN only, and that is the structural point rather than a permission
+    detail: a capability is a commercial decision the platform makes about a
+    restaurant, not a preference the restaurant sets about itself. An owner
+    can read the list above; only an operator can change it.
+    """
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
+
+    try:
+        if payload.enabled is None:
+            clear_capability(db, restaurant_id=restaurant.id, capability_key=capability_key)
+        else:
+            set_capability(
+                db,
+                restaurant_id=restaurant.id,
+                capability_key=capability_key,
+                enabled=payload.enabled,
+                granted_by_user_id=current_user.id,
+                note=payload.note,
+            )
+    except UnknownCapability as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    db.commit()
+    return _capability_rows(db, restaurant_id=restaurant.id)
 
 
 @router.get("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)

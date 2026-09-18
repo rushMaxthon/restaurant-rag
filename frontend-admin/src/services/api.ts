@@ -11,6 +11,7 @@ import type {
   AdminDashboardStats,
   AppClient,
   AppClientUpsertPayload,
+  RestaurantCapability,
   TenantStatusPayload,
   TenantSummary,
   ReportsSnapshot,
@@ -793,6 +794,27 @@ export const api = {
       token,
       body: payload,
     });
+  },
+  /** What this restaurant has switched on, and why. Owners may read it too. */
+  getRestaurantCapabilities(token: string, restaurantId: string): Promise<RestaurantCapability[]> {
+    return request<RestaurantCapability[]>(`/restaurants/${restaurantId}/capabilities`, { token });
+  },
+  /**
+   * Switch one capability for one restaurant. ADMIN only.
+   *
+   * `enabled: null` clears the decision and returns this restaurant to the
+   * platform default, which is a different fact from switching it off.
+   */
+  setRestaurantCapability(
+    token: string,
+    restaurantId: string,
+    key: string,
+    payload: { enabled: boolean | null; note?: string | null },
+  ): Promise<RestaurantCapability[]> {
+    return request<RestaurantCapability[]>(
+      `/restaurants/${restaurantId}/capabilities/${encodeURIComponent(key)}`,
+      { method: 'PUT', token, body: payload },
+    );
   },
   getMenuItems(token: string, restaurantId: string, locationId?: string | null): Promise<MenuItem[]> {
     const params = new URLSearchParams({

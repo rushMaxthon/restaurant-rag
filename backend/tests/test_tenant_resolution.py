@@ -189,6 +189,15 @@ class TheConfigEndpointTests(unittest.TestCase):
                     app_config,
                     "build_app_config_response",
                     lambda client, **kw: SimpleNamespace(**kw),
+                ), \
+                patch.object(
+                    app_config,
+                    # These tests are about WHICH identifier resolves, and
+                    # pass `db=None` to prove nothing else is consulted.
+                    # Capability resolution is a real query, covered in
+                    # `test_capabilities.py`.
+                    "client_capabilities",
+                    lambda db, *, restaurant_id: {},
                 ):
             defaults = {
                 "db": None,

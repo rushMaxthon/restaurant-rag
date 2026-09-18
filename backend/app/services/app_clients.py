@@ -863,6 +863,7 @@ def build_app_config_response(
     *,
     bundle_id: str | None = None,
     host: str | None = None,
+    capabilities: dict[str, bool] | None = None,
 ) -> AppConfigResponse:
     """Flatten an app client into the startup payload the mobile app consumes.
 
@@ -914,6 +915,7 @@ def build_app_config_response(
         host=normalize_host(host),
         business_timezone=get_settings().business_timezone,
         storefront=storefront,
+        capabilities=capabilities or {},
         currency=CurrencyResponse(
             code=currency.code,
             symbol=currency.symbol,

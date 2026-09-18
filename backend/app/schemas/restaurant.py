@@ -236,6 +236,43 @@ class RestaurantStorefrontResponse(BaseModel):
     customized: list[str]
 
 
+class RestaurantCapabilityResponse(BaseModel):
+    """One capability, as both screens render it.
+
+    `reason` and `explanation` are not decoration. A capability that is off
+    with nothing saying why is the exact state that made the allowlist this
+    system replaced harmful — see `config/capabilities.py`.
+    """
+
+    key: str
+    label: str
+    # The sentence the restaurant's owner reads. Required by the catalog, so
+    # a capability cannot exist without one.
+    owner_description: str
+    enabled: bool
+    reason: str
+    explanation: str
+    # False when the platform has made no decision either way: this restaurant
+    # is simply on the default, and will follow it if the default changes.
+    is_customized: bool
+    # Null until somebody decides. Kept when they leave the company.
+    granted_by: str | None = None
+    granted_at: datetime | None = None
+    note: str | None = None
+
+
+class RestaurantCapabilityUpdate(BaseModel):
+    """Switch one capability, or hand it back to the default.
+
+    `enabled: null` clears the decision rather than storing "off" — an
+    operator who granted something as a one-off should be able to say "treat
+    this like everyone else" without pinning today's default in place.
+    """
+
+    enabled: bool | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
 class RestaurantOwnerSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

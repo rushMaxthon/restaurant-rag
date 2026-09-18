@@ -10,11 +10,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BranchPicker } from "./branch-picker";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { BranchGate } from "@/components/bangkok/branch-gate";
 import { useAuth } from "@/lib/auth";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const store = useBangkokStore();
+  // Hidden entirely when this restaurant has not got it, rather than shown
+  // and refused on the way in — a nav entry that apologises is worse than no
+  // nav entry at all.
+  const askAi = hasCapability(store.capabilities, "ask_ai");
   const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -36,12 +40,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Button variant="ghost" className="nav-link" asChild>
               <Link to="/orders">Orders</Link>
             </Button>
-            <Button variant="ghost" className="nav-link" asChild>
-              <Link to="/concierge">
-                <Sparkles />
-                Ask AI
-              </Link>
-            </Button>
+            {askAi ? (
+              <Button variant="ghost" className="nav-link" asChild>
+                <Link to="/concierge">
+                  <Sparkles />
+                  Ask AI
+                </Link>
+              </Button>
+            ) : null}
           </nav>
           <BranchPicker className="hidden sm:flex" />
           <Button
@@ -96,10 +102,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <UtensilsCrossed aria-hidden="true" />
           Menu
         </Link>
-        <Link className="mobile-nav" to="/concierge">
-          <Sparkles aria-hidden="true" />
-          Ask AI
-        </Link>
+        {askAi ? (
+          <Link className="mobile-nav" to="/concierge">
+            <Sparkles aria-hidden="true" />
+            Ask AI
+          </Link>
+        ) : null}
         <Link className="mobile-nav" to="/orders">
           <ReceiptText aria-hidden="true" />
           Orders

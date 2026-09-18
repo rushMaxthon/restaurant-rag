@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import APP_BUNDLE_ID_HEADER, APP_PLATFORM_HEADER
 from app.config.database import get_db
+from app.services.capabilities import client_capabilities
 from app.schemas.app_config import AppConfigResponse
 from app.services.app_clients import (
     build_app_config_response,
@@ -72,7 +73,11 @@ def get_app_config(
             app_client.app_mode.value,
             app_client.restaurant_id,
         )
-        return build_app_config_response(app_client, bundle_id=resolved_bundle_id)
+        return build_app_config_response(
+            app_client,
+            bundle_id=resolved_bundle_id,
+            capabilities=client_capabilities(db, restaurant_id=app_client.restaurant_id),
+        )
 
     if resolved_host:
         app_client = resolve_app_client_by_host(db, host=resolved_host)
@@ -83,7 +88,11 @@ def get_app_config(
             app_client.app_mode.value,
             app_client.restaurant_id,
         )
-        return build_app_config_response(app_client, host=resolved_host)
+        return build_app_config_response(
+            app_client,
+            host=resolved_host,
+            capabilities=client_capabilities(db, restaurant_id=app_client.restaurant_id),
+        )
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,

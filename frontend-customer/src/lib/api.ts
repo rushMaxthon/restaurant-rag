@@ -165,6 +165,15 @@ export type AppConfig = {
    * backend degrades to the device's zone rather than crashing the app.
    */
   business_timezone?: string;
+  /**
+   * Optional features this restaurant has, already combined with the
+   * deployment's own flags — the client is told the answer, never the rule.
+   *
+   * Optional on the type so an older backend degrades to "everything on"
+   * rather than hiding features that are in fact available: a missing field
+   * is an old server, not a revoked capability.
+   */
+  capabilities?: Record<string, boolean>;
 };
 
 export type ChatSuggestion = {

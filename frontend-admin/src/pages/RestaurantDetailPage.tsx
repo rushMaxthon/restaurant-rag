@@ -37,6 +37,7 @@ import { GeneratedCombosPage } from "./GeneratedCombosPage";
 import { buildAdminRestaurantsCacheKeyPrefix } from "./AdminRestaurantsPage";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
 import { useMoney } from '../hooks/useMoney';
+import { CapabilitiesPanel } from "../components/CapabilitiesPanel";
 import {
   ApiError,
   api,
@@ -1148,6 +1149,27 @@ export function RestaurantDetailPage({
               <StatusPill status="Planned" />
             </div>
           </div>
+
+          {/* Where "built once, switched on per restaurant" lives. The panel
+              renders the reason beside every switch on purpose — the
+              allowlist this replaces was deleted for being a split nothing
+              on screen explained. */}
+          <div className="admin-surface__header">
+            <div>
+              <span className="eyebrow">Features</span>
+              <h2>What this restaurant has</h2>
+              <p className="hint-text">
+                Optional features, switched on for this restaurant alone. Customers see
+                a change on their next page load.
+              </p>
+            </div>
+          </div>
+          <CapabilitiesPanel
+            onToast={onToast}
+            restaurantId={restaurant.id}
+            role={role}
+            token={token}
+          />
         </section>
       ) : null}
 
