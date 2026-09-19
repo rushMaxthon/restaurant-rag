@@ -1148,6 +1148,13 @@ def run_turn(
         cart back — the same cart, twice in a row.
         """
 
+        # Nothing to suggest from. A turn driven with no database — every
+        # scripted test, and any caller without a branch — asks this the
+        # moment somebody says "yes" to "which one would you like", so it
+        # has to answer "I have nothing" rather than raise.
+        if db is None or not scope.restaurant_location_id:
+            return None
+
         want_veg = True if (scope.diet or "").lower() == "veg" else None
         shown = tools_module.dishes_to_suggest(
             db,
@@ -1185,11 +1192,14 @@ def run_turn(
         # one more. "Here is what we have" over eight rows of a 136-dish
         # menu is a claim about the menu, and it was false for every
         # restaurant big enough to matter.
+        report: dict[str, Any] = {}
         found = tools_module.dishes_to_show(
-            db, scope, phrase, is_veg=want_veg, category=category, limit=_DISHES_READ_OUT + 1
+            db, scope, phrase, is_veg=want_veg, category=category,
+            limit=_DISHES_READ_OUT + 1, report=report,
         )
         if not found:
             return None
+        found_by = str(report.get("found_by") or "named")
         more = len(found) > _DISHES_READ_OUT
         shown = found[:_DISHES_READ_OUT]
         if len(shown) == 1:
@@ -1211,14 +1221,23 @@ def run_turn(
                 elapsed_seconds=clock() - start,
             )
         listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
-        # Only a complete list gets to say it is one.
-        if more:
-            opening = "Here are a few" if want_veg is None else "Here are a few, all vegetarian"
+        veg_note = "" if want_veg is None else ", all vegetarian"
+        asked_for = phrase.strip()
+        if found_by == "fallback" and asked_for:
+            # We do not sell what they asked for. Saying so is the house
+            # style — "We don't have sushi on the menu, but..." — and the
+            # alternative is what shipped: the branch's whole menu from
+            # "Appetizer Sampler" down, under "Here is what we have", which
+            # reads as having been ignored.
+            opening = f"We do not have {asked_for} here. This is what we do have{veg_note}"
+        elif found_by == "close" and asked_for:
+            # Their words found something, just not the exact name they used.
+            opening = f"I could not find {asked_for} exactly. The closest we have{veg_note}"
+        elif more:
+            # Only a complete list gets to say it is one.
+            opening = f"Here are a few{veg_note}"
         else:
-            opening = (
-                "Here is what we have" if want_veg is None
-                else "Here is what we have, all vegetarian"
-            )
+            opening = f"Here is what we have{veg_note}"
         asked = _hold("Which one would you like?", yes="name_one")
         _remember_dish_choice(asked, shown)
         return TurnOutcome(
@@ -1478,6 +1497,30 @@ def run_turn(
             # there. The way out is to make it answerable.
             if also_says:
                 return None
+            if not agreed:
+                # "No", "that's all", "nothing else": they do not want
+                # another dish. Asking which one again is arguing with them,
+                # and it is what shipped — the same sentence twice, once for
+                # the yes and once for the no.
+                #
+                # BOTH questions go. A list is written down twice — `awaiting`
+                # for what agreeing does, `pending_choice` for the dishes
+                # offered — and letting go of only the first left the second
+                # standing, so the re-ask guard fired on it anyway and the
+                # customer was told off for declining.
+                _forget_awaiting()
+                _forget_choice()
+                # Being done with the food is the start of checking out, and
+                # the rest of the turn is where that is handled. On an empty
+                # cart it says so plainly instead.
+                wanted["checkout"] = True
+                return None
+            # They agreed and named nothing. A list is answerable in a way
+            # the question is not, and it records what it offered, so the
+            # next message can pick from it.
+            offered = _suggest_more()
+            if offered is not None:
+                return offered
             return _answering(
                 _hold(
                     "Happy to. Which one — just tell me the name and I will add it.",
@@ -1984,6 +2027,9 @@ def run_turn(
     if held_question is not None:
         _forget_awaiting()
     plain = quick_read(message)
+    # Kept, so a reading that makes nothing of the message can fall back to
+    # it rather than lose it. See where it is restored, below.
+    plain_before_holding = plain
     if held_question is not None and plain == "checkout":
         # "Go ahead", "done", "kar do" are how people agree, and a question
         # of ours is standing — so this message is read as its answer rather
@@ -2102,6 +2148,24 @@ def run_turn(
             categories=sections,
         )
     )
+
+    # The model made nothing of a message that plainly says "I am done".
+    # Measured: with a list standing, "that's all", "no", "nothing else" and
+    # "that is all" every one came back empty, and the turn then told the
+    # customer off for not answering.
+    if (
+        plain_before_holding == "checkout"
+        and plain is None
+        and not any(
+            wanted.get(key)
+            for key in (
+                "add", "details", "chose", "when", "browse", "category",
+                "wants_to_add", "cancel_order", "pay_now", "asks_hours",
+            )
+        )
+        and wanted.get("confirms") is None
+    ):
+        wanted["checkout"] = True
 
     # "Yes" means the thing that was last put to them. With a time offered
     # and nothing else pending, that is the time — measured: a bare "yes"
@@ -2236,6 +2300,10 @@ def run_turn(
                 "pay_now", "asks_hours",
             )
         )
+        # Saying no IS answering. Live: "that's all", after a list of three
+        # dishes, was answered "Sorry, I did not catch that. Just reply with
+        # one of these" — told off for declining.
+        and wanted.get("confirms") is None
     ):
         return _reask_or_give_up(asked_before)
 
@@ -2284,7 +2352,13 @@ def run_turn(
         and db is not None
         and scope.restaurant_location_id
     ):
-        shown = _show_dishes(wanted.get("browse") or "", wanted.get("category"))
+        # Their own words when the reading gave none. "Tom Yum Soup" came
+        # back as the Soups SECTION with no phrase at all, so all eight
+        # soups were read out and the two words that said which soup were
+        # thrown away. The message is the phrase of last resort.
+        shown = _show_dishes(
+            wanted.get("browse") or message.strip(), wanted.get("category")
+        )
         if shown:
             return shown
 
@@ -2330,6 +2404,22 @@ def run_turn(
                 result={"outcome": "saved", "problems": problems, "missing": collecting},
             )
         )
+        if not collecting and not cart and not actions:
+            # Everything they were asked for, and nothing to put it towards.
+            # This turn had nothing further to do and said NOTHING, so the
+            # reply pipeline filled the silence — live, a customer who had
+            # just typed their name, email and address read "I didn't quite
+            # catch that. Ask me about food, restaurants, menus...".
+            return TurnOutcome(
+                answer=(
+                    "Thanks — I have your details. What would you like to order?"
+                ),
+                answer_about="order",
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
 
     if wanted["checkout"] and not cart and not actions:
         # Nothing to check out. Said plainly rather than left to a planner

@@ -82,6 +82,15 @@ SCRIPTS: dict[str, list[str]] = {
         "add one of those",
         "cancel that",
     ],
+    # The whole thing: browse, pick, size, details, and a closed kitchen.
+    "full-order": [
+        "Hi",
+        "do you have soup",
+        "Clear Tofu Soup",
+        "that's all",
+        "delivery",
+        "Vishal, vishal@example.com, 42 Example Road Ahmedabad",
+    ],
     # Questions that are not orders at all.
     "questions": [
         "what time do you open",

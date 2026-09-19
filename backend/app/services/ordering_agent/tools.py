@@ -1155,8 +1155,16 @@ def dishes_to_show(
     is_veg: bool | None = None,
     limit: int = 8,
     category: str | None = None,
+    report: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Dishes to read out to a customer: name, price, and whether veg.
+
+    `report`, when given, is filled with `found_by`: "named" when the words
+    matched dish names, "category" a section, "close" a shorter form of the
+    phrase, and "fallback" when nothing matched and these are simply the
+    branch's menu. The caller needs it to write a true sentence above the
+    list — "Here is what we have" over the whole menu, to somebody who asked
+    for a dish this branch does not sell, reads as having been ignored.
 
     By name when the word they used is a dish's word ("pizza"), and by the
     branch's whole menu when it is not ("the menu", "something vegetarian").
@@ -1193,19 +1201,40 @@ def dishes_to_show(
         rows = list(
             db.scalars(stmt.where(MenuItem.category == category).order_by(MenuItem.name).limit(limit))
         )
+    found_by = "named" if rows else ""
+    if not rows and len(words) > 1:
+        # The words that DO name something here, dropped one at a time from
+        # the end — BEFORE the section below, because the words are more
+        # specific than the section they belong to. "Tom Yum Soup" at a
+        # branch selling Tom Yum Goong matched no dish name at all; read as
+        # the Soups section it answered with all eight soups, throwing away
+        # the two words that said which soup. "tom yum" finds the three.
+        for keep in range(len(words) - 1, 0, -1):
+            narrowed = stmt
+            for word in words[:keep]:
+                narrowed = narrowed.where(MenuItem.name.ilike(f"%{word}%"))
+            rows = list(db.scalars(narrowed.order_by(MenuItem.name).limit(limit)))
+            if rows:
+                found_by = "close"
+                break
     if not rows:
-        # Nothing by name. A category, then the menu itself — both of which
-        # are still the rows, never a guess about what they might have meant.
+        # Nothing in the names. The section, then the menu itself — both of
+        # which are still the rows, never a guess about what they meant.
         by_category = stmt
         for word in words:
             by_category = by_category.where(MenuItem.category.ilike(f"%{word}%"))
         rows = list(db.scalars(by_category.order_by(MenuItem.name).limit(limit))) if words else []
+        found_by = "category" if rows else ""
     if not rows:
         rows = list(db.scalars(stmt.order_by(MenuItem.category, MenuItem.name).limit(limit)))
-    return [
+        found_by = "fallback"
+    listed = [
         {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
         for row in rows
     ]
+    if report is not None:
+        report["found_by"] = found_by
+    return listed
 
 
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
