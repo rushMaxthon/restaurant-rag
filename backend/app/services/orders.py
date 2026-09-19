@@ -364,9 +364,14 @@ def _prepare_order_draft(
     # how a customer would have been offered a card button that charged the
     # wrong account.
     if require_payment_validation and payload.payment_method not in available_payment_methods(
+        # The rows this function already loaded. It read `draft.restaurant`
+        # here, and there is no `draft` in this scope — it is what this
+        # function is on its way to building. Every card order raised
+        # NameError at this line and the customer was told "I could not place
+        # that order just now. Let me get someone to help."
         db,
-        restaurant_id=draft.restaurant.id,
-        location=draft.restaurant_location,
+        restaurant_id=restaurant.id,
+        location=restaurant_location,
     ):
         detail = (
             "Card payments are not available right now."

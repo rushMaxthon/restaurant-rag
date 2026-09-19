@@ -91,6 +91,19 @@ SCRIPTS: dict[str, list[str]] = {
         "delivery",
         "Vishal, vishal@example.com, 42 Example Road Ahmedabad",
     ],
+    # All the way to a placed order, including the cart question.
+    "place-it": [
+        "Hi",
+        "do you have soup",
+        "Clear Tofu Soup",
+        "Show my cart",
+        "that's all",
+        "delivery",
+        "Vishal",
+        "vishal@example.com",
+        "42 Example Road, Ahmedabad 380015",
+        "Yes place it",
+    ],
     # Questions that are not orders at all.
     "radhe-order": [
         "Hi",

@@ -448,6 +448,32 @@ def invented_figures(answer: str, facts: str) -> set[str]:
     return _figures(answer) - _figures(facts)
 
 
+def names_a_tool(answer: str) -> str | None:
+    """A tool this agent runs, named in prose meant for a customer.
+
+    The model is given the tool registry so it can plan, and it sometimes
+    writes its plan out instead of carrying it out. Live, to a real customer:
+
+        Ready to check out? Your cart contains 1 x Money Bags - $9.49.
+        Subtotal: $9.49. Call place_order now to proceed with payment.
+
+    "Call place_order now" is an instruction the model wrote to itself. The
+    customer cannot call anything, and being told to is worse than being told
+    nothing — it reads as a broken machine.
+
+    Sibling of `invented_figures`: both ask whether the sentence is fit to
+    send, and both answer from the turn's own facts rather than from taste.
+    A tool name cannot appear in natural prose by accident — every one of
+    them carries an underscore — so a hit is certain rather than likely.
+    """
+
+    lowered = answer.lower()
+    for tool in TOOLS:
+        if "_" in tool and tool in lowered:
+            return tool
+    return None
+
+
 def _short_of_minimum(result: dict[str, Any]) -> tuple[str, str, str] | None:
     """Subtotal, minimum and the gap, when that is why a placement was refused.
 
@@ -2003,23 +2029,36 @@ def run_turn(
             ready_to_place=ready_now and placed_order_in(records) is None,
         )
 
-    def _settled() -> TurnOutcome:
-        """The turn as the rows alone can end it — no words from the model."""
+    def _settled(asked_to_see_cart: bool = False) -> TurnOutcome:
+        """The turn as the rows alone can end it — no words from the model.
+
+        The order below is what to say when a turn ENDED somewhere: an order
+        placed outranks a dish added, which outranks a question about a size.
+
+        `asked_to_see_cart` turns that off for the one case where the customer
+        asked a direct question. Live: "Show my cart", on a complete order,
+        was answered "That is everything I need to place your order." — true,
+        and not what they asked. Then "I want to see my cart" got the same
+        sentence again.
+        """
 
         placed = placed_order_in(records)
         applied = describe_applied(records)
         summary = _cart_summary_in(records) or cart_readback
-        answer = (
-            describe_placed_order(placed)
-            or applied
-            or _choice_question_in(records)
-            or describe_time_problem(records)
-            or describe_time_settled(records)
-            or describe_place_failure(records)
-            or describe_collecting(_still_missing())
-            or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
-            or summary
-        )
+        if asked_to_see_cart and summary:
+            answer = summary
+        else:
+            answer = (
+                describe_placed_order(placed)
+                or applied
+                or _choice_question_in(records)
+                or describe_time_problem(records)
+                or describe_time_settled(records)
+                or describe_place_failure(records)
+                or describe_collecting(_still_missing())
+                or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
+                or summary
+            )
         # Whatever question this read-back ends on is held, so that the next
         # message can be read against it rather than against nothing.
         if answer and answer is applied:
@@ -2072,7 +2111,7 @@ def run_turn(
             elapsed_seconds=clock() - start,
         )
     if plain == "cart" and cart_readback:
-        return _settled()
+        return _settled(asked_to_see_cart=True)
     if plain == "menu":
         # The reply pipeline answers about the menu, and better; this turn
         # simply has nothing to add and should not spend a model round
@@ -2633,6 +2672,16 @@ def run_turn(
             if said and invented_figures(said, facts):
                 logger.warning(
                     "Ordering agent answer quoted a figure no row carries: %r", said[:160]
+                )
+                said = ""
+            named = names_a_tool(said) if said else None
+            if named:
+                # The model wrote its plan instead of carrying it out. What
+                # the rows say is below; this sentence is not fit to send.
+                logger.warning(
+                    "Ordering agent answer named the tool %r to the customer: %r",
+                    named,
+                    said[:160],
                 )
                 said = ""
             spoken = (
