@@ -589,3 +589,14 @@ class RestaurantSettingsUpdate(BaseModel):
     cover_image_url: str | None = Field(default=None, max_length=500)
     is_open: bool | None = None
     is_active: bool | None = None
+    # The handler has read this since per-restaurant currency shipped, and the
+    # field was never declared here — so `payload.currency` raised
+    # AttributeError on EVERY call to this endpoint, whatever was being
+    # changed. Pressing "Disable restaurant" in the admin answered "Unable to
+    # update restaurant settings", which is the client's fallback for an error
+    # carrying no detail, and a 500 carries none.
+    #
+    # Deliberately not validated against the catalogue here. The handler
+    # normalises it and answers 422 naming the supported codes, which tells an
+    # admin what to type; a schema refusal would only say the field was wrong.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
