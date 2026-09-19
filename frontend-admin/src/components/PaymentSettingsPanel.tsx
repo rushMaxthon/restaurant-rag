@@ -242,10 +242,19 @@ export function PaymentSettingsPanel({
                     <label className="field">
                       <span>{labels.publicKey}</span>
                       <input
+                        // Chrome filled the signed-in admin's EMAIL into this
+                        // field — it is a short text input next to a password
+                        // one, which is a login form as far as the heuristic
+                        // is concerned. Saved unnoticed, an email address
+                        // becomes the restaurant's gateway key and every
+                        // checkout fails.
+                        autoComplete="off"
+                        name="gateway-key-id"
                         onChange={(event) =>
                           setForm((current) => ({ ...current, public_key: event.target.value }))
                         }
                         placeholder={account.gateway === 'RAZORPAY' ? 'rzp_live_…' : 'pk_live_…'}
+                        spellCheck={false}
                         value={form.public_key}
                       />
                       <small>Safe to share — it appears in the page source of every checkout.</small>
@@ -254,7 +263,11 @@ export function PaymentSettingsPanel({
                     <label className="field">
                       <span>{labels.secret}</span>
                       <input
-                        autoComplete="off"
+                        // NOT "off": Chrome ignores that on a password field
+                        // and offered the admin's own saved password here.
+                        // "new-password" is the hint it honours.
+                        autoComplete="new-password"
+                        name="gateway-secret-key"
                         onChange={(event) =>
                           setForm((current) => ({ ...current, secret_key: event.target.value }))
                         }
@@ -275,7 +288,8 @@ export function PaymentSettingsPanel({
                     <label className="field form-grid__wide">
                       <span>Webhook secret</span>
                       <input
-                        autoComplete="off"
+                        autoComplete="new-password"
+                        name="gateway-webhook-secret"
                         onChange={(event) =>
                           setForm((current) => ({ ...current, webhook_secret: event.target.value }))
                         }

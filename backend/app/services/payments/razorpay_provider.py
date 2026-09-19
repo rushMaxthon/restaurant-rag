@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 
 from app.services.payments.base import (
+    CheckoutSessionResult,
     PaymentIntentResult,
     PaymentProviderError,
     WebhookEvent,
@@ -56,6 +57,12 @@ _EVENT_STATUS = {
     "payment.captured": "succeeded",
     "order.paid": "succeeded",
     "payment.failed": "failed",
+    # A hosted Payment Link, which is how an order placed in a chat thread is
+    # paid: there is no sheet to open, so the customer is sent a URL. These
+    # carry the LINK's id rather than an order's — see `parse_webhook`.
+    "payment_link.paid": "succeeded",
+    "payment_link.expired": "cancelled",
+    "payment_link.cancelled": "cancelled",
 }
 
 
@@ -216,6 +223,82 @@ class RazorpayProvider:
 
         logger.info("Razorpay order %s left unpaid; Razorpay has no cancel call", intent_id)
 
+    def create_checkout_session(
+        self,
+        *,
+        order_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        restaurant_id: uuid.UUID,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        customer_email: str | None,
+        success_url: str,
+        cancel_url: str,
+        idempotency_key: str,
+        metadata: dict[str, str] | None = None,
+    ) -> CheckoutSessionResult:
+        """A hosted page for one order, as a URL — Razorpay's Payment Link.
+
+        Stripe's Checkout Session and this are the same idea under different
+        names, and the caller does not need to know which it got: both hand
+        back an id that the webhook, the transaction row and
+        `order.payment_reference` already know how to finish.
+
+        The amount comes from the caller, which reads it off the stored order
+        and never off a request, so a tampered client cannot be quoted less
+        than the order is worth.
+
+        `reference_id` is the order, which Razorpay enforces as unique. That
+        is this API's idempotency: a second call for the same order is
+        refused rather than quietly issuing a second payable link, and the
+        caller reuses the one already on the order.
+
+        Notifications are off. Razorpay would SMS and email the link itself,
+        which would reach the customer twice — the channel that asked for it
+        is already sending it.
+        """
+
+        contact = (metadata or {}).get("contact_phone")
+        payload: dict[str, Any] = {
+            "amount": _to_minor_units(amount),
+            "currency": (currency or "INR").upper(),
+            "description": description[:255],
+            "reference_id": f"order:{order_id}",
+            "callback_url": success_url,
+            "callback_method": "get",
+            "notify": {"sms": False, "email": False},
+            "reminder_enable": False,
+            "notes": {
+                "order_id": str(order_id),
+                "customer_id": str(customer_id),
+                "restaurant_id": str(restaurant_id),
+            },
+        }
+        customer: dict[str, str] = {}
+        if customer_email:
+            customer["email"] = customer_email
+        if contact:
+            customer["contact"] = contact
+        if customer:
+            payload["customer"] = customer
+
+        link = self._request("POST", "/payment_links", json=payload)
+        url = link.get("short_url") or link.get("url") or ""
+        if not link.get("id") or not url:
+            raise PaymentProviderError(
+                "Razorpay did not return a payable link", retryable=True
+            )
+        return CheckoutSessionResult(
+            session_id=str(link["id"]),
+            url=str(url),
+            # The LINK's id, because that is what `payment_link.paid` carries.
+            intent_id=str(link["id"]),
+            amount=_from_minor_units(link.get("amount")) or amount,
+            currency=(link.get("currency") or currency or "INR").upper(),
+            expires_at=link.get("expire_by"),
+        )
+
     def parse_webhook(self, *, payload: bytes, signature: str | None) -> WebhookEvent:
         """Verify and normalise a Razorpay webhook.
 
@@ -248,11 +331,24 @@ class RazorpayProvider:
         entities = body.get("payload", {})
         payment = entities.get("payment", {}).get("entity", {}) or {}
         order = entities.get("order", {}).get("entity", {}) or {}
+        link = entities.get("payment_link", {}).get("entity", {}) or {}
 
-        # The Razorpay ORDER id, not the payment id: that is what
-        # `create_intent` stored as the intent, and what the order row here
-        # can be found by. A payment id would match nothing.
-        intent_id = payment.get("order_id") or order.get("id")
+        # Whichever id THIS app stored for the attempt, which depends on how
+        # the payment was started:
+        #
+        # - Checkout in the browser: `create_intent` made a Razorpay ORDER and
+        #   stored its id, so the payment's `order_id` is the match. A payment
+        #   id would match nothing.
+        # - A link sent to a chat thread: `create_checkout_session` made a
+        #   PAYMENT LINK and stored its id, and `payment_link.*` events carry
+        #   that. Such an event also arrives as `payment.captured` with only
+        #   the order id, which matches nothing and is ignored — one of the
+        #   two is enough, and applying is idempotent either way.
+        intent_id = (
+            link.get("id")
+            if event_type.startswith("payment_link.")
+            else payment.get("order_id") or order.get("id")
+        )
 
         return WebhookEvent(
             event_id=body.get("id") or f"{event_type}:{intent_id}",

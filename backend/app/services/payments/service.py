@@ -164,10 +164,14 @@ def create_payment_intent(
         db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
     )
 
-    if order.payment_method != PaymentMethod.CARD:
+    if order.payment_method == PaymentMethod.COD:
+        # Nothing to pay online. Every other method settles through a gateway
+        # and can be sent a link; this used to refuse everything but CARD,
+        # which left a Razorpay restaurant's chat orders with no way to pay
+        # at all — and the chat is exactly where a link is the only way.
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="This order is not a card order.",
+            detail="This order is paid in cash, so there is nothing to pay online.",
         )
     if order.payment_status == PaymentStatus.PAID:
         raise HTTPException(
@@ -189,7 +193,7 @@ def create_payment_intent(
     if provider is None or not provider.is_configured():
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Card payments are not available right now.",
+            detail="That payment method is not available right now.",
         )
 
     # Reuse an intent that can still be paid; a double tap must not create two.
