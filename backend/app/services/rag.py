@@ -1548,8 +1548,46 @@ def _is_greeting_message(message: str) -> bool:
         return True
 
     tokens = normalized.split()
-    greeting_tokens = {"hi", "hello", "hey", "good", "morning", "afternoon", "evening", "there"}
-    return len(tokens) <= 3 and all(token in greeting_tokens for token in tokens)
+    return len(tokens) <= 3 and all(
+        _flatten_stretched_letters(token) in GREETING_TOKENS for token in tokens
+    )
+
+
+#: The words a greeting is made of, and the only words the flattener below
+#: is allowed to produce.
+GREETING_TOKENS = frozenset(
+    {"hi", "hello", "hey", "good", "morning", "afternoon", "evening", "there"}
+)
+
+
+def _flatten_stretched_letters(token: str) -> str:
+    """"Hii" is "hi". "heyyy" is "hey". "Hellooo" is "hello".
+
+    Stretching the last letters of a greeting is how a large share of people
+    type one, and none of it was recognised: "Hii" missed the greeting set,
+    fell through to the ordering agent, and was answered "Your order for Thu
+    12:42 comes to $20.62 and is waiting to be paid." — a customer who said
+    hello and was handed a bill.
+
+    **A token is only ever changed when the result is a greeting.** That is
+    the whole safety argument: English is full of real double letters, and a
+    blind collapse turned "coffee" into "coffe" and "sweet" into "swet". Both
+    happen to be on this platform's menus.
+    """
+
+    if token in GREETING_TOKENS:
+        return token
+    # The tail first: stretching happens at the END of a greeting, and
+    # collapsing every run instead turned "helloo" into "helo" by eating
+    # the real double l. Then the broader forms, for "hiiii" and the like.
+    for squeezed in (
+        re.sub(r"(.)\1+$", r"\1", token),
+        re.sub(r"(.)\1{2,}", r"\1", token),
+        re.sub(r"(.)\1+", r"\1", token),
+    ):
+        if squeezed in GREETING_TOKENS:
+            return squeezed
+    return token
 
 
 def _is_acknowledgement_message(message: str) -> bool:

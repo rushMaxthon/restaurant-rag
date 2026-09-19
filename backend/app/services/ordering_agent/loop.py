@@ -2375,13 +2375,14 @@ def run_turn(
     # and would answer about the menu while their food never arrives.
     if not cart and db is not None and scope.session_id is not None:
         order = _waiting_order()
-        if order is not None:
-            asked_before_now = int(order_draft.load(scope.session_id).waiting_asks or 0)
-            if asked_before_now < 2:
-                kept = order_draft.load(scope.session_id)
-                kept.waiting_asks = asked_before_now + 1
-                order_draft.save(scope.session_id, kept)
-                return _ask_about_waiting(order)
+        # Counted against the CONVERSATION, not the draft. The draft is wiped
+        # every time an order is placed or cancelled, so the old counter began
+        # again at zero for each one — and a customer holding eighteen unpaid
+        # orders (beat was not running, so the reaper had never fired) was
+        # handed the next one every single message, for ever.
+        if order is not None and order_draft.waiting_notices(scope.session_id) < 2:
+            order_draft.note_waiting_notice(scope.session_id)
+            return _ask_about_waiting(order)
 
     for _round_index in range(rounds):
         # Checked before every model call, per the brief — a turn that is

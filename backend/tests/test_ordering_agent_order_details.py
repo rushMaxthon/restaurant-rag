@@ -2028,16 +2028,34 @@ class AnOrderWaitingToBePaidTests(unittest.TestCase):
             self.assertFalse(open_orders.abandon(None, order))
         self.assertEqual(order.status.value, "PAYMENT_PENDING")
 
-    def test_the_draft_counts_how_often_it_has_been_mentioned(self) -> None:
-        from unittest.mock import patch
+    def test_the_conversation_counts_how_often_it_has_been_mentioned(self) -> None:
+        """Counted per CONVERSATION, and no longer on the draft.
+
+        It used to be `OrderDraft.waiting_asks`. `place_order` and a
+        cancellation both call `order_draft.clear`, so the budget reset at
+        exactly the moment the customer dealt with the order they had just
+        been told about. Live, on an account holding eighteen unpaid orders
+        (beat was not running, so the reaper had never fired), every message
+        surfaced the next one and the thread could not be escaped.
+        """
+
+        import uuid
 
         from app.services.ordering_agent import order_draft as od
 
-        saved = {}
-        with patch.object(od, "cache_set_json", lambda k, v, ttl_seconds=None: saved.update(v)), \
-                patch.object(od, "cache_get_json", lambda k: dict(saved)):
-            od.save("s", od.OrderDraft(waiting_asks=2))
-            self.assertEqual(od.load("s").waiting_asks, 2)
+        session = uuid.uuid4()
+        try:
+            self.assertEqual(od.waiting_notices(session), 0)
+            od.note_waiting_notice(session)
+            od.note_waiting_notice(session)
+            self.assertEqual(od.waiting_notices(session), 2)
+
+            # The step that used to refund the budget.
+            od.save(session, od.OrderDraft(contact_name="vishal"))
+            od.clear(session)
+            self.assertEqual(od.waiting_notices(session), 2, "the cap survives")
+        finally:
+            od.cache_delete(od._waiting_key(session))
 
 
 class TheQuestionAsksWhatTheyAskedTests(unittest.TestCase):
