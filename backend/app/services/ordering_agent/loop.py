@@ -555,9 +555,19 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
                 # invitation. Everything the customer typed is kept; all
                 # they have to say is when.
                 label = str(record.result.get("fulfillment_label") or "your order")
+                wanted = _clock(record.result.get("wanted_time"))
+                if wanted:
+                    # They named a time and the branch cannot keep it. Saying
+                    # which time is the point: "that will not work" about an
+                    # unnamed time reads as a refusal of the whole order.
+                    return (
+                        f"I cannot do {wanted} for {label}. The closest I can do is "
+                        f"{nearest} — shall I make it that, or would you like another time?"
+                    )
                 return (
-                    f"We are closed for {label} right now. The next time I can do is "
-                    f"{nearest} — shall I place it for then, or would you like another time?"
+                    f"We are closed for {label} right now, but I can still take this "
+                    f"for later. The next time I can do is {nearest} — shall I place it "
+                    f"for then, or would you like another time?"
                 )
             short = _short_of_minimum(record.result)
             if short is not None:

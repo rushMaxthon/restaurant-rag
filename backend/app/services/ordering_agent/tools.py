@@ -1739,18 +1739,45 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         # remembered so that "yes" on the next turn means that time. Decided
         # from the branch's status, never from the wording of the reason.
         try:
-            if scheduled_for is None and scope.restaurant_location_id and scope.session_id:
+            if scope.restaurant_location_id and scope.session_id:
                 location = db.get(RestaurantLocation, scope.restaurant_location_id)
-                open_now, _ = branch_hours.get_location_fulfillment_status(
-                    location, fulfillment_type=fulfillment
-                )
-                if location is not None and not open_now:
-                    nearest = branch_hours.next_available_slot_start(
+                # Whether the time in question can be kept. For an ASAP order
+                # that is "are you open now"; for a scheduled one it is the
+                # branch's own slot rule, asked about the moment they chose.
+                #
+                # It used to run only when they had named NO time, so naming
+                # one the branch could not keep skipped the offer entirely
+                # and the customer got "I could not place that: ..." — the
+                # wall this whole path exists to avoid.
+                if location is None:
+                    workable = True
+                elif scheduled_for is None:
+                    workable, _ = branch_hours.get_location_fulfillment_status(
                         location, fulfillment_type=fulfillment
+                    )
+                else:
+                    workable, _ = branch_hours.schedule_slot_is_available(
+                        location,
+                        fulfillment_type=fulfillment,
+                        scheduled_at=scheduled_for,
+                    )
+                if location is not None and not workable:
+                    # Measured from the time they ASKED for, so the offer is
+                    # the nearest one to what they wanted rather than the
+                    # nearest one to now. Somebody asking for tomorrow lunch
+                    # is not helped by being offered this morning.
+                    nearest = branch_hours.next_available_slot_start(
+                        location,
+                        fulfillment_type=fulfillment,
+                        reference_dt=scheduled_for,
                     )
                     if nearest is not None:
                         refusal["next_open"] = nearest.isoformat()
                         refusal["fulfillment_label"] = fulfillment.value.lower()
+                        # What they asked for, so the reply can name it back
+                        # rather than saying "that time" about nothing.
+                        if scheduled_for is not None:
+                            refusal["wanted_time"] = scheduled_for.isoformat()
                         stored = order_draft.load(scope.session_id)
                         stored.offered_scheduled_at = nearest.isoformat()
                         order_draft.save(scope.session_id, stored)
