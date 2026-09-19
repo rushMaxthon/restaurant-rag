@@ -2512,11 +2512,26 @@ def _response_cache_key(
     return ":".join(str(part) for part in key_parts)
 
 
-def _greeting_response_cache_key(message: str) -> str:
+def _greeting_response_cache_key(
+    message: str,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+) -> str:
+    """One entry per greeting PER BRANCH.
+
+    The key was the message alone, which was right while a greeting was a
+    generic sentence. It stopped being right the moment the greeting began
+    naming the restaurant and listing its dishes: the first "hi" of the day
+    would have been cached for everybody, and a Surat customer greeted with
+    "You're through to Bangkok Bowl" and four Thai dishes. The branch is in
+    the key too, because branches of one restaurant have different menus.
+    """
+
     normalized = _normalize_text(message)
     slug = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or "greeting"
-    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:10]
-    return f"{GREETING_RESPONSE_CACHE_PREFIX}:v3:{slug}:{digest}"
+    scope = f"{restaurant_id or 'all'}:{restaurant_location_id or 'all'}"
+    digest = hashlib.sha1(f"{normalized}|{scope}".encode("utf-8")).hexdigest()[:10]
+    return f"{GREETING_RESPONSE_CACHE_PREFIX}:v4:{slug}:{digest}"
 
 
 def _serialize_session_state(state: SessionConversationState) -> dict[str, Any]:
@@ -5202,15 +5217,70 @@ def _greeting_moment_from_message(message: str) -> str | None:
     return None
 
 
-def _build_greeting_reply(message: str = "") -> str:
+#: How many dishes a greeting opens with. Enough to choose from, few enough
+#: to read on a phone without scrolling.
+GREETING_SUGGESTION_COUNT = 4
+
+#: The opener and the question, per daypart. Two halves, because the
+#: restaurant's own name goes between them.
+_GREETING_MOMENTS = {
+    "morning": ("Good morning", "What are you in the mood for this morning?"),
+    "midday": ("Good afternoon", "What are you in the mood for?"),
+    "evening": ("Good evening", "What are you in the mood for tonight?"),
+    "night": ("Hey", "What are you in the mood for?"),
+}
+
+
+def _build_greeting_reply(
+    message: str = "",
+    *,
+    restaurant_name: str | None = None,
+    has_dishes: bool = False,
+) -> str:
+    """Hello, from a restaurant, with something to look at.
+
+    This used to answer "I can help with breakfast picks, spice levels,
+    budgets, or quick cravings" — a description of a search tool, from a
+    business that never said which business it was, to somebody who had
+    walked in and said hello. A restaurant answers a greeting by naming
+    itself, asking what you fancy, and showing you what people are having.
+
+    `has_dishes` is what keeps the last line honest: the lead-in is written
+    only when there is actually a list under it. Promising one and showing
+    nothing is worse than not offering.
+    """
+
     moment = _greeting_moment_from_message(message) or _current_meal_moment()
-    if moment == "morning":
-        return "Good morning 👋 What sounds good right now? I can help with breakfast picks, spice levels, budgets, or quick cravings."
-    if moment == "midday":
-        return "Good afternoon 👋 Looking for lunch ideas? I can help by cuisine, budget, spice level, or whatever you're craving."
-    if moment == "evening":
-        return "Good evening 👋 What are you craving tonight? I can help with spicy picks, comfort food, combos, or budget-friendly options."
-    return "Hey 👋 Late-night cravings? I can help with dishes by cuisine, budget, spice level, offers, or meal mood."
+    opener, question = _GREETING_MOMENTS.get(moment, _GREETING_MOMENTS["night"])
+    # Named, because somebody messaging a number should be told whose kitchen
+    # answered. Absent for the marketplace, which is not one.
+    here = f" You're through to {restaurant_name}." if restaurant_name else ""
+    lead_in = " Here is what people are ordering:" if has_dishes else ""
+    return f"{opener} 👋{here} {question}{lead_in}"
+
+
+def _greeting_suggestions(
+    db: Session,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> list[ChatSuggestionItem]:
+    """A few dishes to open on, by popularity.
+
+    One indexed query and no model: the greeting path answers in about a
+    tenth of a second and is not worth slowing down for this. Failure is
+    silent — a greeting with no list is a worse greeting, not a broken one.
+    """
+
+    if db is None:
+        return []
+    try:
+        candidates = _fetch_popular_candidates(
+            db, restaurant_id, restaurant_location_id, limit=GREETING_SUGGESTION_COUNT
+        )
+        return _suggestion_items(candidates)
+    except Exception:  # noqa: BLE001 - never fail a hello over a list
+        logger.warning("Could not fetch dishes to greet with", exc_info=True)
+        return []
 
 
 def _build_small_talk_reply() -> str:
@@ -7848,6 +7918,23 @@ def _safe_suggestion_for_cart(
         return None
 
 
+def _restaurant_name_for(db: Session, restaurant_id: uuid.UUID | None) -> str | None:
+    """Whose kitchen is answering, or None for the marketplace.
+
+    One lookup by primary key. Somebody who messages a number and is answered
+    by something that never says what it is has no way to tell whether they
+    reached the right place.
+    """
+
+    if db is None or restaurant_id is None:
+        return None
+    try:
+        return db.scalar(select(Restaurant.name).where(Restaurant.id == restaurant_id))
+    except Exception:  # noqa: BLE001 - a name is not worth a failed hello
+        logger.warning("Could not read the restaurant's name for a greeting", exc_info=True)
+        return None
+
+
 def _greeting_with_name(reply: str, name: str | None) -> str:
     """The greeting we were going to send, with their name in it.
 
@@ -7952,7 +8039,9 @@ def handle_chat_message(
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
         logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
-        greeting_cache_key = _greeting_response_cache_key(message)
+        greeting_cache_key = _greeting_response_cache_key(
+            message, restaurant_id, restaurant_location_id
+        )
         logger.info("RAG greeting cache lookup key=%s", greeting_cache_key)
         cached_response_payload = _deserialize_chat_response_cache_payload(cache_get_json(greeting_cache_key))
         cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
@@ -7975,7 +8064,16 @@ def handle_chat_message(
             llm_strategy = "redis_greeting_cache"
         else:
             logger.info("RAG greeting cache miss key=%s", greeting_cache_key)
-            reply = _build_greeting_reply(message)
+            # Dishes first: whether there are any decides how the greeting's
+            # last sentence reads.
+            prepared.suggestions = _greeting_suggestions(
+                db, restaurant_id, restaurant_location_id
+            )
+            reply = _build_greeting_reply(
+                message,
+                restaurant_name=_restaurant_name_for(db, restaurant_id),
+                has_dishes=bool(prepared.suggestions),
+            )
             llm_strategy = "instant_greeting"
             cache_set_json(
                 greeting_cache_key,
@@ -8420,7 +8518,9 @@ def stream_chat_message(
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
         logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
-        greeting_cache_key = _greeting_response_cache_key(message)
+        greeting_cache_key = _greeting_response_cache_key(
+            message, restaurant_id, restaurant_location_id
+        )
         logger.info("RAG greeting cache lookup key=%s", greeting_cache_key)
         cached_response_payload = _deserialize_chat_response_cache_payload(cache_get_json(greeting_cache_key))
         cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
@@ -8453,7 +8553,16 @@ def stream_chat_message(
         else:
             logger.info("RAG greeting cache miss key=%s", greeting_cache_key)
             llm_strategy = "instant_greeting"
-            reply = _build_greeting_reply(message)
+            # Dishes first: whether there are any decides how the greeting's
+            # last sentence reads.
+            prepared.suggestions = _greeting_suggestions(
+                db, restaurant_id, restaurant_location_id
+            )
+            reply = _build_greeting_reply(
+                message,
+                restaurant_name=_restaurant_name_for(db, restaurant_id),
+                has_dishes=bool(prepared.suggestions),
+            )
             yield _sse_frame("token", {"text": reply})
             cache_set_json(
                 greeting_cache_key,
