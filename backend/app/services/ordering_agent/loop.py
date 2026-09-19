@@ -1208,6 +1208,12 @@ def run_turn(
             # live, "I like Appetizer Sampler" got exactly that, and the
             # "Yes" that answered it reached nobody.
             only = shown[0]
+            # One dish is now what is in front of them, so the last LIST is
+            # not. Left standing, an ordinal reached back past this: measured
+            # with two customers, "the first one" — right after being shown a
+            # single Appetizer Sampler — added a dish from a list two turns
+            # earlier, because nothing had superseded it.
+            _forget_shown()
             return TurnOutcome(
                 answer=_hold(
                     f"{only['name']} is {_money(only['price'])}. Shall I add one?",
@@ -1683,6 +1689,21 @@ def run_turn(
         draft_now = order_draft.load(scope.session_id)
         draft_now.last_shown = json.dumps({"options": options})
         order_draft.save(scope.session_id, draft_now)
+
+    def _forget_shown() -> None:
+        """Nothing is in front of them as a list any more.
+
+        `last_shown` survives until another list replaces it, which is right
+        while lists follow lists and wrong the moment something more specific
+        does. A single dish, or a question about one, supersedes it.
+        """
+
+        if scope.session_id is None:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        if draft_now.last_shown:
+            draft_now.last_shown = None
+            order_draft.save(scope.session_id, draft_now)
 
     def _remember_dish_choice(question: str, shown: list[dict[str, Any]]) -> None:
         """Write down the dishes just read out, so the next message can pick one.
