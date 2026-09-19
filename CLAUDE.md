@@ -241,7 +241,8 @@ now installed and running as a service (see below).
   and `sql/vector--*.sql` into `lib/` and `share/extension/` **elevated** — the
   install step needs admin rights and otherwise fails with "Access is denied".
 - **Redis**: installed and running as the Windows service `Redis`, from a
-  portable build at `C:edis-portable` (Redis 5.0.14.1, the tporadowski
+  portable build at `C:
+edis-portable` (Redis 5.0.14.1, the tporadowski
   Windows port — open source and free, unlike Memurai whose free tier is
   development-only). AUTO_START, so it survives a reboot; `redis-cli.exe ping`
   in that folder is the quickest check. `redis_url` already defaulted to
@@ -252,8 +253,14 @@ now installed and running as a service (see below).
   - Every op in `services/cache.py` still catches `RedisError` and degrades to
     a miss, so the API survives Redis going away — but with it running, chat
     session memory, the response cache and Celery all work.
-- **Ollama**: not installed. Every AI flag defaults off and every AI path falls
-  back to deterministic templates, so the apps work — generated prose does not.
+- **Ollama**: INSTALLED and serving on `http://localhost:11434`, with `qwen3:8b`
+  (generation) and `nomic-embed-text` (embeddings) pulled. This line used to say
+  it was not, which is why several sessions tested the AI paths by scripting the
+  model seam instead of running it. `enable_ordering_agent` is on, so the
+  customer chat and the WhatsApp agent answer for real here — a turn takes
+  roughly 3-8 seconds. `backend/scripts/dryrun_whatsapp.py` replays scripted
+  conversations through the whole live path with only Meta's send stubbed, and
+  is the fastest way to see what a customer actually gets.
 
 Start the three services, each in its own shell:
 
