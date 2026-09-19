@@ -65,6 +65,11 @@ _EVENT_STATUS = {
     "payment_link.cancelled": "cancelled",
 }
 
+#: What a restaurant subscribes its webhook to in the Razorpay dashboard, and
+#: what the admin screen tells it to tick. Derived from the map above so the
+#: instruction cannot drift from what the code actually acts on.
+RAZORPAY_WEBHOOK_EVENTS: tuple[str, ...] = tuple(_EVENT_STATUS)
+
 
 def _to_minor_units(amount: Decimal) -> int:
     """Rupees to paise, exactly once and in one place.

@@ -1,4 +1,4 @@
-import { CircleAlert, CreditCard, KeyRound, Trash2 } from 'lucide-react';
+import { Check, CircleAlert, Copy, CreditCard, KeyRound, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -51,16 +51,22 @@ const BLANK: GatewayForm = {
 };
 
 /** What each gateway's fields are called where the keys are issued. */
-const FIELD_LABELS: Record<PaymentGateway, { publicKey: string; secret: string; hint: string }> = {
+const FIELD_LABELS: Record<
+  PaymentGateway,
+  { publicKey: string; secret: string; hint: string; webhookWhere: string }
+> = {
   RAZORPAY: {
     publicKey: 'Key ID',
     secret: 'Key secret',
     hint: 'From the Razorpay dashboard, under Account & Settings → API Keys.',
+    webhookWhere:
+      'the Razorpay dashboard, under Account & Settings → Webhooks → Add New Webhook',
   },
   STRIPE: {
     publicKey: 'Publishable key',
     secret: 'Secret key',
     hint: 'From the Stripe dashboard, under Developers → API keys.',
+    webhookWhere: 'the Stripe dashboard, under Developers → Webhooks → Add endpoint',
   },
 };
 
@@ -77,7 +83,27 @@ export function PaymentSettingsPanel({
   const [form, setForm] = useState<GatewayForm>(BLANK);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<PaymentGateway | null>(null);
+  const [copied, setCopied] = useState<PaymentGateway | null>(null);
   const isAdmin = role === 'ADMIN';
+
+  async function copyWebhookUrl(account: PaymentGatewayAccount) {
+    if (!account.webhook_url) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(account.webhook_url);
+      setCopied(account.gateway);
+      window.setTimeout(
+        () => setCopied((current) => (current === account.gateway ? null : current)),
+        2000,
+      );
+    } catch {
+      // The clipboard is refused outside a secure context and in some locked
+      // down browsers. The URL is on screen either way, so say that rather
+      // than leaving a button that looks broken.
+      onToast('Could not copy', 'Select the URL above and copy it by hand.', 'info');
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +310,47 @@ export function PaymentSettingsPanel({
                         anywhere. Blank leaves the stored key alone.
                       </small>
                     </label>
+
+                    <div className="field form-grid__wide gateway__webhook">
+                      <span>Webhook URL</span>
+                      {account.webhook_url ? (
+                        <>
+                          <div className="gateway__webhook-url">
+                            <code>{account.webhook_url}</code>
+                            <button
+                              className="secondary-button"
+                              onClick={() => copyWebhookUrl(account)}
+                              type="button"
+                            >
+                              {copied === account.gateway ? (
+                                <Check size={14} strokeWidth={2.2} />
+                              ) : (
+                                <Copy size={14} strokeWidth={2.2} />
+                              )}
+                              {copied === account.gateway ? 'Copied' : 'Copy'}
+                            </button>
+                          </div>
+                          <small>
+                            Paste this into {labels.webhookWhere}, tick these events, and paste
+                            the signing secret it gives you into the field below.
+                          </small>
+                          <ul className="gateway__webhook-events">
+                            {account.webhook_events.map((event) => (
+                              <li key={event}>
+                                <code>{event}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : (
+                        <small>
+                          This deployment has no public address set, so there is no URL to give{' '}
+                          {account.label} yet — a gateway has to reach this API from the
+                          internet, and nothing here knows that address. Set{' '}
+                          <code>PUBLIC_BASE_URL</code> on the API and reload.
+                        </small>
+                      )}
+                    </div>
 
                     <label className="field form-grid__wide">
                       <span>Webhook secret</span>

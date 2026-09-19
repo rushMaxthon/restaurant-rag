@@ -1323,6 +1323,15 @@ export interface PaymentGatewayAccount {
   public_key: string;
   secret_last4: string | null;
   has_webhook_secret: boolean;
+  /**
+   * Where this restaurant's own gateway dashboard posts its events. Built by
+   * the backend, because only the backend knows the address it is reachable
+   * at from the internet - this app's own API base is localhost in dev, which
+   * no gateway can reach. Null means that address is unset.
+   */
+  webhook_url: string | null;
+  /** The events to subscribe that URL to, named as the gateway names them. */
+  webhook_events: string[];
   updated_by: string | null;
   updated_at: string | null;
 }

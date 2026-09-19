@@ -74,6 +74,7 @@ from app.services.payment_accounts import (
     list_accounts,
     save_account,
 )
+from app.services.payments.service import webhook_events_for, webhook_url_for
 from app.services.payments.registry import (
     GATEWAY_FOR_METHOD,
     available_payment_methods,
@@ -970,6 +971,10 @@ def _payment_settings(db: Session, *, restaurant: Restaurant) -> RestaurantPayme
                 public_key=held.public_key if held else "",
                 secret_last4=held.secret_last4 if held else None,
                 has_webhook_secret=held.has_webhook_secret if held else False,
+                # Shown whether or not an account exists yet: it is what the
+                # operator needs while setting one up, not afterwards.
+                webhook_url=webhook_url_for(gateway, restaurant_id=restaurant.id),
+                webhook_events=list(webhook_events_for(gateway)),
                 updated_by=held.updated_by if held else None,
                 updated_at=held.updated_at if held else None,
             )

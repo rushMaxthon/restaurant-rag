@@ -260,6 +260,11 @@ class PaymentGatewayResponse(BaseModel):
     # A gateway can take payments before its webhook exists — it just will not
     # hear about them asynchronously.
     has_webhook_secret: bool
+    # Where this restaurant's own gateway dashboard should post events, and
+    # which events to tick. Null while `public_base_url` is unset — the screen
+    # says to set it rather than showing a URL that goes nowhere.
+    webhook_url: str | None = None
+    webhook_events: list[str] = Field(default_factory=list)
     updated_by: str | None = None
     updated_at: datetime | None = None
 

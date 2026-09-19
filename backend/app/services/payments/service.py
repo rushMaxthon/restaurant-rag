@@ -42,6 +42,7 @@ from app.services.payments.base import (
 )
 from app.models.enums import PaymentGateway
 from app.services.payment_accounts import read_credentials
+from app.services.payments.razorpay_provider import RAZORPAY_WEBHOOK_EVENTS
 from app.services.payments.registry import (
     GATEWAY_FOR_METHOD,
     available_payment_methods,
@@ -606,6 +607,45 @@ _PAID_EVENTS = frozenset(
 _FAILED_EVENTS = frozenset({"payment_intent.payment_failed", "failed"})
 _CANCELLED_EVENTS = frozenset({"payment_intent.canceled", "cancelled"})
 _REFUNDED_EVENTS = frozenset({"charge.refunded", "refunded"})
+
+
+def webhook_events_for(gateway: PaymentGateway) -> tuple[str, ...]:
+    """The gateway's own event names this app acts on, for its dashboard.
+
+    Derived rather than listed. Razorpay's come from the provider's map;
+    Stripe's from the four sets above, where a dotted name is Stripe's and a
+    bare word is the normalised one Razorpay is translated into — the same
+    distinction the comment above those sets already draws. So teaching the
+    webhook a new event updates what the screen tells an operator to tick,
+    with nothing to remember.
+    """
+
+    if gateway == PaymentGateway.RAZORPAY:
+        return RAZORPAY_WEBHOOK_EVENTS
+    stripe_names = {
+        name
+        for names in (_PAID_EVENTS, _FAILED_EVENTS, _CANCELLED_EVENTS, _REFUNDED_EVENTS)
+        for name in names
+        if "." in name
+    }
+    return tuple(sorted(stripe_names))
+
+
+def webhook_url_for(gateway: PaymentGateway, *, restaurant_id: uuid.UUID) -> str | None:
+    """Where this restaurant's gateway should post its events, or None.
+
+    None means `public_base_url` is unset, and the screen says to set it. The
+    alternative — guessing from the request's own Host header — would put
+    whatever address the admin happens to be open on into a field that has to
+    be reachable from the gateway's servers, and `localhost` pasted into
+    Razorpay fails silently for as long as nobody looks.
+    """
+
+    base = (get_settings().public_base_url or "").strip().rstrip("/")
+    if not base:
+        return None
+    prefix = get_settings().api_v1_prefix.rstrip("/")
+    return f"{base}{prefix}/payments/webhook/{gateway.value}/{restaurant_id}"
 
 
 def _apply_webhook_event(

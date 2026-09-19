@@ -10598,6 +10598,60 @@ summary:focus-visible,
   border-top: 1px solid var(--border);
 }
 
+/* The webhook URL sits directly above the webhook secret because they are one
+   errand: this URL goes into the gateway's dashboard, and the secret that
+   dashboard hands back comes into the field below. Read-only, so it is not a
+   .field with an input - the shared label and hint styling still applies. */
+.gateway__webhook-url {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* The URL is long and must be copied EXACTLY, so it never truncates with an
+   ellipsis - it wraps mid-string instead. A URL a reader cannot see all of is
+   a URL they cannot check. */
+.gateway__webhook-url code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.gateway__webhook-url button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gateway__webhook-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gateway__webhook-events code {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
 .gateway__toggle {
   flex-direction: row;
   align-items: center;
