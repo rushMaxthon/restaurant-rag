@@ -92,6 +92,15 @@ SCRIPTS: dict[str, list[str]] = {
         "Vishal, vishal@example.com, 42 Example Road Ahmedabad",
     ],
     # Questions that are not orders at all.
+    "radhe-order": [
+        "Hi",
+        "what time do you open",
+        "do you have soup",
+        "Manchow Soup",
+        "that's all",
+        "delivery",
+        "Vishal, vishal@example.com, 42 Ring Road Surat",
+    ],
     "questions": [
         "what time do you open",
         "how much is the biryani",
@@ -136,21 +145,29 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("script", choices=sorted(SCRIPTS))
     parser.add_argument("--restaurant", default=None)
+    parser.add_argument("--branch", default=None)
     args = parser.parse_args()
 
     # Nothing leaves this machine.
     with mock.patch.object(wa, "send_text", lambda *a, **k: True), \
          mock.patch.object(wa, "show_typing", lambda *a, **k: None):
-        return run(args.script, args.restaurant)
+        return run(args.script, args.restaurant, args.branch)
 
 
-def run(script: str, restaurant_name: str | None) -> int:
+def run(script: str, restaurant_name: str | None, branch_name: str | None = None) -> int:
     session_id = uuid.uuid4()
     principal = guest_principal_for_session(session_id)
     from_number = "919876500000"
 
     with SessionLocal() as db:
         restaurant, location = resolve(db, restaurant_name)
+        if branch_name:
+            location = db.scalar(
+                select(RestaurantLocation).where(
+                    RestaurantLocation.restaurant_id == restaurant.id,
+                    RestaurantLocation.branch_name == branch_name,
+                )
+            )
         if restaurant is None or location is None:
             print("no restaurant/branch configured")
             return 1
