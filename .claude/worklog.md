@@ -26,6 +26,103 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-19 (2) — Talking to it, instead of reading it (876b3fa, c08e864, 5f83d55)
+
+User asked for a dry run: "check from your site and tell me everything looks
+perfect and working, because users will answer in that way so we need to
+manage like that".
+
+**The first finding was that Ollama is installed here.** CLAUDE.md said it was
+not. Earlier sessions — including mine, this morning — therefore tested the AI
+paths by scripting the model seam, which tests the plumbing and nothing about
+what a customer actually reads. `backend/scripts/dryrun_whatsapp.py` now
+replays scripted conversations through the whole live path
+(`handle_chat_message`, the ordering agent, qwen3:8b, the real rows) with only
+Meta's `send_text`/`show_typing` stubbed. Everything below came out of running
+it; none of it came out of reading the code.
+
+Five scripts, chosen for how people really type: the screenshot verbatim,
+somebody direct, somebody answering in one word, somebody wavering, and
+somebody only asking questions.
+
+**The theme: it kept asking questions and then not recognising the answers.**
+
+- It showed six dishes and could not resolve "the first one" — the agent
+  records the dishes IT reads out, the reply pipeline records nothing.
+- It asked "Would you like the Butter or Oil version? 🥟" and read "yes" as a
+  request to check out, on an empty cart. `previous_reply` reaches the planner
+  but never reached the READING, and a browser carries it while a chat thread
+  has nothing to carry it with.
+- With an empty cart the planner was told nothing about the cart at all —
+  `cart_summary` is only written when there is one — so it filled the silence
+  with "you're ready to proceed".
+- "add one" was read as a dish called "one": 33 seconds, then "your cart is
+  empty".
+- "is anything vegetarian" read as nothing, and a dish question standing from
+  the turn before answered it "Sorry, I did not catch that." That one was MY
+  regression from this morning: recording dish lists as choices made the
+  never-ask-twice guard reachable, and it weighed only the fields that ANSWER
+  a question, never the ones that ask for something else.
+- "We don't have anything on the menu" — with six real dishes listed under it.
+  The model copied the shape of a worked example in the prompt onto a message
+  that named nothing.
+- Prices: four sites in `rag.py` wrote "$" into the PROMPT, so the model
+  repeated it ("the Butter Pavbhaji ($135.00)") under a list that said ₹135;
+  `render_reply` printed a bare "185.00" with no symbol at all; `_MONEY_RE`
+  bolded only dollars.
+
+**One fix of mine was worse than the bug.** Recording "dishes last shown"
+looked right until the dry run picked a dish the customer had never seen:
+WhatsApp drops the pipeline's suggestions when the agent owns the line, and I
+was recording them anyway. Record only what will actually be rendered.
+
+**And one bug only existed in the full path.** The pick came back as both
+`chose` and `add`, so two code paths each added it — "Added 1 x Money Bags to
+your order." twice, two in the cart. In isolation each path adds exactly once;
+it took the real model and the real prompt to produce both fields at all.
+
+**Changed:** `ordering_agent/loop.py` (last_shown, last_question, the widened
+re-ask guard, per-turn pick dedupe), `ordering_agent/planner.py`
+(`question_asked_in`, the empty-cart fact, ordinals, "is anything X",
+`_NOT_A_DISH_NAME`, delivery-question rule), `ordering_agent/order_draft.py`
+(two fields), `rag.py` (`remember_shown_dishes`, `_denies_the_whole_menu`, the
+reply currency), `services/whatsapp.py` + `tasks/whatsapp.py` (currency in the
+rendered list, bold any symbol), `CLAUDE.md`, and
+`backend/scripts/dryrun_whatsapp.py` (new).
+
+**Verified:** 1,864 backend tests (+22). The screenshot conversation replayed
+against the live Bangkok Bowl config runs end to end: "Money Bags" is added to
+the cart, "That's all" moves to the details. Against Radhe Dhokla everything
+reads in ₹. Turn times fell from 33s to ~5s on the paths that were misreading.
+
+**Open — and these are the honest ones:**
+- **"what time do you open" answers "Delivery is not running today."** Two
+  causes. The reading defaults to delivery when no fulfillment is chosen, and
+  Rushtampura has no hours at all to answer with. Not fixed.
+- **"do you deliver to vesu" is still answered with the details request.** It
+  no longer stores DELIVERY as the customer's choice, but it does not answer
+  the question either. The assistant has no notion of a delivery area.
+- **Radhe Dhokla's data is split down the middle.** All 136 menu items are on
+  Rushtampura, which has ZERO schedule slots and no opening hours. The other
+  five Surat branches have 14 slots each and no menu. So the branch that can
+  feed you cannot say when it is open, and the ones that can say when they are
+  open have nothing to sell. Both halves need fixing in the admin.
+- qwen3:8b still writes the occasional oddity — it offered "a side of Radhe
+  Dhokla" once. The grounding guards trim the worst of it; a larger model
+  would help more than another rule would.
+
+**Learned:**
+- Reading the code finds the bugs you can imagine. Talking to it finds the
+  ones you cannot — every fix above came from a transcript, and several
+  contradicted what the code looked like it did.
+- The load-bearing question for a chat assistant is not "is the answer good"
+  but "does it recognise the answer to its own question". Six of today's eight
+  fixes are that one question in different clothes.
+- A fix that makes something answerable also makes a guard reachable that was
+  never exercised before. Both regressions today were that shape, and both
+  showed up one script later — which is the argument for running several
+  conversations rather than the one you fixed.
+
 ## 2026-09-19 — The WhatsApp thread that could not take an order (dc87f6b)
 
 User sent three screenshots of a real conversation on the live number and
