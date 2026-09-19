@@ -46,6 +46,9 @@ class WebhookEvent:
     intent_id: str | None
     amount: Decimal | None
     currency: str | None
+    # The gateway's id for the money itself, where the event carries one. The
+    # intent above is what was asked for; this is what can be refunded.
+    payment_id: str | None = None
     failure_code: str | None = None
     failure_message: str | None = None
     payload: dict[str, Any] = field(default_factory=dict)

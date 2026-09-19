@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.services.currency import currency_for
+from app.services.currency import currency_for, format_amount
 from app.models.enums import (
     OrderScheduleType,
     OrderCancellationReason,
@@ -476,6 +476,10 @@ def _mark_paid(db: Session, order: Order, transaction: PaymentTransaction, event
     transaction.status = PaymentStatus.PAID
     transaction.failure_code = None
     transaction.failure_message = None
+    # Only ever set, never cleared: a later event that happens to carry no
+    # payment id must not erase the one that does.
+    if event.payment_id:
+        transaction.provider_payment_id = event.payment_id
     order.payment_status = PaymentStatus.PAID
     order.payment_reference = transaction.provider_intent_id
     if order.status == OrderStatus.PAYMENT_PENDING:
@@ -529,7 +533,7 @@ def _mark_refunded(db: Session, order: Order, transaction: PaymentTransaction) -
 
 
 def _reconcile_with_provider(db: Session, order: Order) -> None:
-    """Ask the provider what really became of a card order that still looks unpaid.
+    """Ask the provider what really became of an order that still looks unpaid.
 
     Webhooks are the primary path, but delivery is not guaranteed: Stripe gives
     up after its retry window, an endpoint can be registered late or not at all,
@@ -547,7 +551,12 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     provider outage, and the next poll simply tries again.
     """
 
-    if order.payment_method != PaymentMethod.CARD:
+    # Every method that settles through a gateway, not just CARD. This read
+    # was Stripe-only, which meant a Razorpay order whose webhook was lost had
+    # no safety net at all: the reaper below would cancel an order the
+    # customer had already paid for, and the first anyone would know is a
+    # customer holding a receipt for a cancelled order.
+    if order.payment_method not in GATEWAY_FOR_METHOD:
         return
     if order.payment_status not in RETRYABLE_PAYMENT_STATUSES:
         return
@@ -556,7 +565,9 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     if transaction is None or not transaction.provider_intent_id:
         return
 
-    provider = provider_for(db, restaurant_id=order.restaurant_id, method=PaymentMethod.CARD)
+    provider = provider_for(
+        db, restaurant_id=order.restaurant_id, method=order.payment_method
+    )
     if provider is None or not provider.is_configured():
         return
 
@@ -953,13 +964,26 @@ def _called(order: Order) -> str:
     return f" {name}" if name else ""
 
 
+def _money(order: Order) -> str:
+    """This order's total, in the money it was actually charged in.
+
+    Both chat lines below wrote `$%.2f`, so an Indian customer who had just
+    paid 145 rupees was told "Total paid: $145.00". The order stamps its own
+    currency at creation and never changes it, so that column is the only
+    right source here — not the platform default, and not the restaurant's
+    current setting, which may have been changed since.
+    """
+
+    return format_amount(float(order.total_amount), order.currency)
+
+
 def _confirm_in_chat(order: Order) -> None:
     """The payment landed."""
 
     _tell_in_chat(
         order,
         f"Payment received, thank you{_called(order)}. Your order is confirmed and the kitchen "
-        f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
+        f"has it.{_scheduled_line(order)}\n\nTotal paid: {_money(order)}\n"
         f"Order reference: {str(order.id)[:8]}",
         finished=True,
     )
@@ -1051,8 +1075,8 @@ def _offer_the_dishes_back(order: Order) -> None:
 def _report_refunded_in_chat(order: Order) -> None:
     _tell_in_chat(
         order,
-        f"Your refund of ${order.total_amount:.2f} is on its way back to the card you "
-        "paid with. Banks usually take a few working days to show it.",
+        f"Your refund of {_money(order)} is on its way back to how you paid. "
+        "Banks usually take a few working days to show it.",
         finished=True,
     )
 
@@ -1061,10 +1085,17 @@ def _report_refunded_in_chat(order: Order) -> None:
 
 
 def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> int:
-    """Cancel card orders that were never paid, and their Stripe intents.
+    """Cancel orders that were never paid, and whatever the gateway still holds.
 
     Without this, an abandoned checkout sits in the customer's order list
-    forever and holds an open intent at the provider.
+    forever and holds an open intent — or, for a chat order, a live payment
+    link — at the provider.
+
+    Every method that settles through a gateway, not just CARD. The filter
+    used to name CARD, which meant a Razorpay order that was never paid was
+    never reaped: it stayed PAYMENT_PENDING indefinitely with its payment link
+    still payable, so a customer tapping yesterday's link would be charged for
+    an order nobody was cooking.
     """
 
     ttl_minutes = max(1, settings.payment_intent_ttl_minutes)
@@ -1074,7 +1105,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         db.scalars(
             select(Order).where(
                 Order.status == OrderStatus.PAYMENT_PENDING,
-                Order.payment_method == PaymentMethod.CARD,
+                Order.payment_method.in_(list(GATEWAY_FOR_METHOD)),
                 Order.placed_at < cutoff,
             )
         )
@@ -1089,7 +1120,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         # own gateway account — a single provider hoisted out of the loop
         # would cancel one restaurant's intents against another's account.
         provider = provider_for(
-            db, restaurant_id=order.restaurant_id, method=PaymentMethod.CARD
+            db, restaurant_id=order.restaurant_id, method=order.payment_method
         )
         # Confirm with the provider before cancelling. Cancelling an order whose
         # webhook was merely lost would leave the customer charged for an order
@@ -1110,7 +1141,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
             order=order,
             reason=OrderCancellationReason.PAYMENT_NOT_COMPLETED,
             actor=OrderEventActor.SYSTEM,
-            note="unpaid card order past its intent TTL",
+            note="unpaid order past its payment TTL",
         )
         order.status = OrderStatus.CANCELLED
         order.payment_status = PaymentStatus.CANCELLED
@@ -1118,7 +1149,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         cancelled += 1
 
     db.commit()
-    logger.info("Reaped %s unpaid card orders older than %s minutes", cancelled, ttl_minutes)
+    logger.info("Reaped %s unpaid orders older than %s minutes", cancelled, ttl_minutes)
     return cancelled
 
 

@@ -223,9 +223,15 @@ class StripeProvider:
         failure_code: str | None = None
         failure_message: str | None = None
 
+        # What a refund would be issued against. `Refund.create` takes a
+        # PaymentIntent or a Charge, and the PaymentIntent is the one every
+        # object here can name, so it is the one recorded.
+        payment_id: str | None = None
+
         object_type = data_object.get("object")
         if object_type == "payment_intent":
             intent_id = data_object.get("id")
+            payment_id = data_object.get("id")
             currency = data_object.get("currency")
             raw_amount = data_object.get("amount_received") or data_object.get("amount")
             if raw_amount is not None and currency:
@@ -238,12 +244,16 @@ class StripeProvider:
             # it issued the link, so that is what identifies the order — the
             # intent Stripe has now created was unknown at that point.
             intent_id = data_object.get("id")
+            # The session is what identifies the ORDER; the intent it created
+            # is what identifies the money.
+            payment_id = data_object.get("payment_intent")
             currency = data_object.get("currency")
             raw_amount = data_object.get("amount_total")
             if raw_amount is not None and currency:
                 amount = from_minor_units(int(raw_amount), currency)
         elif object_type == "charge":
             intent_id = data_object.get("payment_intent")
+            payment_id = data_object.get("payment_intent") or data_object.get("id")
             currency = data_object.get("currency")
             raw_amount = data_object.get("amount_refunded") or data_object.get("amount")
             if raw_amount is not None and currency:
@@ -253,6 +263,7 @@ class StripeProvider:
             event_id=str(event["id"]),
             event_type=str(event["type"]),
             intent_id=intent_id,
+            payment_id=payment_id,
             amount=amount,
             currency=currency.upper() if currency else None,
             failure_code=failure_code,

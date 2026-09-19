@@ -51,6 +51,23 @@ _ORDER_STATUS = {
     "paid": "succeeded",
 }
 
+#: Razorpay ids carry their own type. A payment link is not an order and is
+#: not reachable on `/orders`, so every call that takes an intent id has to
+#: know which of the two it was handed — this app stores whichever one it
+#: created, and both end up in `provider_intent_id`.
+_PAYMENT_LINK_PREFIX = "plink_"
+
+# A payment link's own states, in the same vocabulary as the orders above.
+# `expired` and `cancelled` are both "this link will never be paid", which is
+# what the caller is actually asking.
+_LINK_STATUS = {
+    "created": "requires_payment_method",
+    "partially_paid": "processing",
+    "paid": "succeeded",
+    "expired": "cancelled",
+    "cancelled": "cancelled",
+}
+
 # The events worth acting on. Razorpay sends many more; anything not here is
 # parsed and ignored rather than treated as a payment outcome.
 _EVENT_STATUS = {
@@ -208,6 +225,28 @@ class RazorpayProvider:
         )
 
     def retrieve_intent(self, intent_id: str) -> PaymentIntentResult:
+        """What Razorpay says became of this attempt, pulled rather than pushed.
+
+        This is the lost-webhook safety net: a customer who really paid must
+        not have their order cancelled because an event never arrived. Which
+        endpoint answers depends on what was created for them — a chat order
+        is a payment LINK, a browser checkout is an ORDER, and asking the
+        wrong one 404s.
+        """
+
+        if intent_id.startswith(_PAYMENT_LINK_PREFIX):
+            link = self._request("GET", f"/payment_links/{intent_id}")
+            return PaymentIntentResult(
+                intent_id=link["id"],
+                # A link has no client secret; what a client would need is the
+                # page itself, so that is the honest thing to carry here.
+                client_secret=str(link.get("short_url") or link["id"]),
+                amount=_from_minor_units(link.get("amount_paid") or link.get("amount"))
+                or Decimal("0.00"),
+                currency=(link.get("currency") or "INR").upper(),
+                status=_LINK_STATUS.get(link.get("status", ""), "processing"),
+            )
+
         order = self._request("GET", f"/orders/{intent_id}")
         return PaymentIntentResult(
             intent_id=order["id"],
@@ -218,15 +257,35 @@ class RazorpayProvider:
         )
 
     def cancel_intent(self, intent_id: str) -> None:
-        """Razorpay orders cannot be cancelled, and pretending otherwise lies.
+        """Stop this attempt from being payable, where that is a real thing.
 
-        Stripe has `PaymentIntent.cancel`; Razorpay has no equivalent — an
-        unpaid order simply stays unpaid and is never charged. So this is a
-        deliberate no-op rather than a call that would 404, and the order's
-        own status in our database is what marks it abandoned.
+        A Razorpay ORDER cannot be cancelled and never needed to be: it is
+        inert until a payment is attempted against it, and an unpaid one is
+        simply never charged.
+
+        A payment LINK is the opposite. It is a live hosted page that outlives
+        the order it was made for, so a link left alone after its order is
+        reaped stays payable — and a customer tapping an old link would pay
+        for an order this app has already cancelled. Razorpay does cancel
+        those, and the caller has already confirmed with `retrieve_intent`
+        that this one was not paid.
+
+        Never raises. The reaper calls this in a loop over every restaurant's
+        stale orders, and one gateway refusing one cancellation must not stop
+        the others from being cleaned up.
         """
 
-        logger.info("Razorpay order %s left unpaid; Razorpay has no cancel call", intent_id)
+        if not intent_id.startswith(_PAYMENT_LINK_PREFIX):
+            logger.info("Razorpay order %s left unpaid; Razorpay has no cancel call", intent_id)
+            return
+
+        try:
+            self._request("POST", f"/payment_links/{intent_id}/cancel")
+        except PaymentProviderError as error:
+            # Razorpay refuses to cancel a link that is already paid, already
+            # cancelled or expired — all three mean it is not payable now,
+            # which is the outcome that was wanted.
+            logger.warning("Razorpay link %s not cancelled: %s", intent_id, error)
 
     def create_checkout_session(
         self,
@@ -359,6 +418,9 @@ class RazorpayProvider:
             event_id=body.get("id") or f"{event_type}:{intent_id}",
             event_type=_EVENT_STATUS.get(event_type, event_type),
             intent_id=intent_id,
+            # Present on every event that involved an actual payment, whether
+            # the link's id or the order's is what identifies it here.
+            payment_id=payment.get("id") or None,
             amount=_from_minor_units(payment.get("amount") or order.get("amount")),
             currency=(payment.get("currency") or order.get("currency") or "").upper() or None,
             failure_code=payment.get("error_code"),

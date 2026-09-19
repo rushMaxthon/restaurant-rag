@@ -36,6 +36,15 @@ class PaymentTransaction(TimestampMixin, Base):
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_intent_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    # What this app ASKED for is above; this is what the gateway says actually
+    # happened — a Stripe PaymentIntent that captured, or a Razorpay `pay_...`.
+    # A refund is issued against this, never against the intent: Razorpay's
+    # refund endpoint is `/payments/{id}/refund`, and a payment link id there
+    # matches nothing. Null for every row written before it was recorded, and
+    # for any event that carries no payment.
+    provider_payment_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status"),
         nullable=False,

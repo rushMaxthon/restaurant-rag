@@ -877,7 +877,7 @@ class ConfirmingAPaidOrderInChatTests(unittest.TestCase):
         from decimal import Decimal
         from types import SimpleNamespace
 
-        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total))
+        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total), currency="INR")
 
     def test_an_order_placed_in_a_chat_is_confirmed_there(self) -> None:
         from unittest.mock import patch
@@ -895,7 +895,7 @@ class ConfirmingAPaidOrderInChatTests(unittest.TestCase):
         to, body = sent[0]
         self.assertEqual(to, "+916353100362")
         self.assertIn("Payment received", body)
-        self.assertIn("$261.45", body)
+        self.assertIn("₹261.45", body, "the money the order was actually charged in")
         self.assertIn(str(order.id)[:8], body)
         self.assertEqual(sent[1][0], "forgotten", "said once, not on every later event")
 
@@ -964,7 +964,9 @@ class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
         from decimal import Decimal
         from types import SimpleNamespace
 
-        return SimpleNamespace(id=uuid.uuid4(), total_amount=Decimal(total), customer=None)
+        return SimpleNamespace(
+            id=uuid.uuid4(), total_amount=Decimal(total), currency="INR", customer=None
+        )
 
     def said(self, call, *, phone="+916353100362"):
         from unittest.mock import patch
@@ -1023,7 +1025,7 @@ class EveryPaymentOutcomeIsSaidTests(unittest.TestCase):
         from app.services.payments import service
 
         body, forgotten = self.said(lambda: service._report_refunded_in_chat(self.order()))
-        self.assertIn("$261.45", body)
+        self.assertIn("₹261.45", body, "the money the order was actually charged in")
         self.assertIn("refund", body.lower())
         self.assertTrue(forgotten)
 
