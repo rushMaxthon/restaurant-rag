@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from celery import Celery
 from celery.schedules import crontab
 
@@ -88,6 +90,25 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     worker_prefetch_multiplier=1,
+    # Windows cannot run the default prefork pool, and fails at it in the
+    # worst possible way: SILENTLY, and only for the work.
+    #
+    # Measured on this machine, 2026-09-19. A customer's WhatsApp message
+    # arrived, the webhook returned 200, the task was taken off the queue —
+    # and no reply was ever sent. `inspect.ping` answered, `active_queues`
+    # looked right, the queue was empty and the worker reported itself idle.
+    # Every check said healthy. The pool's child processes were crash-looping
+    # on `PermissionError: [WinError 5] Access is denied` out of
+    # `billiard/synchronize.py`, which is that library's cross-process
+    # semaphore being refused by the OS: the parent kept acking messages and
+    # no child could ever receive one. With the worker started detached and
+    # no logfile, the traceback went nowhere at all.
+    #
+    # `solo` runs tasks in the main process — no children, no semaphore, no
+    # loss. It is single-concurrency, which is right for a dev box and wrong
+    # for production, so this is scoped to Windows. Docker and Render are
+    # Linux and keep prefork.
+    **({"worker_pool": "solo"} if sys.platform == "win32" else {}),
 )
 
 __all__ = ["celery_app"]

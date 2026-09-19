@@ -163,6 +163,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 alembic upgrade head
 python seed.py
 celery -A app.config.celery:celery_app worker --loglevel=info -Q embeddings,notifications,default,analytics
+# On Windows add: --pool=solo --logfile logs/celery.log   (see the note below)
 python -m unittest discover -s tests      # tests are unittest-based, not pytest
 python -m compileall app alembic          # the repo's usual syntax check
 
@@ -253,6 +254,21 @@ edis-portable` (Redis 5.0.14.1, the tporadowski
   - Every op in `services/cache.py` still catches `RedisError` and degrades to
     a miss, so the API survives Redis going away — but with it running, chat
     session memory, the response cache and Celery all work.
+- **Celery on Windows must use `--pool=solo`.** The default prefork pool does
+  not work here and fails silently: its child processes crash-loop on
+  `PermissionError: [WinError 5]` from `billiard/synchronize.py` (the OS
+  refusing that library's cross-process semaphore), while the parent keeps
+  acking tasks off the queue. Nothing is executed and nothing is logged.
+  `app/config/celery.py` now forces `worker_pool="solo"` on win32, so the flag
+  is belt-and-braces; Docker and Render are Linux and keep prefork.
+  - **Always start the worker with `--logfile`.** This cost an afternoon: a
+    WhatsApp message arrived, the webhook returned 200, the task left the
+    queue and no reply was sent — and `inspect.ping`, `active_queues` and the
+    queue depth all said the worker was healthy and idle. The traceback was
+    going to a hidden window's stderr. `backend/scripts/whatsapp_healthcheck.py`
+    checks the Meta half read-only (token, number, quality) without messaging
+    anybody.
+
 - **Ollama**: INSTALLED and serving on `http://localhost:11434`, with `qwen3:8b`
   (generation) and `nomic-embed-text` (embeddings) pulled. This line used to say
   it was not, which is why several sessions tested the AI paths by scripting the
