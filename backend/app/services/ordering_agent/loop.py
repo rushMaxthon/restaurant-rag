@@ -48,6 +48,7 @@ from app.services.ordering_agent import guards, open_orders, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
     extract_cart_request,
+    question_asked_in,
     quick_read,
     read_order_intent,
     Generate,
@@ -1583,6 +1584,47 @@ def run_turn(
         })
         order_draft.save(scope.session_id, draft_now)
 
+    def _last_shown() -> dict[str, Any] | None:
+        """The dishes last put in front of this customer, if any."""
+
+        if scope.session_id is None:
+            return None
+        raw = order_draft.load(scope.session_id).last_shown
+        if not raw:
+            return None
+        try:
+            stored = json.loads(raw)
+        except ValueError:
+            return None
+        return stored if isinstance(stored, dict) and stored.get("options") else None
+
+    def _last_question() -> str | None:
+        """The question the last reply ended on, as recorded for this session.
+
+        A browser sends the previous reply back with the next message
+        (`previous_reply`); a chat thread has no client to carry it, so on
+        WhatsApp this store is the only memory of what a bare "yes" is
+        answering.
+        """
+
+        if scope.session_id is None:
+            return None
+        return order_draft.load(scope.session_id).last_question
+
+    def _remember_shown(names: list[str]) -> None:
+        """Write down what was just shown, replacing whatever was there.
+
+        Only the last list. Two turns back is not what "the first one" means,
+        and keeping a history would let a stale name win over a fresh one.
+        """
+
+        options = [{"name": str(name)} for name in names if str(name).strip()]
+        if scope.session_id is None or not options:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.last_shown = json.dumps({"options": options})
+        order_draft.save(scope.session_id, draft_now)
+
     def _remember_dish_choice(question: str, shown: list[dict[str, Any]]) -> None:
         """Write down the dishes just read out, so the next message can pick one.
 
@@ -1611,6 +1653,9 @@ def run_turn(
         draft_now.pending_choice = json.dumps(
             {"kind": "dish", "question": question, "options": options, "asks": 1}
         )
+        # The same list, in the softer store too: if the question is later
+        # given up on, the dishes are still the ones they were just shown.
+        draft_now.last_shown = json.dumps({"options": options})
         order_draft.save(scope.session_id, draft_now)
 
     def _answer_dish_choice(asked: dict[str, Any], chose: list[str]) -> list[dict[str, Any]]:
@@ -1967,6 +2012,10 @@ def run_turn(
     # "No", "No" and "what can I have for lunch?" with the same offer.
     placing_wanted = False
     asked_before = _pending_choice()
+    # What was last put in front of them, when no question of ours is
+    # standing. The agent's own question wins where there is one: it is the
+    # more specific thing outstanding.
+    shown_before = None if asked_before else _last_shown()
     # The sections this branch actually sells, so "some drink" can find
     # Beverages. Rows, given to the reading; the mapping is meaning.
     sections: list[str] = []
@@ -1993,8 +2042,13 @@ def run_turn(
             generate=generate,
             now_local=now_local.strftime("%A %Y-%m-%d %H:%M"),
             offered=standing_offer,
-            choice_question=(asked_before or {}).get("question"),
-            choice_options=[o["name"] for o in (asked_before or {}).get("options", [])],
+            choice_question=(
+                (asked_before or {}).get("question")
+                or ("These were just shown to them." if shown_before else None)
+            ),
+            choice_options=[
+                o["name"] for o in (asked_before or shown_before or {}).get("options", [])
+            ],
             # Whatever a bare "yes" would be agreeing to. Measured: with a
             # time offered but nothing named as the question, the reading
             # answered "yes" with nothing at all, the turn fell through to
@@ -2006,7 +2060,19 @@ def run_turn(
             ),
             # The question we ended the last turn on. A bare "yes" has no
             # meaning of its own; this is the meaning.
-            asked=(standing.get("asks") or standing["question"]) if standing else None,
+            #
+            # Failing one of ours, the question the REPLY PIPELINE ended on.
+            # It asks things in prose on most turns and records none of them,
+            # so "yes" to "Would you prefer it with a side of naan?" reached
+            # the reading with no referent at all, came back empty, and left
+            # the planner to invent — on an empty cart — "you're ready to
+            # proceed". Only the final sentence, and only if it is a short
+            # question: see `question_asked_in`.
+            asked=(
+                (standing.get("asks") or standing["question"])
+                if standing
+                else question_asked_in(previous_reply) or _last_question()
+            ),
             # The day they are choosing a time on, if that is the question.
             for_day=(
                 standing.get("subject")
@@ -2122,20 +2188,46 @@ def run_turn(
         order_draft.save(scope.session_id, kept)
         collecting = _still_missing() or []
 
-    # Nothing in this message answered anything. A question already asked is
-    # kept rather than dropped — and never repeated word for word.
+    # Nothing in this message answered anything, AND it asked for nothing
+    # else either. A question already asked is kept rather than dropped — and
+    # never repeated word for word.
+    #
+    # The second half of that condition is the load-bearing half. This guard
+    # used to weigh only the four fields that ANSWER a question, so a message
+    # that plainly asked for something new — "is anything vegetarian", which
+    # reads as `browse` — counted as "nothing" and was answered "Sorry, I did
+    # not catch that. Just reply with one of these". A customer who changes
+    # the subject has not failed to answer; they have moved on, and telling
+    # them off for it is worse than dropping the question.
+    #
+    # It did not show before dish lists were recorded as choices, because
+    # `pending_choice` was only ever set by a size question, which a customer
+    # rarely wanders away from.
     if (
         asked_before
-        and not wanted.get("chose")
-        and not wanted["add"]
-        and not wanted["details"]
-        and not wanted["checkout"]
-        and not wanted.get("when")
         and scope.session_id is not None
+        and not any(
+            wanted.get(key)
+            for key in (
+                # Ways of answering the question.
+                "chose", "add", "details", "checkout", "when",
+                # Ways of asking for something else entirely.
+                "browse", "category", "wants_to_add", "cancel_order",
+                "pay_now", "asks_hours",
+            )
+        )
     ):
         return _reask_or_give_up(asked_before)
 
-    if wanted.get("chose") and asked_before:
+    if wanted.get("chose") and not asked_before and shown_before:
+        # They picked one of the dishes the reply pipeline showed them. Only
+        # ever an add: there is no question of ours to answer here, so a
+        # message that names nothing on that list simply carries on to the
+        # planner.
+        answered = _answer_dish_choice(shown_before, wanted["chose"])
+        if answered:
+            actions.extend(answered)
+    elif wanted.get("chose") and asked_before:
         # Two kinds of question end on a list. A size or a customization
         # option carries the id that settles it; a dish carries only its
         # name, and is resolved against the menu when it is picked. Sending

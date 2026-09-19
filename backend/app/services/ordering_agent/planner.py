@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence
 
@@ -246,7 +247,17 @@ def _cart_facts(cart_summary: str | None) -> str:
     dish called "cart".
     """
 
-    return f"{cart_summary}\n" if cart_summary else ""
+    # An empty cart is a fact too, and it used to be the one thing the model
+    # was told nothing about — `cart_summary` is only written when there IS a
+    # cart, so an empty one left a silence the model filled with an
+    # assumption. Measured: "yes", with nothing in the cart and nothing
+    # pending, came back "Great! It looks like you're ready to proceed. Let
+    # me check what details we need to finalize your order."
+    return f"{cart_summary}\n" if cart_summary else (
+        "The customer's order is EMPTY: nothing has been added yet. Do not "
+        "say they are ready to check out, do not ask for their details, and "
+        "do not refer to an order they have not started.\n"
+    )
 
 
 def _customer_facts(diet: str | None) -> str:
@@ -608,6 +619,58 @@ _PLAIN_BY_PHRASE = {
 }
 
 
+#: Longer than any question worth reading a "yes" against.
+#:
+#: The cap is the whole safety argument. `_hold` records a SHORT question on
+#: purpose, because a long read-back handed to the model as "the question"
+#: got mined for its contents: "yes" arrived carrying a delivery address,
+#: which was read as a new instruction. A single interrogative sentence
+#: cannot do that, and one this long is not a question anybody asked.
+_ASKED_IN_PROSE_LIMIT = 160
+
+
+def question_asked_in(reply: str | None) -> str | None:
+    """The question a reply ended on, if it ended on one.
+
+    The reply pipeline asks things constantly — "Would you prefer it with a
+    side of naan?", "Shall I show you the desserts?" — in prose the model
+    wrote, and nothing wrote them down. So a customer answering "yes" was
+    answering nothing: the reading returns an empty object for a bare
+    agreement with no referent (measured), the turn found nothing to do, and
+    the planner filled the silence. Live, on an empty cart: "Great! It looks
+    like you're ready to proceed. Let me check the details to ensure
+    everything is set for your order." — about an order that did not exist.
+
+    Only the LAST sentence, and only if it is a question: that is the thing
+    being answered. Everything before it is context the customer has already
+    read and is not replying to.
+
+    Used only when no question of OURS is standing. One we asked through
+    `_hold` is the more specific thing outstanding and carries what agreeing
+    to it should DO, which prose cannot.
+    """
+
+    text = (reply or "").strip()
+    cut = text.rfind("?")
+    if cut == -1:
+        return None
+    # Only emoji, spaces and stray punctuation may follow the question mark.
+    # The reply pipeline ends on one constantly — "Would you like the Butter
+    # or Oil version? 🥟" — and an `endswith("?")` test missed every one.
+    # A word after it means the reply carried on past the question, and the
+    # question is no longer the thing being answered.
+    if re.search(r"\w", text[cut + 1 :]):
+        return None
+    text = text[: cut + 1]
+    # The tail after the previous sentence ender is the question itself.
+    last = re.split(r"(?<=[.!?])\s+", text)[-1].strip()
+    if len(last) > _ASKED_IN_PROSE_LIMIT:
+        return None
+    # Markdown emphasis reaches here from the reply pipeline; the model should
+    # read the words, not the asterisks.
+    return last.replace("**", "").replace("*", "").strip() or None
+
+
 def quick_read(message: str) -> str | None:
     """What this sentence plainly asks for, or None to go and read it properly.
 
@@ -623,6 +686,23 @@ def quick_read(message: str) -> str | None:
     if _NEGATIONS & {word.strip(".,!?") for word in words}:
         return None
     return _PLAIN_BY_PHRASE.get(_plainly(message))
+
+
+#: Words that cannot be the name of a dish, whatever the reading says.
+#:
+#: Not a list that decides MEANING — the prompt does that, and it is told the
+#: same thing in words. This is a validity check on one field, the same shape
+#: as the "null"/"none" check it grew out of: a model that answers `{"dish":
+#: "one"}` has told us it found no name, in the only vocabulary it had.
+#:
+#: Measured: "add one", straight after four biryanis were read out, produced a
+#: dish called "one". It resolved against the menu to nothing, spent 33
+#: seconds doing so, and the customer was told their cart was empty. Dropping
+#: it lets the same turn's `wants_to_add` do the right thing instead — ask
+#: which one.
+_NOT_A_DISH_NAME = frozenset(
+    {"null", "none", "one", "it", "that", "this", "them", "some", "any", "more"}
+)
 
 
 def read_order_intent(
@@ -732,6 +812,13 @@ def read_order_intent(
             'big one", "medium please", "mango and banana") — put every matching '
             'option in "chose" as a list, each copied exactly from that list. If it '
             'does not answer it, "chose" is null.\n'
+            # The options are given in the order they were read out, so a
+            # position IS a name. Measured: after six suggestions, "the first
+            # one" resolved to nothing and was answered "your cart is empty".
+            'That list is in the order it was shown, so a POSITION names an '
+            'option: "the first one", "the 2nd", "the last one", "number 3" '
+            "are picks, and the option at that position is what goes in "
+            '"chose".\n'
         )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
@@ -770,6 +857,19 @@ def read_order_intent(
         'menu", "what desserts are there", "I am asking for pizza". Put the thing '
         "they want to see, in their own words. It is null when they are asking for "
         "one named dish to be added.\n"
+        # Measured: "is anything vegetarian" read as nothing at all, so a dish
+        # question standing from the turn before answered a perfectly clear
+        # request with "Sorry, I did not catch that."
+        '- Asking WHETHER a kind of food exists is browsing too: "is anything '
+        'vegetarian", "do you have anything spicy", "got anything sweet", '
+        '"anything under 200". Put what they are asking about in "browse".\n'
+        # Measured: "add one", right after four biryanis were read out, came
+        # back as a dish called "one" — which resolved to nothing, spent 33
+        # seconds doing it, and answered "your cart is empty".
+        '- "one", "it", "that", "this" and "some" are never the NAME of a '
+        'dish. "Add one", "add it", "one please" name nothing: if the list '
+        'below says which they mean, that goes in "chose"; otherwise '
+        '"wants_to_add" is true and "add" is null.\n'
         # Measured: "I want to add more item in my cart" matched nothing at
         # all, so the turn had nothing to do and read the cart back — the
         # same cart, twice in a row.
@@ -791,6 +891,13 @@ def read_order_intent(
         "what follows still names a dish by itself — \"2 corn fritters\" is two "
         "of Corn Fritters; \"four cheese pizza\" is one Four Cheese Pizza.\n"
         '- "fulfillment_type" is "DELIVERY" or "PICKUP" only if they say which.\n'
+        # Measured: "do you deliver to vesu" was read as choosing delivery,
+        # stored as the customer's fulfillment, and answered "Thanks. I still
+        # need your name, an email address and the delivery address" — to
+        # somebody who had asked a question and ordered nothing.
+        '- A QUESTION about delivery is not a choice of it. "Do you deliver to '
+        'X", "is delivery available", "how much is delivery", "can I collect" '
+        'all leave "fulfillment_type" null — they are asking, not deciding.\n'
         # Measured: "chalo order kar do", "book it", "done" and "confirm my
         # order" all read as false while checkout was described only as
         # "place the order, check out or pay". Those customers are not saying
@@ -846,7 +953,7 @@ def read_order_intent(
         dish = one.get("dish")
         if not isinstance(dish, str) or not dish.strip():
             continue
-        if dish.strip().lower() in {"null", "none"}:
+        if dish.strip().lower() in _NOT_A_DISH_NAME:
             continue
         try:
             quantity = int(one.get("quantity") or 1)

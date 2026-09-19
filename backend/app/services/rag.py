@@ -8,6 +8,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
+from contextvars import ContextVar
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
@@ -4831,7 +4832,10 @@ def _format_context_line(candidate: RetrievedMenuCandidate) -> str:
     veg_label = "Veg" if item.is_veg else "Non-Veg"
     new_label = " | New item" if is_menu_item_new(item) else ""
     return (
-        f"{item.name} | ${_safe_decimal(item.price):.2f} | {veg_label} | "
+        # This line's OWN restaurant, so a marketplace answer spanning
+        # several of them prices each in its own money rather than in the
+        # turn's.
+        f"{item.name} | {_prompt_money(_safe_decimal(item.price), restaurant.currency)} | {veg_label} | "
         f"{item.category} | {restaurant.name}{new_label} | {description}"
     )
 
@@ -5055,7 +5059,8 @@ def _build_combo_context_block(
         item_names = combo.get("item_names") or []
         items_block = ", ".join(str(item_name) for item_name in item_names[:4])
         lines.append(
-            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\nPrice: ${combo_price}\nIncludes: {items_block}"
+            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\n"
+            f"Price: {_prompt_money(combo_price)}\nIncludes: {items_block}"
         )
     return "\n\n".join(lines)
 
@@ -5717,7 +5722,7 @@ def _deserialize_chat_response_cache_payload(
 
 
 def _format_suggestion_names(suggestions: list[ChatSuggestionItem]) -> str:
-    suggestion_names = [f"{item.name} (${item.price})" for item in suggestions[:3]]
+    suggestion_names = [f"{item.name} ({_prompt_money(item.price)})" for item in suggestions[:3]]
     if not suggestion_names:
         return ""
     if len(suggestion_names) == 1:
@@ -5890,7 +5895,7 @@ def _build_offer_context_block(offers: list[PersonalizedOfferCardResponse]) -> s
         if offer.discount_label:
             details.append(offer.discount_label)
         if offer.minimum_order_amount > 0:
-            details.append(f"Min order ${offer.minimum_order_amount}")
+            details.append(f"Min order {_prompt_money(offer.minimum_order_amount)}")
         if offer.expires_at:
             details.append(f"Expires {offer.expires_at:%d %b}")
         lines.append("\n".join(details))
@@ -6060,6 +6065,45 @@ def _build_safe_reply(
     return f"These look like the strongest options from the current menu: {formatted_names}."
 
 
+#: Denials of the MENU, rather than of one dish on it.
+#:
+#: The difference matters because one is fine and the other is never true.
+#: "We don't have sushi on the menu — but the Penne Arrabbiata is a
+#: bestseller" is the house style, and it is in the prompt as a worked
+#: example. The model generalises the SHAPE of it: measured live, "no" as a
+#: whole message was answered "We don't have anything on the menu — but I've
+#: got a few tasty options 🍛" with six real dishes listed underneath it.
+#:
+#: Denying a named dish is a fact about that dish. Denying the menu while
+#: showing the menu is a sentence that contradicts the message it is in, and
+#: a customer who reads the first line and stops has been told the kitchen
+#: has nothing.
+_WHOLE_MENU_DENIALS = (
+    "anything on the menu",
+    "nothing on the menu",
+    "any items on the menu",
+    "no items on the menu",
+    "menu is empty",
+    "nothing available on the menu",
+    "nothing to offer",
+)
+
+
+def _denies_the_whole_menu(raw_reply: str, suggestions: list[ChatSuggestionItem]) -> bool:
+    """Whether this reply says the kitchen has nothing while offering things.
+
+    Checked whenever dishes are attached, independent of what the customer
+    named — the reply above named nothing, which is exactly why the existing
+    `contradiction_markers` check (which needs a named dish to match against)
+    could not see it.
+    """
+
+    if not suggestions:
+        return False
+    normalized = _normalize_text(raw_reply)
+    return any(phrase in normalized for phrase in _WHOLE_MENU_DENIALS)
+
+
 def _ensure_useful_reply(
     *,
     message: str,
@@ -6081,7 +6125,7 @@ def _ensure_useful_reply(
         marker in _normalize_text(raw_reply) for marker in contradiction_markers
     )
 
-    if raw_reply.strip() and not _contains_generic_fallback(raw_reply) and not contradictory_unavailable_reply:
+    if raw_reply.strip() and not _contains_generic_fallback(raw_reply) and not contradictory_unavailable_reply and not _denies_the_whole_menu(raw_reply, suggestions):
         return raw_reply.strip()
 
     safe_reply = fallback_reply_override or _build_safe_reply(
@@ -7304,6 +7348,112 @@ def run_turn(db: Session, **kwargs: Any) -> "TurnOutcome":
     return _ordering_agent_run_turn(db, **kwargs)
 
 
+# What the restaurant being answered for charges in.
+#
+# A ContextVar, for the third time in this codebase and for the same reason
+# each time (`ordering_agent/loop.py`, `insights/rules.py`): the four places
+# that write a price into a PROMPT are deep inside context builders that have
+# no restaurant to hand, and the currency belongs to the turn rather than to
+# each figure in it.
+#
+# This is what the MODEL is shown, so it is what the model repeats. Measured
+# on a rupee menu: the retrieved context said "Butter Pavbhaji | $135.00" and
+# the reply came back "the Butter Pavbhaji ($135.00)" — under a suggestion
+# list that correctly said ₹135.
+_reply_currency: ContextVar[str | None] = ContextVar("reply_currency", default=None)
+
+
+def bind_reply_currency(code: str | None) -> None:
+    """Write every price in this turn's prompts in this currency."""
+
+    _reply_currency.set(code)
+
+
+def _prompt_money(value: Any, code: str | None = None) -> str:
+    """A price as the model should see it. `code` overrides the turn's."""
+
+    try:
+        return format_amount(float(value), code or _reply_currency.get())
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _currency_of(db: Session, restaurant_id: uuid.UUID | None) -> str | None:
+    """What this restaurant charges in, or None for the platform default.
+
+    None is also the right answer for the marketplace, which spans
+    restaurants: each retrieved line then carries its own restaurant's
+    currency, and only the figures that belong to no single restaurant fall
+    back to the default.
+    """
+
+    if restaurant_id is None:
+        return None
+    try:
+        from app.models.restaurant import Restaurant
+
+        return db.scalar(select(Restaurant.currency).where(Restaurant.id == restaurant_id))
+    except Exception:  # noqa: BLE001 - a symbol is never worth a failed reply
+        logger.warning("Could not read the restaurant's currency for the reply", exc_info=True)
+        return None
+
+
+def remember_shown_dishes(
+    session_id: uuid.UUID | None,
+    suggestions: list[Any],
+    reply: str | None = None,
+) -> None:
+    """Write down the dishes this reply is about to put in front of a customer.
+
+    The ordering agent records what IT reads out, so "Which one would you
+    like?" can be answered. The reply pipeline shows dishes on most turns and
+    recorded nothing, so the commonest follow-ups a person types resolved to
+    nothing at all. Measured on the live model:
+
+        >>> food
+        ... the Butter Pavbhaji is a crowd-pleaser. 500g or 1kg?
+        • Butter Pav (12 Pcs) — ₹55   • Butter Pavbhaji — ₹135  ...
+
+        >>> yes
+        Great! It looks like you're ready to proceed.      <- an empty cart
+
+        >>> the first one
+        Your cart is currently empty.
+
+    Written to `last_shown` rather than `pending_choice`, which is the softer
+    of the two stores: a list we merely SHOWED never makes the agent say
+    "Sorry, I did not catch that — reply with one of these" to somebody who
+    has simply changed the subject. It only ever lets a pick resolve.
+
+    Best-effort by design. Redis being unreachable costs a follow-up its
+    shortcut, and is not worth failing a reply over.
+    """
+
+    if session_id is None:
+        return
+    names = [
+        name for name in (getattr(item, "name", None) for item in suggestions) if name
+    ]
+    from app.services.ordering_agent.planner import question_asked_in
+
+    question = question_asked_in(reply)
+    if not names and not question:
+        return
+    try:
+        from app.services.ordering_agent import order_draft
+
+        draft = order_draft.load(session_id)
+        if names:
+            draft.last_shown = json.dumps({"options": [{"name": str(n)} for n in names]})
+        # Overwritten every turn, including with None: a question two replies
+        # ago is not what "yes" is answering, and a stale one is worse than
+        # none because it gives a bare agreement the wrong meaning.
+        draft.last_question = question
+        order_draft.save(session_id, draft)
+    except Exception:  # noqa: BLE001 - a follow-up shortcut, never the reply
+        logger.warning("Could not record what this reply showed or asked", exc_info=True)
+
+
 def _optional_id_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
@@ -7721,6 +7871,9 @@ def handle_chat_message(
     auto_place: bool = False,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
+    # Before anything is retrieved or written, so every price this turn puts
+    # in front of the model is in the money the menu is actually priced in.
+    bind_reply_currency(_currency_of(db, restaurant_id))
     if _is_acknowledgement_message(message):
         prepared = _prepare_instant_reply_turn(
             message=message,
@@ -7817,6 +7970,8 @@ def handle_chat_message(
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         return ChatMessageResponse(
             reply=reply,
             session_id=prepared.active_session_id,
@@ -7871,6 +8026,8 @@ def handle_chat_message(
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         return ChatMessageResponse(
             reply=reply,
             session_id=prepared.active_session_id,
@@ -8109,6 +8266,16 @@ def handle_chat_message(
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
     prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+    # Only what the customer will actually SEE. When the agent owns the
+    # turn, WhatsApp sends its line alone and drops these — recording them
+    # anyway put dishes nobody was shown behind "the first one".
+    remember_shown_dishes(
+        prepared.active_session_id,
+        [] if agent_owns else prepared.suggestions,
+        # The agent's own question is already written down by `_hold`,
+        # with what agreeing to it should DO — which prose cannot carry.
+        None if agent_owns else reply,
+    )
 
     # Prepended AFTER generation, not built into the reply. Three reasons, and
     # the third is the binding one:
@@ -8168,6 +8335,9 @@ def stream_chat_message(
     recent_history: list[dict[str, str]] | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
+    # Before anything is retrieved or written, so every price this turn puts
+    # in front of the model is in the money the menu is actually priced in.
+    bind_reply_currency(_currency_of(db, restaurant_id))
     if _is_acknowledgement_message(message):
         prepared = _prepare_instant_reply_turn(
             message=message,
@@ -8317,6 +8487,8 @@ def stream_chat_message(
             retrieval_source=cached_retrieval_source,
         )
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         prepared.timings.cache_lookup_ms = cache_lookup_ms
         yield _sse_frame(
             "meta",

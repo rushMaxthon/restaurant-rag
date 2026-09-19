@@ -99,6 +99,22 @@ class OrderDraft:
     # writes to an account and every WhatsApp customer is a guest — so a
     # vegetarian was offered chicken two messages later.
     diet: str | None = None
+    # The dishes last put in front of this customer, as JSON names, so a
+    # reply that picks one of them ("the first one", "that", "yes the
+    # paneer") can be resolved. Written by whichever half of the turn did the
+    # showing — the agent reading a menu out, or the reply pipeline attaching
+    # suggestions under its prose.
+    #
+    # NOT `pending_choice`. That is a question we ASKED, which may be put
+    # again and then given up on. This is a list we SHOWED, and a customer
+    # who changes the subject after seeing it has done nothing wrong.
+    last_shown: str | None = None
+    # The question the last reply ended on, when it ended on one and it
+    # was not a question the agent itself asked. A browser sends the
+    # previous reply back with the next message; a chat thread has no
+    # client to carry it, so on WhatsApp this is the only memory of what
+    # the customer is answering.
+    last_question: str | None = None
     # Whether the customer has stood behind these details in THIS
     # conversation — by typing them, or by saying yes to them. Details that
     # came from their account have not been confirmed by anybody: an address
@@ -119,6 +135,8 @@ class OrderDraft:
         "collecting",
         "offered_scheduled_at",
         "pending_choice",
+        "last_shown",
+        "last_question",
         "awaiting",
         "order_confirmed",
         "place_asks",
