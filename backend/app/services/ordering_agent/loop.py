@@ -825,6 +825,12 @@ def run_turn(
     budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
 
     seen: set[uuid.UUID] = guards.seed_seen_ids(cart)
+    # Dishes already put in the cart this turn by answering a question
+    # with them. Live, on the real model: a pick came back as BOTH
+    # `chose: ["Money Bags"]` and `add: [("Money Bags", 1)]`, and the
+    # two paths each added it — one message, two of the dish, and the
+    # sentence "Added 1 x Money Bags to your order." twice over.
+    _picked_this_turn: set[str] = set()
     # Tools this turn has already answered with identical arguments.
     retired: set[str] = set()
     # The unpaid order this conversation left behind, looked up at most
@@ -1672,8 +1678,12 @@ def run_turn(
         added: list[dict[str, Any]] = []
         for one in chose:
             wanted_name = one.strip().casefold()
-            if not wanted_name:
+            # Naming the same dish twice in one message is naming it once.
+            # The reading returns a list because a group orders for a group,
+            # not because "Money Bags, Money Bags" means two.
+            if not wanted_name or wanted_name in _picked_this_turn:
                 continue
+            _picked_this_turn.add(wanted_name)
             picked = next(
                 (o for o in asked["options"] if o["name"].strip().casefold() == wanted_name),
                 None,
@@ -2283,7 +2293,11 @@ def run_turn(
             return offered
 
     for one_dish in wanted["add"] or []:
-        # One sentence can order more than one thing.
+        # One sentence can order more than one thing — but not the same
+        # thing twice, and a dish already added by answering our question is
+        # not a second order for it.
+        if one_dish[0].strip().casefold() in _picked_this_turn:
+            continue
         added = _add_named_dish(*one_dish)
         if added:
             actions.extend(added)

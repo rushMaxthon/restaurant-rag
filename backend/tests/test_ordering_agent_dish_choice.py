@@ -320,6 +320,33 @@ class APickIsNotANameTests(DishChoiceTestCase):
             sorted([str(MENU_IDS["Corn Fritters"]), str(MENU_IDS["Roti Canai"])]),
         )
 
+    def test_the_same_dish_named_twice_is_added_once(self) -> None:
+        """One message, one order for that dish.
+
+        Live, on the real model: picking "Money Bags" from a list came back
+        as BOTH `chose: ["Money Bags"]` and `add: [("Money Bags", 1)]`. Each
+        path added it, so the customer got two and was told "Added 1 x Money
+        Bags to your order." twice in one breath.
+        """
+
+        self.turn(
+            "Money Bags",
+            reading=a_reading(chose=["Money Bags"], add=[("Money Bags", 1)]),
+        )
+        self.assertEqual(len(self.added), 1, "added once, not once per path")
+
+    def test_a_pick_and_a_different_dish_both_land(self) -> None:
+        # The dedupe is by dish, not a cap of one: "the first one and a roti"
+        # is two orders.
+        self.turn(
+            "Money Bags and a Roti Canai",
+            reading=a_reading(chose=["Money Bags"], add=[("Roti Canai", 1)]),
+        )
+        self.assertEqual(
+            sorted(line["menu_item_id"] for line in self.added),
+            sorted([str(MENU_IDS["Money Bags"]), str(MENU_IDS["Roti Canai"])]),
+        )
+
     def test_a_loose_answer_still_lands(self) -> None:
         # "money bags" lower case, as anybody types it.
         self.turn("money bags", reading=a_reading(chose=["money bags"]))
