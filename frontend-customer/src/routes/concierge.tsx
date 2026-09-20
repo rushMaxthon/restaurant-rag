@@ -23,6 +23,7 @@ import { cartLinesForRequest } from "@/lib/suggestions";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
+import { brandInitials } from "@/lib/brand-mark";
 import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
@@ -633,9 +634,9 @@ function ConciergePage() {
               className="concierge-welcome elevated-panel rise-in p-5"
               style={{ "--i": 3 } as React.CSSProperties}
             >
-              <span className="brand-mark shrink-0">BB</span>
+              <span className="brand-mark shrink-0">{brandInitials(copy.name)}</span>
               <p className="pt-2 text-lg leading-relaxed">
-                Tell me your mood—spicy, comforting, light—and I'll point you to a bowl.
+                Tell me your mood—spicy, comforting, light—and I'll point you to a dish.
               </p>
             </div>
           </div>
@@ -662,7 +663,7 @@ function ConciergePage() {
               return (
                 <div key={turn.id} className="flex flex-col gap-4">
                   <div className="flex items-start gap-3">
-                    <span className="brand-mark mt-1 shrink-0">BB</span>
+                    <span className="brand-mark mt-1 shrink-0">{brandInitials(copy.name)}</span>
                     <div className="max-w-3xl pt-1 text-lg text-muted">
                       {turn.text ? (
                         <p className="concierge-reply" aria-live="polite">

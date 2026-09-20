@@ -1,6 +1,8 @@
 import { Clock, MapPin } from "lucide-react";
 
+import { brandInitials } from "@/lib/brand-mark";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { useStorefrontCopy } from "@/lib/storefront";
 
 /**
  * Pick a branch before seeing a menu.
@@ -30,10 +32,12 @@ export function BranchGate() {
     return null;
   }
 
+  const initials = brandInitials(useStorefrontCopy().name);
+
   return (
     <div className="branch-gate" role="dialog" aria-modal="true" aria-labelledby="branch-gate-title">
       <div className="branch-gate__panel">
-        <span className="brand-mark">BB</span>
+        {initials && <span className="brand-mark">{initials}</span>}
         <h1 id="branch-gate-title" className="font-display text-3xl font-extrabold sm:text-4xl">
           Which branch are you ordering from?
         </h1>

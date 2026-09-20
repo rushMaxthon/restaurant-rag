@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BranchPicker } from "./branch-picker";
+import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
+import { useStorefrontCopy } from "@/lib/storefront";
 import { BranchGate } from "@/components/bangkok/branch-gate";
 import { useAuth } from "@/lib/auth";
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -19,6 +21,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // and refused on the way in — a nav entry that apologises is worse than no
   // nav entry at all.
   const askAi = hasCapability(store.capabilities, "ask_ai");
+  // The copy is server-rendered from the request host, so this is right in
+  // the first byte rather than after the store has loaded.
+  const brandName = useStorefrontCopy().name;
+  const initials = brandInitials(brandName);
   const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -27,11 +33,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BranchGate />
       <header className="site-header sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur">
         <div className="flex min-h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-10">
-          <Link to="/" className="mr-auto flex items-center gap-2" aria-label="Bangkok Bowl home">
-            <span className="brand-mark">BB</span>
-            <span className="brand-name font-display text-xl font-extrabold">
-              {store.restaurantName ?? "Bangkok Bowl"}
-            </span>
+          {/* All three from one string, so the badge, the name and the label
+              a screen reader announces cannot disagree. Every one of them was
+              a Bangkok Bowl literal: "BB", "Bangkok Bowl home", and the name
+              itself falling back to "Bangkok Bowl" on every other tenant. */}
+          <Link to="/" className="mr-auto flex items-center gap-2" aria-label={`${brandName} home`}>
+            {initials && <span className="brand-mark">{initials}</span>}
+            <span className="brand-name font-display text-xl font-extrabold">{brandName}</span>
           </Link>
           <nav className="hidden items-center gap-1 lg:flex">
             <Button variant="ghost" className="nav-link" asChild>

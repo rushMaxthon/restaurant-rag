@@ -233,13 +233,30 @@ export const FALLBACK_CURRENCY: CurrencyFormat = {
 export const formatMoney = (
   value: Money | number,
   currency: CurrencyFormat = FALLBACK_CURRENCY,
-) =>
-  new Intl.NumberFormat(currency.locale, {
+) => {
+  const amount = Number(value);
+  // Zero decimals or two, never one.
+  //
+  // Rupees are configured with `min_fraction_digits: 0`, deliberately: ₹145 is
+  // how a menu price is written, not ₹145.00. But `Intl` reads min 0 / max 2
+  // as "between none and two", so a cart whose tax came to 0.6 printed
+  // "Tax ₹0.6" and totalled "₹32.6" — an amount of money with one decimal
+  // place, which exists in no currency and reads as a rounding bug.
+  //
+  // So the minimum is raised to two only when there IS a fractional part,
+  // and never above what the currency itself allows.
+  const hasFraction = Number.isFinite(amount) && Math.round(amount * 100) % 100 !== 0;
+  const minimumFractionDigits = hasFraction
+    ? Math.min(2, currency.max_fraction_digits)
+    : currency.min_fraction_digits;
+
+  return new Intl.NumberFormat(currency.locale, {
     style: "currency",
     currency: currency.code,
-    minimumFractionDigits: currency.min_fraction_digits,
+    minimumFractionDigits,
     maximumFractionDigits: currency.max_fraction_digits,
-  }).format(Number(value));
+  }).format(amount);
+};
 
 /** Derives the "All" + unique category list from a live menu-items response. */
 export const deriveCategories = (items: MenuItem[]) => [

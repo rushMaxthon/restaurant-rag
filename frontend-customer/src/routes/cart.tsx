@@ -97,7 +97,7 @@ function CartPage() {
             <ShoppingBag className="size-9" />
           </div>
           <h1 className="mt-8 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Your bowl is empty
+            Your cart is empty
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
             Add something from the menu to get started — or let the concierge pick for
@@ -358,11 +358,19 @@ function CartPage() {
 
           <div className="mt-5 space-y-2.5 border-t border-border pt-4">
             {/* Said "pay on delivery — no card needed now" for as long as COD
-                existed. It does not any more, and a cart promising cash before
-                a card-only checkout is the kind of small lie people notice. */}
+                existed, then named Stripe once COD went. Naming a processor
+                here cannot be right: the cart is readable signed OUT, and
+                `/payments/config` — the only thing that knows which gateway
+                this restaurant settles through — needs a token. A restaurant
+                on Razorpay was told its customers pay through Stripe.
+
+                So it names none. What this line is actually for is the
+                reassurance that the app does not handle the card itself, and
+                that is true of every gateway; checkout, which HAS the config
+                by then, is where the processor gets named. */}
             <p className="sum-note" data-tone="success">
               <ShieldCheck className="size-4" />
-              Card payment is handled by Stripe — we never see your details.
+              Paid securely at checkout — this app never sees your payment details.
             </p>
             <p className="sum-note">
               <BadgePercent className="size-4" />

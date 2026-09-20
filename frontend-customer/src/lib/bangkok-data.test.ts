@@ -33,6 +33,30 @@ describe("formatMoney", () => {
   it("renders zero as a price rather than blank", () => {
     expect(formatMoney(0)).toBe("$0.00");
   });
+
+  /**
+   * Rupees are configured to show no decimals on a whole amount, because ₹145
+   * is how a menu price is written. `Intl` read that as "between none and
+   * two", so a cart whose tax came to 0.6 printed "Tax ₹0.6" and totalled
+   * "₹32.6" — an amount of money with one decimal place, which exists in no
+   * currency and reads to a customer as a rounding bug.
+   */
+  const RUPEES = { code: "INR", locale: "en-IN", min_fraction_digits: 0, max_fraction_digits: 2 };
+
+  it("writes a whole rupee amount without decimals", () => {
+    expect(formatMoney(145, RUPEES)).toBe("₹145");
+  });
+
+  it("writes a part-rupee amount with two, never one", () => {
+    expect(formatMoney(0.6, RUPEES)).toBe("₹0.60");
+    expect(formatMoney(32.6, RUPEES)).toBe("₹32.60");
+    expect(formatMoney(7.25, RUPEES)).toBe("₹7.25");
+  });
+
+  it("still groups rupees the Indian way", () => {
+    // 2-2-3, so this is 12,34,567 and not 1,234,567.
+    expect(formatMoney(1234567, RUPEES)).toBe("₹12,34,567");
+  });
 });
 
 describe("orderCode", () => {
