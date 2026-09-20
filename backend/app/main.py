@@ -7,6 +7,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import api_router
 from app.config import get_settings
@@ -48,6 +49,20 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+# Every API response left this server uncompressed. One branch's menu is
+# 164 KB of JSON for 136 dishes, fetched by the home page and the menu page,
+# and a storefront customer is on a phone on mobile data — so this is the
+# cheapest performance change available to this codebase.
+#
+# `minimum_size` is above the size of the small JSON this API mostly returns:
+# compressing a 300-byte response costs CPU on both ends and saves nothing.
+#
+# The two `text/event-stream` endpoints are NOT compressed, and they opt out
+# themselves by declaring `Content-Encoding: identity` — Starlette skips any
+# response that already names an encoding. Compressing a stream would buffer
+# the tokens it exists to deliver one at a time.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,
