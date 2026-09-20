@@ -33,10 +33,12 @@ library. Reaching for react-router, redux or a UI kit breaks the house style
 there.
 
 **`frontend-customer` no longer follows that rule.** It was replaced wholesale
-on 2026-09-13 with a Lovable-generated TanStack Start app: file-based routing,
-Tailwind, shadcn/Radix, TanStack Query, ~60 runtime deps, and SSR via nitro
-(`vite.config.ts` wraps `@lovable.dev/vite-tanstack-config`, which already
-supplies the plugin set — adding those plugins by hand breaks the build).
+on 2026-09-13 with a generated TanStack Start app: file-based routing,
+Tailwind, shadcn/Radix, TanStack Query, ~60 runtime deps, and SSR via nitro.
+The generator's own wrapper around the plugin set was removed on 2026-09-20 —
+`vite.config.ts` now composes the plugins itself and explains each one. Read it
+before changing it: the order matters, and its `importProtection` override is
+what allows `lib/storefront.server.ts` to be imported from a route.
 Everything below about hand-written CSS, `AppStore.tsx` and the token files
 describes the app that was REPLACED; treat it as history when working in
 `frontend-customer`, and as current when working in `frontend-admin`.
