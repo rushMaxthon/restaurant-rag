@@ -285,7 +285,14 @@ function DishPage() {
                 </p>
               )}
 
-              <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+              {/* Only when there is one. 120 of this restaurant's 136 dishes
+                  have no description, and an unguarded paragraph still takes
+                  its top margin and its line box — so most of the menu had a
+                  hole punched between the dish's name and its price. Every
+                  other field on this page is guarded; this one was missed. */}
+              {item.description?.trim() && (
+                <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+              )}
 
               {/* "From $12" until a size is picked, because that is the only
                   honest single number then. Once one IS picked the guess is
@@ -308,9 +315,17 @@ function DishPage() {
                       </>
                     )}
                   </p>
+                  {/* "extras are charged on top" was said for every dish
+                      with a size, including the ones that have no extras to
+                      charge — which is most of them. It is a sentence about
+                      money on the screen where the customer decides to spend
+                      it, so it is only said when it is true of THIS dish at
+                      THIS size. */}
                   <p className="text-sm text-muted">
                     {chosenSize
-                      ? `${chosenSize.name} · extras are charged on top`
+                      ? groups.length > 0
+                        ? `${chosenSize.name} · extras are charged on top`
+                        : chosenSize.name
                       : "Final price depends on the size you pick"}
                   </p>
                 </div>
