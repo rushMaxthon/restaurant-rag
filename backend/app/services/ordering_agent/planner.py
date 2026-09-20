@@ -42,6 +42,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Callable, Sequence
 
 import httpx
@@ -742,7 +743,7 @@ def read_order_intent(
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
         "category": None, "wants_to_add": False, "cancel_order": False,
-        "pay_now": False,
+        "pay_now": False, "max_price": None,
     }
     if not message.strip():
         return empty
@@ -833,6 +834,9 @@ def read_order_intent(
         '"the menu"), else null\n'
         '  "category": the menu section they mean, copied exactly from the list '
         "below, else null\n"
+        '  "max_price": the most they said ONE dish may cost, as a bare number, '
+        "else null"
+        "\n"
         '  "wants_to_add": true if they want to order something MORE but have not '
         "said what, else false\n"
         '  "cancel_order": true if they want to call off an order they have already placed, else false\n'
@@ -866,6 +870,17 @@ def read_order_intent(
         # Measured: "add one", right after four biryanis were read out, came
         # back as a dish called "one" — which resolved to nothing, spent 33
         # seconds doing it, and answered "your cart is empty".
+        # The number goes in its own field so the menu query can filter on it.
+        # Left inside "browse" it was searched for as though it were a dish
+        # name, matched nothing, and the reply listed the branch's whole menu
+        # — for "a light lunch under $20", eight dishes all under twenty
+        # dollars, under a sentence saying there were none.
+        '- A price they name as a limit goes in "max_price" as a bare number: '
+        '"anything under 200" is 200, "nothing over 15 dollars" is 15. "cheap" '
+        'and "something affordable" name no number, so they are null. It is what '
+        'ONE dish may cost, not the whole order. Say what they are looking for '
+        'in "browse" as well, without the price.'
+        "\n"
         '- "one", "it", "that", "this" and "some" are never the NAME of a '
         'dish. "Add one", "add it", "one please" name nothing: if the list '
         'below says which they mean, that goes in "chose"; otherwise '
@@ -992,6 +1007,24 @@ def read_order_intent(
             (c for c in categories if c.casefold() == category.strip().casefold()), None
         )
 
+    # A ceiling on ONE dish's price. Coerced rather than trusted: the model
+    # answers "200", a currency-prefixed string, and 200.0 to the same
+    # question, and a string reaching the query would be compared against a
+    # numeric column. Anything that is not a positive number is no ceiling.
+    max_price = parsed.get("max_price")
+    if isinstance(max_price, bool):
+        max_price = None
+    elif isinstance(max_price, str):
+        max_price = "".join(c for c in max_price if c.isdigit() or c == ".") or None
+    if max_price is not None:
+        try:
+            max_price = Decimal(str(max_price))
+        except (ArithmeticError, ValueError):
+            max_price = None
+        else:
+            if max_price <= 0:
+                max_price = None
+
     browse = parsed.get("browse")
     if not isinstance(browse, str) or not browse.strip() or browse.strip().lower() in {"null", "none"}:
         browse = None
@@ -1023,6 +1056,7 @@ def read_order_intent(
         "wants_to_add": wants_to_add,
         "cancel_order": cancel_order,
         "pay_now": pay_now,
+        "max_price": max_price,
     }
 
 

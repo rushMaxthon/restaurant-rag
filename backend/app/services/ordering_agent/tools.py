@@ -1155,16 +1155,26 @@ def dishes_to_show(
     is_veg: bool | None = None,
     limit: int = 8,
     category: str | None = None,
+    max_price: Decimal | None = None,
     report: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Dishes to read out to a customer: name, price, and whether veg.
 
     `report`, when given, is filled with `found_by`: "named" when the words
     matched dish names, "category" a section, "close" a shorter form of the
-    phrase, and "fallback" when nothing matched and these are simply the
-    branch's menu. The caller needs it to write a true sentence above the
-    list — "Here is what we have" over the whole menu, to somebody who asked
-    for a dish this branch does not sell, reads as having been ignored.
+    phrase, "budget" when a price ceiling is what selected them, "over_budget"
+    when nothing came under that ceiling, and "fallback" when nothing matched
+    and these are simply the branch's menu. The caller needs it to write a
+    true sentence above the list — "Here is what we have" over the whole menu,
+    to somebody who asked for a dish this branch does not sell, reads as
+    having been ignored.
+
+    `max_price` is a ceiling, and it narrows the BASE query rather than being
+    a search of its own: a customer who says "paneer under 200" means both
+    things at once, and every branch below — by name, by section, by a shorter
+    phrase, or the whole menu — inherits it for free. It arrives as a number
+    the reading extracted, never parsed out of the words here, so no list of
+    words like "under" or "cheap" decides what a message meant.
 
     By name when the word they used is a dish's word ("pizza"), and by the
     branch's whole menu when it is not ("the menu", "something vegetarian").
@@ -1174,12 +1184,17 @@ def dishes_to_show(
     extras rather than the word the customer said.
     """
 
-    stmt = select(MenuItem).where(
+    at_this_branch = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
         MenuItem.is_available.is_(True),
     )
     if is_veg is not None:
-        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
+        at_this_branch = at_this_branch.where(MenuItem.is_veg.is_(is_veg))
+    # Kept separately from `stmt` so the over-budget answer below can reach
+    # the menu the customer priced themselves out of.
+    stmt = at_this_branch
+    if max_price is not None:
+        stmt = stmt.where(MenuItem.price <= max_price)
     words = [
         # Singular, because a menu is written in the singular and customers
         # do not order one pizza: "vegetarian pizzas" matched no dish called
@@ -1227,7 +1242,15 @@ def dishes_to_show(
         found_by = "category" if rows else ""
     if not rows:
         rows = list(db.scalars(stmt.order_by(MenuItem.category, MenuItem.name).limit(limit)))
-        found_by = "fallback"
+        # With a ceiling set, these rows are everything under it — a real
+        # answer to what was asked, not the shrug that "fallback" describes.
+        found_by = "budget" if max_price is not None else "fallback"
+    if not rows and max_price is not None:
+        # Nothing at this branch comes in under their figure. The cheapest
+        # dishes are the useful reply and the caller says the budget was
+        # missed, which beats an empty list that reads as no menu at all.
+        rows = list(db.scalars(at_this_branch.order_by(MenuItem.price).limit(limit)))
+        found_by = "over_budget"
     listed = [
         {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
         for row in rows

@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.schemas.suggestions import CartLinePayload
 from app.services import restaurant_locations as branch_hours
-from app.services.currency import format_amount
+from app.services.currency import format_amount, format_rounded_amount
 from app.models.order import Order
 from app.services.ordering_agent import guards, open_orders, order_draft
 from app.services.ordering_agent import tools as tools_module
@@ -125,6 +125,21 @@ def bind_chat_currency(code: str | None) -> None:
 #: How many dishes are read out at once. A chat message nobody scrolls is
 #: worth less than a short list and an offer to narrow it down.
 _DISHES_READ_OUT = 8
+
+
+def _budget(value: Any) -> str:
+    """A figure the customer named, written the way they said it.
+
+    "under $20", not "under $20.00": they spoke a round number and hearing it
+    read back with cents attached reads as a correction. `format_rounded_amount`
+    exists for exactly this distinction — prose and ledgers have different
+    readers — and prices elsewhere in the reply keep every cent.
+    """
+
+    try:
+        return format_rounded_amount(float(value), _chat_currency.get())
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _money(value: Any) -> str:
@@ -1203,7 +1218,11 @@ def run_turn(
             elapsed_seconds=clock() - start,
         )
 
-    def _show_dishes(phrase: str, category: str | None = None) -> TurnOutcome | None:
+    def _show_dishes(
+        phrase: str,
+        category: str | None = None,
+        max_price: Decimal | None = None,
+    ) -> TurnOutcome | None:
         """Read the menu out: their words, our rows, their diet.
 
         The reply pipeline answers a menu question well when it is about
@@ -1221,7 +1240,7 @@ def run_turn(
         report: dict[str, Any] = {}
         found = tools_module.dishes_to_show(
             db, scope, phrase, is_veg=want_veg, category=category,
-            limit=_DISHES_READ_OUT + 1, report=report,
+            max_price=max_price, limit=_DISHES_READ_OUT + 1, report=report,
         )
         if not found:
             return None
@@ -1255,7 +1274,21 @@ def run_turn(
         listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
         veg_note = "" if want_veg is None else ", all vegetarian"
         asked_for = phrase.strip()
-        if found_by == "fallback" and asked_for:
+        if found_by == "budget":
+            # Their ceiling is what selected these rows, so it is what the
+            # sentence is about. Saying the figure back is the confirmation
+            # that it was heard — the whole failure this replaced was a reply
+            # that gave no sign of having read the number at all.
+            opening = f"Here is what we have under {_budget(max_price)}{veg_note}"
+        elif found_by == "over_budget":
+            # Nothing came in under it. The rows are the cheapest the branch
+            # sells, which is the useful answer, and this is the honest
+            # sentence over them.
+            opening = (
+                f"Nothing here comes in under {_budget(max_price)}. "
+                f"These are the cheapest we have{veg_note}"
+            )
+        elif found_by == "fallback" and asked_for:
             # Acknowledging what they asked for is the house style — the
             # alternative is what shipped once: the branch's whole menu from
             # "Appetizer Sampler" down, under "Here is what we have", which
@@ -2430,7 +2463,9 @@ def run_turn(
         # soups were read out and the two words that said which soup were
         # thrown away. The message is the phrase of last resort.
         shown = _show_dishes(
-            wanted.get("browse") or message.strip(), wanted.get("category")
+            wanted.get("browse") or message.strip(),
+            wanted.get("category"),
+            wanted.get("max_price"),
         )
         if shown:
             return shown
