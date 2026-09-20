@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -70,6 +71,21 @@ function Home() {
   const hasBestsellers = flagged.length > 0;
   const bestsellers = (hasBestsellers ? flagged : items).slice(0, 8);
   const offers = offersQuery.data ?? [];
+
+  // The restaurant's own sections, with how many dishes are in each, counted
+  // from the rows. Ordered by size, so the kitchen's biggest section leads
+  // rather than whichever happens to sort first alphabetically — which for a
+  // dhokla shop was Biryani.
+  const sections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [items]);
 
   // Everything the hero says about this restaurant comes from the branch row
   // the admin filled in. It used to assert "Open now" whether or not it was,
@@ -171,6 +187,37 @@ function Home() {
               >
                 <OfferCard offer={offer} />
               </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* A way in, on the first screen.
+
+          The home page offered a hero, eight dishes and a link reading "See
+          all" — which for this restaurant is 136 dishes in 21 sections. A
+          customer who wanted dhokla had to open the whole menu and find it.
+          These are the restaurant's OWN sections, in the order its own menu
+          returns them, counted from the rows rather than asserted. */}
+      {sections.length > 1 && (
+        <section className="page-pad section-pad !pb-0">
+          <div className="mb-5">
+            <p className="eyebrow">Browse</p>
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
+              What are you after?
+            </h2>
+          </div>
+          <div className="section-rail">
+            {sections.map(({ name, count }) => (
+              <Link
+                className="section-chip"
+                key={name}
+                search={{ category: name }}
+                to="/menu"
+              >
+                <span className="section-chip__name">{name}</span>
+                <span className="section-chip__count">{count}</span>
+              </Link>
             ))}
           </div>
         </section>

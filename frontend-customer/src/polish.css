@@ -1938,3 +1938,58 @@ html {
     animation: none;
   }
 }
+
+/* --- Browse by section ------------------------------------------------------
+   The home page offered a hero, eight dishes and "See all" — which for a
+   restaurant with 136 dishes in 21 sections meant a customer who wanted
+   dhokla opened the whole menu and hunted. These are the kitchen's own
+   sections, biggest first, each one a link straight into it.
+
+   A rail rather than a grid: the sections are a way THROUGH to the menu, not
+   a second menu on top of it, and a grid of 10 tiles would outweigh the
+   dishes below it. */
+.section-rail {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x proximity;
+}
+
+.section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-weight: 700;
+  color: var(--text);
+  transition:
+    border-color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.section-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--primary-soft);
+}
+
+.section-chip:active {
+  transform: scale(0.97);
+}
+
+.section-chip__count {
+  min-width: 1.6rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  font-size: var(--text-xs, 0.72rem);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--muted);
+}
