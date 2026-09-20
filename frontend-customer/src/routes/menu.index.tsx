@@ -13,13 +13,19 @@ export const Route = createFileRoute("/menu/")({
 function MenuPage() {
   // This restaurant's own name, resolved from the address in the root route.
   const copy = useStorefrontCopy();
+  // The header is tighter on a phone, on purpose. This heading, its eyebrow
+  // and its subtitle took about 170px above the search box, and the category
+  // chips and the result count take more below it — so a customer opening a
+  // menu of 136 dishes on a phone could see one of them. The words are worth
+  // keeping where there is room; the subtitle is the line that tells a hungry
+  // person nothing they cannot see for themselves, so it is the one that goes.
   return (
-    <div className="page-pad pb-24 pt-10">
+    <div className="page-pad pb-24 pt-6 sm:pt-10">
       <p className="eyebrow">Cooked to order</p>
-      <h1 className="font-display text-4xl font-extrabold sm:text-6xl">
+      <h1 className="font-display text-3xl font-extrabold sm:text-6xl">
         The {copy.name} menu
       </h1>
-      <p className="mt-3 max-w-2xl text-muted">
+      <p className="mt-3 hidden max-w-2xl text-muted sm:block">
         Made fresh to order. Pick a favourite or discover something new.
       </p>
       {/* Above the menu because this is where someone lands when they are

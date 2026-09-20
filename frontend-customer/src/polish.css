@@ -160,6 +160,25 @@ main > * {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* The tab bar is fixed, so it sits on top of whatever a page ends with unless
+   the page reserves the room. Nothing did. The dish page found this out on its
+   own and pinned its Add button clear of the bar (see `.dish-actions`), but
+   every other page still lost its last element underneath it — and on the cart
+   that last element is the checkout button, which was visible, apparently
+   tappable, and covered by four nav icons.
+
+   Reserved once, here, rather than page by page. Released at `lg`, which is
+   where `.mobile-nav-bar` itself stops being rendered. */
+.app-main {
+  padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    padding-bottom: 0;
+  }
+}
+
 /* --- Press and focus -------------------------------------------------------
    Every button gives a little under the pointer. The compound controls and
    chips declare their own transition lists in styles.css, which would drop

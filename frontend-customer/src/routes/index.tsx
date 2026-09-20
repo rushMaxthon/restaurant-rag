@@ -20,7 +20,8 @@ import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
-import { useStorefrontCopy } from "@/lib/storefront";
+import { budgetChipAmount } from "@/lib/budget";
+import { useMoney, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
   // The root route already resolves this restaurant's copy from the request
@@ -31,7 +32,6 @@ export const Route = createFileRoute("/")({
 
 const CRAVING_CHIPS = [
   { label: "Something spicy", query: "Something spicy", icon: Flame },
-  { label: "Under $15", query: "Something good under $15", icon: DollarSign },
   { label: "Comfort food", query: "Comfort food", icon: Soup },
   { label: "Light and fresh", query: "Something light and fresh", icon: Leaf },
   { label: "Feed two people", query: "Something to feed two people", icon: Users },
@@ -42,6 +42,7 @@ function Home() {
   // hero is this restaurant's own words in the server-rendered HTML rather
   // than after a client fetch.
   const copy = useStorefrontCopy();
+  const money = useMoney();
   const store = useBangkokStore();
   // Nothing invites a customer to a page this restaurant has switched off.
   const askAi = hasCapability(store.capabilities, "ask_ai");
@@ -50,9 +51,17 @@ function Home() {
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   const offersQuery = usePersonalizedOffers(isAuthenticated);
   const items = menuQuery.data ?? [];
-  const bestsellers = (
-    items.filter((i) => i.is_bestseller).length ? items.filter((i) => i.is_bestseller) : items
-  ).slice(0, 8);
+  // Two different sections wearing one heading. A restaurant that has marked
+  // its bestsellers gets "Crowd favourites", which is then a fact. One that
+  // has not gets the first eight rows the API returned, in no order anybody
+  // chose — for a Surat dhokla shop that was four Chinese rice dishes under
+  // the words "Most loved", which is not a small thing to be wrong about on
+  // the first screen a customer sees. So the label follows the data: the same
+  // eight dishes, honestly introduced, until somebody ticks Best seller in the
+  // admin.
+  const flagged = items.filter((i) => i.is_bestseller);
+  const hasBestsellers = flagged.length > 0;
+  const bestsellers = (hasBestsellers ? flagged : items).slice(0, 8);
   const offers = offersQuery.data ?? [];
 
   // Everything the hero says about this restaurant comes from the branch row
@@ -66,11 +75,34 @@ function Home() {
   const heroEta = Number(branch?.estimated_delivery_time);
   const branchCount = locations.length;
 
+  // A restaurant with a photograph of its own food earns the tall hero: the
+  // picture IS the content. Without one the hero is a brand wash that says
+  // nothing about the food (deliberately — see `StorefrontHero`), and at
+  // 70svh a phone opens on two thirds of a screen of flat orange before any
+  // dish appears. So the box follows what is in it. Radhe Dhokla gets the
+  // tall one back the moment a cover image is uploaded in the admin.
+  const heroHeight = useStorefrontCover() ? "min-h-[70svh]" : "min-h-[46svh] sm:min-h-[56svh]";
+
+  const budget = budgetChipAmount(items.map((i) => Number(i.price)));
+  const cravingChips = budget
+    ? [
+        ...CRAVING_CHIPS.slice(0, 1),
+        {
+          label: `Under ${money(budget)}`,
+          query: `Something good under ${money(budget)}`,
+          icon: DollarSign,
+        },
+        ...CRAVING_CHIPS.slice(1),
+      ]
+    : CRAVING_CHIPS;
+
   return (
     <div className="pb-20 lg:pb-0">
-      <StorefrontHero className="min-h-[70svh]">
+      <StorefrontHero className={heroHeight}>
         <div className="hero-overlay absolute inset-0" />
-        <div className="hero-copy page-pad relative flex min-h-[70svh] max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16">
+        <div
+          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16`}
+        >
           <div className="mb-5 flex flex-wrap gap-2">
             {/* Nothing is claimed until it is known: no branch count before the
                 list arrives, and no city that is not this branch's. */}
@@ -140,8 +172,10 @@ function Home() {
       <section className="page-pad section-pad">
         <div className="mb-7 flex items-end justify-between gap-4">
           <div>
-            <p className="eyebrow">Most loved</p>
-            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">Crowd favourites</h2>
+            <p className="eyebrow">{hasBestsellers ? "Most loved" : "Straight from the kitchen"}</p>
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
+              {hasBestsellers ? "Crowd favourites" : "On the menu today"}
+            </h2>
           </div>
           <Button variant="outline" asChild>
             <Link to="/menu">See all</Link>
@@ -186,7 +220,7 @@ function Home() {
             Tap a craving and our AI food concierge points you straight to a dish on the menu.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            {CRAVING_CHIPS.map((chip) => (
+            {cravingChips.map((chip) => (
               <Link
                 key={chip.label}
                 to="/concierge"

@@ -96,8 +96,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="border-b border-border bg-surface px-4 py-2 sm:hidden">
         <BranchPicker className="w-full" />
       </div>
-      <main>{children}</main>
-      <nav className="mobile-nav-bar fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border bg-surface px-2 lg:hidden">
+      <main className="app-main">{children}</main>
+      <nav
+        className={`mobile-nav-bar fixed inset-x-0 bottom-0 z-40 grid ${
+          // Four columns with three links left a dead column, so the icons sat
+          // bunched to the left of a phone screen instead of spread across it.
+          // Ask AI is a per-restaurant capability, so the count is not fixed.
+          askAi ? "grid-cols-4" : "grid-cols-3"
+        } border-t border-border bg-surface px-2 lg:hidden`}
+      >
         <Link className="mobile-nav" to="/menu">
           <UtensilsCrossed aria-hidden="true" />
           Menu
