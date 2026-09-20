@@ -79,8 +79,60 @@ export function formatPhoneAsTyped(value: string): string {
  *
  * Line 2 and the landmark are genuinely optional. Demanding every box is how a
  * checkout loses an order; what has to be there is enough to find the door.
+ *
+ * `postalName` is what this storefront calls that last box, so the messages
+ * say it too — see `postalCodeLabel`. It only names the field; nothing about
+ * the rule changes with it, deliberately.
  */
-export function validateAddress(fields: AddressFields): AddressProblems {
+/**
+ * Loose on purpose, and this is the interesting decision in this file.
+ *
+ * The rule here was `/^\d{5}(-\d{4})?$/` — a US ZIP, on a platform whose
+ * restaurants charge in rupees, dirhams, pounds and euros. An Indian PIN code
+ * is six digits, so a customer in Surat typing their real address was told
+ * "Enter a 5-digit ZIP code" and **could not place a web order at all**.
+ *
+ * The obvious repair is a rule per country. It is the wrong one: the only
+ * country this app stores is free text on the restaurant, it reads "India"
+ * for six restaurants that charge in Canadian dollars, and a customer may be
+ * ordering from an address in a different country to the kitchen anyway. A
+ * confident rule built on that is how the same bug comes back wearing a
+ * different postcode.
+ *
+ * So the shape is checked and the format is not. The cost is lopsided: a rule
+ * that is too strict silently loses the order, while one that is too loose
+ * costs nothing — line 1, city and state are all still required, and the
+ * rider reads the composed address rather than parsing this field. This
+ * catches an empty box and a typed sentence, which is what it is for.
+ */
+const POSTAL_SHAPE = /^[A-Za-z0-9][A-Za-z0-9\s-]{1,9}$/;
+
+/**
+ * What this storefront calls that box, from the money it charges in.
+ *
+ * Currency rather than country because it is the one signal that is both
+ * present in the storefront and correct: it is set per restaurant by an
+ * administrator and every price on the page already depends on it. A label is
+ * also the safe thing to infer — being called "Postal code" in Surat is a
+ * small wrongness, where being REFUSED in Surat is a lost customer.
+ */
+export function postalCodeLabel(currencyCode: string | undefined): string {
+  switch ((currencyCode ?? "").toUpperCase()) {
+    case "INR":
+      return "PIN code";
+    case "USD":
+      return "ZIP code";
+    case "GBP":
+      return "Postcode";
+    default:
+      return "Postal code";
+  }
+}
+
+export function validateAddress(
+  fields: AddressFields,
+  postalName: string = "postal code",
+): AddressProblems {
   const problems: AddressProblems = {};
   const line1 = fields.line1.trim();
   const city = fields.city.trim();
@@ -93,9 +145,8 @@ export function validateAddress(fields: AddressFields): AddressProblems {
   if (!city) problems.city = "Enter your city.";
   if (!state) problems.state = "Enter your state.";
 
-  if (!zip) problems.zip = "Enter your ZIP code.";
-  // 12345 or 12345-6789, the two forms the postal service uses.
-  else if (!/^\d{5}(-\d{4})?$/.test(zip)) problems.zip = "Enter a 5-digit ZIP code.";
+  if (!zip) problems.zip = `Enter your ${postalName}.`;
+  else if (!POSTAL_SHAPE.test(zip)) problems.zip = `That does not look like a ${postalName}.`;
 
   return problems;
 }

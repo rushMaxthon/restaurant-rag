@@ -158,6 +158,16 @@ export function useMoney(): (value: Money | number) => string {
 }
 
 /**
+ * The currency code this storefront charges in, for the few places that need
+ * the code itself rather than a formatted amount — the checkout's postal-code
+ * label is the one today. Same loader, same per-request safety as `useMoney`.
+ */
+export function useCurrencyCode(): string {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return (data?.currency ?? FALLBACK_CURRENCY).code;
+}
+
+/**
  * A page title for a route inside the storefront: "Your cart — Radhe Dhokla".
  *
  * Takes the copy from the route's OWN loader rather than reaching up to the

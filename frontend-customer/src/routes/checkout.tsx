@@ -49,6 +49,7 @@ import {
   isSameAddress,
   formatPhoneAsTyped,
   looseAddressFields,
+  postalCodeLabel,
   validateAddress,
   validatePhone,
   type AddressFields,
@@ -57,7 +58,7 @@ import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
-import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
+import { pageMeta, useCurrencyCode, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /** Shown beside the phone field; matches the backend's own default. */
@@ -164,6 +165,10 @@ function AddressField({
 function Checkout() {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
+  // What this storefront calls its last address box. The form asked every
+  // customer for a "ZIP code" and refused anything that was not five
+  // digits, so an Indian PIN code could not be typed into it.
+  const postalName = postalCodeLabel(useCurrencyCode());
   // This restaurant's own name, resolved from the address in the root route.
   const copy = useStorefrontCopy();
   const s = useBangkokStore();
@@ -322,7 +327,7 @@ function Checkout() {
 
   // Validation lives in lib/delivery-address.ts so the form and the submit
   // handler cannot disagree about what "valid" means.
-  const addressProblems = isDelivery ? validateAddress(address) : {};
+  const addressProblems = isDelivery ? validateAddress(address, postalName) : {};
   const phoneProblem = validatePhone(phone);
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
   const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
@@ -804,7 +809,7 @@ function Checkout() {
                   />
                   <AddressField
                     id="zip"
-                    label="ZIP code"
+                    label={postalName}
                     placeholder="00000"
                     autoComplete="postal-code"
                     inputMode="numeric"

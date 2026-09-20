@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { lineSelections, orderCode, scheduledFor} from "@/lib/bangkok-data";
+import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
 import { pageMeta, useMoney } from "@/lib/storefront";
@@ -38,6 +38,27 @@ function stepsFor(isDelivery: boolean) {
       ? { key: "DELIVERED", label: "Delivered", blurb: "Enjoy" }
       : { key: "DELIVERED", label: "Collected", blurb: "Enjoy" },
   ];
+}
+
+/**
+ * What to tell someone about a payment that went through.
+ *
+ * This said "Paid by card" for every paid order, and "Refunded to your card"
+ * for every refund, off `payment_status` alone. A Razorpay link takes UPI,
+ * netbanking, wallets and cards, and which of them was used is not something
+ * this app is told — so naming the card is a guess that is wrong for most
+ * Indian customers. Where the method is known and specific, it is said; where
+ * it is not, the true short sentence is.
+ */
+function paidByLine(method: string | undefined): string {
+  switch ((method ?? "").toUpperCase()) {
+    case "CARD":
+      return "Paid by card";
+    case "COD":
+      return "Paid in cash";
+    default:
+      return "Payment received";
+  }
 }
 
 export const Route = createFileRoute("/orders/$orderId")({
@@ -114,6 +135,9 @@ function OrderDetail() {
   const isDelivery = o.fulfillment_type === "DELIVERY";
   const STEPS = stepsFor(isDelivery);
   const booked = scheduledFor(o);
+  // Only while it is still coming: a delivered or cancelled order has no
+  // future, and `expectedBy` is silent once its own estimate has passed.
+  const dueBy = cancelled || o.status === "DELIVERED" ? null : expectedBy(o);
   const stepIndex = STEPS.findIndex((s) => s.key === o.status);
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
@@ -151,6 +175,15 @@ function OrderDetail() {
               <span className="inline-flex items-center gap-1.5 font-bold text-primary">
                 <CalendarClock className="size-4" />
                 {isDelivery ? "Arriving" : "Ready"} {booked}
+              </span>
+            )}
+            {/* The estimate, for an order being made right now. Hedged in
+                words because it is one: the branch's own figure from the
+                moment the order was placed, not a promise anybody made. */}
+            {!booked && dueBy && (
+              <span className="inline-flex items-center gap-1.5 font-bold text-primary">
+                <CalendarClock className="size-4" />
+                {isDelivery ? "Usually arrives by" : "Usually ready by"} {dueBy}
               </span>
             )}
           </p>
@@ -284,11 +317,11 @@ function OrderDetail() {
                 through to "confirming", which left someone whose card was
                 declined watching a spinner that would never resolve. */}
             {o.payment_status === "PAID"
-              ? "Paid by card"
+              ? paidByLine(o.payment_method)
               : o.payment_status === "COD"
                 ? `Pay by cash on ${isDelivery ? "delivery" : "pickup"}`
                 : o.payment_status === "REFUNDED"
-                  ? "Refunded to your card"
+                  ? "Refunded to how you paid"
                   : o.payment_status === "FAILED"
                     ? "That payment didn't go through"
                     : o.payment_status === "CANCELLED"

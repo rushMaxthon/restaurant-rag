@@ -125,6 +125,13 @@ export type Order = {
   id: string;
   status: string;
   payment_status: string;
+  /**
+   * How it was paid, which is not the same question as whether it was paid.
+   * The API has always sent this; nothing here declared it, so the order page
+   * told everyone they had "Paid by card" — including customers who paid by
+   * UPI on a Razorpay link, which is most of them in India.
+   */
+  payment_method?: string;
   fulfillment_type: string;
   subtotal: Money;
   delivery_fee: Money;
@@ -143,6 +150,17 @@ export type Order = {
   scheduled_at?: string | null;
   delivery_address: string | null;
   restaurant?: { id: string; name: string };
+  /**
+   * The branch, and how long it says it takes. Sent by the API all along; the
+   * type omitted it, which is why a customer watching "preparing" was never
+   * told when to expect the food.
+   */
+  restaurant_location?: {
+    id: string;
+    branch_name: string;
+    estimated_delivery_time: number;
+    estimated_pickup_time: number;
+  };
   items: {
     id: string;
     menu_item_id: string;
@@ -236,6 +254,50 @@ export const deriveCategories = (items: MenuItem[]) => [
  * misleading "scheduled for" line on something that is being made right now.
  * en-CA throughout, matching every other time in the app.
  */
+/**
+ * "2:45 p.m." — when an ASAP order is expected, or null.
+ *
+ * The tracking page showed a customer which step their food was on and never
+ * once said when it would arrive, which is the thing somebody refreshing that
+ * page actually wants. The cart promises a time before the order is placed;
+ * after it, the promise disappeared.
+ *
+ * Derived, not invented: the branch's own estimate added to the moment the
+ * order was placed. Three cases return null instead of a time, because a
+ * wrong time here is worse than none —
+ *
+ *   - a SCHEDULED order, which `scheduledFor` already answers properly;
+ *   - a branch that publishes no estimate;
+ *   - an estimate that has already passed. A late order must not keep
+ *     insisting it arrived twenty minutes ago; the steps still say where it
+ *     is, and silence is the honest state until it moves.
+ */
+export function expectedBy(
+  order: Pick<Order, "schedule_type" | "placed_at" | "fulfillment_type" | "restaurant_location">,
+  now: Date = new Date(),
+): string | null {
+  if (order.schedule_type === "SCHEDULED") return null;
+
+  const branch = order.restaurant_location;
+  const minutes =
+    order.fulfillment_type === "PICKUP"
+      ? branch?.estimated_pickup_time
+      : branch?.estimated_delivery_time;
+  if (!minutes || minutes <= 0) return null;
+
+  const placed = new Date(order.placed_at);
+  if (Number.isNaN(placed.getTime())) return null;
+
+  const due = new Date(placed.getTime() + minutes * 60_000);
+  if (due.getTime() <= now.getTime()) return null;
+
+  return new Intl.DateTimeFormat("en-CA", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(due);
+}
+
 export function scheduledFor(order: Pick<Order, "schedule_type" | "scheduled_at">): string | null {
   if (order.schedule_type !== "SCHEDULED" || !order.scheduled_at) return null;
   const at = new Date(order.scheduled_at);
