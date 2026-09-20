@@ -676,6 +676,41 @@ TOPIC_STOPWORDS = QUERY_STOPWORDS | {
     "weekend",
     "weekends",
     "yesterday",
+    # The words a price limit is made of, for the same reason the time words
+    # above are here. A budget is extracted as a NUMBER by
+    # `_extract_budget_limit` and applied as a filter; the words it was
+    # written in are not a food to search for. "anything under 10 dollars"
+    # canonicalised to the topic "under dollar", which pgvector answered with
+    # Sweet Lassi, Masala Cola and Butter Tea — the budget was read correctly
+    # and then the search went looking for a dish called "under dollar".
+    #
+    # Only the currencies this platform actually charges in, plus the rupee's
+    # spoken forms. A word here costs a dish named after it, and no dish is
+    # called "dollar".
+    "aed",
+    "below",
+    "budget",
+    "cad",
+    "dirham",
+    "dirhams",
+    "dollar",
+    "dollars",
+    "eur",
+    "euro",
+    "euros",
+    "gbp",
+    "inr",
+    "max",
+    "maximum",
+    "pound",
+    "pounds",
+    "rs",
+    "rupee",
+    "rupees",
+    "under",
+    "upto",
+    "usd",
+    "within",
 }
 
 # `_extract_bare_topic_hint` used to inline its own copy of the meta words —

@@ -310,6 +310,11 @@ function Checkout() {
   // blame the restaurant for both, in red, on every single load.
   const paymentConfigPending = paymentConfig.isPending;
   const paymentConfigFailed = paymentConfig.isError;
+  // A 401 is not a connection problem, and telling somebody to check their
+  // connection when their sign-in has simply lapsed sends them to look at
+  // their wifi. `ApiError` has carried the status all along; nothing read it.
+  const sessionExpired =
+    paymentConfig.error instanceof ApiError && paymentConfig.error.status === 401;
 
   if (!isAuthenticated) return null;
 
@@ -1152,9 +1157,23 @@ function Checkout() {
               >
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  {paymentConfigFailed
-                    ? "We couldn't check the payment options just now. Check your connection and try again."
-                    : "This restaurant hasn't switched on a way to pay yet, so orders can't be placed. Please try again shortly."}
+                  {sessionExpired ? (
+                    <>
+                      Your sign-in has expired.{" "}
+                      <Link
+                        className="underline"
+                        to="/login"
+                        search={{ redirect: "/checkout" }}
+                      >
+                        Sign in again
+                      </Link>{" "}
+                      — your cart is saved and you will come straight back here.
+                    </>
+                  ) : paymentConfigFailed ? (
+                    "We couldn't check the payment options just now. Check your connection and try again."
+                  ) : (
+                    "This restaurant hasn't switched on a way to pay yet, so orders can't be placed. Please try again shortly."
+                  )}
                 </span>
               </div>
             )}
