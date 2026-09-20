@@ -166,6 +166,13 @@ export type AppConfig = {
    */
   business_timezone?: string;
   /**
+   * The dialling code the server prepends to a bare local number. Read rather
+   * than assumed: the checkout used to print "+1" from a literal in its own
+   * source while the server prepended something else, so the number shown to
+   * the customer and the number stored could differ silently.
+   */
+  phone_country_code?: string;
+  /**
    * Optional features this restaurant has, already combined with the
    * deployment's own flags — the client is told the answer, never the rule.
    *

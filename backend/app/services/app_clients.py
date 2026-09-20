@@ -927,6 +927,7 @@ def build_app_config_response(
         bundle_id=(bundle_id or "").strip(),
         host=normalize_host(host),
         business_timezone=get_settings().business_timezone,
+        phone_country_code=get_settings().default_phone_country_code,
         storefront=storefront,
         capabilities=capabilities or {},
         currency=CurrencyResponse(

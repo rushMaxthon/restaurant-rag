@@ -144,6 +144,8 @@ type Store = AppState & {
   locations: RestaurantLocation[];
   /** The restaurant's own clock; undefined falls back to the device's. */
   timeZone: string | undefined;
+  /** What the server will put in front of a bare local phone number. */
+  phoneCountryCode: string | undefined;
   currentLocation: RestaurantLocation | undefined;
   /** The branch the order will actually be placed against. */
   orderLocation: RestaurantLocation | undefined;
@@ -423,6 +425,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       capabilities: appConfigQuery.data?.capabilities ?? {},
       restaurantName: restaurantQuery.data?.name,
       timeZone: appConfigQuery.data?.business_timezone,
+      phoneCountryCode: appConfigQuery.data?.phone_country_code,
       locations,
       currentLocation: locations.find((l) => l.id === state.branchId),
       // What the order is priced and scheduled against.

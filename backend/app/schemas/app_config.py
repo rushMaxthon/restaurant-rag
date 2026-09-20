@@ -48,6 +48,14 @@ class AppConfigResponse(BaseModel):
     # nine and a half hours off, and be refused by a server that was right.
     # An IANA name rather than an offset, so DST is the platform's problem.
     business_timezone: str
+    # The dialling code a bare local number is stored under, for the same
+    # reason the timezone is here: the client cannot guess it, and guessing
+    # wrong is not cosmetic. The checkout used to print "+1" from a literal in
+    # its own source while the server prepended something else — so the number
+    # the customer was shown and the number that was stored could differ, and
+    # nothing would ever say so. Sent so the form can only ever show what the
+    # server will actually do.
+    phone_country_code: str
     # The restaurant's own words — page title, meta description, hero copy.
     # Sent here because this is the one call a storefront makes before it
     # renders anything, and the title has to be right in the FIRST response or

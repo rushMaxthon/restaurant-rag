@@ -37,7 +37,14 @@ class Settings(BaseSettings):
     # Dialling code assumed when a customer types a bare local number at
     # checkout. Settable per deployment for the same reason the timezone is:
     # nothing here should hardcode one country.
-    default_phone_country_code: str = "+1"
+    #
+    # It said "+1" while `business_timezone` above said Asia/Kolkata, and
+    # these two cannot disagree: a Surat customer typing their real mobile,
+    # 9825012345, had it stored as +19825012345 — a United States number, on
+    # every order they ever placed, with the checkout showing them "+1" as
+    # confirmation. India is +91 and its mobile numbers are 10 digits, so the
+    # digit count below is already right.
+    default_phone_country_code: str = "+91"
     # How many digits a local number has once the country code is stripped.
     # US and Canada are 10; a deployment elsewhere changes this rather than
     # editing a validator.

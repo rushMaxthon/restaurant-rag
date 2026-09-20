@@ -129,6 +129,12 @@ class OrderCreateRequest(BaseModel):
                 raise ValueError("Enter a valid phone number, including the country code.")
             return f"+{digits}"
 
+        # A leading zero is how a great many people write their own national
+        # number — "09825012345" — and refusing it taught the customer nothing
+        # except that the form did not like them.
+        if len(digits) == national_length + 1 and digits.startswith("0"):
+            digits = digits[1:]
+
         if len(digits) == national_length:
             return f"+{country_code}{digits}"
         # Typed with the country code but no plus, e.g. "1 415 555 0132".

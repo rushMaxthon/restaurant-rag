@@ -61,8 +61,6 @@ import { refusalNeedsCart } from "@/lib/order-refusal";
 import { pageMeta, useCurrencyCode, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
-/** Shown beside the phone field; matches the backend's own default. */
-const PHONE_COUNTRY_CODE = "+1";
 
 export const Route = createFileRoute("/checkout")({
   loader: () => getStorefrontCopy(),
@@ -76,20 +74,28 @@ export const Route = createFileRoute("/checkout")({
 function StepRail({ step }: { step: 1 | 2 | 3 }) {
   const steps = ["Cart", "Checkout", "Confirmation"] as const;
   return (
-    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-bold">
+    // Sized to fit three steps on one line at 414px. It wrapped before, and
+    // wrapping put "Confirmation" alone on a second row with the connector
+    // that should have led to it left dangling off the end of the first —
+    // a rail pointing at nothing. The connector now comes BEFORE each step
+    // rather than after, so if it ever does wrap the line leads into the step
+    // it belongs to instead of trailing into empty space.
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs font-bold sm:gap-x-3 sm:text-sm">
       {steps.map((label, i) => {
         const index = (i + 1) as 1 | 2 | 3;
         const done = index < step;
         const todo = index > step;
         return (
-          <li className="flex items-center gap-3" key={label}>
-            <span className="flex items-center gap-2">
+          <li className="flex items-center gap-2 sm:gap-3" key={label}>
+            {index > 1 && (
+              <span className="h-px w-4 bg-border sm:w-10" aria-hidden="true" />
+            )}
+            <span className="flex items-center gap-1.5 sm:gap-2">
               <span className="step-pill" data-done={done} data-todo={todo}>
                 {done ? <CheckCircle2 className="size-4" /> : index}
               </span>
               <span className={todo ? "text-muted" : undefined}>{label}</span>
             </span>
-            {index < 3 && <span className="h-px w-6 bg-border sm:w-10" aria-hidden="true" />}
           </li>
         );
       })}
@@ -351,6 +357,48 @@ function Checkout() {
   const show = (field: keyof AddressFields | "phone" | "name") =>
     Boolean(touched[field] || submitted);
 
+  /**
+   * Put the cursor in the first box that needs fixing.
+   *
+   * The form is about 2,600px tall on a phone and Pay now lives in a bar
+   * pinned to the bottom of the screen, so pressing it with something missing
+   * did this: an error appeared 970px away, off-screen, focus stayed on the
+   * body, and from where the customer was sitting nothing happened at all.
+   * The natural next move is to press it again.
+   *
+   * In the order the fields appear on the page, not the order the checks run,
+   * so somebody with two problems is taken to the top one and works down.
+   * `focus()` rather than only scrolling: it moves the screen reader and the
+   * on-screen keyboard too, and it is the thing that makes the next keystroke
+   * land somewhere useful.
+   */
+  const takeThemToTheProblem = () => {
+    const order: Array<[string, unknown]> = [
+      ["full_name", nameProblem],
+      ["phone", phoneProblem],
+      ["line1", addressProblems.line1],
+      ["city", addressProblems.city],
+      ["state", addressProblems.state],
+      ["zip", addressProblems.zip],
+    ];
+    const first = order.find(([, problem]) => Boolean(problem));
+    if (!first) {
+      return;
+    }
+    const field = document.getElementById(first[0]);
+    // `center` rather than the default `start`: the sticky summary bar sits
+    // over the bottom of the page and the header over the top, and a field
+    // scrolled flush to either edge lands underneath one of them.
+    field?.scrollIntoView({ block: "center" });
+    // Deliberately NOT `preventScroll`. Smooth scrolling can be interrupted,
+    // refused, or switched off by the reader's own motion setting, and this
+    // is the error path — if the scroll above does not happen, focus's own
+    // scrolling is what still puts the field on screen. A double jump is a
+    // worse animation and a much better outcome than a customer looking at an
+    // unchanged page.
+    field?.focus();
+  };
+
   // Orders have carried schedule_type/scheduled_at since the beginning and the
   // server validates a scheduled time against the branch's own slots. The app
   // only ever sent ASAP, so outside opening hours there was nothing to do but
@@ -506,6 +554,7 @@ function Checkout() {
     setSubmitted(true);
     if (!contactReady) {
       setError("Please check the highlighted details and try again.");
+      takeThemToTheProblem();
       return;
     }
 
@@ -724,7 +773,13 @@ function Checkout() {
                       a local number should not have to know the deployment's
                       country, and a free-text "+1" is one more thing to get
                       wrong. */}
-                  <span className="country-code">{PHONE_COUNTRY_CODE}</span>
+                  {/* From the server, not from a literal here. This said
+                      "+1" while the server prepended something else, so the
+                      code the customer was shown and the code their number
+                      was stored under could differ with nothing to say so. */}
+                  {s.phoneCountryCode && (
+                    <span className="country-code">{s.phoneCountryCode}</span>
+                  )}
                   <Input
                     id="phone"
                     required
