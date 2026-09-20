@@ -61,6 +61,7 @@ export function DishCard({ item }: { item: MenuItem }) {
         <DishImage
           src={item.image_url}
           name={item.name}
+          category={item.category}
           className="aspect-[16/10] transition-transform duration-500 group-hover:scale-[1.04]"
         />
         {(item.is_bestseller || item.is_new) && (

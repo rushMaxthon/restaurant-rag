@@ -42,7 +42,11 @@ function Usual({
   if (needsChoices || conflicts) {
     return (
       <Link to="/menu/$itemId" params={{ itemId: item.id }} className="usual">
-        <DishImage src={item.image_url ?? null} name={item.name} className="usual__photo" />
+        <DishImage
+          src={item.image_url ?? null}
+          name={item.name}
+          className="usual__photo"
+        />
         <span className="usual__name">{item.name}</span>
         <span className="usual__price money">{money(item.price)}</span>
       </Link>
@@ -52,7 +56,11 @@ function Usual({
   return (
     <div className="usual">
       <Link to="/menu/$itemId" params={{ itemId: item.id }} className="usual__open">
-        <DishImage src={item.image_url ?? null} name={item.name} className="usual__photo" />
+        <DishImage
+          src={item.image_url ?? null}
+          name={item.name}
+          className="usual__photo"
+        />
         <span className="usual__name">{item.name}</span>
       </Link>
       <button
@@ -106,7 +114,11 @@ function Pair({
             key={item.menu_item_id}
             aria-label={item.name}
           >
-            <DishImage src={item.image_url ?? null} name={item.name} className="pair__photo" />
+            <DishImage
+              src={item.image_url ?? null}
+              name={item.name}
+                  className="pair__photo"
+            />
           </Link>
         ))}
       </div>

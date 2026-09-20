@@ -132,11 +132,11 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
     >
       {/*
         The same DishImage the menu grid and dish page use, so a null
-        `image_url` — common in this data — falls back to the same
-        initials-on-a-tint tile customers already see elsewhere, not a
-        second, ad hoc "broken image" look invented just for this row.
-        Tailwind classes override DishImage's own aspect-[4/3]/w-full/
-        text-3xl defaults via tailwind-merge: square, ~56px, small text.
+        `image_url` — common in this data — falls back to the same drawn
+        motif customers already see elsewhere, not a second, ad hoc
+        "broken image" look invented just for this row. Tailwind classes
+        override DishImage's own aspect-[4/3]/w-full defaults via
+        tailwind-merge: square, ~56px.
       */}
       <DishImage
         src={item.image_url}
