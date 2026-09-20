@@ -451,6 +451,8 @@ export function getToken(): string | null {
 }
 
 export function setSession(token: string, user: AuthUser) {
+  // A fresh sign-in is what makes the next expiry worth announcing again.
+  alreadyAnnounced = false;
   try {
     window.localStorage.setItem(TOKEN_KEY, token);
     window.localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -467,6 +469,39 @@ export function getStoredUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * What to do when the server stops accepting the token we hold.
+ *
+ * A module-level listener rather than a thrown special case, because
+ * `request` is not a React component and cannot navigate, and because the
+ * alternative — every caller checking for 401 — is what left the checkout
+ * telling people to check their connection.
+ */
+type SessionExpiredHandler = () => void;
+
+let onSessionExpired: SessionExpiredHandler | null = null;
+let alreadyAnnounced = false;
+
+export function setSessionExpiredHandler(handler: SessionExpiredHandler | null) {
+  onSessionExpired = handler;
+}
+
+/**
+ * Called from `request` when a token we sent comes back rejected.
+ *
+ * Latched, because a page that fires four authenticated queries at once gets
+ * four 401s, and without this it would clear the session four times and push
+ * four navigations. The latch lifts on the next successful sign-in.
+ */
+export function announceSessionExpired() {
+  if (alreadyAnnounced) {
+    return;
+  }
+  alreadyAnnounced = true;
+  clearSession();
+  onSessionExpired?.();
 }
 
 export function clearSession() {
@@ -535,9 +570,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const host = storefrontHost();
   if (host) headers["X-Forwarded-Host"] = host;
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Remembered, because a 401 means something different depending on whether
+  // we actually presented a token: with one, it is dead; without one, the
+  // endpoint simply wants a sign-in, and the caller is usually asking on
+  // purpose (an anonymous cart, a guest reading the menu).
+  let sentToken: string | null = null;
   if (auth) {
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    sentToken = getToken();
+    if (sentToken) headers["Authorization"] = `Bearer ${sentToken}`;
   }
 
   const controller = new AbortController();
@@ -569,6 +609,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
+    if (response.status === 401 && sentToken) {
+      // The token we hold is no longer accepted. Drop it here rather than
+      // leaving it in storage to fail every later request the same way, and
+      // tell the app once so it can send them to sign in from wherever they
+      // were. `announceSessionExpired` is a no-op after the first call, so a
+      // page firing four queries at once does not queue four redirects.
+      announceSessionExpired();
+    }
     throw new ApiError(
       extractErrorMessage(payload, `Request failed (${response.status}).`),
       response.status,

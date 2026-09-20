@@ -13,11 +13,15 @@ import { ApiError } from "@/lib/api";
 import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
-type LoginSearch = { redirect: string | undefined };
+type LoginSearch = { redirect: string | undefined; expired?: boolean | undefined };
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
     redirect: typeof search["redirect"] === "string" ? (search["redirect"] as string) : undefined,
+    // Set when the app sent them here because the token it held stopped being
+    // accepted. Arriving at a sign-in page you did not ask for, with no
+    // explanation, is its own small bewilderment.
+    expired: search["expired"] === true || search["expired"] === "true" ? true : undefined,
   }),
   loader: () => getStorefrontCopy(),
   head: ({ loaderData }) => ({
@@ -32,7 +36,7 @@ function LoginPage() {
   const copy = useStorefrontCopy();
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const { redirect } = Route.useSearch();
+  const { redirect, expired } = Route.useSearch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +88,15 @@ function LoginPage() {
           <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">
               <form className="space-y-4" onSubmit={handleSubmit}>
+                {expired && !error && (
+                  <div className="inline-error form-error" role="status">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      Your sign-in expired, so we brought you here. Everything you had is
+                      saved — sign in and you will go straight back.
+                    </span>
+                  </div>
+                )}
                 {error && (
                   <div className="inline-error form-error" role="alert">
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
