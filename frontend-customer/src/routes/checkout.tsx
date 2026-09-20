@@ -1290,7 +1290,7 @@ function Checkout() {
           would have hit them too. z-40 was not enough: the content grid wins at
           equal depth. Above the nav (z-40), below the header (z-50), and the
           two bars never overlap anyway — this sits at 58px, the nav at 0. */}
-      <div className="fixed inset-x-0 bottom-[58px] z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
+      <div className="above-tab-bar fixed inset-x-0 z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs font-bold text-muted">

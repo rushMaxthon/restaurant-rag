@@ -179,6 +179,24 @@ main > * {
   }
 }
 
+/* A bar that sits on top of the mobile tab bar — the concierge composer and
+   the checkout summary.
+
+   Both hardcoded `bottom-[58px]`, which is the tab bar's height but not its
+   SIZE: `.mobile-nav-bar` adds `env(safe-area-inset-bottom)` on a phone with
+   a home indicator, so on those the bar is taller than 58px and the thing
+   above it was overlapped by exactly that inset. Reading the same token plus
+   the same inset is what keeps them stacked wherever they are rendered. */
+.above-tab-bar {
+  bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .above-tab-bar {
+    bottom: 0;
+  }
+}
+
 /* --- Press and focus -------------------------------------------------------
    Every button gives a little under the pointer. The compound controls and
    chips declare their own transition lists in styles.css, which would drop
@@ -476,6 +494,16 @@ textarea.flex:focus-visible {
 .concierge-reply {
   animation: rise-in 0.4s var(--ease-out) both;
   line-height: 1.6;
+  /* The reply arrives with its own line structure — the model answers "here
+     is what we do have:" and then one dish per line — and a <p> collapses
+     every one of those newlines into a space. Eight dishes and their prices
+     came out as a single run-on paragraph that nobody could scan.
+
+     `pre-wrap` rather than a markdown renderer, for the reason given above
+     `stripMarkdown`: this surface shows the reply as text, and preserving the
+     breaks the server actually sent is not the same as inventing structure
+     for it. Long lines still wrap normally. */
+  white-space: pre-wrap;
 }
 /* A streaming reply ends in a caret that blinks like a cursor, not a pulse
    that fades the whole glyph in and out. */

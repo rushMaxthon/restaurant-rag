@@ -21,10 +21,11 @@ import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
+import { budgetChipAmount } from "@/lib/budget";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 import { brandInitials } from "@/lib/brand-mark";
-import { pageMeta, useStorefrontCopy, useMoney } from "@/lib/storefront";
+import { pageMeta, useRoundedMoney, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
 type ConciergeSearch = { q?: string };
@@ -70,9 +71,17 @@ export const Route = createFileRoute("/concierge")({
 });
 
 
+/**
+ * The openers offered before anybody has typed anything.
+ *
+ * None of them names money. The middle one used to read "A light lunch under
+ * $15" — a literal, on a platform whose restaurants charge in rupees, dirhams
+ * and pounds — and pressing it sent that sentence to the concierge, which
+ * then reasoned about dollars nobody charges. The budget opener is built
+ * separately, below, from this menu's own prices.
+ */
 const STARTERS = [
   "Something spicy and vegetarian",
-  "A light lunch under $15",
   "Comfort food for a rainy day",
 ];
 
@@ -135,6 +144,8 @@ function stripMarkdown(text: string): string {
 function ConciergePage() {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
+  // A budget is prose, not a price: "under $20", not "under $20.00".
+  const roundedMoney = useRoundedMoney();
   // This restaurant's own words, resolved by the root route from the
   // address the page was opened on.
   const copy = useStorefrontCopy();
@@ -153,6 +164,14 @@ function ConciergePage() {
   // not on the menu. Same query key as the menu page, so this is a cache hit
   // whenever they have browsed, and one cheap fetch when they have not.
   const menuQuery = useMenuItems(store.restaurantId, store.currentLocation?.id);
+
+  // A budget opener in this restaurant's own money, or none at all. Read off
+  // the menu rather than converted from a figure in another currency, which
+  // would invent a number this kitchen never chose. See `lib/budget.ts`.
+  const budget = budgetChipAmount((menuQuery.data ?? []).map((i) => Number(i.price)));
+  const starters = budget
+    ? [...STARTERS.slice(0, 1), `A light lunch under ${roundedMoney(budget)}`, ...STARTERS.slice(1)]
+    : STARTERS;
   const resolveMenu = () =>
     menuQuery.data ??
     queryClient.getQueryData<MenuItem[]>(
@@ -619,7 +638,7 @@ function ConciergePage() {
           </StorefrontHero>
           <div className="page-pad mx-auto max-w-5xl py-10">
             <div className="mb-8 flex flex-wrap gap-2">
-              {STARTERS.map((s, i) => (
+              {starters.map((s, i) => (
                 <button
                   key={s}
                   onClick={() => sendQuery(s)}
@@ -805,7 +824,7 @@ function ConciergePage() {
       )}
 
       <form
-        className="composer fixed inset-x-0 bottom-[58px] z-30 border-t border-border p-3 lg:bottom-0"
+        className="composer above-tab-bar fixed inset-x-0 z-30 border-t border-border p-3"
         onSubmit={handleSubmit}
       >
         <div className="mx-auto flex max-w-5xl gap-2 px-4 sm:px-6 lg:px-10">

@@ -3,6 +3,7 @@ import { useLoaderData } from "@tanstack/react-router";
 import {
   FALLBACK_CURRENCY,
   formatMoney,
+  formatRoundedMoney,
   type CurrencyFormat,
   type Money,
 } from "@/lib/bangkok-data";
@@ -155,6 +156,16 @@ export function useMoney(): (value: Money | number) => string {
   const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
   const currency = data?.currency ?? FALLBACK_CURRENCY;
   return (value) => formatMoney(value, currency);
+}
+
+/**
+ * `useMoney` for prose rather than for prices — see `formatRoundedMoney`.
+ * The craving chips are the callers: they name a budget, not a price.
+ */
+export function useRoundedMoney(): (value: Money | number) => string {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  const currency = data?.currency ?? FALLBACK_CURRENCY;
+  return (value) => formatRoundedMoney(value, currency);
 }
 
 /**

@@ -258,6 +258,29 @@ export const formatMoney = (
   }).format(amount);
 };
 
+/**
+ * The same money, to the nearest whole unit, for prose.
+ *
+ * "A light lunch under $20" is how a person says it; "$20.00" is how a
+ * ledger says it, and a craving chip is a sentence. Mirrors
+ * `format_rounded_amount` in the backend's `services/currency.py`, and is
+ * separate from `formatMoney` for the reason given there: a flag on the price
+ * formatter would let a price list quietly lose its cents.
+ *
+ * Grouping still comes from the currency's locale, so a rounded rupee figure
+ * is still written the Indian way.
+ */
+export const formatRoundedMoney = (
+  value: Money | number,
+  currency: CurrencyFormat = FALLBACK_CURRENCY,
+) =>
+  new Intl.NumberFormat(currency.locale, {
+    style: "currency",
+    currency: currency.code,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(Math.abs(Number(value))));
+
 /** Derives the "All" + unique category list from a live menu-items response. */
 export const deriveCategories = (items: MenuItem[]) => [
   "All",

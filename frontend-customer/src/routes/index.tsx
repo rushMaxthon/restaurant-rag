@@ -21,7 +21,12 @@ import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
 import { budgetChipAmount } from "@/lib/budget";
-import { useMoney, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
+import {
+  useMoney,
+  useRoundedMoney,
+  useStorefrontCopy,
+  useStorefrontCover,
+} from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
   // The root route already resolves this restaurant's copy from the request
@@ -43,6 +48,8 @@ function Home() {
   // than after a client fetch.
   const copy = useStorefrontCopy();
   const money = useMoney();
+  // A budget is prose, not a price: "Under ₹150", not "Under ₹150.00".
+  const roundedMoney = useRoundedMoney();
   const store = useBangkokStore();
   // Nothing invites a customer to a page this restaurant has switched off.
   const askAi = hasCapability(store.capabilities, "ask_ai");
@@ -88,8 +95,8 @@ function Home() {
     ? [
         ...CRAVING_CHIPS.slice(0, 1),
         {
-          label: `Under ${money(budget)}`,
-          query: `Something good under ${money(budget)}`,
+          label: `Under ${roundedMoney(budget)}`,
+          query: `Something good under ${roundedMoney(budget)}`,
           icon: DollarSign,
         },
         ...CRAVING_CHIPS.slice(1),
