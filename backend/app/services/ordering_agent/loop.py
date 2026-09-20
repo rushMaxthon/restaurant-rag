@@ -1256,12 +1256,25 @@ def run_turn(
         veg_note = "" if want_veg is None else ", all vegetarian"
         asked_for = phrase.strip()
         if found_by == "fallback" and asked_for:
-            # We do not sell what they asked for. Saying so is the house
-            # style — "We don't have sushi on the menu, but..." — and the
-            # alternative is what shipped: the branch's whole menu from
+            # Acknowledging what they asked for is the house style — the
+            # alternative is what shipped once: the branch's whole menu from
             # "Appetizer Sampler" down, under "Here is what we have", which
             # reads as having been ignored.
-            opening = f"We do not have {asked_for} here. This is what we do have{veg_note}"
+            #
+            # But this used to say "We do not have {asked_for} here", and
+            # that is a claim about the MENU when `fallback` is a fact about
+            # the SEARCH: `dishes_to_show` reports it when nothing matched
+            # the words, and the rows below are then simply the branch's
+            # menu rather than anything selected to answer the question.
+            #
+            # The two come apart the moment somebody describes what they want
+            # instead of naming it. "A light lunch under $20" matched no dish
+            # name, so the reply opened "We do not have light lunch under $20
+            # here" — and then listed eight dishes, every one of them under
+            # twenty dollars. Reporting the failed match instead is true in
+            # both cases and contradicts nothing: for "sushi" it reads almost
+            # exactly as before.
+            opening = f"I could not find {asked_for} on the menu. This is what we do have{veg_note}"
         elif found_by == "close" and asked_for:
             # Their words found something, just not the exact name they used.
             opening = f"I could not find {asked_for} exactly. The closest we have{veg_note}"
