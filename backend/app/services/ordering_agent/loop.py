@@ -1274,8 +1274,13 @@ def run_turn(
         if not found:
             return None
         found_by = str(report.get("found_by") or "named")
-        more = len(found) > _DISHES_READ_OUT
-        shown = found[:_DISHES_READ_OUT]
+        # A section is read out whole. Eight of seventeen under "Here are a
+        # few" is honest but useless to somebody who asked to see the Paneer
+        # Taste section — they asked for the section, and the rest of it is
+        # not a follow-up question they should have to think to ask.
+        read_out = tools_module.WHOLE_SECTION_CAP if found_by == "section" else _DISHES_READ_OUT
+        more = len(found) > read_out
+        shown = found[:read_out]
         if len(shown) == 1:
             # They named the one thing they want. Reading it back as a list
             # of one and asking which they would like is not a conversation:
@@ -1340,6 +1345,16 @@ def run_turn(
         elif found_by == "close" and asked_for:
             # Their words found something, just not the exact name they used.
             opening = f"I could not find {asked_for} exactly. The closest we have{veg_note}"
+        elif found_by == "section":
+            # Naming the section back is the confirmation it was understood,
+            # and it is the difference between a list of dishes and an answer.
+            section = str(report.get("section") or "").strip()
+            opening = (
+                f"Here is our {section}{veg_note}" if section
+                else f"Here is what we have{veg_note}"
+            )
+            if more:
+                opening = f"{opening} — the first {len(shown)} of {len(found) - 1}"
         elif more:
             # Only a complete list gets to say it is one.
             opening = f"Here are a few{veg_note}"

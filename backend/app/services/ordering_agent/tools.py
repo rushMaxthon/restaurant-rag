@@ -1147,6 +1147,71 @@ def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
     return [c for c in rows if c]
 
 
+#: A section is a complete thing and its size belongs to the menu, not to
+#: whoever asked. Still bounded, because one pathological category should not
+#: become a thousand-line message: past this the caller says how many more.
+WHOLE_SECTION_CAP = 40
+
+#: Words that carry no meaning when deciding whether a phrase names a section.
+#: Not a vocabulary — every one of these is grammar, and the SECTION names
+#: themselves come from the menu, so no word here decides what anything means.
+_SECTION_FILLER = {
+    "and", "the", "any", "some", "you", "have", "got", "show", "see", "want",
+    "like", "give", "for", "with", "your", "our", "all", "what", "whats",
+    "which", "there", "that", "this", "please", "menu", "list", "options",
+    "option", "item", "items", "dish", "dishes", "food", "section", "category",
+    "order", "get", "can", "could", "would", "about", "tell", "know", "need",
+}
+
+
+def _section_words(text: str) -> frozenset[str]:
+    """The words of a phrase that decide whether it names a section.
+
+    Singularised the same way `dishes_to_show` does it, so "noodles" reaches
+    the "Noodles" section and "soups" reaches "Soup".
+    """
+
+    words = []
+    for raw in "".join(c if c.isalnum() or c.isspace() else " " for c in text.lower()).split():
+        if len(raw) < 3 or raw in _SECTION_FILLER:
+            continue
+        words.append(raw[:-1] if len(raw) > 4 and raw.endswith("s") and not raw.endswith("ss") else raw)
+    return frozenset(words)
+
+
+def category_named_exactly(phrase: str, categories: list[str]) -> str | None:
+    """The section this phrase names, or None if it names none of them.
+
+    A word SET, not a substring. The difference is the whole rule:
+
+    * "Corn Dhokla" names the nine-dish section of that name. Dish-name
+      matching found four of those nine — a strict subset — and because it
+      found SOMETHING the section tier below it never ran, so five dishes were
+      invisible to anyone who asked for them by section.
+    * "Manchow Soup" names a dish, and its words are not the Soup section's
+      words. Reading it as the section would answer with all three soups and
+      throw away the word that said which one.
+    * "dhokla" is a word inside one section's name and inside dish names in
+      several others. Reading it as "Corn Dhokla" would hide the rest of the
+      dhoklas this branch sells, so a partial word names nothing.
+    * "taste" belongs to four sections at this branch. Choosing one would be a
+      guess, and nothing here guesses.
+
+    The sections come from the menu, so a restaurant that adds a Pizza section
+    answers "pizza" with its pizzas the moment it does, with no code change.
+    """
+
+    wanted = _section_words(phrase)
+    if not wanted:
+        return None
+    matches = [
+        category
+        for category in categories
+        if category and _section_words(category) == wanted
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def dishes_to_show(
     db: Session,
     scope: OrderingScope,
@@ -1204,6 +1269,35 @@ def dishes_to_show(
         for w in "".join(c if c.isalnum() or c.isspace() else " " for c in phrase.lower()).split()
         if len(w) > 2
     ]
+    # A section named exactly, BEFORE dish names — because dish-name matching
+    # answers a section with a strict subset of it and then stops. "Corn
+    # Dhokla" matched four dish names out of that section's nine, and the
+    # section tier further down never ran, so five dishes this branch sells
+    # were invisible to anyone who asked for them by name of section. Read out
+    # complete, because a section's size is a property of the menu and not of
+    # how many rows a caller felt like asking for.
+    # The section comes from the READING, which was handed this branch's own
+    # list of them — so "some drink" reaches Beverages, which no amount of
+    # string matching gets to. All that is decided here is whether the phrase
+    # names that section and nothing narrower.
+    section = category_named_exactly(phrase, [category] if category else [])
+    if section is not None:
+        rows = list(
+            db.scalars(
+                stmt.where(MenuItem.category == section)
+                .order_by(MenuItem.name)
+                .limit(WHOLE_SECTION_CAP + 1)
+            )
+        )
+        if rows:
+            if report is not None:
+                report["found_by"] = "section"
+                report["section"] = section
+            return [
+                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+                for row in rows
+            ]
+
     named = stmt
     for word in words:
         named = named.where(MenuItem.name.ilike(f"%{word}%"))
