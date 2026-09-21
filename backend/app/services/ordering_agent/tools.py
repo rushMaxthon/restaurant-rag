@@ -1436,6 +1436,25 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
         return {"found": False, "confidence": verdict}
 
     matched_item = candidates[0].menu_item
+
+    # They named the SECTION, not a dish in it. Costs no query: the row that
+    # came back says which section it belongs to, and the words asked for are
+    # compared against that.
+    #
+    # Live, this is what it prevents, with nobody having confirmed anything:
+    #
+    #     >>> Tandoori Starter
+    #         Added 1 x Paneer Pahadi Tikka Dry to your order. Anything else?
+    #
+    # Retrieval was not wrong — Paneer Pahadi Tikka Dry IS a Tandoori Starter,
+    # and the guardrail measured it as a confident match, which it is. The
+    # mistake is answering "show me the Tandoori Starters" with one of them.
+    # `section` is returned so the caller can show the section rather than
+    # telling somebody who named a real part of the menu that we do not have it.
+    section = category_named_exactly(args.name, [getattr(matched_item, "category", None)])
+    if section is not None:
+        return {"found": False, "confidence": "section", "section": section}
+
     return _build_dish_result(matched_item, confidence=verdict, args=args)
 
 

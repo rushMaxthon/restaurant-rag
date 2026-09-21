@@ -2525,9 +2525,22 @@ def run_turn(
     # A dish they named beats a section the reading also guessed at: a
     # customer saying "add a thai iced tea too" wants the drink, not the
     # list of drinks they would choose it from.
+    # ...unless what they "named" IS the section. "Corn Dhokla" is the name of
+    # a nine-dish section, the reading reads it as a dish to add, and the add
+    # path then asked "Did you mean Butter Corn Dhokla, Garlic Corn Dhokla,
+    # Jain Corn Dhokla, Jeera Corn Dhokla or Vegetable Corn Dhokla?" — five of
+    # the nine, because it matched dish NAMES. Somebody who says the name of a
+    # section has not named a dish, so there is no dish to beat the section.
+    #
+    # Word-set equality, so the case the comment above describes is untouched:
+    # "add a thai iced tea too" is not the Beverages section's words, and still
+    # adds the drink.
+    names_the_section = wanted.get("category") and tools_module.category_named_exactly(
+        message, [wanted.get("category")]
+    )
     if (
         (wanted.get("browse") or wanted.get("category"))
-        and not wanted["add"]
+        and (not wanted["add"] or names_the_section)
         and db is not None
         and scope.restaurant_location_id
     ):
