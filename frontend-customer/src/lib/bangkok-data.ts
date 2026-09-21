@@ -50,7 +50,14 @@ export type MenuItem = {
   name: string;
   category: string;
   cuisine_type: string;
-  description: string;
+  /**
+   * Null far more often than not — 720 of one restaurant's 816 rows — and the
+   * column has always been nullable. This said `string`, so
+   * `description.toLowerCase()` in the menu search typechecked, shipped, and
+   * threw on the first dish without one: the whole grid came down and the
+   * customer got the error boundary's empty page for typing a letter.
+   */
+  description: string | null;
   price: Money;
   is_veg: boolean;
   is_available: boolean;
@@ -111,7 +118,8 @@ export type Restaurant = {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  /** Nullable in the database, like a dish's. */
+  description: string | null;
   cuisine_type: string;
   city: string;
   minimum_order_amount: Money;

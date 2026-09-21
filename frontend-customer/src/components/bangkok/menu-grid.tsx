@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { deriveCategories, type MenuItem } from "@/lib/bangkok-data";
+import { matchesQuery } from "@/lib/menu-search";
 import { sortsFor } from "@/lib/menu-sorts";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItems } from "@/lib/queries";
@@ -92,15 +93,11 @@ export function MenuGrid({
     return items
       .filter((item) => category === "All" || item.category === category)
       .filter((item) => !vegOnly || item.is_veg)
-      .filter(
-        (item) =>
-          !needle ||
-          // Searching only the name missed "something with peanuts", which is
-          // the kind of thing people actually type into a food search.
-          item.name.toLowerCase().includes(needle) ||
-          item.description.toLowerCase().includes(needle) ||
-          item.category.toLowerCase().includes(needle),
-      )
+      // In `lib/menu-search.ts` rather than inline: this predicate crashed the
+      // whole grid on a null description, and nothing could test it while it
+      // lived inside a useMemo inside a component that needs a store, a query
+      // client and a router to render.
+      .filter((item) => matchesQuery(item, needle))
       .sort((a, b) => compare(sort, a, b))
       .slice(0, limit);
   }, [items, category, query, vegOnly, sort, limit]);

@@ -102,9 +102,16 @@ export function DishCard({ item }: { item: MenuItem }) {
           </Link>
         </div>
 
-        <p className="line-clamp-2 min-h-10 text-sm leading-relaxed text-muted">
-          {item.description}
-        </p>
+        {/* `min-h-10` holds two lines so cards in a row keep their price and
+            button on one baseline. That is worth it when the text varies;
+            with no description at all it is just ten of empty space, and on
+            this menu that is most of the grid. The reservation stays only
+            while something is using it. */}
+        {item.description?.trim() ? (
+          <p className="line-clamp-2 min-h-10 text-sm leading-relaxed text-muted">
+            {item.description}
+          </p>
+        ) : null}
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">
