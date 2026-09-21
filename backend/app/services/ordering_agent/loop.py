@@ -211,6 +211,14 @@ def ask_for_choice(result: Any) -> str | None:
     return " ".join(parts) + " Which would you like?"
 
 
+#: The question a finished read-back ends on. Named because two places have to
+#: agree on it exactly: `describe_cart` writes it, and the give-up path records
+#: it as the question being waited on — and records it ONLY when the read-back
+#: actually asked it, since a cart with an unchosen size ends on a different
+#: sentence and must not be told it is ready.
+_READY_TO_CHECK_OUT = "Ready to check out?"
+
+
 def describe_cart(result: Any) -> str | None:
     """A `view_cart` result read back as a sentence, or None.
 
@@ -238,7 +246,7 @@ def describe_cart(result: Any) -> str | None:
     # it too; the phone turns them into bullets on the way out.
     said = "\n" + "\n".join(parts) + "\n"
     subtotal = _money(result.get("subtotal"))
-    tail = " Ready to check out?"
+    tail = f" {_READY_TO_CHECK_OUT}"
     if result.get("needs_choice"):
         # A line still missing a size or a required choice cannot be priced
         # honestly, so the subtotal is not the whole story and saying "ready
@@ -637,6 +645,24 @@ def describe_ready(total: str | None = None) -> str:
     """
 
     return "That is everything I need to place your order."
+
+
+def describe_order_so_far(cart_result: Any) -> str | None:
+    """The cart read back, or None when there is nothing in it.
+
+    `describe_cart` answers an empty cart with a SENTENCE — "Your cart is empty
+    at the moment." — which is right for a customer who asked what is in their
+    cart and wrong for anything that tests it for truth. Dropped into "You have
+    {...}" it produced:
+
+        You have Your cart is empty at the moment.. Ready to check out?
+
+    So the emptiness is decided by the rows, not by whether a string came back.
+    """
+
+    if not isinstance(cart_result, dict) or not (cart_result.get("lines") or []):
+        return None
+    return describe_cart(cart_result)
 
 
 def _cart_summary_in(records: list[ToolCallRecord]) -> str | None:
@@ -1432,19 +1458,38 @@ def run_turn(
             # read to "tell me the dish you would like" asks them to do the
             # thing that just failed, twice. The sections are what a restaurant
             # hands across the table, and naming one back shows it complete.
-            offer = (
-                tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
-                if db is not None and scope.restaurant_location_id
-                else None
-            )
-            answer = (
-                f"Sorry — I did not follow that. {offer}"
-                if offer
-                else (
-                    "Sorry — I did not follow that. Let's start that one again: tell me "
-                    "the dish you would like and I will set it up."
+            order_so_far = describe_order_so_far(cart_result)
+            if order_so_far:
+                # There is an order in progress. Sending somebody back to the
+                # menu here is how a half-finished order is lost: they picked
+                # something, we could not read two messages, and the reply
+                # changes the subject to browsing. Read the cart back instead,
+                # which already ends on the question that finishes the order.
+                answer = f"Sorry — I did not follow that. {order_so_far}"
+                # That read-back writes its OWN closing question, and which one
+                # depends on the rows: a line still missing a size cannot be
+                # checked out, so `describe_cart` says so instead. Appending a
+                # second question here printed "Ready to check out?" twice and
+                # would have asked it even when it was not true. So the
+                # question is only recorded when the read-back actually asked
+                # it — recorded, because the next message is an answer to it
+                # and needs something to be read against.
+                if order_so_far.rstrip().endswith(_READY_TO_CHECK_OUT):
+                    _hold(_READY_TO_CHECK_OUT, yes="checkout")
+            else:
+                offer = (
+                    tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
+                    if db is not None and scope.restaurant_location_id
+                    else None
                 )
-            )
+                answer = (
+                    f"Sorry — I did not follow that. {offer}"
+                    if offer
+                    else (
+                        "Sorry — I did not follow that. Let's start that one again: tell me "
+                        "the dish you would like and I will set it up."
+                    )
+                )
         else:
             draft_now = order_draft.load(scope.session_id)
             asked["asks"] = int(asked.get("asks", 1)) + 1

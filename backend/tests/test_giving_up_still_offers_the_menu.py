@@ -118,6 +118,58 @@ class TheGiveUpPathUsesItTests(unittest.TestCase):
             "the apology is still the opening; only what follows it changed",
         )
 
+    def test_an_order_in_progress_is_finished_rather_than_restarted(self) -> None:
+        # The menu is the right answer only when there is nothing to lose. Once
+        # a dish is in the cart, offering 21 sections changes the subject away
+        # from the order the customer already started — which is how a
+        # half-finished order is abandoned. The cart is read back instead.
+        block = self.give_up_block()
+        self.assertIn("describe_order_so_far", block)
+        self.assertIn("Ready to check out?", block)
+
+    def test_an_empty_cart_is_not_an_order_in_progress(self) -> None:
+        # `describe_cart` answers an empty cart with a sentence, so testing it
+        # for truth says "there is an order" when there is not. Live, that read:
+        # "You have Your cart is empty at the moment.. Ready to check out?"
+        from app.services.ordering_agent.loop import describe_order_so_far
+
+        self.assertIsNone(describe_order_so_far({"lines": [], "subtotal": "0.00"}))
+        self.assertIsNone(describe_order_so_far(None))
+        self.assertIsNone(describe_order_so_far({}))
+
+    def test_a_cart_with_rows_is_read_back(self) -> None:
+        from app.services.ordering_agent.loop import describe_order_so_far
+
+        said = describe_order_so_far(
+            {"lines": [{"name": "Vagharela Khaman", "quantity": 1, "total_price": "35.00"}],
+             "subtotal": "35.00"}
+        )
+        self.assertIn("Vagharela Khaman", said)
+
+    def test_the_question_it_ends_on_is_held(self) -> None:
+        # Otherwise the next message answers a question nothing recorded, which
+        # is the failure this whole area keeps producing.
+        block = self.give_up_block()
+        self.assertIn("_hold(_READY_TO_CHECK_OUT", block)
+
+    def test_the_question_is_not_asked_twice(self) -> None:
+        # The read-back writes its own closing question. Appending another one
+        # printed "Ready to check out?" twice in the same reply.
+        block = self.give_up_block()
+        self.assertNotIn('+ _hold(', block)
+
+    def test_a_cart_that_cannot_be_checked_out_is_not_told_it_can(self) -> None:
+        # `describe_cart` ends on a different sentence when a line still needs
+        # a size, so the question is recorded only when it was actually asked.
+        from app.services.ordering_agent.loop import _READY_TO_CHECK_OUT, describe_cart
+
+        needs = describe_cart({
+            "lines": [{"name": "Vagharela Khaman", "quantity": 1, "total_price": "35.00"}],
+            "subtotal": "35.00",
+            "needs_choice": [{"name": "Manchow Soup"}],
+        })
+        self.assertFalse(needs.rstrip().endswith(_READY_TO_CHECK_OUT), needs)
+
     def test_the_second_ask_still_repeats_the_question(self) -> None:
         # Untouched on purpose: a live question with known answers is better
         # than a menu, because it keeps the thread the customer is already in.

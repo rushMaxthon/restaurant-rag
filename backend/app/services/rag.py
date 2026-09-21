@@ -5515,6 +5515,34 @@ def _build_order_history_reply() -> str:
     )
 
 
+def agent_answer_beats_instant_reply(
+    *, agent_owns: bool, should_bypass_llm: bool, intent: str
+) -> bool:
+    """Whether the ordering agent's line wins over an instant, canned one.
+
+    The pipeline used to ask `should_bypass_llm` first and `agent_owns` second,
+    so every canned reply outranked the agent. For one intent that is exactly
+    backwards. `invalid_input` means "nobody could read this message" — and the
+    agent is the one part of the system in a position to contradict that,
+    because it is holding the question it just asked and the list of answers to
+    it.
+
+    Measured: a size question answered "Y" was met with "I didn't quite catch
+    that. Ask me about food, restaurants, menus, combos, offers..." while the
+    agent had already composed "Which size for Vagharela Khaman? ... Just reply
+    with one of these: Per Plate, 1 Kg." The same held for "N", "2" and "yes".
+    Worse than a bad sentence: the pending question went with it, so the next
+    message had nothing to be read against either.
+
+    Only that intent. The other instant replies are positive classifications —
+    a greeting IS a greeting, an hours question IS an hours question — and
+    answering "hi" with a re-ask of a size question would be this same bug
+    facing the other way.
+    """
+
+    return agent_owns and should_bypass_llm and intent == "invalid_input"
+
+
 def _build_invalid_input_reply() -> str:
     return (
         "I didn't quite catch that. Ask me about food, restaurants, menus, combos, offers, or something like dinner under a budget."
@@ -8474,7 +8502,11 @@ def handle_chat_message(
 
     raw_reply = ""
     llm_strategy = "skipped"
-    if prepared.should_bypass_llm:
+    if prepared.should_bypass_llm and not agent_answer_beats_instant_reply(
+        agent_owns=agent_owns,
+        should_bypass_llm=prepared.should_bypass_llm,
+        intent=str(prepared.extracted_intent.intent),
+    ):
         reply = prepared.fallback_reply or _build_safe_reply(
             message,
             prepared.suggestions,
@@ -9007,7 +9039,11 @@ def stream_chat_message(
 
     raw_reply = ""
     llm_strategy = "skipped"
-    if prepared.should_bypass_llm:
+    if prepared.should_bypass_llm and not agent_answer_beats_instant_reply(
+        agent_owns=agent_owns,
+        should_bypass_llm=prepared.should_bypass_llm,
+        intent=str(prepared.extracted_intent.intent),
+    ):
         reply = prepared.fallback_reply or _build_safe_reply(
             message,
             prepared.suggestions,
