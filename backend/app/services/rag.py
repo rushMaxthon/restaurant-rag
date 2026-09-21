@@ -5543,6 +5543,51 @@ def agent_answer_beats_instant_reply(
     return agent_owns and should_bypass_llm and intent == "invalid_input"
 
 
+#: A comma before "or" is what separates a list of options from a second
+#: question. "Would you like rice or naan?" is one question with two answers;
+#: "Anything else, or shall we get it on its way?" is two questions, and the
+#: answer to both of them is yes. Both real failures carried the comma.
+_A_SECOND_QUESTION = ", or "
+
+
+def ask_one_thing(reply: str | None) -> str | None:
+    """Cut a trailing question back to one question.
+
+    A reply that ends on two questions cannot be answered with "yes", however
+    well the next turn reads it: the customer agreed to one of two different
+    things and nothing in their message says which. Live, on WhatsApp:
+
+        > Menu
+          ... Want something lighter, or are you ready to order?
+        > Yes
+          There is nothing in your order yet.
+
+    The agent's own sentences have followed this rule since `describe_applied`
+    stopped saying "Anything else, or shall we get it on its way?". It never
+    bound the reply pipeline, where the model writes its own prose — so it is
+    applied to that prose here, keeping the first question exactly as the
+    agent's fix kept "Anything else?".
+
+    Only the LAST question, and only with a comma before the "or": an "or"
+    earlier in a reply is prose, and one without a comma is a choice between
+    two answers rather than a second question.
+    """
+
+    if not reply:
+        return reply
+    end = reply.rfind("?")
+    if end == -1:
+        return reply
+    # Back to the start of the sentence this question ends, so an "or" in an
+    # earlier sentence is left alone.
+    start = max(reply.rfind(stop, 0, end) for stop in (".", "!", "?", "\n"))
+    question = reply[start + 1 : end]
+    cut = question.find(_A_SECOND_QUESTION)
+    if cut == -1:
+        return reply
+    return f"{reply[: start + 1]}{question[:cut]}?{reply[end + 1 :]}"
+
+
 def _build_invalid_input_reply() -> str:
     return (
         "I didn't quite catch that. Ask me about food, restaurants, menus, combos, offers, or something like dinner under a budget."
@@ -8544,7 +8589,10 @@ def handle_chat_message(
                     _trim_text(message, 80),
                 )
                 llm_strategy = "generated_trimmed"
-            raw_reply = grounded_reply
+            # One question, for the same reason the agent's own sentences ask
+            # one: "yes" to "Want something lighter, or are you ready to
+            # order?" cannot be read, however good the reading is.
+            raw_reply = ask_one_thing(grounded_reply)
         except HTTPException:
             llm_strategy = "fallback_after_llm_failure"
         prepared.timings.llm_ms = round((perf_counter() - llm_started_at) * 1000, 2)
@@ -9127,6 +9175,15 @@ def stream_chat_message(
                 )
         except Exception:  # pragma: no cover - a checker must not break the answer
             logger.exception("Streamed grounding check failed; reply returned unchecked")
+
+        # One question, for the same reason the agent's own sentences ask one:
+        # "yes" to "Want something lighter, or are you ready to order?" cannot
+        # be read, however good the reading is. Applied to the MODEL's prose
+        # only — the deterministic replies have followed this rule since
+        # `describe_applied` stopped saying "Anything else, or shall we get it
+        # on its way?".
+        if raw_reply:
+            reply = ask_one_thing(reply)
 
     if may_cache_globally(
         cacheable=cacheable_response,

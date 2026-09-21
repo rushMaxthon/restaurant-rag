@@ -211,6 +211,11 @@ def ask_for_choice(result: Any) -> str | None:
     return " ".join(parts) + " Which would you like?"
 
 
+#: The question the menu offer ends on, as the MODEL should see it next turn.
+#: The customer gets the whole list of sections; handing that list to the model
+#: as "the question" is the shape `_hold` keeps a short question for.
+_WHICH_SECTION = "Which of those would you like to see?"
+
 #: The question a finished read-back ends on. Named because two places have to
 #: agree on it exactly: `describe_cart` writes it, and the give-up path records
 #: it as the question being waited on — and records it ONLY when the read-back
@@ -2291,9 +2296,38 @@ def run_turn(
     if plain == "cart" and cart_readback:
         return _settled(asked_to_see_cart=True)
     if plain == "menu":
-        # The reply pipeline answers about the menu, and better; this turn
-        # simply has nothing to add and should not spend a model round
-        # discovering that.
+        # This used to stand aside — "the reply pipeline answers about the
+        # menu, and better" — and live, it does not. There is no handler for
+        # it there at all: "Menu" reaches retrieval as a search query, matches
+        # no keyword, vector-matches eight arbitrary dishes, and the model
+        # writes prose over them. On a real thread that produced a pitch for
+        # the Tom Yum Prawn Pizza to somebody who had asked to see the menu.
+        #
+        # The sections are the answer, for the reason a restaurant hands over
+        # a menu with sections instead of reciting 136 dishes — and naming one
+        # back now reads out that whole section, so it leads somewhere.
+        sections = (
+            tools_module.branch_sections(db, scope)
+            if db is not None and scope.restaurant_location_id
+            else []
+        )
+        offer = tools_module.offer_of_sections(sections)
+        if offer:
+            return TurnOutcome(
+                # `asks` is the short question; the customer gets the list.
+                # `_hold` records a short one on purpose — a long read-back
+                # given to the model AS the question gets mined for its
+                # contents, and a list of every section is that shape exactly.
+                answer=_hold(offer, yes="name_one", asks=_WHICH_SECTION),
+                answer_about="menu",
+                actions=actions,
+                records=records,
+                fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+        # A branch with no sections has nothing better to offer than whatever
+        # the pipeline makes of it, which is the one case the old behaviour
+        # was right about.
         return TurnOutcome(
             answer=None, actions=actions, records=records,
             fallback_reason=None, elapsed_seconds=clock() - start,
