@@ -143,6 +143,24 @@ PERSONAS: dict[str, tuple[str, list[str]]] = {
         "Surat. Half the messages arrive like this.",
         ["bhai dhokla hai kya", "kitne ka hai", "haan ek pack bhej do", "ghar pe delivery"],
     ),
+    "cooperative": (
+        "Answers every question exactly as asked. If the cart cannot fill for "
+        "THIS customer, it cannot fill for anyone.",
+        [
+            "hi",
+            "khaman dhokla",
+            "Vagharela Khaman",
+            "Per Plate",
+            "2",
+            "that's all",
+            "pickup",
+            "Rakesh, rakesh@example.com, 9876543210",
+        ],
+    ),
+    "straight-line": (
+        "The shortest real order there is: one named dish, one size, done.",
+        ["Vagharela Khaman", "Per Plate", "yes", "pickup"],
+    ),
     "interrupts": (
         "Abandons a half-finished order to ask something unrelated, then "
         "comes back. The thread has to survive it.",
