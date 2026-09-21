@@ -47,6 +47,7 @@ from app.models.order import Order
 from app.services.ordering_agent import guards, open_orders, order_draft
 from app.services.ordering_agent import tools as tools_module
 from app.services.ordering_agent.planner import (
+    default_generate,
     extract_cart_request,
     question_asked_in,
     quick_read,
@@ -875,7 +876,12 @@ def run_turn(
     rounds = max_rounds if max_rounds is not None else settings.ordering_agent_max_tool_rounds
     budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
 
-    asked_for = generate
+    # Resolved HERE rather than left to the planner's own `generate or
+    # default_generate`, because in production this argument is None — a test
+    # injects a scripted model, a customer does not — and the wrapper below
+    # needs something real to call. Getting this wrong raised on every live
+    # turn while the whole suite stayed green.
+    asked_for = generate if generate is not None else default_generate
 
     def generate(prompt: str, timeout_seconds: float, max_tokens: int) -> str:
         """The model, never given longer than the turn has left.

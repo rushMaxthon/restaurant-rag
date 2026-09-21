@@ -378,7 +378,18 @@ Customer: {message}
 Answer now."""
 
 
-def _ollama_generate(prompt: str, timeout_seconds: float, max_tokens: int) -> str:
+def default_generate(prompt: str, timeout_seconds: float, max_tokens: int) -> str:
+    """The real model. Public, because `run_turn` has to resolve it too.
+
+    Every call site here takes `generate` and falls back to this when it is
+    None, which is how a test injects a scripted model. That arrangement hid a
+    bug: `run_turn` wrapped its own `generate` to cap each call at the time the
+    turn had left, and in production that argument is always None, so the
+    wrapper wrapped nothing and raised on every turn. Tests never saw it —
+    they all inject. Naming this lets the wrapper resolve the default once,
+    where the cap is applied, instead of six call sites resolving it after.
+    """
+
     payload = {
         "model": settings.ordering_agent_model,
         "prompt": prompt,
@@ -533,7 +544,7 @@ def extract_order_details(
         f"Fields:\n{lines}\n\n"
         f"Message: {message.strip()!r}\n\nJSON:"
     )
-    generate = generate or _ollama_generate
+    generate = generate or default_generate
     try:
         raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 160)
         parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
@@ -945,7 +956,7 @@ def read_order_intent(
         f"{still}\n"
         f"Message: {message.strip()!r}\n\nJSON:"
     )
-    generate = generate or _ollama_generate
+    generate = generate or default_generate
     try:
         raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 220)
         parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
@@ -1093,7 +1104,7 @@ def extract_cart_request(
         "- Never invent a dish. If no dish is named, dish is null.\n\n"
         f"Message: {message.strip()!r}\n\nJSON:"
     )
-    generate = generate or _ollama_generate
+    generate = generate or default_generate
     try:
         raw = generate(prompt, settings.ordering_agent_planner_timeout_seconds, 120)
         parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
@@ -1135,7 +1146,7 @@ def plan_step(
     """
 
     allowed = tuple(name for name in (tool_names or tuple(TOOLS)) if name in TOOLS)
-    generator = generate or _ollama_generate
+    generator = generate or default_generate
     try:
         raw = generator(
             build_planner_prompt(
