@@ -26,6 +26,45 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-21 (4) — The menu, and one question at a time (b4d9a84)
+
+**Goal:** a reported WhatsApp thread — "Menu" answered with a pitch for one
+dish, and the "Yes" that followed answered with "There is nothing in your order
+yet."
+
+**Changed:**
+- `ordering_agent/loop.py` — `plain == "menu"` answers with the branch's
+  sections instead of standing aside. It used to return `answer=None` on the
+  belief that "the reply pipeline answers about the menu, and better"; there is
+  no handler for it there either.
+- `rag.py` — `ask_one_thing()`: a model-written reply may not end on two
+  questions. Applied on BOTH routes.
+
+**Verified:** 2096 tests, 1 pre-existing failure. Live on both tenants:
+Menu -> sections -> "Pizza" -> all 11 pizzas -> "Manchow Soup" -> "Shall I add
+one?". All 21 categories still complete. 16 personas re-run: unchanged at 2
+completions, as expected — this did not touch the defect that blocks them.
+
+**Open:** unchanged from (3). The dropped-question defect is still the one
+thing holding completion at 2 of 16.
+
+**Learned:**
+- **A fix that passes its tests can still be dead code. Check that it fires.**
+  I found that the non-streaming route (the one WhatsApp uses) never passed
+  `previous_reply` to the agent, built the fix, went green — then looked, and
+  found `chat_history` holds ZERO rows for a guest and the cache holds `[]`.
+  Guest history is never persisted, so it could never fire on WhatsApp.
+  Reverted rather than leave code under a docstring claiming it worked. The
+  real memory on that channel is `order_draft.last_question`, which its own
+  docstring says.
+- The agent already HAD the question and still failed, because the question was
+  "X, or Y?" — unanswerable by "yes" at any quality of reading. Fix the
+  question, not the reader.
+- The repo had already solved this shape for its own sentences and left the
+  model's prose unbound. Look for the rule before inventing one.
+- Only cut on a COMMA before "or". "Would you like rice or naan?" is one
+  question with two answers.
+
 ## 2026-09-21 (3) — Sixteen kinds of customer, and what they actually get (b6e6717..819b08b)
 
 **Goal:** "test from user side like different different user and need to answer
