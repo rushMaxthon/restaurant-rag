@@ -38,6 +38,15 @@ from app.tasks import whatsapp as wa
 
 #: Conversations to run. Keys are script names.
 SCRIPTS: dict[str, list[str]] = {
+    # Reported from a live thread, 2026-09-21. "No" to "Anything else?" was
+    # answered "We don't have that on the menu" plus six noodle dishes: the
+    # plainest possible answer to the assistant's own question, read as the
+    # name of a dish.
+    "declines": [
+        "hi",
+        "Red curry tofu",
+        "No",
+    ],
     # The thread from the screenshots, exactly as it was typed.
     "transcript": [
         "Hi",

@@ -2045,21 +2045,29 @@ def run_turn(
                 except Exception as error:  # noqa: BLE001 - never lose the turn over it
                     logger.warning("Ordering agent could not place at the cap: %s", error, exc_info=True)
 
+        # Computed once and reused below, because `_hold_the_question` tells
+        # which sentence this is by identity: calling `describe_applied` twice
+        # returns two equal strings that are not the same object.
+        applied = describe_applied(records)
+        summary = _cart_summary_in(records) or cart_readback
         question = (
             describe_placed_order(placed_order_in(records))
-            or describe_applied(records)
+            or applied
             or _choice_question_in(records)
             or describe_time_problem(records)
             or describe_time_settled(records)
             or describe_place_failure(records)
             or describe_collecting(_still_missing())
             or (describe_ready() if ready_now else None)
-            or _choice_question_in(records)
-            or _cart_summary_in(records)
-            or cart_readback
+            or summary
         )
         if question is not None:
             logger.info("Ordering agent asked the needs_choice question itself after %s", reason)
+            # The same rule `_settled` uses. It was missing here, and a slow
+            # turn is exactly when it matters: this path asked "Anything
+            # else?" without recording it, so the customer's "No" answered
+            # nothing and was searched for on the menu instead.
+            _hold_the_question(question, applied=applied, summary=summary)
             # A read-back the loop composed from cart or choice rows is about
             # those rows, whatever the model would have called it.
             return TurnOutcome(
@@ -2074,6 +2082,30 @@ def run_turn(
             fallback_reason=reason, elapsed_seconds=clock() - start,
             ready_to_place=ready_now and placed_order_in(records) is None,
         )
+
+    def _hold_the_question(
+        answer: str | None, *, applied: str | None, summary: str | None
+    ) -> None:
+        """Record the question a read-back ends on, so the answer to it lands.
+
+        Every sentence this agent ends on is a question, and the next message
+        is usually its answer — "No" to "Anything else?" means stop adding,
+        not "find me a dish called No". `_hold` is what makes that possible,
+        and for a while only ONE of the two paths that compose these sentences
+        called it.
+
+        Which sentence it is, is decided by identity rather than by matching
+        the words: the composers build these strings from live rows, and a
+        comparison against a literal here would go quietly wrong the first
+        time one of them was reworded.
+        """
+
+        if not answer:
+            return
+        if applied is not None and answer is applied:
+            _hold("Anything else?", yes="more")
+        elif summary is not None and answer is summary:
+            _hold("Ready to check out?", yes="checkout")
 
     def _settled(asked_to_see_cart: bool = False) -> TurnOutcome:
         """The turn as the rows alone can end it — no words from the model.
@@ -2107,10 +2139,7 @@ def run_turn(
             )
         # Whatever question this read-back ends on is held, so that the next
         # message can be read against it rather than against nothing.
-        if answer and answer is applied:
-            _hold("Anything else?", yes="more")
-        elif answer and summary is not None and answer is summary:
-            _hold("Ready to check out?", yes="checkout")
+        _hold_the_question(answer, applied=applied, summary=summary)
         return TurnOutcome(
             answer=answer,
             placed_order=placed,
