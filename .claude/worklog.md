@@ -26,6 +26,76 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-21 (3) — Sixteen kinds of customer, and what they actually get (b6e6717..819b08b)
+
+**Goal:** "test from user side like different different user and need to answer
+them all with the proper flow", then three follow-ups: show a whole category
+when one is named; add on an exact item name and suggest otherwise; and when a
+message cannot be read, guide rather than apologise.
+
+**Built first:** `backend/scripts/flow_check.py` — 16 personas through the REAL
+path, each reply labelled with the layer that produced it, read off the loggers
+rather than by threading a debug flag through `handle_chat_message`. Every
+finding below came from it. `--only name,name` runs a subset; needs
+`PYTHONIOENCODING=utf-8` on this console.
+
+**Fixed, each with the measurement that found it:**
+- **Vector search could not see a branch's own menu.** `ivfflat.probes` was 1
+  against an index built `WITH (lists = 14)`, and the tenant filter is applied
+  AFTER the index narrows — so "tofu" at a 136-item branch returned ZERO rows.
+  Now set far above any plausible `lists` on connect (pgvector clamps it, so it
+  is an exact search). Measured: probes=1 68.6ms/nothing, full 66.8ms/correct,
+  exact scan 67.1ms. Gets worse with every restaurant onboarded.
+- **The dish guardrail scored the phrase, so the deciding word was averaged
+  away.** tofu 0.470 refused, red curry tofu 0.364 accepted, chicken biryani
+  0.337 accepted, khaman dhokla 0.319 accepted — the wrong match scoring better
+  than the real order, so no threshold could work. A word is the unit now, from
+  a vocabulary read off the menu (names, descriptions, categories, sizes,
+  options). Enforces despite `enable_dish_name_guardrail` being off, because
+  that flag is off over a THRESHOLD's false positives and this is not one.
+- **Naming a section showed part of it, or added a dish.** "Tandoori Starter"
+  replied "Added 1 x Paneer Pahadi Tikka Dry" with nobody confirming. 21 of 21
+  sections now read out complete and named back.
+- **`invalid_input` outranked the agent.** "Y" WAS understood — the agent
+  re-asks correctly — but `should_bypass_llm` was checked before `agent_owns`,
+  so the canned apology won and took the pending question with it.
+- **The give-up reply now guides**: the branch's sections when nothing has
+  started, the cart read back when something has.
+
+**Verified:** `python -m unittest discover -s tests` → 2080 tests, 1 failure,
+the pre-existing `test_owner_chat` LLM-vs-TEMPLATE one. All 21 categories and
+all 16 personas re-run live after each change.
+
+**Open:**
+- **The biggest one, untouched: a pending question is dropped when the answer
+  is not literal.** "dhokla" → 8 dhoklas → "yes" → three unrelated bestsellers.
+  Same root behind "2", "actually make it 3", "hw much", "kitne ka hai", "ya add
+  it". Order completion is still 2 of 16, and both are the controls that answer
+  exactly.
+- A dish not on the menu costs ~25s: the agent retries the lookup
+  (`fallback=repeated_call`).
+- Section list comes out in database order, not menu order.
+- Celery beat still not running here; Meta webhook still on the ngrok tunnel.
+
+**Learned:**
+- **Check whether the thing is already built before building it.** The planner
+  is handed this branch's section list and picks from it — which is how "some
+  drink" reaches Beverages. I added a second query to rediscover that list, it
+  broke nine tests that stub the session, and I deleted it. The tier only
+  needed to move above dish-name matching.
+- **A test's stated reasoning is evidence.** `test_chat_short_replies` says a
+  bare number "is handled by the agent, which knows what it asked". I was about
+  to overrule it; driving the agent directly proved it right, and moved the fix
+  from the classifier to the precedence. Widening the classifier would have
+  answered "Y" with a random dish list.
+- `describe_cart` answers an EMPTY cart with a SENTENCE, so truthiness on it
+  says "there is an order" when there is not.
+- Counting suggestion cards alongside reply bullets made correct two-dish
+  sections look padded to six. Measure the thing the customer reads.
+- Heredocs keep eating backslashes in this shell — `
+` became a real newline
+  inside a string literal. Use the Edit tool for anything with an escape.
+
 ## 2026-09-21 (2) — A customer should not wait for a model to load (f4aaf64, effa6b3)
 
 **Goal:** "yes fix that speed thing too bro" — a live WhatsApp turn took 54.14s
