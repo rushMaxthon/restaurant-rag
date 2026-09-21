@@ -26,6 +26,66 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-21 (2) — A customer should not wait for a model to load (f4aaf64, effa6b3)
+
+**Goal:** "yes fix that speed thing too bro" — a live WhatsApp turn took 54.14s
+against a 30-second budget, and answered wrongly because of it.
+
+**Changed:**
+- `services/ollama_client.py` — `keep_alive_seconds()` parses the Go duration;
+  `warm_generation_model()` loads the model with Ollama's empty-prompt request.
+- `services/model_warmup.py` (new) — warms generation AND embeddings, on an
+  interval derived from `keep_alive` rather than configured beside it.
+- `main.py` — the lifespan warms both models repeatedly; it used to warm the
+  embedding one, once.
+- `config/celery.py` — a `worker_ready` handler does the same in the worker,
+  which warmed nothing at all before and is where WhatsApp is answered.
+- `ordering_agent/loop.py` — every model call is capped at the time the turn has
+  left; the budget used to be read only BETWEEN steps.
+- `ordering_agent/planner.py` — `_ollama_generate` becomes public
+  `default_generate`, so `run_turn` can resolve it where the cap is applied.
+- `tests/test_model_warmup.py`, `tests/test_ordering_agent_uses_the_real_model.py`.
+
+**Verified:**
+- `python -m unittest discover -s tests` → 2026 tests, 1 failure, the
+  pre-existing `test_owner_chat` LLM-vs-TEMPLATE one that also fails on a clean
+  tree. Confirmed by stashing.
+- Live: restarted the worker with qwen3:8b evicted. It reported ready in the
+  same millisecond and had 5.6GB resident 6.5s later, with nobody having asked.
+- Live: `scripts/dryrun_whatsapp.py radhe-order --restaurant "Radhe Dhokla"` —
+  a full order in turns of 4.6 / 4.6 / 5.0 / 4.8 / 7.1 / 5.2 seconds, warm.
+- Measured on this host: empty-prompt load is 2.1s resident, 6.2s evicted;
+  Ollama answers `done_reason: "load"`, so it costs no tokens.
+
+**Open:**
+- **The reported thread still fails, for a different reason than the one fixed
+  on 2026-09-21 (1).** Replaying it: "Red curry tofu" — a dish NOT on Radhe
+  Dhokla's menu — gets an invented blurb describing it as a house favourite,
+  from RAG rather than the agent (`records=0 actions=0`, `retrieval_source=
+  fuzzy_name`). The next message, "No", is answered with the literal word "No",
+  and the timings say `llm=0.00ms`, so nothing phrased that — something
+  deterministic echoed the customer. Two separate defects, neither of them
+  speed, and the first one breaks "the LLM never invents data".
+- Celery **beat** still not running here, so the unpaid-order reaper is idle.
+- Meta webhook still points at the ngrok tunnel, not Mr Tailor production.
+
+**Learned:**
+- **Every ordering-agent test injects `generate`; production never does.** The
+  per-call cap wrapped `run_turn`'s `generate` argument, which is None live, so
+  every real turn raised `TypeError: NoneType is not callable` while the suite
+  stayed green — and nothing looked broken, because the agent's failures are
+  caught and the reply falls back to retrieval. The assistant kept answering; it
+  had just stopped being an ordering agent. Caught only by replaying a real
+  conversation. Any change to an injected seam needs a test in the shape the
+  customer uses.
+- A cold qwen3:8b costs 49s in the field but only 6.2s here once the weights are
+  in the OS page cache, so a local reload measurement badly understates it.
+- `patch.object(planner, "default_generate")` does not reach `loop`, which
+  imported the name — the same trap `test_ordering_agent_loop.py` documents for
+  `TOOLS`. The first version of that test silently called the real Ollama.
+- `scripts/dryrun_whatsapp.py` needs `PYTHONIOENCODING=utf-8` on this console,
+  or it dies on the greeting's emoji.
+
 ## 2026-09-19 (2) — Talking to it, instead of reading it (876b3fa, c08e864, 5f83d55)
 
 User asked for a dry run: "check from your site and tell me everything looks
