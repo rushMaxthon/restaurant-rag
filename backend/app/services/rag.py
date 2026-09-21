@@ -8,6 +8,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
+from difflib import SequenceMatcher
 from contextvars import ContextVar
 from decimal import Decimal
 from functools import lru_cache
@@ -27,6 +28,9 @@ from app.models.enums import OrderFulfillmentType
 from app.models.menu_embedding import MenuEmbedding
 from app.services.chat_principal import ChatPrincipal, is_guest
 from app.models.menu_item import MenuItem
+from app.models.menu_item_customization_group import MenuItemCustomizationGroup
+from app.models.menu_item_customization_option import MenuItemCustomizationOption
+from app.models.menu_item_size import MenuItemSize
 from app.models.restaurant import Restaurant
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
@@ -2919,6 +2923,139 @@ def classify_dish_reference(distance: float | None) -> DishReference:
     return "named" if distance < DISH_NAME_MAX_DISTANCE else "absent"
 
 
+#: A menu changes when an owner edits it, which is rare, and a stale word costs
+#: nothing worse than one more dish being answerable. An hour is short enough
+#: that a newly added dish is orderable the same session it was added.
+MENU_VOCABULARY_TTL_SECONDS = 3600
+
+#: How near a word has to be to a menu word to count as a misspelling of it
+#: rather than a different thing. 0.82 on difflib's ratio keeps "khamn"/"khaman"
+#: and "dhokhla"/"dhokla" — how a large share of real orders actually arrive —
+#: while "tofu" stays a stranger to every word on a Gujarati menu.
+MENU_WORD_TYPO_RATIO = 0.82
+
+
+def menu_vocabulary(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> set[str]:
+    """Every word this branch's menu uses, from names, descriptions, categories.
+
+    This is the list of things the kitchen can talk about, and it is derived
+    from the menu rather than written down anywhere. That is the point: a
+    Gujarati kitchen that starts selling paneer tikka pizza serves it the moment
+    it is on the menu, with no code change, and one that never sells chicken
+    refuses it without anybody having had to think of the word "chicken".
+
+    Cached per branch, because it is read on dish lookups and changes only when
+    a menu does. A cache miss returns the real thing; a Redis outage costs a
+    query, never a wrong answer.
+    """
+
+    if restaurant_location_id is None and restaurant_id is None:
+        return set()
+
+    key = f"menu-vocabulary:{restaurant_location_id or restaurant_id}"
+    cached = cache_get_json(key)
+    if isinstance(cached, list):
+        return set(cached)
+
+    def scoped(query):
+        if restaurant_id is not None:
+            query = query.where(MenuItem.restaurant_id == restaurant_id)
+        if restaurant_location_id is not None:
+            query = query.where(MenuItem.restaurant_location_id == restaurant_location_id)
+        return query
+
+    items = scoped(
+        select(MenuItem.name, MenuItem.description, MenuItem.category).where(
+            MenuItem.is_available.is_(True)
+        )
+    )
+    # Sizes and customization options too, because they are things the menu
+    # says. "a plate of dhokla" reads "plate" as a word the kitchen does not
+    # have unless "Per Plate" — a real size on this menu — is counted as menu
+    # language, and refusing a polite order over the word "plate" would be a
+    # worse bug than the one this rule exists for.
+    sizes = scoped(
+        select(MenuItemSize.name).join(MenuItem, MenuItem.id == MenuItemSize.menu_item_id)
+    )
+    # Options hang off a GROUP, which hangs off the item — so the join goes
+    # through the group, and the group's own title ("Choose a size", "Add-ons")
+    # is menu language too.
+    options = scoped(
+        select(MenuItemCustomizationOption.name, MenuItemCustomizationGroup.title)
+        .join(
+            MenuItemCustomizationGroup,
+            MenuItemCustomizationGroup.id == MenuItemCustomizationOption.group_id,
+        )
+        .join(MenuItem, MenuItem.id == MenuItemCustomizationGroup.menu_item_id)
+    )
+
+    words: set[str] = set()
+    for query in (items, sizes, options):
+        for row in db.execute(query).all():
+            for field in row:
+                if not field:
+                    continue
+                words.update(re.split(r"[^a-z0-9]+", _normalize_text(str(field))))
+    words.discard("")
+
+    cache_set_json(key, sorted(words), ttl_seconds=MENU_VOCABULARY_TTL_SECONDS)
+    return words
+
+
+def words_this_menu_cannot_serve(dish: str, vocabulary: set[str]) -> list[str]:
+    """Words in a dish request that this menu has no version of, at all.
+
+    The guardrail below measures a whole phrase against the menu, which means a
+    request is judged by its AVERAGE resemblance — and the word that decides the
+    answer is precisely the one that gets averaged away. Measured at Radhe
+    Dhokla, against a 0.38 cutoff:
+
+        tofu                -> Veg. Fried Rice             0.470  refused
+        red curry tofu      -> Veg. Toofani (Red)          0.364  accepted
+        chicken biryani     -> Nawabi Pudina Ghee Biryani  0.337  accepted
+        khaman dhokla       -> Vagharela Khaman            0.319  accepted
+
+    No cutoff separates those: the wrong match at 0.337 scores BETTER than the
+    real order at 0.319. Surrounding "tofu" with two words the menu is full of
+    is enough to sell somebody a cashew curry under the name of a tofu one — and
+    to offer chicken biryani from a vegetarian kitchen, which is the case that
+    stops being a quality problem and starts being a lie about food.
+
+    A near-spelling is NOT a missing ingredient. Most real orders here arrive
+    misspelled — "khamn dhokla", "do u hv dhokhla" — and refusing those to catch
+    a rarer wrong one would break the commonest order at this restaurant. So a
+    word only counts against the request when the menu has nothing that even
+    looks like it.
+
+    Returns the offending words rather than a boolean, so a caller can say which
+    one it cannot do instead of a flat "no".
+    """
+
+    if not vocabulary:
+        # The menu could not be read. That is the absence of evidence, and
+        # refusing every dish because a cache was cold would take a whole
+        # restaurant offline over an infrastructure blip.
+        return []
+
+    unserved: list[str] = []
+    for word in _query_tokens(dish):
+        if word in vocabulary:
+            continue
+        if any(
+            SequenceMatcher(None, word, known).ratio() >= MENU_WORD_TYPO_RATIO
+            for known in vocabulary
+        ):
+            # A misspelling of something real, not a thing we do not have.
+            continue
+        unserved.append(word)
+    return unserved
+
+
 def apply_dish_name_guardrail(
     intent: "ExtractedIntent",
     candidates: list[RetrievedMenuCandidate],
@@ -2947,6 +3084,45 @@ def apply_dish_name_guardrail(
 
     if not intent.dish:
         return "unknown"
+
+    # Word by word, BEFORE anything is measured — because the measurement is
+    # what fails here. Distance scores a whole phrase, so the word that decides
+    # the answer is averaged in with the words around it: "tofu" alone scores
+    # 0.470 and is refused, "red curry tofu" scores 0.364 and is not, and
+    # "chicken biryani" at 0.337 beats the real order "khaman dhokla" at 0.319.
+    # A word this menu has no version of settles it on its own, and settles it
+    # more cheaply than an ANN query.
+    if db is not None:
+        unserved = words_this_menu_cannot_serve(
+            intent.dish,
+            menu_vocabulary(
+                db,
+                restaurant_id=restaurant_id,
+                restaurant_location_id=restaurant_location_id,
+            ),
+        )
+        if unserved:
+            logger.info(
+                "Dish-name guardrail: %r names %s, which this menu has no version of "
+                "enforcing=%s question=%r",
+                intent.dish,
+                ", ".join(repr(word) for word in unserved),
+                settings.enable_dish_name_guardrail,
+                _trim_text(message, 80),
+            )
+            # Enforced whatever the flag says, unlike the distance verdict
+            # below. The flag is off for a stated reason — "a threshold that is
+            # slightly wrong refuses real orders" — and that reason is about a
+            # threshold. This is not one: it asks whether the menu contains any
+            # version of a word, a misspelt one included, and it answers from
+            # the menu itself. Leaving it unenforced meant the tool refused
+            # correctly while the chat pipeline carried the dish on to the model
+            # anyway, which is how "red curry tofu" came back as "tender tofu in
+            # a rich, aromatic curry... one of our most popular vegetarian
+            # picks" at a kitchen that has never bought a block of tofu.
+            intent.dish = None
+            intent.items = None
+            return "absent"
 
     # Only a VECTOR candidate's distance means anything here. The keyword and
     # popularity tiers stamp a synthetic constant — 0.25 and 0.5 — so reading
