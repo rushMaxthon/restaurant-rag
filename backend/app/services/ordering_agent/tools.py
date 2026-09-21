@@ -1212,6 +1212,67 @@ def category_named_exactly(phrase: str, categories: list[str]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+#: How many sections fit in a message somebody reads on a phone. Past this the
+#: offer says how many more there are, because stopping silently is a claim
+#: that the menu ends there.
+_SECTIONS_OFFERED = 18
+
+
+def branch_sections(db: Session, scope: OrderingScope) -> list[str]:
+    """This branch's section names, for when there is nothing else to say.
+
+    Deliberately NOT used by `dishes_to_show`: which section a customer means
+    is decided by the reading, from this same list, and re-fetching it on every
+    menu question would be a query per turn to rediscover something already
+    known. This is the give-up path, which is rare and has nothing else left.
+    """
+
+    try:
+        rows = db.scalars(
+            select(MenuItem.category)
+            .where(
+                MenuItem.restaurant_location_id == scope.restaurant_location_id,
+                MenuItem.is_available.is_(True),
+                MenuItem.category.is_not(None),
+            )
+            .distinct()
+        )
+        return [section for section in rows if section]
+    except Exception:  # noqa: BLE001
+        # This is already the last thing the turn has to say. A database that
+        # will not answer must cost the customer a better sentence, never the
+        # reply itself — and the caller keeps its own words when this is empty.
+        logger.warning("Could not read this branch's sections for the give-up reply", exc_info=True)
+        return []
+
+
+def offer_of_sections(sections: list[str | None]) -> str | None:
+    """What we serve, as a question the customer can actually answer.
+
+    The sentence this replaces asked them to try again unaided — "tell me the
+    dish you would like" — to somebody who had just sent something we could not
+    read. Offering 136 dish names instead would be no better; offering the 21
+    sections is what a restaurant hands across the table, and for the same
+    reason: nobody holds 136 names in their head.
+
+    None when the menu has no sections, so the caller keeps its own words
+    rather than introducing a list with nothing in it.
+    """
+
+    seen: list[str] = []
+    for section in sections:
+        name = (section or "").strip()
+        if name and name not in seen:
+            seen.append(name)
+    if not seen:
+        return None
+    shown = seen[:_SECTIONS_OFFERED]
+    listed = ", ".join(shown)
+    if len(seen) > len(shown):
+        listed = f"{listed} and {len(seen) - len(shown)} more"
+    return f"Here is what we serve: {listed}. Which of those would you like to see?"
+
+
 def dishes_to_show(
     db: Session,
     scope: OrderingScope,

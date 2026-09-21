@@ -1427,9 +1427,23 @@ def run_turn(
         options = ", ".join(o["name"] for o in asked["options"])
         if int(asked.get("asks", 1)) >= 2:
             _forget_choice()
+            # The question is being dropped, so there is no thread left to
+            # keep — and telling somebody whose last two messages we could not
+            # read to "tell me the dish you would like" asks them to do the
+            # thing that just failed, twice. The sections are what a restaurant
+            # hands across the table, and naming one back shows it complete.
+            offer = (
+                tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
+                if db is not None and scope.restaurant_location_id
+                else None
+            )
             answer = (
-                "Sorry — I did not follow that. Let's start that one again: tell me "
-                "the dish you would like and I will set it up."
+                f"Sorry — I did not follow that. {offer}"
+                if offer
+                else (
+                    "Sorry — I did not follow that. Let's start that one again: tell me "
+                    "the dish you would like and I will set it up."
+                )
             )
         else:
             draft_now = order_draft.load(scope.session_id)
