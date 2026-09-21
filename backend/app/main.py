@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -11,7 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import api_router
 from app.config import get_settings
-from app.services.embeddings import warm_embedding_provider
+from app.services.model_warmup import start_model_warm_up
 
 settings = get_settings()
 
@@ -25,21 +24,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Pull the embedding model into memory before the first customer arrives.
+    """Pull the models into memory before the first customer arrives.
 
-    On a thread, not inline: a cold load measured 23s here, and blocking the
-    event loop for that long would leave the API refusing connections while it
-    looked like a hang. Health checks and every non-chat route work fine without
-    the model, so there is no reason to make them wait for it.
+    This used to warm the embedding model alone, once. It now warms the
+    generation model too — the expensive one, 5.6GB against 274MB — and keeps
+    warming both, because `keep_alive` is a window that a quiet hour closes just
+    as surely as a restart does. See `services/model_warmup` for the 54-second
+    turn that made the difference measurable.
 
-    Daemon, so a slow or unreachable Ollama cannot hold up shutdown.
+    Off the event loop and daemonised, both for the same reasons as before: a
+    cold load takes tens of seconds, every non-chat route works without the
+    models, and a slow Ollama must not hold up shutdown.
     """
 
-    threading.Thread(
-        target=warm_embedding_provider,
-        name="embedding-warmup",
-        daemon=True,
-    ).start()
+    start_model_warm_up(name="model-warmup-api")
     yield
 
 

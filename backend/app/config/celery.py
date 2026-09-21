@@ -4,6 +4,7 @@ import sys
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from app.config import get_settings
 
@@ -110,5 +111,28 @@ celery_app.conf.update(
     # Linux and keep prefork.
     **({"worker_pool": "solo"} if sys.platform == "win32" else {}),
 )
+
+@worker_ready.connect
+def _warm_models(**_kwargs: object) -> None:
+    """Load the models once this worker is actually able to run tasks.
+
+    The worker is where WhatsApp is answered, and WhatsApp is where the cost
+    showed up: a turn that took 54 seconds against a 30-second budget, nearly
+    all of it a cold qwen3:8b, and a wrong answer at the end of it because the
+    budget had gone. Nothing warmed the generation model in any process.
+
+    Imported inside the handler, not at module scope. This module is imported
+    by `app.main` and by every `celery` command including `inspect` and `beat`;
+    pulling the service layer in at import time would make all of them pay for
+    it, and would give this file a dependency it has no other use for.
+
+    `worker_ready` rather than `worker_init`, so nothing is warmed by a process
+    that turned out not to be able to serve.
+    """
+
+    from app.services.model_warmup import start_model_warm_up
+
+    start_model_warm_up(name="model-warmup-worker")
+
 
 __all__ = ["celery_app"]

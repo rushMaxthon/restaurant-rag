@@ -875,6 +875,29 @@ def run_turn(
     rounds = max_rounds if max_rounds is not None else settings.ordering_agent_max_tool_rounds
     budget = budget_seconds if budget_seconds is not None else settings.ordering_agent_budget_seconds
 
+    asked_for = generate
+
+    def generate(prompt: str, timeout_seconds: float, max_tokens: int) -> str:
+        """The model, never given longer than the turn has left.
+
+        The budget used to be read only between steps, so a call ran to its
+        OWN timeout and the check noticed the overrun afterwards. Those
+        timeouts are larger than the budget that contains them — 45s a call
+        against 30s a turn — so one call could always outlive the whole turn,
+        and one did: 54 seconds, live, of which a single cold model load was
+        nearly all.
+
+        Out of time returns nothing rather than raising. Every caller here
+        already handles a model that answered nothing — it is the ordinary
+        case when the model is unreachable — and that path is deliberate and
+        tested, where an exception thrown from inside the reader would not be.
+        """
+
+        left = budget - (clock() - start)
+        if left <= 0:
+            return ""
+        return asked_for(prompt, min(timeout_seconds, left), max_tokens)
+
     seen: set[uuid.UUID] = guards.seed_seen_ids(cart)
     # Dishes already put in the cart this turn by answering a question
     # with them. Live, on the real model: a pick came back as BOTH
