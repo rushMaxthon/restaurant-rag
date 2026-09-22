@@ -28,6 +28,10 @@ from app.models.personalized_offer import (
 )
 from app.models.personalized_recommendation_snapshot import PersonalizedRecommendationSnapshot
 from app.models.push_notification_campaign import PushNotificationCampaign
+from app.models.restaurant_channel_connection import RestaurantChannelConnection
+from app.models.push_notification_campaign_recipient import (
+    PushNotificationCampaignRecipient,
+)
 from app.models.push_notification_event import PushNotificationEvent
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
@@ -71,6 +75,8 @@ __all__ = [
     "PaymentTransaction",
     "PaymentWebhookEvent",
     "PushNotificationCampaign",
+    "PushNotificationCampaignRecipient",
+    "RestaurantChannelConnection",
     "PushNotificationEvent",
     "PersonalizedOffer",
     "PersonalizedOfferEvent",

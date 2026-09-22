@@ -5,7 +5,8 @@ import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
 
-export const BUNDLE_ID = "com.quickbite.bangkokbowl";
+export const BUNDLE_ID =
+  (import.meta.env["VITE_APP_BUNDLE_ID"] as string | undefined) ?? "com.quickbite.radhedhokla";
 
 const TOKEN_KEY = "bangkok-bowl-token";
 const USER_KEY = "bangkok-bowl-user";
@@ -290,6 +291,36 @@ export async function putMyPreferences(payload: Partial<UserPreferencesPayload>)
   await request("/preferences/me", { method: "PUT", auth: true, body: payload });
 }
 
+/**
+ * Whether this customer accepts marketing messages.
+ *
+ * Separate from `UserPreferencesPayload` on purpose, and not an accident of the
+ * API surface: consent is a legal record, not a taste. `PUT /preferences/me`
+ * replaces every column it is given, so folding consent into it would let a
+ * screen that never showed the toggle silently rewrite it.
+ *
+ * `marketing_opt_in_changed_at` is null when the customer has never expressed a
+ * preference either way — which is different from an explicit opt-in, and is
+ * the first thing anyone auditing consent asks for. Existing customers were
+ * backfilled `true` with a null timestamp, so almost everyone is in that state.
+ */
+export type MarketingConsent = {
+  marketing_opt_in: boolean;
+  marketing_opt_in_changed_at: string | null;
+};
+
+export async function getMarketingConsent(): Promise<MarketingConsent> {
+  return request<MarketingConsent>("/profile/marketing-preferences", { auth: true });
+}
+
+export async function putMarketingConsent(optedIn: boolean): Promise<MarketingConsent> {
+  return request<MarketingConsent>("/profile/marketing-preferences", {
+    method: "PUT",
+    auth: true,
+    body: { marketing_opt_in: optedIn },
+  });
+}
+
 export type PersonalizedOffer = {
   id: string;
   offer_id: string;
@@ -355,6 +386,12 @@ export type OrderCreateRequest = {
   contact_name?: string;
   contact_phone?: string;
   special_instructions?: string | null;
+  // A code the customer saw in one of the restaurant's social posts. It
+  // changes nothing about the price — the server prices from offers it
+  // validated itself — and exists so a public post can be credited with the
+  // order it caused. A post is seen by people the platform has no identity
+  // for, so this typed code is the only link back to it.
+  promo_code?: string | null;
   payment_method?: string;
   // The server has accepted these since the beginning and validates
   // `scheduled_at` against the branch's slot rows. Omitted for an ASAP order,
@@ -643,6 +680,8 @@ export const api = {
 
   getMyPreferences,
   putMyPreferences,
+  getMarketingConsent,
+  putMarketingConsent,
 
   getSuggestion: (params: {
     restaurantLocationId: string;

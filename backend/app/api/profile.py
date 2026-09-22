@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.user import User
 from app.schemas.auth import UserResponse
+from app.schemas.marketing import (
+    MarketingConsentResponse,
+    MarketingConsentUpdateRequest,
+)
 from app.schemas.profile import (
     SavedAddressCreateRequest,
     SavedAddressResponse,
@@ -17,6 +21,7 @@ from app.schemas.profile import (
     UserProfileUpdateRequest,
 )
 from app.services.auth import require_customer
+from app.services.marketing.consent import set_marketing_consent
 from app.services.profile import (
     create_user_saved_address,
     delete_user_saved_address,
@@ -98,3 +103,40 @@ def mark_my_saved_address_default(
     current_user: Annotated[User, Depends(require_customer)],
 ) -> SavedAddressResponse:
     return set_default_user_saved_address(db, current_user, address_id)
+
+
+@router.get("/marketing-preferences", response_model=MarketingConsentResponse)
+def get_my_marketing_preferences(
+    current_user: Annotated[User, Depends(require_customer)],
+) -> MarketingConsentResponse:
+    """The customer's own marketing consent.
+
+    No database round trip: both fields are already on the authenticated user.
+    """
+
+    return MarketingConsentResponse(
+        marketing_opt_in=current_user.marketing_opt_in,
+        marketing_opt_in_changed_at=current_user.marketing_opt_in_changed_at,
+    )
+
+
+@router.put("/marketing-preferences", response_model=MarketingConsentResponse)
+def put_my_marketing_preferences(
+    payload: MarketingConsentUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_customer)],
+) -> MarketingConsentResponse:
+    """Opt in or out of marketing messages.
+
+    Consent is the customer's alone to set — there is deliberately no admin or
+    owner route that writes this column. An owner who could opt a customer back
+    in would make the opt-out meaningless.
+
+    Order updates are unaffected either way; they are not marketing.
+    """
+
+    user = set_marketing_consent(db, user=current_user, opted_in=payload.marketing_opt_in)
+    return MarketingConsentResponse(
+        marketing_opt_in=user.marketing_opt_in,
+        marketing_opt_in_changed_at=user.marketing_opt_in_changed_at,
+    )

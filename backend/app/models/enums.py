@@ -325,6 +325,10 @@ class PushNotificationAudience(StrEnum):
     OWNERS = "OWNERS"
     ADMINS = "ADMINS"
     SPECIFIC_USER = "SPECIFIC_USER"
+    # A marketing campaign's audience: the members of one segment, narrowed to
+    # the chosen branches. Unlike every value above it, the recipient list
+    # cannot be derived from a role - it is computed per campaign.
+    SEGMENT = "SEGMENT"
 
 
 class PushNotificationDeliveryType(StrEnum):
@@ -341,11 +345,207 @@ class PushNotificationCampaignStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class CampaignRecipientState(StrEnum):
+    """What happened to one customer's copy of one campaign.
+
+    SKIPPED is distinct from FAILED on purpose: a customer with no device token
+    was never attempted and nothing went wrong, while FAILED means Firebase was
+    asked and refused. Collapsing them would make a campaign to an audience
+    that mostly has no app installed look broken.
+    """
+
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+
+
 class PushNotificationEventType(StrEnum):
     SENT = "SENT"
     DELIVERED = "DELIVERED"
     OPENED = "OPENED"
     FAILED = "FAILED"
+    # Marketing only. A tap that reached the deep link's destination, and a
+    # marketing opt-out attributed to the message that prompted it - both are
+    # things a transactional order update has no equivalent of.
+    CLICKED = "CLICKED"
+    UNSUBSCRIBED = "UNSUBSCRIBED"
+
+
+class PushNotificationCampaignKind(StrEnum):
+    """Why a push exists, which decides who may see it and what caps it.
+
+    The distinction is not cosmetic. A transactional push tells someone their
+    own order was accepted: it ignores marketing consent, ignores the weekly
+    frequency cap and ignores quiet hours, because suppressing it would be a
+    fault. A marketing push is subject to all three. Both live in
+    `push_notification_campaigns`, so without this column the send path has no
+    way to tell which rules apply, and the Marketing Hub's campaign list would
+    show every order notification the platform has ever sent.
+
+    Existing rows backfill to TRANSACTIONAL - the marketing routes are the only
+    writer of MARKETING, so nothing sent before the Hub existed can be
+    retro-attributed to a campaign nobody created.
+    """
+
+    TRANSACTIONAL = "TRANSACTIONAL"
+    MARKETING = "MARKETING"
+
+
+class MarketingChannel(StrEnum):
+    """Delivery channels a campaign can name.
+
+    Every value other than PUSH is declared but unsendable in Phase 1. They
+    exist here because the channel picker has to render them as unavailable
+    with a reason, and a UI that offers a channel the backend has never heard
+    of cannot be validated server-side.
+    """
+
+    PUSH = "PUSH"
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    WHATSAPP = "WHATSAPP"
+    FACEBOOK = "FACEBOOK"
+    INSTAGRAM = "INSTAGRAM"
+
+
+class MarketingChannelFamily(StrEnum):
+    """Whether a channel is addressed to people or broadcast to nobody.
+
+    This is the distinction the whole Hub turns on, and it is not cosmetic.
+
+    DIRECT (push, WhatsApp, SMS, email) names recipients: consent applies, the
+    audience is countable before the send, one recipient row is written per
+    customer, and attribution is measured per recipient from their own send
+    instant.
+
+    SOCIAL (Instagram, Facebook) names nobody. There is no consent to check
+    and no recipient row to write, so the per-recipient attribution rule the
+    rest of this product runs on has no subject. A public post is attributed
+    by a promo code the customer types at checkout, which is a weaker claim
+    and is reported as one.
+    """
+
+    DIRECT = "DIRECT"
+    SOCIAL = "SOCIAL"
+
+
+#: Which family each channel belongs to. Kept beside the enum rather than in a
+#: service because it is a property of the channel itself, and both the reach
+#: path and the dispatch path branch on it before any service is involved.
+CHANNEL_FAMILY: dict[MarketingChannel, MarketingChannelFamily] = {
+    MarketingChannel.PUSH: MarketingChannelFamily.DIRECT,
+    MarketingChannel.EMAIL: MarketingChannelFamily.DIRECT,
+    MarketingChannel.SMS: MarketingChannelFamily.DIRECT,
+    MarketingChannel.WHATSAPP: MarketingChannelFamily.DIRECT,
+    MarketingChannel.FACEBOOK: MarketingChannelFamily.SOCIAL,
+    MarketingChannel.INSTAGRAM: MarketingChannelFamily.SOCIAL,
+}
+
+
+def channel_family(channel: MarketingChannel) -> MarketingChannelFamily:
+    """DIRECT for anything not explicitly declared social.
+
+    The default matters: a channel added to `MarketingChannel` and forgotten
+    here would otherwise raise mid-dispatch. Treating it as DIRECT means it
+    fails the "no provider for this channel" check instead, which is a message
+    an owner can read.
+    """
+
+    return CHANNEL_FAMILY.get(channel, MarketingChannelFamily.DIRECT)
+
+
+class ChannelConnectionStatus(StrEnum):
+    """How far a restaurant has got with switching a channel on.
+
+    Absence of a row means NOT_CONNECTED, so this enum never needs that value:
+    a status column that can disagree with the existence of the row it sits on
+    is a bug waiting to be written.
+
+    DISABLED is distinct from deleting the row. An owner who pauses WhatsApp
+    for a month should not have to re-authorise Meta afterwards, and a channel
+    that failed verification should keep its configuration so the owner can
+    see what was wrong with it.
+    """
+
+    CONNECTED = "CONNECTED"
+    DISABLED = "DISABLED"
+    ERROR = "ERROR"
+
+
+class CampaignPostState(StrEnum):
+    """What happened to a campaign's one public post.
+
+    The social counterpart of `CampaignRecipientState`, and deliberately not
+    the same enum: a post is published or it is not, there is no SKIPPED
+    because there is no recipient to skip, and its identifiers (a platform
+    post id, a permalink) have no equivalent on a push.
+    """
+
+    PENDING = "PENDING"
+    PUBLISHED = "PUBLISHED"
+    FAILED = "FAILED"
+
+
+class MarketingCampaignGoal(StrEnum):
+    """What the owner said they were trying to achieve.
+
+    Goals are not rules - they seed defaults (a segment, a set of channels,
+    whether to suggest a discount) and they label the report. Nothing in the
+    send path branches on a goal, which is why a new one can be added without
+    touching dispatch.
+    """
+
+    WINBACK = "WINBACK"
+    PROMOTE_DISH = "PROMOTE_DISH"
+    NEW_ITEM = "NEW_ITEM"
+    QUIET_DAY = "QUIET_DAY"
+    REWARD_VIPS = "REWARD_VIPS"
+    FIRST_TO_REGULAR = "FIRST_TO_REGULAR"
+    ANNOUNCEMENT = "ANNOUNCEMENT"
+    CUSTOM = "CUSTOM"
+
+
+class MarketingSegmentKey(StrEnum):
+    """The audiences a campaign can be sent to.
+
+    Each one resolves to a real SQL definition in
+    `services/marketing/segments.py`; the owner-facing one-liner lives beside
+    it. They are recency/frequency/monetary shaped, which is deliberately a
+    different axis from `ai_offer_segments`' item/category/cuisine affinity -
+    that module answers "what should this offer be about", this one answers
+    "who should hear from us".
+    """
+
+    LAPSED_REGULARS = "LAPSED_REGULARS"
+    FIRST_TIME_BUYERS = "FIRST_TIME_BUYERS"
+    VIPS = "VIPS"
+    BIG_SPENDERS = "BIG_SPENDERS"
+    WEEKEND_DINERS = "WEEKEND_DINERS"
+    DISH_FANS = "DISH_FANS"
+    BRANCH_CUSTOMERS = "BRANCH_CUSTOMERS"
+    NEVER_ORDERED = "NEVER_ORDERED"
+
+
+class MarketingDeepLink(StrEnum):
+    """Where tapping the notification lands the customer."""
+
+    RESTAURANT_HOME = "RESTAURANT_HOME"
+    MENU_ITEM = "MENU_ITEM"
+    OFFERS = "OFFERS"
+    CART = "CART"
+
+
+class MarketingNoticeTone(StrEnum):
+    """How hard a pre-send check pushes back.
+
+    BLOCK is the only one that stops a send, and it is re-decided server-side
+    at dispatch rather than trusted from the client.
+    """
+
+    BLOCK = "block"
+    WARN = "warn"
+    INFO = "info"
 
 
 class PreferenceInputType(StrEnum):

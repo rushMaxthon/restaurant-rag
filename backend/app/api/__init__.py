@@ -8,6 +8,7 @@ from app.api.chat import router as chat_router
 from app.api.favorites import router as favorites_router
 from app.api.generated_combos import router as generated_combos_router
 from app.api.insights import router as insights_router
+from app.api.marketing import router as marketing_router
 from app.api.menu_items import router as menu_items_router
 from app.api.notifications import router as notifications_router
 from app.api.orders import router as orders_router
@@ -32,6 +33,7 @@ api_router.include_router(favorites_router)
 api_router.include_router(generated_combos_router)
 api_router.include_router(insights_router)
 api_router.include_router(restaurants_router)
+api_router.include_router(marketing_router)
 api_router.include_router(menu_items_router)
 api_router.include_router(notifications_router)
 api_router.include_router(orders_router)

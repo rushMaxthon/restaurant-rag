@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, Check, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, Check, Loader2, Mail, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, type UserPreferencesPayload } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -59,6 +59,13 @@ function PreferencesPage() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
+  // Consent is kept apart from the rest of this form deliberately — see the
+  // MarketingConsent section below for why it saves on the toggle instead of
+  // on the Save button.
+  const [optedIn, setOptedIn] = useState<boolean | null>(null);
+  const [consentChangedAt, setConsentChangedAt] = useState<string | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
   const [diet, setDiet] = useState<string | null>(null);
   const [spice, setSpice] = useState<string | null>(null);
   const [budget, setBudget] = useState<string | null>(null);
@@ -84,6 +91,19 @@ function PreferencesPage() {
       // A customer with no row yet is not an error — it is the common case for
       // a new account, and the form simply starts empty.
       setStatus("ready");
+
+      // Fetched separately because it is a separate record, and failing to read
+      // it must not blank the rest of the page: an unknown consent state shows
+      // as unavailable rather than as "opted out", which would be a lie about
+      // what the server holds.
+      try {
+        const consent = await api.getMarketingConsent();
+        if (cancelled) return;
+        setOptedIn(consent.marketing_opt_in);
+        setConsentChangedAt(consent.marketing_opt_in_changed_at);
+      } catch {
+        if (!cancelled) setOptedIn(null);
+      }
     })();
     return () => {
       cancelled = true;
@@ -95,6 +115,36 @@ function PreferencesPage() {
     setCuisines((current) =>
       current.includes(name) ? current.filter((c) => c !== name) : [...current, name],
     );
+  }
+
+  /**
+   * Opt in or out, saved the moment it is tapped.
+   *
+   * Not behind the Save button, and that is the whole point: withdrawing
+   * consent has to be at least as easy as giving it. A toggle that needs a
+   * second click somewhere else is the pattern where someone switches
+   * marketing off, walks away satisfied, and keeps receiving it.
+   *
+   * The switch moves first and rolls back if the server refuses, so the
+   * control always shows what is actually stored.
+   */
+  async function setConsent(next: boolean) {
+    const previous = optedIn;
+    setOptedIn(next);
+    setConsentBusy(true);
+    setConsentError(null);
+    try {
+      const saved = await api.putMarketingConsent(next);
+      setOptedIn(saved.marketing_opt_in);
+      setConsentChangedAt(saved.marketing_opt_in_changed_at);
+    } catch (err) {
+      setOptedIn(previous);
+      setConsentError(
+        err instanceof ApiError ? err.message : "Could not save that. Please try again.",
+      );
+    } finally {
+      setConsentBusy(false);
+    }
   }
 
   async function save() {
@@ -123,9 +173,8 @@ function PreferencesPage() {
       <Sparkles className="mb-4 size-8 text-primary" />
       <h1 className="font-display text-3xl font-extrabold sm:text-4xl">Your preferences</h1>
       <p className="mt-3 max-w-xl text-lg text-muted">
-        The concierge uses these on every question, so you don't have to repeat
-        yourself. You can still ask for something different any time — what you
-        say wins over what's saved here.
+        The concierge uses these on every question, so you don't have to repeat yourself. You can
+        still ask for something different any time — what you say wins over what's saved here.
       </p>
 
       {status === "loading" ? (
@@ -181,6 +230,59 @@ function PreferencesPage() {
             </div>
           </fieldset>
 
+          <section className="mt-10 rounded-2xl border border-border p-5">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted">
+              <Mail className="size-4" /> Marketing messages
+            </h2>
+
+            {optedIn === null ? (
+              <p className="mt-3 text-sm text-muted">
+                We can't load this right now. Please try again later.
+              </p>
+            ) : (
+              <>
+                <label className="mt-4 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={optedIn}
+                    disabled={consentBusy}
+                    onChange={(event) => void setConsent(event.target.checked)}
+                    className="mt-1 size-4 shrink-0 accent-[var(--primary)]"
+                  />
+                  <span>
+                    <span className="font-semibold">
+                      Send me offers and news from this restaurant
+                    </span>
+                    {/* Said plainly, because the commonest reason people refuse
+                        every message is fearing they will lose the ones they
+                        actually need. */}
+                    <span className="mt-1 block text-sm text-muted">
+                      Updates about your orders are not affected — you'll always get those.
+                    </span>
+                  </span>
+                </label>
+
+                <p className="mt-3 text-sm text-muted" role="status">
+                  {consentBusy
+                    ? "Saving…"
+                    : consentChangedAt
+                      ? `You chose this on ${new Date(consentChangedAt).toLocaleDateString()}.`
+                      : // Null means nobody ever asked — existing customers
+                        // were brought in switched on, so saying so is more
+                        // honest than a date that was never a decision.
+                        "You haven't changed this yet."}
+                </p>
+              </>
+            )}
+
+            {consentError && (
+              <div className="inline-error form-error mt-3" role="alert">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <span>{consentError}</span>
+              </div>
+            )}
+          </section>
+
           {error && (
             <div className="inline-error form-error mt-6" role="alert">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -193,7 +295,10 @@ function PreferencesPage() {
               {status === "saving" ? "Saving…" : "Save preferences"}
             </Button>
             {status === "saved" && (
-              <span className="flex items-center gap-1 text-sm font-bold text-primary" role="status">
+              <span
+                className="flex items-center gap-1 text-sm font-bold text-primary"
+                role="status"
+              >
                 <Check className="size-4" /> Saved
               </span>
             )}

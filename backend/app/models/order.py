@@ -178,6 +178,21 @@ class Order(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # The code a customer typed at checkout because they saw it in a post.
+    #
+    # This is the only thing that can attribute a public post to an order. A
+    # push writes a recipient row and the window is measured from that row; an
+    # Instagram post is seen by people this platform has no identity for, so
+    # there is nothing to join on. The code is that join, typed by hand, and
+    # it is a weaker claim than a recipient row - which is why the report says
+    # so rather than presenting the two as the same number.
+    #
+    # Stored uppercase and trimmed by the order service, so "insta20" and
+    # "INSTA20 " credit the same campaign. No foreign key: a campaign can be
+    # deleted and the order must keep the fact that a code was used.
+    marketing_promo_code: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )
 
     customer: Mapped["User"] = relationship(back_populates="customer_orders", foreign_keys=[customer_id])
     restaurant: Mapped["Restaurant"] = relationship(back_populates="orders")

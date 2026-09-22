@@ -13,6 +13,7 @@ is everything that happens before and after that call:
   directions including "not configured at all".
 * Meta retries a delivery it believes failed. A retry must not answer twice.
 * Delivery receipts and non-text messages are not questions and get no answer.
+* A customer replying STOP is opted out, and the assistant never sees it.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import pathlib
 import sys
 import unittest
 from pathlib import Path
@@ -339,6 +341,284 @@ class EndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StopReplyTests(unittest.TestCase):
+    """STOP is honoured before anything else looks at the message.
+
+    Every marketing WhatsApp template carries "Reply STOP to stop receiving
+    these", so a reply of STOP has to be acted on — and it must not reach the
+    ordering assistant, which would answer a customer opting out with a
+    cheerful offer of the menu. It is also honoured before the allowlist and
+    the our-number checks: both are our configuration problems, and neither
+    is a reason to keep messaging somebody who said no.
+    """
+
+    def setUp(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.api import whatsapp as endpoint
+
+        self.endpoint = endpoint
+        self.client = TestClient(app)
+        self.queued: list[dict] = []
+        self.replies: list[tuple[str, str, str]] = []
+
+        settings_patch = patch.multiple(
+            endpoint.settings,
+            whatsapp_enabled=True,
+            whatsapp_app_secret=SECRET,
+            whatsapp_phone_number_id="OURS",
+        )
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
+
+        service_patch = patch.multiple(
+            whatsapp.settings,
+            whatsapp_app_secret=SECRET,
+            whatsapp_phone_number_id="OURS",
+        )
+        service_patch.start()
+        self.addCleanup(service_patch.stop)
+
+        seen_patch = patch.object(endpoint, "_already_answered", return_value=False)
+        seen_patch.start()
+        self.addCleanup(seen_patch.stop)
+
+        task = SimpleNamespace(delay=lambda **kwargs: self.queued.append(kwargs))
+        module = SimpleNamespace(answer_whatsapp_message=task)
+        modules_patch = patch.dict(sys.modules, {"app.tasks.whatsapp": module})
+        modules_patch.start()
+        self.addCleanup(modules_patch.stop)
+
+        # The database work has its own tests; here the question is only
+        # whether the webhook routes the message to it and stops.
+        def record(phone_number, text, *, source):
+            self.replies.append((phone_number, text, source))
+            from app.services.marketing.optout import is_start_word, is_stop_word
+
+            return is_stop_word(text) or is_start_word(text)
+
+        reply_patch = patch.object(endpoint, "handle_marketing_reply", side_effect=record)
+        reply_patch.start()
+        self.addCleanup(reply_patch.stop)
+
+    def _post(self, body: str, **kwargs) -> None:
+        payload = json.dumps(text_payload(body=body, **kwargs)).encode()
+        response = self.client.post(
+            "/api/whatsapp/webhook",
+            content=payload,
+            headers={
+                "X-Hub-Signature-256": signed(payload),
+                "Content-Type": "application/json",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_stop_is_acted_on_and_never_reaches_the_assistant(self) -> None:
+        self._post("STOP")
+        self.assertEqual(self.replies[0][1], "STOP")
+        self.assertEqual(self.replies[0][2], "whatsapp")
+        self.assertEqual(self.queued, [])
+
+    def test_an_ordinary_question_still_reaches_the_assistant(self) -> None:
+        self._post("what time do you close")
+        self.assertEqual(len(self.queued), 1)
+
+    def test_stop_is_honoured_even_from_a_number_we_do_not_answer_for(self) -> None:
+        """Arriving at another number on the same account is our problem.
+
+        Dropping the opt-out because of it would keep messaging someone who
+        asked us not to.
+        """
+
+        self._post("STOP", phone_number_id="SOMEONE-ELSE")
+        self.assertEqual(len(self.replies), 1)
+        self.assertEqual(self.queued, [])
+
+
+class UndeliverableAddressTests(unittest.TestCase):
+    """A test send must refuse an address that can never receive mail.
+
+    This exists because it happened. Every seeded account in this product is
+    `@example.com`, which has no mail server. A test send posted to it, the
+    provider accepted it, and the bounce arrived minutes later in the
+    *sending* mailbox — so the owner got a delivery failure for an address
+    they had never typed and could not place.
+
+    The rule is deliberately narrow: only domains reserved as undeliverable
+    by RFC 2606 / 6761, plus mDNS `.local`. Guessing that a merely
+    unusual-looking domain is fake and refusing to send to it would be a
+    worse failure than the bounce it prevents.
+    """
+
+    def test_the_seeded_domain_every_account_here_uses_is_refused(self) -> None:
+        from app.services.marketing.providers.email import undeliverable_reason
+
+        reason = undeliverable_reason("owner4@example.com")
+        self.assertIsNotNone(reason)
+        # The message has to name the domain, or the owner cannot act on it.
+        self.assertIn("example.com", reason)
+
+    def test_every_reserved_suffix_is_refused(self) -> None:
+        from app.services.marketing.providers.email import undeliverable_reason
+
+        for address in (
+            "a@foo.invalid",
+            "b@bar.test",
+            "c@host.local",
+            "d@localhost",
+            "e@example.org",
+            "f@example.net",
+            "g@anything.example",
+        ):
+            self.assertIsNotNone(undeliverable_reason(address), address)
+
+    def test_a_real_address_is_allowed(self) -> None:
+        from app.services.marketing.providers.email import undeliverable_reason
+
+        for address in (
+            "someone@gmail.com",
+            "rushabh.tarsariya@maxthontech.com",
+            "owner@a-very-unusual-domain.io",
+            # Contains "example" but is not a reserved domain.
+            "sales@example-catering.com",
+        ):
+            self.assertIsNone(undeliverable_reason(address), address)
+
+    def test_something_that_is_not_an_address_is_refused(self) -> None:
+        from app.services.marketing.providers.email import undeliverable_reason
+
+        self.assertIsNotNone(undeliverable_reason("not-an-address"))
+        self.assertIsNotNone(undeliverable_reason(""))
+
+    def test_push_is_not_subject_to_the_rule(self) -> None:
+        """Push has no address to validate, and must keep working for an
+        owner whose login is a seeded `@example.com` account."""
+
+        from app.api import marketing as endpoint
+        from app.models.enums import MarketingChannel
+
+        # The guard in the route is reached only for EMAIL; this pins the
+        # branch so a later refactor cannot widen it onto push.
+        source = pathlib.Path(endpoint.__file__).read_text()
+        self.assertIn("if channel is MarketingChannel.EMAIL:", source)
+        self.assertIs(MarketingChannel.PUSH, MarketingChannel("PUSH"))
+
+
+class SmsInboundTests(unittest.TestCase):
+    """The SMS gateway handing back a reply, which is almost always STOP.
+
+    Two things are load-bearing. The shared secret, because an open endpoint
+    here would let anyone opt any customer out by guessing a phone number.
+    And the tolerance about shape: there is no inbound standard across SMS
+    aggregators, so reading whichever field names arrived is the difference
+    between working for the operator a restaurant already pays and working
+    only for the one we tested against.
+    """
+
+    SECRET = "an-inbound-secret"
+
+    def setUp(self) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.api import marketing as endpoint
+
+        self.endpoint = endpoint
+        self.client = TestClient(app)
+        self.replies: list[tuple[str, str, str]] = []
+
+        settings_patch = patch.object(
+            endpoint.settings, "marketing_sms_inbound_secret", self.SECRET
+        )
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
+
+        def record(phone_number, text, *, source):
+            self.replies.append((phone_number, text, source))
+            return True
+
+        reply_patch = patch.object(
+            endpoint, "handle_marketing_reply", side_effect=record
+        )
+        reply_patch.start()
+        self.addCleanup(reply_patch.stop)
+
+    def test_a_correct_secret_in_a_header_is_accepted(self) -> None:
+        response = self.client.post(
+            "/api/marketing/sms/inbound",
+            json={"from": "+919876543210", "text": "STOP"},
+            headers={"X-Marketing-Token": self.SECRET},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.replies, [("+919876543210", "STOP", "sms")])
+
+    def test_a_correct_secret_in_the_query_is_accepted(self) -> None:
+        # Several gateways cannot be configured to send a custom header.
+        response = self.client.post(
+            f"/api/marketing/sms/inbound?token={self.SECRET}",
+            json={"from": "+919876543210", "text": "STOP"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.replies), 1)
+
+    def test_a_wrong_secret_is_refused(self) -> None:
+        response = self.client.post(
+            "/api/marketing/sms/inbound",
+            json={"from": "+919876543210", "text": "STOP"},
+            headers={"X-Marketing-Token": "not-it"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.replies, [])
+
+    def test_no_secret_at_all_is_refused(self) -> None:
+        response = self.client.post(
+            "/api/marketing/sms/inbound",
+            json={"from": "+919876543210", "text": "STOP"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.replies, [])
+
+    def test_an_unconfigured_deployment_refuses_everything(self) -> None:
+        """Failing closed: an unset secret must not mean "accept anything"."""
+
+        with patch.object(self.endpoint.settings, "marketing_sms_inbound_secret", ""):
+            response = self.client.post(
+                "/api/marketing/sms/inbound",
+                json={"from": "+919876543210", "text": "STOP"},
+                headers={"X-Marketing-Token": ""},
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.replies, [])
+
+    def test_a_form_encoded_gateway_is_read_too(self) -> None:
+        response = self.client.post(
+            "/api/marketing/sms/inbound",
+            data={"msisdn": "919876543210", "message": "STOP"},
+            headers={"X-Marketing-Token": self.SECRET},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.replies, [("919876543210", "STOP", "sms")])
+
+    def test_alternative_field_names_are_read(self) -> None:
+        self.client.post(
+            "/api/marketing/sms/inbound",
+            json={"sender": "919876543210", "body": "stop"},
+            headers={"X-Marketing-Token": self.SECRET},
+        )
+        self.assertEqual(self.replies, [("919876543210", "stop", "sms")])
+
+    def test_a_delivery_with_no_sender_is_accepted_and_ignored(self) -> None:
+        """200, not an error: a gateway reading a non-200 as failure retries."""
+
+        response = self.client.post(
+            "/api/marketing/sms/inbound",
+            json={"text": "STOP"},
+            headers={"X-Marketing-Token": self.SECRET},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ignored")
+        self.assertEqual(self.replies, [])
 
 
 class TaskRegistrationTests(unittest.TestCase):

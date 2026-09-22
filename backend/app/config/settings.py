@@ -412,6 +412,92 @@ class Settings(BaseSettings):
     # call. The discount ceilings are the same ones the AI offer generator uses.
     enable_ai_manager_actions: bool = False
 
+    # --- Marketing Hub dispatch ---------------------------------------------
+    #
+    # A campaign send is the one thing in this product that reaches a customer's
+    # lock screen unprompted, and it cannot be recalled. So the switch that
+    # makes it real is separate from the feature: the Hub builds, schedules and
+    # reports whether or not this is on, and only this decides whether Firebase
+    # is actually called.
+    #
+    # Off by default for the same reason every AI flag is — a deployment that
+    # has not deliberately turned sending on must not discover it by pressing a
+    # button. With it off, dispatch runs end to end against the real audience
+    # and records exactly what it would have delivered (`sent_count` and the
+    # recipient rows are real), marks the campaign SENT, and calls no external
+    # service. That is a dry run an owner can inspect, not a silent no-op.
+    enable_marketing_dispatch: bool = False
+
+    # How many device tokens go to Firebase in one multicast. 500 is the API's
+    # own per-message ceiling; it is named here because the dispatcher reports
+    # progress per batch and the batch size is therefore the granularity the
+    # owner sees a SENDING campaign move in.
+    marketing_dispatch_batch_size: int = 500
+
+    # How long any one call to a channel provider may take. Deliberately short.
+    # A dispatch holds a Celery worker for the length of the send, and a
+    # gateway that has stopped answering must fail that recipient and let the
+    # other nine hundred through rather than stalling the whole campaign
+    # behind one socket. Measured against Meta's Graph API, which answers a
+    # template send in well under a second when it is healthy at all.
+    marketing_provider_timeout_seconds: float = 15.0
+
+    # What one message costs on the channels that charge by the message, in
+    # the restaurant's own currency. Named here rather than read from the
+    # gateway because no gateway exposes a price list, and an owner deciding
+    # whether to send 4,000 texts needs the number before the send, not on
+    # the invoice after it. The reach estimate multiplies these by the
+    # recipients *and by the parts*, so a long text is costed as the two
+    # messages the operator will actually bill.
+    # The shared secret an SMS gateway presents when it posts an inbound
+    # message back to us. There is no signature standard across Indian
+    # aggregators the way Meta and Stripe have one, so this is a token the
+    # operator is configured with and sends as `X-Marketing-Token` or `?token=`.
+    # Empty means the endpoint refuses everything, which is the right default:
+    # an unauthenticated inbound route could opt any customer out by guessing
+    # their phone number.
+    marketing_sms_inbound_secret: str = ""
+
+    marketing_sms_cost_per_message: float = 0.85
+    marketing_whatsapp_cost_per_message: float = 0.85
+
+    # Hard ceilings on what one campaign, and one restaurant in one calendar
+    # month, may spend on messages the platform bills through. Enforced, not
+    # advisory: the reach estimate raises a blocking notice and the dispatcher
+    # re-checks the same notice at send time, so a draft that was under the
+    # cap on Tuesday and over it by Friday is refused on Friday.
+    #
+    # They exist because the failure is silent and expensive. An owner widens
+    # a segment from "lapsed regulars" to "everyone", the recipient count goes
+    # from 400 to 9,000, and the only thing that changed on screen is a
+    # number they were not looking at. Push and the social channels cost
+    # nothing and are unaffected by either cap.
+    #
+    # Zero disables a cap. Left non-zero by default on purpose: a deployment
+    # that has not thought about this should be protected, not exposed.
+    # Marketing messages one customer may receive in a rolling week, across
+    # every campaign from one restaurant and across every channel — three
+    # pushes and three texts is six messages to the person receiving them.
+    # A setting rather than a constant because the right number is a
+    # judgement about a market and a menu, not about this codebase: a daily
+    # lunch deal and a monthly newsletter are both legitimate and want very
+    # different answers.
+    marketing_frequency_cap_per_week: int = 2
+
+    marketing_campaign_spend_cap: float = 5000.0
+    marketing_monthly_spend_cap: float = 25000.0
+
+    # How long after a social post goes up its numbers keep being refreshed.
+    # Meta's insights lag publication by minutes and keep moving for days;
+    # past this the post is no longer news and the polling is pure cost.
+    marketing_social_insight_days: int = 7
+
+    # How often beat looks for scheduled campaigns that have come due. A
+    # campaign scheduled for 09:00 goes out within this window of it, which is
+    # why quiet hours are re-checked at fire time rather than trusted from when
+    # the owner scheduled it.
+    marketing_scheduler_interval_minutes: int = 5
+
     # --- Phase 8B: the AI analyst -------------------------------------------
     #
     # Three separate switches on purpose. Running the analyst, writing what it

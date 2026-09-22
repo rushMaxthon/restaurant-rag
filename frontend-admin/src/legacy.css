@@ -9934,3 +9934,3573 @@ summary:focus-visible,
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* ==========================================================================
+   Marketing Hub
+   --------------------------------------------------------------------------
+   The Hub is a product an owner comes to in order to DO one thing — build a
+   campaign — rather than a console they monitor. That is why it does not look
+   like the rest of the admin: more air, fewer borders, one obvious action per
+   screen, and type that steps rather than sits flat.
+
+   Everything is namespaced `mkt-` and nothing here selects an element outside
+   it, so no other admin screen can be reached by these rules. The palette is
+   the app's own brand orange and sidebar ink — premium here means spacing,
+   hierarchy and restraint, not a second colour system.
+
+   Local tokens rather than literals, so the whole Hub is re-skinned from one
+   block if the brand moves.
+   ========================================================================== */
+
+.mkt {
+  --mkt-gap: 24px;
+  --mkt-gap-lg: 32px;
+  --mkt-pad: 28px;
+  --mkt-pad-sm: 22px;
+  --mkt-radius: 20px;
+  --mkt-radius-sm: 14px;
+  --mkt-radius-xs: 11px;
+
+  --mkt-ink: #14162b;
+  --mkt-ink-2: #262a45;
+  --mkt-line: rgba(22, 30, 60, 0.08);
+  --mkt-line-soft: rgba(22, 30, 60, 0.05);
+  --mkt-accent: #ff5200;
+  --mkt-accent-2: #ff8a3d;
+  --mkt-accent-wash: linear-gradient(135deg, #fff4ec 0%, #fff9f5 100%);
+  --mkt-accent-grad: linear-gradient(135deg, #ff5200 0%, #ff8a3d 100%);
+
+  /* Three levels only. More than that and nothing reads as lifted. */
+  --mkt-shadow-1: 0 1px 2px rgba(20, 22, 43, 0.04), 0 6px 18px rgba(20, 22, 43, 0.04);
+  --mkt-shadow-2: 0 2px 6px rgba(20, 22, 43, 0.05), 0 18px 44px rgba(20, 22, 43, 0.08);
+  --mkt-shadow-pop: 0 10px 30px rgba(255, 82, 0, 0.22);
+
+  display: grid;
+  gap: var(--mkt-gap);
+}
+
+/* --------------------------------------------------------------- type -- */
+
+.mkt-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--mkt-accent);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.mkt-h1 {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: clamp(1.6rem, 2.4vw, 2rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+
+.mkt-h2 {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.mkt-sub {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------- surfaces -- */
+
+.mkt-card {
+  display: grid;
+  gap: 20px;
+  padding: var(--mkt-pad);
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius);
+  background: #fff;
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-card--tight {
+  padding: var(--mkt-pad-sm);
+  gap: 16px;
+}
+
+.mkt-card__head {
+  display: grid;
+  gap: 6px;
+}
+
+.mkt-card__head--row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ------------------------------------------------------------- hero -- */
+
+/* The one dark surface in the Hub. It carries the primary action, so the
+   screen has an obvious starting point rather than five equal panels. */
+.mkt-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--mkt-gap-lg);
+  padding: 34px var(--mkt-pad);
+  border-radius: var(--mkt-radius);
+  background:
+    radial-gradient(120% 140% at 88% -10%, rgba(255, 82, 0, 0.42) 0%, transparent 58%),
+    radial-gradient(90% 120% at 8% 110%, rgba(120, 90, 255, 0.24) 0%, transparent 60%),
+    linear-gradient(140deg, var(--mkt-ink) 0%, var(--mkt-ink-2) 100%);
+  box-shadow: var(--mkt-shadow-2);
+  overflow: hidden;
+}
+
+.mkt-hero__copy {
+  display: grid;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.mkt-hero .mkt-eyebrow {
+  color: var(--mkt-accent-2);
+}
+
+.mkt-hero__title {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.75rem, 2.8vw, 2.3rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.mkt-hero__lead {
+  margin: 0;
+  max-width: 54ch;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--fs-body-lg);
+  line-height: 1.55;
+}
+
+.mkt-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------- buttons -- */
+
+.mkt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 46px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.mkt-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
+}
+
+.mkt-btn--primary {
+  background: var(--mkt-accent-grad);
+  color: #fff;
+  box-shadow: var(--mkt-shadow-pop);
+}
+
+.mkt-btn--primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(255, 82, 0, 0.3);
+}
+
+.mkt-btn--ghost {
+  border-color: var(--mkt-line);
+  background: #fff;
+  color: var(--mkt-ink);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-btn--ghost:not(:disabled):hover {
+  border-color: rgba(255, 82, 0, 0.36);
+  color: var(--mkt-accent);
+}
+
+/* On the dark hero, a plain white button is the ghost. */
+.mkt-hero .mkt-btn--ghost {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  box-shadow: none;
+}
+
+.mkt-hero .mkt-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.mkt-btn--sm {
+  height: 38px;
+  padding: 0 16px;
+  font-size: var(--fs-caption);
+}
+
+.mkt-btn--quiet {
+  height: 38px;
+  padding: 0 14px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mkt-btn--quiet:hover {
+  background: var(--card-muted);
+  color: var(--mkt-ink);
+}
+
+/* ------------------------------------------------------ demo control -- */
+
+.mkt-demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 6px 0 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.24);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.66);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.mkt-demo__label {
+  white-space: nowrap;
+}
+
+.mkt-demo select {
+  height: 34px;
+  min-width: 142px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mkt-demo select option {
+  color: var(--mkt-ink);
+}
+
+/* --------------------------------------------------------- metrics -- */
+
+.mkt-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+  gap: 16px;
+}
+
+.mkt-metric {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-sm);
+  background: #fff;
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-metric__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mkt-metric__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--mkt-radius-xs);
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+}
+
+.mkt-metric__label {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mkt-metric__value {
+  display: block;
+  color: var(--mkt-ink);
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-metric__hint {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+}
+
+.mkt-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-tiny);
+  font-weight: 800;
+}
+
+.mkt-delta--up {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.mkt-delta--down {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.mkt-delta--flat {
+  background: var(--card-muted);
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------- stepper -- */
+
+.mkt-steps {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mkt-step;
+}
+
+.mkt-steps__item {
+  position: relative;
+  min-width: 0;
+}
+
+/* The connector sits behind the markers and stops at the last item, so the
+   rail reads as one path rather than five detached chips. */
+.mkt-steps__item::before {
+  content: '';
+  position: absolute;
+  top: 21px;
+  left: calc(-50% + 21px);
+  width: calc(100% - 42px);
+  height: 2px;
+  background: var(--mkt-line);
+}
+
+.mkt-steps__item:first-child::before {
+  display: none;
+}
+
+.mkt-steps__item--done::before,
+.mkt-steps__item--current::before {
+  background: var(--mkt-accent);
+}
+
+.mkt-steps__button {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mkt-steps__button:disabled {
+  cursor: default;
+}
+
+.mkt-steps__marker {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--mkt-line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--hint);
+  font-size: var(--fs-label);
+  font-weight: 800;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.mkt-steps__item--current .mkt-steps__marker {
+  border-color: transparent;
+  background: var(--mkt-accent-grad);
+  color: #fff;
+  transform: scale(1.07);
+  box-shadow: var(--mkt-shadow-pop);
+}
+
+.mkt-steps__item--done .mkt-steps__marker {
+  border-color: var(--mkt-accent);
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+}
+
+.mkt-steps__label {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: -0.005em;
+}
+
+.mkt-steps__item--current .mkt-steps__label {
+  color: var(--mkt-ink);
+  font-weight: 800;
+}
+
+.mkt-steps__item--done .mkt-steps__label {
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------- builder layout -- */
+
+.mkt-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--mkt-gap);
+  align-items: start;
+}
+
+.mkt-builder__main {
+  display: grid;
+  gap: var(--mkt-gap);
+  min-width: 0;
+}
+
+/* The preview follows the owner down the form: on step 3 especially, the
+   message and the phone showing it must be on screen together. */
+.mkt-builder__rail {
+  position: sticky;
+  top: 20px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.mkt-step {
+  display: grid;
+  gap: 26px;
+  padding: var(--mkt-pad);
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius);
+  background: #fff;
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-step__head {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--mkt-line-soft);
+}
+
+.mkt-section {
+  display: grid;
+  gap: 14px;
+}
+
+.mkt-section__label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--mkt-ink);
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.mkt-section__label span {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+
+/* The action bar. Sticky so "Continue" is reachable without scrolling back. */
+.mkt-actions {
+  position: sticky;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 2px;
+  padding: 18px var(--mkt-pad);
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--mkt-shadow-2);
+}
+
+.mkt-actions__hint {
+  flex: 1;
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+}
+
+.mkt-actions__hint--blocked {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------- selectable cards -- */
+
+.mkt-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.mkt-grid--2 {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.mkt-grid--3 {
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+}
+
+/* One selectable-card recipe for goals, segments, offers, channels and
+   schedule. Five near-identical components was how the old screen ended up
+   with five slightly different paddings. */
+.mkt-pick {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1.5px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-sm);
+  background: #fff;
+  color: var(--mkt-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.mkt-pick:not(.mkt-pick--disabled):hover {
+  border-color: rgba(255, 82, 0, 0.32);
+  transform: translateY(-2px);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-pick--selected {
+  border-color: var(--mkt-accent);
+  background: var(--mkt-accent-wash);
+  box-shadow: 0 0 0 4px rgba(255, 82, 0, 0.08);
+}
+
+.mkt-pick--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.mkt-pick__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--mkt-radius-xs);
+  background: var(--card-muted);
+  color: var(--muted);
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+.mkt-pick--selected .mkt-pick__icon {
+  background: var(--mkt-accent-grad);
+  color: #fff;
+}
+
+.mkt-pick__title {
+  color: var(--mkt-ink);
+  font-size: var(--fs-body);
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+}
+
+.mkt-pick__text {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+}
+
+.mkt-pick__foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+  font-weight: 700;
+}
+
+/* The tick, top-right, on anything selectable. */
+.mkt-pick__tick {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--mkt-accent);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.mkt-pick--selected .mkt-pick__tick {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mkt-pick__badge {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--card-muted);
+  color: var(--mkt-ink);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-pick--selected .mkt-pick__badge {
+  background: var(--mkt-accent);
+  color: #fff;
+}
+
+.mkt-pick__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Inside a row card the title and its line of detail stack; the icon and the
+   tick sit either side of them. */
+.mkt-pick__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Channels and branches read as rows, not tiles: icon, copy, state. */
+.mkt-pick--row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.mkt-pick--row .mkt-pick__tick {
+  position: static;
+  opacity: 0;
+  transform: none;
+}
+
+.mkt-pick--row.mkt-pick--selected .mkt-pick__tick {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------ fields -- */
+
+.mkt-field {
+  display: grid;
+  gap: 9px;
+}
+
+.mkt-field__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--mkt-ink);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.mkt-field__count {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-field__count--over {
+  color: var(--danger);
+}
+
+.mkt-field input,
+.mkt-field select,
+.mkt-field textarea {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1.5px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-xs);
+  background: #fff;
+  color: var(--mkt-ink);
+  font: inherit;
+  font-size: var(--fs-body);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.mkt-field textarea {
+  min-height: 108px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.mkt-field input:focus,
+.mkt-field select:focus,
+.mkt-field textarea:focus {
+  outline: none;
+  border-color: var(--mkt-accent);
+  box-shadow: 0 0 0 4px rgba(255, 82, 0, 0.1);
+}
+
+.mkt-field--invalid input,
+.mkt-field--invalid textarea {
+  border-color: var(--danger);
+}
+
+.mkt-field__hint {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+
+.mkt-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mkt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.mkt-chip:hover {
+  border-color: var(--mkt-accent);
+  color: var(--mkt-accent);
+}
+
+/* ------------------------------------------------------ phone preview -- */
+
+.mkt-preview {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+
+/* An owner judges message length by eye. A body that looks fine in a textarea
+   is three truncated lines on a lock screen, so the preview is a lock screen. */
+.mkt-preview__device {
+  width: 100%;
+  max-width: 262px;
+  padding: 9px;
+  border-radius: 34px;
+  background: linear-gradient(160deg, #3a3f5c 0%, #12142a 100%);
+  box-shadow:
+    0 2px 6px rgba(20, 22, 43, 0.2),
+    0 22px 48px rgba(20, 22, 43, 0.26);
+}
+
+.mkt-preview__screen {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  min-height: 232px;
+  padding: 26px 13px 24px;
+  border-radius: 27px;
+  background:
+    radial-gradient(130% 90% at 15% 0%, rgba(255, 138, 61, 0.42) 0%, transparent 58%),
+    radial-gradient(100% 80% at 90% 100%, rgba(120, 90, 255, 0.34) 0%, transparent 60%),
+    linear-gradient(180deg, #454b72 0%, #1d2038 100%);
+  overflow: hidden;
+}
+
+/* The notch. Small, but without it the screen reads as a flat rectangle. */
+.mkt-preview__screen::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 62px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.36);
+}
+
+.mkt-preview__clock {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+}
+
+.mkt-preview__clock strong {
+  color: #fff;
+  font-size: 2.1rem;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.mkt-preview__clock span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+}
+
+.mkt-preview__notification {
+  display: grid;
+  gap: 5px;
+  padding: 13px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.93);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
+  animation: mkt-notify 0.34s ease-out;
+}
+
+@keyframes mkt-notify {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-preview__notification {
+    animation: none;
+  }
+}
+
+.mkt-preview__app {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #6c7288;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.mkt-preview__title {
+  color: #11142a;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.mkt-preview__body {
+  margin: 0;
+  color: #464c66;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mkt-preview__switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.mkt-preview__note {
+  flex: 1;
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mkt-preview__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--mkt-line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease;
+}
+
+.mkt-preview__step:not(:disabled):hover {
+  border-color: var(--mkt-accent);
+  color: var(--mkt-accent);
+}
+
+.mkt-preview__step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------- reach -- */
+
+.mkt-reach-head {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border-radius: var(--mkt-radius-sm);
+  background: var(--mkt-accent-wash);
+  border: 1px solid rgba(255, 82, 0, 0.14);
+}
+
+.mkt-reach-head__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.mkt-reach-head__value {
+  color: var(--mkt-ink);
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-reach-head__note {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+}
+
+.mkt-reach {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mkt-reach__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-xs);
+  background: #fff;
+}
+
+.mkt-reach__item--off {
+  background: var(--card-muted);
+  opacity: 0.8;
+}
+
+.mkt-reach__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--card-muted);
+  color: var(--muted);
+}
+
+.mkt-reach__item:not(.mkt-reach__item--off) .mkt-reach__icon {
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+}
+
+.mkt-reach__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mkt-reach__copy strong {
+  color: var(--mkt-ink);
+  font-size: var(--fs-label);
+  font-weight: 700;
+}
+
+.mkt-reach__copy span {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+}
+
+/* Every person who will not get this, itemised. Showing "34" and delivering
+   31 is how a marketing tool loses an owner on day one. */
+.mkt-reach__blockers {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--mkt-line);
+  list-style: none;
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+}
+
+.mkt-reach__blockers li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mkt-reach__count {
+  color: var(--mkt-ink);
+  font-size: var(--fs-body-lg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ notices -- */
+
+.mkt-notices {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mkt-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--mkt-radius-xs);
+}
+
+.mkt-notice__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.mkt-notice__copy {
+  display: grid;
+  gap: 3px;
+  align-content: center;
+}
+
+.mkt-notice__copy strong {
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.mkt-notice__copy span {
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+  opacity: 0.86;
+}
+
+.mkt-notice--block {
+  border-color: rgba(213, 59, 67, 0.22);
+  background: var(--danger-soft);
+  color: #8e2027;
+}
+
+.mkt-notice--block .mkt-notice__icon {
+  background: rgba(213, 59, 67, 0.14);
+  color: var(--danger);
+}
+
+.mkt-notice--warn {
+  border-color: rgba(242, 161, 0, 0.26);
+  background: var(--warning-soft);
+  color: #7a5200;
+}
+
+.mkt-notice--warn .mkt-notice__icon {
+  background: rgba(242, 161, 0, 0.18);
+  color: #b57a00;
+}
+
+.mkt-notice--info {
+  border-color: rgba(43, 102, 228, 0.18);
+  background: var(--blue-soft);
+  color: #1f4694;
+}
+
+.mkt-notice--info .mkt-notice__icon {
+  background: rgba(43, 102, 228, 0.14);
+  color: var(--blue);
+}
+
+/* Clickable notices on the home screen. */
+.mkt-notice--action {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.mkt-notice--action:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+/* ------------------------------------------------------- test send -- */
+
+.mkt-test {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  border: 1.5px dashed rgba(255, 82, 0, 0.32);
+  border-radius: var(--mkt-radius-sm);
+  background: var(--mkt-accent-wash);
+}
+
+.mkt-test__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--mkt-radius-xs);
+  background: #fff;
+  color: var(--mkt-accent);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-test__copy {
+  display: grid;
+  gap: 3px;
+}
+
+.mkt-test__copy strong {
+  color: var(--mkt-ink);
+  font-size: var(--fs-label);
+  font-weight: 800;
+}
+
+.mkt-test__copy span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------- review card -- */
+
+/* The last thing read before a send that cannot be recalled. Deliberately
+   the densest, most factual block in the Hub. */
+.mkt-review {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-sm);
+  overflow: hidden;
+}
+
+.mkt-review__row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 16px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--mkt-line-soft);
+}
+
+.mkt-review__row:last-child {
+  border-bottom: none;
+}
+
+.mkt-review__row dt {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mkt-review__row dd {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------- report page -- */
+
+.mkt-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  padding: 16px 22px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-sm);
+  background: #fff;
+  box-shadow: var(--mkt-shadow-1);
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.mkt-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mkt-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--mkt-gap);
+  align-items: start;
+}
+
+.mkt-detail__main,
+.mkt-detail__rail {
+  display: grid;
+  gap: var(--mkt-gap);
+  min-width: 0;
+  align-content: start;
+}
+
+.mkt-funnel {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mkt-funnel__row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 136px;
+  align-items: center;
+  gap: 16px;
+}
+
+.mkt-funnel__label {
+  color: var(--mkt-ink);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.mkt-funnel__track {
+  height: 30px;
+  border-radius: 9px;
+  background: var(--card-muted);
+  overflow: hidden;
+}
+
+.mkt-funnel__bar {
+  display: block;
+  height: 100%;
+  border-radius: 9px;
+  background: var(--mkt-accent-grad);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The last row is the one that matters — it gets the emphasis colour. */
+.mkt-funnel__row--goal .mkt-funnel__bar {
+  background: linear-gradient(135deg, #16a46c 0%, #35c78b 100%);
+}
+
+.mkt-funnel__row--goal .mkt-funnel__value strong {
+  color: var(--success);
+}
+
+.mkt-funnel__value {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.mkt-funnel__value strong {
+  color: var(--mkt-ink);
+  font-size: var(--fs-body-lg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-funnel__value small {
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+}
+
+.mkt-money {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.mkt-money > div {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-xs);
+  background: #fff;
+}
+
+.mkt-money dt {
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.mkt-money dd {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The figure that answers "was this worth it". */
+.mkt-money__total {
+  border-color: rgba(32, 168, 110, 0.3);
+  background: var(--success-soft);
+}
+
+.mkt-money__total dd {
+  color: var(--success);
+}
+
+.mkt-setup {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-xs);
+  overflow: hidden;
+}
+
+.mkt-setup > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 14px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--mkt-line-soft);
+}
+
+.mkt-setup > div:last-child {
+  border-bottom: none;
+}
+
+.mkt-setup dt {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.mkt-setup dd {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.mkt-failures {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mkt-failures li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-xs);
+  background: #fff;
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.mkt-failures__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--warning-soft);
+  color: #b57a00;
+}
+
+.mkt-failures strong {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------- campaigns -- */
+
+.mkt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mkt-toolbar__search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.mkt-toolbar__search svg {
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  transform: translateY(-50%);
+  color: var(--hint);
+  pointer-events: none;
+}
+
+.mkt-toolbar__search input {
+  width: 100%;
+  height: 44px;
+  padding: 0 15px 0 40px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+.mkt-toolbar__search input:focus {
+  outline: none;
+  border-color: var(--mkt-accent);
+  box-shadow: 0 0 0 4px rgba(255, 82, 0, 0.1);
+}
+
+.mkt-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-pill);
+  background: var(--card-muted);
+  overflow-x: auto;
+}
+
+.mkt-tab {
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.mkt-tab:hover {
+  color: var(--mkt-ink);
+}
+
+.mkt-tab--active {
+  background: #fff;
+  color: var(--mkt-ink);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-list {
+  display: grid;
+  gap: 12px;
+}
+
+/* A campaign is a row with a life of its own — status, audience, money — so
+   it gets a card rather than a table cell. Scannable at a glance, and the
+   money is the thing the eye lands on. */
+.mkt-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--mkt-radius-sm);
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.mkt-row:hover {
+  border-color: rgba(255, 82, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--mkt-shadow-1);
+}
+
+.mkt-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--mkt-radius-xs);
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+  flex-shrink: 0;
+}
+
+.mkt-row__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mkt-row__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--mkt-ink);
+  font-size: var(--fs-body);
+  font-weight: 800;
+  letter-spacing: -0.012em;
+}
+
+.mkt-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  color: var(--hint);
+  font-size: var(--fs-caption);
+}
+
+.mkt-row__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mkt-row__money {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.mkt-row__money strong {
+  color: var(--mkt-ink);
+  font-size: var(--fs-body-lg);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-row__money span {
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+  font-weight: 600;
+}
+
+.mkt-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* --------------------------------------------------- status + states -- */
+
+.mkt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-tiny);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.mkt-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.mkt-status--draft {
+  background: var(--card-muted);
+  color: var(--muted);
+}
+
+.mkt-status--scheduled {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.mkt-status--sending {
+  background: var(--warning-soft);
+  color: #b57a00;
+}
+
+.mkt-status--sent {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.mkt-status--cancelled {
+  background: var(--card-muted);
+  color: var(--hint);
+}
+
+.mkt-status--failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.mkt-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 56px 28px;
+  border: 1.5px dashed var(--mkt-line);
+  border-radius: var(--mkt-radius);
+  background: var(--surface-subtle);
+  text-align: center;
+}
+
+.mkt-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+}
+
+.mkt-empty strong {
+  color: var(--mkt-ink);
+  font-size: var(--fs-title-sm);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.mkt-empty p {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+
+.mkt-skeleton {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--card-muted) 25%,
+    rgba(255, 255, 255, 0.7) 50%,
+    var(--card-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: mkt-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes mkt-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-skeleton {
+    animation: none;
+  }
+}
+
+.mkt-skeleton--line {
+  height: 14px;
+}
+
+.mkt-skeleton--title {
+  height: 26px;
+  width: 44%;
+}
+
+.mkt-skeleton--block {
+  height: 190px;
+}
+
+.mkt-skeleton--row {
+  height: 82px;
+  border-radius: var(--mkt-radius-sm);
+}
+
+.mkt-skeleton-stack {
+  display: grid;
+  gap: 14px;
+}
+
+/* ------------------------------------------------------------- misc -- */
+
+.mkt-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mkt-back:hover {
+  color: var(--mkt-accent);
+}
+
+.mkt-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.mkt-icon-btn:hover {
+  border-color: var(--mkt-line);
+  background: var(--card-muted);
+  color: var(--mkt-ink);
+}
+
+.mkt-icon-btn--danger:hover {
+  border-color: rgba(213, 59, 67, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.mkt-chart {
+  min-height: 210px;
+}
+
+/* The workspace's compact-density setting. The app-wide rules target
+   `.admin-surface`, which the Hub does not use, so the preference is honoured
+   here by tightening the Hub's own tokens instead. */
+[data-density='compact'] .mkt {
+  --mkt-gap: 16px;
+  --mkt-gap-lg: 22px;
+  --mkt-pad: 20px;
+  --mkt-pad-sm: 16px;
+}
+
+/* --------------------------------------------------------- responsive -- */
+
+@media (max-width: 1180px) {
+  .mkt-builder,
+  .mkt-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mkt-builder__rail {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .mkt {
+    --mkt-pad: 20px;
+    --mkt-pad-sm: 18px;
+    --mkt-gap: 18px;
+  }
+
+  .mkt-hero {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    padding: 26px 20px;
+  }
+
+  .mkt-hero__actions {
+    flex-wrap: wrap;
+  }
+
+  .mkt-hero__actions .mkt-btn,
+  .mkt-demo {
+    flex: 1 1 auto;
+  }
+
+  .mkt-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'icon copy'
+      'money money'
+      'actions actions';
+    gap: 14px;
+  }
+
+  .mkt-row__icon {
+    grid-area: icon;
+  }
+
+  .mkt-row__copy {
+    grid-area: copy;
+  }
+
+  .mkt-row__money {
+    grid-area: money;
+    text-align: left;
+    padding-top: 4px;
+    border-top: 1px solid var(--mkt-line-soft);
+  }
+
+  .mkt-row__actions {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+
+  .mkt-test {
+    grid-template-columns: minmax(0, 1fr);
+    text-align: left;
+  }
+
+  .mkt-review__row,
+  .mkt-setup > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .mkt-funnel__row {
+    grid-template-columns: 84px minmax(0, 1fr) 92px;
+    gap: 10px;
+  }
+
+  .mkt-steps__label {
+    display: none;
+  }
+
+  .mkt-steps__item--current .mkt-steps__label {
+    display: block;
+  }
+
+  .mkt-actions {
+    padding: 14px 18px;
+  }
+}
+
+/* ==========================================================================
+   Marketing Hub — home screen
+   --------------------------------------------------------------------------
+   Built to a supplied visual reference: a cool blue workspace rather than the
+   admin's warm orange, a decorative banner carrying the primary action, a row
+   of stat cards, one chart, and a campaigns table beside a quick-actions rail.
+
+   Namespaced `hub-` and scoped under `.mkt-hub` so it cannot reach the builder
+   or the report, which keep the orange `mkt-` system. The blue lives in local
+   tokens for the same reason it did there — one block to re-skin.
+   ========================================================================== */
+
+.mkt-hub {
+  /* The app's own brand, not the reference's blue. Every value below resolves
+     to a variable declared in `:root`, so the Hub follows a theme change
+     instead of having to be re-edited alongside one. */
+  --hub-brand: var(--primary);
+  --hub-brand-deep: var(--accent);
+  --hub-brand-wash: var(--primary-soft);
+  --hub-ink: var(--text);
+  --hub-muted: var(--muted);
+  --hub-hint: var(--hint);
+  --hub-line: var(--border);
+  --hub-line-soft: rgba(225, 230, 240, 0.6);
+  --hub-surface: var(--card);
+
+  --hub-green: var(--success);
+  --hub-green-wash: var(--success-soft);
+  /* The warning token is tuned for fills; on a pale wash it needs to be
+     darker to stay readable as text. */
+  --hub-amber: #b57a00;
+  --hub-amber-wash: var(--warning-soft);
+  --hub-purple: var(--chart-4);
+  --hub-purple-wash: #f1ecfe;
+  --hub-danger: var(--danger);
+  --hub-danger-wash: var(--danger-soft);
+
+  --hub-radius: 18px;
+  --hub-radius-sm: 12px;
+  --hub-shadow: 0 1px 2px rgba(22, 30, 51, 0.04), 0 8px 24px rgba(22, 30, 51, 0.05);
+
+  display: grid;
+  gap: 16px;
+  color: var(--hub-ink);
+}
+
+.mkt-hub section {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ shared -- */
+
+.hub-card {
+  border: 1px solid var(--hub-line);
+  border-radius: var(--hub-radius);
+  background: var(--hub-surface);
+  box-shadow: var(--hub-shadow);
+}
+
+.hub-eyebrow {
+  display: block;
+  color: var(--hub-hint);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.hub-title {
+  margin: 0;
+  color: var(--hub-ink);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hub-sub {
+  margin: 2px 0 0;
+  color: var(--hub-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* A pastel square behind an icon. The reference uses one per section and one
+   per stat, tinted by meaning rather than decoration. */
+.hub-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--hub-brand-wash);
+  color: var(--hub-brand);
+  flex-shrink: 0;
+}
+
+.hub-chip--green {
+  background: var(--hub-green-wash);
+  color: var(--hub-green);
+}
+
+.hub-chip--amber {
+  background: var(--hub-amber-wash);
+  color: var(--hub-amber);
+}
+
+.hub-chip--purple {
+  background: var(--hub-purple-wash);
+  color: var(--hub-purple);
+}
+
+.hub-chip--sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+/* The affordance at the end of a row. Not a button — the whole row is. */
+.hub-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--hub-hint);
+}
+
+.hub-table tbody tr:hover .hub-chevron {
+  color: var(--hub-brand);
+}
+
+.hub-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--hub-line-soft);
+}
+
+.hub-panel__head-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ----------------------------------------------------------- buttons -- */
+
+.hub-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: var(--hub-radius-sm);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.hub-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.hub-btn--primary {
+  background: linear-gradient(135deg, var(--hub-brand) 0%, var(--hub-brand-deep) 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(255, 82, 0, 0.26);
+}
+
+.hub-btn--primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(255, 82, 0, 0.32);
+}
+
+.hub-btn--ghost {
+  border-color: var(--hub-line);
+  background: #fff;
+  color: var(--hub-ink);
+}
+
+.hub-btn--ghost:hover {
+  border-color: var(--hub-brand);
+  color: var(--hub-brand);
+}
+
+.hub-btn--block {
+  width: 100%;
+  height: 48px;
+  font-size: 0.9375rem;
+}
+
+.hub-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hub-brand);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hub-link:hover {
+  color: var(--hub-brand-deep);
+}
+
+/* --------------------------------------------------------------- top -- */
+
+.hub-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.hub-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 34px 36px;
+  border: 1px solid rgba(255, 82, 0, 0.16);
+  border-radius: var(--hub-radius);
+  background:
+    radial-gradient(90% 120% at 100% 0%, #ffe4d4 0%, transparent 60%),
+    linear-gradient(135deg, #fff4ed 0%, #fffaf7 62%);
+  overflow: hidden;
+}
+
+.hub-banner__copy {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-banner__title {
+  margin: 14px 0 12px;
+  color: var(--hub-ink);
+  font-size: clamp(1.5rem, 2.6vw, 1.95rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+/* The second line carries the promise, so it carries the colour. */
+.hub-banner__title em {
+  display: block;
+  color: var(--hub-brand);
+  font-style: normal;
+}
+
+.hub-banner__lead {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--hub-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* Illustration, drawn rather than shipped as an asset: a soft disc, a
+   megaphone, and the channels orbiting it. */
+.hub-art {
+  position: relative;
+  width: 156px;
+  height: 132px;
+  flex-shrink: 0;
+}
+
+.hub-art__disc {
+  position: absolute;
+  inset: 16px 10px 12px 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffe8db 55%, #ffd9c4 100%);
+  box-shadow: inset 0 -6px 18px rgba(255, 82, 0, 0.14);
+}
+
+.hub-art__horn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-52%, -50%) rotate(-12deg);
+  color: var(--hub-brand);
+}
+
+.hub-art__badge {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(22, 30, 51, 0.14);
+}
+
+.hub-art__badge--a {
+  top: 2px;
+  right: 34px;
+  background: #25d366;
+  color: #fff;
+}
+
+.hub-art__badge--b {
+  top: 40px;
+  right: 0;
+  background: var(--hub-brand);
+  color: #fff;
+}
+
+.hub-art__badge--c {
+  bottom: 6px;
+  right: 22px;
+  background: var(--hub-purple);
+  color: #fff;
+}
+
+/* The primary action column. Separate from the banner so the button is the
+   most solid thing on the screen, not decoration inside a gradient. */
+.hub-launch {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.hub-quickstart {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid var(--hub-line);
+  border-radius: var(--hub-radius);
+  background: #fff;
+  box-shadow: var(--hub-shadow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.hub-quickstart:hover {
+  border-color: var(--hub-brand);
+  transform: translateY(-1px);
+}
+
+.hub-quickstart__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-quickstart__copy strong {
+  display: block;
+  color: var(--hub-ink);
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.hub-quickstart__copy span {
+  display: block;
+  margin-top: 3px;
+  color: var(--hub-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.hub-quickstart svg:last-child {
+  color: var(--hub-hint);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------- stats -- */
+
+.hub-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.hub-stat {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--hub-line);
+  border-radius: var(--hub-radius);
+  background: #fff;
+  box-shadow: var(--hub-shadow);
+}
+
+.hub-stat__top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.hub-stat__label {
+  color: var(--hub-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.hub-stat__value {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  color: var(--hub-ink);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-stat__hint {
+  color: var(--hub-hint);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.hub-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.hub-pill--up {
+  background: var(--hub-green-wash);
+  color: var(--hub-green);
+}
+
+.hub-pill--down {
+  background: var(--hub-danger-wash);
+  color: var(--hub-danger);
+}
+
+.hub-pill--flat {
+  background: var(--card-muted);
+  color: var(--hub-muted);
+}
+
+/* --------------------------------------------------------- attention -- */
+
+.hub-attention {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border: 1px solid var(--hub-line);
+  border-radius: var(--hub-radius);
+  background: #fff;
+  box-shadow: var(--hub-shadow);
+}
+
+.hub-attention__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-attention__copy strong {
+  display: block;
+  color: var(--hub-ink);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: -0.018em;
+}
+
+.hub-attention__copy span {
+  display: block;
+  margin-top: 3px;
+  color: var(--hub-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.hub-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hub-hint);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-pager__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--hub-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--hub-muted);
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease;
+}
+
+.hub-pager__btn:not(:disabled):hover {
+  border-color: var(--hub-brand);
+  color: var(--hub-brand);
+}
+
+.hub-pager__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------- chart -- */
+
+.hub-select {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--hub-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--hub-ink);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-chart {
+  padding: 18px 20px 8px;
+}
+
+/* ------------------------------------------------------------- split -- */
+
+.hub-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.hub-side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+/* ------------------------------------------------------------- table -- */
+
+.hub-table-wrap {
+  overflow-x: auto;
+}
+
+.hub-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.hub-table th {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hub-line-soft);
+  background: var(--card-muted);
+  color: var(--hub-hint);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.hub-table th:last-child,
+.hub-table td:last-child {
+  text-align: right;
+}
+
+.hub-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hub-line-soft);
+  color: var(--hub-ink);
+  font-size: 0.8125rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.hub-table tbody tr {
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.hub-table tbody tr:hover {
+  background: #fffaf7;
+}
+
+.hub-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.hub-cell {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.hub-cell__copy {
+  min-width: 0;
+}
+
+.hub-cell__copy strong {
+  display: block;
+  color: var(--hub-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-cell__copy span {
+  display: block;
+  margin-top: 2px;
+  color: var(--hub-hint);
+  font-size: 0.6875rem;
+}
+
+.hub-cell--stack strong {
+  font-weight: 700;
+}
+
+.hub-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--hub-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.hub-channel svg {
+  color: var(--hub-brand);
+}
+
+.hub-money {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status pills, tinted the way the reference does: live green, sent blue,
+   scheduled amber, draft grey. */
+.hub-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.hub-status--sent {
+  background: var(--hub-brand-wash);
+  color: var(--hub-brand);
+}
+
+.hub-status--sending {
+  background: var(--hub-green-wash);
+  color: var(--hub-green);
+}
+
+.hub-status--scheduled {
+  background: var(--hub-amber-wash);
+  color: var(--hub-amber);
+}
+
+.hub-status--draft,
+.hub-status--cancelled {
+  background: var(--card-muted);
+  color: var(--hub-muted);
+}
+
+.hub-status--failed {
+  background: var(--hub-danger-wash);
+  color: var(--hub-danger);
+}
+
+.hub-actions-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.hub-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hub-hint);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.hub-icon-btn:hover {
+  border-color: var(--hub-line);
+  background: #fff;
+  color: var(--hub-brand);
+}
+
+.hub-icon-btn--danger:hover {
+  border-color: rgba(213, 59, 67, 0.22);
+  background: var(--hub-danger-wash);
+  color: var(--hub-danger);
+}
+
+/* ----------------------------------------------------- quick actions -- */
+
+.hub-quick {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.hub-quick__item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 11px 12px;
+  border: none;
+  border-radius: var(--hub-radius-sm);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.hub-quick__item:hover {
+  background: #fff7f2;
+}
+
+.hub-quick__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-quick__copy strong {
+  display: block;
+  color: var(--hub-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+
+.hub-quick__copy span {
+  display: block;
+  margin-top: 2px;
+  color: var(--hub-hint);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.hub-quick__item > svg:last-child {
+  color: var(--hub-hint);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------- promo -- */
+
+.hub-promo {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid rgba(255, 82, 0, 0.16);
+  border-radius: var(--hub-radius);
+  background:
+    radial-gradient(80% 90% at 100% 100%, #ffe6d6 0%, transparent 62%),
+    linear-gradient(140deg, #fff5ef 0%, #fffcfa 70%);
+  overflow: hidden;
+}
+
+.hub-promo strong {
+  color: var(--hub-ink);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: -0.018em;
+}
+
+.hub-promo p {
+  margin: 0;
+  max-width: 28ch;
+  color: var(--hub-muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.hub-promo__art {
+  position: absolute;
+  right: -6px;
+  bottom: -10px;
+  color: #ffd2b5;
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+.hub-promo .hub-btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------ states -- */
+
+.hub-state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 54px 28px;
+  text-align: center;
+}
+
+.hub-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: var(--hub-brand-wash);
+  color: var(--hub-brand);
+}
+
+.hub-state strong {
+  color: var(--hub-ink);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hub-state p {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--hub-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* The restaurant an admin is reading. Owners never see it: the backend pins
+   them to their own restaurant and refuses one that is named. */
+
+.hub-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--hub-line, rgba(15, 23, 42, 0.1));
+  border-radius: var(--radius-pill);
+  background: var(--hub-surface, #fff);
+  color: var(--hub-muted);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.hub-scope__label {
+  white-space: nowrap;
+}
+
+.hub-scope__select {
+  height: 34px;
+  min-width: 168px;
+  max-width: 260px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--hub-brand-wash);
+  color: var(--hub-ink);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-skeleton {
+  display: block;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--card-muted) 25%, #ffffff 50%, var(--card-muted) 75%);
+  background-size: 200% 100%;
+  animation: hub-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes hub-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-skeleton {
+    animation: none;
+  }
+}
+
+.hub-skeleton-stack {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+/* The demo-state control, quiet against the blue workspace. */
+.mkt-hub .mkt-demo {
+  height: 44px;
+  border-color: var(--hub-line);
+  background: #fff;
+  color: var(--hub-hint);
+}
+
+.mkt-hub .mkt-demo select {
+  background: var(--card-muted);
+  color: var(--hub-ink);
+}
+
+/* ---------------------------------------------------------- responsive -- */
+
+@media (max-width: 1240px) {
+  .hub-top,
+  .hub-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hub-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hub-launch {
+    grid-template-rows: auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .hub-stats,
+  .hub-launch {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hub-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 26px 22px;
+  }
+
+  .hub-art {
+    align-self: center;
+  }
+
+  .hub-attention {
+    flex-wrap: wrap;
+  }
+
+  .hub-attention .hub-btn,
+  .hub-attention .hub-pager {
+    flex: 1 1 auto;
+  }
+}
+
+/* ============================================================================
+   Channel-first campaign builder
+   ----------------------------------------------------------------------------
+   Added with the redesign that asks "where do you want to run this?" before
+   anything else. Everything here is either the picker itself, the per-channel
+   previews it leads to, or the plain-language review that replaced the old
+   definition list. No new dependency and no utility classes — `frontend-admin`
+   is hand-written CSS by house rule.
+   ========================================================================== */
+
+/* --------------------------------------------------- the channel picker -- */
+
+/* The first screen has no preview rail to sit beside, so it takes the width
+   and the cards get room to carry their reach and cost lines. */
+.mkt-builder--wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mkt-channel {
+  min-height: 168px;
+}
+
+.mkt-channel__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--mkt-line-soft);
+  font-size: var(--fs-caption);
+}
+
+.mkt-channel__reach {
+  font-weight: 700;
+  color: var(--mkt-ink);
+}
+
+.mkt-channel__cost {
+  color: var(--muted);
+}
+
+/* The old dead end, turned into a task list. Deliberately quiet — it explains,
+   it does not stop anyone: the campaign can still be built and saved. */
+.mkt-setup-panel {
+  display: flex;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--mkt-accent-wash);
+}
+
+.mkt-setup-panel__copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mkt-setup-panel__copy strong {
+  color: var(--mkt-ink);
+}
+
+.mkt-setup-panel__copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+.mkt-setup-panel__copy ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+/* ------------------------------------- the rail, now carrying a channel -- */
+
+/* The chosen channel rides beside the step rail rather than inside it: it is
+   not a step, it is the thing every step is about. Clicking it goes back. */
+.mkt-railrow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mkt-railrow .mkt-steps {
+  flex: 1 1 340px;
+}
+
+.mkt-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  color: var(--mkt-ink);
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mkt-channel-badge:hover {
+  border-color: var(--mkt-accent);
+  color: var(--mkt-accent);
+}
+
+/* ------------------------------------------------- per-channel previews -- */
+
+.mkt-preview__screen--sms,
+.mkt-preview__screen--whatsapp {
+  gap: 10px;
+  padding: 20px 12px;
+}
+
+/* A messages thread, not a lock screen: the inherited gradient made an SMS
+   look like the notification of an SMS. */
+.mkt-preview__screen--sms {
+  background: linear-gradient(180deg, #2a2d3f 0%, #171926 100%);
+}
+
+.mkt-preview__screen--whatsapp {
+  background: linear-gradient(180deg, #0d1b17 0%, #10231c 100%);
+}
+
+.mkt-preview__sender {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mkt-bubble {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--mkt-ink);
+  font-size: 12px;
+  line-height: 1.45;
+  animation: mkt-bubble-in 240ms ease-out;
+}
+
+.mkt-bubble p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mkt-bubble--whatsapp {
+  border-bottom-left-radius: 4px;
+  background: #fff;
+}
+
+.mkt-bubble--sms {
+  border-bottom-left-radius: 4px;
+  background: #e9e9eb;
+}
+
+/* The opt-out line is greyed because it is not the owner's to edit — but it is
+   shown, because the operator counts it toward the bill. */
+.mkt-bubble__footer {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mkt-bubble__time {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.mkt-bubble__image {
+  display: grid;
+  place-items: center;
+  height: 64px;
+  border-radius: 9px;
+  background: rgba(22, 30, 60, 0.07);
+  color: var(--muted);
+}
+
+@keyframes mkt-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.mkt-preview__meta {
+  margin: 0;
+  max-width: 262px;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+/* --- email --- */
+
+.mkt-mail {
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid var(--mkt-line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.mkt-mail__head {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--mkt-line-soft);
+}
+
+.mkt-mail__from {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mkt-mail__subject {
+  color: var(--mkt-ink);
+  font-size: 13px;
+}
+
+.mkt-mail__image {
+  display: grid;
+  place-items: center;
+  height: 84px;
+  background: rgba(22, 30, 60, 0.06);
+  color: var(--muted);
+}
+
+.mkt-mail__body {
+  margin: 0;
+  padding: 14px;
+  color: var(--mkt-ink-2);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.mkt-mail__footer {
+  margin: 0;
+  padding: 10px 14px 14px;
+  color: var(--muted);
+  font-size: 10px;
+  text-decoration: underline;
+}
+
+/* --- social --- */
+
+/* Not phone-shaped: a post is judged as a card in a feed, and wrapping it in a
+   handset would make the owner read the frame instead of the crop. */
+.mkt-social {
+  width: 100%;
+  max-width: 300px;
+  border: 1px solid var(--mkt-line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.mkt-social__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.mkt-social__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--mkt-accent-grad);
+}
+
+.mkt-social__handle {
+  color: var(--mkt-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mkt-social__media {
+  position: relative;
+  /* Instagram's portrait crop. A landscape preview would let an owner approve
+     a photo that the real post cuts the top and bottom off. */
+  aspect-ratio: 4 / 5;
+  background: rgba(22, 30, 60, 0.05);
+}
+
+.mkt-social--facebook .mkt-social__media {
+  aspect-ratio: 1.91 / 1;
+}
+
+.mkt-social__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mkt-social__placeholder {
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+.mkt-social__actions {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px 4px;
+  color: var(--mkt-ink);
+}
+
+.mkt-social__caption,
+.mkt-social__comment {
+  margin: 0;
+  padding: 4px 12px 10px;
+  color: var(--mkt-ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mkt-social__comment {
+  border-top: 1px solid var(--mkt-line-soft);
+  padding-top: 8px;
+}
+
+.mkt-social__tags {
+  color: #2f6fd0;
+}
+
+.mkt-social__meta {
+  margin: 0;
+  padding: 0 12px 12px;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+/* ----------------------------------------------------- content controls -- */
+
+.mkt-chip--on {
+  border-color: var(--mkt-accent);
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-accent);
+}
+
+.mkt-field__hint--warn {
+  color: #a3540a;
+}
+
+.mkt-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: var(--fs-caption);
+  color: var(--mkt-ink);
+}
+
+.mkt-toggle input {
+  margin-top: 2px;
+}
+
+.mkt-toggle > span {
+  display: grid;
+  gap: 2px;
+}
+
+/* --------------------------------------------------------- boost fields -- */
+
+.mkt-boost {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--mkt-accent-wash);
+}
+
+.mkt-boost__field {
+  display: grid;
+  gap: 8px;
+}
+
+/* Money is the only irreversible thing on the social audience screen, so it is
+   the largest thing on it. */
+.mkt-boost__total {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--mkt-line);
+  color: var(--mkt-ink);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+
+.mkt-boost__total strong {
+  font-size: 18px;
+}
+
+/* --------------------------------------------------------- the verdict -- */
+
+/* What replaced the review table. An owner reading six schema rows a second
+   before an irreversible send is reading nothing; this is the same facts as
+   the sentence they would say out loud. */
+.mkt-verdict {
+  display: grid;
+  gap: 12px;
+  padding: 22px 24px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-lg, 14px);
+  background: #fff;
+}
+
+.mkt-verdict__lead {
+  margin: 0;
+  color: var(--mkt-ink);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.mkt-verdict__quote {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--mkt-accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--mkt-accent-wash);
+  color: var(--mkt-ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mkt-verdict__line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+
+.mkt-verdict__line--warn {
+  color: #a3540a;
+  font-weight: 700;
+}
+
+.mkt-verdict__edits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mkt-line-soft);
+}
+
+@media (max-width: 1080px) {
+  .mkt-railrow {
+    gap: 10px;
+  }
+}
+
+/* ============================================================================
+   Channel connections, and the social report
+   ----------------------------------------------------------------------------
+   Added with the channel integrations. The connect rows and the post report
+   are the two surfaces that have no push equivalent — everything else reuses
+   the vocabulary above.
+   ========================================================================== */
+
+.mkt-conn {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-lg, 14px);
+  background: #fff;
+}
+
+.mkt-conn + .mkt-conn {
+  margin-top: 12px;
+}
+
+.mkt-conn__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.mkt-conn__copy {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.mkt-conn__copy strong {
+  color: var(--mkt-ink);
+}
+
+.mkt-conn__copy > span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+/* "Connected" and "proven to work" are different facts, and the second is
+   the one an owner actually needs before a send. Quieter than the first line
+   because it is a detail, not the headline. */
+.mkt-conn__meta {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  opacity: 0.85;
+}
+
+.mkt-conn__meta--bad {
+  color: #a3540a;
+  opacity: 1;
+}
+
+.mkt-conn__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mkt-conn__form {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--mkt-line-soft);
+}
+
+.mkt-conn__steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+.mkt-conn__save {
+  display: flex;
+  gap: 8px;
+}
+
+/* --------------------------------------------------------- social report -- */
+
+.mkt-postcard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--mkt-line);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--mkt-accent-wash);
+  margin-bottom: 14px;
+}
+
+.mkt-postcard__copy {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mkt-postcard__copy strong {
+  color: var(--mkt-ink);
+}
+
+.mkt-postcard__copy span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}

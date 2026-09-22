@@ -20,6 +20,7 @@ from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from app.config import get_settings
 from app.services.cache import cache_get_json, cache_set_json
+from app.services.marketing.inbound import handle_marketing_reply
 from app.services.whatsapp import (
     inbound_messages,
     is_our_number,
@@ -109,6 +110,22 @@ async def receive(
     from app.tasks.whatsapp import answer_whatsapp_message
 
     for message in inbound_messages(body):
+        # "STOP" is honoured before anything else looks at the message, and
+        # deliberately before the allowlist and the our-number checks below.
+        #
+        # Every marketing WhatsApp template carries "Reply STOP to stop
+        # receiving these". A customer who does exactly that must not have
+        # their reply dropped because they are not on a testing allowlist, or
+        # because the number they replied to is a second number on the same
+        # Meta account. Both of those are our configuration problems and none
+        # of them is a reason to keep messaging someone who said no.
+        #
+        # It also returns before the assistant is given the text: answering
+        # "Sorry, I didn't understand — would you like to see the menu?" to
+        # somebody opting out is the worst possible reply.
+        if handle_marketing_reply(message.from_number, message.text, source="whatsapp"):
+            continue
+
         if not is_our_number(message.phone_number_id):
             # Someone else's number on a shared account. Not ours to answer.
             logger.info(

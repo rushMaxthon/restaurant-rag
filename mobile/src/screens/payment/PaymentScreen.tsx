@@ -871,6 +871,9 @@ export function PaymentScreen(): React.JSX.Element {
         })),
         delivery_address: checkoutAddress,
         special_instructions: route.params?.instructions?.trim() || null,
+        // Upper-cased to match how the campaign stored it, so "insta20" off
+        // a phone screen credits "INSTA20".
+        promo_code: route.params?.promoCode?.trim().toUpperCase() || null,
         payment_method: selectedPaymentMethod,
       };
       const createdOrder = await api.placeOrder(token, orderPayload);

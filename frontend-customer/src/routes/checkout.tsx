@@ -12,6 +12,7 @@ import {
   Phone,
   ShieldCheck,
   Store,
+  TicketPercent,
   Zap,
   User,
 } from "lucide-react";
@@ -175,6 +176,10 @@ function Checkout() {
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  // Optional, and deliberately not validated here: an unrecognised code is
+  // not an error the customer should be stopped for. It buys nothing, so a
+  // typo costs them nothing — it only means one post goes uncredited.
+  const [promoCode, setPromoCode] = useState("");
   const [address, setAddress] = useState<AddressFields>({
     line1: "",
     line2: "",
@@ -497,6 +502,9 @@ function Checkout() {
       // reach you, and sent neither.
       contact_name: fullName.trim(),
       contact_phone: phone.trim(),
+      // Upper-cased to match how the campaign stored it, so "insta20" off a
+      // phone screen credits "INSTA20".
+      promo_code: promoCode.trim().toUpperCase() || null,
       // Previously never sent, so the backend defaulted every order to COD and
       // marked it PLACED immediately — which is why "Place order" looked like
       // it skipped payment. A CARD order is created PAYMENT_PENDING instead and
@@ -704,6 +712,20 @@ function Checkout() {
                     {phoneProblem}
                   </p>
                 )}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="promo_code">Promo code (optional)</Label>
+                <div className="field-wrap">
+                  <TicketPercent className="size-4" />
+                  <Input
+                    id="promo_code"
+                    autoCapitalize="characters"
+                    placeholder="Seen one on Instagram?"
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                    className="h-12"
+                  />
+                </div>
               </div>
               {isDelivery && (
                 <>

@@ -18,6 +18,7 @@ import type {
   FavoriteItem,
   GeneratedCombo,
   LocationScheduleOptionsResponse,
+  MarketingConsent,
   MenuItem,
   MenuItemPortion,
   Order,
@@ -1192,6 +1193,12 @@ export const api = {
       }>;
       delivery_address: string;
       special_instructions?: string | null;
+      // A code the customer saw in one of the restaurant's social posts. It
+      // buys nothing — the server prices from offers it validated itself —
+      // and exists so a public post can be credited with the order it
+      // caused. A post reaches people the platform has no identity for, so
+      // the typed code is the only link back to it.
+      promo_code?: string | null;
       payment_method: PaymentMethod;
     },
   ): Promise<Order> {
@@ -1444,6 +1451,71 @@ export const api = {
       return response.data;
     } catch (error) {
       return mapError(error);
+    }
+  },
+  /**
+   * Whether this customer accepts marketing messages.
+   *
+   * Its own endpoint, not part of `/preferences/me`: that payload replaces
+   * every column it is given, so folding consent into it would let a screen
+   * that never showed the toggle silently rewrite a legal record.
+   *
+   * `marketing_opt_in_changed_at` is null when the customer has never been
+   * asked — existing accounts were backfilled opted-in with no timestamp — and
+   * that is a different fact from an explicit opt-in.
+   */
+  async getMarketingConsent(token: string): Promise<MarketingConsent> {
+    try {
+      const response = await client.get<MarketingConsent>(
+        '/profile/marketing-preferences',
+        { headers: withToken(token) },
+      );
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+  async updateMarketingConsent(
+    token: string,
+    optedIn: boolean,
+  ): Promise<MarketingConsent> {
+    try {
+      const response = await client.put<MarketingConsent>(
+        '/profile/marketing-preferences',
+        { marketing_opt_in: optedIn },
+        { headers: withToken(token) },
+      );
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+  /**
+   * Tell the backend what the customer did with a marketing push.
+   *
+   * `opened_count` and `clicked_count` are read by the campaign report and
+   * were written by nothing, so every campaign appeared to lose its entire
+   * audience between "delivered" and "opened" — the one number an owner uses
+   * to judge their copy. Only the device knows this, so only the device can
+   * report it.
+   *
+   * Never throws. A campaign statistic is not worth interrupting someone who
+   * just tapped a notification and expects their order screen.
+   */
+  async reportCampaignEngagement(
+    token: string,
+    campaignId: string,
+    event: 'OPENED' | 'CLICKED' | 'UNSUBSCRIBED',
+  ): Promise<boolean> {
+    try {
+      await client.post(
+        '/marketing/engagement',
+        { campaign_id: campaignId, event },
+        { headers: withToken(token) },
+      );
+      return true;
+    } catch {
+      return false;
     }
   },
   async getUserPreferences(token: string): Promise<UserPreferences> {

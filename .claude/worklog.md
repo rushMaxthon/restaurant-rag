@@ -17,6 +17,943 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-09-21 (5) — The reconciled chain deployed, and a badge that lied
+
+**The migration is applied to Supabase.** `alembic upgrade head` ran against
+the shared database and completed: `0068b` and `0069` no-opped past objects
+that were already there, `0070` created
+`restaurant_channel_connections` and `orders.marketing_promo_code`. Stamp
+moved `0068_payment_transaction_payment_id` -> `0070_channel_connections`.
+
+Verified against a snapshot taken immediately before: 48 tables -> 49, one
+new table and **none lost**; `orders` 33 -> 34 columns with all **416 rows
+intact**; RLS confirmed on for the new table — the first table in this
+database where that is reproducible from a migration rather than applied by
+hand. Then the real thing: `connections.all_views()` run against Supabase
+returns PUSH connected and the other five not, which is exactly what the
+channel picker asks for.
+
+**The bug the screenshot caught.** Every channel card read "NEEDS SETUP",
+including push. Two pieces of logic read the same registry and only one
+honoured `ALWAYS_ON`:
+
+- the **send gate** used `availability !== 'ALWAYS_ON' && !connected`, which
+  is right — push was never actually blocked, and campaigns on it worked
+  throughout;
+- the **badge** used `connected` alone, so a `/marketing/channels` call that
+  had not answered — or had failed — rendered all six as needing setup.
+
+So the product worked and the screen said it did not. The cause of the failed
+call was the migration above: the route queried a table that did not exist
+yet. Fixed three ways — push now reads Ready from the registry in every
+state, the others show "Checking…" rather than asserting "Needs setup" before
+we have asked, and the fetch failure is surfaced as a notice instead of being
+swallowed into an empty map. 12 new tests pin the badge rule and the send
+rule **together**, since the defect was precisely the gap between them.
+
+**Verified:** `frontend-admin` build clean, **176** tests (16 files), lint 55
+errors — baseline, unchanged.
+
+**Worth knowing next session:** the five reconstructed revisions are now
+stamped into the shared database. If the real 0065-0068 ever land, the
+duplicate-id collision will surface at import rather than at deploy, and the
+resolution is still to delete ours — but the database will already be past
+them, so that reconciliation is now a stamp question, not a schema one.
+
+
+## 2026-09-21 (4) — Deployment unblocked, and four promises made true
+
+Six things, in the order they were asked for. The first one turned out to be
+different from what this file and CLAUDE.md both said it was.
+
+**The migration chain is reconciled, and alembic works against Supabase.**
+CLAUDE.md recorded the shared database as stamped
+`0067_restaurant_payment_accounts`. It is stamped
+`0068_payment_transaction_payment_id` — the divergence had grown since anyone
+last looked. Rather than guess again, the live schema was introspected
+read-only (one connection, no retry: the IP ban warning in CLAUDE.md is
+real), and the unpushed lineage turned out to be three tables
+(`app_client_push_credentials`, `restaurant_capabilities`,
+`restaurant_payment_accounts`), one column on `payment_transactions`, and —
+found only by diffing columns rather than tables — five more on `app_clients`
+and `restaurants`. **None of the eight appears in any model here**, so nothing
+in this codebase reads them.
+
+All of it was rebuilt as `0065`, `0066`, `0067`,
+`0068_payment_transaction_payment_id` and `0068b_orphan_columns`, each guarded
+on "does this already exist", so they are no-ops against Supabase and a
+catch-up on a fresh database. Our two marketing migrations were renumbered to
+`0069`/`0070`; safe because nothing was ever stamped with the old ids — they
+reached Supabase by having `upgrade()` run by hand.
+
+Verified properly rather than by reading: a database built from base and
+diffed against Supabase is **identical apart from what 0070 adds**, and
+`alembic current` + `upgrade head` against a database stamped exactly as
+Supabase is now resolves and applies cleanly. That is the production
+operation, rehearsed.
+
+The reconstructions cannot recover intent, and if the real 0065-0068 are ever
+pushed alembic refuses to start on the duplicate ids — loudly, which is the
+right failure. Delete ours at that point.
+
+**The ADMIN channels bug.** `ChannelsPage` shipped without a restaurant
+picker, so an admin arriving by deep link or refresh got
+`400 restaurant_id is required` — the exact failure CLAUDE.md names. Rather
+than paste MarketingPage's picker into a third place, the logic came out into
+`useMarketingScope` + `RestaurantScopePicker`, and **MarketingPage was moved
+onto it too** so the two cannot drift. The next page that needs it now cannot
+forget.
+
+**The weekly frequency cap counted nothing.** It read
+`push_notification_events` of type SENT or DELIVERED; the only writer of that
+table is `engagement.py`, whose schema restricts the event to OPENED, CLICKED
+and UNSUBSCRIBED. Zero rows matched, so the cap suppressed nobody — while the
+schedule screen told owners "anyone who already heard from you this week is
+left out automatically". It now reads recipient rows, which is what migration
+0069's own docstring said they were for. A FAILED or SKIPPED row does not use
+up the allowance: holding a message back over a delivery we never made is
+backwards. Counted across channels, not per channel — six messages from one
+restaurant is six.
+
+**STOP is honoured.** Both inbound paths now reach `optout.py`. The WhatsApp
+webhook already existed for the ordering concierge and already received these
+replies and dropped them; STOP is now checked **before** the allowlist, the
+our-number check and the assistant, because all three are our configuration
+problems and none is a reason to keep messaging someone who said no — and
+because answering an opt-out with "would you like to see the menu?" is the
+worst possible reply. SMS needed a new endpoint: no signature standard exists
+across Indian aggregators, so it takes a shared secret and reads whichever of
+`from`/`sender`/`msisdn` and `text`/`body`/`message` arrived, JSON or form.
+An unset secret refuses everything — an open endpoint here would let anyone
+opt any customer out by guessing a phone number.
+
+Two decisions worth remembering: a phone number identifies a **person**, so
+every `AppClient`-scoped account on that number is opted out (telling someone
+who texted STOP that they are still subscribed on their other account is a
+technicality used against them); and the opt-out is credited to the last
+campaign that reached them, because an opt-out rate per campaign is how an
+owner learns a piece of copy cost them their list.
+
+**Spend caps are enforced, not displayed.** Per campaign and per calendar
+month, as BLOCK notices from `estimate_reach` — which means one rule decides
+both what the builder shows and what the dispatcher allows, since dispatch
+re-runs the estimate and refuses on any blocking notice. A draft that was
+under the cap on Tuesday and over it by Friday is refused on Friday. Spend is
+derived from channel + `sent_count` + parts rather than stored, so it cannot
+drift from what actually went out, and a half-failed send is charged for
+half. Zero disables a cap; the defaults are non-zero because a deployment
+that has not thought about this should be protected.
+
+**A failed campaign can be retried.** The backend always allowed
+FAILED -> SENDING and recipient rows always made it safe — dispatch skips
+anyone already reached — but `canEdit` excluded FAILED, so the UI offered
+neither an edit nor a retry and the only route was to duplicate and lose the
+report. Now a "Try again" button, with a confirm that says nobody gets it
+twice.
+
+**Verified:** backend `compileall` clean; marketing suites **120 → 151**
+passed (31 new guardrail tests); `test_whatsapp_webhook` 44 passed (13 new,
+covering the STOP interception and the SMS endpoint's auth); full backend
+suite unchanged from the documented baseline. `frontend-admin` build clean,
+164 tests, lint **55 errors — baseline, unchanged**. The migration chain was
+verified by two real runs against throwaway databases, not by inspection.
+
+**Two of the new tests failed first and were wrong, not the product:** a tone
+compared against `"BLOCK"` when the enum's value is lowercase `"block"`, and
+a timestamp compared with `.replace(tzinfo=UTC)` where Postgres returns the
+value in the server's zone — which shifts the wall clock instead of
+converting it.
+
+**Still open**, unchanged from the previous entry except where noted: no
+integration has touched a real provider; connecting is a form rather than
+OAuth; boost budgets are stored and never spent; `credentials` is plain
+JSONB. Newly relevant:
+- **Delivery receipts are still not read.** Meta posts them to the same
+  WhatsApp webhook that now handles STOP, so the seam exists — `sent` still
+  means "the gateway accepted it", not "it arrived".
+- **Consent is still one flag for every channel.** Someone who wants push but
+  not SMS cannot say so, and opt-out defaults that are defensible for push
+  are not for SMS in most jurisdictions.
+- **India DLT registration** is still a precondition for real SMS.
+- Throughput is unchanged: WhatsApp and SMS are one sequential request per
+  recipient in a single Celery task, with no 429 handling.
+
+
+## 2026-09-21 (3) — The other five channels actually send
+
+**Why.** The channel-first flow shipped earlier today could plan, write and
+save a WhatsApp or Instagram campaign and then refused at the send button,
+because nothing behind it existed. This is what was behind it.
+
+**Connections.** `restaurant_channel_connections` (migration `0069`) +
+`services/marketing/connections.py`. Per restaurant, because it *is* per
+restaurant — two brands here send from two different WhatsApp numbers and a
+settings value cannot hold both. **Absence of a row is the not-connected
+state**, so there is no NOT_CONNECTED status able to disagree with the row's
+existence. `config` is returned to the owner, `credentials` to nobody, and a
+re-save **merges** — a connect form cannot display a stored token, so an owner
+correcting their sender name leaves that box empty, and treating empty as
+"clear it" would break the channel with nothing reporting it until the next
+send. Push deliberately has no row: its credentials are the platform's shared
+Firebase account, and a connection for it would let an owner disconnect the
+channel their order notifications ride on.
+
+Availability now comes from here for both the picker and the dispatcher, which
+is the point — the old `PHASE_TWO_CHANNELS` map in `catalog.py` could only
+ever say "no", so a channel that HAD been connected still rendered unavailable
+and still refused to send.
+
+**Providers.** `services/marketing/providers/`, two protocols in `base.py`.
+`DirectProvider` takes people and a rendered message and reports per person;
+`SocialProvider` publishes one thing and returns an id and a permalink. A
+social provider has no `send` and a direct one has no `publish`, because a
+post has no recipients and a message has no permalink — one interface would
+mean every implementation carrying a method that raises.
+
+- **WhatsApp** — Meta Cloud API, `type: template`. Free text is not an option
+  the API has; sending it would build a feature WhatsApp refuses at the far
+  end. Meta's error codes are mapped to sentences an owner can act on, and
+  only the codes that mean "this number will never work" retire an address.
+- **SMS** — provider-agnostic JSON POST to a URL the owner supplies. Weaker
+  than a first-party SDK and the honest choice: hardcoding Twilio excludes
+  every restaurant not on Twilio. The STOP footer is appended *here*, not by
+  the editor, so the message sent matches the one costed.
+- **Email** — stdlib `smtplib`, so every mail service works and the deployment
+  gains no dependency. Every message carries the per-recipient unsubscribe
+  link built from the HMAC token P1 minted for exactly this, plus
+  `List-Unsubscribe-Post: One-Click` — safe because the hosted page only
+  mutates on POST.
+- **Instagram / Facebook** — Graph API. IG is two calls (container, then
+  publish) and refuses a post with no photo; FB is one. The hashtag comment
+  is best-effort and never fails the publish: the post is already live, and
+  reporting the campaign failed over a comment would be false.
+
+**`dispatch.py` no longer knows how anything delivers.** It kept what every
+send shares and asks the factory for a sender. A `ProviderError` inside a
+batch fails that batch's recipients and lets the rest through — the campaign
+is already SENDING and the other nine hundred people are still owed their
+message. Dead-address retirement stays push-only on purpose: blanking a
+customer's phone number because one gateway refused it once would cost the
+restaurant a delivery address.
+
+**Social is a separate function, not a branch.** `publish_campaign` has no
+audience, no consent, no recipient rows, no cap. Routing a post through the
+direct path with the people-shaped parts skipped would have reported it as a
+send with an audience of zero. Its record is the post id and permalink in
+`data_payload["social_post"]`; the delivery counters stay at zero because they
+count *people*, and `sent: 1` for a post would put a post and a person in one
+column.
+
+**Reach, per channel.** `_push_reach` generalised to `_direct_reach`: consent,
+then an address for *this* channel, then the weekly cap, in that order and
+never double-counted. SMS and WhatsApp need a phone, email needs an address.
+Cost is parts × people × rate — parts, because a long text is billed as two
+and quoting the one-part price halves the number the owner was shown.
+
+**Attribution for a post, and how weak it is.** `orders.marketing_promo_code`
+(same migration), typed at checkout in both customer apps, priced on by
+nothing. It is the only join available: a post reaches people this platform
+has no identity for. Two honesty decisions are in the code and in the UI —
+`baseline_orders` is **0** rather than fabricated, because "these same
+customers before the send" names a set that does not exist for a post; and the
+report says out loud that everyone who saw the post and ordered without the
+code is missing. A push campaign's 41 and a post's 6 are not comparable, and
+presenting them as if they were would be the most expensive lie in the
+product.
+
+**Insights are polled, not pushed.** `refresh_social_insights_task`, hourly,
+bounded to `marketing_social_insight_days`. A post has no delivery callback —
+it just accumulates impressions nothing tells us about — and Meta's webhook
+for it needs an app review this product has not had. Metrics are stored as
+whatever the platform returned: one it stops serving disappears rather than
+reading as zero, because an owner seeing "0 impressions" on a post that
+clearly got seen would conclude the product is broken.
+
+**UI.** New `ChannelsPage` at `/marketing/channels` (connect, pause, edit,
+disconnect — pause and disconnect are different buttons because re-authorising
+Meta after a month off is not something to do by accident). The picker and the
+editor read connection state from the server. `SocialReport` replaces the
+sent-to-ordered funnel on a post. The campaign builder's own flow is unchanged,
+as asked.
+
+**Checkout.** A promo code field on `frontend-customer`'s checkout and
+`mobile`'s cart, both optional and neither validated — an unrecognised code
+buys nothing, so a typo costs the customer nothing and only means one post
+goes uncredited.
+
+**Verified:** backend `compileall` clean; marketing suites **82 → 120**
+passed (38 new in `test_marketing_channels.py`); full backend suite 1774
+tests, failures **unchanged from the documented baseline** — the 24
+`test_ordering_agent_*` and the two errors that were already there.
+`frontend-admin` build clean, 164 tests pass, lint **55 errors — baseline,
+unchanged**. `frontend-customer` build clean, `tsc --noEmit` clean. `mobile`
+`tsc --noEmit` clean, jest 133 passed with the one pre-existing
+`App.test.tsx` gesture-handler failure (128 passed on a stashed tree, so the
+same one).
+
+**Two tests changed, both because the thing moved rather than broke:**
+`test_marketing_dispatch` patched `dispatch._get_firebase_app`, which now
+lives in the push provider; `test_dependency_imports` lists every Celery task
+by name and correctly demanded the new one be added, exactly as its comment
+says it should.
+
+**Still open.**
+- **Nothing here has been run against a real provider.** Every integration is
+  written against the documented API and covered by tests with the HTTP
+  mocked. The first real WhatsApp send will find something — most likely in
+  template parameter shapes, which vary by how the owner registered them.
+- WhatsApp templates are named by the campaign's `template_id`; there is no
+  UI to *list* an owner's approved layouts from Meta, so they type the name
+  the editor's template picker supplies. Fetching the real list is the next
+  obvious slice.
+- Connecting is a form, not OAuth. An owner pastes ids and tokens from Meta's
+  dashboard. A Meta connector is available in this environment and would turn
+  three of these forms into a sign-in.
+- `credentials` is plain JSONB. Excluded from every response, behind RLS and
+  a backend-only database — but not encrypted at rest. One place to change if
+  a deployment needs it.
+- Boost budgets are collected and stored and **nothing spends them**: the
+  post publishes organically. Paid promotion is a separate Marketing API
+  integration.
+- `0069` enables RLS in the migration, unlike every table before it. The three
+  tables listed in CLAUDE.md are still open.
+
+
+## 2026-09-21 (2) — Create Campaign, rebuilt channel-first
+
+**Why.** The wizard asked *Goal → Audience → Content → Channels → Schedule*.
+Channel was the fourth question and it decided the other four, so by the time
+an owner reached it they had written a 65-character push title against a
+lock-screen preview. Step 4 was then six checkboxes with five of them
+`disabled` and the words "arrives in Phase 2" — an owner cannot act on that;
+it reads as a broken screen, not a roadmap.
+
+**The flow now.** Six questions: **Where → Why → Who → Words → When → Ready.**
+Where is first, one channel per campaign, and it changes the *shape* of what
+follows rather than re-skinning it.
+
+**The distinction the whole thing turns on** is DIRECT vs SOCIAL, declared in
+`components/marketing/channels.ts`:
+
+- **DIRECT** (push, WhatsApp, SMS, email) — the owner picks *people*. Consent,
+  countable reach, recipient rows, per-recipient attribution. This is what the
+  Hub backend already does.
+- **SOCIAL** (Instagram, Facebook) — the owner picks *nobody*. No consent, no
+  recipient rows, and therefore the Hub's central attribution rule ("read
+  recipient rows, never the segment") **has no meaning at all**. A public post
+  is attributed by a promo code, which is why the offer picker is replaced by
+  a code field on those two channels and the reach rail by a spend card.
+
+Collapsing those two into one audience step is precisely why the old step 4
+could offer nothing but disabled boxes.
+
+**Nothing is a dead end any more.** A channel that cannot send says so, says
+what switching it on involves, and still lets the owner build and save the
+whole campaign. The refusal moved from the door to the send button. Push is
+still the only channel with a dispatcher; `availability: 'LIVE'` in the
+registry is the single place that says so.
+
+**Registry-driven, not `channel === 'PUSH' ?`-driven.** Field limits, whether
+there is a headline at all, whether merge fields make sense, whether a photo
+is required, the SMS segment length and per-message cost, the goals a channel
+can honestly deliver, the button verb — all rows in `channels.ts`. Adding a
+channel is a row plus a preview plus a dispatcher.
+
+**Per-channel previews** (`ChannelPreview.tsx`): lock screen, SMS thread with
+the billed opt-out footer shown greyed, WhatsApp bubble, email card, and an
+Instagram/Facebook feed card at the real 4:5 and 1.91:1 crops. Social previews
+have no recipient switcher on purpose — a "sample recipient" would teach
+something false about how a post works.
+
+**Two bugs found on the way:**
+
+1. **A new draft could not be saved at all.** `emptyDraft()` left title and
+   body empty, the backend requires `min_length=1` on both, and `persist` runs
+   on the first Continue — so accepting the default goal and clicking Continue
+   answered "Draft not saved". `forSaving` now fills name, title and body from
+   the goal's own template.
+2. The test-send endpoint sends a **push** whatever the draft names, so the
+   button is now gated on `availability === 'LIVE'`. Offering it on WhatsApp
+   would have put a push on the owner's phone and let them conclude WhatsApp
+   worked.
+
+**Backend: one additive change, no migration.** `CampaignContentSchema.extra`
+— a size-capped passthrough dict for what belongs to one or two channels only
+(photo, hashtags, promo code, boost budget). Stored under `content_extra` in
+`data_payload`, which is **namespaced rather than assigned over** because that
+column is shared with the transactional push path. `last_step` ceiling 5 → 6.
+`duplicate_campaign` copies it, or an Instagram duplicate would be a caption
+with no image. Four tests cover the round trip, the namespacing, the empty
+case and the duplicate.
+
+**One channel per campaign.** The draft holds `channel`; the wire still sends
+`channels: [channel]`, which is the existing column and schema untouched.
+Reads go through `primaryChannel()`, which defaults to push — so every
+campaign written before today opens correctly. `withExtra()` in
+`marketingClient.ts` guarantees `content.extra` exists on anything from the
+wire, since an older row comes back without the key and every editor reads it
+directly.
+
+**Verified:** `npm run build` clean; `npm run test` 164 passed (15 files,
+including 11 new registry tests); `npm run lint` **55 errors — the documented
+pre-existing baseline, unchanged** (the two fast-refresh errors this work
+introduced were fixed by extracting `contentRules.ts`, the same move
+`noticeUtils.ts` already documents); `compileall` clean; backend marketing
+suites 78 → 82 passed.
+
+**One test changed, deliberately:** `scope.test.ts` stubbed every response as
+`{}`, and the campaign-list normaliser maps over what it is given. The stub is
+now `[]`. Those tests assert paths, not shapes.
+
+**Still open.** No dispatcher exists for WhatsApp, SMS, email, Instagram or
+Facebook, and no channel-connection storage — the Connect panel explains what
+each would need and nothing performs it. Social attribution is a promo code an
+owner types into the caption; nothing reads it back yet, so a social campaign
+has no report. Goals are filtered per channel client-side, in the registry,
+rather than by `/reference` — fine while the taxonomy is presentation, worth
+moving if a goal ever gains a rule. A Meta Ads connector is available in this
+environment and is the shortest route to making Instagram/Facebook real.
+
+
+
+## 2026-09-21 — P1 closed: engagement, unsubscribe, FCM fixed, one real push
+
+**Done:** the last two P1 items, the FCM misconfiguration, and the first
+marketing push this product has actually delivered.
+
+**Open/click reporting.** `services/marketing/engagement.py` +
+`POST /marketing/engagement`. `opened_count`/`clicked_count` were read by the
+campaign report and written by nothing, so every campaign looked like it lost
+its whole audience between "delivered" and "opened". Two rules decide the
+shape: counted **once per person per kind** (phones re-report opens; the
+counters summarise distinct people), and **only a real recipient may report**
+(the body carries a campaign id, so without a recipient check any signed-in
+customer could move any restaurant's numbers). Mobile reports OPENED on a tap
+and CLICKED when the payload carries a destination — fire-and-forget, because
+a statistic must never delay the screen someone just tapped through to.
+
+**Unsubscribe.** Two routes for two situations. In-app the customer is already
+authenticated, so `POST /marketing/engagement` with `UNSUBSCRIBED` opts them
+out *and* attributes it to the campaign — an opt-out rate per campaign is how
+an owner learns a piece of copy cost them their list. Outside the app,
+`GET/POST /marketing/unsubscribe/{token}` with an HMAC-signed token: no table,
+no expiry (someone acting on a six-week-old message is exactly who it is for),
+and the capability is one-directional. **GET renders a confirmation and only
+POST mutates** — mail clients and link scanners fetch URLs with no human
+involved, and a GET that unsubscribed would silently opt people out of messages
+they never opened. That is also what makes it safe to reuse for email in P2.
+
+**Deliberately not done:** a per-recipient unsubscribe URL in the push payload.
+The dispatcher multicasts one message to many tokens grouped by rendered copy,
+so per-user data would mean one Firebase call per customer. The app needs no
+token; the hosted link covers the rest.
+
+**The FCM mismatch.** `FCM_PROJECT_ID=restaurant-rag` was overriding a correct
+committed default. The service account *and* `mobile/android/app/google-
+services.json` are both `quickbite-7833a`; the override pointed the SDK at a
+project the credentials cannot touch, and Firebase answered "FCM API has not
+been used in project restaurant-rag". Removing the line beats setting it —
+the right value then lives in one place. Also set `PUBLIC_BASE_URL` (the
+unsubscribe link needs it) and `ENABLE_MARKETING_DISPATCH=true`.
+
+**Verified: a real push.**
+`Marketing campaign dispatched id=708f84c2 audience=1 sent=1 failed=0
+skipped=0 dry_run=False` → campaign SENT, `delivered=1`, one recipient row for
+`hiteshk086@gmail.com` — the only registered device in the database. Also
+checked: the unsubscribe page renders and offers a button rather than acting,
+a rubbish token says so, and `/marketing/engagement` 401s unauthenticated.
+
+**The trap on the way there, now in CLAUDE.md:** the default Celery **prefork**
+pool **segfaults** on macOS the instant a task touches Firebase —
+`WorkerLostError: signal 11 (SIGSEGV)`. Firebase Admin pulls in gRPC and macOS
+cannot safely `fork()` after it initialises. Three campaigns were left in
+SENDING with no recipient rows, which looks identical to a hung send.
+`--pool=solo` works. Linux is unaffected, so compose and Render are fine.
+
+**Also corrected:** my earlier warning that draining the `notifications`
+backlog would blast stale order pushes was **wrong**.
+`tasks/notifications.py::send_order_status_notification` only *logs* a payload
+— it never calls Firebase. All 570 drained harmlessly.
+
+**Verified:** 78 marketing tests (10 new), `compileall` clean, mobile
+`tsc --noEmit` clean, 133 mobile tests pass. `App.test.tsx` fails to load on a
+missing `RNGestureHandlerModule` mock — pre-existing, unrelated to these files.
+
+**Open:**
+- **`ENABLE_MARKETING_DISPATCH=true` is now live in `backend/.env`.** Any send
+  from this machine reaches real devices. Set it back to false when done
+  testing.
+- Two campaigns (`448238dc`, `c48dde8a`) are still SENDING — their tasks died
+  in the segfault. Re-enqueue with a solo worker or resolve manually.
+- Opens and clicks only ever arrive from the mobile app; the web customer app
+  has no push channel.
+- Migration divergence with Supabase is unchanged and still the biggest hazard.
+
+
+## 2026-09-19 (4) — Consent: the P1 item nobody could act on
+
+**Goal:** give customers a way to opt out. `GET/PUT
+/api/profile/marketing-preferences` had existed since slice 1 with **no caller
+in either customer app**, so the Marketing Hub could send to 36 people none of
+whom had been asked or could refuse.
+
+**Done:**
+- `frontend-customer/src/routes/preferences.tsx` — a Marketing messages section,
+  plus `getMarketingConsent`/`putMarketingConsent` in `lib/api.ts`.
+- `mobile` — the Promotions switch on the notification settings screen, plus the
+  two client methods and a `MarketingConsent` type.
+
+**What the mobile screen actually was.** All three switches on
+`NotificationSettingsScreen` were local `useState` with nothing behind them.
+"Promotions" looked exactly like a marketing opt-out and did nothing: switch it
+off, believe you have opted out, keep receiving campaigns. That is worse than no
+control at all. Promotions is now real. **Order alerts and AI suggestions are
+still fake** — no endpoint backs them, and deleting someone's settings UI is a
+product decision, not mine. Flagged, not touched.
+
+**Three rules, both clients:**
+- Saved on the toggle, never behind a Save button — withdrawal has to be at
+  least as easy as giving consent.
+- Kept out of `PUT /preferences/me`, which replaces every column it is given;
+  folding consent in would let a screen that never showed the toggle rewrite a
+  legal record. A test in each app pins this.
+- A null `marketing_opt_in_changed_at` is rendered as "You haven't changed this
+  yet", not as a date. Every existing customer is in that state.
+
+The switch moves optimistically and rolls back on refusal; a read failure
+disables it rather than rendering "off", which would claim an opt-out the server
+does not hold.
+
+**Verified:** live round trip against Supabase — `(true, null)` → opt out →
+`(false, <timestamp>)` → reachable audience **36 → 35**, proving consent feeds
+`marketing_reachable_conditions` and not just a column. Restored the customer's
+exact prior state `(true, null)` by SQL rather than through the API, because
+opting them back in would have stamped a timestamp they never chose. 11 new
+tests (6 web, 5 mobile); mobile 133 pass, web 236 pass, both build, both lint at
+baseline — web lint actually fell 411 → 407, since prettier fixed two
+pre-existing errors in a file I was already editing.
+
+**Also:** corrected two things in the claude.ai plan doc that had gone wrong —
+the "confirm the migration head is 0061" prerequisite (it is 0068 now, and
+0065–0067 belong to the unknown lineage), and the Celery queue line. On that
+second one the doc was **right and I was not**: it specifies a dedicated
+`marketing` queue "isolated so a ten-thousand-recipient blast cannot starve
+order notifications", and I put dispatch on the shared `notifications` queue.
+At one campaign to tens of recipients it has not bitten, but the doc's reasoning
+is the stronger one at volume. Recorded in the doc as something to move before
+any real send rather than quietly left.
+
+**Open:**
+- Order alerts and AI suggestions switches on mobile are still decorative.
+- Unsubscribe deep link still needs `public_base_url`, declared but unset.
+- Dispatch still runs on the `notifications` queue; should get its own before
+  volume.
+- Everything previously open: multi-channel gated on the business/accounts/legal
+  checklist, migration lineage, three tables without RLS.
+
+**Learned:**
+- Jest refuses out-of-scope variables in a `jest.mock` factory unless they are
+  `mock`-prefixed.
+- A `Response` object can only be read once, so a fetch mock must mint a fresh
+  one per call or the second request in a test fails with "Body is unusable"
+  rather than with whatever it was checking.
+
+## 2026-09-19 (3) — Marketing Hub: the admin could not open it, and slices 4–6
+
+**The reported bug.** "The Marketing Hub didn't load —
+`restaurant_id is required for admin insights requests`". Not an insights bug:
+`resolve_insights_scope` requires an ADMIN to name a restaurant and refuses one
+from an OWNER, every `/marketing/*` route already accepted `restaurant_id`, and
+the frontend never sent it. An owner never saw this; an admin never saw
+anything else.
+
+Fixed with a module-level scope in `marketingApi` (`setRestaurantScope`),
+appended by `marketingClient.scoped()` to all nine calls, driven by a restaurant
+picker on the Hub modelled on `AIManagerPage`'s. Seeded from localStorage so a
+deep link to a campaign editor — which has no picker of its own — is scoped
+before its first fetch. An unscoped admin now gets "Whose marketing?" instead of
+a failure screen. Six tests in `services/marketing/scope.test.ts` pin the query
+parameter onto the request, not just onto the setter: a scope that is stored and
+never sent looks identical from the UI and fails exactly the same way.
+
+**Then slices 4–6**, per `docs/MARKETING_HUB_AUDIT_AND_PLAN.md`. Two decisions
+were the user's and are recorded there: dispatch sits behind
+`enable_marketing_dispatch` (**default off**, dry run writes real recipient rows
+and calls nothing), and the recipients table took migration **0068** rather than
+the planned 0065, because the shared database already carries 0065–0067 from a
+lineage that is in no branch here.
+
+**Two bugs the live run found, both invisible without a real database:**
+
+1. `_upsert_recipient` looked its row up with a query each time. A row added to
+   the session but not yet flushed is invisible to that query, so the same
+   customer got a second INSERT and the unique constraint failed the **entire
+   send at commit — after Firebase had been called**. Now one preloaded map
+   (also one query instead of N for a large audience).
+2. The handler that puts a failed campaign down ran on a session left dirty by
+   the very exception it was handling, and raised `PendingRollbackError`. The
+   campaign was then stranded in SENDING, which only leads to SENT or FAILED —
+   unretryable and uncancellable. `mark_send_failed` now rolls back first.
+
+Both are pinned by tests that say why they exist.
+
+**Verified**, against Supabase and a throwaway local database:
+
+- Full lifecycle live: create → send → claimed SENDING (audience 19) → dispatch
+  → SENT, 1 recipient row, counters and progress correct, dry run, no FCM call.
+- Scheduler live: not due → time passes → due → claimed → dispatched → SENT.
+- Pre-send checks refuse correctly ("Pick at least one branch").
+- Detail route returns a real attribution report; the list route returns
+  `attribution: null` for every row, so it stays cheap.
+- 68 marketing tests pass (32 new: 16 attribution, 11 dispatch, and the
+  existing suites). Admin: `tsc -b` clean, 144 tests, build clean, lint
+  unchanged from baseline.
+- Test campaigns removed from Supabase afterwards; 0 marketing campaigns and 0
+  recipient rows left behind.
+
+**Earlier the same day:** admin login was 500ing —
+`column users.marketing_opt_in does not exist`. Migrations 0063/0064 had never
+been applied to Supabase and `alembic upgrade` cannot run there (stamped
+`0067_restaurant_payment_accounts`, unknown to this repo). Applied all three
+(0063, 0064, 0068) out of band by running their guarded `upgrade()` directly.
+**`alembic_version` is still 0067 and no longer describes the schema.**
+
+**Also done: `CLAUDE.md` brought back in line with reality.** It described a
+Windows machine — `.venv/Scripts/python.exe`, `C:\Program Files\PostgreSQL\15`,
+`F:\restaurant-rag`, "Ollama: not installed" — while this checkout is macOS at
+`/Users/imac/data/restaurant-rag` with Python 3.13, Homebrew PG16, and Ollama
+running and serving embeddings. Following it here wastes a session. The Windows
+notes are kept under "The Windows checkout" rather than deleted (the pgvector
+build and the Memurai dead end are hard-won), and one corrupted path in them was
+repaired: a stray CR had turned `C:\redis-portable` into `C:` + newline +
+`edis-portable`. Added: the Marketing Hub section, the ADMIN-needs-a-restaurant
+convention, the half-and-half rule and where its three implementations live, the
+migration-divergence warning, and the pre-existing lint/test baselines so the
+next session does not read them as a regression.
+
+**Found while updating it:** RLS was off for four public tables, one of them
+`push_notification_campaign_recipients` — the table created earlier today, which
+names customers. Enabled it there, matching the documented deny-by-default
+posture. `app_client_domains`, `restaurant_capabilities` and
+`restaurant_payment_accounts` are still open; they belong to the other lineage,
+so they were left alone and are now named in `CLAUDE.md`. The root cause is that
+RLS is applied by hand rather than by migration, so **every new table starts
+open** — now written down.
+
+**Open:**
+- Reconciling the migration lineages still needs whoever owns 0065–0067.
+- Three tables from the other lineage have no RLS on Supabase.
+- No customer-facing consent UI in `frontend-customer` or `mobile` against the
+  existing `GET/PUT /api/profile/marketing-preferences`. Nothing lets a customer
+  opt out today, and that is the P1 item with legal weight.
+- Open/click reporting and the unsubscribe deep link are unbuilt; the columns
+  and event types exist but nothing writes them.
+- `enable_marketing_dispatch` is off, so no campaign can actually reach a phone
+  until it is turned on.
+
+**Learned:**
+- `PushNotificationDeliveryType` has `INSTANT`, not `IMMEDIATE`; `Order`'s
+  customer column is `customer_id`, not `user_id`. Both cost a round trip.
+- `test_dependency_imports` asserts the worker's task list **by name** — adding
+  a task fails it until the expectation is updated, which is the point.
+
+## 2026-09-19 (2) — Migration divergence: diagnosed, rehearsed, blocked on three files
+
+**Asked to fix the 0065–0067 conflict.** It is diagnosed and the resolution is
+proven on a replica, but it **cannot be completed here**: the three migration
+scripts the shared database was built with do not exist on this machine or in
+this GitHub repo. No stamping was used and the repo's migrations are unchanged.
+
+**Where things actually stand (evidenced, not inferred):**
+- The shared Supabase DB is at a **single head**, `0067_restaurant_payment_accounts`
+  — not a fork in the database itself.
+- It **has** `0062_app_client_domains` applied, so the fork is at 0062, not 0061
+  as first suspected.
+- It **lacks** every column from our `0063`/`0064`.
+- Tables it has that this branch does not create: `restaurant_capabilities` and
+  `restaurant_payment_accounts`. (`app_client_push_credentials` looked like a
+  third but comes from our own `0032` — corrected mid-investigation.)
+
+So the history genuinely forks at `0062`: ours goes `0063 → 0064`, theirs goes
+`0065 → 0066 → 0067`, and only theirs was ever applied.
+
+**Searched exhaustively for 0065–0067:** every local and remote branch
+(`main`, `V2`, `ordering-agent`, after `git fetch --all`), all four stashes,
+`git log --all -S`, the second checkout at `~/Desktop/restaurant-rag`, and a
+disk-wide find. They are in none of them. They were applied to a shared
+database from a checkout that never pushed them.
+
+**The fix, rehearsed end to end on a replica and verified:**
+
+One line — re-parent our chain onto theirs:
+`0063_marketing_consent.down_revision`: `"0062_app_client_domains"` →
+`"0067_restaurant_payment_accounts"`. That linearises history to
+`0062 → 0065 → 0066 → 0067 → 0063 → 0064`; `upgrade head` then applies exactly
+our two additive migrations.
+
+Rehearsal method: a scratch database migrated through our real migrations to
+0062, then through throwaway stand-ins for 0065/0066/0067 (written in the
+scratchpad from the live schema's shape, **never committed**) to reach exactly
+the production revision and shape. Then representative pre-existing rows, then
+the re-parent, then `upgrade head`. Results:
+- Data intact — 3 users, 1 campaign, identical `md5` fingerprint before and
+  after; campaign title and body preserved verbatim.
+- Backfill correct — `marketing_opt_in=true` with `marketing_opt_in_changed_at`
+  NULL, so "never asked" stays distinguishable from "agreed".
+- The pre-existing push campaign was classified `kind=TRANSACTIONAL`, so an old
+  operational push is **not** swept into the Marketing Hub. Worth knowing that
+  this is now proven rather than assumed.
+- Single head throughout; final revision `0064_marketing_campaign_fields`.
+- **Reversible**: `downgrade 0067` removes the columns cleanly and leaves the
+  same data fingerprint.
+
+**Deliberately NOT done:**
+- No `alembic stamp`, as instructed, and it would have been wrong anyway — the
+  schema differences are real, not bookkeeping.
+- **The re-parent was not applied to the repo.** Pointing `down_revision` at a
+  revision that does not exist here would break every fresh database and CI
+  run until the real files land. It is a one-line change to make the moment
+  they do.
+- The three stand-ins are rehearsal doubles. Committing them would forge
+  history and collide with the real revision ids when they surface.
+
+**The one input needed:** whoever owns `0065`–`0067` pushes them (or says what
+`0065.down_revision` is). If their chain also branches from `0062`, the
+re-parent above is the whole fix. If they numbered anything `0063`/`0064`
+themselves, there is a filename collision to settle too — revision *ids* would
+still differ, so alembic would cope, but the numbering would be misleading.
+
+**Open, unchanged:** slices 4–6; no customer consent UI; 283 `.pyc` files still
+tracked — running the backend during this work dirtied 44 of them, restored by
+hand afterwards.
+
+
+## 2026-09-19 — Marketing Hub: frontend wired to the real backend (slices 1–3)
+
+**Done:** `marketingApi.ts` is no longer a pure mock. It is now a façade that
+routes to `/api/marketing/*` or to the in-memory dataset, chosen at runtime.
+
+- New `services/marketing/marketingClient.ts` — the live half. Reuses the
+  exported `request()` from `services/api.ts` rather than its own fetch, so an
+  expired session fires the same sign-out event on this screen as on every
+  other one. Reads the token from `storage.readAuth()`, which keeps the live
+  and mock signatures identical — that is what lets the façade swap without
+  touching a call site.
+- **Reference data is fetched once and read synchronously.** Goals, segments,
+  branches, offers and templates are looked up *during render* all over the Hub
+  (`getSegment(campaign.segment_key).name` inside a table cell). Making those
+  async would mean rewriting every call site and threading loading state
+  through components that should not know about it. Instead every async call
+  awaits `ensureReference()` first, and the sync readers fail soft — a render
+  before the cache fills shows a placeholder, never a crash. `marketingReference`
+  is mutated in place rather than replaced, because screens read its properties
+  during render.
+- `getDashboard`, `sendNow` and `sendTest` have no route behind them (slices 6,
+  4, 4). Dashboard silently keeps the mock's figures; **send and test-send throw
+  in live mode** rather than returning a fake success. A campaign that did
+  nothing while the UI said "Sent" is the worst failure this screen has.
+- `DemoStateSelect` gained a Live/Mock switch, so the UI is still reviewable
+  with no API running.
+
+**The contract divergence this found.** The wizard mints `cmp-<random>` for a
+draft that exists only in the browser; `save_draft` types that field as
+`uuid | null` and treats null as "create". Sending the local id verbatim is a
+**422 on the first keystroke of every new campaign** — confirmed live. Fixed by
+sending null when the id is not a UUID and adopting the id that comes back;
+`CampaignEditorPage` now does that in `persist()` and before send/schedule, or
+every save would have created another campaign.
+
+**Verified against a real backend**, not by reading schemas. A scratch database
+(`mkt_check`, local Postgres) migrated to `0064` and seeded, backend on :8099,
+authenticated as a seeded owner:
+
+- `/reference` top-level keys exactly match `types.ts`; all 8 segment keys match
+  `SegmentKey`; segment, branch, channel and campaign field names all match.
+- `/reach-estimate` returns `ReachEstimate` field for field.
+- Create with `id: null` → 200; same id again → **updated, one row not two**;
+  `id: "cmp-abc1234"` → 422 as predicted; duplicate → DRAFT; delete → 204.
+- Frontend: `tsc -b`, `npm run build`, 138 tests pass, lint unchanged at 4 over
+  baseline.
+
+**BLOCKER — the shared Supabase database has diverged from this repo.**
+`alembic current` against it fails: *"Can't locate revision
+'0067_restaurant_payment_accounts'"*. That revision, and 0065/0066, exist
+**nowhere in this repository's history** — not on `main`, not on `V2`, not in
+any commit. Someone has migrated the shared database from work that is not
+pushed here. Consequences:
+
+- `0063`/`0064` **cannot** be applied as things stand; alembic cannot resolve
+  the database's current revision against our chain.
+- Our chain is `0061 → 0062 → 0063 → 0064`. Whether that merges cleanly depends
+  on what `0065`'s `down_revision` is, which nobody here can see. If the two
+  lines forked, a merge migration is needed and the numbering may already
+  collide.
+- Do **not** `alembic stamp` your way out of this on a shared database.
+
+Needs whoever owns 0065–0067 to push them, or to say what they branch from.
+
+**Open:**
+- Scratch DB `mkt_check` left in place on local Postgres — useful for the next
+  integration pass; `dropdb mkt_check` to remove.
+- Slices 4–6 unchanged. The Hub can build and schedule against real data but
+  cannot send.
+- Still no customer-facing consent UI in `frontend-customer` or `mobile`,
+  against the existing `GET/PUT /api/profile/marketing-preferences`. It is the
+  P1 requirement with legal weight and nothing lets a customer opt out today.
+- 283 `.pyc` files still tracked in git.
+
+
+## 2026-09-18 (2) — Marketing Hub visual redesign
+
+**Done:** rebuilt the Hub's look so it reads as a campaign-creation product
+rather than another admin console. No data-layer or route changes — the mock
+services, types and API seam are untouched.
+
+- **It no longer borrows the admin's page furniture.** `PageIntro`, `StatTiles`,
+  `DataToolbar` and `ResponsiveTable` are gone from these three screens, because
+  every one of them made the Hub look like the Orders page. The shared things
+  that are *behaviour* rather than chrome — `ConfirmDialog`, `AnimatedCharts` —
+  stayed. That is a deliberate reversal of the previous entry's "reuse
+  everything" stance, and only for the Hub.
+- **One local token block** on `.mkt` drives spacing, radii, shadow and accent,
+  so the whole Hub re-skins from ~20 lines. Every rule is namespaced `mkt-` and
+  nothing selects outside it; the CSS diff starts at line 10036 and is confined
+  to the block added last session.
+- **One selectable-card recipe** (`.mkt-pick`) now serves goals, segments,
+  offers, branches, channels and schedule. Five near-identical components was
+  how the first pass ended up with five slightly different paddings — which is
+  most of what read as "cramped".
+- **The stepper is one connected path**, not five chips: the reassurance a
+  multi-step form has to give is "you are 3 of 5 through a thing that ends".
+- **The builder rail is sticky** so the phone preview and the message being
+  typed are on screen together, and the action bar is sticky so Continue is
+  always reachable.
+- Campaign list moved from a table to cards — a campaign has a status, an
+  audience and an amount of money, which is more than a table row carries well.
+- `hasBlockingNotice` split into `noticeUtils.ts`, following the precedent
+  `components/statusPillUtils.ts` set for Fast Refresh.
+- `[data-density='compact']` now reaches the Hub. The app-wide compact rules
+  target `.admin-surface`, which the Hub no longer uses, so the workspace
+  setting would have silently done nothing here.
+
+**Verified:** `tsc -b` clean, `npm run build` clean, `npm run test` 118 passed,
+dev server serves all three routes 200 and every module transforms. Lint on the
+Hub's files is down from 6 errors to 4, all the fetch-on-mount pattern the other
+20 data pages already trip.
+
+**Open:**
+- **Not visually verified.** There is no browser tool in this session, so the
+  layout is reasoned about and compiled, not looked at. Worth a real pass at
+  1280px and on a phone before sign-off; the sticky rail and the stepper
+  connector are the two things most likely to need a nudge.
+- The user referred to a reference image that did not arrive in the message.
+  The direction came from their written brief instead, on the existing brand
+  orange. A re-attach would likely move the palette and shape language.
+- Segment cards show selection through the count badge rather than a tick,
+  unlike the other card types. Defensible, slightly inconsistent.
+
+## 2026-09-18 (2) — Marketing Hub home rebuilt to a supplied reference
+
+**Done:** the home screen only (`MarketingPage.tsx` + an appended CSS block).
+The builder and the report were not touched.
+
+**Note on state:** the working tree had rolled back to the end of the previous
+entry — two intermediate redesigns were not on disk. Built on what was actually
+there rather than trying to reconstruct them.
+
+- Laid out to a screenshot the user supplied: gradient banner with a two-line
+  headline, primary CTA + "Quick start" card beside it, four stat cards with
+  pastel icon chips and a delta pill, a full-width attention bar with a pager,
+  one chart panel, then a campaigns **table** beside a quick-actions rail and a
+  promo card.
+- **The illustration is drawn, not shipped.** A soft disc, a megaphone and
+  three orbiting channel badges, all CSS + lucide. The admin has no image
+  pipeline and an asset would be one more file to keep in sync.
+- **The chart's window selector is real** — 7/14/30 slices the 30-day mock
+  rather than relabelling one line.
+- Quick actions point at routes that exist (`/offers`, `/reports`, the
+  builder); "View Campaign History" expands the table in place.
+- Namespaced `hub-` under `.mkt-hub`, so none of it can reach the builder or
+  report, which keep the `mkt-` system.
+
+**Palette, second pass:** the reference was blue and the first build copied it
+literally. On request it was swapped to the app's brand. Because the colours
+were already local tokens it was one block — and the tokens now resolve to
+`var(--primary)`, `var(--accent)`, `var(--success-soft)` and so on rather than
+to hexes, so the Hub follows a theme change instead of needing to be re-edited
+beside one. The slots were renamed `--hub-blue*` -> `--hub-brand*`; leaving
+orange in a variable called "blue" would have been worse than the wrong colour.
+Two literals kept deliberately: WhatsApp's `#25d366` on its badge, because it
+is that product's brand and not ours to restyle, and a darker `#b57a00` for
+amber text, because `--warning` is tuned for fills and fails on a pale wash.
+
+**Verified:** `tsc -b`, `npm run build`, `npm run test` 118 passed, three routes
+200. Lint unchanged at 4 over baseline, all fetch-on-mount. CSS diff is purely
+appended from line 12018.
+
+**Open:**
+- **Not visually verified** — no browser tool in this session. The banner
+  illustration and the table at narrow widths are the two things most worth a
+  real look.
+- Currency stays CAD via the app's `formatCurrency`; the reference showed
+  rupees. Changing it would misstate the data, so it was left alone.
+- The demo-state selector sits at the foot of the rail so the loading, empty
+  and error screens stay reviewable. It leaves with the mock layer.
+
+## 2026-09-18 — Marketing Hub, Phase 1 frontend on mock data
+
+**Done:** the whole P1 Marketing Hub UI in `frontend-admin`, end to end and
+clickable, with no backend. Three new routes: `/marketing`, the five-step
+builder at `/marketing/campaigns/new` and `/marketing/campaigns/<id>/edit`, and
+the report at `/marketing/campaigns/<id>`.
+
+- **The seam is `src/services/marketing/`.** `types.ts` is shaped like the JSON
+  a `/api/marketing/*` route would return (snake_case, ids not references), and
+  `marketingApi.ts` is the only module any screen talks to. It is promise-based
+  with simulated latency and can reject — a component written against a
+  synchronous mock has to be rebuilt when the network arrives, one written
+  against this does not. Replacing the function bodies is the whole migration.
+- **`DemoStateSelect`** forces normal / slow / empty / failing. Loading, empty
+  and error screens are the hardest thing to sign off because reaching them
+  needs a broken server; this makes each one a click. It leaves with the mocks.
+- **Reused, not re-invented:** `PageIntro`, `StatTiles`, `ResponsiveTable`,
+  `DataToolbar`, `ConfirmDialog`, `StatusPill`, `EmptyPanel`/`ErrorPanel`,
+  `TableActions`, `Breadcrumbs`, `AnimatedCharts` (with the existing
+  `dashboard-admin-*` chart classNames), and `MenuItemEditorPage`'s
+  `.branch-picker`/`.branch-card` markup verbatim for branch targeting. No new
+  dependencies. The only genuinely new shape is the phone preview, which has no
+  precedent in the admin to borrow.
+- **Merge fields are the one piece with tests** (`mergeFields.test.ts`, 9 cases)
+  because the failure is invisible in the happy path: a customer with no name
+  must never receive "Hi {first_name}" or "Hi null". The preview's recipient
+  switcher always ends on that recipient for the same reason.
+
+**Verified:** `tsc -b` clean, `npm run build` clean, `npm run test` 118 passed
+(109 pre-existing + 9 new). Dev server serves `/marketing` 200 and every new
+module transforms. `git status` shows only `App.tsx`, `Sidebar.tsx` and
+`index.css` modified — no unrelated admin behaviour touched.
+
+**Open:**
+- Backend, real sending, consent enforcement and every non-push channel are
+  explicitly out of scope and not started. Channels other than PUSH render as
+  disabled "Phase 2" rows.
+- Adds 6 `react-hooks/set-state-in-effect` lint errors, all the fetch-on-mount
+  pattern. That rule already fires 39 times across 20 existing files including
+  `NotificationsPage` and `OrdersPage`; diverging would have meant inventing a
+  data-loading pattern this app does not use. Left consistent, flagged here.
+- The mock store is module-scope, so a browser reload resets scheduled/sent
+  campaigns to seed. Honest for mock data, worth knowing when demoing.
+- Currency renders through the app's existing `formatCurrency`, which is CAD.
+  The spec's worked example was in rupees; mock figures are dollar-scale.
+
+**Learned:**
+- `push_notification_campaigns` really is a campaign table wearing a
+  notification's name — the P1 UI needs almost no columns it does not already
+  have. Recorded in the audit doc rather than here.
+- The admin's chart components take a `className` that must match existing CSS
+  (`dashboard-admin-area-chart`, `dashboard-admin-bars`); they are reusable
+  across pages only because of that, which is easy to miss and worth copying.
+
 ## 2026-09-18 (2) — One design layer for both apps (4a53cd5, b71fb43)
 
 User: "we have frontend-customer folder where i like that UI so i preffer to

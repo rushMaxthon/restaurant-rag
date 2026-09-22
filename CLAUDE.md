@@ -10,8 +10,9 @@ did. Read the last 2-3 entries before starting work, append an entry when done.
 
 ## What this is
 
-A monorepo for a multi-restaurant ordering platform with two AI surfaces:
-customer-facing RAG food chat, and an AI Restaurant Manager for owners.
+A monorepo for a multi-restaurant ordering platform with two AI surfaces —
+customer-facing RAG food chat, and an AI Restaurant Manager for owners — plus a
+Marketing Hub for owner-run campaigns.
 
 | Path | What it is | Stack |
 |---|---|---|
@@ -55,6 +56,26 @@ template fallback, and every AI feature flag defaults **off**.
 **Backend enforces, UI only hides.** Role filtering, branch scoping, payment
 method availability, slot validity and report scope are all re-validated
 server-side. Never treat a UI guard as the rule.
+
+**An ADMIN has no implicit restaurant; an OWNER may not name one.**
+`resolve_insights_scope` requires `restaurant_id` from an ADMIN and refuses it
+from an OWNER, and every insights and marketing route takes it as an optional
+query parameter for exactly that reason. `frontend-admin` is one dashboard for
+both roles, so any screen reading tenant-scoped data needs an admin restaurant
+picker — `AIManagerPage` and `MarketingPage` both have one, persisted in
+localStorage. Omitting it is not a subtle failure: every call comes back
+`400 restaurant_id is required for admin insights requests`, and the screen
+renders it as "this feature is broken".
+
+**Half-and-half is a group flag, not an item flag.** Only a customization group
+the owner marked `supports_halves` may be split, a half costs half the listed
+extra, a group is split OR the same all over (never both), and a lone half is
+refused — both sides must be described. The owner's maximum counts on EACH half,
+not across the pair. The rules live in three places that must agree, because a
+disagreement means the customer sees one price and is charged another:
+`backend/app/services/menu_item_customizations.py`,
+`frontend-customer/src/lib/customization.ts` and
+`mobile/src/utils/menuItemCustomization.ts`.
 
 **Tests are `unittest`, not pytest.** 42 files in `backend/tests/`, each
 inserting `backend/` on `sys.path` itself. Many encode a question that was once
@@ -144,9 +165,136 @@ labels come from scoring, never handcrafted in a client.
 
 ---
 
+## The Marketing Hub
+
+Owner-facing campaign tooling in `backend/app/services/marketing/` and
+`frontend-admin` (`MarketingPage`, `CampaignEditorPage`, `CampaignDetailPage`,
+`components/marketing/`, `services/marketing/`). P1 is complete; see
+`docs/MARKETING_HUB_AUDIT_AND_PLAN.md` for the slice-by-slice record.
+
+**The Create Campaign flow is channel-first, one channel per campaign.** Six
+questions — **Where → Why → Who → Words → When → Ready** — and the answer to
+"where" changes the *shape* of the rest, not just its labels. Everything that
+differs per channel is declared in
+`frontend-admin/src/components/marketing/channels.ts`: field limits, whether
+there is a headline at all, whether merge fields mean anything, whether a
+photo is required, SMS segment length and per-message cost, which goals the
+channel can honestly deliver, the button verb, and `availability` — the one
+place that says push is still the only channel with a dispatcher. Reach for a
+`channel === 'PUSH' ?` branch in a component and you have put a rule somewhere
+nothing else can read it.
+
+The split that everything turns on is **DIRECT vs SOCIAL**:
+
+- **DIRECT** (push, WhatsApp, SMS, email) — the owner picks *people*. Consent
+  applies, reach is countable, recipient rows are written, attribution is
+  per recipient. Everything below describes this case.
+- **SOCIAL** (Instagram, Facebook) — the owner picks *nobody*. There is no
+  consent to check and no recipient row to write, so the attribution rule
+  below **does not apply at all**; a public post is attributed by a promo
+  code. Do not add a segment picker, a minimum-audience block or a reach
+  count to a social campaign — each one would be a number with nothing
+  behind it.
+
+A channel that cannot send yet is never a dead end: the whole campaign can be
+built and saved, and the refusal happens at the send button. The draft holds
+`channel`; the wire still carries `channels: [channel]`, the existing column
+untouched, and reads go through `primaryChannel()`. Channel-specific content
+(photo, hashtags, promo code, boost budget) rides in `content.extra`, a
+size-capped passthrough stored **namespaced** under `content_extra` in
+`data_payload` — a column shared with the transactional push path, so it is
+merged into, never assigned over.
+
+**Whether a channel can send is a fact about the restaurant, never a
+constant.** `restaurant_channel_connections` holds it, `services/marketing/
+connections.py` answers it, and both the picker and the dispatcher ask the
+same function so they cannot disagree. Absence of a row *is* the
+not-connected state, so there is no NOT_CONNECTED status to fall out of step
+with it. Push is the one channel with no row at all — its credentials are the
+platform's shared Firebase account, and giving it a connection would let an
+owner disconnect the channel their order notifications ride on. `config` is
+returned to the owner; `credentials` is returned to nobody, and a re-save
+merges so a form that cannot display a token does not blank it.
+
+**`dispatch.py` knows nothing about how any channel delivers.** It owns what
+every send shares — recompute the audience, write a row per customer, group
+by rendered copy, commit progress per batch, decide the terminal status — and
+asks `providers.provider_for` for something that can deliver. Adding a channel
+is a provider plus one row in that factory. Every provider raises
+`ProviderError` with a sentence written for the owner, because that string
+lands in `campaign.last_error` and then on their screen.
+
+**A social campaign takes a different function, not a different branch.**
+`publish_campaign` has no audience, no consent check, no recipient rows and no
+frequency cap. Running a post through the direct path with the people-shaped
+parts skipped would report it as a send with an audience of zero.
+
+**The frequency cap counts recipient rows, and STOP is honoured.** Both were
+promises the product made and did not keep until 2026-09-21. The cap read
+`push_notification_events` of type SENT/DELIVERED, which nothing writes — only
+`engagement.py` writes that table, and only OPENED/CLICKED/UNSUBSCRIBED — so
+it suppressed nobody while the UI said otherwise. It now reads
+`push_notification_campaign_recipients`, counts only rows that actually
+reached someone, and is counted across channels rather than per channel. STOP
+and START arrive on the WhatsApp webhook (checked **before** the allowlist,
+the our-number test and the assistant) and on `POST /marketing/sms/inbound`
+(shared secret, unset means refuse everything). A phone number identifies a
+person, so every `AppClient`-scoped account on it is opted out.
+
+**Spend caps are enforced through the reach estimate, not the UI.** Per
+campaign and per calendar month, raised as BLOCK notices by `estimate_reach`
+— so the builder and the dispatcher get the same answer from one rule, and
+dispatch re-runs it at send time. Spend is derived from channel plus
+`sent_count` plus message parts, never stored, so it cannot drift from what
+went out.
+
+**Social attribution is a promo code, and it is a weaker claim.** A post is
+seen by people this platform has no identity for, so `orders.
+marketing_promo_code` — typed at checkout in both customer apps, priced on by
+nothing — is the only join available. It misses everyone who saw the post and
+ordered without the code, and it has no honest baseline, so the report carries
+`baseline_orders: 0` and the UI says what the number measures rather than
+placing it beside a push campaign's as if they were comparable.
+
+Five rules it is built around, each of which was a bug first:
+
+- **Sending is behind `enable_marketing_dispatch`, which defaults off.** With it
+  off the whole path runs against the real audience and writes real recipient
+  rows — a dry run an owner can inspect — and Firebase is never called.
+  Test-send honours the same flag, so no path escapes it. This is the same
+  posture as the AI flags, for the same reason: a campaign reaches a lock screen
+  unprompted and cannot be recalled.
+- **The audience is recomputed at send, never trusted from the draft.** A
+  campaign scheduled Tuesday for Friday goes to Friday's segment; people opt out
+  and uninstall in between.
+- **Attribution reads recipient rows, never the segment.** Segment membership is
+  recomputed continuously — by report time, "lapsed regulars" no longer contains
+  the people the campaign won back. The window is measured per recipient from
+  *their own* send instant, because a large send spans minutes.
+- **The claim is the concurrency control.** `claim_for_sending` moves the row to
+  SENDING and commits immediately; the second caller is refused. SENDING leads
+  only to SENT or FAILED, both written by the dispatcher — which is why
+  `mark_send_failed` must survive a session dirtied by the error it is handling,
+  or the campaign is stranded there forever.
+- **Marketing never touches the transactional order push.** It shares
+  `_get_firebase_app` and `_should_deactivate_token` from
+  `services/notifications.py` and nothing else. That module 404s an empty
+  audience and raises `HTTPException` mid-dispatch — both wrong for a background
+  send, and bending it to serve both would risk order notifications.
+
+Consent is **opt-out**: `users.marketing_opt_in` defaults true and existing
+customers were backfilled true. `marketing_opt_in_changed_at` stays null on that
+backfill on purpose — null means "never expressed a preference", which is a
+different fact from an explicit opt-in and the first thing a consent audit asks
+for.
+
+---
+
 ## Where to make changes
 
 - business rules -> `backend/app/services/`
+- marketing campaigns -> `backend/app/services/marketing/` +
+  `frontend-admin/src/services/marketing/`
 - routes and contracts -> `backend/app/api/` + `backend/app/schemas/`
 - schema -> `backend/app/models/` + `backend/alembic/versions/`
 - admin UI -> `frontend-admin/src/pages/`, `frontend-admin/src/components/`
@@ -178,6 +326,13 @@ npm run lint | npm run test
 Verification this repo actually uses: `compileall` for backend, `npm run build`
 for both webs, `tsc --noEmit` for mobile.
 
+`frontend-admin` and `frontend-customer` both also have vitest suites
+(`npm run test`), and `mobile` has jest (`npm run test`) — worth running when
+touching their logic, since none of them is covered by a build alone. The
+backend suites need the local Postgres up: each creates and drops its own
+throwaway database and skips itself entirely if it cannot connect, so a green
+run with Postgres down means nothing ran.
+
 ---
 
 ## Deployment
@@ -196,17 +351,47 @@ for both webs, `tsc --noEmit` for mobile.
 
 ## Running it locally on this machine
 
-Working as of 2026-09-13. No Docker here, and Ollama is not installed; Redis IS
-now installed and running as a service (see below).
+**This is a macOS machine** at `/Users/imac/data/restaurant-rag`. Verified
+2026-09-19. The Windows notes that used to fill this section are kept at the end
+under "The Windows checkout" — they describe a different machine, and following
+them here (`.venv/Scripts/`, `psql.exe`, `F:\`) wastes a session.
 
-- **Python**: the default `python` is 3.10.11 and **cannot** run this backend
-  (`StrEnum` needs 3.11+). A 3.11.9 venv lives at `backend/.venv`, built with
-  `py -3.11 -m venv .venv`. Always invoke `backend/.venv/Scripts/python.exe`,
-  never bare `python`.
+No Docker. Redis and Ollama both run; Postgres runs but the app does not use it
+by default.
+
+- **Python**: a 3.13.3 venv lives at `backend/.venv`. Always invoke
+  `backend/.venv/bin/python`, never bare `python`.
+- **Ollama**: installed and running on `localhost:11434` with `qwen3:8b`,
+  `nomic-embed-text`, `qwen2.5:7b-instruct` and `qwen2.5:3b-instruct`. The
+  backend warms the embedding model at startup — "Embedding model warm:
+  ollama:nomic-embed-text:768" in the log means it reached it. So generated
+  prose and pgvector retrieval both work here, unlike on the Windows box.
+- **Redis**: Homebrew service `redis`, `redis-cli ping` → PONG. Chat session
+  memory, the response cache and Celery all work.
+- **Celery**: no worker or beat runs by default. Tasks enqueue to Redis and sit
+  there — a marketing send returns SENDING and never progresses until you start
+  a worker on the `notifications` queue.
+  - **Use `--pool=solo` (or `--pool=threads`) on this machine.** The default
+    prefork pool **segfaults** the moment a task touches Firebase:
+    `WorkerLostError: Worker exited prematurely: signal 11 (SIGSEGV)`. Firebase
+    Admin pulls in gRPC, and macOS cannot safely `fork()` a process that has
+    initialised it. The campaign is left in SENDING with no recipient rows,
+    which looks exactly like a hung send rather than a crashed one.
+    `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` is the other lever. Linux — and
+    so `docker-compose` and Render — is unaffected, which is why the documented
+    worker command has no pool flag.
 - **Database**: the app points at **Supabase** (project `restaurant-rag`, ref
   `eeorvcsfpndaovhvgyom`, org Foodie, ap-south-1), via `DATABASE_URL` in
-  `backend/.env`. Migrated to `0049` and seeded. Measured from here: restaurants
-  ~0.09s, login ~0.35s.
+  `backend/.env`. 48 public tables. To confirm what a running server is actually
+  talking to, look at its established connections rather than the file: an
+  ap-south-1 address on 5432 is Supabase.
+  - **`alembic` works against it again as of 2026-09-21.** It did not before:
+    `alembic current` failed with *"Can't locate revision
+    '0067_restaurant_payment_accounts'"*, because someone migrated the shared
+    database from work never pushed here. That lineage has now been rebuilt
+    by introspection as revisions 0065-0068b — see "Known rough edges" below
+    before touching migrations, and note that the reconstructions are exactly
+    that.
   - Use the **session pooler** host `aws-0-ap-south-1.pooler.supabase.com:5432`,
     not `db.<ref>.supabase.co`. The direct host is IPv6-only, and repeated failed
     auth there got this machine's IPv6 address **banned** by Supabase (dashboard
@@ -218,7 +403,7 @@ now installed and running as a service (see below).
   - `POSTGRES_*` in `.env` are the LOCAL fallback and are ignored entirely while
     `DATABASE_URL` is set. Putting a Supabase password in `POSTGRES_PASSWORD`
     does nothing — that mistake cost four debugging rounds.
-  - **RLS is ON for all 40 public tables, with no policies.** Supabase grants
+  - **RLS is ON for 45 of the 48 public tables, with no policies.** Supabase grants
     `anon` and `authenticated` full DML including TRUNCATE on everything in
     `public`, and the anon key is published inside client apps — so RLS off
     meant anyone with that key could read every user and order and empty the
@@ -226,39 +411,36 @@ now installed and running as a service (see below).
     every business rule, and connects as `postgres`, which owns the tables and
     therefore bypasses RLS. Deny-by-default is correct here; do not disable it.
     If one table ever needs direct client access, add a policy for that table.
-    NOT yet reproducible — applied to this project only, with no Alembic
-    migration, so a fresh environment starts open. See the worklog follow-up.
+    NOT yet reproducible for the tables that predate `0070` — applied to this
+    project only, with no Alembic migration, so a fresh environment starts
+    open for them. See the worklog follow-up. Because it was applied by hand,
+    **every table added before 0070 starts without it**: `app_client_domains`,
+    `restaurant_capabilities`, `restaurant_payment_accounts` and
+    `app_client_push_credentials` are open right now. `0070` broke that
+    pattern and enables RLS on `restaurant_channel_connections` in the
+    migration itself — confirmed on for real on Supabase after the deploy,
+    and the shape every new table should follow, because it is the only way
+    a fresh environment comes up closed. Turn RLS on for any table you add
+    (`ALTER TABLE public.<t> ENABLE ROW LEVEL SECURITY`) and check the list
+    after a migration.
   - The Supabase MCP role is **not** superuser: `ALTER USER postgres WITH
     PASSWORD` fails with "permission denied to alter role". Password changes
     must go through the dashboard.
-- **Local Postgres (fallback)**: PostgreSQL 15 runs as service `postgresql-x64-15` from
-  `C:\Program Files\PostgreSQL\15`, on 127.0.0.1:5432 as `postgres/postgres`.
-  Its `bin/` is NOT on PATH, so call `psql.exe` by full path. Database
-  `restaurant_rag` exists, migrated to `0049` and seeded.
-- **pgvector**: 0.8.0, built from source with MSVC 14.50 against PG15. To
-  rebuild: clone `pgvector v0.8.0`, run `vcvars64.bat`, set `PGROOT` to the PG15
-  directory, `nmake /F Makefile.win`, then copy `vector.dll`, `vector.control`
-  and `sql/vector--*.sql` into `lib/` and `share/extension/` **elevated** — the
-  install step needs admin rights and otherwise fails with "Access is denied".
-- **Redis**: installed and running as the Windows service `Redis`, from a
-  portable build at `C:edis-portable` (Redis 5.0.14.1, the tporadowski
-  Windows port — open source and free, unlike Memurai whose free tier is
-  development-only). AUTO_START, so it survives a reboot; `redis-cli.exe ping`
-  in that folder is the quickest check. `redis_url` already defaulted to
-  `redis://localhost:6379/0`, so nothing needed configuring.
-  - Memurai was tried first and its MSI fails with 1603: the custom action
-    `ca_SilentCheckIfPortIsAvailable` errors even though 6379 is free. Do not
-    spend time on it; the portable build works.
-  - Every op in `services/cache.py` still catches `RedisError` and degrades to
-    a miss, so the API survives Redis going away — but with it running, chat
-    session memory, the response cache and Celery all work.
-- **Ollama**: not installed. Every AI flag defaults off and every AI path falls
-  back to deterministic templates, so the apps work — generated prose does not.
+- **Local Postgres (fallback, and where the tests run)**: PostgreSQL 16.13 via
+  Homebrew service `postgresql@16`, on 127.0.0.1:5432 as `postgres/postgres`,
+  `psql` on PATH, pgvector available. Database `restaurant_rag` exists but is
+  only at `0049` — fifteen revisions behind — so pointing the app at it needs
+  `alembic upgrade head` first. The backend test suites do not use it directly:
+  each creates and drops its own throwaway database from
+  `Base.metadata.create_all`, which is why they need this server running but
+  never touch `restaurant_rag`.
+- Every op in `services/cache.py` catches `RedisError` and degrades to a miss,
+  so the API survives Redis going away.
 
 Start the three services, each in its own shell:
 
 ```bash
-cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd backend && ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd frontend-customer && npm run dev -- --port 5173 --strictPort
 cd frontend-admin && npm run dev -- --port 5174 --strictPort
 ```
@@ -268,12 +450,100 @@ for dev, and 5173/5174 are both in the backend's default CORS list. Seeded
 logins are `admin@example.com` and `customer1@example.com`, password
 `password123`.
 
+`--host 0.0.0.0`, not `127.0.0.1`, because `mobile/src/config/api.ts` points at
+this machine's LAN address. `BACKEND_CORS_ORIGIN_REGEX` in `backend/.env` allows
+the private ranges on any port, so a phone or a second laptop is not a CORS
+miss — a regex rather than a pinned IP, which would go stale with the DHCP
+lease.
+
+**Per-app identity bites here.** Seeded accounts belong to the `marketplace` app
+client. The mobile app's bundle is `com.quickbite.bangkokbowl`, a different app
+client, so `customer1@example.com` does **not** exist there — and mobile logs in
+by phone + password, not email. Register in the app rather than hunting for a
+seeded login that cannot work.
+
+### The Windows checkout
+
+Kept because the notes are hard-won, not because they apply here.
+
+- **Python**: default `python` was 3.10.11 and cannot run this backend
+  (`StrEnum` needs 3.11+); a 3.11.9 venv at `backend/.venv`, invoked as
+  `backend/.venv/Scripts/python.exe`.
+- **Postgres**: PostgreSQL 15 as service `postgresql-x64-15` from
+  `C:\Program Files\PostgreSQL\15`; `bin/` not on PATH, so call `psql.exe` by
+  full path.
+- **pgvector**: 0.8.0, built from source with MSVC 14.50 against PG15. To
+  rebuild: clone `pgvector v0.8.0`, run `vcvars64.bat`, set `PGROOT` to the PG15
+  directory, `nmake /F Makefile.win`, then copy `vector.dll`, `vector.control`
+  and `sql/vector--*.sql` into `lib/` and `share/extension/` **elevated** — the
+  install step needs admin rights and otherwise fails with "Access is denied".
+- **Redis**: the Windows service `Redis` from a portable build at
+  `C:\redis-portable` (Redis 5.0.14.1, the tporadowski port — open source,
+  unlike Memurai whose free tier is development-only). Memurai was tried first
+  and its MSI fails with 1603: the custom action
+  `ca_SilentCheckIfPortIsAvailable` errors even though 6379 is free. Do not
+  spend time on it.
+- **Ollama**: not installed there, so every AI path fell back to deterministic
+  templates — the apps worked, generated prose did not.
+- Git Bash: use forward slashes; working directory `F:\restaurant-rag`.
+
 ## Known rough edges in this checkout
-- `readme.md` and several docs cross-link with absolute macOS paths
-  (`/Users/imac/Desktop/restaurant-rag/...`), broken on this Windows checkout.
-- Migration numbering skips `0033`-`0035` (jumps `0032` to `0036`). Intentional
-  or not, do not "fix" it; the chain is defined by `down_revision`.
-- Windows + Git Bash: use forward slashes; working directory is `F:\restaurant-rag`.
+
+- **The migration chain was reconciled with the shared database on
+  2026-09-21, and `alembic` works against Supabase again.** It did not before:
+  the database was stamped with a revision that existed in no branch here, so
+  `alembic current` and `alembic upgrade` both failed outright and nothing
+  could be deployed.
+
+  **Supabase is now stamped `0070_channel_connections`** — the reconciled
+  chain was applied to it on 2026-09-21 and `alembic upgrade head` is a
+  no-op there until the next migration.
+
+  What was there before that, read off the live schema rather than assumed:
+  the database was stamped **`0068_payment_transaction_payment_id`**, not the
+  `0067_restaurant_payment_accounts` previously recorded here, and the
+  unpushed lineage had added three tables (`app_client_push_credentials`,
+  `restaurant_capabilities`, `restaurant_payment_accounts`), one column
+  (`payment_transactions.provider_payment_id`) and five more columns
+  (`app_clients.status_changed_at` / `status_changed_by_user_id` /
+  `status_note`, `restaurants.currency` / `storefront`). **None of the five
+  columns or three tables appears in any model here**, so nothing in this
+  codebase reads them.
+
+  Those changes were rebuilt by introspection as `0065`, `0066`, `0067`,
+  `0068_payment_transaction_payment_id` and `0068b_orphan_columns`, each
+  creating its object only if absent — so they are no-ops against Supabase and
+  a catch-up on a fresh database. Our own two marketing migrations were
+  renumbered onto the end (`0069_campaign_recipients`,
+  `0070_channel_connections`); renumbering was safe because nothing was ever
+  stamped with the old ids, which reached Supabase by having their `upgrade()`
+  run by hand.
+
+  Rehearsed against a throwaway copy stamped identically, then applied for
+  real: 48 tables to 49, `orders` 33 columns to 34, all 416 orders intact,
+  nothing dropped. A database built from base now diffs clean against
+  Supabase.
+
+  What this does **not** fix: those five revisions are reconstructions, and
+  they cannot recover intent or anything that left no trace in the schema. **If
+  the real 0065-0068 are ever pushed, alembic will refuse to start on the
+  duplicate revision ids** — loudly, which is the point. Delete the
+  reconstructions at that moment and keep theirs. New migrations take `0071+`.
+
+- Migration numbering also skips `0033`-`0035` (jumps `0032` to `0036`).
+  Intentional or not, do not "fix" it; the chain is defined by `down_revision`.
+- The whole Marketing Hub, the half-and-half feature and several other surfaces
+  are **uncommitted work in progress** — staged or untracked, not committed. A
+  `git stash` while measuring a baseline will take the feature with it and make
+  an unrelated lint or test count look like a regression.
+- `frontend-admin` carries ~55 pre-existing lint errors and
+  `test_ordering_agent_*` ~24 pre-existing failures. Measure a delta against the
+  working tree, not against zero.
+- `readme.md` and several docs cross-link with absolute paths
+  (`/Users/imac/Desktop/restaurant-rag/...`) that do not match this checkout's
+  location (`/Users/imac/data/restaurant-rag`).
+- ~283 `*.cpython-313.pyc` files are tracked in git and churn on every run.
+  `git rm -r --cached` is the fix; nobody has taken the decision.
 
 ---
 
@@ -288,3 +558,5 @@ logins are `admin@example.com` and `customer1@example.com`, password
 | `docs/per-app-identity.md` | the AppClient identity split |
 | `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |
 | `MENU_ITEM_CUSTOMIZATION_FLOW.md`, `STRIPE_PAYMENT_INTEGRATION_PLAN.md` | those flows |
+| `docs/MARKETING_HUB_AUDIT_AND_PLAN.md` | the Marketing Hub slice by slice, what is done and what is not |
+| `docs/MARKETING_HUB_SCOPE.md` | what P1 deliberately does and does not cover |

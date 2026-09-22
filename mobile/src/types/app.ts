@@ -899,3 +899,16 @@ export interface PreferenceAnswerSubmission {
   option_ids: string[];
   free_text: string[];
 }
+
+
+/**
+ * A customer's marketing consent, which is a legal record rather than a taste.
+ *
+ * `marketing_opt_in_changed_at` null = never asked. Existing customers were
+ * backfilled opted-in with no timestamp, so that is the common state, and
+ * showing it as a decision they made would be false.
+ */
+export interface MarketingConsent {
+  marketing_opt_in: boolean;
+  marketing_opt_in_changed_at: string | null;
+}

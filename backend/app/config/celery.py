@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.embed",
         "app.tasks.generated_combos",
         "app.tasks.insights",
+        "app.tasks.marketing",
         "app.tasks.notifications",
         "app.tasks.payments",
         "app.tasks.whatsapp",
@@ -33,6 +34,15 @@ celery_app.conf.update(
         "app.tasks.insights.generate_owner_briefings_task": {"queue": "analytics"},
         "app.tasks.insights.measure_action_outcomes_task": {"queue": "analytics"},
         "app.tasks.notifications.send_order_status_notification": {"queue": "notifications"},
+        # Same queue as the order push: both talk to Firebase, and a campaign
+        # send must queue behind order notifications rather than compete with
+        # them for a separate worker's attention.
+        "app.tasks.marketing.send_marketing_campaign": {"queue": "notifications"},
+        "app.tasks.marketing.run_due_marketing_campaigns": {"queue": "notifications"},
+        # Analytics, not delivery: this only reads numbers back from Meta, and
+        # putting it on the notifications queue would let a slow Graph API
+        # call sit in front of an order push.
+        "app.tasks.marketing.refresh_social_insights": {"queue": "analytics"},
         "app.tasks.whatsapp.answer_whatsapp_message": {"queue": "notifications"},
         "app.tasks.payments.reap_unpaid_orders_task": {"queue": "default"},
     },
@@ -42,6 +52,27 @@ celery_app.conf.update(
         "reap-unpaid-orders": {
             "task": "app.tasks.payments.reap_unpaid_orders_task",
             "schedule": crontab(minute="*/5"),
+        },
+        # Scheduled campaigns are picked up on an interval rather than at an
+        # exact instant, which is why quiet hours and reach are re-checked when
+        # the send fires instead of being trusted from when it was scheduled.
+        # Unconditional: the schedule only finds campaigns an owner explicitly
+        # scheduled, and `enable_marketing_dispatch` still decides whether
+        # anything leaves the building.
+        "run-due-marketing-campaigns": {
+            "task": "app.tasks.marketing.run_due_marketing_campaigns",
+            "schedule": crontab(
+                minute=f"*/{max(1, settings.marketing_scheduler_interval_minutes)}"
+            ),
+        },
+        # A published post has no delivery callback — it just accumulates
+        # impressions that nothing tells us about — so its numbers are polled.
+        # Hourly, because they move for days and then stop, and an owner
+        # reading a figure an hour stale is far better served than one
+        # reading no figure at all.
+        "refresh-social-insights": {
+            "task": "app.tasks.marketing.refresh_social_insights",
+            "schedule": crontab(minute="7"),
         },
         **(
             {

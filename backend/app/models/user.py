@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,6 +69,31 @@ class User(TimestampMixin, Base):
         nullable=False,
         default=0,
         server_default="0",
+    )
+    # Marketing consent, opt-out: true until the customer says otherwise.
+    #
+    # It lives on `users` rather than on `user_preferences` for two reasons.
+    # `user_preferences` is a derived recommender profile - it is recalculated
+    # by scoring jobs (`last_recalculated_at`) and a row may simply not exist
+    # for a given user, both of which are disqualifying for a consent record
+    # that must never be recomputed and must always have an answer. Second,
+    # every reach query already filters `users` on `is_active`/`app_client_id`,
+    # so keeping consent here costs no extra join on the hottest path.
+    #
+    # Transactional pushes ignore this flag entirely; suppressing an order
+    # update because someone declined marketing would be a fault.
+    marketing_opt_in: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    # Null means "never expressed a preference" and is meaningfully different
+    # from an explicit opt-in: it is the difference between an assumption and a
+    # decision, which is the first thing asked for if consent is ever queried.
+    marketing_opt_in_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     app_client: Mapped["AppClient | None"] = relationship(foreign_keys=[app_client_id])

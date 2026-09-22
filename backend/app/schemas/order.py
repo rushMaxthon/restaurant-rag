@@ -86,6 +86,29 @@ class OrderCreateRequest(BaseModel):
     contact_name: str | None = Field(default=None, max_length=255)
     contact_phone: str | None = Field(default=None, max_length=32)
     special_instructions: str | None = Field(default=None, max_length=2000)
+    # A code the customer saw in a social post. It changes nothing about the
+    # price — pricing comes from offers the server validated — and exists
+    # purely so a public post can be credited with the order it caused. A
+    # post is seen by people this platform has no identity for, so there is
+    # no recipient row to attribute against and the typed code is the only
+    # join available.
+    promo_code: str | None = Field(default=None, max_length=32)
+
+    @field_validator("promo_code")
+    @classmethod
+    def normalize_promo_code(cls, value: str | None) -> str | None:
+        """Upper-cased and trimmed, so "insta20 " credits "INSTA20".
+
+        The customer is copying it off a phone screen and will get the case
+        and the spacing wrong. Normalising here rather than at read time
+        means the stored value and the campaign's value are comparable
+        directly, and the attribution query stays an index lookup.
+        """
+
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        return cleaned or None
 
     @field_validator("contact_name")
     @classmethod

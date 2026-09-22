@@ -579,6 +579,11 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         # beginning and thrown away until 0058.
         contact_name=payload.contact_name,
         contact_phone=payload.contact_phone,
+        # Recorded, never priced on. A code that granted a discount here
+        # would be a discount the server never validated, typed by the
+        # customer — the offer system exists for that and this is only the
+        # attribution trail for a public post.
+        marketing_promo_code=payload.promo_code,
         items=draft.order_items,
         # Credit the offer that produced this order. The draft has already
         # validated it, so this only records what was applied — pricing and

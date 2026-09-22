@@ -67,13 +67,65 @@ export class ApiError extends Error {
   }
 }
 
-type RequestOptions = {
+export type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   token?: string | null;
   body?: unknown;
 };
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/**
+ * Turns FastAPI's 422 body into something a person can act on.
+ *
+ * A validation failure arrives as `detail: [{loc, msg, ...}]` — a LIST, not a
+ * string. Every caller here reads `detail` expecting a string, so until now
+ * every 422 in the admin surfaced as the generic "Something went wrong": the
+ * one error class that says exactly which field is wrong was the one class
+ * that told the user nothing. It also made these bugs undiagnosable from a
+ * screenshot.
+ *
+ * `loc` is ["body", "content", "title"] or ["query", "restaurant_id"]; the
+ * first element is the request part and is noise to the reader, so the field
+ * path is everything after it.
+ *
+ * Returns null when this is not a validation body, so the existing fallbacks
+ * still run.
+ */
+function formatValidationDetail(detail: unknown): string | null {
+  if (!Array.isArray(detail) || detail.length === 0) {
+    return null;
+  }
+
+  const messages = detail
+    .map((entry) => {
+      if (entry === null || typeof entry !== 'object') {
+        return null;
+      }
+      const { loc, msg } = entry as { loc?: unknown; msg?: unknown };
+      if (typeof msg !== 'string') {
+        return null;
+      }
+      const field = Array.isArray(loc)
+        ? loc.slice(1).filter((part) => typeof part === 'string').join('.')
+        : '';
+      return field ? `${field}: ${msg}` : msg;
+    })
+    .filter((message): message is string => message !== null);
+
+  if (messages.length === 0) {
+    return null;
+  }
+  // More than two and the toast becomes a wall; the rest are in `detail` on
+  // the ApiError for anyone reading the console.
+  const shown = messages.slice(0, 2).join('; ');
+  return messages.length > 2 ? `${shown} (+${messages.length - 2} more)` : shown;
+}
+
+/**
+ * The one fetch wrapper. Exported because the Marketing Hub's client needs the
+ * same 401 -> sign-out event and the same `detail` unwrapping; duplicating
+ * either would mean an expired session behaving differently on one screen.
+ */
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers();
   if (options.body !== undefined) {
     headers.set('Content-Type', 'application/json');
@@ -104,13 +156,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const detailMessage =
       typeof rawDetail === 'string'
         ? rawDetail
-        : rawDetail !== null &&
-            typeof rawDetail === 'object' &&
-            typeof (rawDetail as { message?: unknown }).message === 'string'
-          ? (rawDetail as { message: string }).message
-          : typeof payload.message === 'string'
-            ? payload.message
-            : 'Something went wrong';
+        : formatValidationDetail(rawDetail) ??
+          (rawDetail !== null &&
+          typeof rawDetail === 'object' &&
+          typeof (rawDetail as { message?: unknown }).message === 'string'
+            ? (rawDetail as { message: string }).message
+            : typeof payload.message === 'string'
+              ? payload.message
+              : 'Something went wrong');
     throw new ApiError(detailMessage, response.status, rawDetail);
   }
 
