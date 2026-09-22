@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import heroImage from "@/assets/green-curry.jpg";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { useAuth } from "@/lib/auth";
 import { PasswordInput } from "@/components/bangkok/password-input";
 import { sanitizeRedirect } from "@/lib/require-auth";
 import { ApiError } from "@/lib/api";
+import { pageMeta, useStorefrontCopy } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 type RegisterSearch = { redirect: string | undefined };
 
@@ -17,18 +19,17 @@ export const Route = createFileRoute("/register")({
   validateSearch: (search: Record<string, unknown>): RegisterSearch => ({
     redirect: typeof search["redirect"] === "string" ? (search["redirect"] as string) : undefined,
   }),
-  head: () => ({
-    meta: [
-      { title: "Create account — Bangkok Bowl" },
-      { name: "description", content: "Create a Bangkok Bowl account to start ordering." },
-      { property: "og:title", content: "Create account — Bangkok Bowl" },
-      { property: "og:type", content: "website" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Create account", "Create an account to start ordering."),
   }),
   component: RegisterPage,
 });
 
 function RegisterPage() {
+  // This restaurant's own words, resolved by the root route from the
+  // address the page was opened on.
+  const copy = useStorefrontCopy();
   const { register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
@@ -63,31 +64,26 @@ function RegisterPage() {
 
   return (
     <div className="grid lg:grid-cols-2">
-      <div className="relative hidden lg:block lg:min-h-[calc(100svh-4rem)]">
-        <img
-          src={heroImage}
-          alt="Bangkok Bowl green curry"
-          className="absolute inset-0 size-full object-cover"
-        />
+      <StorefrontHero className="hidden lg:block lg:min-h-[calc(100svh-4rem)]">
         <div className="hero-overlay absolute inset-0" />
         <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
           <Sparkles className="mb-4 size-10" />
-          <p className="eyebrow eyebrow--inherit">Bangkok Bowl</p>
+          <p className="eyebrow eyebrow--inherit">{copy.name}</p>
           <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">
-            Join Bangkok Bowl
+            Join {copy.name}
           </h1>
           <p className="mt-5 max-w-md text-lg font-medium">
-            Create an account to order Thai favourites across three Ahmedabad branches.
+            Create an account to order from {copy.name}.
           </p>
         </div>
-      </div>
+      </StorefrontHero>
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
             Create your account
           </h1>
           <p className="auth-sub mt-3 text-lg text-muted">
-            Order Thai favourites from Bangkok Bowl in minutes.
+            Order from {copy.name} in minutes.
           </p>
           <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">

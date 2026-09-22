@@ -4,16 +4,13 @@ import { AlertCircle, Check, Loader2, Mail, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, type UserPreferencesPayload } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
+import { pageMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/preferences")({
-  head: () => ({
-    meta: [
-      { title: "Your preferences — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Tell us how you like to eat and the concierge will remember.",
-      },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your preferences", "Tell us what you like so the menu suits you."),
   }),
   component: PreferencesPage,
 });

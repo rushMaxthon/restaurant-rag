@@ -1,7 +1,7 @@
 """who a campaign actually went to, which is what attribution needs
 
 Revision ID: 0069_campaign_recipients
-Revises: 0068b_orphan_columns
+Revises: 0064_marketing_campaign_fields
 Create Date: 2026-09-19 00:00:00.000000
 
 Numbered 0069, and renumbered once. It was 0068, chosen to leave 0065-0067
@@ -44,7 +44,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "0069_campaign_recipients"
-down_revision = "0068b_orphan_columns"
+down_revision = "0064_marketing_campaign_fields"
 branch_labels = None
 depends_on = None
 

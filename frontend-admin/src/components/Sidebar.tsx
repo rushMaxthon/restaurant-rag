@@ -1,5 +1,6 @@
 import { ChevronLeft, LogOut } from "lucide-react";
 import { useAdminStore } from "../hooks/useAdminStore";
+import { TenantSwitcher } from "./TenantSwitcher";
 import { activeNavPathFor, navFor } from "../routes";
 import type { UserRole } from "../types/app";
 
@@ -72,28 +73,32 @@ export function Sidebar({
         }
       >
         <div className="admin-sidebar__top">
-          <button
-            className="admin-sidebar__brand"
-            onClick={() => {
-              onNavigate(
-                role === "OWNER" && restaurantId
-                  ? `/admin/restaurants/${restaurantId}/locations`
-                  : "/dashboard",
-              );
-              onCloseMobile();
-            }}
-            type="button"
-          >
-            <div className="admin-sidebar__brand-mark">RR</div>
-            <div className="admin-sidebar__brand-copy">
-              <strong>Restaurant RAG</strong>
-              <span>
-                {role === "OWNER"
-                  ? "Restaurant workspace"
-                  : "Platform control center"}
-              </span>
-            </div>
-          </button>
+          {/* For an admin the switcher IS the brand block: the panel's
+              identity while they are working is the restaurant they are
+              working on. It returns null for an owner, who has one
+              restaurant and nothing to switch between, and the plain brand
+              block below renders instead. */}
+          <TenantSwitcher onNavigate={onNavigate} onPicked={onCloseMobile} />
+          {role === "OWNER" ? (
+            <button
+              className="admin-sidebar__brand"
+              onClick={() => {
+                onNavigate(
+                  restaurantId
+                    ? `/admin/restaurants/${restaurantId}/locations`
+                    : "/dashboard",
+                );
+                onCloseMobile();
+              }}
+              type="button"
+            >
+              <div className="admin-sidebar__brand-mark">RR</div>
+              <div className="admin-sidebar__brand-copy">
+                <strong>Restaurant RAG</strong>
+                <span>Restaurant workspace</span>
+              </div>
+            </button>
+          ) : null}
           <button
             aria-label="Close navigation"
             className="admin-sidebar__close"

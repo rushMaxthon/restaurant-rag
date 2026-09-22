@@ -171,6 +171,58 @@ export interface AppClient {
   updated_at: string;
 }
 
+/**
+ * A tenant as the platform console lists it.
+ *
+ * Distinct from `AppClient`, which is one restaurant's app configuration —
+ * bundle ids, a version floor, the things an admin edits on a detail page.
+ * This is the other question: who is on this platform, what state are they in,
+ * and how much is riding on it. Lighter on purpose; the tenants list renders
+ * a row per restaurant and the switcher renders a name.
+ */
+export interface TenantSummary {
+  id: string;
+  app_key: string;
+  display_name: string;
+  app_mode: AppMode;
+  status: AppClientStatus;
+
+  /** Null for the marketplace client: a tenant that is not a restaurant. */
+  restaurant_id: string | null;
+  restaurant_name: string | null;
+  restaurant_slug: string | null;
+  cuisine_type: string | null;
+  city: string | null;
+  is_approved: boolean | null;
+
+  /** The subdomain this platform issued. Custom domains are counted, not shown. */
+  primary_host: string | null;
+  custom_host_count: number;
+
+  brand_primary_color: string | null;
+  /** What this tenant charges in, so the console can label its money. */
+  currency: string;
+
+  /** Null on a tenant nothing has happened to since onboarding. */
+  status_note: string | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
+
+  location_count: number;
+  menu_item_count: number;
+  order_count: number;
+  customer_count: number;
+
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantStatusPayload {
+  status: AppClientStatus;
+  /** Required by the server for anything other than ACTIVE. */
+  note?: string | null;
+}
+
 export interface AdminCreateRestaurantPayload {
   name: string;
   owner_name: string;
@@ -385,6 +437,8 @@ export interface Restaurant {
   created_at: string;
   updated_at: string;
   locations?: RestaurantLocation[];
+  /** What this restaurant charges in, e.g. "INR". */
+  currency: string;
 }
 
 export interface RestaurantLocation {
@@ -1218,4 +1272,92 @@ export interface PreferenceQuestionDraft {
   signal_role: PreferenceSignalRole;
   is_active: boolean;
   options: PreferenceOptionDraft[];
+}
+
+/**
+ * One switchable feature, for one restaurant, with the reason it is what it is.
+ *
+ * `reason` and `explanation` are not decoration. A per-restaurant allowlist
+ * existed in this codebase before and was deleted for becoming a permanent
+ * split that nothing on screen explained — see `config/capabilities.py`.
+ */
+export interface RestaurantCapability {
+  key: string;
+  label: string;
+  /** The sentence the restaurant's owner reads. */
+  owner_description: string;
+  enabled: boolean;
+  reason:
+    | 'granted'
+    | 'revoked'
+    | 'default_on'
+    | 'default_off'
+    | 'build_flag_off';
+  explanation: string;
+  /** False when the platform has made no decision and this follows the default. */
+  is_customized: boolean;
+  granted_by: string | null;
+  granted_at: string | null;
+  note: string | null;
+}
+
+export type PaymentGateway = 'STRIPE' | 'RAZORPAY';
+
+/**
+ * One gateway a restaurant holds an account with.
+ *
+ * **No secret is ever in here.** `secret_last4` is enough to tell two keys
+ * apart when checking which one is live, and useless to anyone who obtains
+ * it. The key itself is encrypted server-side and no endpoint decrypts it for
+ * a reader — which is why the form submits a blank secret whenever nobody
+ * retypes one, and the server reads that as "leave what is there".
+ */
+export interface PaymentGatewayAccount {
+  gateway: PaymentGateway;
+  label: string;
+  /** The checkout button this gateway puts in front of a customer. */
+  settles_method: PaymentMethod;
+  /** Credentials are stored. Separate from enabled, so keys survive a pause. */
+  is_configured: boolean;
+  is_enabled: boolean;
+  public_key: string;
+  secret_last4: string | null;
+  has_webhook_secret: boolean;
+  /**
+   * Where this restaurant's own gateway dashboard posts its events. Built by
+   * the backend, because only the backend knows the address it is reachable
+   * at from the internet - this app's own API base is localhost in dev, which
+   * no gateway can reach. Null means that address is unset.
+   */
+  webhook_url: string | null;
+  /** The events to subscribe that URL to, named as the gateway names them. */
+  webhook_events: string[];
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+/** One checkout button, and whether a customer would really see it. */
+export interface PaymentMethodAvailability {
+  method: PaymentMethod;
+  label: string;
+  is_available: boolean;
+  /** "this restaurant" or "the platform" — never left to assumption. */
+  settled_by: string | null;
+  blocked_reason: string | null;
+}
+
+export interface RestaurantPaymentSettings {
+  restaurant_id: string;
+  gateways: PaymentGatewayAccount[];
+  methods: PaymentMethodAvailability[];
+  /** True while this restaurant's money still lands in the platform account. */
+  platform_fallback_in_use: boolean;
+}
+
+export interface PaymentGatewayPayload {
+  public_key: string;
+  /** Omitted when nobody retyped it: the server keeps the stored one. */
+  secret_key?: string | null;
+  webhook_secret?: string | null;
+  is_enabled: boolean;
 }

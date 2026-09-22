@@ -10,18 +10,21 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
+import { useScopedRestaurantFilter } from '../hooks/useScopedFilter';
 import { Modal } from '../components/Modal';
 import { DataToolbar } from '../components/DataToolbar';
 import { StatTiles, type StatTileItem } from '../components/StatTiles';
 import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { pluralize } from '../services/format';
 import { ErrorPanel } from '../components/ErrorPanel';
+import { MixedCurrencyNotice } from '../components/MixedCurrencyNotice';
 import { PageIntro } from '../components/PageIntro';
 import { Pagination } from '../components/Pagination';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
 import { StatusPill } from '../components/StatusPill';
 import { formatStatusLabel, resolveStatusPillTone } from '../components/statusPillUtils';
-import { ApiError, api, formatCurrency, formatDate } from '../services/api';
+import { ApiError, api, formatDate } from '../services/api';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -29,6 +32,7 @@ import {
   tokenScope,
 } from '../services/pageCache';
 import type { GeneratedCombo, UserRole } from '../types/app';
+import { useMoney } from '../hooks/useMoney';
 
 interface GeneratedCombosPageProps {
   token: string;
@@ -117,6 +121,8 @@ function GeneratedCombosWorkspace({
   onToast,
   embedded = false,
 }: GeneratedCombosPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const combosKey = `generated-combos:${tokenScope(token)}:${restaurantId ?? ''}:${locationId ?? ''}`;
   const [rows, setRows] = useState<GeneratedCombo[]>(
     () => getPageSnapshot<GeneratedCombo[]>(combosKey) ?? [],
@@ -128,7 +134,12 @@ function GeneratedCombosWorkspace({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>('ALL');
-  const [restaurantFilter, setRestaurantFilter] = useState<string>('ALL');
+  // Follows the shell's tenant switcher, so picking a restaurant up there
+  // carries into this list instead of being asked for twice. Still a filter
+  // rather than a lock: "All restaurants" is a real answer here, and changing
+  // it below leaves the shell alone — the more specific control wins.
+  const [restaurantFilter, setRestaurantFilter] = useScopedRestaurantFilter('ALL');
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
   const [rebuilding, setRebuilding] = useState(false);
@@ -270,13 +281,13 @@ function GeneratedCombosWorkspace({
         key: 'ALL',
         label: 'Revenue influence',
         icon: TrendingUp,
-        value: formatCurrency(revenueInfluence),
+        value: money.format(revenueInfluence),
         hint: 'Historic combo impact',
         isStatic: true,
       });
     }
     return tiles;
-  }, [summaryScopeRows]);
+  }, [money, summaryScopeRows]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -648,6 +659,8 @@ function GeneratedCombosWorkspace({
         title="Generated Combos"
       />
 
+      <MixedCurrencyNotice subject="Revenue influence" />
+
       <StatTiles<'ALL' | 'DRAFT' | 'LIVE' | 'ARCHIVED'>
         active={statusFilter}
         ariaLabel="Combo lifecycle distribution"
@@ -744,11 +757,11 @@ function GeneratedCombosWorkspace({
                 </div>
                 <div>
                   <strong>Original total</strong>
-                  <span>{formatCurrency(selectedCombo.original_total_price)}</span>
+                  <span>{money.format(selectedCombo.original_total_price, selectedCombo.restaurant_id)}</span>
                 </div>
                 <div>
                   <strong>Suggested combo price</strong>
-                  <span>{formatCurrency(selectedCombo.suggested_combo_price)}</span>
+                  <span>{money.format(selectedCombo.suggested_combo_price, selectedCombo.restaurant_id)}</span>
                 </div>
                 <div>
                   <strong>Order count</strong>

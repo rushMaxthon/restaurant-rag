@@ -32,6 +32,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Store,
+  Building2,
   TicketPercent,
   Users,
   UtensilsCrossed,
@@ -60,6 +61,7 @@ import { PreferencesPage } from "./pages/PreferencesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { RestaurantDetailPage } from "./pages/RestaurantDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TenantsPage } from "./pages/TenantsPage";
 import type { ToastMessage, User, UserRole } from "./types/app";
 
 export type RouteParams = Record<string, string>;
@@ -75,7 +77,17 @@ export interface RouteContext {
   pushToast: (title: string, description: string, tone?: ToastMessage["tone"]) => void;
 }
 
-export type NavSection = "Overview" | "Intelligence" | "Manage" | "System";
+/**
+ * "Platform" sits between Overview and Intelligence: it is the operator's
+ * own scope, above the per-restaurant work, and only an admin ever sees it —
+ * `navFor` drops a section nobody in this role can open.
+ */
+export type NavSection =
+  | "Overview"
+  | "Platform"
+  | "Intelligence"
+  | "Manage"
+  | "System";
 
 export interface NavEntry {
   section: NavSection;
@@ -321,6 +333,19 @@ export const ROUTES: RouteDef[] = [
         role={ctx.role}
         token={ctx.token}
       />
+    ),
+  },
+
+  // --- the platform's own scope ---------------------------------------------
+  // Above Restaurants on purpose: an operator opens the panel to look at the
+  // platform, and a restaurant is something they drill into from here.
+  {
+    id: "tenants",
+    pattern: "/tenants",
+    roles: ADMIN_ONLY,
+    nav: { section: "Platform", label: "Tenants", icon: Building2 },
+    render: (ctx) => (
+      <TenantsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
   },
 
@@ -644,7 +669,13 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-const SECTION_ORDER: NavSection[] = ["Overview", "Intelligence", "Manage", "System"];
+const SECTION_ORDER: NavSection[] = [
+  "Overview",
+  "Platform",
+  "Intelligence",
+  "Manage",
+  "System",
+];
 
 /**
  * The sidebar, built from the same routes it links to.

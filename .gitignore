@@ -53,3 +53,6 @@ __pycache__/
 # branches already in git history, so committing them would duplicate the repo.
 .worktrees/
 backend/*_tmp.py
+
+# Worker logs, written by --logfile on the dev box.
+backend/logs/

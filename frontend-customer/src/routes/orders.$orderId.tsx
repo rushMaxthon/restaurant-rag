@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { formatMoney, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
+import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
+import { pageMeta, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 /**
  * The tracker, worded for how the food actually reaches the customer.
@@ -38,16 +40,31 @@ function stepsFor(isDelivery: boolean) {
   ];
 }
 
+/**
+ * What to tell someone about a payment that went through.
+ *
+ * This said "Paid by card" for every paid order, and "Refunded to your card"
+ * for every refund, off `payment_status` alone. A Razorpay link takes UPI,
+ * netbanking, wallets and cards, and which of them was used is not something
+ * this app is told — so naming the card is a guess that is wrong for most
+ * Indian customers. Where the method is known and specific, it is said; where
+ * it is not, the true short sentence is.
+ */
+function paidByLine(method: string | undefined): string {
+  switch ((method ?? "").toUpperCase()) {
+    case "CARD":
+      return "Paid by card";
+    case "COD":
+      return "Paid in cash";
+    default:
+      return "Payment received";
+  }
+}
+
 export const Route = createFileRoute("/orders/$orderId")({
-  head: () => ({
-    meta: [
-      { title: "Track Order — Bangkok Bowl" },
-      { name: "description", content: "Follow your Bangkok Bowl order from kitchen to doorstep." },
-      { property: "og:title", content: "Track Order — Bangkok Bowl" },
-      { property: "og:description", content: "Live Bangkok Bowl order status." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Track order", "Follow your order from the kitchen to your doorstep."),
   }),
   component: OrderDetail,
 });
@@ -64,6 +81,8 @@ function placedAt(iso: string): string {
 }
 
 function OrderDetail() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const { orderId } = Route.useParams();
   const isAuthenticated = useRequireAuth();
   const orderQuery = useOrder(orderId, isAuthenticated);
@@ -116,6 +135,9 @@ function OrderDetail() {
   const isDelivery = o.fulfillment_type === "DELIVERY";
   const STEPS = stepsFor(isDelivery);
   const booked = scheduledFor(o);
+  // Only while it is still coming: a delivered or cancelled order has no
+  // future, and `expectedBy` is silent once its own estimate has passed.
+  const dueBy = cancelled || o.status === "DELIVERED" ? null : expectedBy(o);
   const stepIndex = STEPS.findIndex((s) => s.key === o.status);
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
@@ -153,6 +175,15 @@ function OrderDetail() {
               <span className="inline-flex items-center gap-1.5 font-bold text-primary">
                 <CalendarClock className="size-4" />
                 {isDelivery ? "Arriving" : "Ready"} {booked}
+              </span>
+            )}
+            {/* The estimate, for an order being made right now. Hedged in
+                words because it is one: the branch's own figure from the
+                moment the order was placed, not a promise anybody made. */}
+            {!booked && dueBy && (
+              <span className="inline-flex items-center gap-1.5 font-bold text-primary">
+                <CalendarClock className="size-4" />
+                {isDelivery ? "Usually arrives by" : "Usually ready by"} {dueBy}
               </span>
             )}
           </p>
@@ -237,10 +268,10 @@ function OrderDetail() {
                     <p className="mt-0.5 text-sm text-muted">{lineSelections(item)}</p>
                   )}
                   <p className="money mt-0.5 text-sm text-muted">
-                    {item.quantity} × {formatMoney(item.unit_price)}
+                    {item.quantity} × {money(item.unit_price)}
                   </p>
                 </div>
-                <span className="money shrink-0 font-bold">{formatMoney(item.total_price)}</span>
+                <span className="money shrink-0 font-bold">{money(item.total_price)}</span>
               </li>
             ))}
           </ul>
@@ -250,27 +281,27 @@ function OrderDetail() {
           <dl className="mt-5 space-y-2.5 text-sm">
             <div className="sum-row">
               <dt>Subtotal</dt>
-              <dd>{formatMoney(o.subtotal)}</dd>
+              <dd>{money(o.subtotal)}</dd>
             </div>
             <div className="sum-row">
               <dt>{isDelivery ? "Delivery fee" : "Pickup"}</dt>
-              <dd>{Number(o.delivery_fee) === 0 ? "Free" : formatMoney(o.delivery_fee)}</dd>
+              <dd>{Number(o.delivery_fee) === 0 ? "Free" : money(o.delivery_fee)}</dd>
             </div>
             <div className="sum-row">
               <dt>Tax</dt>
-              <dd>{formatMoney(o.tax_amount)}</dd>
+              <dd>{money(o.tax_amount)}</dd>
             </div>
             {discount > 0 && (
               <div className="sum-row" data-tone="success">
                 <dt>Discount</dt>
-                <dd>−{formatMoney(discount)}</dd>
+                <dd>−{money(discount)}</dd>
               </div>
             )}
           </dl>
 
           <div className="sum-total">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="sum-total-figure">{formatMoney(o.total_amount)}</span>
+            <span className="sum-total-figure">{money(o.total_amount)}</span>
           </div>
 
           {/* Inferring "cash" from "not yet PAID" told a card customer their
@@ -286,11 +317,11 @@ function OrderDetail() {
                 through to "confirming", which left someone whose card was
                 declined watching a spinner that would never resolve. */}
             {o.payment_status === "PAID"
-              ? "Paid by card"
+              ? paidByLine(o.payment_method)
               : o.payment_status === "COD"
                 ? `Pay by cash on ${isDelivery ? "delivery" : "pickup"}`
                 : o.payment_status === "REFUNDED"
-                  ? "Refunded to your card"
+                  ? "Refunded to how you paid"
                   : o.payment_status === "FAILED"
                     ? "That payment didn't go through"
                     : o.payment_status === "CANCELLED"

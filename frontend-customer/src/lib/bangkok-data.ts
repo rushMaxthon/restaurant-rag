@@ -50,7 +50,14 @@ export type MenuItem = {
   name: string;
   category: string;
   cuisine_type: string;
-  description: string;
+  /**
+   * Null far more often than not — 720 of one restaurant's 816 rows — and the
+   * column has always been nullable. This said `string`, so
+   * `description.toLowerCase()` in the menu search typechecked, shipped, and
+   * threw on the first dish without one: the whole grid came down and the
+   * customer got the error boundary's empty page for typing a letter.
+   */
+  description: string | null;
   price: Money;
   is_veg: boolean;
   is_available: boolean;
@@ -111,7 +118,8 @@ export type Restaurant = {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  /** Nullable in the database, like a dish's. */
+  description: string | null;
   cuisine_type: string;
   city: string;
   minimum_order_amount: Money;
@@ -125,6 +133,13 @@ export type Order = {
   id: string;
   status: string;
   payment_status: string;
+  /**
+   * How it was paid, which is not the same question as whether it was paid.
+   * The API has always sent this; nothing here declared it, so the order page
+   * told everyone they had "Paid by card" — including customers who paid by
+   * UPI on a Razorpay link, which is most of them in India.
+   */
+  payment_method?: string;
   fulfillment_type: string;
   subtotal: Money;
   delivery_fee: Money;
@@ -143,6 +158,17 @@ export type Order = {
   scheduled_at?: string | null;
   delivery_address: string | null;
   restaurant?: { id: string; name: string };
+  /**
+   * The branch, and how long it says it takes. Sent by the API all along; the
+   * type omitted it, which is why a customer watching "preparing" was never
+   * told when to expect the food.
+   */
+  restaurant_location?: {
+    id: string;
+    branch_name: string;
+    estimated_delivery_time: number;
+    estimated_pickup_time: number;
+  };
   items: {
     id: string;
     menu_item_id: string;
@@ -172,13 +198,96 @@ export type Order = {
 export const orderCode = (order: Pick<Order, "id">) => `#${order.id.slice(0, 8).toUpperCase()}`;
 
 /** Every price the customer sees goes through here — one place to change the currency. */
-export const formatMoney = (value: Money | number) =>
-  new Intl.NumberFormat("en-CA", {
+/**
+ * What a restaurant charges in, as `/app-config` sends it.
+ *
+ * `locale` carries the GROUPING rule, not the symbol — which matters more
+ * than it looks: Indian grouping is 2-2-3, so formatting ₹1234567 with an
+ * `en-US` locale writes ₹1,234,567 where the customer reads ₹12,34,567.
+ */
+export type CurrencyFormat = {
+  code: string;
+  locale: string;
+  min_fraction_digits: number;
+  max_fraction_digits: number;
+};
+
+/**
+ * The currency a storefront falls back to before `/app-config` has answered.
+ *
+ * Every price on the page comes from that same response, so in practice
+ * nothing is rendered with this — it exists so the formatter has an answer
+ * rather than a crash if a price ever reaches it first.
+ */
+export const FALLBACK_CURRENCY: CurrencyFormat = {
+  code: "USD",
+  locale: "en-US",
+  min_fraction_digits: 2,
+  max_fraction_digits: 2,
+};
+
+/**
+ * A price, written the way the restaurant charging it writes prices.
+ *
+ * `currency` is a parameter rather than a constant because one deployment
+ * serves every tenant: a Surat kitchen's menu was rendering as "$35.00",
+ * which is the right number under the wrong symbol — worse than either being
+ * wrong alone, because it reads as a price a customer could agree to.
+ *
+ * Components should reach for `useMoney()` instead, which binds this to the
+ * tenant the page resolved. This stays exported for the handful of callers
+ * outside React, which are handed a formatter by their caller.
+ */
+export const formatMoney = (
+  value: Money | number,
+  currency: CurrencyFormat = FALLBACK_CURRENCY,
+) => {
+  const amount = Number(value);
+  // Zero decimals or two, never one.
+  //
+  // Rupees are configured with `min_fraction_digits: 0`, deliberately: ₹145 is
+  // how a menu price is written, not ₹145.00. But `Intl` reads min 0 / max 2
+  // as "between none and two", so a cart whose tax came to 0.6 printed
+  // "Tax ₹0.6" and totalled "₹32.6" — an amount of money with one decimal
+  // place, which exists in no currency and reads as a rounding bug.
+  //
+  // So the minimum is raised to two only when there IS a fractional part,
+  // and never above what the currency itself allows.
+  const hasFraction = Number.isFinite(amount) && Math.round(amount * 100) % 100 !== 0;
+  const minimumFractionDigits = hasFraction
+    ? Math.min(2, currency.max_fraction_digits)
+    : currency.min_fraction_digits;
+
+  return new Intl.NumberFormat(currency.locale, {
     style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value));
+    currency: currency.code,
+    minimumFractionDigits,
+    maximumFractionDigits: currency.max_fraction_digits,
+  }).format(amount);
+};
+
+/**
+ * The same money, to the nearest whole unit, for prose.
+ *
+ * "A light lunch under $20" is how a person says it; "$20.00" is how a
+ * ledger says it, and a craving chip is a sentence. Mirrors
+ * `format_rounded_amount` in the backend's `services/currency.py`, and is
+ * separate from `formatMoney` for the reason given there: a flag on the price
+ * formatter would let a price list quietly lose its cents.
+ *
+ * Grouping still comes from the currency's locale, so a rounded rupee figure
+ * is still written the Indian way.
+ */
+export const formatRoundedMoney = (
+  value: Money | number,
+  currency: CurrencyFormat = FALLBACK_CURRENCY,
+) =>
+  new Intl.NumberFormat(currency.locale, {
+    style: "currency",
+    currency: currency.code,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(Math.abs(Number(value))));
 
 /** Derives the "All" + unique category list from a live menu-items response. */
 export const deriveCategories = (items: MenuItem[]) => [
@@ -193,6 +302,50 @@ export const deriveCategories = (items: MenuItem[]) => [
  * misleading "scheduled for" line on something that is being made right now.
  * en-CA throughout, matching every other time in the app.
  */
+/**
+ * "2:45 p.m." — when an ASAP order is expected, or null.
+ *
+ * The tracking page showed a customer which step their food was on and never
+ * once said when it would arrive, which is the thing somebody refreshing that
+ * page actually wants. The cart promises a time before the order is placed;
+ * after it, the promise disappeared.
+ *
+ * Derived, not invented: the branch's own estimate added to the moment the
+ * order was placed. Three cases return null instead of a time, because a
+ * wrong time here is worse than none —
+ *
+ *   - a SCHEDULED order, which `scheduledFor` already answers properly;
+ *   - a branch that publishes no estimate;
+ *   - an estimate that has already passed. A late order must not keep
+ *     insisting it arrived twenty minutes ago; the steps still say where it
+ *     is, and silence is the honest state until it moves.
+ */
+export function expectedBy(
+  order: Pick<Order, "schedule_type" | "placed_at" | "fulfillment_type" | "restaurant_location">,
+  now: Date = new Date(),
+): string | null {
+  if (order.schedule_type === "SCHEDULED") return null;
+
+  const branch = order.restaurant_location;
+  const minutes =
+    order.fulfillment_type === "PICKUP"
+      ? branch?.estimated_pickup_time
+      : branch?.estimated_delivery_time;
+  if (!minutes || minutes <= 0) return null;
+
+  const placed = new Date(order.placed_at);
+  if (Number.isNaN(placed.getTime())) return null;
+
+  const due = new Date(placed.getTime() + minutes * 60_000);
+  if (due.getTime() <= now.getTime()) return null;
+
+  return new Intl.DateTimeFormat("en-CA", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(due);
+}
+
 export function scheduledFor(order: Pick<Order, "schedule_type" | "scheduled_at">): string | null {
   if (order.schedule_type !== "SCHEDULED" || !order.scheduled_at) return null;
   const at = new Date(order.scheduled_at);

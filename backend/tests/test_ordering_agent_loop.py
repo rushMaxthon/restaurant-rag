@@ -248,9 +248,12 @@ class BudgetTests(OrderingAgentLoopTestCase):
             message="anything",
             cart=[],
             generate=generate,
-            # start=0, round1 model-check=5 (ok), round1 tool-check=10 (ok),
-            # round2 model-check=50 (exceeds a 30s budget).
-            clock=ScriptedClock(0.0, 5.0, 10.0, 50.0),
+            # Every model call now reads the clock itself, to cap its own
+            # timeout at the time the turn has left — so the reads interleave:
+            # start=0, the reading's cap=1, round1 model-check=5, round1's cap
+            # =6, round1 tool-check=10, round2 model-check=50, which exceeds
+            # a 30s budget.
+            clock=ScriptedClock(0.0, 1.0, 5.0, 6.0, 10.0, 50.0),
             max_rounds=4,
             budget_seconds=30.0,
         )

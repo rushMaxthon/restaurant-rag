@@ -132,10 +132,20 @@ type AddItemOptions = {
 
 type Store = AppState & {
   restaurantId: string | undefined;
+  /**
+   * Optional features this restaurant has, from `/app-config`.
+   *
+   * Read through `hasCapability`, never directly: a missing key means a
+   * backend older than the capability, and that has to read as "available" —
+   * hiding a feature a restaurant is paying for is the worse failure.
+   */
+  capabilities: Record<string, boolean>;
   restaurantName: string | undefined;
   locations: RestaurantLocation[];
   /** The restaurant's own clock; undefined falls back to the device's. */
   timeZone: string | undefined;
+  /** What the server will put in front of a bare local phone number. */
+  phoneCountryCode: string | undefined;
   currentLocation: RestaurantLocation | undefined;
   /** The branch the order will actually be placed against. */
   orderLocation: RestaurantLocation | undefined;
@@ -409,8 +419,13 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       restaurantId: appConfigQuery.data?.restaurant_id,
+      // What this restaurant has switched on. Defaults to on where the
+      // server said nothing: a missing answer is an older backend, not a
+      // revoked feature, and hiding a working feature is the worse mistake.
+      capabilities: appConfigQuery.data?.capabilities ?? {},
       restaurantName: restaurantQuery.data?.name,
       timeZone: appConfigQuery.data?.business_timezone,
+      phoneCountryCode: appConfigQuery.data?.phone_country_code,
       locations,
       currentLocation: locations.find((l) => l.id === state.branchId),
       // What the order is priced and scheduled against.
@@ -472,4 +487,19 @@ export function useBangkokStore() {
   const store = useContext(AppStore);
   if (!store) throw new Error("Bangkok store is unavailable");
   return store;
+}
+
+/**
+ * Whether this restaurant has a feature switched on.
+ *
+ * Absent means yes. The backend sends every client-visible capability it
+ * knows, so a key that is not there is a server older than the capability —
+ * and hiding a feature a restaurant is paying for is a worse failure than
+ * briefly showing one that was just switched off.
+ */
+export function hasCapability(
+  capabilities: Record<string, boolean> | undefined,
+  key: string,
+): boolean {
+  return capabilities?.[key] ?? true;
 }

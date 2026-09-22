@@ -5,8 +5,34 @@ import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 export const API_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
 
-export const BUNDLE_ID =
-  (import.meta.env["VITE_APP_BUNDLE_ID"] as string | undefined) ?? "com.quickbite.radhedhokla";
+/**
+ * Which restaurant this storefront is.
+ *
+ * It used to be `BUNDLE_ID = "com.quickbite.bangkokbowl"`, a constant sent on
+ * every request — so one deployment served six tenants and all six of them
+ * were Bangkok Bowl. `dragon-wok.localhost` rendered Bangkok Bowl's name,
+ * logo, hero copy and menu.
+ *
+ * A mobile build can carry a constant: the app store fixed its bundle id at
+ * release, and one build is one restaurant. A web build cannot. One
+ * deployment answers every tenant's address, so the address IS the identity,
+ * and it has to be read per request rather than compiled in.
+ *
+ * Sent as a header on every call, not just `/app-config`, because identifying
+ * the brand and restricting the data are two different jobs. The backend
+ * resolves this host to an app client and narrows every query to that
+ * restaurant — see `get_app_scope`. A storefront asking for another
+ * restaurant's menu is refused server-side; picking is the client's job,
+ * refusing is the server's.
+ *
+ * Empty during server rendering, where there is no `window`. The only thing
+ * fetched before hydration is the page shell, and every data query runs on
+ * the client.
+ */
+function storefrontHost(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.host;
+}
 
 const TOKEN_KEY = "bangkok-bowl-token";
 const USER_KEY = "bangkok-bowl-user";
@@ -139,6 +165,22 @@ export type AppConfig = {
    * backend degrades to the device's zone rather than crashing the app.
    */
   business_timezone?: string;
+  /**
+   * The dialling code the server prepends to a bare local number. Read rather
+   * than assumed: the checkout used to print "+1" from a literal in its own
+   * source while the server prepended something else, so the number shown to
+   * the customer and the number stored could differ silently.
+   */
+  phone_country_code?: string;
+  /**
+   * Optional features this restaurant has, already combined with the
+   * deployment's own flags — the client is told the answer, never the rule.
+   *
+   * Optional on the type so an older backend degrades to "everything on"
+   * rather than hiding features that are in fact available: a missing field
+   * is an old server, not a revoked capability.
+   */
+  capabilities?: Record<string, boolean>;
 };
 
 export type ChatSuggestion = {
@@ -359,7 +401,17 @@ export type PaymentConfig = {
   publishable_key: string;
   stripe_enabled: boolean;
   currency: string;
+  /** What this restaurant can actually settle right now. */
   supported_methods: string[];
+  /**
+   * The PUBLIC key of each gateway, by gateway name — Razorpay Checkout
+   * cannot open without its `key_id`, and the browser has no other source
+   * for it.
+   *
+   * Public by design: every one of these is in the page source of the
+   * checkout that uses it. The matching secrets never leave the server.
+   */
+  gateway_keys?: Record<string, string>;
 };
 
 export type PaymentIntent = {
@@ -435,6 +487,8 @@ export function getToken(): string | null {
 }
 
 export function setSession(token: string, user: AuthUser) {
+  // A fresh sign-in is what makes the next expiry worth announcing again.
+  alreadyAnnounced = false;
   try {
     window.localStorage.setItem(TOKEN_KEY, token);
     window.localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -451,6 +505,39 @@ export function getStoredUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * What to do when the server stops accepting the token we hold.
+ *
+ * A module-level listener rather than a thrown special case, because
+ * `request` is not a React component and cannot navigate, and because the
+ * alternative — every caller checking for 401 — is what left the checkout
+ * telling people to check their connection.
+ */
+type SessionExpiredHandler = () => void;
+
+let onSessionExpired: SessionExpiredHandler | null = null;
+let alreadyAnnounced = false;
+
+export function setSessionExpiredHandler(handler: SessionExpiredHandler | null) {
+  onSessionExpired = handler;
+}
+
+/**
+ * Called from `request` when a token we sent comes back rejected.
+ *
+ * Latched, because a page that fires four authenticated queries at once gets
+ * four 401s, and without this it would clear the session four times and push
+ * four navigations. The latch lifts on the next successful sign-in.
+ */
+export function announceSessionExpired() {
+  if (alreadyAnnounced) {
+    return;
+  }
+  alreadyAnnounced = true;
+  clearSession();
+  onSessionExpired?.();
 }
 
 export function clearSession() {
@@ -513,10 +600,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
+  // In production a proxy writes this. In development the browser talks to
+  // the API directly, so the page sends its own address — `Host` would name
+  // the API on a cross-origin call, not the storefront.
+  const host = storefrontHost();
+  if (host) headers["X-Forwarded-Host"] = host;
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Remembered, because a 401 means something different depending on whether
+  // we actually presented a token: with one, it is dead; without one, the
+  // endpoint simply wants a sign-in, and the caller is usually asking on
+  // purpose (an anonymous cart, a guest reading the menu).
+  let sentToken: string | null = null;
   if (auth) {
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    sentToken = getToken();
+    if (sentToken) headers["Authorization"] = `Bearer ${sentToken}`;
   }
 
   const controller = new AbortController();
@@ -548,6 +645,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
+    if (response.status === 401 && sentToken) {
+      // The token we hold is no longer accepted. Drop it here rather than
+      // leaving it in storage to fail every later request the same way, and
+      // tell the app once so it can send them to sign in from wherever they
+      // were. `announceSessionExpired` is a no-op after the first call, so a
+      // page firing four queries at once does not queue four redirects.
+      announceSessionExpired();
+    }
     throw new ApiError(
       extractErrorMessage(payload, `Request failed (${response.status}).`),
       response.status,
@@ -558,7 +663,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
-  getAppConfig: () => request<AppConfig>("/app-config", { query: { bundle_id: BUNDLE_ID } }),
+  getAppConfig: () => request<AppConfig>("/app-config", { query: { host: storefrontHost() } }),
 
   getRestaurant: (restaurantId: string) =>
     request<Restaurant & { locations: RestaurantLocation[] }>(`/restaurants/${restaurantId}`),
@@ -612,6 +717,27 @@ export const api = {
 
   createPaymentIntent: (orderId: string) =>
     request<PaymentIntent>(`/orders/${orderId}/payment-intent`, { method: "POST", auth: true }),
+
+  /**
+   * Hand back what Razorpay Checkout gave the browser.
+   *
+   * Worth nothing until the server checks it: the signature is an HMAC of the
+   * order and payment ids with the restaurant's own API secret, and without
+   * that check a customer could post a made-up payment id and have their
+   * order marked paid.
+   */
+  confirmRazorpayPayment: (
+    orderId: string,
+    payload: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    },
+  ) =>
+    request<{ status: string; order_id: string }>(
+      `/payments/razorpay/confirm/${orderId}`,
+      { method: "POST", auth: true, body: payload },
+    ),
 
   getPaymentStatus: (orderId: string) =>
     request<PaymentStatus>(`/orders/${orderId}/payment-status`, { auth: true }),

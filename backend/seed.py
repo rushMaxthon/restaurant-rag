@@ -11,6 +11,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from passlib.context import CryptContext
 
 from app.config.database import SessionLocal
+from app.models.app_client_domain import AppClientDomain
+
+# The address a developer opens when they have not set up tenant subdomains.
+# `normalize_host` strips the port, so this covers 5173 and anything else.
+DEVELOPMENT_HOST = "localhost"
+# Named rather than "whichever restaurant seeds first": bare `localhost` has
+# always shown Bangkok Bowl, it carries by far the most seeded data, and the
+# customer app's own modules are built around it (`lib/bangkok-store.tsx`,
+# `components/bangkok/`). Tying the dev address to list order would move it
+# the next time somebody reorders the seed.
+DEVELOPMENT_HOST_RESTAURANT_SLUG = "bangkok-bowl"
 from app.services.app_clients import (
     create_app_client,
     ensure_default_app_client,
@@ -20,6 +31,7 @@ from app.services.app_clients import (
 )
 from app.models.chat_history import ChatHistory
 from app.models.enums import (
+    AppClientDomainKind,
     ChatMessageRole,
     LocationDayOfWeek,
     OrderStatus,
@@ -1313,6 +1325,101 @@ def ensure_restaurant_app_client(db, *, restaurant: Restaurant) -> tuple[object,
     return app_client, True
 
 
+
+def ensure_tenant_customer(db, *, restaurant: Restaurant, default_pwd: str) -> tuple[User | None, bool]:
+    """A customer who can actually sign in on this restaurant's storefront.
+
+    Customer identity is per app client — that is the whole point of
+    `docs/per-app-identity.md`, and a partial unique index on
+    `(app_client_id, lower(email))` enforces it. The seeded
+    `customer1@example.com` belongs to the MARKETPLACE client, so it cannot
+    sign in at `dragon-wok.localhost` however correct its password is. Before
+    storefronts resolved by host that never came up: every address served the
+    marketplace, so the marketplace account worked everywhere.
+
+    The address IS the account boundary now, so each tenant needs its own
+    test login or nobody can sign in anywhere to check an order.
+
+    Named for the tenant's app key rather than numbered, so
+    `dragon_wok@example.com` says which storefront it belongs to — there is no
+    other way to tell two accounts with the same shape apart.
+    """
+
+    app_client = get_app_client_for_restaurant(db, restaurant_id=restaurant.id)
+    if app_client is None:
+        return None, False
+
+    email = f"{app_client.key}@example.com"
+    existing = (
+        db.query(User)
+        .filter(User.email == email, User.app_client_id == app_client.id)
+        .first()
+    )
+    if existing is not None:
+        return existing, False
+
+    user = User(
+        id=uuid.uuid4(),
+        email=email,
+        app_client_id=app_client.id,
+        full_name=f"{restaurant.name} Customer",
+        # Distinct per tenant: phone is unique per app client too, and a
+        # shared number would collide the moment two of these seed.
+        phone_number=f"9{abs(hash(app_client.key)) % 1000000000:09d}",
+        hashed_password=default_pwd,
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_verified=True,
+        default_address=f"1 Test Street, {restaurant.city}",
+    )
+    db.add(user)
+    return user, True
+
+
+def ensure_development_host(db, *, restaurant: Restaurant) -> bool:
+    """Make bare `localhost` a real tenant address.
+
+    Every storefront now identifies itself by the address it was opened on,
+    because one deployment serves all of them and the host is the only thing
+    separating one request from another. That works out of the box for
+    `dragon-wok.localhost`, which migration `0062` and `create_app_client`
+    issue — but not for plain `http://localhost:5173`, which belongs to nobody
+    and would answer 404 at `/app-config`.
+
+    Rather than give the web app a fallback constant — the exact thing being
+    removed, and the reason every tenant's storefront served Bangkok Bowl —
+    the bare host becomes an ordinary domain row like any other. Development
+    then exercises the same lookup production does, instead of a special case
+    that only development takes.
+
+    CUSTOM rather than PLATFORM_SUBDOMAIN because it is not a subdomain this
+    platform issued, and marked verified because there is nothing to prove
+    about an address that only resolves on the machine running this seed.
+    Never primary: the restaurant's own subdomain is the address to put in a
+    link.
+    """
+
+    existing = db.query(AppClientDomain).filter(AppClientDomain.host == DEVELOPMENT_HOST).first()
+    if existing is not None:
+        return False
+
+    app_client = get_app_client_for_restaurant(db, restaurant_id=restaurant.id)
+    if app_client is None:
+        return False
+
+    db.add(
+        AppClientDomain(
+            app_client_id=app_client.id,
+            host=DEVELOPMENT_HOST,
+            kind=AppClientDomainKind.CUSTOM,
+            is_verified=True,
+            is_active=True,
+            is_primary=False,
+        )
+    )
+    return True
+
+
 def ensure_primary_location(
     db,
     *,
@@ -2178,6 +2285,22 @@ def run_seed():
         for restaurant in restaurants:
             _, app_client_created = ensure_restaurant_app_client(db, restaurant=restaurant)
             created_app_clients += int(app_client_created)
+        # One restaurant also answers on bare `localhost`, so a developer who
+        # has not set up subdomains still gets a working storefront through
+        # the same host lookup every tenant uses.
+        development_restaurant = restaurant_by_slug.get(DEVELOPMENT_HOST_RESTAURANT_SLUG)
+        if development_restaurant is not None:
+            ensure_development_host(db, restaurant=development_restaurant)
+        db.commit()
+
+        # One signable customer per storefront. The marketplace customers above
+        # cannot sign in on a tenant's own address — see the docstring.
+        created_tenant_customers = 0
+        for restaurant in restaurants:
+            _, tenant_customer_created = ensure_tenant_customer(
+                db, restaurant=restaurant, default_pwd=default_pwd
+            )
+            created_tenant_customers += int(tenant_customer_created)
         db.commit()
 
         print("Creating restaurant locations and branch-wise menu items...")

@@ -1,3 +1,6 @@
+import { sanitizeRedirect } from "@/lib/require-auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   createContext,
   useCallback,
@@ -15,6 +18,7 @@ import {
   getStoredUser,
   getToken,
   setSession,
+  setSessionExpiredHandler,
   type AuthUser,
 } from "@/lib/api";
 import { clearGuestPreferences, readGuestPreferences } from "@/lib/guest-preferences";
@@ -125,6 +129,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // effect below restores the real session in the same frame.
   const [state, setState] = useState<AuthState>({ user: null, token: null });
   const [ready, setReady] = useState(false);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  /**
+   * One reaction to a token the server has stopped accepting, for the whole
+   * app.
+   *
+   * Nothing used to react at all: the dead token stayed in storage and every
+   * page turned its own 401 into whatever message it had nearest to hand —
+   * the checkout's was "Check your connection and try again", which sends
+   * somebody to look at their wifi because their sign-in lapsed.
+   *
+   * `api.ts` notices (it is the one seam every request passes through) and
+   * calls this. Three things have to happen and none of them can be left to
+   * the page that happened to notice: the signed-in state goes, the cached
+   * answers to authenticated queries go — orders, profile, favourites are all
+   * still sitting in the query cache and would render to the next person on
+   * this device — and the visitor is taken to sign in from where they were.
+   */
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setState({ user: null, token: null });
+      queryClient.clear();
+      const here = `${window.location.pathname}${window.location.search}`;
+      const redirect = sanitizeRedirect(here);
+      navigate({
+        to: "/login",
+        // `redirect` is always present in the shape, undefined when there is
+        // nowhere sensible to go back to — /login and /register sanitize to
+        // undefined so signing in does not bounce them back to a sign-in.
+        search: { redirect, expired: true },
+        replace: true,
+      });
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [navigate, queryClient]);
 
   useIsomorphicLayoutEffect(() => {
     const user = getStoredUser();

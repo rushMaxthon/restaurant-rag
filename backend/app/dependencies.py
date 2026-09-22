@@ -24,30 +24,47 @@ from app.services.app_clients import AppScope, resolve_app_scope, resolve_identi
 
 APP_BUNDLE_ID_HEADER = "X-App-Bundle-Id"
 APP_PLATFORM_HEADER = "X-App-Platform"
+# Written by the proxy in production and sent by the storefront itself in
+# development, where there is no proxy between the browser and the API. Never
+# read from `Host`, which on a cross-origin call names the API rather than the
+# storefront.
+FORWARDED_HOST_HEADER = "X-Forwarded-Host"
 
 
 def get_app_scope(
     db: Annotated[Session, Depends(get_db)],
     x_app_bundle_id: Annotated[str | None, Header(alias=APP_BUNDLE_ID_HEADER)] = None,
     x_app_platform: Annotated[str | None, Header(alias=APP_PLATFORM_HEADER)] = None,
+    x_forwarded_host: Annotated[str | None, Header(alias=FORWARDED_HOST_HEADER)] = None,
 ) -> AppScope:
     """Resolve which restaurants the calling app may see.
 
     Branded mobile builds identify themselves with `X-App-Bundle-Id` (and
-    optionally `X-App-Platform`). Callers that send neither — the customer web
-    app, the admin panel, curl — resolve to the unscoped marketplace scope, so
-    adding this dependency to an endpoint changes nothing for them.
+    optionally `X-App-Platform`). A tenant's storefront identifies itself with
+    the address it was opened on, forwarded here as `X-Forwarded-Host` — one
+    deployment serves every storefront, so the host is the only thing that
+    separates them.
 
-    An unknown bundle ID degrades to the unscoped scope rather than breaking
-    the request. A suspended or offboarded app, however, is refused outright:
-    `/app-config` already rejects it at startup, so letting a warm app keep
-    working from a cached config would make suspension ineffective.
+    Callers that send neither — the admin panel, curl, the marketplace app —
+    resolve to the unscoped marketplace scope, so adding this dependency to an
+    endpoint changes nothing for them.
+
+    An unknown bundle ID or an unclaimed host degrades to the unscoped scope
+    rather than breaking the request. A suspended or offboarded app, however,
+    is refused outright: `/app-config` already rejects it at startup, so
+    letting a warm app keep working from a cached config would make suspension
+    ineffective.
     """
+
+    # A proxy chain writes a comma-separated list; the first entry is the
+    # address the browser actually asked for. Same reading as `/app-config`.
+    forwarded = (x_forwarded_host or "").split(",")[0]
 
     scope = resolve_app_scope(
         db,
         bundle_id=x_app_bundle_id,
         platform_value=x_app_platform,
+        host=forwarded,
     )
 
     if scope.status is not None and scope.status != AppClientStatus.ACTIVE:

@@ -30,6 +30,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
+from app.services.currency import format_amount
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -150,7 +151,28 @@ def inbound_messages(payload: Any) -> list[InboundMessage]:
     return found
 
 
-def render_reply(reply: str, suggestions: list[Any] | None = None) -> str:
+def _priced(value: Any, currency: str | None) -> str:
+    """One suggestion's price, in the money this restaurant charges.
+
+    `currency` is the CHANNEL's, not the item's: this number answers for one
+    restaurant at a time (`whatsapp_restaurant_id`), so every dish it can
+    suggest is priced in the same money. When a number can serve several
+    restaurants — the per-tenant channels in section 3 of the plan — this has
+    to become the item's own currency, and the item already carries a
+    `restaurant_id` to find it with.
+    """
+
+    try:
+        return format_amount(float(value), currency)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def render_reply(
+    reply: str,
+    suggestions: list[Any] | None = None,
+    currency: str | None = None,
+) -> str:
     """The assistant's answer as one WhatsApp message.
 
     The web concierge returns dish cards — an image, a name, a price, a button.
@@ -171,7 +193,10 @@ def render_reply(reply: str, suggestions: list[Any] | None = None) -> str:
         price = getattr(item, "price", None) or (
             item.get("price") if isinstance(item, dict) else None
         )
-        parts.append(f"• {name}" + (f" — {price}" if price else ""))
+        # With a symbol, or not at all. This was `f" — {price}"`, which put a
+        # bare "185.00" under a dish on a rupee menu — a number with no unit,
+        # which every reader silently supplies from their own expectations.
+        parts.append(f"• {name}" + (f" — {_priced(price, currency)}" if price else ""))
 
     body = "\n".join(part for part in parts if part).strip()
     limit = int(settings.whatsapp_max_body_chars)
@@ -180,7 +205,11 @@ def render_reply(reply: str, suggestions: list[Any] | None = None) -> str:
     return body
 
 
-_MONEY_RE = re.compile(r"(?<![*\w])(\$\d[\d,]*\.\d{2})(?![*\w])")
+# Any currency's symbol, not only the dollar this started with, and the
+# fractional part optional: a rupee amount — and a whole-rupee one especially,
+# since INR is written without paise — was the one figure in a message that
+# never got bolded.
+_MONEY_RE = re.compile(r"(?<![*\w])([$₹£€]|د\.إ)(\d[\d,]*(?:\.\d{2})?)(?![*\w])")
 _ADDED_RE = re.compile(r"^(Added \d+ x )(?!\*)(.+?)( to your order\.)", re.M)
 _PLACED_FOR_RE = re.compile(r"(placed for )([A-Z][a-z]{2} \d\d:\d\d)")
 _LABEL_RE = re.compile(
@@ -211,7 +240,7 @@ def format_for_whatsapp(text: str) -> str:
     out = _ADDED_RE.sub(r"\1*\2*\3", out)
     out = _PLACED_FOR_RE.sub(r"\1*\2*", out)
     out = _LABEL_RE.sub(r"*\1:*", out)
-    out = _MONEY_RE.sub(r"*\1*", out)
+    out = _MONEY_RE.sub(r"*\1\2*", out)
     # "*Total paid:* *$12.00*" reads as one bold run on the phone anyway;
     # one span is the cleaner markup and survives a second pass unchanged.
     out = out.replace("* *", " ")

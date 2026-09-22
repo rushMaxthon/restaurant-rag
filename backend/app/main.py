@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import logging
-import threading
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import api_router
 from app.config import get_settings
-from app.services.embeddings import warm_embedding_provider
+from app.services.model_warmup import start_model_warm_up
 
 settings = get_settings()
 
@@ -24,21 +24,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Pull the embedding model into memory before the first customer arrives.
+    """Pull the models into memory before the first customer arrives.
 
-    On a thread, not inline: a cold load measured 23s here, and blocking the
-    event loop for that long would leave the API refusing connections while it
-    looked like a hang. Health checks and every non-chat route work fine without
-    the model, so there is no reason to make them wait for it.
+    This used to warm the embedding model alone, once. It now warms the
+    generation model too — the expensive one, 5.6GB against 274MB — and keeps
+    warming both, because `keep_alive` is a window that a quiet hour closes just
+    as surely as a restart does. See `services/model_warmup` for the 54-second
+    turn that made the difference measurable.
 
-    Daemon, so a slow or unreachable Ollama cannot hold up shutdown.
+    Off the event loop and daemonised, both for the same reasons as before: a
+    cold load takes tens of seconds, every non-chat route works without the
+    models, and a slow Ollama must not hold up shutdown.
     """
 
-    threading.Thread(
-        target=warm_embedding_provider,
-        name="embedding-warmup",
-        daemon=True,
-    ).start()
+    start_model_warm_up(name="model-warmup-api")
     yield
 
 
@@ -49,10 +48,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Every API response left this server uncompressed. One branch's menu is
+# 164 KB of JSON for 136 dishes, fetched by the home page and the menu page,
+# and a storefront customer is on a phone on mobile data — so this is the
+# cheapest performance change available to this codebase.
+#
+# `minimum_size` is above the size of the small JSON this API mostly returns:
+# compressing a 300-byte response costs CPU on both ends and saves nothing.
+#
+# The two `text/event-stream` endpoints are NOT compressed, and they opt out
+# themselves by declaring `Content-Encoding: identity` — Starlette skips any
+# response that already names an encoding. Compressing a stream would buffer
+# the tokens it exists to deliver one at a time.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.backend_cors_origins_list,
-    allow_origin_regex=settings.backend_cors_origin_regex or None,
+    # Includes every tenant subdomain of `platform_domain`, so onboarding a
+    # restaurant does not need a redeploy to let its storefront call the API.
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

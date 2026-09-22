@@ -34,10 +34,12 @@ library. Reaching for react-router, redux or a UI kit breaks the house style
 there.
 
 **`frontend-customer` no longer follows that rule.** It was replaced wholesale
-on 2026-09-13 with a Lovable-generated TanStack Start app: file-based routing,
-Tailwind, shadcn/Radix, TanStack Query, ~60 runtime deps, and SSR via nitro
-(`vite.config.ts` wraps `@lovable.dev/vite-tanstack-config`, which already
-supplies the plugin set — adding those plugins by hand breaks the build).
+on 2026-09-13 with a generated TanStack Start app: file-based routing,
+Tailwind, shadcn/Radix, TanStack Query, ~60 runtime deps, and SSR via nitro.
+The generator's own wrapper around the plugin set was removed on 2026-09-20 —
+`vite.config.ts` now composes the plugins itself and explains each one. Read it
+before changing it: the order matters, and its `importProtection` override is
+what allows `lib/storefront.server.ts` to be imported from a route.
 Everything below about hand-written CSS, `AppStore.tsx` and the token files
 describes the app that was REPLACED; treat it as history when working in
 `frontend-customer`, and as current when working in `frontend-admin`.
@@ -311,6 +313,7 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 alembic upgrade head
 python seed.py
 celery -A app.config.celery:celery_app worker --loglevel=info -Q embeddings,notifications,default,analytics
+# On Windows add: --pool=solo --logfile logs/celery.log   (see the note below)
 python -m unittest discover -s tests      # tests are unittest-based, not pytest
 python -m compileall app alembic          # the repo's usual syntax check
 
@@ -366,6 +369,14 @@ by default.
   backend warms the embedding model at startup — "Embedding model warm:
   ollama:nomic-embed-text:768" in the log means it reached it. So generated
   prose and pgvector retrieval both work here, unlike on the Windows box.
+  `enable_ordering_agent` is on, so the customer chat and the WhatsApp agent
+  answer for real rather than falling through to templates — a turn takes
+  roughly 3-8 seconds, which is why several sessions mistook a slow turn for a
+  hang. `backend/scripts/dryrun_whatsapp.py` replays scripted conversations
+  through the whole live path with only Meta's send stubbed, and is the fastest
+  way to see what a customer actually gets;
+  `backend/scripts/whatsapp_healthcheck.py` checks the Meta half read-only
+  (token, number, quality) without messaging anybody.
 - **Redis**: Homebrew service `redis`, `redis-cli ping` → PONG. Chat session
   memory, the response cache and Celery all work.
 - **Celery**: no worker or beat runs by default. Tasks enqueue to Redis and sit
@@ -385,13 +396,14 @@ by default.
   `backend/.env`. 48 public tables. To confirm what a running server is actually
   talking to, look at its established connections rather than the file: an
   ap-south-1 address on 5432 is Supabase.
-  - **`alembic` works against it again as of 2026-09-21.** It did not before:
+  - **`alembic` works against it.** It did not before 2026-09-21:
     `alembic current` failed with *"Can't locate revision
     '0067_restaurant_payment_accounts'"*, because someone migrated the shared
-    database from work never pushed here. That lineage has now been rebuilt
-    by introspection as revisions 0065-0068b — see "Known rough edges" below
-    before touching migrations, and note that the reconstructions are exactly
-    that.
+    database from work never pushed here. That lineage was rebuilt by
+    introspection as a bridge, and then on 2026-09-22 the V2 merge brought the
+    real migrations and the bridge was deleted — so the chain here is now the
+    original one rather than a reconstruction of it. See "Known rough edges"
+    below before touching migrations.
   - Use the **session pooler** host `aws-0-ap-south-1.pooler.supabase.com:5432`,
     not `db.<ref>.supabase.co`. The direct host is IPv6-only, and repeated failed
     auth there got this machine's IPv6 address **banned** by Supabase (dashboard
@@ -483,52 +495,80 @@ Kept because the notes are hard-won, not because they apply here.
   and its MSI fails with 1603: the custom action
   `ca_SilentCheckIfPortIsAvailable` errors even though 6379 is free. Do not
   spend time on it.
-- **Ollama**: not installed there, so every AI path fell back to deterministic
-  templates — the apps worked, generated prose did not.
+- **Celery**: `--pool=solo` there too, for a different reason than on macOS —
+  the prefork pool's children crash-loop on `PermissionError: [WinError 5]`
+  from `billiard/synchronize.py` while the parent keeps acking tasks, so
+  nothing runs and nothing is logged. `app/config/celery.py` forces
+  `worker_pool="solo"` on win32; Docker and Render are Linux and keep prefork.
+  - **Always start the worker with `--logfile`.** This cost an afternoon: a
+    WhatsApp message arrived, the webhook returned 200, the task left the
+    queue and no reply was sent — and `inspect.ping`, `active_queues` and the
+    queue depth all said the worker was healthy and idle. The traceback was
+    going to a hidden window's stderr.
+- **Ollama**: not installed there at first, so every AI path fell back to
+  deterministic templates — the apps worked, generated prose did not. It was
+  installed later (`qwen3:8b` + `nomic-embed-text`), which is worth knowing
+  because several sessions tested the AI paths by scripting the model seam
+  instead of running it.
 - Git Bash: use forward slashes; working directory `F:\restaurant-rag`.
 
 ## Known rough edges in this checkout
 
-- **The migration chain was reconciled with the shared database on
-  2026-09-21, and `alembic` works against Supabase again.** It did not before:
-  the database was stamped with a revision that existed in no branch here, so
-  `alembic current` and `alembic upgrade` both failed outright and nothing
-  could be deployed.
+- **The reconstructed 0065-0068 are gone: V2 brought the real ones on
+  2026-09-22.** The reconstruction note used to end "if the real 0065-0068
+  are ever pushed, delete the reconstructions and keep theirs". That happened,
+  and that is what was done.
 
-  **Supabase is now stamped `0070_channel_connections`** — the reconciled
-  chain was applied to it on 2026-09-21 and `alembic upgrade head` is a
-  no-op there until the next migration.
+  The shared Supabase database carried three tables and six columns from a
+  lineage that existed in no branch here, and the stamp named a revision no
+  file defined, so `alembic current` and `alembic upgrade` both failed
+  outright. On 2026-09-21 that lineage was rebuilt by introspection as bridge
+  revisions so the chain could at least be walked. On 2026-09-22 the V2 merge
+  brought the originals, and the bridges were deleted:
 
-  What was there before that, read off the live schema rather than assumed:
-  the database was stamped **`0068_payment_transaction_payment_id`**, not the
-  `0067_restaurant_payment_accounts` previously recorded here, and the
-  unpushed lineage had added three tables (`app_client_push_credentials`,
-  `restaurant_capabilities`, `restaurant_payment_accounts`), one column
-  (`payment_transactions.provider_payment_id`) and five more columns
-  (`app_clients.status_changed_at` / `status_changed_by_user_id` /
-  `status_note`, `restaurants.currency` / `storefront`). **None of the five
-  columns or three tables appears in any model here**, so nothing in this
-  codebase reads them.
+  | deleted (reconstruction) | replaced by (V2, real) |
+  |---|---|
+  | `0066_restaurant_capabilities` | `0066_restaurant_capabilities` |
+  | `0067_restaurant_payment_accounts` | `0067_restaurant_payment_accounts` |
+  | `0068_payment_transaction_payment_id` | `0068_payment_transaction_payment_id` |
+  | `0068b_orphan_columns` | `0063_app_client_lifecycle_note`, `0064_restaurant_storefront`, `0065_restaurant_currency` |
+  | `0065_app_client_push_credentials` | nothing — `0032_app_clients` already created that table |
 
-  Those changes were rebuilt by introspection as `0065`, `0066`, `0067`,
-  `0068_payment_transaction_payment_id` and `0068b_orphan_columns`, each
-  creating its object only if absent — so they are no-ops against Supabase and
-  a catch-up on a fresh database. Our own two marketing migrations were
-  renumbered onto the end (`0069_campaign_recipients`,
-  `0070_channel_connections`); renumbering was safe because nothing was ever
-  stamped with the old ids, which reached Supabase by having their `upgrade()`
-  run by hand.
+  That last row is the one worth remembering: the introspection read
+  `app_client_push_credentials` as part of the unpushed lineage, but `0032`
+  has created it all along. A table being present in the database is not
+  evidence that the migration you are looking at is the one that made it.
 
-  Rehearsed against a throwaway copy stamped identically, then applied for
-  real: 48 tables to 49, `orders` 33 columns to 34, all 416 orders intact,
-  nothing dropped. A database built from base now diffs clean against
-  Supabase.
+  V2's `0068` is also strictly better than the bridge it replaced — it adds
+  `ix_payment_transactions_provider_payment_id`, which a refund webhook needs
+  to match a payment back to an order.
 
-  What this does **not** fix: those five revisions are reconstructions, and
-  they cannot recover intent or anything that left no trace in the schema. **If
-  the real 0065-0068 are ever pushed, alembic will refuse to start on the
-  duplicate revision ids** — loudly, which is the point. Delete the
-  reconstructions at that moment and keep theirs. New migrations take `0071+`.
+  **The chain is now single-headed and linear**, 68 revisions from
+  `0001_initial_schema` to `0070_channel_connections`, with the two branches
+  joined at `0062_app_client_domains`:
+
+  ```
+  0062_app_client_domains
+    -> 0063_app_client_lifecycle_note -> 0064_restaurant_storefront
+    -> 0065_restaurant_currency -> 0066_restaurant_capabilities
+    -> 0067_restaurant_payment_accounts -> 0068_payment_transaction_payment_id
+    -> 0063_marketing_consent -> 0064_marketing_campaign_fields
+    -> 0069_campaign_recipients -> 0070_channel_connections
+  ```
+
+  **`0063_marketing_consent` and `0064_marketing_campaign_fields` run after
+  `0068`, despite their numbers.** They were re-pointed off the fork rather
+  than renamed, because renaming would rewrite revision ids that
+  `0069`/`0070` name — and `0070_channel_connections` is the id Supabase is
+  stamped with, so a rename there would reproduce the exact unresolvable-stamp
+  failure this whole exercise existed to fix. Read the chain from
+  `down_revision`, never from the filename.
+
+  **Supabase is still stamped `0070_channel_connections`** and that stamp
+  still resolves, so `alembic upgrade head` remains a no-op there. Nothing
+  re-runs: every object V2's 0063-0068 create already exists, and each of
+  those migrations is guarded to return early when it does. New migrations
+  take `0071+`.
 
 - Migration numbering also skips `0033`-`0035` (jumps `0032` to `0036`).
   Intentional or not, do not "fix" it; the chain is defined by `down_revision`.
@@ -542,6 +582,12 @@ Kept because the notes are hard-won, not because they apply here.
 - `readme.md` and several docs cross-link with absolute paths
   (`/Users/imac/Desktop/restaurant-rag/...`) that do not match this checkout's
   location (`/Users/imac/data/restaurant-rag`).
+- `backend/celerybeat-schedule.{bak,dat,dir}` are tracked as of the V2 merge.
+  They are Celery beat's local shelve of when each periodic task last ran —
+  runtime state, regenerated on every beat start, and committed by accident.
+  Same class of problem as the tracked `.pyc` files below, and the same fix
+  (`git rm --cached` plus a `.gitignore` line); left alone here because
+  deleting files V2 committed is not a merge decision.
 - ~283 `*.cpython-313.pyc` files are tracked in git and churn on every run.
   `git rm -r --cached` is the fix; nobody has taken the decision.
 

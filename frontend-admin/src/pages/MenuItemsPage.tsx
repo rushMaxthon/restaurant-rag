@@ -10,8 +10,9 @@ import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable
 import { StatusPill } from "../components/StatusPill";
 import { MENU_ITEMS_ORIGIN } from "./MenuItemEditorPage";
 import { readWorkspaceSettings } from "../services/workspaceSettings";
-import { ApiError, api, formatCurrency } from "../services/api";
+import { ApiError, api } from "../services/api";
 import { pluralize } from "../services/format";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -99,6 +100,8 @@ export function MenuItemsPage({
   onNavigate,
   onToast,
 }: MenuItemsPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const scope = tokenScope(token);
   const menuItemsKey = buildMenuItemsCacheKey(scope, isAdmin, restaurantId ?? null);
@@ -347,7 +350,7 @@ export function MenuItemsPage({
     {
       id: "price",
       header: "Price",
-      render: (item) => formatCurrency(item.price),
+      render: (item) => money.format(item.price, item.restaurantId),
       mobileLabel: "Price",
       align: "right",
     },

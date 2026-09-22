@@ -165,7 +165,7 @@ def abandon(db: Session, order: Order) -> bool:
         RETRYABLE_PAYMENT_STATUSES,
         _latest_transaction,
         _reconcile_with_provider,
-        resolve_provider,
+        provider_for,
     )
 
     _reconcile_with_provider(db, order)
@@ -174,7 +174,9 @@ def abandon(db: Session, order: Order) -> bool:
 
     transaction = _latest_transaction(db, order.id)
     if transaction is not None and transaction.status in RETRYABLE_PAYMENT_STATUSES:
-        provider = resolve_provider(PaymentMethod.CARD)
+        provider = provider_for(
+            db, restaurant_id=order.restaurant_id, method=PaymentMethod.CARD
+        )
         if provider is not None and provider.is_configured():
             try:
                 provider.cancel_intent(transaction.provider_intent_id)

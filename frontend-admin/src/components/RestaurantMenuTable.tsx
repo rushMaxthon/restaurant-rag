@@ -1,12 +1,13 @@
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { MenuItem, RestaurantDetail, UserRole } from "../types/app";
-import { ApiError, api, formatCurrency } from "../services/api";
+import { ApiError, api } from "../services/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DataToolbar } from "./DataToolbar";
 import { Pagination } from "./Pagination";
 import { ResponsiveTable, type TableColumn } from "./ResponsiveTable";
 import { StatusPill } from "./StatusPill";
+import { useMoney } from '../hooks/useMoney';
 
 interface RestaurantMenuTableProps {
   token: string;
@@ -39,6 +40,8 @@ export function RestaurantMenuTable({
   onNavigate,
   onToast,
 }: RestaurantMenuTableProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -148,7 +151,7 @@ export function RestaurantMenuTable({
     {
       id: "price",
       header: "Price",
-      render: (item) => formatCurrency(item.price),
+      render: (item) => money.format(item.price, item.restaurant_id),
       mobileLabel: "Price",
       align: "right",
     },

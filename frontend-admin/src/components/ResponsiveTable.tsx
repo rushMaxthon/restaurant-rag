@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { TableActions, type TableAction } from "./TableActions";
 import { EmptyPanel } from "./EmptyPanel";
@@ -92,8 +93,22 @@ export function ResponsiveTable<Row>({
         type="button"
       >
         {column.header}
+        {/* Drawn rather than typed. These were the characters ↑ ↓ ↕, which sit
+            on their own baseline, come from whatever font happens to carry
+            them, and rendered a size larger than the 11px header they belong
+            to. The inactive one is dimmed until the header is hovered or
+            focused, so twelve tables stop advertising every sortable column
+            at once. */}
         <span aria-hidden="true" className="admin-table__sort-arrow">
-          {isActive ? (sortState?.direction === "asc" ? "↑" : "↓") : "↕"}
+          {isActive ? (
+            sortState?.direction === "asc" ? (
+              <ArrowUp size={12} strokeWidth={2.6} />
+            ) : (
+              <ArrowDown size={12} strokeWidth={2.6} />
+            )
+          ) : (
+            <ChevronsUpDown size={12} strokeWidth={2.4} />
+          )}
         </span>
       </button>
     );

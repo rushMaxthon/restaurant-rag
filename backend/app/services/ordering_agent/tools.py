@@ -1147,6 +1147,132 @@ def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
     return [c for c in rows if c]
 
 
+#: A section is a complete thing and its size belongs to the menu, not to
+#: whoever asked. Still bounded, because one pathological category should not
+#: become a thousand-line message: past this the caller says how many more.
+WHOLE_SECTION_CAP = 40
+
+#: Words that carry no meaning when deciding whether a phrase names a section.
+#: Not a vocabulary — every one of these is grammar, and the SECTION names
+#: themselves come from the menu, so no word here decides what anything means.
+_SECTION_FILLER = {
+    "and", "the", "any", "some", "you", "have", "got", "show", "see", "want",
+    "like", "give", "for", "with", "your", "our", "all", "what", "whats",
+    "which", "there", "that", "this", "please", "menu", "list", "options",
+    "option", "item", "items", "dish", "dishes", "food", "section", "category",
+    "order", "get", "can", "could", "would", "about", "tell", "know", "need",
+}
+
+
+def _section_words(text: str) -> frozenset[str]:
+    """The words of a phrase that decide whether it names a section.
+
+    Singularised the same way `dishes_to_show` does it, so "noodles" reaches
+    the "Noodles" section and "soups" reaches "Soup".
+    """
+
+    words = []
+    for raw in "".join(c if c.isalnum() or c.isspace() else " " for c in text.lower()).split():
+        if len(raw) < 3 or raw in _SECTION_FILLER:
+            continue
+        words.append(raw[:-1] if len(raw) > 4 and raw.endswith("s") and not raw.endswith("ss") else raw)
+    return frozenset(words)
+
+
+def category_named_exactly(phrase: str, categories: list[str]) -> str | None:
+    """The section this phrase names, or None if it names none of them.
+
+    A word SET, not a substring. The difference is the whole rule:
+
+    * "Corn Dhokla" names the nine-dish section of that name. Dish-name
+      matching found four of those nine — a strict subset — and because it
+      found SOMETHING the section tier below it never ran, so five dishes were
+      invisible to anyone who asked for them by section.
+    * "Manchow Soup" names a dish, and its words are not the Soup section's
+      words. Reading it as the section would answer with all three soups and
+      throw away the word that said which one.
+    * "dhokla" is a word inside one section's name and inside dish names in
+      several others. Reading it as "Corn Dhokla" would hide the rest of the
+      dhoklas this branch sells, so a partial word names nothing.
+    * "taste" belongs to four sections at this branch. Choosing one would be a
+      guess, and nothing here guesses.
+
+    The sections come from the menu, so a restaurant that adds a Pizza section
+    answers "pizza" with its pizzas the moment it does, with no code change.
+    """
+
+    wanted = _section_words(phrase)
+    if not wanted:
+        return None
+    matches = [
+        category
+        for category in categories
+        if category and _section_words(category) == wanted
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+#: How many sections fit in a message somebody reads on a phone. Past this the
+#: offer says how many more there are, because stopping silently is a claim
+#: that the menu ends there.
+_SECTIONS_OFFERED = 18
+
+
+def branch_sections(db: Session, scope: OrderingScope) -> list[str]:
+    """This branch's section names, for when there is nothing else to say.
+
+    Deliberately NOT used by `dishes_to_show`: which section a customer means
+    is decided by the reading, from this same list, and re-fetching it on every
+    menu question would be a query per turn to rediscover something already
+    known. This is the give-up path, which is rare and has nothing else left.
+    """
+
+    try:
+        rows = db.scalars(
+            select(MenuItem.category)
+            .where(
+                MenuItem.restaurant_location_id == scope.restaurant_location_id,
+                MenuItem.is_available.is_(True),
+                MenuItem.category.is_not(None),
+            )
+            .distinct()
+        )
+        return [section for section in rows if section]
+    except Exception:  # noqa: BLE001
+        # This is already the last thing the turn has to say. A database that
+        # will not answer must cost the customer a better sentence, never the
+        # reply itself — and the caller keeps its own words when this is empty.
+        logger.warning("Could not read this branch's sections for the give-up reply", exc_info=True)
+        return []
+
+
+def offer_of_sections(sections: list[str | None]) -> str | None:
+    """What we serve, as a question the customer can actually answer.
+
+    The sentence this replaces asked them to try again unaided — "tell me the
+    dish you would like" — to somebody who had just sent something we could not
+    read. Offering 136 dish names instead would be no better; offering the 21
+    sections is what a restaurant hands across the table, and for the same
+    reason: nobody holds 136 names in their head.
+
+    None when the menu has no sections, so the caller keeps its own words
+    rather than introducing a list with nothing in it.
+    """
+
+    seen: list[str] = []
+    for section in sections:
+        name = (section or "").strip()
+        if name and name not in seen:
+            seen.append(name)
+    if not seen:
+        return None
+    shown = seen[:_SECTIONS_OFFERED]
+    listed = ", ".join(shown)
+    if len(seen) > len(shown):
+        listed = f"{listed} and {len(seen) - len(shown)} more"
+    return f"Here is what we serve: {listed}. Which of those would you like to see?"
+
+
 def dishes_to_show(
     db: Session,
     scope: OrderingScope,
@@ -1155,8 +1281,26 @@ def dishes_to_show(
     is_veg: bool | None = None,
     limit: int = 8,
     category: str | None = None,
+    max_price: Decimal | None = None,
+    report: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Dishes to read out to a customer: name, price, and whether veg.
+
+    `report`, when given, is filled with `found_by`: "named" when the words
+    matched dish names, "category" a section, "close" a shorter form of the
+    phrase, "budget" when a price ceiling is what selected them, "over_budget"
+    when nothing came under that ceiling, and "fallback" when nothing matched
+    and these are simply the branch's menu. The caller needs it to write a
+    true sentence above the list — "Here is what we have" over the whole menu,
+    to somebody who asked for a dish this branch does not sell, reads as
+    having been ignored.
+
+    `max_price` is a ceiling, and it narrows the BASE query rather than being
+    a search of its own: a customer who says "paneer under 200" means both
+    things at once, and every branch below — by name, by section, by a shorter
+    phrase, or the whole menu — inherits it for free. It arrives as a number
+    the reading extracted, never parsed out of the words here, so no list of
+    words like "under" or "cheap" decides what a message meant.
 
     By name when the word they used is a dish's word ("pizza"), and by the
     branch's whole menu when it is not ("the menu", "something vegetarian").
@@ -1166,12 +1310,17 @@ def dishes_to_show(
     extras rather than the word the customer said.
     """
 
-    stmt = select(MenuItem).where(
+    at_this_branch = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
         MenuItem.is_available.is_(True),
     )
     if is_veg is not None:
-        stmt = stmt.where(MenuItem.is_veg.is_(is_veg))
+        at_this_branch = at_this_branch.where(MenuItem.is_veg.is_(is_veg))
+    # Kept separately from `stmt` so the over-budget answer below can reach
+    # the menu the customer priced themselves out of.
+    stmt = at_this_branch
+    if max_price is not None:
+        stmt = stmt.where(MenuItem.price <= max_price)
     words = [
         # Singular, because a menu is written in the singular and customers
         # do not order one pizza: "vegetarian pizzas" matched no dish called
@@ -1181,6 +1330,35 @@ def dishes_to_show(
         for w in "".join(c if c.isalnum() or c.isspace() else " " for c in phrase.lower()).split()
         if len(w) > 2
     ]
+    # A section named exactly, BEFORE dish names — because dish-name matching
+    # answers a section with a strict subset of it and then stops. "Corn
+    # Dhokla" matched four dish names out of that section's nine, and the
+    # section tier further down never ran, so five dishes this branch sells
+    # were invisible to anyone who asked for them by name of section. Read out
+    # complete, because a section's size is a property of the menu and not of
+    # how many rows a caller felt like asking for.
+    # The section comes from the READING, which was handed this branch's own
+    # list of them — so "some drink" reaches Beverages, which no amount of
+    # string matching gets to. All that is decided here is whether the phrase
+    # names that section and nothing narrower.
+    section = category_named_exactly(phrase, [category] if category else [])
+    if section is not None:
+        rows = list(
+            db.scalars(
+                stmt.where(MenuItem.category == section)
+                .order_by(MenuItem.name)
+                .limit(WHOLE_SECTION_CAP + 1)
+            )
+        )
+        if rows:
+            if report is not None:
+                report["found_by"] = "section"
+                report["section"] = section
+            return [
+                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+                for row in rows
+            ]
+
     named = stmt
     for word in words:
         named = named.where(MenuItem.name.ilike(f"%{word}%"))
@@ -1193,19 +1371,48 @@ def dishes_to_show(
         rows = list(
             db.scalars(stmt.where(MenuItem.category == category).order_by(MenuItem.name).limit(limit))
         )
+    found_by = "named" if rows else ""
+    if not rows and len(words) > 1:
+        # The words that DO name something here, dropped one at a time from
+        # the end — BEFORE the section below, because the words are more
+        # specific than the section they belong to. "Tom Yum Soup" at a
+        # branch selling Tom Yum Goong matched no dish name at all; read as
+        # the Soups section it answered with all eight soups, throwing away
+        # the two words that said which soup. "tom yum" finds the three.
+        for keep in range(len(words) - 1, 0, -1):
+            narrowed = stmt
+            for word in words[:keep]:
+                narrowed = narrowed.where(MenuItem.name.ilike(f"%{word}%"))
+            rows = list(db.scalars(narrowed.order_by(MenuItem.name).limit(limit)))
+            if rows:
+                found_by = "close"
+                break
     if not rows:
-        # Nothing by name. A category, then the menu itself — both of which
-        # are still the rows, never a guess about what they might have meant.
+        # Nothing in the names. The section, then the menu itself — both of
+        # which are still the rows, never a guess about what they meant.
         by_category = stmt
         for word in words:
             by_category = by_category.where(MenuItem.category.ilike(f"%{word}%"))
         rows = list(db.scalars(by_category.order_by(MenuItem.name).limit(limit))) if words else []
+        found_by = "category" if rows else ""
     if not rows:
         rows = list(db.scalars(stmt.order_by(MenuItem.category, MenuItem.name).limit(limit)))
-    return [
+        # With a ceiling set, these rows are everything under it — a real
+        # answer to what was asked, not the shrug that "fallback" describes.
+        found_by = "budget" if max_price is not None else "fallback"
+    if not rows and max_price is not None:
+        # Nothing at this branch comes in under their figure. The cheapest
+        # dishes are the useful reply and the caller says the budget was
+        # missed, which beats an empty list that reads as no menu at all.
+        rows = list(db.scalars(at_this_branch.order_by(MenuItem.price).limit(limit)))
+        found_by = "over_budget"
+    listed = [
         {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
         for row in rows
     ]
+    if report is not None:
+        report["found_by"] = found_by
+    return listed
 
 
 def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str, Any]:
@@ -1290,6 +1497,25 @@ def _get_dish(db: Session, scope: OrderingScope, args: GetDishArgs) -> dict[str,
         return {"found": False, "confidence": verdict}
 
     matched_item = candidates[0].menu_item
+
+    # They named the SECTION, not a dish in it. Costs no query: the row that
+    # came back says which section it belongs to, and the words asked for are
+    # compared against that.
+    #
+    # Live, this is what it prevents, with nobody having confirmed anything:
+    #
+    #     >>> Tandoori Starter
+    #         Added 1 x Paneer Pahadi Tikka Dry to your order. Anything else?
+    #
+    # Retrieval was not wrong — Paneer Pahadi Tikka Dry IS a Tandoori Starter,
+    # and the guardrail measured it as a confident match, which it is. The
+    # mistake is answering "show me the Tandoori Starters" with one of them.
+    # `section` is returned so the caller can show the section rather than
+    # telling somebody who named a real part of the menu that we do not have it.
+    section = category_named_exactly(args.name, [getattr(matched_item, "category", None)])
+    if section is not None:
+        return {"found": False, "confidence": "section", "section": section}
+
     return _build_dish_result(matched_item, confidence=verdict, args=args)
 
 
@@ -1739,18 +1965,45 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
         # remembered so that "yes" on the next turn means that time. Decided
         # from the branch's status, never from the wording of the reason.
         try:
-            if scheduled_for is None and scope.restaurant_location_id and scope.session_id:
+            if scope.restaurant_location_id and scope.session_id:
                 location = db.get(RestaurantLocation, scope.restaurant_location_id)
-                open_now, _ = branch_hours.get_location_fulfillment_status(
-                    location, fulfillment_type=fulfillment
-                )
-                if location is not None and not open_now:
-                    nearest = branch_hours.next_available_slot_start(
+                # Whether the time in question can be kept. For an ASAP order
+                # that is "are you open now"; for a scheduled one it is the
+                # branch's own slot rule, asked about the moment they chose.
+                #
+                # It used to run only when they had named NO time, so naming
+                # one the branch could not keep skipped the offer entirely
+                # and the customer got "I could not place that: ..." — the
+                # wall this whole path exists to avoid.
+                if location is None:
+                    workable = True
+                elif scheduled_for is None:
+                    workable, _ = branch_hours.get_location_fulfillment_status(
                         location, fulfillment_type=fulfillment
+                    )
+                else:
+                    workable, _ = branch_hours.schedule_slot_is_available(
+                        location,
+                        fulfillment_type=fulfillment,
+                        scheduled_at=scheduled_for,
+                    )
+                if location is not None and not workable:
+                    # Measured from the time they ASKED for, so the offer is
+                    # the nearest one to what they wanted rather than the
+                    # nearest one to now. Somebody asking for tomorrow lunch
+                    # is not helped by being offered this morning.
+                    nearest = branch_hours.next_available_slot_start(
+                        location,
+                        fulfillment_type=fulfillment,
+                        reference_dt=scheduled_for,
                     )
                     if nearest is not None:
                         refusal["next_open"] = nearest.isoformat()
                         refusal["fulfillment_label"] = fulfillment.value.lower()
+                        # What they asked for, so the reply can name it back
+                        # rather than saying "that time" about nothing.
+                        if scheduled_for is not None:
+                            refusal["wanted_time"] = scheduled_for.isoformat()
                         stored = order_draft.load(scope.session_id)
                         stored.offered_scheduled_at = nearest.isoformat()
                         order_draft.save(scope.session_id, stored)

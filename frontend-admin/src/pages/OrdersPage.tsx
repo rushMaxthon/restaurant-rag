@@ -20,8 +20,9 @@ import {
 } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
 import { readWorkspaceSettings } from "../services/workspaceSettings";
-import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { ApiError, api, formatDate } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -117,6 +118,8 @@ const DEFAULT_QUERY = "";
 const DEFAULT_STATUS_FILTER = "ALL" as const;
 
 export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isAdmin = role === "ADMIN";
   const scope = tokenScope(token);
   // Read on render, not at module scope: a module constant is evaluated once
@@ -338,7 +341,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
     {
       id: "total_amount",
       header: "Amount",
-      render: (order) => formatCurrency(order.total_amount),
+      render: (order) => money.format(order.total_amount, order.restaurant_id),
       mobileLabel: "Amount",
       align: "right",
       sortable: true,

@@ -5,14 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type SavedAddress } from "@/lib/api";
-import { formatMoney, orderCode, type Order } from "@/lib/bangkok-data";
+import { orderCode, type Order} from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { formatPhoneAsTyped, validatePhone } from "@/lib/delivery-address";
 import { useFavorites, useProfile, useToggleFavorite } from "@/lib/queries";
 import { useRequireAuth } from "@/lib/require-auth";
+import { pageMeta, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/profile")({
-  head: () => ({ meta: [{ title: "Your tab · Bangkok Bowl" }] }),
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your tab", "Your account, addresses and saved details."),
+  }),
   component: ProfilePage,
 });
 
@@ -50,6 +55,8 @@ function standing(orders: number, onTheirWay: number, name: string): string {
 }
 
 function ProfilePage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const isAuthenticated = useRequireAuth();
   const { user } = useAuth();
   const profile = useProfile(isAuthenticated);
@@ -266,7 +273,7 @@ function ProfilePage() {
                     >
                       {dish.name}
                     </Link>
-                    <span className="money line__total">{formatMoney(dish.price)}</span>
+                    <span className="money line__total">{money(dish.price)}</span>
                     <button
                       type="button"
                       className="rail__action rail__danger line__drop"
@@ -303,7 +310,7 @@ function ProfilePage() {
                     key={order.id}
                   >
                     <span className="line__code">{orderCode(order)}</span>
-                    <span className="money line__total">{formatMoney(order.total_amount)}</span>
+                    <span className="money line__total">{money(order.total_amount)}</span>
                     <span className="line__when">
                       {whenPlaced(order)}
                       {!SETTLED.has(order.status) && (

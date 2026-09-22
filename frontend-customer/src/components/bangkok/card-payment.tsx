@@ -3,7 +3,8 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { AlertCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/lib/bangkok-data";
+import { useMoney } from "@/lib/storefront";
+
 
 /**
  * Stripe's Payment Element, mounted against an intent the backend created.
@@ -46,6 +47,8 @@ function PayForm({
   onCancel,
   onPaid,
 }: Omit<CardPaymentProps, "publishableKey" | "clientSecret">) {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +112,7 @@ function PayForm({
         disabled={!stripe || !elements || busy}
       >
         <Lock className="size-4" />
-        {busy ? "Confirming…" : `Pay ${formatMoney(amount)}`}
+        {busy ? "Confirming…" : `Pay ${money(amount)}`}
       </Button>
       <Button type="button" variant="ghost" className="h-10" onClick={onCancel} disabled={busy}>
         Cancel and keep my cart

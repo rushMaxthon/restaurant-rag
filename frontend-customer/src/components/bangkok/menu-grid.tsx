@@ -9,6 +9,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { deriveCategories, type MenuItem } from "@/lib/bangkok-data";
+import { matchesQuery } from "@/lib/menu-search";
+import { sortsFor } from "@/lib/menu-sorts";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItems } from "@/lib/queries";
 import { DishCard } from "./dish-card";
@@ -54,8 +56,22 @@ export function DishSkeleton() {
   );
 }
 
-export function MenuGrid({ limit }: { limit?: number }) {
-  const [category, setCategory] = useState("All");
+export function MenuGrid({
+  category,
+  onCategoryChange,
+  limit,
+}: {
+  /**
+   * The section being shown, owned by the route so it can live in the URL.
+   *
+   * It was local state, which meant a menu of 21 sections could not be linked
+   * to, shared, or returned to with the back button — and the home page had
+   * no way to send somebody to one.
+   */
+  category: string;
+  onCategoryChange: (next: string) => void;
+  limit?: number;
+}) {
   const [query, setQuery] = useState("");
   const [vegOnly, setVegOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
@@ -66,21 +82,22 @@ export function MenuGrid({ limit }: { limit?: number }) {
   // would recompute every time and the memoisation would buy nothing.
   const items = useMemo(() => menuQuery.data ?? [], [menuQuery.data]);
   const categories = useMemo(() => deriveCategories(items), [items]);
+  // "Top rated" was offered whatever the data held, and not one dish on this
+  // menu has a rating — so choosing it compared 0 against 0 for every pair and
+  // reordered nothing. A control that promises an ordering the data cannot
+  // provide is worse than one fewer control.
+  const sorts = useMemo(() => sortsFor(SORTS, items), [items]);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items
       .filter((item) => category === "All" || item.category === category)
       .filter((item) => !vegOnly || item.is_veg)
-      .filter(
-        (item) =>
-          !needle ||
-          // Searching only the name missed "something with peanuts", which is
-          // the kind of thing people actually type into a food search.
-          item.name.toLowerCase().includes(needle) ||
-          item.description.toLowerCase().includes(needle) ||
-          item.category.toLowerCase().includes(needle),
-      )
+      // In `lib/menu-search.ts` rather than inline: this predicate crashed the
+      // whole grid on a null description, and nothing could test it while it
+      // lived inside a useMemo inside a component that needs a store, a query
+      // client and a router to render.
+      .filter((item) => matchesQuery(item, needle))
       .sort((a, b) => compare(sort, a, b))
       .slice(0, limit);
   }, [items, category, query, vegOnly, sort, limit]);
@@ -94,7 +111,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
   const filtered = category !== "All" || vegOnly || query.trim().length > 0;
 
   function reset() {
-    setCategory("All");
+    onCategoryChange("All");
     setVegOnly(false);
     setQuery("");
   }
@@ -146,7 +163,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              {SORTS.map((s) => (
+              {sorts.map((s) => (
                 <SelectItem value={s.value} key={s.value}>
                   {s.label}
                 </SelectItem>
@@ -160,7 +177,7 @@ export function MenuGrid({ limit }: { limit?: number }) {
         {categories.map((c) => (
           <button
             key={c}
-            onClick={() => setCategory(c)}
+            onClick={() => onCategoryChange(c)}
             className={c === category ? "category-pill active" : "category-pill"}
           >
             {c}

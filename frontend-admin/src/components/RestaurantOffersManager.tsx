@@ -7,7 +7,8 @@ import { Pagination } from './Pagination';
 import { ResponsiveTable, type TableColumn } from './ResponsiveTable';
 import { Modal } from './Modal';
 import { StatusPill } from './StatusPill';
-import { ApiError, api, formatCurrency, formatDate } from '../services/api';
+import { ApiError, api, formatDate } from '../services/api';
+import { useMoney } from '../hooks/useMoney';
 import type {
   GeneratedOfferUserMatch,
   ManagedPersonalizedOffer,
@@ -240,6 +241,8 @@ export function RestaurantOffersManager({
   restaurant,
   onToast,
 }: RestaurantOffersManagerProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const [offers, setOffers] = useState<ManagedPersonalizedOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -334,12 +337,12 @@ export function RestaurantOffersManager({
     if (offer.discount_type === 'PERCENTAGE') {
       return `${offer.discount_value}% off`;
     }
-    return `${formatCurrency(offer.discount_value)} off`;
+    return `${money.format(offer.discount_value, restaurant.id)} off`;
   }
 
   function formatDiscountSupport(offer: ManagedPersonalizedOffer): string {
     if (offer.discount_type === 'PERCENTAGE' && offer.max_discount_amount) {
-      return `Up to ${formatCurrency(offer.max_discount_amount)}`;
+      return `Up to ${money.format(offer.max_discount_amount, restaurant.id)}`;
     }
     if (offer.discount_type === 'FREE_DELIVERY') {
       return offer.restaurant_location_name ?? 'Eligible branches';
@@ -421,7 +424,7 @@ export function RestaurantOffersManager({
       header: 'Min order',
       render: (offer) => (
         <div className="offer-table__stack">
-          <strong>{formatCurrency(offer.minimum_order_amount)}</strong>
+          <strong>{money.format(offer.minimum_order_amount, restaurant.id)}</strong>
           <span>{describeOfferSegment(offer)}</span>
         </div>
       ),
@@ -753,7 +756,7 @@ export function RestaurantOffersManager({
                 </div>
                 <div>
                   <strong>Discount</strong>
-                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {formatCurrency(selectedOfferDetails.minimum_order_amount)}</span>
+                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {money.format(selectedOfferDetails.minimum_order_amount, restaurant.id)}</span>
                 </div>
                 <div>
                   <strong>Performance</strong>

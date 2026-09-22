@@ -20,8 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CardPayment } from "@/components/bangkok/card-payment";
+import { RazorpayPayment } from "@/components/bangkok/razorpay-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
-import { formatMoney, orderCode } from "@/lib/bangkok-data";
+import { orderCode} from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import {
   activeSlots,
@@ -49,6 +50,7 @@ import {
   isSameAddress,
   formatPhoneAsTyped,
   looseAddressFields,
+  postalCodeLabel,
   validateAddress,
   validatePhone,
   type AddressFields,
@@ -57,23 +59,14 @@ import { useRequireAuth } from "@/lib/require-auth";
 import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
+import { pageMeta, useCurrencyCode, useStorefrontCopy, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
-/** Shown beside the phone field; matches the backend's own default. */
-const PHONE_COUNTRY_CODE = "+1";
 
 export const Route = createFileRoute("/checkout")({
-  head: () => ({
-    meta: [
-      { title: "Checkout — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Choose delivery or pickup and place your Bangkok Bowl order.",
-      },
-      { property: "og:title", content: "Checkout — Bangkok Bowl" },
-      { property: "og:description", content: "Complete your Bangkok Bowl order." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Checkout", "Choose delivery or pickup and place your order."),
   }),
   component: Checkout,
 });
@@ -82,20 +75,28 @@ export const Route = createFileRoute("/checkout")({
 function StepRail({ step }: { step: 1 | 2 | 3 }) {
   const steps = ["Cart", "Checkout", "Confirmation"] as const;
   return (
-    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-bold">
+    // Sized to fit three steps on one line at 414px. It wrapped before, and
+    // wrapping put "Confirmation" alone on a second row with the connector
+    // that should have led to it left dangling off the end of the first —
+    // a rail pointing at nothing. The connector now comes BEFORE each step
+    // rather than after, so if it ever does wrap the line leads into the step
+    // it belongs to instead of trailing into empty space.
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs font-bold sm:gap-x-3 sm:text-sm">
       {steps.map((label, i) => {
         const index = (i + 1) as 1 | 2 | 3;
         const done = index < step;
         const todo = index > step;
         return (
-          <li className="flex items-center gap-3" key={label}>
-            <span className="flex items-center gap-2">
+          <li className="flex items-center gap-2 sm:gap-3" key={label}>
+            {index > 1 && (
+              <span className="h-px w-4 bg-border sm:w-10" aria-hidden="true" />
+            )}
+            <span className="flex items-center gap-1.5 sm:gap-2">
               <span className="step-pill" data-done={done} data-todo={todo}>
                 {done ? <CheckCircle2 className="size-4" /> : index}
               </span>
               <span className={todo ? "text-muted" : undefined}>{label}</span>
             </span>
-            {index < 3 && <span className="h-px w-6 bg-border sm:w-10" aria-hidden="true" />}
           </li>
         );
       })}
@@ -169,6 +170,14 @@ function AddressField({
 }
 
 function Checkout() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
+  // What this storefront calls its last address box. The form asked every
+  // customer for a "ZIP code" and refused anything that was not five
+  // digits, so an Indian PIN code could not be typed into it.
+  const postalName = postalCodeLabel(useCurrencyCode());
+  // This restaurant's own name, resolved from the address in the root route.
+  const copy = useStorefrontCopy();
   const s = useBangkokStore();
   const isAuthenticated = useRequireAuth();
   const validateOrder = useValidateOrder();
@@ -268,27 +277,49 @@ function Checkout() {
   // Pinned once per render pass so the day list, the slot list and the
   // validity check cannot disagree about what "now" is.
   const now = new Date();
-  const method = "CARD" as const;
-  // Set once the order and its intent exist; swaps the form for Stripe's
-  // Payment Element. The cart is deliberately still full at this point — a
+  // Set once the order and its intent exist; swaps the form for the gateway's
+  // own payment UI. The cart is deliberately still full at this point — a
   // cancelled payment must leave the basket intact.
   const [pending, setPending] = useState<{
     orderId: string;
     orderNumber: string;
     clientSecret: string;
     publishableKey: string;
+    method: "CARD" | "RAZORPAY";
   } | null>(null);
 
-  // Which methods this deployment can actually take. Card stays unavailable
-  // until a Stripe key is configured, and saying so beats offering a button
-  // that dead-ends.
+  // Which methods THIS RESTAURANT can actually take. Not the deployment's:
+  // one deployment serves every tenant, and a Surat kitchen settling through
+  // its own Razorpay account and a Toronto one on Stripe are both correct at
+  // the same time. A method appears here only when the branch has it switched
+  // on and a gateway is configured that can settle it, so nothing on this
+  // screen is a button that dead-ends.
   const paymentConfig = usePaymentConfig(isAuthenticated);
-  const cardAvailable = Boolean(paymentConfig.data?.stripe_enabled);
+  const supported = paymentConfig.data?.supported_methods ?? [];
+  const gatewayKeys = paymentConfig.data?.gateway_keys ?? {};
+  const cardAvailable = supported.includes("CARD");
+  const razorpayAvailable = supported.includes("RAZORPAY") && Boolean(gatewayKeys["RAZORPAY"]);
+  const payableMethods = [
+    ...(razorpayAvailable ? (["RAZORPAY"] as const) : []),
+    ...(cardAvailable ? (["CARD"] as const) : []),
+  ];
+
+  // Chosen rather than assumed, but only where there is a choice. With one
+  // method available this is invisible; the customer is not asked to pick
+  // from a list of one.
+  const [chosenMethod, setChosenMethod] = useState<"CARD" | "RAZORPAY" | null>(null);
+  const method = chosenMethod ?? payableMethods[0] ?? "CARD";
+  const canPay = payableMethods.length > 0;
   // Three different situations, not two. While the config is in flight, and if
   // the request fails, `stripe_enabled` is falsy too — and the page used to
   // blame the restaurant for both, in red, on every single load.
   const paymentConfigPending = paymentConfig.isPending;
   const paymentConfigFailed = paymentConfig.isError;
+  // A 401 is not a connection problem, and telling somebody to check their
+  // connection when their sign-in has simply lapsed sends them to look at
+  // their wifi. `ApiError` has carried the status all along; nothing read it.
+  const sessionExpired =
+    paymentConfig.error instanceof ApiError && paymentConfig.error.status === 401;
 
   if (!isAuthenticated) return null;
 
@@ -312,7 +343,7 @@ function Checkout() {
 
   // Validation lives in lib/delivery-address.ts so the form and the submit
   // handler cannot disagree about what "valid" means.
-  const addressProblems = isDelivery ? validateAddress(address) : {};
+  const addressProblems = isDelivery ? validateAddress(address, postalName) : {};
   const phoneProblem = validatePhone(phone);
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
   const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
@@ -335,6 +366,48 @@ function Checkout() {
 
   const show = (field: keyof AddressFields | "phone" | "name") =>
     Boolean(touched[field] || submitted);
+
+  /**
+   * Put the cursor in the first box that needs fixing.
+   *
+   * The form is about 2,600px tall on a phone and Pay now lives in a bar
+   * pinned to the bottom of the screen, so pressing it with something missing
+   * did this: an error appeared 970px away, off-screen, focus stayed on the
+   * body, and from where the customer was sitting nothing happened at all.
+   * The natural next move is to press it again.
+   *
+   * In the order the fields appear on the page, not the order the checks run,
+   * so somebody with two problems is taken to the top one and works down.
+   * `focus()` rather than only scrolling: it moves the screen reader and the
+   * on-screen keyboard too, and it is the thing that makes the next keystroke
+   * land somewhere useful.
+   */
+  const takeThemToTheProblem = () => {
+    const order: Array<[string, unknown]> = [
+      ["full_name", nameProblem],
+      ["phone", phoneProblem],
+      ["line1", addressProblems.line1],
+      ["city", addressProblems.city],
+      ["state", addressProblems.state],
+      ["zip", addressProblems.zip],
+    ];
+    const first = order.find(([, problem]) => Boolean(problem));
+    if (!first) {
+      return;
+    }
+    const field = document.getElementById(first[0]);
+    // `center` rather than the default `start`: the sticky summary bar sits
+    // over the bottom of the page and the header over the top, and a field
+    // scrolled flush to either edge lands underneath one of them.
+    field?.scrollIntoView({ block: "center" });
+    // Deliberately NOT `preventScroll`. Smooth scrolling can be interrupted,
+    // refused, or switched off by the reader's own motion setting, and this
+    // is the error path — if the scroll above does not happen, focus's own
+    // scrolling is what still puts the field on screen. A double jump is a
+    // worse animation and a much better outcome than a customer looking at an
+    // unchanged page.
+    field?.focus();
+  };
 
   // Orders have carried schedule_type/scheduled_at since the beginning and the
   // server validates a scheduled time against the branch's own slots. The app
@@ -408,14 +481,30 @@ function Checkout() {
           clears.
         </p>
         <div className="elevated-panel mt-6 p-5 sm:p-6">
-          <CardPayment
-            publishableKey={pending.publishableKey}
-            clientSecret={pending.clientSecret}
-            amount={total}
-            returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
-            onCancel={abandonPayment}
-            onPaid={s.clearCart}
-          />
+          {pending.method === "RAZORPAY" ? (
+            <RazorpayPayment
+              amount={total}
+              customerEmail={profile.data?.user.email ?? null}
+              customerName={fullName.trim() || profile.data?.user.full_name || null}
+              customerPhone={phone.trim() || profile.data?.user.phone_number || null}
+              keyId={pending.publishableKey}
+              onCancel={abandonPayment}
+              onPaid={s.clearCart}
+              orderId={pending.orderId}
+              orderNumber={pending.orderNumber}
+              razorpayOrderId={pending.clientSecret}
+              restaurantName={s.restaurantName ?? "your order"}
+            />
+          ) : (
+            <CardPayment
+              publishableKey={pending.publishableKey}
+              clientSecret={pending.clientSecret}
+              amount={total}
+              returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
+              onCancel={abandonPayment}
+              onPaid={s.clearCart}
+            />
+          )}
         </div>
       </div>
     );
@@ -430,7 +519,7 @@ function Checkout() {
           </div>
           <h1 className="mt-7 font-display text-4xl font-extrabold sm:text-5xl">Order placed</h1>
           <p className="mt-4 text-lg text-muted">
-            Your Thai feast is on its way. Track{" "}
+            Your order from {copy.name} is on its way. Track{" "}
             <b className="text-foreground">{placedOrderNumber ?? "your order"}</b> for live updates.
           </p>
           {eta != null && eta !== "" && (
@@ -475,6 +564,7 @@ function Checkout() {
     setSubmitted(true);
     if (!contactReady) {
       setError("Please check the highlighted details and try again.");
+      takeThemToTheProblem();
       return;
     }
 
@@ -561,8 +651,13 @@ function Checkout() {
       setPending({
         orderId: order.id,
         orderNumber: orderCode(order),
+        // For Razorpay this carries the Razorpay ORDER id rather than a
+        // secret: that gateway has no client secret, and the browser needs
+        // the order id to open Checkout. The field name comes from the
+        // provider contract, not from Razorpay.
         clientSecret: intent.client_secret,
         publishableKey: intent.publishable_key,
+        method,
       });
     } catch (err) {
       setError(
@@ -691,7 +786,13 @@ function Checkout() {
                       a local number should not have to know the deployment's
                       country, and a free-text "+1" is one more thing to get
                       wrong. */}
-                  <span className="country-code">{PHONE_COUNTRY_CODE}</span>
+                  {/* From the server, not from a literal here. This said
+                      "+1" while the server prepended something else, so the
+                      code the customer was shown and the code their number
+                      was stored under could differ with nothing to say so. */}
+                  {s.phoneCountryCode && (
+                    <span className="country-code">{s.phoneCountryCode}</span>
+                  )}
                   <Input
                     id="phone"
                     required
@@ -790,7 +891,7 @@ function Checkout() {
                   />
                   <AddressField
                     id="zip"
-                    label="ZIP code"
+                    label={postalName}
                     placeholder="00000"
                     autoComplete="postal-code"
                     inputMode="numeric"
@@ -1071,23 +1172,67 @@ function Checkout() {
               <p className="mt-3 text-sm text-muted">Checking payment options…</p>
             )}
 
-            {!paymentConfigPending && !cardAvailable && (
+            {!paymentConfigPending && !canPay && (
               <div
                 className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
                 role="alert"
               >
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  {paymentConfigFailed
-                    ? "We couldn't check the payment options just now. Check your connection and try again."
-                    : "Card payments aren't switched on for this restaurant yet, so orders can't be placed. Please try again shortly."}
+                  {sessionExpired ? (
+                    <>
+                      Your sign-in has expired.{" "}
+                      <Link
+                        className="underline"
+                        to="/login"
+                        search={{ redirect: "/checkout" }}
+                      >
+                        Sign in again
+                      </Link>{" "}
+                      — your cart is saved and you will come straight back here.
+                    </>
+                  ) : paymentConfigFailed ? (
+                    "We couldn't check the payment options just now. Check your connection and try again."
+                  ) : (
+                    "This restaurant hasn't switched on a way to pay yet, so orders can't be placed. Please try again shortly."
+                  )}
                 </span>
+              </div>
+            )}
+
+            {/* Only where there is a choice. One method is not a list to pick
+                from, and rendering it as one asks the customer to make a
+                decision that does not exist. */}
+            {payableMethods.length > 1 && (
+              <div className="mt-4 grid gap-2" role="radiogroup" aria-label="How to pay">
+                {payableMethods.map((option) => (
+                  <button
+                    aria-checked={method === option}
+                    className="pay-option"
+                    data-selected={method === option}
+                    key={option}
+                    onClick={() => setChosenMethod(option)}
+                    role="radio"
+                    type="button"
+                  >
+                    <span className="font-bold">
+                      {option === "RAZORPAY" ? "UPI, cards and wallets" : "Card"}
+                    </span>
+                    <span className="text-sm text-muted">
+                      {option === "RAZORPAY"
+                        ? "Pay with any UPI app, card, netbanking or wallet"
+                        : "Pay by card"}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
 
             <p className="mt-3 flex items-center gap-2 text-sm text-muted">
               <ShieldCheck className="size-4 shrink-0 text-success" />
-              Your card details go straight to Stripe — this app never sees them.
+              {method === "RAZORPAY"
+                ? "Your payment details go straight to Razorpay — this app never sees them."
+                : "Your card details go straight to Stripe — this app never sees them."}
             </p>
           </section>
         </div>
@@ -1135,11 +1280,11 @@ function Checkout() {
                     </p>
                   )}
                   <p className="money text-sm text-muted">
-                    {line.quantity} × {formatMoney(line.unitPrice)}
+                    {line.quantity} × {money(line.unitPrice)}
                   </p>
                 </div>
                 <span className="money shrink-0 font-bold">
-                  {formatMoney(line.unitPrice * line.quantity)}
+                  {money(line.unitPrice * line.quantity)}
                 </span>
               </div>
             ))}
@@ -1154,7 +1299,7 @@ function Checkout() {
               <div className="flex justify-between" key={String(label)}>
                 <dt className="text-muted">{label}</dt>
                 <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : formatMoney(Number(value))}
+                  {Number(value) === 0 ? "Free" : money(Number(value))}
                 </dd>
               </div>
             ))}
@@ -1162,7 +1307,7 @@ function Checkout() {
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="font-display text-3xl font-extrabold">{formatMoney(total)}</span>
+            <span className="font-display text-3xl font-extrabold">{money(total)}</span>
           </div>
 
           <Button
@@ -1174,7 +1319,7 @@ function Checkout() {
               ? payingCard
                 ? "Opening payment…"
                 : "Preparing your order…"
-              : `Pay ${formatMoney(total)}`}
+              : `Pay ${money(total)}`}
           </Button>
         </aside>
       </div>
@@ -1186,14 +1331,14 @@ function Checkout() {
           would have hit them too. z-40 was not enough: the content grid wins at
           equal depth. Above the nav (z-40), below the header (z-50), and the
           two bars never overlap anyway — this sits at 58px, the nav at 0. */}
-      <div className="fixed inset-x-0 bottom-[58px] z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
+      <div className="above-tab-bar fixed inset-x-0 z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs font-bold text-muted">
               {s.totalItems} {s.totalItems === 1 ? "item" : "items"}
             </p>
             <p className="money font-display text-xl font-extrabold leading-tight">
-              {formatMoney(total)}
+              {money(total)}
             </p>
           </div>
           <Button

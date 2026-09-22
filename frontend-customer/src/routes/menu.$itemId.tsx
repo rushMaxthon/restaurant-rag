@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
-import { formatMoney } from "@/lib/bangkok-data";
+
 import { useBangkokStore } from "@/lib/bangkok-store";
 import type { OptionPortion } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
@@ -37,21 +37,20 @@ import {
   visibleGroups,
 } from "@/lib/customization";
 import { useMenuItem, useMenuItems, useRestaurant } from "@/lib/queries";
+import { pageMeta, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/menu/$itemId")({
-  head: () => ({
-    meta: [
-      { title: "Dish — Bangkok Bowl" },
-      { name: "description", content: "Explore a Bangkok Bowl Thai dish." },
-      { property: "og:title", content: "Dish — Bangkok Bowl" },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Dish", "Explore a dish from the menu."),
   }),
   component: DishPage,
 });
 
 function DishPage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const { itemId } = Route.useParams();
   const store = useBangkokStore();
   const itemQuery = useMenuItem(itemId);
@@ -286,7 +285,14 @@ function DishPage() {
                 </p>
               )}
 
-              <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+              {/* Only when there is one. 120 of this restaurant's 136 dishes
+                  have no description, and an unguarded paragraph still takes
+                  its top margin and its line box — so most of the menu had a
+                  hole punched between the dish's name and its price. Every
+                  other field on this page is guarded; this one was missed. */}
+              {item.description?.trim() && (
+                <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
+              )}
 
               {/* "From $12" until a size is picked, because that is the only
                   honest single number then. Once one IS picked the guess is
@@ -296,11 +302,11 @@ function DishPage() {
                 <div className="dish-lede__price">
                   <p className="money font-display text-3xl font-extrabold">
                     {chosenSize ? (
-                      formatMoney(chosenSize.price)
+                      money(chosenSize.price)
                     ) : (
                       <>
                         From{" "}
-                        {formatMoney(
+                        {money(
                           sizes.reduce(
                             (low, s) => (Number(s.price) < Number(low.price) ? s : low),
                             sizes[0]!,
@@ -309,9 +315,17 @@ function DishPage() {
                       </>
                     )}
                   </p>
+                  {/* "extras are charged on top" was said for every dish
+                      with a size, including the ones that have no extras to
+                      charge — which is most of them. It is a sentence about
+                      money on the screen where the customer decides to spend
+                      it, so it is only said when it is true of THIS dish at
+                      THIS size. */}
                   <p className="text-sm text-muted">
                     {chosenSize
-                      ? `${chosenSize.name} · extras are charged on top`
+                      ? groups.length > 0
+                        ? `${chosenSize.name} · extras are charged on top`
+                        : chosenSize.name
                       : "Final price depends on the size you pick"}
                   </p>
                 </div>
@@ -347,7 +361,7 @@ function DishPage() {
                         {/* The absolute price, not "+". A size REPLACES the
                             base price, so a plus sign said the opposite of what
                             the customer would be charged. */}
-                        <span className="money size-tile__price">{formatMoney(s.price)}</span>
+                        <span className="money size-tile__price">{money(s.price)}</span>
                       </button>
                     );
                   })}
@@ -484,7 +498,7 @@ function DishPage() {
                                 the number moves when the customer splits it,
                                 rather than only in the total. */}
                                 {Number(o.extra_price) > 0
-                                  ? `+${formatMoney(half ? Number(o.extra_price) / 2 : o.extra_price)}`
+                                  ? `+${money(half ? Number(o.extra_price) / 2 : o.extra_price)}`
                                   : "Free"}
                               </span>
                             </button>
@@ -596,7 +610,7 @@ function DishPage() {
                 <div className="text-right">
                   <p className="text-xs font-bold uppercase tracking-wide text-muted">Total</p>
                   <p className="money total-figure font-display text-3xl font-extrabold leading-tight">
-                    {formatMoney(total)}
+                    {money(total)}
                   </p>
                 </div>
               </div>
@@ -642,7 +656,7 @@ function DishPage() {
                     onClick={() => handleAdd(false)}
                   >
                     {item.is_available
-                      ? `Add to cart · ${formatMoney(total)}`
+                      ? `Add to cart · ${money(total)}`
                       : "Currently unavailable"}
                   </Button>
                   {/* Say what is missing. A greyed-out button with no reason is

@@ -8,6 +8,8 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
+from difflib import SequenceMatcher
+from contextvars import ContextVar
 from decimal import Decimal
 from functools import lru_cache
 from time import perf_counter
@@ -26,9 +28,13 @@ from app.models.enums import OrderFulfillmentType
 from app.models.menu_embedding import MenuEmbedding
 from app.services.chat_principal import ChatPrincipal, is_guest
 from app.models.menu_item import MenuItem
+from app.models.menu_item_customization_group import MenuItemCustomizationGroup
+from app.models.menu_item_customization_option import MenuItemCustomizationOption
+from app.models.menu_item_size import MenuItemSize
 from app.models.restaurant import Restaurant
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
 from app.models.restaurant_location import RestaurantLocation
+from app.services.currency import format_amount
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
 from app.schemas.chat import (
@@ -674,6 +680,41 @@ TOPIC_STOPWORDS = QUERY_STOPWORDS | {
     "weekend",
     "weekends",
     "yesterday",
+    # The words a price limit is made of, for the same reason the time words
+    # above are here. A budget is extracted as a NUMBER by
+    # `_extract_budget_limit` and applied as a filter; the words it was
+    # written in are not a food to search for. "anything under 10 dollars"
+    # canonicalised to the topic "under dollar", which pgvector answered with
+    # Sweet Lassi, Masala Cola and Butter Tea — the budget was read correctly
+    # and then the search went looking for a dish called "under dollar".
+    #
+    # Only the currencies this platform actually charges in, plus the rupee's
+    # spoken forms. A word here costs a dish named after it, and no dish is
+    # called "dollar".
+    "aed",
+    "below",
+    "budget",
+    "cad",
+    "dirham",
+    "dirhams",
+    "dollar",
+    "dollars",
+    "eur",
+    "euro",
+    "euros",
+    "gbp",
+    "inr",
+    "max",
+    "maximum",
+    "pound",
+    "pounds",
+    "rs",
+    "rupee",
+    "rupees",
+    "under",
+    "upto",
+    "usd",
+    "within",
 }
 
 # `_extract_bare_topic_hint` used to inline its own copy of the meta words —
@@ -1297,10 +1338,28 @@ def _is_invalid_or_spam_message(message: str) -> bool:
         return True
     if re.search(r"(.)\1{5,}", normalized):
         return True
-    tokens = _query_tokens(message)
-    if not tokens and not _is_greeting_message(message):
-        return True
-    return False
+    if _query_tokens(message):
+        return False
+    if _is_greeting_message(message) or _is_acknowledgement_message(message):
+        return False
+    # Nothing survived tokenising. That used to end the function, and it read
+    # the evidence backwards: `_query_tokens` drops every word under three
+    # characters and every query stopword, so "Please", "ok", "go on" and
+    # "do it" all tokenise to nothing. An empty token list describes a message
+    # that is SHORT and ORDINARY, not one that is unparseable.
+    #
+    # Live, from a WhatsApp thread: the assistant offered to help by cuisine,
+    # budget or spice level, the customer answered "Please", and the second
+    # message of the conversation was "I didn't quite catch that."
+    #
+    # Real gibberish is already caught above — punctuation alone, a held-down
+    # key, a message too short to be anything. What reaches here is words, so
+    # the only question left is whether this message IS words: a few of them,
+    # all letters. Anything else (bare digits, symbols mixed in) keeps the
+    # old answer.
+    return not (
+        re.fullmatch(r"[a-z]+(?: [a-z]+)*", normalized) and len(normalized.split()) <= 4
+    )
 
 
 def _is_role_override_attempt(message: str) -> bool:
@@ -1528,8 +1587,46 @@ def _is_greeting_message(message: str) -> bool:
         return True
 
     tokens = normalized.split()
-    greeting_tokens = {"hi", "hello", "hey", "good", "morning", "afternoon", "evening", "there"}
-    return len(tokens) <= 3 and all(token in greeting_tokens for token in tokens)
+    return len(tokens) <= 3 and all(
+        _flatten_stretched_letters(token) in GREETING_TOKENS for token in tokens
+    )
+
+
+#: The words a greeting is made of, and the only words the flattener below
+#: is allowed to produce.
+GREETING_TOKENS = frozenset(
+    {"hi", "hello", "hey", "good", "morning", "afternoon", "evening", "there"}
+)
+
+
+def _flatten_stretched_letters(token: str) -> str:
+    """"Hii" is "hi". "heyyy" is "hey". "Hellooo" is "hello".
+
+    Stretching the last letters of a greeting is how a large share of people
+    type one, and none of it was recognised: "Hii" missed the greeting set,
+    fell through to the ordering agent, and was answered "Your order for Thu
+    12:42 comes to $20.62 and is waiting to be paid." — a customer who said
+    hello and was handed a bill.
+
+    **A token is only ever changed when the result is a greeting.** That is
+    the whole safety argument: English is full of real double letters, and a
+    blind collapse turned "coffee" into "coffe" and "sweet" into "swet". Both
+    happen to be on this platform's menus.
+    """
+
+    if token in GREETING_TOKENS:
+        return token
+    # The tail first: stretching happens at the END of a greeting, and
+    # collapsing every run instead turned "helloo" into "helo" by eating
+    # the real double l. Then the broader forms, for "hiiii" and the like.
+    for squeezed in (
+        re.sub(r"(.)\1+$", r"\1", token),
+        re.sub(r"(.)\1{2,}", r"\1", token),
+        re.sub(r"(.)\1+", r"\1", token),
+    ):
+        if squeezed in GREETING_TOKENS:
+            return squeezed
+    return token
 
 
 def _is_acknowledgement_message(message: str) -> bool:
@@ -2454,11 +2551,26 @@ def _response_cache_key(
     return ":".join(str(part) for part in key_parts)
 
 
-def _greeting_response_cache_key(message: str) -> str:
+def _greeting_response_cache_key(
+    message: str,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+) -> str:
+    """One entry per greeting PER BRANCH.
+
+    The key was the message alone, which was right while a greeting was a
+    generic sentence. It stopped being right the moment the greeting began
+    naming the restaurant and listing its dishes: the first "hi" of the day
+    would have been cached for everybody, and a Surat customer greeted with
+    "You're through to Bangkok Bowl" and four Thai dishes. The branch is in
+    the key too, because branches of one restaurant have different menus.
+    """
+
     normalized = _normalize_text(message)
     slug = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or "greeting"
-    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:10]
-    return f"{GREETING_RESPONSE_CACHE_PREFIX}:v3:{slug}:{digest}"
+    scope = f"{restaurant_id or 'all'}:{restaurant_location_id or 'all'}"
+    digest = hashlib.sha1(f"{normalized}|{scope}".encode("utf-8")).hexdigest()[:10]
+    return f"{GREETING_RESPONSE_CACHE_PREFIX}:v4:{slug}:{digest}"
 
 
 def _serialize_session_state(state: SessionConversationState) -> dict[str, Any]:
@@ -2811,6 +2923,139 @@ def classify_dish_reference(distance: float | None) -> DishReference:
     return "named" if distance < DISH_NAME_MAX_DISTANCE else "absent"
 
 
+#: A menu changes when an owner edits it, which is rare, and a stale word costs
+#: nothing worse than one more dish being answerable. An hour is short enough
+#: that a newly added dish is orderable the same session it was added.
+MENU_VOCABULARY_TTL_SECONDS = 3600
+
+#: How near a word has to be to a menu word to count as a misspelling of it
+#: rather than a different thing. 0.82 on difflib's ratio keeps "khamn"/"khaman"
+#: and "dhokhla"/"dhokla" — how a large share of real orders actually arrive —
+#: while "tofu" stays a stranger to every word on a Gujarati menu.
+MENU_WORD_TYPO_RATIO = 0.82
+
+
+def menu_vocabulary(
+    db: Session,
+    *,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> set[str]:
+    """Every word this branch's menu uses, from names, descriptions, categories.
+
+    This is the list of things the kitchen can talk about, and it is derived
+    from the menu rather than written down anywhere. That is the point: a
+    Gujarati kitchen that starts selling paneer tikka pizza serves it the moment
+    it is on the menu, with no code change, and one that never sells chicken
+    refuses it without anybody having had to think of the word "chicken".
+
+    Cached per branch, because it is read on dish lookups and changes only when
+    a menu does. A cache miss returns the real thing; a Redis outage costs a
+    query, never a wrong answer.
+    """
+
+    if restaurant_location_id is None and restaurant_id is None:
+        return set()
+
+    key = f"menu-vocabulary:{restaurant_location_id or restaurant_id}"
+    cached = cache_get_json(key)
+    if isinstance(cached, list):
+        return set(cached)
+
+    def scoped(query):
+        if restaurant_id is not None:
+            query = query.where(MenuItem.restaurant_id == restaurant_id)
+        if restaurant_location_id is not None:
+            query = query.where(MenuItem.restaurant_location_id == restaurant_location_id)
+        return query
+
+    items = scoped(
+        select(MenuItem.name, MenuItem.description, MenuItem.category).where(
+            MenuItem.is_available.is_(True)
+        )
+    )
+    # Sizes and customization options too, because they are things the menu
+    # says. "a plate of dhokla" reads "plate" as a word the kitchen does not
+    # have unless "Per Plate" — a real size on this menu — is counted as menu
+    # language, and refusing a polite order over the word "plate" would be a
+    # worse bug than the one this rule exists for.
+    sizes = scoped(
+        select(MenuItemSize.name).join(MenuItem, MenuItem.id == MenuItemSize.menu_item_id)
+    )
+    # Options hang off a GROUP, which hangs off the item — so the join goes
+    # through the group, and the group's own title ("Choose a size", "Add-ons")
+    # is menu language too.
+    options = scoped(
+        select(MenuItemCustomizationOption.name, MenuItemCustomizationGroup.title)
+        .join(
+            MenuItemCustomizationGroup,
+            MenuItemCustomizationGroup.id == MenuItemCustomizationOption.group_id,
+        )
+        .join(MenuItem, MenuItem.id == MenuItemCustomizationGroup.menu_item_id)
+    )
+
+    words: set[str] = set()
+    for query in (items, sizes, options):
+        for row in db.execute(query).all():
+            for field in row:
+                if not field:
+                    continue
+                words.update(re.split(r"[^a-z0-9]+", _normalize_text(str(field))))
+    words.discard("")
+
+    cache_set_json(key, sorted(words), ttl_seconds=MENU_VOCABULARY_TTL_SECONDS)
+    return words
+
+
+def words_this_menu_cannot_serve(dish: str, vocabulary: set[str]) -> list[str]:
+    """Words in a dish request that this menu has no version of, at all.
+
+    The guardrail below measures a whole phrase against the menu, which means a
+    request is judged by its AVERAGE resemblance — and the word that decides the
+    answer is precisely the one that gets averaged away. Measured at Radhe
+    Dhokla, against a 0.38 cutoff:
+
+        tofu                -> Veg. Fried Rice             0.470  refused
+        red curry tofu      -> Veg. Toofani (Red)          0.364  accepted
+        chicken biryani     -> Nawabi Pudina Ghee Biryani  0.337  accepted
+        khaman dhokla       -> Vagharela Khaman            0.319  accepted
+
+    No cutoff separates those: the wrong match at 0.337 scores BETTER than the
+    real order at 0.319. Surrounding "tofu" with two words the menu is full of
+    is enough to sell somebody a cashew curry under the name of a tofu one — and
+    to offer chicken biryani from a vegetarian kitchen, which is the case that
+    stops being a quality problem and starts being a lie about food.
+
+    A near-spelling is NOT a missing ingredient. Most real orders here arrive
+    misspelled — "khamn dhokla", "do u hv dhokhla" — and refusing those to catch
+    a rarer wrong one would break the commonest order at this restaurant. So a
+    word only counts against the request when the menu has nothing that even
+    looks like it.
+
+    Returns the offending words rather than a boolean, so a caller can say which
+    one it cannot do instead of a flat "no".
+    """
+
+    if not vocabulary:
+        # The menu could not be read. That is the absence of evidence, and
+        # refusing every dish because a cache was cold would take a whole
+        # restaurant offline over an infrastructure blip.
+        return []
+
+    unserved: list[str] = []
+    for word in _query_tokens(dish):
+        if word in vocabulary:
+            continue
+        if any(
+            SequenceMatcher(None, word, known).ratio() >= MENU_WORD_TYPO_RATIO
+            for known in vocabulary
+        ):
+            # A misspelling of something real, not a thing we do not have.
+            continue
+        unserved.append(word)
+    return unserved
+
+
 def apply_dish_name_guardrail(
     intent: "ExtractedIntent",
     candidates: list[RetrievedMenuCandidate],
@@ -2839,6 +3084,45 @@ def apply_dish_name_guardrail(
 
     if not intent.dish:
         return "unknown"
+
+    # Word by word, BEFORE anything is measured — because the measurement is
+    # what fails here. Distance scores a whole phrase, so the word that decides
+    # the answer is averaged in with the words around it: "tofu" alone scores
+    # 0.470 and is refused, "red curry tofu" scores 0.364 and is not, and
+    # "chicken biryani" at 0.337 beats the real order "khaman dhokla" at 0.319.
+    # A word this menu has no version of settles it on its own, and settles it
+    # more cheaply than an ANN query.
+    if db is not None:
+        unserved = words_this_menu_cannot_serve(
+            intent.dish,
+            menu_vocabulary(
+                db,
+                restaurant_id=restaurant_id,
+                restaurant_location_id=restaurant_location_id,
+            ),
+        )
+        if unserved:
+            logger.info(
+                "Dish-name guardrail: %r names %s, which this menu has no version of "
+                "enforcing=%s question=%r",
+                intent.dish,
+                ", ".join(repr(word) for word in unserved),
+                settings.enable_dish_name_guardrail,
+                _trim_text(message, 80),
+            )
+            # Enforced whatever the flag says, unlike the distance verdict
+            # below. The flag is off for a stated reason — "a threshold that is
+            # slightly wrong refuses real orders" — and that reason is about a
+            # threshold. This is not one: it asks whether the menu contains any
+            # version of a word, a misspelt one included, and it answers from
+            # the menu itself. Leaving it unenforced meant the tool refused
+            # correctly while the chat pipeline carried the dish on to the model
+            # anyway, which is how "red curry tofu" came back as "tender tofu in
+            # a rich, aromatic curry... one of our most popular vegetarian
+            # picks" at a kitchen that has never bought a block of tofu.
+            intent.dish = None
+            intent.items = None
+            return "absent"
 
     # Only a VECTOR candidate's distance means anything here. The keyword and
     # popularity tiers stamp a synthetic constant — 0.25 and 0.5 — so reading
@@ -3952,14 +4236,20 @@ def _service_info_reply(
     if location is None:
         return None
 
-    currency = settings.payment_currency.upper()
+    # The branch's own restaurant decides what this is quoted in. It was one
+    # global setting, which told a Surat customer their delivery cost "USD
+    # 20.00" — the right number under the wrong currency, which is worse than
+    # either being wrong alone because it reads as a price they could agree to.
+    restaurant_currency = db.scalar(
+        select(Restaurant.currency).where(Restaurant.id == location.restaurant_id)
+    )
     parts: list[str] = []
 
     if location.delivery_enabled:
         fee = Decimal(str(location.delivery_fee or 0))
         eta = location.estimated_delivery_time
         if fee > 0:
-            line = f"Delivery is {currency} {fee:.2f}"
+            line = f"Delivery is {format_amount(float(fee), restaurant_currency)}"
         else:
             line = "Delivery is free"
         if eta:
@@ -3974,7 +4264,9 @@ def _service_info_reply(
 
     minimum = Decimal(str(location.minimum_order_amount or 0))
     if minimum > 0:
-        parts.append(f"the minimum order is {currency} {minimum:.2f}")
+        parts.append(
+            f"the minimum order is {format_amount(float(minimum), restaurant_currency)}"
+        )
 
     if not parts:
         return None
@@ -4804,7 +5096,10 @@ def _format_context_line(candidate: RetrievedMenuCandidate) -> str:
     veg_label = "Veg" if item.is_veg else "Non-Veg"
     new_label = " | New item" if is_menu_item_new(item) else ""
     return (
-        f"{item.name} | ${_safe_decimal(item.price):.2f} | {veg_label} | "
+        # This line's OWN restaurant, so a marketplace answer spanning
+        # several of them prices each in its own money rather than in the
+        # turn's.
+        f"{item.name} | {_prompt_money(_safe_decimal(item.price), restaurant.currency)} | {veg_label} | "
         f"{item.category} | {restaurant.name}{new_label} | {description}"
     )
 
@@ -5028,7 +5323,8 @@ def _build_combo_context_block(
         item_names = combo.get("item_names") or []
         items_block = ", ".join(str(item_name) for item_name in item_names[:4])
         lines.append(
-            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\nPrice: ${combo_price}\nIncludes: {items_block}"
+            f"Combo: {combo_name}\nRestaurant: {restaurant_name}\n"
+            f"Price: {_prompt_money(combo_price)}\nIncludes: {items_block}"
         )
     return "\n\n".join(lines)
 
@@ -5132,15 +5428,70 @@ def _greeting_moment_from_message(message: str) -> str | None:
     return None
 
 
-def _build_greeting_reply(message: str = "") -> str:
+#: How many dishes a greeting opens with. Enough to choose from, few enough
+#: to read on a phone without scrolling.
+GREETING_SUGGESTION_COUNT = 4
+
+#: The opener and the question, per daypart. Two halves, because the
+#: restaurant's own name goes between them.
+_GREETING_MOMENTS = {
+    "morning": ("Good morning", "What are you in the mood for this morning?"),
+    "midday": ("Good afternoon", "What are you in the mood for?"),
+    "evening": ("Good evening", "What are you in the mood for tonight?"),
+    "night": ("Hey", "What are you in the mood for?"),
+}
+
+
+def _build_greeting_reply(
+    message: str = "",
+    *,
+    restaurant_name: str | None = None,
+    has_dishes: bool = False,
+) -> str:
+    """Hello, from a restaurant, with something to look at.
+
+    This used to answer "I can help with breakfast picks, spice levels,
+    budgets, or quick cravings" — a description of a search tool, from a
+    business that never said which business it was, to somebody who had
+    walked in and said hello. A restaurant answers a greeting by naming
+    itself, asking what you fancy, and showing you what people are having.
+
+    `has_dishes` is what keeps the last line honest: the lead-in is written
+    only when there is actually a list under it. Promising one and showing
+    nothing is worse than not offering.
+    """
+
     moment = _greeting_moment_from_message(message) or _current_meal_moment()
-    if moment == "morning":
-        return "Good morning 👋 What sounds good right now? I can help with breakfast picks, spice levels, budgets, or quick cravings."
-    if moment == "midday":
-        return "Good afternoon 👋 Looking for lunch ideas? I can help by cuisine, budget, spice level, or whatever you're craving."
-    if moment == "evening":
-        return "Good evening 👋 What are you craving tonight? I can help with spicy picks, comfort food, combos, or budget-friendly options."
-    return "Hey 👋 Late-night cravings? I can help with dishes by cuisine, budget, spice level, offers, or meal mood."
+    opener, question = _GREETING_MOMENTS.get(moment, _GREETING_MOMENTS["night"])
+    # Named, because somebody messaging a number should be told whose kitchen
+    # answered. Absent for the marketplace, which is not one.
+    here = f" You're through to {restaurant_name}." if restaurant_name else ""
+    lead_in = " Here is what people are ordering:" if has_dishes else ""
+    return f"{opener} 👋{here} {question}{lead_in}"
+
+
+def _greeting_suggestions(
+    db: Session,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+) -> list[ChatSuggestionItem]:
+    """A few dishes to open on, by popularity.
+
+    One indexed query and no model: the greeting path answers in about a
+    tenth of a second and is not worth slowing down for this. Failure is
+    silent — a greeting with no list is a worse greeting, not a broken one.
+    """
+
+    if db is None:
+        return []
+    try:
+        candidates = _fetch_popular_candidates(
+            db, restaurant_id, restaurant_location_id, limit=GREETING_SUGGESTION_COUNT
+        )
+        return _suggestion_items(candidates)
+    except Exception:  # noqa: BLE001 - never fail a hello over a list
+        logger.warning("Could not fetch dishes to greet with", exc_info=True)
+        return []
 
 
 def _build_small_talk_reply() -> str:
@@ -5162,6 +5513,79 @@ def _build_order_history_reply() -> str:
         "I can help with food suggestions based on what you usually order. Try asking for something similar to your past "
         "orders, a repeat-worthy favorite, or a more budget-friendly reorder idea."
     )
+
+
+def agent_answer_beats_instant_reply(
+    *, agent_owns: bool, should_bypass_llm: bool, intent: str
+) -> bool:
+    """Whether the ordering agent's line wins over an instant, canned one.
+
+    The pipeline used to ask `should_bypass_llm` first and `agent_owns` second,
+    so every canned reply outranked the agent. For one intent that is exactly
+    backwards. `invalid_input` means "nobody could read this message" — and the
+    agent is the one part of the system in a position to contradict that,
+    because it is holding the question it just asked and the list of answers to
+    it.
+
+    Measured: a size question answered "Y" was met with "I didn't quite catch
+    that. Ask me about food, restaurants, menus, combos, offers..." while the
+    agent had already composed "Which size for Vagharela Khaman? ... Just reply
+    with one of these: Per Plate, 1 Kg." The same held for "N", "2" and "yes".
+    Worse than a bad sentence: the pending question went with it, so the next
+    message had nothing to be read against either.
+
+    Only that intent. The other instant replies are positive classifications —
+    a greeting IS a greeting, an hours question IS an hours question — and
+    answering "hi" with a re-ask of a size question would be this same bug
+    facing the other way.
+    """
+
+    return agent_owns and should_bypass_llm and intent == "invalid_input"
+
+
+#: A comma before "or" is what separates a list of options from a second
+#: question. "Would you like rice or naan?" is one question with two answers;
+#: "Anything else, or shall we get it on its way?" is two questions, and the
+#: answer to both of them is yes. Both real failures carried the comma.
+_A_SECOND_QUESTION = ", or "
+
+
+def ask_one_thing(reply: str | None) -> str | None:
+    """Cut a trailing question back to one question.
+
+    A reply that ends on two questions cannot be answered with "yes", however
+    well the next turn reads it: the customer agreed to one of two different
+    things and nothing in their message says which. Live, on WhatsApp:
+
+        > Menu
+          ... Want something lighter, or are you ready to order?
+        > Yes
+          There is nothing in your order yet.
+
+    The agent's own sentences have followed this rule since `describe_applied`
+    stopped saying "Anything else, or shall we get it on its way?". It never
+    bound the reply pipeline, where the model writes its own prose — so it is
+    applied to that prose here, keeping the first question exactly as the
+    agent's fix kept "Anything else?".
+
+    Only the LAST question, and only with a comma before the "or": an "or"
+    earlier in a reply is prose, and one without a comma is a choice between
+    two answers rather than a second question.
+    """
+
+    if not reply:
+        return reply
+    end = reply.rfind("?")
+    if end == -1:
+        return reply
+    # Back to the start of the sentence this question ends, so an "or" in an
+    # earlier sentence is left alone.
+    start = max(reply.rfind(stop, 0, end) for stop in (".", "!", "?", "\n"))
+    question = reply[start + 1 : end]
+    cut = question.find(_A_SECOND_QUESTION)
+    if cut == -1:
+        return reply
+    return f"{reply[: start + 1]}{question[:cut]}?{reply[end + 1 :]}"
 
 
 def _build_invalid_input_reply() -> str:
@@ -5690,7 +6114,7 @@ def _deserialize_chat_response_cache_payload(
 
 
 def _format_suggestion_names(suggestions: list[ChatSuggestionItem]) -> str:
-    suggestion_names = [f"{item.name} (${item.price})" for item in suggestions[:3]]
+    suggestion_names = [f"{item.name} ({_prompt_money(item.price)})" for item in suggestions[:3]]
     if not suggestion_names:
         return ""
     if len(suggestion_names) == 1:
@@ -5863,7 +6287,7 @@ def _build_offer_context_block(offers: list[PersonalizedOfferCardResponse]) -> s
         if offer.discount_label:
             details.append(offer.discount_label)
         if offer.minimum_order_amount > 0:
-            details.append(f"Min order ${offer.minimum_order_amount}")
+            details.append(f"Min order {_prompt_money(offer.minimum_order_amount)}")
         if offer.expires_at:
             details.append(f"Expires {offer.expires_at:%d %b}")
         lines.append("\n".join(details))
@@ -6033,6 +6457,45 @@ def _build_safe_reply(
     return f"These look like the strongest options from the current menu: {formatted_names}."
 
 
+#: Denials of the MENU, rather than of one dish on it.
+#:
+#: The difference matters because one is fine and the other is never true.
+#: "We don't have sushi on the menu — but the Penne Arrabbiata is a
+#: bestseller" is the house style, and it is in the prompt as a worked
+#: example. The model generalises the SHAPE of it: measured live, "no" as a
+#: whole message was answered "We don't have anything on the menu — but I've
+#: got a few tasty options 🍛" with six real dishes listed underneath it.
+#:
+#: Denying a named dish is a fact about that dish. Denying the menu while
+#: showing the menu is a sentence that contradicts the message it is in, and
+#: a customer who reads the first line and stops has been told the kitchen
+#: has nothing.
+_WHOLE_MENU_DENIALS = (
+    "anything on the menu",
+    "nothing on the menu",
+    "any items on the menu",
+    "no items on the menu",
+    "menu is empty",
+    "nothing available on the menu",
+    "nothing to offer",
+)
+
+
+def _denies_the_whole_menu(raw_reply: str, suggestions: list[ChatSuggestionItem]) -> bool:
+    """Whether this reply says the kitchen has nothing while offering things.
+
+    Checked whenever dishes are attached, independent of what the customer
+    named — the reply above named nothing, which is exactly why the existing
+    `contradiction_markers` check (which needs a named dish to match against)
+    could not see it.
+    """
+
+    if not suggestions:
+        return False
+    normalized = _normalize_text(raw_reply)
+    return any(phrase in normalized for phrase in _WHOLE_MENU_DENIALS)
+
+
 def _ensure_useful_reply(
     *,
     message: str,
@@ -6054,7 +6517,7 @@ def _ensure_useful_reply(
         marker in _normalize_text(raw_reply) for marker in contradiction_markers
     )
 
-    if raw_reply.strip() and not _contains_generic_fallback(raw_reply) and not contradictory_unavailable_reply:
+    if raw_reply.strip() and not _contains_generic_fallback(raw_reply) and not contradictory_unavailable_reply and not _denies_the_whole_menu(raw_reply, suggestions):
         return raw_reply.strip()
 
     safe_reply = fallback_reply_override or _build_safe_reply(
@@ -7277,6 +7740,112 @@ def run_turn(db: Session, **kwargs: Any) -> "TurnOutcome":
     return _ordering_agent_run_turn(db, **kwargs)
 
 
+# What the restaurant being answered for charges in.
+#
+# A ContextVar, for the third time in this codebase and for the same reason
+# each time (`ordering_agent/loop.py`, `insights/rules.py`): the four places
+# that write a price into a PROMPT are deep inside context builders that have
+# no restaurant to hand, and the currency belongs to the turn rather than to
+# each figure in it.
+#
+# This is what the MODEL is shown, so it is what the model repeats. Measured
+# on a rupee menu: the retrieved context said "Butter Pavbhaji | $135.00" and
+# the reply came back "the Butter Pavbhaji ($135.00)" — under a suggestion
+# list that correctly said ₹135.
+_reply_currency: ContextVar[str | None] = ContextVar("reply_currency", default=None)
+
+
+def bind_reply_currency(code: str | None) -> None:
+    """Write every price in this turn's prompts in this currency."""
+
+    _reply_currency.set(code)
+
+
+def _prompt_money(value: Any, code: str | None = None) -> str:
+    """A price as the model should see it. `code` overrides the turn's."""
+
+    try:
+        return format_amount(float(value), code or _reply_currency.get())
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _currency_of(db: Session, restaurant_id: uuid.UUID | None) -> str | None:
+    """What this restaurant charges in, or None for the platform default.
+
+    None is also the right answer for the marketplace, which spans
+    restaurants: each retrieved line then carries its own restaurant's
+    currency, and only the figures that belong to no single restaurant fall
+    back to the default.
+    """
+
+    if restaurant_id is None:
+        return None
+    try:
+        from app.models.restaurant import Restaurant
+
+        return db.scalar(select(Restaurant.currency).where(Restaurant.id == restaurant_id))
+    except Exception:  # noqa: BLE001 - a symbol is never worth a failed reply
+        logger.warning("Could not read the restaurant's currency for the reply", exc_info=True)
+        return None
+
+
+def remember_shown_dishes(
+    session_id: uuid.UUID | None,
+    suggestions: list[Any],
+    reply: str | None = None,
+) -> None:
+    """Write down the dishes this reply is about to put in front of a customer.
+
+    The ordering agent records what IT reads out, so "Which one would you
+    like?" can be answered. The reply pipeline shows dishes on most turns and
+    recorded nothing, so the commonest follow-ups a person types resolved to
+    nothing at all. Measured on the live model:
+
+        >>> food
+        ... the Butter Pavbhaji is a crowd-pleaser. 500g or 1kg?
+        • Butter Pav (12 Pcs) — ₹55   • Butter Pavbhaji — ₹135  ...
+
+        >>> yes
+        Great! It looks like you're ready to proceed.      <- an empty cart
+
+        >>> the first one
+        Your cart is currently empty.
+
+    Written to `last_shown` rather than `pending_choice`, which is the softer
+    of the two stores: a list we merely SHOWED never makes the agent say
+    "Sorry, I did not catch that — reply with one of these" to somebody who
+    has simply changed the subject. It only ever lets a pick resolve.
+
+    Best-effort by design. Redis being unreachable costs a follow-up its
+    shortcut, and is not worth failing a reply over.
+    """
+
+    if session_id is None:
+        return
+    names = [
+        name for name in (getattr(item, "name", None) for item in suggestions) if name
+    ]
+    from app.services.ordering_agent.planner import question_asked_in
+
+    question = question_asked_in(reply)
+    if not names and not question:
+        return
+    try:
+        from app.services.ordering_agent import order_draft
+
+        draft = order_draft.load(session_id)
+        if names:
+            draft.last_shown = json.dumps({"options": [{"name": str(n)} for n in names]})
+        # Overwritten every turn, including with None: a question two replies
+        # ago is not what "yes" is answering, and a stale one is worse than
+        # none because it gives a bare agreement the wrong meaning.
+        draft.last_question = question
+        order_draft.save(session_id, draft)
+    except Exception:  # noqa: BLE001 - a follow-up shortcut, never the reply
+        logger.warning("Could not record what this reply showed or asked", exc_info=True)
+
+
 def _optional_id_str(value: Any) -> str | None:
     return None if value is None else str(value)
 
@@ -7633,6 +8202,23 @@ def _safe_suggestion_for_cart(
         return None
 
 
+def _restaurant_name_for(db: Session, restaurant_id: uuid.UUID | None) -> str | None:
+    """Whose kitchen is answering, or None for the marketplace.
+
+    One lookup by primary key. Somebody who messages a number and is answered
+    by something that never says what it is has no way to tell whether they
+    reached the right place.
+    """
+
+    if db is None or restaurant_id is None:
+        return None
+    try:
+        return db.scalar(select(Restaurant.name).where(Restaurant.id == restaurant_id))
+    except Exception:  # noqa: BLE001 - a name is not worth a failed hello
+        logger.warning("Could not read the restaurant's name for a greeting", exc_info=True)
+        return None
+
+
 def _greeting_with_name(reply: str, name: str | None) -> str:
     """The greeting we were going to send, with their name in it.
 
@@ -7694,6 +8280,9 @@ def handle_chat_message(
     auto_place: bool = False,
 ) -> ChatMessageResponse:
     started_at = perf_counter()
+    # Before anything is retrieved or written, so every price this turn puts
+    # in front of the model is in the money the menu is actually priced in.
+    bind_reply_currency(_currency_of(db, restaurant_id))
     if _is_acknowledgement_message(message):
         prepared = _prepare_instant_reply_turn(
             message=message,
@@ -7734,7 +8323,9 @@ def handle_chat_message(
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
         logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
-        greeting_cache_key = _greeting_response_cache_key(message)
+        greeting_cache_key = _greeting_response_cache_key(
+            message, restaurant_id, restaurant_location_id
+        )
         logger.info("RAG greeting cache lookup key=%s", greeting_cache_key)
         cached_response_payload = _deserialize_chat_response_cache_payload(cache_get_json(greeting_cache_key))
         cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
@@ -7757,7 +8348,16 @@ def handle_chat_message(
             llm_strategy = "redis_greeting_cache"
         else:
             logger.info("RAG greeting cache miss key=%s", greeting_cache_key)
-            reply = _build_greeting_reply(message)
+            # Dishes first: whether there are any decides how the greeting's
+            # last sentence reads.
+            prepared.suggestions = _greeting_suggestions(
+                db, restaurant_id, restaurant_location_id
+            )
+            reply = _build_greeting_reply(
+                message,
+                restaurant_name=_restaurant_name_for(db, restaurant_id),
+                has_dishes=bool(prepared.suggestions),
+            )
             llm_strategy = "instant_greeting"
             cache_set_json(
                 greeting_cache_key,
@@ -7790,6 +8390,8 @@ def handle_chat_message(
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         return ChatMessageResponse(
             reply=reply,
             session_id=prepared.active_session_id,
@@ -7844,6 +8446,8 @@ def handle_chat_message(
         prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
         _log_rag_timings(user, prepared)
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         return ChatMessageResponse(
             reply=reply,
             session_id=prepared.active_session_id,
@@ -7943,7 +8547,11 @@ def handle_chat_message(
 
     raw_reply = ""
     llm_strategy = "skipped"
-    if prepared.should_bypass_llm:
+    if prepared.should_bypass_llm and not agent_answer_beats_instant_reply(
+        agent_owns=agent_owns,
+        should_bypass_llm=prepared.should_bypass_llm,
+        intent=str(prepared.extracted_intent.intent),
+    ):
         reply = prepared.fallback_reply or _build_safe_reply(
             message,
             prepared.suggestions,
@@ -7981,7 +8589,10 @@ def handle_chat_message(
                     _trim_text(message, 80),
                 )
                 llm_strategy = "generated_trimmed"
-            raw_reply = grounded_reply
+            # One question, for the same reason the agent's own sentences ask
+            # one: "yes" to "Want something lighter, or are you ready to
+            # order?" cannot be read, however good the reading is.
+            raw_reply = ask_one_thing(grounded_reply)
         except HTTPException:
             llm_strategy = "fallback_after_llm_failure"
         prepared.timings.llm_ms = round((perf_counter() - llm_started_at) * 1000, 2)
@@ -8082,6 +8693,16 @@ def handle_chat_message(
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
     prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+    # Only what the customer will actually SEE. When the agent owns the
+    # turn, WhatsApp sends its line alone and drops these — recording them
+    # anyway put dishes nobody was shown behind "the first one".
+    remember_shown_dishes(
+        prepared.active_session_id,
+        [] if agent_owns else prepared.suggestions,
+        # The agent's own question is already written down by `_hold`,
+        # with what agreeing to it should DO — which prose cannot carry.
+        None if agent_owns else reply,
+    )
 
     # Prepended AFTER generation, not built into the reply. Three reasons, and
     # the third is the binding one:
@@ -8141,6 +8762,9 @@ def stream_chat_message(
     recent_history: list[dict[str, str]] | None = None,
 ) -> Iterator[str]:
     started_at = perf_counter()
+    # Before anything is retrieved or written, so every price this turn puts
+    # in front of the model is in the money the menu is actually priced in.
+    bind_reply_currency(_currency_of(db, restaurant_id))
     if _is_acknowledgement_message(message):
         prepared = _prepare_instant_reply_turn(
             message=message,
@@ -8185,7 +8809,9 @@ def stream_chat_message(
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
         logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
-        greeting_cache_key = _greeting_response_cache_key(message)
+        greeting_cache_key = _greeting_response_cache_key(
+            message, restaurant_id, restaurant_location_id
+        )
         logger.info("RAG greeting cache lookup key=%s", greeting_cache_key)
         cached_response_payload = _deserialize_chat_response_cache_payload(cache_get_json(greeting_cache_key))
         cache_lookup_ms = round((perf_counter() - cache_started_at) * 1000, 2)
@@ -8218,7 +8844,16 @@ def stream_chat_message(
         else:
             logger.info("RAG greeting cache miss key=%s", greeting_cache_key)
             llm_strategy = "instant_greeting"
-            reply = _build_greeting_reply(message)
+            # Dishes first: whether there are any decides how the greeting's
+            # last sentence reads.
+            prepared.suggestions = _greeting_suggestions(
+                db, restaurant_id, restaurant_location_id
+            )
+            reply = _build_greeting_reply(
+                message,
+                restaurant_name=_restaurant_name_for(db, restaurant_id),
+                has_dishes=bool(prepared.suggestions),
+            )
             yield _sse_frame("token", {"text": reply})
             cache_set_json(
                 greeting_cache_key,
@@ -8290,6 +8925,8 @@ def stream_chat_message(
             retrieval_source=cached_retrieval_source,
         )
         prepared.suggestions = _attach_suggestion_favorites(db, user, prepared.suggestions)
+        # So the next message can pick one of them by name or by position.
+        remember_shown_dishes(prepared.active_session_id, prepared.suggestions, reply)
         prepared.timings.cache_lookup_ms = cache_lookup_ms
         yield _sse_frame(
             "meta",
@@ -8450,7 +9087,11 @@ def stream_chat_message(
 
     raw_reply = ""
     llm_strategy = "skipped"
-    if prepared.should_bypass_llm:
+    if prepared.should_bypass_llm and not agent_answer_beats_instant_reply(
+        agent_owns=agent_owns,
+        should_bypass_llm=prepared.should_bypass_llm,
+        intent=str(prepared.extracted_intent.intent),
+    ):
         reply = prepared.fallback_reply or _build_safe_reply(
             message,
             prepared.suggestions,
@@ -8534,6 +9175,15 @@ def stream_chat_message(
                 )
         except Exception:  # pragma: no cover - a checker must not break the answer
             logger.exception("Streamed grounding check failed; reply returned unchecked")
+
+        # One question, for the same reason the agent's own sentences ask one:
+        # "yes" to "Want something lighter, or are you ready to order?" cannot
+        # be read, however good the reading is. Applied to the MODEL's prose
+        # only — the deterministic replies have followed this rule since
+        # `describe_applied` stopped saying "Anything else, or shall we get it
+        # on its way?".
+        if raw_reply:
+            reply = ask_one_thing(reply)
 
     if may_cache_globally(
         cacheable=cacheable_response,

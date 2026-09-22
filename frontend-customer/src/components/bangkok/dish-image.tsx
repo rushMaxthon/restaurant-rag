@@ -1,8 +1,73 @@
 import { useState } from "react";
+
+import { DishMotif } from "@/components/bangkok/dish-motif";
+import { groundFor, motifFor } from "@/lib/dish-motif";
 import { cn } from "@/lib/utils";
-const tones = ["placeholder-a", "placeholder-b", "placeholder-c", "placeholder-d"];
-export function DishImage({ src, name, className, priority = false }: { src: string | null; name: string; className?: string; priority?: boolean }) {
- const [failed, setFailed] = useState(false); const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join(""); const tone = tones[name.length % tones.length];
- if (!src || failed) return <div role="img" aria-label={`${name} placeholder`} className={cn("dish-placeholder flex aspect-[4/3] items-center justify-center text-3xl font-extrabold", tone, className)}><span>{initials}</span></div>;
- return <img src={src} alt={name} width={900} height={700} loading={priority ? "eager" : "lazy"} onError={() => setFailed(true)} className={cn("aspect-[4/3] w-full object-cover", className)} />;
+
+/**
+ * A dish's picture, or something worth looking at instead.
+ *
+ * Two things were wrong with the old stand-in. It was two initials on a flat
+ * pastel — "AM" for Aloo Mater — which reads as a failed image rather than a
+ * chosen one; and 82 of the 136 dishes at a Radhe Dhokla branch have no
+ * photograph, so that was most of the menu. A photograph cannot be invented
+ * and must not be borrowed (see `StorefrontHero` for what borrowing one
+ * costs), so the honest move is a drawing that is plainly a drawing, picked
+ * from the dish's own category so a scroll down the menu has some variety in
+ * it.
+ *
+ * The real photograph, when there is one, fades up as it decodes instead of
+ * snapping in under the text — and it fades up from the same motif, so the
+ * tile is never empty and never changes size.
+ */
+export function DishImage({
+  src,
+  name,
+  category,
+  className,
+  priority = false,
+}: {
+  src: string | null;
+  name: string;
+  /** The kitchen's own grouping, which picks the drawing. */
+  category?: string | null;
+  className?: string;
+  priority?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const motif = motifFor(category, name);
+  const ground = groundFor(name);
+
+  return (
+    <div
+      // The ratio and width stay Tailwind classes rather than moving into
+      // `.dish-motif`, because callers override them through tailwind-merge:
+      // the waiter prompt asks for `aspect-square h-14 w-14`, and a plain CSS
+      // rule would not be dropped by that merge.
+      className={cn("dish-motif aspect-[4/3] w-full", className)}
+      data-ground={ground}
+      role="img"
+      aria-label={src && !failed ? name : `${name} — no photograph yet`}
+    >
+      <DishMotif motif={motif} seed={ground} />
+      {src && !failed && (
+        <img
+          alt=""
+          className="dish-motif__photo"
+          data-loaded={loaded}
+          // Below the fold on a 136-dish menu, this is most of the page's
+          // weight; `lazy` keeps it off the wire until it is nearly in view.
+          decoding="async"
+          loading={priority ? "eager" : "lazy"}
+          height={700}
+          onError={() => setFailed(true)}
+          onLoad={() => setLoaded(true)}
+          src={src}
+          width={900}
+        />
+      )}
+    </div>
+  );
 }

@@ -94,6 +94,10 @@ export function suggestionCopy(
   suggestion: SellSuggestion,
   itemName: string,
   category?: string | null,
+  // Passed in rather than imported, because this module has no tenant: one
+  // deployment serves every restaurant and they do not all charge in the same
+  // money. The caller is a component and has `useMoney()`.
+  money: (value: string | number) => string = (value) => formatMoney(value),
 ): string {
   switch (suggestion.basis) {
     case "co_occurrence":
@@ -104,16 +108,15 @@ export function suggestionCopy(
     }
     case "combo_upgrade": {
       const saving = suggestion.saving?.trim();
-      // Every other price on the site goes through `formatMoney` (see
-      // `bangkok-data.ts`) and shows "CA$2.50" — interpolating the raw
-      // decimal string here would be the one place on the site that showed
-      // a bare, currency-less number.
-      return saving ? `Make it the ${itemName} and save ${formatMoney(saving)}.` : `Make it the ${itemName}.`;
+      // Every other price on the site goes through the tenant's formatter —
+      // interpolating the raw decimal string here would be the one place on
+      // the site that showed a bare, currency-less number.
+      return saving ? `Make it the ${itemName} and save ${money(saving)}.` : `Make it the ${itemName}.`;
     }
     case "size_upgrade": {
       const cost = suggestion.extra_cost?.trim();
       return cost
-        ? `Would you like a bigger size? ${formatMoney(cost)} more for the ${itemName}.`
+        ? `Would you like a bigger size? ${money(cost)} more for the ${itemName}.`
         : `Would you like a bigger size of the ${itemName}?`;
     }
     case "add_on":

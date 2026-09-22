@@ -84,10 +84,6 @@ class OrderDraft:
     # ever. The order is created unpaid, so the link is the confirmation
     # that actually spends money.
     place_asks: int = 0
-    # How many times we have mentioned an order that is waiting to be
-    # paid. A reminder that repeats every turn is nagging, and the link
-    # is in the thread either way.
-    waiting_asks: int = 0
     # The question this conversation is waiting on an answer to, as JSON:
     # what we asked in our own words, and what agreeing to it acts on. A
     # bare "yes" has no meaning by itself — live, "Which one would you like?"
@@ -99,6 +95,22 @@ class OrderDraft:
     # writes to an account and every WhatsApp customer is a guest — so a
     # vegetarian was offered chicken two messages later.
     diet: str | None = None
+    # The dishes last put in front of this customer, as JSON names, so a
+    # reply that picks one of them ("the first one", "that", "yes the
+    # paneer") can be resolved. Written by whichever half of the turn did the
+    # showing — the agent reading a menu out, or the reply pipeline attaching
+    # suggestions under its prose.
+    #
+    # NOT `pending_choice`. That is a question we ASKED, which may be put
+    # again and then given up on. This is a list we SHOWED, and a customer
+    # who changes the subject after seeing it has done nothing wrong.
+    last_shown: str | None = None
+    # The question the last reply ended on, when it ended on one and it
+    # was not a question the agent itself asked. A browser sends the
+    # previous reply back with the next message; a chat thread has no
+    # client to carry it, so on WhatsApp this is the only memory of what
+    # the customer is answering.
+    last_question: str | None = None
     # Whether the customer has stood behind these details in THIS
     # conversation — by typing them, or by saying yes to them. Details that
     # came from their account have not been confirmed by anybody: an address
@@ -119,10 +131,11 @@ class OrderDraft:
         "collecting",
         "offered_scheduled_at",
         "pending_choice",
+        "last_shown",
+        "last_question",
         "awaiting",
         "order_confirmed",
         "place_asks",
-        "waiting_asks",
         "confirmed",
         "confirm_asks",
         "diet",
@@ -179,7 +192,7 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     for flag in ("collecting", "confirmed", "order_confirmed"):
         if isinstance(stored.get(flag), bool):
             kept[flag] = stored[flag]
-    for counter in ("confirm_asks", "place_asks", "waiting_asks"):
+    for counter in ("confirm_asks", "place_asks"):
         if isinstance(stored.get(counter), int):
             kept[counter] = stored[counter]
     # The other state fields are strings and round-trip as such. Live: the
@@ -188,7 +201,6 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
     for name in OrderDraft._STATE_FIELDS:
         if name not in {
             "collecting", "confirmed", "confirm_asks", "order_confirmed", "place_asks",
-            "waiting_asks",
         } and isinstance(stored.get(name), str):
             kept[name] = stored[name]
     return OrderDraft(**kept)
@@ -196,6 +208,39 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
 
 def save(session_id: uuid.UUID | str, draft: OrderDraft) -> None:
     cache_set_json(_key(session_id), asdict(draft), ttl_seconds=DRAFT_TTL_SECONDS)
+
+
+def _waiting_key(session_id: uuid.UUID | str) -> str:
+    return f"ordering:waiting-notices:{session_id}"
+
+
+def waiting_notices(session_id: uuid.UUID | str) -> int:
+    """How many times THIS CONVERSATION has mentioned an unpaid order.
+
+    Deliberately not a field on the draft. The draft is cleared whenever an
+    order is placed or cancelled, so a counter living in it starts again at
+    zero for the next order — and a customer with several unpaid orders can
+    never get past them.
+
+    Live, and the reason this exists: a test account had accumulated
+    eighteen PAYMENT_PENDING orders because Celery beat was not running and
+    the reaper had never fired. Every message surfaced the next one, the
+    customer cancelled it, and the message after that surfaced another. The
+    cap was working exactly as written; it was counting the wrong thing.
+    """
+
+    stored = cache_get_json(_waiting_key(session_id))
+    return stored if isinstance(stored, int) else 0
+
+
+def note_waiting_notice(session_id: uuid.UUID | str) -> None:
+    """Record that we have just mentioned one. Survives a draft clear."""
+
+    cache_set_json(
+        _waiting_key(session_id),
+        waiting_notices(session_id) + 1,
+        ttl_seconds=DRAFT_TTL_SECONDS,
+    )
 
 
 def clear(session_id: uuid.UUID | str) -> None:

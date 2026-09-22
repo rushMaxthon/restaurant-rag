@@ -34,6 +34,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @import "../../frontend-shared/tokens.css";
+/* The shapes both products share. Before `legacy.css` so this panel's
+   own rules can still override one while a component is being migrated. */
+@import "../../frontend-shared/components.css";
 @import "./legacy.css" layer(legacy);
 
 /* This panel's own tokens, unlayered and after the shared ones so they win.
@@ -46,40 +49,44 @@
      static name after it picks up a locally-installed copy if there is one.
      Until this package was added, neither was ever loaded and every screen
      silently rendered in the Segoe UI / system fallback. */
-  font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'Inter',
-    'Segoe UI', system-ui, sans-serif;
-  color: #1f2437;
-  background:
-    radial-gradient(circle at top right, rgba(255, 82, 0, 0.1), transparent 22%),
-    linear-gradient(180deg, #f7f8fc 0%, #f2f4f9 100%);
+  font-family: var(--font-stack);
+  color: var(--text);
+  /* Flat, like the storefront. This was a radial orange wash over a vertical
+     gradient — the single most recognisable thing keeping the two apps from
+     reading as one product, and the only page ground either of them has. */
+  background: var(--bg);
   color-scheme: light;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --bg: #f4f6fb;
-  --surface: rgba(255, 255, 255, 0.88);
+
+  /* --- Adopted from the shared file ---------------------------------------
+     `--bg`, `--surface`, `--text`, `--muted`, `--border`, `--primary`,
+     `--primary-soft`, `--success` and `--danger` used to be declared here and
+     are deliberately absent now, so `frontend-shared/tokens.css` supplies
+     them. Every one moved by a few points of lightness in the same direction;
+     `--primary` was already identical in both apps. The one that looked
+     alarming — a translucent `--surface` going opaque — turned out to be
+     referenced once.
+
+     The names below stay panel-local because they mean nothing on a
+     storefront: a sidebar, a warning tier, the chart series. */
   --card: #ffffff;
   --surface-solid: #ffffff;
   --surface-subtle: #f8faff;
   --card-muted: #f8f9fd;
-  --field-bg: #fcfdff;
+  /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
+  --field-bg: var(--surface);
   --field-bg-active: #ffffff;
-  --border: rgba(225, 230, 240, 0.96);
   --border-strong: rgba(255, 82, 0, 0.18);
-  --text: #1f2437;
-  --muted: #6d7489;
   --hint: #8e95a8;
-  --primary: #ff5200;
-  --primary-soft: #fff1e7;
   --sidebar: #15172a;
   --sidebar-2: #1d2036;
-  --success: #20a86e;
   --success-soft: #e9f7ef;
   --warning: #f2a100;
   --warning-soft: #fff4d8;
   --blue: #2b66e4;
   --blue-soft: #e9f0ff;
-  --danger: #d53b43;
   --danger-soft: #ffedef;
   --chart-1: #ff6b2c;
   --chart-2: #20a86e;
@@ -117,8 +124,12 @@
   --radius-8: 28px;
   --radius-pill: 999px;
 
-  /* One focus ring, instead of the three alpha variants that had grown. */
-  --shadow-ring: 0 0 0 3px rgba(230, 74, 0, 0.1);
+  /* One focus ring, instead of the three alpha variants that had grown.
+     At 10% alpha it was there in the stylesheet and not on the screen — a
+     focused field looked the same as an unfocused one from a foot away. The
+     storefront's ring is 22% of the brand and derives from `--primary`, so a
+     tenant's accent carries into its own focus marker. */
+  --shadow-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
 
   /* Control height. Buttons sat at 34px and inputs at 36px, so any toolbar
      putting a button beside a search field was 2px out of alignment. One token
@@ -130,8 +141,22 @@
   --radius-xl: var(--radius-6);
   --radius-lg: var(--radius-4);
   --radius-md: var(--radius-3);
-  --radius-sm: var(--radius-2);
-  --accent: #e64a00;
-  --accent-soft: #ffefe6;
-  --accent-track: #ffe3d4;
+  /* Repointed at the shared `--radius`, 10px → 8px. This alias dresses the
+     controls — inputs, selects, both buttons, the pagination pills — so the
+     panel's control corners now come from the same token the storefront's
+     do, and a brand that changes one changes both. */
+  --radius-sm: var(--radius);
+  /* Aliases, now pointing at the brand rather than beside it.
+     `#e64a00` and `--primary`'s `#ff5200` are two different oranges, and they
+     sat next to each other across 52 rules — a link hover in one, a chip in
+     the other, close enough to look like a rendering artefact rather than a
+     choice. Worse, `--primary` is the token a tenant's brand colour flows
+     into and `--accent` was a literal, so half the panel could never follow a
+     restaurant's colour.
+
+     Kept as names rather than replaced at every call site: the call sites are
+     right, they were just pointed at the wrong value. */
+  --accent: var(--primary);
+  --accent-soft: var(--primary-soft);
+  --accent-track: color-mix(in srgb, var(--primary) 18%, var(--surface));
 }

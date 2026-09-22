@@ -189,6 +189,15 @@ class TheConfigEndpointTests(unittest.TestCase):
                     app_config,
                     "build_app_config_response",
                     lambda client, **kw: SimpleNamespace(**kw),
+                ), \
+                patch.object(
+                    app_config,
+                    # These tests are about WHICH identifier resolves, and
+                    # pass `db=None` to prove nothing else is consulted.
+                    # Capability resolution is a real query, covered in
+                    # `test_capabilities.py`.
+                    "client_capabilities",
+                    lambda db, *, restaurant_id: {},
                 ):
             defaults = {
                 "db": None,
@@ -395,7 +404,23 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         # administrator set up.
         from app.services import app_clients
 
-        restaurant = SimpleNamespace(theme={"primary_color": "#0F766E", "preset": "teal"})
+        # `storefront` and the three fields its defaults derive from are part
+        # of the shape `/app-config` reads now: the response carries the
+        # restaurant's own page title and hero copy, so that a tenant's
+        # website is not titled for somebody else's.
+        restaurant = SimpleNamespace(
+            theme={"primary_color": "#0F766E", "preset": "teal"},
+            storefront={},
+            currency="CAD",
+            name="Bangkok Bowl",
+            cuisine_type="Thai",
+            city="Ahmedabad",
+            description="",
+            # The restaurant's own hero photograph, which the storefront falls
+            # back to when the app client has none — the restaurant edit form
+            # writes here, the branding screen writes to the client.
+            cover_image_url=None,
+        )
         client = SimpleNamespace(
             id=uuid.uuid4(), key="bangkok_bowl", display_name="Bangkok Bowl",
             app_mode=AppMode.SINGLE_RESTAURANT, restaurant_id=uuid.uuid4(),
@@ -407,6 +432,60 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         self.assertEqual(built.branding["primary_color"], "#0F766E")
         # And everything the owner does not control survives the override.
         self.assertEqual(built.branding["logo_url"], "https://a.test/l.png")
+        # The copy travels on the same response, derived from the restaurant
+        # rather than from whichever tenant was hardcoded in the web app.
+        self.assertEqual(built.storefront["hero_headline"], "Bangkok Bowl")
+        self.assertIn("Thai", built.storefront["meta_title"])
+
+    def test_the_restaurants_cover_reaches_the_storefront(self) -> None:
+        """Two fields share the name `cover_image_url`.
+
+        One is on the app client, written by the branding screen; one is on
+        the restaurant, written by the restaurant edit form. The storefront
+        reads the client's, so a cover typed into the restaurant form used to
+        reach nothing — the edit saved, said so, and changed no page.
+        """
+
+        from app.services import app_clients
+
+        restaurant = SimpleNamespace(
+            theme={}, storefront={}, currency="INR", name="Radhe Dhokla",
+            cuisine_type="Gujarati", city="Surat", description="",
+            cover_image_url="https://cdn.test/radhe/hero.jpg",
+        )
+        client = SimpleNamespace(
+            id=uuid.uuid4(), key="radhe_dhokla", display_name="Radhe Dhokla",
+            app_mode=AppMode.SINGLE_RESTAURANT, restaurant_id=uuid.uuid4(),
+            status=AppClientStatus.ACTIVE, restaurant=restaurant,
+            branding={}, order_number_prefix="RD", minimum_supported_version="1.0.0",
+        )
+        built = app_clients.build_app_config_response(client, host="radhe-dhokla.example.com")
+        self.assertEqual(built.branding["cover_image_url"], "https://cdn.test/radhe/hero.jpg")
+
+    def test_the_app_clients_own_cover_wins(self) -> None:
+        """The more specific of the two.
+
+        A single-restaurant app may deliberately front the same restaurant
+        with different artwork, so what an operator set on the client is not
+        overwritten by the restaurant's.
+        """
+
+        from app.services import app_clients
+
+        restaurant = SimpleNamespace(
+            theme={}, storefront={}, currency="INR", name="Radhe Dhokla",
+            cuisine_type="Gujarati", city="Surat", description="",
+            cover_image_url="https://cdn.test/radhe/hero.jpg",
+        )
+        client = SimpleNamespace(
+            id=uuid.uuid4(), key="radhe_dhokla", display_name="Radhe Dhokla",
+            app_mode=AppMode.SINGLE_RESTAURANT, restaurant_id=uuid.uuid4(),
+            status=AppClientStatus.ACTIVE, restaurant=restaurant,
+            branding={"cover_image_url": "https://cdn.test/app/hero.jpg"},
+            order_number_prefix="RD", minimum_supported_version="1.0.0",
+        )
+        built = app_clients.build_app_config_response(client, host="radhe-dhokla.example.com")
+        self.assertEqual(built.branding["cover_image_url"], "https://cdn.test/app/hero.jpg")
 
 
 class OnboardingIssuesAnAddressTests(unittest.TestCase):

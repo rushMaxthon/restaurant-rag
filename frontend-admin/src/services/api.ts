@@ -11,6 +11,12 @@ import type {
   AdminDashboardStats,
   AppClient,
   AppClientUpsertPayload,
+  PaymentGateway,
+  PaymentGatewayPayload,
+  RestaurantCapability,
+  RestaurantPaymentSettings,
+  TenantStatusPayload,
+  TenantSummary,
   ReportsSnapshot,
   GeneratedCombo,
   AdminMenuItem,
@@ -700,6 +706,14 @@ export const api = {
       cover_image_url?: string | null;
       is_open?: boolean;
       is_active?: boolean;
+      /**
+       * ADMIN only — the server refuses it from an owner.
+       *
+       * Relabels every price this restaurant shows and every charge it makes;
+       * it converts nothing. Orders already placed keep the currency they
+       * were charged in, which is why `orders.currency` is stamped per order.
+       */
+      currency?: string;
     },
   ): Promise<RestaurantDetail> {
     return request<RestaurantDetail>(`/restaurants/${restaurantId}/settings`, {
@@ -814,6 +828,81 @@ export const api = {
       token,
       body: payload,
     });
+  },
+  /** Every tenant on the platform. ADMIN only; an owner gets a 403. */
+  listTenants(token: string): Promise<TenantSummary[]> {
+    return request<TenantSummary[]>('/app-clients', { token });
+  },
+  /**
+   * Suspend, offboard or reactivate a tenant.
+   *
+   * The server refuses anything other than ACTIVE without a note, and refuses
+   * to revive an offboarded tenant at all — both deliberately, so the UI can
+   * ask plainly rather than guard silently.
+   */
+  updateTenantStatus(
+    token: string,
+    tenantId: string,
+    payload: TenantStatusPayload,
+  ): Promise<TenantSummary> {
+    return request<TenantSummary>(`/app-clients/${tenantId}/status`, {
+      method: 'PATCH',
+      token,
+      body: payload,
+    });
+  },
+  /** What this restaurant has switched on, and why. Owners may read it too. */
+  getRestaurantCapabilities(token: string, restaurantId: string): Promise<RestaurantCapability[]> {
+    return request<RestaurantCapability[]>(`/restaurants/${restaurantId}/capabilities`, { token });
+  },
+  /**
+   * Switch one capability for one restaurant. ADMIN only.
+   *
+   * `enabled: null` clears the decision and returns this restaurant to the
+   * platform default, which is a different fact from switching it off.
+   */
+  setRestaurantCapability(
+    token: string,
+    restaurantId: string,
+    key: string,
+    payload: { enabled: boolean | null; note?: string | null },
+  ): Promise<RestaurantCapability[]> {
+    return request<RestaurantCapability[]>(
+      `/restaurants/${restaurantId}/capabilities/${encodeURIComponent(key)}`,
+      { method: 'PUT', token, body: payload },
+    );
+  },
+  /** Which gateways this restaurant holds, and which buttons its customers see. */
+  getRestaurantPaymentSettings(token: string, restaurantId: string): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(`/restaurants/${restaurantId}/payment-settings`, { token });
+  },
+  /**
+   * Store or update one gateway. ADMIN only.
+   *
+   * Leave `secret_key` out to keep the stored one — the screen cannot show it,
+   * so an empty field means "unchanged", never "clear it".
+   */
+  saveRestaurantPaymentGateway(
+    token: string,
+    restaurantId: string,
+    gateway: PaymentGateway,
+    payload: PaymentGatewayPayload,
+  ): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(
+      `/restaurants/${restaurantId}/payment-settings/${gateway}`,
+      { method: 'PUT', token, body: payload },
+    );
+  },
+  /** Forget a gateway's credentials. Distinct from switching it off. */
+  deleteRestaurantPaymentGateway(
+    token: string,
+    restaurantId: string,
+    gateway: PaymentGateway,
+  ): Promise<RestaurantPaymentSettings> {
+    return request<RestaurantPaymentSettings>(
+      `/restaurants/${restaurantId}/payment-settings/${gateway}`,
+      { method: 'DELETE', token },
+    );
   },
   getMenuItems(token: string, restaurantId: string, locationId?: string | null): Promise<MenuItem[]> {
     const params = new URLSearchParams({
@@ -1177,18 +1266,45 @@ export function toNumber(value: number | string): number {
 }
 
 /**
- * The single place this dashboard decides what money looks like.
+ * How a currency is written, mirroring `services/currency.py`.
  *
- * CAD, and it has to stay CAD: `payment_currency` on the backend is what Stripe
- * actually charges, so an owner reading revenue here has to be reading the same
- * unit their customers were billed in. `en-CA` groups in threes - the locale is
- * carrying the grouping rule, not the symbol, which is why it stays even though
- * the currency changed.
+ * `locale` carries the GROUPING rule rather than the symbol, and that is the
+ * part that is easy to get wrong: Indian grouping is 2-2-3, so an `en-CA`
+ * locale writes 12,34,567 as 1,234,567 — a number an Indian owner reads
+ * twice before believing.
  */
-export function formatCurrency(value: number | string): string {
-  return new Intl.NumberFormat('en-CA', {
+const CURRENCY_FORMATS: Record<string, { locale: string; minDigits: number }> = {
+  INR: { locale: 'en-IN', minDigits: 0 },
+  USD: { locale: 'en-US', minDigits: 2 },
+  CAD: { locale: 'en-CA', minDigits: 2 },
+  GBP: { locale: 'en-GB', minDigits: 2 },
+  EUR: { locale: 'en-IE', minDigits: 2 },
+  AED: { locale: 'en-AE', minDigits: 2 },
+};
+
+/** What the panel writes money in when nothing has told it otherwise. */
+export const DEFAULT_CURRENCY = 'USD';
+
+function formatFor(code: string | null | undefined) {
+  const resolved = (code || DEFAULT_CURRENCY).toUpperCase();
+  return { code: resolved, ...(CURRENCY_FORMATS[resolved] ?? CURRENCY_FORMATS[DEFAULT_CURRENCY]) };
+}
+
+/**
+ * The single place this panel decides what money looks like.
+ *
+ * `currency` is a parameter because one panel now shows several restaurants'
+ * money: a Surat kitchen's ₹35 dhokla was rendering as "$35.00", which is the
+ * right number under the wrong symbol. Prefer `useMoney()`, which binds this
+ * to whichever restaurant the shell is scoped to; the bare call is for the
+ * platform-wide surfaces, which have no single answer.
+ */
+export function formatCurrency(value: number | string, currency?: string | null): string {
+  const format = formatFor(currency);
+  return new Intl.NumberFormat(format.locale, {
     style: 'currency',
-    currency: 'CAD',
+    currency: format.code,
+    minimumFractionDigits: format.minDigits,
     maximumFractionDigits: 2,
   }).format(toNumber(value));
 }
@@ -1200,11 +1316,12 @@ export function formatCurrency(value: number | string): string {
  * Lived twice, verbatim, in the dashboard and the reports page. One definition
  * so a currency change is one edit rather than a hunt.
  */
-export function formatCompactCurrency(value: number | string): string {
+export function formatCompactCurrency(value: number | string, currency?: string | null): string {
   const numeric = toNumber(value);
-  return new Intl.NumberFormat('en-CA', {
+  const format = formatFor(currency);
+  return new Intl.NumberFormat(format.locale, {
     style: 'currency',
-    currency: 'CAD',
+    currency: format.code,
     notation: 'compact',
     maximumFractionDigits: numeric >= 1000 ? 1 : 0,
   }).format(numeric);

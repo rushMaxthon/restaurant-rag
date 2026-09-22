@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import heroImage from "@/assets/mango-sticky-rice.jpg";
 import {
   ApiError,
   getChatHistory,
@@ -16,13 +16,17 @@ import {
   type ChatStreamDone,
   type ChatSuggestion,
 } from "@/lib/api";
-import { formatMoney, type MenuItem } from "@/lib/bangkok-data";
+import { type MenuItem} from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
+import { budgetChipAmount } from "@/lib/budget";
 import { queryKeys, useMenuItems } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
+import { brandInitials } from "@/lib/brand-mark";
+import { pageMeta, useRoundedMoney, useStorefrontCopy, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 type ConciergeSearch = { q?: string };
 
@@ -59,24 +63,25 @@ function describeAppliedActions(actions: CartAction[], menu: MenuItem[]): string
 export const Route = createFileRoute("/concierge")({
   validateSearch: (search: Record<string, unknown>): ConciergeSearch =>
     typeof search["q"] === "string" ? { q: search["q"] as string } : {},
-  head: () => ({
-    meta: [
-      { title: "Food Concierge — Bangkok Bowl" },
-      {
-        name: "description",
-        content: "Tell our AI food concierge your mood and get Bangkok Bowl dish picks.",
-      },
-      { property: "og:title", content: "Food Concierge — Bangkok Bowl" },
-      { property: "og:type", content: "website" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Food concierge", "Ask about the menu and get help choosing what to order."),
   }),
   component: ConciergePage,
 });
 
 
+/**
+ * The openers offered before anybody has typed anything.
+ *
+ * None of them names money. The middle one used to read "A light lunch under
+ * $15" — a literal, on a platform whose restaurants charge in rupees, dirhams
+ * and pounds — and pressing it sent that sentence to the concierge, which
+ * then reasoned about dollars nobody charges. The budget opener is built
+ * separately, below, from this menu's own prices.
+ */
 const STARTERS = [
   "Something spicy and vegetarian",
-  "A light lunch under $15",
   "Comfort food for a rainy day",
 ];
 
@@ -137,6 +142,13 @@ function stripMarkdown(text: string): string {
 }
 
 function ConciergePage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
+  // A budget is prose, not a price: "under $20", not "under $20.00".
+  const roundedMoney = useRoundedMoney();
+  // This restaurant's own words, resolved by the root route from the
+  // address the page was opened on.
+  const copy = useStorefrontCopy();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const store = useBangkokStore();
@@ -152,6 +164,14 @@ function ConciergePage() {
   // not on the menu. Same query key as the menu page, so this is a cache hit
   // whenever they have browsed, and one cheap fetch when they have not.
   const menuQuery = useMenuItems(store.restaurantId, store.currentLocation?.id);
+
+  // A budget opener in this restaurant's own money, or none at all. Read off
+  // the menu rather than converted from a figure in another currency, which
+  // would invent a number this kitchen never chose. See `lib/budget.ts`.
+  const budget = budgetChipAmount((menuQuery.data ?? []).map((i) => Number(i.price)));
+  const starters = budget
+    ? [...STARTERS.slice(0, 1), `A light lunch under ${roundedMoney(budget)}`, ...STARTERS.slice(1)]
+    : STARTERS;
   const resolveMenu = () =>
     menuQuery.data ??
     queryClient.getQueryData<MenuItem[]>(
@@ -577,16 +597,34 @@ function ConciergePage() {
   const lastSuggestions =
     [...turns].reverse().find((t) => t.suggestions.length > 0)?.suggestions ?? [];
 
+  // Hiding the nav entry is not the same as closing the door: this address is
+  // bookmarkable, linkable and guessable. A restaurant that has switched Ask
+  // AI off has switched it off.
+  //
+  // Below every hook rather than at the top of the component, because an early
+  // return above them would change how many hooks run between renders — React
+  // requires the count to be stable, and "it worked when I tried it" is how
+  // that bug hides until the capability is actually toggled.
+  if (!hasCapability(store.capabilities, "ask_ai")) {
+    return (
+      <div className="page-pad flex min-h-[60svh] flex-col items-center justify-center text-center">
+        <h1 className="font-display text-3xl font-extrabold">Not available here</h1>
+        <p className="mt-3 max-w-md text-muted">
+          {copy.name} does not offer the food concierge. Browse the menu and order as
+          usual.
+        </p>
+        <Button className="mt-6" asChild>
+          <Link to="/menu">See the menu</Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="pb-32">
       {!hasResult ? (
         <>
-          <section className="relative min-h-[38svh] overflow-hidden">
-            <img
-              src={heroImage}
-              alt="Mango sticky rice at Bangkok Bowl"
-              className="absolute inset-0 size-full object-cover"
-            />
+          <StorefrontHero className="min-h-[38svh]">
             <div className="hero-overlay absolute inset-0" />
             <div className="hero-copy page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24 text-primary-foreground">
               <Sparkles className="mb-4 size-10" />
@@ -594,13 +632,13 @@ function ConciergePage() {
                 Ask the food concierge
               </h1>
               <p className="mt-4 max-w-xl text-lg font-medium">
-                Describe what you're craving and get real picks from the Bangkok Bowl menu.
+                {copy.concierge_intro}
               </p>
             </div>
-          </section>
+          </StorefrontHero>
           <div className="page-pad mx-auto max-w-5xl py-10">
             <div className="mb-8 flex flex-wrap gap-2">
-              {STARTERS.map((s, i) => (
+              {starters.map((s, i) => (
                 <button
                   key={s}
                   onClick={() => sendQuery(s)}
@@ -615,9 +653,9 @@ function ConciergePage() {
               className="concierge-welcome elevated-panel rise-in p-5"
               style={{ "--i": 3 } as React.CSSProperties}
             >
-              <span className="brand-mark shrink-0">BB</span>
+              <span className="brand-mark shrink-0">{brandInitials(copy.name)}</span>
               <p className="pt-2 text-lg leading-relaxed">
-                Tell me your mood—spicy, comforting, light—and I'll point you to a bowl.
+                Tell me your mood—spicy, comforting, light—and I'll point you to a dish.
               </p>
             </div>
           </div>
@@ -644,7 +682,7 @@ function ConciergePage() {
               return (
                 <div key={turn.id} className="flex flex-col gap-4">
                   <div className="flex items-start gap-3">
-                    <span className="brand-mark mt-1 shrink-0">BB</span>
+                    <span className="brand-mark mt-1 shrink-0">{brandInitials(copy.name)}</span>
                     <div className="max-w-3xl pt-1 text-lg text-muted">
                       {turn.text ? (
                         <p className="concierge-reply" aria-live="polite">
@@ -719,7 +757,7 @@ function ConciergePage() {
                       className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground"
                     >
                       Pay
-                      {turn.placedOrder.total ? ` ${formatMoney(turn.placedOrder.total)}` : ""}
+                      {turn.placedOrder.total ? ` ${money(turn.placedOrder.total)}` : ""}
                     </a>
                   )}
 
@@ -786,7 +824,7 @@ function ConciergePage() {
       )}
 
       <form
-        className="composer fixed inset-x-0 bottom-[58px] z-30 border-t border-border p-3 lg:bottom-0"
+        className="composer above-tab-bar fixed inset-x-0 z-30 border-t border-border p-3"
         onSubmit={handleSubmit}
       >
         <div className="mx-auto flex max-w-5xl gap-2 px-4 sm:px-6 lg:px-10">

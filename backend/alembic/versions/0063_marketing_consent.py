@@ -1,7 +1,7 @@
 """marketing consent, opt-out by default
 
 Revision ID: 0063_marketing_consent
-Revises: 0062_app_client_domains
+Revises: 0068_payment_transaction_payment_id
 Create Date: 2026-09-19 00:00:00.000000
 
 Consent is opt-out: the column defaults true and every existing customer
@@ -18,6 +18,20 @@ opt-in and is the first thing anyone auditing consent will ask for. Writing
 now() here would have manufactured a decision nobody made.
 
 Transactional pushes do not read either column.
+
+**Numbered 0063, but it runs after 0068.** The real 0063-0068 — the lineage
+this repository had only ever seen as unexplained tables in the shared
+database, and once rebuilt by introspection as bridge revisions — arrived for
+real when V2 was merged on 2026-09-22. Theirs were kept and the
+reconstructions deleted, so this migration was re-pointed onto the end of
+their chain rather than the fork it used to share with them at
+`0062_app_client_domains`.
+
+The filename keeps its number. Renaming it would rewrite a revision id that
+`0069` and `0070` already name, and `0070_channel_connections` is the id the
+shared Supabase database is stamped with — the chain is defined by
+`down_revision`, never by the number in the filename, and the numbering
+already skips 0033-0035 for similar reasons.
 """
 
 from __future__ import annotations
@@ -27,7 +41,7 @@ import sqlalchemy as sa
 
 
 revision = "0063_marketing_consent"
-down_revision = "0062_app_client_domains"
+down_revision = "0068_payment_transaction_payment_id"
 branch_labels = None
 depends_on = None
 

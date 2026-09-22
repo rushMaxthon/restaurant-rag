@@ -8,6 +8,19 @@ from pydantic import BaseModel, Field
 from app.models.enums import AppMode
 
 
+class CurrencyResponse(BaseModel):
+    """A currency as a client needs it to format money."""
+
+    code: str
+    symbol: str
+    locale: str
+    # Whole rupees are how an Indian menu is written (₹35, not ₹35.00); cents
+    # are how a dollar menu is written. Maximum stays 2 either way, because a
+    # total with paise still has to be printable.
+    min_fraction_digits: int
+    max_fraction_digits: int = 2
+
+
 class AppConfigResponse(BaseModel):
     """Startup configuration a mobile build resolves from its own bundle ID.
 
@@ -35,3 +48,36 @@ class AppConfigResponse(BaseModel):
     # nine and a half hours off, and be refused by a server that was right.
     # An IANA name rather than an offset, so DST is the platform's problem.
     business_timezone: str
+    # The dialling code a bare local number is stored under, for the same
+    # reason the timezone is here: the client cannot guess it, and guessing
+    # wrong is not cosmetic. The checkout used to print "+1" from a literal in
+    # its own source while the server prepended something else — so the number
+    # the customer was shown and the number that was stored could differ, and
+    # nothing would ever say so. Sent so the form can only ever show what the
+    # server will actually do.
+    phone_country_code: str
+    # The restaurant's own words — page title, meta description, hero copy.
+    # Sent here because this is the one call a storefront makes before it
+    # renders anything, and the title has to be right in the FIRST response or
+    # a crawler indexes the wrong business.
+    #
+    # Empty for a MARKETPLACE client, which is not a restaurant and has no
+    # marketing of its own. Every key is always present for one that is, so no
+    # client has to decide what to do about a missing field.
+    storefront: dict[str, str] = Field(default_factory=dict)
+    # What this restaurant charges in, and everything needed to write it.
+    #
+    # `locale` carries the GROUPING rule rather than the symbol, which matters
+    # more than it looks: Indian grouping is 2-2-3, so a client formatting
+    # with `en-US` writes ₹1,234,567 where the customer reads ₹12,34,567.
+    #
+    # Sent alongside the branding it belongs with, because a storefront needs
+    # it before it renders its first price and this is the one call it makes
+    # before rendering anything.
+    currency: CurrencyResponse
+    # Which optional features this restaurant has, already combined with the
+    # deployment's own flags. A client never learns a global flag exists and
+    # never sees an operator-only capability — only the answer.
+    #
+    # Empty for the marketplace, which is not a restaurant and has no grants.
+    capabilities: dict[str, bool] = Field(default_factory=dict)

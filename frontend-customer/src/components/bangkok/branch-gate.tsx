@@ -1,6 +1,8 @@
-import { Bike, Clock, MapPin } from "lucide-react";
-import { formatMoney } from "@/lib/bangkok-data";
+import { Clock, MapPin } from "lucide-react";
+
+import { brandInitials } from "@/lib/brand-mark";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { useStorefrontCopy } from "@/lib/storefront";
 
 /**
  * Pick a branch before seeing a menu.
@@ -30,16 +32,18 @@ export function BranchGate() {
     return null;
   }
 
+  const initials = brandInitials(useStorefrontCopy().name);
+
   return (
     <div className="branch-gate" role="dialog" aria-modal="true" aria-labelledby="branch-gate-title">
       <div className="branch-gate__panel">
-        <span className="brand-mark">BB</span>
+        {initials && <span className="brand-mark">{initials}</span>}
         <h1 id="branch-gate-title" className="font-display text-3xl font-extrabold sm:text-4xl">
           Which branch are you ordering from?
         </h1>
         <p className="mt-2 text-muted">
-          Menus, delivery fees and opening hours differ by branch, so we will only
-          show you what this kitchen can actually make.
+          Menus and opening hours differ by branch, so we will only show you what
+          this kitchen can actually make.
         </p>
 
         <ul className="branch-gate__list">
@@ -59,8 +63,6 @@ export function BranchGate() {
                     <span className="branch-gate__meta">
                       <Clock className="size-3.5" />
                       {location.is_open ? "Open now" : "Closed"}
-                      <Bike className="size-3.5" />
-                      {formatMoney(location.delivery_fee)} delivery
                     </span>
                   </span>
                   {suggested && <span className="branch-gate__hint">Nearest</span>}

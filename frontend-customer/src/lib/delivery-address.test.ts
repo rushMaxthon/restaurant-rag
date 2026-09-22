@@ -4,6 +4,7 @@ import {
   composeDeliveryAddress,
   isSameAddress,
   looseAddressFields,
+  postalCodeLabel,
   formatPhoneAsTyped,
   validateAddress,
   validatePhone,
@@ -107,11 +108,45 @@ describe("validateAddress", () => {
     expect(validateAddress(fields({ line1: "x" })).line1).toBeTruthy();
   });
 
-  it("checks the shape of a ZIP code", () => {
-    expect(validateAddress(fields({ zip: "20500" }))).toEqual({});
-    expect(validateAddress(fields({ zip: "20500-0003" }))).toEqual({});
-    expect(validateAddress(fields({ zip: "2050" })).zip).toBeTruthy();
-    expect(validateAddress(fields({ zip: "ABCDE" })).zip).toBeTruthy();
+  /**
+   * This block used to assert the US rule — five digits, or five and four —
+   * and that assertion was the bug. Every restaurant on this platform that
+   * charges in rupees was unreachable by its own customers: a Surat PIN code
+   * is six digits, so the form answered "Enter a 5-digit ZIP code" to a
+   * correctly typed address and the order could not be placed.
+   *
+   * What replaced it is a shape check, not a format check, and these are the
+   * postal codes of the currencies this platform actually supports.
+   */
+  it("takes a real postal code from any of the countries this platform serves", () => {
+    expect(validateAddress(fields({ zip: "395002" }))).toEqual({}); // Surat
+    expect(validateAddress(fields({ zip: "110001" }))).toEqual({}); // New Delhi
+    expect(validateAddress(fields({ zip: "20500" }))).toEqual({}); // Washington
+    expect(validateAddress(fields({ zip: "20500-0003" }))).toEqual({}); // ZIP+4
+    expect(validateAddress(fields({ zip: "M5V 2T6" }))).toEqual({}); // Toronto
+    expect(validateAddress(fields({ zip: "SW1A 1AA" }))).toEqual({}); // London
+    expect(validateAddress(fields({ zip: "75008" }))).toEqual({}); // Paris
+  });
+
+  it("still asks for one, and says what this storefront calls it", () => {
+    expect(validateAddress(fields({ zip: "" }), "PIN code").zip).toBe("Enter your PIN code.");
+    expect(validateAddress(fields({ zip: "" }), "ZIP code").zip).toBe("Enter your ZIP code.");
+  });
+
+  it("still refuses something that is plainly not a postal code", () => {
+    // The check that remains is worth keeping: a sentence in this box means
+    // the address was pasted into the wrong field.
+    expect(validateAddress(fields({ zip: "near the big temple" })).zip).toBeTruthy();
+    expect(validateAddress(fields({ zip: "!!" })).zip).toBeTruthy();
+  });
+
+  it("names the box after the money the storefront charges in", () => {
+    expect(postalCodeLabel("INR")).toBe("PIN code");
+    expect(postalCodeLabel("USD")).toBe("ZIP code");
+    expect(postalCodeLabel("GBP")).toBe("Postcode");
+    // Anything else gets the name that is true everywhere rather than a guess.
+    expect(postalCodeLabel("AED")).toBe("Postal code");
+    expect(postalCodeLabel(undefined)).toBe("Postal code");
   });
 
   it("treats whitespace as empty", () => {

@@ -17,6 +17,102 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## YYYY-MM-DD — short title
+
+**Goal:** what was asked.
+**Changed:** files/areas touched, one line each.
+**Verified:** exact commands run and their result. "Not verified" if not run.
+**Open:** anything unfinished, deferred, or uncertain.
+**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
+```
+
+## 2026-09-22 — Merging V2: the real 0065-0068 finally arrived
+
+**Goal:** resolve the conflicted merge of `V2` into `marketing`, keeping both
+sides' work.
+
+**Seven conflicts, and one of them was the one CLAUDE.md had been waiting for.**
+
+- **The migrations.** V2 brought the real `0063`-`0068` — the lineage this
+  repo had only ever seen as unexplained objects in Supabase, and rebuilt by
+  introspection on 2026-09-21 as bridge revisions. CLAUDE.md said what to do
+  if they ever landed, and that is what was done: theirs kept, the five
+  reconstructions deleted (`0065_app_client_push_credentials`,
+  `0066`, `0067`, `0068`, `0068b_orphan_columns`). Our two marketing
+  migrations were re-pointed off the old fork onto the end of V2's chain.
+  - `0065_app_client_push_credentials` turned out to be **entirely
+    redundant** — `0032_app_clients` has created that table all along. The
+    introspection had read a table's presence as evidence of which migration
+    made it.
+  - `0063_marketing_consent` and `0064_marketing_campaign_fields` now run
+    *after* `0068` despite their numbers. Renaming them was rejected: it
+    would rewrite ids that `0069`/`0070` name, and `0070_channel_connections`
+    is the id Supabase is stamped with.
+- **`frontend-customer/src/lib/api.ts`** — ours pinned the web app to one
+  tenant (`BUNDLE_ID`, defaulting to `com.quickbite.radhedhokla`); V2 replaced
+  it with `storefrontHost()`. Took V2's. Not a close call: the auto-merged
+  remainder of the file already sends `X-Forwarded-Host` on *every* request,
+  so keeping a bundle-id pin for `/app-config` alone would have rendered one
+  tenant's branding over another tenant's data. Nothing else imported
+  `BUNDLE_ID`, and `seed.py` already registers bare `localhost` as a tenant
+  address, so dev still resolves.
+- **`frontend-admin/src/legacy.css`** — both sides appended a block at EOF
+  (ours the Marketing Hub, theirs Tenants). Zero selector overlap, so both
+  kept — but git had matched a **common trailing `}`**, so naive marker
+  removal left `.mkt-postcard__copy span` unclosed and silently swallowed the
+  next rule. Added the brace back; brace balance now 2043/2043.
+- **`.claude/worklog.md`** — both prepended entries. Also fixed a
+  pre-existing break on our side: the `**Template**` code fence had been left
+  open, swallowing ~1245 lines of real entries into one code block. All 46
+  entries from both parents verified present, none duplicated or invented.
+- **`CLAUDE.md`** — ours (macOS) kept over theirs (the Windows notes our
+  branch had already relocated); V2's genuinely new facts folded in
+  (`dryrun_whatsapp.py`, `whatsapp_healthcheck.py`, `enable_ordering_agent`
+  on, the `--logfile` lesson). Migration section rewritten to describe the
+  chain that now exists rather than the reconstruction that no longer does.
+
+**Verified:**
+- `compileall app alembic` clean; `app.main` imports, 175 routes.
+- **`alembic upgrade head` from base on a throwaway local database** —
+  applied all 68 revisions in the intended order, ending stamped
+  `0070_channel_connections` with 49 tables, all V2 objects (3 tables, 6
+  columns, the new refund index) and all marketing objects present. Chain
+  validated single-headed, single-base, no duplicate ids, no forks.
+  Supabase untouched — the override was asserted local before running.
+- `npm run build` green for both webs; `tsc --noEmit` clean for mobile.
+- vitest: admin 178/178, customer 303/303. jest: mobile 133/133.
+- `python -m unittest discover -s tests`: 2264 tests, **23 failures + 2
+  errors — all pre-existing**. 24 are `test_ordering_agent_order_details`
+  (CLAUDE.md's documented ~24 baseline, live-Ollama flakiness). The 1
+  `test_razorpay` failure was **reproduced on a clean V2 worktree**, so it
+  did not come from the merge.
+- Every one of the 13 files both branches changed but git auto-merged was
+  checked line-by-line: 100% of both sides' added lines survived.
+
+**Open:**
+- **`test_razorpay.test_a_branch_toggle_off_hides_the_method_even_with_credentials`
+  fails on V2 and now here.** Not merge damage, and not just a bad fixture:
+  `StripeProvider.is_configured()` returns the platform-wide
+  `settings.stripe_is_configured`, ignoring the per-restaurant credentials it
+  was just built from. So a restaurant with its own Stripe account still has
+  CARD hidden whenever the platform has no Stripe keys — which is the case on
+  this machine, and defeats the point of `0067_restaurant_payment_accounts`.
+  Left for whoever owns the payments work.
+- `backend/celerybeat-schedule.{bak,dat,dir}` arrived tracked from V2. Runtime
+  state, committed by accident; not removed here because deleting files V2
+  committed is not a merge decision.
+- The merge is staged but **not committed** — left for review.
+
+**Learned:**
+- A reconstruction built by introspection can be confidently wrong about
+  provenance. `app_client_push_credentials` was attributed to the unpushed
+  lineage purely because it existed in the database; `0032` had created it.
+  Presence is not authorship.
+- When both sides append to the end of a file, git will happily anchor the
+  merge on a shared trailing `}` and hand you two blocks that only balance if
+  you put the brace back. Deleting conflict markers is not resolving a
+  conflict — check the seam.
+
 ## 2026-09-21 (5) — The reconciled chain deployed, and a badge that lied
 
 **The migration is applied to Supabase.** `alembic upgrade head` ran against
@@ -954,6 +1050,626 @@ module transforms. `git status` shows only `App.tsx`, `Sidebar.tsx` and
   (`dashboard-admin-area-chart`, `dashboard-admin-bars`); they are reusable
   across pages only because of that, which is easy to miss and worth copying.
 
+## 2026-09-21 (4) — The menu, and one question at a time (b4d9a84)
+
+**Goal:** a reported WhatsApp thread — "Menu" answered with a pitch for one
+dish, and the "Yes" that followed answered with "There is nothing in your order
+yet."
+
+**Changed:**
+- `ordering_agent/loop.py` — `plain == "menu"` answers with the branch's
+  sections instead of standing aside. It used to return `answer=None` on the
+  belief that "the reply pipeline answers about the menu, and better"; there is
+  no handler for it there either.
+- `rag.py` — `ask_one_thing()`: a model-written reply may not end on two
+  questions. Applied on BOTH routes.
+
+**Verified:** 2096 tests, 1 pre-existing failure. Live on both tenants:
+Menu -> sections -> "Pizza" -> all 11 pizzas -> "Manchow Soup" -> "Shall I add
+one?". All 21 categories still complete. 16 personas re-run: unchanged at 2
+completions, as expected — this did not touch the defect that blocks them.
+
+**Open:** unchanged from (3). The dropped-question defect is still the one
+thing holding completion at 2 of 16.
+
+**Learned:**
+- **A fix that passes its tests can still be dead code. Check that it fires.**
+  I found that the non-streaming route (the one WhatsApp uses) never passed
+  `previous_reply` to the agent, built the fix, went green — then looked, and
+  found `chat_history` holds ZERO rows for a guest and the cache holds `[]`.
+  Guest history is never persisted, so it could never fire on WhatsApp.
+  Reverted rather than leave code under a docstring claiming it worked. The
+  real memory on that channel is `order_draft.last_question`, which its own
+  docstring says.
+- The agent already HAD the question and still failed, because the question was
+  "X, or Y?" — unanswerable by "yes" at any quality of reading. Fix the
+  question, not the reader.
+- The repo had already solved this shape for its own sentences and left the
+  model's prose unbound. Look for the rule before inventing one.
+- Only cut on a COMMA before "or". "Would you like rice or naan?" is one
+  question with two answers.
+
+## 2026-09-21 (3) — Sixteen kinds of customer, and what they actually get (b6e6717..819b08b)
+
+**Goal:** "test from user side like different different user and need to answer
+them all with the proper flow", then three follow-ups: show a whole category
+when one is named; add on an exact item name and suggest otherwise; and when a
+message cannot be read, guide rather than apologise.
+
+**Built first:** `backend/scripts/flow_check.py` — 16 personas through the REAL
+path, each reply labelled with the layer that produced it, read off the loggers
+rather than by threading a debug flag through `handle_chat_message`. Every
+finding below came from it. `--only name,name` runs a subset; needs
+`PYTHONIOENCODING=utf-8` on this console.
+
+**Fixed, each with the measurement that found it:**
+- **Vector search could not see a branch's own menu.** `ivfflat.probes` was 1
+  against an index built `WITH (lists = 14)`, and the tenant filter is applied
+  AFTER the index narrows — so "tofu" at a 136-item branch returned ZERO rows.
+  Now set far above any plausible `lists` on connect (pgvector clamps it, so it
+  is an exact search). Measured: probes=1 68.6ms/nothing, full 66.8ms/correct,
+  exact scan 67.1ms. Gets worse with every restaurant onboarded.
+- **The dish guardrail scored the phrase, so the deciding word was averaged
+  away.** tofu 0.470 refused, red curry tofu 0.364 accepted, chicken biryani
+  0.337 accepted, khaman dhokla 0.319 accepted — the wrong match scoring better
+  than the real order, so no threshold could work. A word is the unit now, from
+  a vocabulary read off the menu (names, descriptions, categories, sizes,
+  options). Enforces despite `enable_dish_name_guardrail` being off, because
+  that flag is off over a THRESHOLD's false positives and this is not one.
+- **Naming a section showed part of it, or added a dish.** "Tandoori Starter"
+  replied "Added 1 x Paneer Pahadi Tikka Dry" with nobody confirming. 21 of 21
+  sections now read out complete and named back.
+- **`invalid_input` outranked the agent.** "Y" WAS understood — the agent
+  re-asks correctly — but `should_bypass_llm` was checked before `agent_owns`,
+  so the canned apology won and took the pending question with it.
+- **The give-up reply now guides**: the branch's sections when nothing has
+  started, the cart read back when something has.
+
+**Verified:** `python -m unittest discover -s tests` → 2080 tests, 1 failure,
+the pre-existing `test_owner_chat` LLM-vs-TEMPLATE one. All 21 categories and
+all 16 personas re-run live after each change.
+
+**Open:**
+- **The biggest one, untouched: a pending question is dropped when the answer
+  is not literal.** "dhokla" → 8 dhoklas → "yes" → three unrelated bestsellers.
+  Same root behind "2", "actually make it 3", "hw much", "kitne ka hai", "ya add
+  it". Order completion is still 2 of 16, and both are the controls that answer
+  exactly.
+- A dish not on the menu costs ~25s: the agent retries the lookup
+  (`fallback=repeated_call`).
+- Section list comes out in database order, not menu order.
+- Celery beat still not running here; Meta webhook still on the ngrok tunnel.
+
+**Learned:**
+- **Check whether the thing is already built before building it.** The planner
+  is handed this branch's section list and picks from it — which is how "some
+  drink" reaches Beverages. I added a second query to rediscover that list, it
+  broke nine tests that stub the session, and I deleted it. The tier only
+  needed to move above dish-name matching.
+- **A test's stated reasoning is evidence.** `test_chat_short_replies` says a
+  bare number "is handled by the agent, which knows what it asked". I was about
+  to overrule it; driving the agent directly proved it right, and moved the fix
+  from the classifier to the precedence. Widening the classifier would have
+  answered "Y" with a random dish list.
+- `describe_cart` answers an EMPTY cart with a SENTENCE, so truthiness on it
+  says "there is an order" when there is not.
+- Counting suggestion cards alongside reply bullets made correct two-dish
+  sections look padded to six. Measure the thing the customer reads.
+- Heredocs keep eating backslashes in this shell — `
+` became a real newline
+  inside a string literal. Use the Edit tool for anything with an escape.
+
+## 2026-09-21 (2) — A customer should not wait for a model to load (f4aaf64, effa6b3)
+
+**Goal:** "yes fix that speed thing too bro" — a live WhatsApp turn took 54.14s
+against a 30-second budget, and answered wrongly because of it.
+
+**Changed:**
+- `services/ollama_client.py` — `keep_alive_seconds()` parses the Go duration;
+  `warm_generation_model()` loads the model with Ollama's empty-prompt request.
+- `services/model_warmup.py` (new) — warms generation AND embeddings, on an
+  interval derived from `keep_alive` rather than configured beside it.
+- `main.py` — the lifespan warms both models repeatedly; it used to warm the
+  embedding one, once.
+- `config/celery.py` — a `worker_ready` handler does the same in the worker,
+  which warmed nothing at all before and is where WhatsApp is answered.
+- `ordering_agent/loop.py` — every model call is capped at the time the turn has
+  left; the budget used to be read only BETWEEN steps.
+- `ordering_agent/planner.py` — `_ollama_generate` becomes public
+  `default_generate`, so `run_turn` can resolve it where the cap is applied.
+- `tests/test_model_warmup.py`, `tests/test_ordering_agent_uses_the_real_model.py`.
+
+**Verified:**
+- `python -m unittest discover -s tests` → 2026 tests, 1 failure, the
+  pre-existing `test_owner_chat` LLM-vs-TEMPLATE one that also fails on a clean
+  tree. Confirmed by stashing.
+- Live: restarted the worker with qwen3:8b evicted. It reported ready in the
+  same millisecond and had 5.6GB resident 6.5s later, with nobody having asked.
+- Live: `scripts/dryrun_whatsapp.py radhe-order --restaurant "Radhe Dhokla"` —
+  a full order in turns of 4.6 / 4.6 / 5.0 / 4.8 / 7.1 / 5.2 seconds, warm.
+- Measured on this host: empty-prompt load is 2.1s resident, 6.2s evicted;
+  Ollama answers `done_reason: "load"`, so it costs no tokens.
+
+**Open:**
+- **The reported thread still fails, for a different reason than the one fixed
+  on 2026-09-21 (1).** Replaying it: "Red curry tofu" — a dish NOT on Radhe
+  Dhokla's menu — gets an invented blurb describing it as a house favourite,
+  from RAG rather than the agent (`records=0 actions=0`, `retrieval_source=
+  fuzzy_name`). The next message, "No", is answered with the literal word "No",
+  and the timings say `llm=0.00ms`, so nothing phrased that — something
+  deterministic echoed the customer. Two separate defects, neither of them
+  speed, and the first one breaks "the LLM never invents data".
+- Celery **beat** still not running here, so the unpaid-order reaper is idle.
+- Meta webhook still points at the ngrok tunnel, not Mr Tailor production.
+
+**Learned:**
+- **Every ordering-agent test injects `generate`; production never does.** The
+  per-call cap wrapped `run_turn`'s `generate` argument, which is None live, so
+  every real turn raised `TypeError: NoneType is not callable` while the suite
+  stayed green — and nothing looked broken, because the agent's failures are
+  caught and the reply falls back to retrieval. The assistant kept answering; it
+  had just stopped being an ordering agent. Caught only by replaying a real
+  conversation. Any change to an injected seam needs a test in the shape the
+  customer uses.
+- A cold qwen3:8b costs 49s in the field but only 6.2s here once the weights are
+  in the OS page cache, so a local reload measurement badly understates it.
+- `patch.object(planner, "default_generate")` does not reach `loop`, which
+  imported the name — the same trap `test_ordering_agent_loop.py` documents for
+  `TOOLS`. The first version of that test silently called the real Ollama.
+- `scripts/dryrun_whatsapp.py` needs `PYTHONIOENCODING=utf-8` on this console,
+  or it dies on the greeting's emoji.
+
+## 2026-09-19 (2) — Talking to it, instead of reading it (876b3fa, c08e864, 5f83d55)
+
+User asked for a dry run: "check from your site and tell me everything looks
+perfect and working, because users will answer in that way so we need to
+manage like that".
+
+**The first finding was that Ollama is installed here.** CLAUDE.md said it was
+not. Earlier sessions — including mine, this morning — therefore tested the AI
+paths by scripting the model seam, which tests the plumbing and nothing about
+what a customer actually reads. `backend/scripts/dryrun_whatsapp.py` now
+replays scripted conversations through the whole live path
+(`handle_chat_message`, the ordering agent, qwen3:8b, the real rows) with only
+Meta's `send_text`/`show_typing` stubbed. Everything below came out of running
+it; none of it came out of reading the code.
+
+Five scripts, chosen for how people really type: the screenshot verbatim,
+somebody direct, somebody answering in one word, somebody wavering, and
+somebody only asking questions.
+
+**The theme: it kept asking questions and then not recognising the answers.**
+
+- It showed six dishes and could not resolve "the first one" — the agent
+  records the dishes IT reads out, the reply pipeline records nothing.
+- It asked "Would you like the Butter or Oil version? 🥟" and read "yes" as a
+  request to check out, on an empty cart. `previous_reply` reaches the planner
+  but never reached the READING, and a browser carries it while a chat thread
+  has nothing to carry it with.
+- With an empty cart the planner was told nothing about the cart at all —
+  `cart_summary` is only written when there is one — so it filled the silence
+  with "you're ready to proceed".
+- "add one" was read as a dish called "one": 33 seconds, then "your cart is
+  empty".
+- "is anything vegetarian" read as nothing, and a dish question standing from
+  the turn before answered it "Sorry, I did not catch that." That one was MY
+  regression from this morning: recording dish lists as choices made the
+  never-ask-twice guard reachable, and it weighed only the fields that ANSWER
+  a question, never the ones that ask for something else.
+- "We don't have anything on the menu" — with six real dishes listed under it.
+  The model copied the shape of a worked example in the prompt onto a message
+  that named nothing.
+- Prices: four sites in `rag.py` wrote "$" into the PROMPT, so the model
+  repeated it ("the Butter Pavbhaji ($135.00)") under a list that said ₹135;
+  `render_reply` printed a bare "185.00" with no symbol at all; `_MONEY_RE`
+  bolded only dollars.
+
+**One fix of mine was worse than the bug.** Recording "dishes last shown"
+looked right until the dry run picked a dish the customer had never seen:
+WhatsApp drops the pipeline's suggestions when the agent owns the line, and I
+was recording them anyway. Record only what will actually be rendered.
+
+**And one bug only existed in the full path.** The pick came back as both
+`chose` and `add`, so two code paths each added it — "Added 1 x Money Bags to
+your order." twice, two in the cart. In isolation each path adds exactly once;
+it took the real model and the real prompt to produce both fields at all.
+
+**Changed:** `ordering_agent/loop.py` (last_shown, last_question, the widened
+re-ask guard, per-turn pick dedupe), `ordering_agent/planner.py`
+(`question_asked_in`, the empty-cart fact, ordinals, "is anything X",
+`_NOT_A_DISH_NAME`, delivery-question rule), `ordering_agent/order_draft.py`
+(two fields), `rag.py` (`remember_shown_dishes`, `_denies_the_whole_menu`, the
+reply currency), `services/whatsapp.py` + `tasks/whatsapp.py` (currency in the
+rendered list, bold any symbol), `CLAUDE.md`, and
+`backend/scripts/dryrun_whatsapp.py` (new).
+
+**Verified:** 1,864 backend tests (+22). The screenshot conversation replayed
+against the live Bangkok Bowl config runs end to end: "Money Bags" is added to
+the cart, "That's all" moves to the details. Against Radhe Dhokla everything
+reads in ₹. Turn times fell from 33s to ~5s on the paths that were misreading.
+
+**Open — and these are the honest ones:**
+- **"what time do you open" answers "Delivery is not running today."** Two
+  causes. The reading defaults to delivery when no fulfillment is chosen, and
+  Rushtampura has no hours at all to answer with. Not fixed.
+- **"do you deliver to vesu" is still answered with the details request.** It
+  no longer stores DELIVERY as the customer's choice, but it does not answer
+  the question either. The assistant has no notion of a delivery area.
+- **Radhe Dhokla's data is split down the middle.** All 136 menu items are on
+  Rushtampura, which has ZERO schedule slots and no opening hours. The other
+  five Surat branches have 14 slots each and no menu. So the branch that can
+  feed you cannot say when it is open, and the ones that can say when they are
+  open have nothing to sell. Both halves need fixing in the admin.
+- qwen3:8b still writes the occasional oddity — it offered "a side of Radhe
+  Dhokla" once. The grounding guards trim the worst of it; a larger model
+  would help more than another rule would.
+
+**Learned:**
+- Reading the code finds the bugs you can imagine. Talking to it finds the
+  ones you cannot — every fix above came from a transcript, and several
+  contradicted what the code looked like it did.
+- The load-bearing question for a chat assistant is not "is the answer good"
+  but "does it recognise the answer to its own question". Six of today's eight
+  fixes are that one question in different clothes.
+- A fix that makes something answerable also makes a guard reachable that was
+  never exercised before. Both regressions today were that shape, and both
+  showed up one script later — which is the argument for running several
+  conversations rather than the one you fixed.
+
+## 2026-09-19 — The WhatsApp thread that could not take an order (dc87f6b)
+
+User sent three screenshots of a real conversation on the live number and
+asked for it to be fixed. Five messages, four of them answered wrongly:
+
+    Hi          -> greeting, fine
+    Please      -> "I didn't quite catch that."
+    menus       -> eight appetizers, "Which one would you like?"
+    Money Bags  -> "Hello, Money Bags! It seems you're interested in placing
+                   an order..."
+    That's all  -> "There is nothing in your order yet."
+    Money Bags  -> the same paragraph again, word for word
+
+**Three of those are one bug.** `_show_dishes` reads the menu out and ends on
+a question, recording it through `_hold` — which stores the words of the
+question and nothing else. It never records the dishes it just listed.
+Everything that handles "they picked one of the things we offered" hangs off
+`pending_choice`: the reading is told the options through it,
+`_answer_choice` maps a pick onto it, and the never-ask-twice guard is keyed
+on it. With it unset, all three are inert, so the message fell through to the
+general reader — whose `details` schema offers "the customer's name", with a
+capitalised two-word phrase in front of it. From there `collecting = True`
+("giving your name is starting to check out") explains both the reply and why
+the repeat was identical.
+
+Worth noting for the next session: the mechanism to fix it already existed
+and was being used for sizes. The fix is one extra write at each of the two
+places that read a list out, plus a branch at the one place a pick is
+consumed. Nothing new was designed.
+
+"Please" is separate and dumber: `_is_invalid_or_spam_message` drops every
+word under three characters and every stopword, then reads an empty token
+list as evidence of gibberish. It is evidence of a SHORT message. That guard
+could only ever fire on plain English, because everything else is caught by
+the rules above it.
+
+**Changed:**
+- `app/services/ordering_agent/loop.py` — `_remember_dish_choice` and
+  `_answer_dish_choice`; both list-reading paths record what they offered; a
+  pick routes by `kind`; `_money` binds the restaurant's currency per turn;
+  a truncated list says "Here are a few" instead of "Here is what we have".
+- `app/services/rag.py` — the gibberish guard narrowed to messages that are
+  not words.
+- `tests/test_ordering_agent_dish_choice.py`, `test_chat_short_replies.py`,
+  `test_chat_currency.py` (new, 12 tests).
+
+**Verified:** `unittest discover` 1,842 OK. Then the transcript replayed
+against the live Supabase rows with only `read_order_intent` scripted (no
+Ollama here): "Please" classifies as `recommendation`; "menus" lists eight
+dishes priced in rupees under "Here are a few"; "Bombay Bhel" is recognised
+as the pick, resolved against the branch menu, and answered "Which size for
+Bombay Bhel? 500 gm (₹145), 1 Kg (₹280)". `contact_name` stays None and
+`collecting` stays False.
+
+**Open:**
+- **Radhe Dhokla's 136 menu items are all on Rushtampura.** The other five
+  Surat branches have zero available items, so a customer who picks Citylight,
+  Nanpura, Katargam, Vesu or Adajan gets an empty menu on the web and nothing
+  at all from the chat. Data, not code — the PDF import attached everything to
+  one branch. Nobody has been told to fix it yet.
+- The live WhatsApp number still answers for ONE restaurant, from env vars
+  (`whatsapp_restaurant_id` / `whatsapp_restaurant_location_id`): Bangkok
+  Bowl, Bodakdev. Per-tenant WhatsApp channels are §3 of the plan and not
+  started. Until then the currency fix is invisible on that number, because
+  Bangkok Bowl charges CAD and CAD's symbol is "$".
+- Meta's webhook still points at the ngrok tunnel; Mr Tailor production is not
+  receiving messages until it goes back to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+- Nobody has completed a real payment on any channel.
+
+**Learned:**
+- A conversation bug reads as a model problem and usually is not. Every one of
+  these was a fact the code failed to write down, and the model then did the
+  only thing left open to it. The prompt was never wrong; its input was.
+- `_hold` and `_remember_choice` look like two spellings of the same idea and
+  are not: one records a question, the other records the answers to it. Only
+  the second makes a reply mean anything. Any new place that ends a turn on a
+  list needs both.
+- When Ollama is missing, `read_order_intent` returns empty and the agent
+  silently stops reading messages at all. Scripting that one seam is enough to
+  replay a whole conversation against real rows, which is how all of this was
+  confirmed rather than argued.
+
+## 2026-09-18 (5) — An audit: what the panel and the storefront actually do (9dc5730, da6e9ed, 335e115, a7ddd29, d6db242)
+
+User asked me to check the admin and the storefront, polish, and find and fix
+bugs. No feature to build — so the method was to look rather than to reason:
+open every page in Chrome, read the network panel and the console, and go and
+find the code behind anything that looked off.
+
+**What looking found that thinking would not have.**
+
+`/api/app-clients` was requested four times per admin page load. Two callers —
+the tenant switcher loading the list to render names, and the store loading the
+same list to read each restaurant's currency — neither knowing about the other,
+doubled again by StrictMode in dev. Nothing was broken on screen. Two identical
+200s look exactly like one working feature. The store owns the rows now; the
+switcher reads them; the Tenants page keeps its own copy (it filters, sorts and
+pages over it, and has its own error state) but tells the store to reload after
+a lifecycle change.
+
+The currency work from earlier in the week was half done, and the half that was
+missing is the half that misleads. Rows that name one restaurant — the
+dashboard's revenue leaders, its top items, both recent-order lists, the
+Reports tables — all called the money formatter with no restaurant, so every
+figure took the view's currency. The dashboard's aggregation showed the shape
+of it: it grouped orders into a Map keyed by restaurant id and then returned
+`map.values()`, throwing away the key it had just grouped by. Summed figures
+are left alone on purpose; the mixed-currency notice says what they are, and
+Generated Combos had such a total with no notice above it.
+
+The AI Manager was worse, because it writes sentences. `money()` — 116 call
+sites across seven modules — read `settings.payment_currency`, so a Surat
+kitchen's ₹1,20,000 week was narrated to its owner as "$120,000". Bound as a
+ContextVar now, set at the two doors a restaurant comes through, and rebound
+INSIDE both batch loops: briefing generation walks every restaurant on the
+platform, and a binding hoisted above that loop would stamp the first
+restaurant's currency on everybody's numbers.
+
+And the storefront, which is the one a customer sees: four pages each imported
+a bundled photograph from `src/assets` — Bangkok Bowl's hero, its pad thai, its
+green curry, its mango sticky rice — and showed it to every tenant. A Surat
+dhokla shop's website opened on a bowl of Thai noodle salad. The page titles
+and hero copy had been made per-tenant weeks ago; the picture above them had
+not, which is exactly why nobody noticed. It renders the restaurant's own
+`cover_image_url` now, or no photograph at all — a wash from that tenant's
+brand colour. Showing nothing beats showing a competitor's biryani.
+
+Checking that fix turned up another: two fields are spelled `cover_image_url`,
+one on the app client and one on the restaurant, and the admin's restaurant
+edit form writes the one the storefront does not read. An operator could type a
+cover URL, get a success toast, and change no page.
+
+**Changed:**
+- `frontend-admin/src/store/AdminStore.tsx`, `AdminStoreContext.ts`,
+  `components/TenantSwitcher.tsx`, `pages/TenantsPage.tsx` — one owner of the
+  tenant list, plus `tenantsLoaded` so nothing says "0 restaurants" mid-flight.
+- `frontend-admin/src/pages/DashboardPage.tsx`, `ReportsPage.tsx`,
+  `components/RestaurantOffersManager.tsx`, `pages/GeneratedCombosPage.tsx` —
+  per-restaurant money, and a mixed-currency notice where a total spans tenants.
+- `backend/app/services/currency.py` — `format_rounded_amount`, and the digit
+  grouping extracted so prose and prices share one implementation.
+- `backend/app/services/insights/rules.py`, `scope.py`, `generation.py`,
+  `outcomes.py`, `backend/app/tasks/insights.py` — narration currency.
+- `frontend-customer/src/components/bangkok/storefront-hero.tsx` (new),
+  `lib/storefront.ts`, `lib/storefront.server.ts`, `styles.css`,
+  `routes/{index,login,register,concierge,cart}.tsx`.
+- `backend/app/services/app_clients.py` — the restaurant's cover as fallback.
+- `backend/app/models/order.py` — a comment that described the bug, not the code.
+- `.claude/worklog.md` — the template's code fence had been open since
+  2026-09-13, so every entry written since rendered as source.
+
+**Verified:** backend `unittest discover` 1,811 OK (was 1,802; +7 narration
+currency, +2 cover fallback). `frontend-admin`: tsc clean, 131 tests, build OK,
+lint unchanged at its 60-problem baseline. `frontend-customer`: tsc clean, 236
+tests (+6), build OK. In Chrome: `/api/app-clients` down from 4 requests per
+load to 2 (StrictMode's double; 1 in production); every admin page walked with
+a clean console; Radhe Dhokla's storefront renders ₹ throughout, 136 dishes,
+six Surat branches, the brand wash instead of Thai food; Bangkok Bowl unchanged.
+Narration verified against the real rows: Radhe Dhokla ₹1,20,000, Bangkok Bowl
+$120,000.
+
+**Open:**
+- No tenant has a `cover_image_url` set, so every storefront shows the brand
+  wash. Setting one per restaurant in the admin is now the way to get a photo
+  back — the path is tested but has never run against real data.
+- Still nobody has completed a real payment. Razorpay refunds and
+  `create_payment_link` remain Stripe-only.
+- The Meta webhook still points at the ngrok tunnel; Mr Tailor production is
+  not receiving messages until it is restored to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+- Reports, Offers, Generated Combos and the AI Manager each still own a
+  restaurant `<select>` beside the rail's tenant switcher, which drives the
+  same state. Redundant, and the plan's §5B said one control. Not touched.
+
+**Learned:**
+- The bugs an audit finds are the ones that look like success: a duplicate
+  request is two green 200s, and a wrong currency symbol is a well-formatted
+  number. Reading the network panel and comparing a figure against what the
+  business actually charges found both; reading the code would not have.
+- When a fix makes something per-tenant, the neighbours of that thing are where
+  the rest of the bug is. Copy was fixed; the image above the copy, the symbol
+  beside the number, and the sentence the AI writes were all the same bug
+  wearing different clothes.
+- A batch loop is where per-tenant state goes wrong, and it goes wrong
+  invisibly while every tenant still shares a value.
+
+## 2026-09-18 (4) — Five restaurants, five websites (a3d6376, fe7487e, 0208cd3)
+
+User pushed back on the tenant switcher ("looks not good") and then asked the
+question that mattered: five restaurants with different UI and branding, each
+with their own locations — how do we run all five together, and how do we fix
+something for one of them?
+
+**The finding.** I opened `dragon-wok.localhost:5173` and it served Bangkok
+Bowl. Name, logo, hero, menu, everything. Cause was one line —
+`frontend-customer/src/lib/api.ts:8` exported
+`BUNDLE_ID = "com.quickbite.bangkokbowl"` and sent it on every request, so
+the storefront TOLD the backend which tenant it was instead of being told.
+Host resolution had shipped two commits earlier and was tested; nothing ever
+called it.
+
+**The distinction that shaped the fix.** `/app-config` resolving a host only
+decided which brand to paint — a storefront could still read any restaurant
+by asking. Choosing is the client's job; refusing is the server's. So
+`resolve_app_scope` took a `host` alongside the bundle id and `get_app_scope`
+reads `X-Forwarded-Host`, which narrows every query on every endpoint that
+already depends on it. `GET /api/restaurants` from `dragon-wok.localhost`
+returns one restaurant.
+
+Bundle id still beats host (a phone's identity was fixed at release), and an
+unknown bundle id does NOT fall through to the host — a build with a typo
+would otherwise adopt whatever tenant its webview was pointed at.
+
+**Two consequences that were not obvious up front:**
+- CORS could no longer be a list. Onboarding a restaurant would have needed a
+  redeploy just to let its own website call the API. The pattern is derived
+  from `platform_domain`, the same setting that generates the subdomains.
+- Bare `localhost` had to become a real domain row (seeded to Bangkok Bowl).
+  The alternative was a fallback constant in the web app, which is the exact
+  thing being deleted.
+
+**Then the copy.** `restaurants.storefront` (migration 0064), beside
+`theme` and owner-writable for the same reason. Nine strings. The column is
+empty on every row: `read_storefront` derives all of it from the
+restaurant's own name, cuisine and city, per key rather than
+all-or-nothing. Root route loader is a server fn reading `getRequestHost()`,
+so the `<title>` is correct in the first HTML response — a crawler never
+waits for hydration, and a search listing describing the wrong business
+outlives the fix.
+
+**Per-tenant customers.** Customer identity is per app client, so
+`customer1@example.com` (MARKETPLACE) cannot sign in at a tenant address. It
+never came up before because every address served the marketplace. Seed now
+issues `<app_key>@example.com` / `password123` per tenant.
+
+**Also, the switcher.** Rebuilt: it replaces the sidebar's brand block
+instead of sitting under it (two identity blocks stacked, most important
+control dressed as a form field). Avatar and tint take the tenant's brand
+colour; menu is dark like the rail, because as a `--surface` card it was
+`#ffffff` on `#fafafa` and read as a smudge.
+
+**Verified:** 1,731 backend tests (was 1,692 at session start). Live checks
+rather than only tests — suspension really 403s `/app-config`; each tenant
+customer signs in on its own address and 401s on another's; SSR titles
+differ per host; the admin build, typecheck and 131 tests pass.
+
+**Open / next:**
+- No admin UI for the storefront copy yet — the endpoints exist, nothing
+  renders them. Natural home is beside the theme editor.
+- Plan steps 4-9 unchanged: onboarding wizard, dark mode, capabilities (§6),
+  WhatsApp channels (§3), Stripe Connect (§4), second restyle pass.
+- **Login page still unseen** since the admin ground went flat.
+- **Mr Tailor webhook still on the ngrok tunnel** — restore to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook`.
+
+**Learned:**
+- `platform_domain` is the right source for the CORS regex, not a second
+  setting. One place issues tenant addresses and authorises them.
+- A quoted bash heredoc still broke on an em dash inside a curl `-d`; the API
+  was fine. Write the body to a file before blaming the endpoint.
+- `getRequestHost` lives in `@tanstack/start-server-core`, re-exported by
+  `@tanstack/react-start/server`. Server fns go in their own module so the
+  server-only import cannot be pulled into the browser bundle.
+
+## 2026-09-18 (3) — The panel adopts the storefront's language, and grows a tenant list (21beb05, ef0ed57, 153c953)
+
+Continuing the approved plan (`~/.claude/plans/vivid-tumbling-whistle.md`).
+Steps 2 and 3 of the sequencing are done. User instruction was "go with the
+recommand plan" — no new direction this session.
+
+**Step 2 — shared components and the form vocabulary (`21beb05`).**
+`frontend-shared/components.css` now carries the classes that mean the same
+thing in both products. Two checks before wiring it in, both worth repeating
+before adding a global rule to `legacy.css`: there were **0** existing
+`:active` rules (so the press-scale is purely additive) and **40**
+`focus-visible` rules (which outrank a zero-specificity `:where()` halo, so
+existing focus styles survive and only unstyled elements gain it).
+
+Nine token names deleted from the admin's `:root` so `tokens.css` supplies
+them. Four visible changes, listed because each is a judgement somebody may
+want to reverse: the page ground went flat (it was a radial orange wash —
+the single most recognisable thing keeping the two apps apart);
+`--shadow-ring` went from 10% alpha to the storefront's 22% mixed from
+`--primary`, so focus is actually visible and a tenant's accent carries into
+it; `.field span` labels went from 11px uppercase 700 tracked to 13px
+sentence case; the primary button lost its 16px coloured glow.
+
+**Not done, deliberately:** `.status-pill` was left alone. It has already
+converged with `.status-chip` on its own, and it dropped uppercase
+deliberately because SCREAMING_CASE order statuses rendered too wide. My own
+plan line said to force uppercase; the recorded decision is better.
+
+**Step 3a — tenants (`ef0ed57`).** `app_clients.status` has existed since
+migration `0032` with three values and **nothing had ever written it** —
+there was no endpoint. New `api/app_clients.py`: `GET /app-clients` (counts
+from four grouped queries, not four per tenant) and
+`PATCH /app-clients/{id}/status`. Migration `0063` adds `status_note`,
+`status_changed_at`, `status_changed_by_user_id`.
+
+Two guards, both about not doing this by accident: off-air requires a note,
+and OFFBOARDED is terminal. Verified against the running API, not just in
+tests — a suspension really does take `/app-config` to 403 for that host, and
+a restore brings it back.
+
+**Step 3b — the tenant switcher (`153c953`).** Four screens each kept their
+own answer to "which restaurant am I looking at". `AdminStore` now holds
+`activeRestaurantId`, and `useScopedRestaurantFilter` lets the three list
+screens follow it while keeping their own dropdown.
+
+`PlatformLayout.tsx` from the plan was **not** built: the switcher in the
+existing sidebar plus a "Platform" nav section achieves the separation, and a
+second layout would have been a shell with one screen in it.
+
+**Verified:** 1,703 backend tests (was 1,692), 131 admin tests (was 129),
+`tsc --noEmit` and `npm run build` clean, lint unchanged from its 53-error
+baseline. Walked Offers (with its editor open), Restaurants, Notifications,
+Tenants, Reports, AI Manager and the dashboard in the browser.
+
+**Open / next:**
+- Plan steps 4-9: onboarding wizard and tenant settings, dark-mode toggle,
+  per-restaurant capability (§6), WhatsApp channels (§3), Stripe Connect (§4),
+  second restyle pass (Login first).
+- **The login page has not been looked at since the ground went flat.** It
+  sits outside the main layout and had no background of its own, so it now
+  renders on `--bg` instead of the old gradient. Reasoned about, not seen —
+  I could not log out without handling a password.
+- **The plan's "dashboard lands showing zeros" note did not reproduce.** A
+  cold tab showed real figures with a fresh timestamp. Left in the plan
+  rather than deleted, since it may depend on the backend being cold.
+- Two live bugs still outstanding, both already in the plan: every newly
+  onboarded restaurant inherits Bangkok Bowl's page title and hero copy
+  (`frontend-customer/src/routes/index.tsx:31,112`), and one restaurant
+  editing branch settings flushes every restaurant's offer cache
+  (`api/restaurants.py:634`).
+- **Mr Tailor's Meta webhook still points at the ngrok tunnel.** Restore to
+  `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when
+  WhatsApp testing here is finished.
+
+**Learned:**
+- The admin table already wraps cell content in `.admin-table__cell-content`,
+  a grid whose nested `<span>` is muted caption text. A two-line cell is a
+  bare fragment — `<><strong>x</strong><span>y</span></>` — not a new class.
+  Worth checking before inventing `cell-stack`/`cell-sub`, which I did first.
+- Mirroring a value into state with `useEffect` is what
+  `react-hooks/set-state-in-effect` flags, and it is a real bug here, not
+  lint noise: the list paints one frame of the previous restaurant's rows
+  before correcting. Adjust during render instead.
+- The dev server binds IPv6 only, so `127.0.0.1:5174` returns nothing while
+  `localhost:5174` works.
+- A stale Vite module cache can keep rendering a class that has been deleted
+  from the source. `node_modules/.vite` has to be cleared, not just the
+  server restarted.
+
 ## 2026-09-18 (2) — One design layer for both apps (4a53cd5, b71fb43)
 
 User: "we have frontend-customer folder where i like that UI so i preffer to
@@ -1254,14 +1970,6 @@ Backend + worker restarted on ec9a472; test sessions cleared.
 webhook still points at the ngrok tunnel — restore
 `https://mrtailor-api-prod.onrender.com/api/v1/whatsapp/webhook` when done.
 
-## YYYY-MM-DD — short title
-
-**Goal:** what was asked.
-**Changed:** files/areas touched, one line each.
-**Verified:** exact commands run and their result. "Not verified" if not run.
-**Open:** anything unfinished, deferred, or uncertain.
-**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
-```
 
 ---
 

@@ -95,6 +95,20 @@ class GeneratedComboLifecycleStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class PaymentGateway(StrEnum):
+    """A gateway a restaurant can hold an account with.
+
+    Distinct from `PaymentMethod`, which is what the customer picks on the
+    checkout screen. One gateway can settle several methods — Razorpay's own
+    checkout covers UPI, cards, netbanking and wallets behind one button — and
+    one method can be settled by more than one gateway, which is exactly why
+    these are two enums rather than one.
+    """
+
+    STRIPE = "STRIPE"
+    RAZORPAY = "RAZORPAY"
+
+
 class PaymentMethod(StrEnum):
     GOOGLE_PAY = "GOOGLE_PAY"
     RAZORPAY = "RAZORPAY"

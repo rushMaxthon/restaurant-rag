@@ -376,8 +376,7 @@ button {
 .panel,
 .insight-list,
 .login-card,
-.field,
-.empty-panel {
+.field {
   display: grid;
   gap: 18px;
 }
@@ -1311,7 +1310,7 @@ input:where(:not([type='checkbox'],
 [type='color'])):focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring);
 }
 
@@ -1329,7 +1328,7 @@ select:focus-visible {
 .form-grid input:focus,
 .form-grid textarea:focus,
 .form-grid select:focus {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring);
 }
 
@@ -1393,12 +1392,17 @@ select:focus-visible {
   max-width: 220px;
 }
 
+/* A form label, in sentence case. It was 11px uppercase at 700 with 0.07em
+   tracking — a treatment that belongs on a table header, above 183 fields.
+   Set that way a label reads as a category marker rather than as the name of
+   the thing below it, and a two-word label ran wider than its own input.
+   The storefront's label is 13px medium in sentence case; this is that,
+   half a step darker because a panel is read for longer than a menu. */
 .field span {
-  color: var(--hint);
-  font-size: var(--fs-tiny);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .field small {
@@ -2050,8 +2054,17 @@ select:focus-visible {
   padding: 0 14px;
   border-radius: var(--radius-sm);
   font-size: var(--fs-label);
-  font-weight: 700;
-  transition: 150ms ease;
+  /* 700 → 600. At 13px, bold is the weight a label shouts in; the storefront
+     sets its buttons at medium and they read as more confident, not less.
+     The press-scale and the focus halo both arrive from the shared
+     stylesheet, so they are not restated here. */
+  font-weight: 600;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    opacity var(--dur-fast) ease;
 }
 
 /* Keyboard focus. `:focus-visible` rather than `:focus`, so the ring appears
@@ -2072,13 +2085,18 @@ select:focus-visible {
   justify-content: center;
   gap: 8px;
   background: var(--primary);
-  color: #fff;
-  box-shadow: 0 6px 16px rgba(255, 82, 0, 0.2);
+  /* `--on-primary`, not white: a tenant whose accent is pale needs dark text
+     on it, and that decision belongs to the brand, not to this rule. */
+  color: var(--on-primary);
+  /* A 16px coloured glow under every primary button made a form with three of
+     them look lit from below. The storefront's button carries an ordinary
+     drop shadow and lets the fill do the work. */
+  box-shadow: 0 1px 2px rgb(20 23 31 / 0.08);
 }
 
 .primary-button--danger {
   background: var(--danger);
-  box-shadow: 0 6px 16px rgba(214, 59, 67, 0.18);
+  box-shadow: 0 1px 2px rgb(20 23 31 / 0.08);
 }
 
 /* The pagination ellipsis, on its own. It used to share this rule with every
@@ -2113,7 +2131,7 @@ select:focus-visible {
 .secondary-button,
 .pagination__page {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -2220,8 +2238,30 @@ select:focus-visible {
 
 .admin-table__actions-head,
 .admin-table__actions-cell {
-  /* width: 1%; */
+  /* Shrink to the buttons. Measured on Orders: this column was 145px holding
+     one 32px button, and on Tenants 242px holding three — 100px+ of dead space
+     in the widest column of the table, taken from the columns carrying the
+     actual content.
+
+     `width: 1%` was here before, commented out with no note. It is disabled
+     for a real reason: on its own it squeezes the cell until the buttons,
+     which are flex ITEMS, shrink into each other — three of them ended up
+     stacked at the same coordinate. The two rules below are what was missing,
+     so it can be turned back on. */
+  width: 1%;
   white-space: nowrap;
+}
+
+/* Give the group its intrinsic width so the cell above cannot compress it,
+   and keep it against the right edge now that the cell is only as wide as
+   its contents. */
+.admin-table__actions-cell .table-actions {
+  width: max-content;
+  margin-left: auto;
+}
+
+.admin-table__actions-cell .table-actions > * {
+  flex-shrink: 0;
 }
 
 .offer-table__title,
@@ -2772,7 +2812,9 @@ select:focus-visible {
 .form-grid input::placeholder,
 .form-grid textarea::placeholder,
 .page-search::placeholder {
-  color: #a0a8bb;
+  /* Lighter than `--hint`, which names real help text. A placeholder that
+     reads as strongly as a filled value makes an empty form look complete. */
+  color: color-mix(in srgb, var(--muted) 62%, transparent);
 }
 
 .field input:disabled,
@@ -2781,8 +2823,8 @@ select:focus-visible {
 .form-grid input:disabled,
 .form-grid textarea:disabled,
 .form-grid select:disabled {
-  background: #f5f7fb;
-  color: #8b93a8;
+  background: var(--surface-alt);
+  color: var(--hint);
   cursor: not-allowed;
 }
 
@@ -3083,46 +3125,29 @@ select:focus-visible {
   color: var(--primary);
 }
 
-.empty-panel {
-  justify-items: start;
-  padding: 20px;
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--border);
-  background: var(--surface-subtle);
-}
-
-.empty-panel__icon {
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 4px;
-  border-radius: var(--radius-4);
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
+/* The box, the halo and the wash now come from the shared `.empty-state`.
+   What stays here is the type and rhythm inside it: the storefront's version
+   is composed per page, and this one has a fixed title / description /
+   action stack that every one of its eighteen call sites relies on. */
 .empty-panel strong {
-  font-size: var(--fs-body-lg);
+  display: block;
+  margin-top: 18px;
+  font-size: var(--fs-title-sm);
+  letter-spacing: -0.01em;
 }
 
-/* The failure variant of the same shell. A solid border rather than the
-   empty state's dashed one: dashed reads as "a space waiting to be filled",
-   which is the opposite of what a failed request means. */
-.empty-panel--error {
-  border-style: solid;
-  border-color: rgba(213, 59, 67, 0.22);
-  background: var(--danger-soft);
+.empty-panel > span:not(.empty-state-icon) {
+  display: block;
+  max-width: 34rem;
+  margin-inline: auto;
+  margin-top: 6px;
 }
 
-.empty-panel--error .empty-panel__icon {
-  background: rgba(213, 59, 67, 0.12);
-  color: var(--danger);
-}
-
+/* The failure variant changes hue only — the shared `--error` modifier does
+   the wash and the halo, so a failed request and an empty list are
+   recognisably the same kind of screen rather than two designs. */
 .empty-panel--error strong {
-  color: #c22e37;
+  color: var(--danger);
 }
 
 .settings-list {
@@ -4345,7 +4370,7 @@ select:focus-visible {
 .rpt-field select:focus-visible {
   outline: 2px solid rgba(230, 74, 0, 0.35);
   outline-offset: 1px;
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
 }
 
 /* --- stat tiles -------------------------------- */
@@ -6237,7 +6262,7 @@ select:focus-visible {
 }
 
 .empty-panel__action {
-  margin-top: 6px;
+  margin-top: 22px;
 }
 
 .admin-table__sort {
@@ -6260,7 +6285,19 @@ select:focus-visible {
 }
 
 .admin-table__sort-arrow {
-  font-size: var(--fs-caption);
+  display: inline-flex;
+  align-items: center;
+  /* Invisible until wanted. Every sortable header showing a marker at rest
+     made twelve tables look busier than they are; the affordance still
+     arrives the moment the pointer or the keyboard does. */
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.admin-table__sort:hover .admin-table__sort-arrow,
+.admin-table__sort:focus-visible .admin-table__sort-arrow,
+.admin-table__sort--active .admin-table__sort-arrow {
+  opacity: 1;
 }
 
 /* A11y + login redesign */
@@ -6572,7 +6609,11 @@ summary:focus-visible,
 
 .ai-bar__scope {
   min-height: var(--control-h-sm);
-  max-width: 220px;
+  /* Wide enough for the longest restaurant on the platform. The label it
+     carries is kept short for the same reason — a select clips its text with
+     no ellipsis and no tooltip, so an option that does not fit is simply a
+     sentence cut in half. */
+  max-width: 260px;
   padding: 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -6961,7 +7002,7 @@ summary:focus-visible,
 }
 
 .ai-composer__form:focus-within {
-  border-color: rgba(230, 74, 0, 0.4);
+  border-color: var(--primary);
   box-shadow: var(--shadow-ring), var(--shadow-md);
 }
 
@@ -13503,4 +13544,748 @@ summary:focus-visible,
 .mkt-postcard__copy span {
   color: var(--muted);
   font-size: var(--fs-caption);
+}
+/* --- Tenants ---------------------------------------------------------------
+   The platform console's own two shapes. Everything else on that page is
+   already shared vocabulary; only these two are about tenants specifically. */
+
+/* A storefront address reads as an address rather than as a name, so the
+   globe sits on the same line as the host instead of in its own column. */
+.tenant-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tenant-host svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Which tenant a lifecycle dialog is about. Named in the dialog because the
+   action is irreversible-ish and taken from a table row: by the time the
+   dialog is open, the row it came from is behind an overlay. */
+.tenant-subject {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.tenant-subject svg {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.tenant-subject div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tenant-subject span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+/* --- The workspace control ------------------------------------------------
+   The top of the rail, and the panel's identity while somebody is working.
+
+   It sits on the dark sidebar, so its own colours come from white at low
+   alpha rather than from the surface tokens — `--surface` on `--sidebar`
+   would be a white card floating in a dark rail. The menu that drops out of
+   it IS a surface, and does use them.
+
+   `--tenant-accent` is set inline from the restaurant's own brand colour and
+   defaults to the platform's, so every rule below works whether or not a
+   tenant is picked and whether or not that tenant has chosen a colour. */
+
+.workspace {
+  --tenant-accent: var(--primary);
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace__trigger {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-4);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.workspace__trigger:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Once a restaurant is picked the control carries that restaurant's colour.
+   Ambient rather than stated: an operator three screens deep should know
+   whose data they are about to change without reading a label. */
+.workspace--scoped .workspace__trigger {
+  border-color: color-mix(in srgb, var(--tenant-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--tenant-accent) 16%, transparent);
+}
+
+.workspace__avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-3);
+  background: linear-gradient(135deg, #ff5200, #ff7a28);
+  color: #fff;
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.workspace--scoped .workspace__avatar {
+  background: linear-gradient(
+    135deg,
+    var(--tenant-accent),
+    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+  );
+}
+
+.workspace__copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.workspace__copy strong,
+.workspace__copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace__copy strong {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: #fff;
+}
+
+.workspace__copy > span {
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.workspace__chevron {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.workspace__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* --- The menu -------------------------------------------------------------
+   Dark, like the rail it drops out of, rather than a white card.
+
+   The first version was a `--surface` panel, which is `#ffffff` sitting on a
+   `#fafafa` page: a hairline and a soft shadow were the only things saying
+   where it ended, and on screen it read as a smudge rather than as a menu.
+   Taking the sidebar's own colour gives it contrast against the content area
+   for free, and makes it look like the rail extending rather than like a
+   dialog that happened to appear there.
+
+   Wider than the rail and overhanging it, because a restaurant name cut to
+   the width of a sidebar is a restaurant name nobody can read. */
+
+.workspace__menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 296px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-4);
+  background: var(--sidebar-2);
+  box-shadow:
+    0 16px 40px -12px rgb(10 12 24 / 0.55),
+    0 4px 12px -4px rgb(10 12 24 / 0.35);
+  overflow: hidden;
+  animation: workspace-drop var(--dur) var(--ease-out) both;
+}
+
+@keyframes workspace-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.workspace__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.workspace__search input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: var(--fs-label);
+}
+
+.workspace__search input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.workspace__search input:focus-visible {
+  border: 0;
+  box-shadow: none;
+}
+
+.workspace__list {
+  display: grid;
+  gap: 1px;
+  /* Seven restaurants and the "all" row fit without scrolling, which is the
+     size this platform actually is today. Past that it scrolls, and past six
+     there is a search field above it. */
+  max-height: 364px;
+  overflow-y: auto;
+  padding: 6px;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.workspace__item {
+  --tenant-accent: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.workspace__item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.workspace__item > svg {
+  margin-left: auto;
+  color: var(--tenant-accent);
+  flex-shrink: 0;
+}
+
+/* The same brand mark as the trigger, at menu scale — so the thing you click
+   and the thing you end up with are visibly the same object. */
+.workspace__item-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(
+    135deg,
+    var(--tenant-accent),
+    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+  );
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.workspace__item-avatar--all {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.workspace__item-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.workspace__item-copy strong,
+.workspace__item-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace__item-copy strong {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.workspace__item-copy > span {
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* A tenant that is off the air, named in its own colour rather than in the
+   grey of a city name — the one thing in this list that is not incidental. */
+.workspace__flag {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--warning);
+}
+
+.workspace__empty {
+  margin: 0;
+  padding: 16px 10px;
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.workspace__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--primary);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.workspace__footer:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* --- Mixed currency -------------------------------------------------------
+   Shown above a total that adds rupees to dollars. `--warning` rather than
+   `--danger`: nothing is broken and no action is required — the number is
+   simply not the kind of number it looks like, and the reader needs to know
+   before they quote it to somebody. */
+
+.mixed-currency {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.mixed-currency svg {
+  margin-top: 1px;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.mixed-currency strong {
+  font-weight: 700;
+}
+
+/* --- Capabilities ---------------------------------------------------------
+   One card per switchable feature. The reason line is not decoration: the
+   allowlist this replaces was deleted for being a permanent split that
+   nothing on screen explained, so every card carries why it is what it is. */
+
+.capability-list {
+  display: grid;
+  gap: 12px;
+}
+
+.capability-skeleton {
+  height: 92px;
+  border-radius: var(--radius-md);
+}
+
+.capability {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  /* A hairline of the brand down the edge of anything that is on, so the
+     answer is readable before any of the words are. */
+  border-left: 3px solid var(--success);
+}
+
+.capability--off {
+  border-left-color: var(--border);
+  background: var(--surface-alt);
+}
+
+.capability__copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.capability__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.capability__title strong {
+  font-size: var(--fs-body-lg);
+  font-weight: 700;
+}
+
+.capability__copy p {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.capability__why {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.capability__actor {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.capability__note {
+  font-style: italic;
+}
+
+.capability__actions {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  flex-shrink: 0;
+}
+
+.capability__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.capability__reset:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .capability {
+    flex-direction: column;
+  }
+
+  .capability__actions {
+    width: 100%;
+  }
+}
+
+/* --- Sign in --------------------------------------------------------------
+   The first screen anyone sees, including a client being shown the product.
+
+   It was a white card on a near-white page. `--bg` is `#fafafa` and `--card`
+   is `#ffffff`, so the only thing saying where the card ended was a hairline
+   and a soft shadow — the card did not read as a card, it read as a faint
+   rectangle floating in an empty field. That is a consequence of the page
+   ground going flat, and this is the screen that needed the ground most.
+
+   So the page gets a real one: the rail's own colour. Not a new invention —
+   `--sidebar` is what this panel already looks like, it is just usually a
+   220px strip rather than the whole window. A white card on it separates
+   without needing a shadow to do the work, and somebody who signs in
+   recognises the colour they are about to be looking at all day. */
+
+.login-shell {
+  position: relative;
+  overflow: hidden;
+  background: var(--sidebar);
+}
+
+/* One quiet brand glow behind the card, off-centre. Enough that the ground
+   is not a flat rectangle; far short of the radial wash that used to sit
+   behind every page of this panel and was removed for shouting. */
+.login-shell:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 34% 42% at 50% 8%,
+    color-mix(in srgb, var(--primary) 34%, transparent),
+    transparent 62%
+  );
+  pointer-events: none;
+}
+
+.login-shell > * {
+  position: relative;
+}
+
+.lg-card {
+  width: min(100%, 420px);
+  gap: 18px;
+  /* Roomier than a panel embedded in a page: this one is the whole screen,
+     and 16px of padding on a 420px card reads as cramped when there is
+     nothing else competing for the space. */
+  padding: 30px 28px;
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 24px 60px -20px rgb(0 0 0 / 0.55);
+}
+
+.lg-heading h1 {
+  font-size: var(--fs-display);
+  line-height: 1.15;
+}
+
+.lg-heading p {
+  color: var(--muted);
+  /* Both of these wrapped with their last word alone on the second line —
+     "and AI / activity." and "restaurant / owners." A single orphan on a
+     screen with four lines of text on it is most of the text looking wrong. */
+  text-wrap: pretty;
+}
+
+/* Chrome paints autofilled fields its own pale blue and ignores `background`,
+   which left two blue-grey boxes in the middle of an otherwise designed card
+   — the single most obvious thing wrong with this screen on a machine where
+   the password is remembered. The inset shadow is the documented way to win:
+   it paints over the browser's fill without fighting it. */
+.lg-input input:-webkit-autofill,
+.lg-input input:-webkit-autofill:hover,
+.lg-input input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 100px var(--field-bg) inset;
+  caret-color: var(--text);
+  /* Chrome's own fade-in of the blue is what gets caught on first paint;
+     a long transition outlives it. */
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+.lg-input input:-webkit-autofill:focus {
+  -webkit-box-shadow:
+    0 0 0 100px var(--field-bg) inset,
+    var(--shadow-ring);
+}
+
+.lg-submit {
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+
+.lg-footnote {
+  color: var(--muted);
+  text-wrap: pretty;
+  /* Narrower than the card so the balancer has somewhere to break, and so
+     the sentence reads as a footnote rather than as another field label. */
+  max-width: 30ch;
+  margin-inline: auto;
+}
+
+/* --- Payment gateways -----------------------------------------------------
+   Reuses the capability card, because a gateway and a feature are the same
+   shape of thing on this screen: a thing that is on or off, with the reason
+   beside it. Only the parts that differ live here. */
+
+.gateway__keys {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.gateway__keys svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* The public key, shown in full and deliberately: it is in the page source of
+   every checkout that uses it, and seeing it is how somebody confirms the
+   right account is wired up. */
+.gateway__keys code {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  color: var(--text);
+}
+
+.gateway__form {
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* The webhook URL sits directly above the webhook secret because they are one
+   errand: this URL goes into the gateway's dashboard, and the secret that
+   dashboard hands back comes into the field below. Read-only, so it is not a
+   .field with an input - the shared label and hint styling still applies. */
+.gateway__webhook-url {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* The URL is long and must be copied EXACTLY, so it never truncates with an
+   ellipsis - it wraps mid-string instead. A URL a reader cannot see all of is
+   a URL they cannot check. */
+.gateway__webhook-url code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.gateway__webhook-url button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gateway__webhook-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gateway__webhook-events code {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+}
+
+.gateway__toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.gateway__toggle input {
+  width: 16px;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+/* --- What a customer sees -------------------------------------------------
+   A flat list rather than cards: these are the outcome of the settings above,
+   not more settings, and dressing them as cards invites somebody to click. */
+
+.method-list {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.method-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  background: var(--surface);
+}
+
+.method-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.method-row strong {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.method-row span {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.method-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.method-row--off {
+  background: var(--surface-alt);
+}
+
+.method-row--off .method-row__dot {
+  background: var(--border);
+}
+
+.method-row--off strong {
+  color: var(--muted);
 }

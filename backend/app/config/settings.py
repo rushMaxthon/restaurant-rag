@@ -5,6 +5,8 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import re
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,7 +37,14 @@ class Settings(BaseSettings):
     # Dialling code assumed when a customer types a bare local number at
     # checkout. Settable per deployment for the same reason the timezone is:
     # nothing here should hardcode one country.
-    default_phone_country_code: str = "+1"
+    #
+    # It said "+1" while `business_timezone` above said Asia/Kolkata, and
+    # these two cannot disagree: a Surat customer typing their real mobile,
+    # 9825012345, had it stored as +19825012345 — a United States number, on
+    # every order they ever placed, with the checkout showing them "+1" as
+    # confirmation. India is +91 and its mobile numbers are 10 digits, so the
+    # digit count below is already right.
+    default_phone_country_code: str = "+91"
     # How many digits a local number has once the country code is stripped.
     # US and Canada are 10; a deployment elsewhere changes this rather than
     # editing a validator.
@@ -702,6 +711,19 @@ class Settings(BaseSettings):
     # the chat" link on that page. Not derivable from the phone-number id
     # Meta gives the API, which is an id and not the number.
     whatsapp_business_number: str = ""
+    # Whether a restaurant must hold its own gateway account to take card.
+    #
+    # Off during the transition, and that is the honest default: every
+    # restaurant onboarded before gateway accounts existed is still settled
+    # through this deployment's own Stripe keys, and flipping this without
+    # warning would stop their checkout. The admin screen says which account
+    # is settling a restaurant, so the fallback is visible rather than
+    # assumed.
+    #
+    # On is the correct end state: a restaurant with no account of its own
+    # cannot take card, because the alternative is its customers' money
+    # landing in the platform's account.
+    payments_require_restaurant_account: bool = False
     payment_currency: str = "usd"
     # The key that protects credentials this platform holds on behalf of a
     # tenant — a restaurant's WhatsApp access token, its webhook verify token.
@@ -745,6 +767,38 @@ class Settings(BaseSettings):
     @property
     def backend_cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def cors_origin_regex(self) -> str:
+        """The origin pattern, including every tenant's own storefront.
+
+        Naming origins exactly stops being possible the moment onboarding a
+        restaurant issues it a subdomain: the list would need a new entry, and
+        a redeploy, per restaurant — which is the release-per-tenant this whole
+        design exists to avoid. So the pattern is derived from
+        `platform_domain`, the same setting that generates those subdomains.
+        One source of truth: an address this platform issues is an address this
+        platform accepts.
+
+        It admits one label of subdomain, not `.*`, so it matches what
+        `platform_host_for` actually produces and nothing deeper.
+
+        `backend_cors_origin_regex` still wins when set, because it exists for
+        the case this cannot know about — a LAN address during device testing,
+        or a tenant's own domain.
+        """
+
+        configured = (self.backend_cors_origin_regex or "").strip()
+        domain = (self.platform_domain or "").strip().lstrip(".")
+        if not domain:
+            return configured
+
+        # A port is optional and only ever appears in development; production
+        # storefronts answer on 80 and 443, which browsers omit.
+        tenants = rf"https?://[a-z0-9-]+\.{re.escape(domain)}(:\d+)?"
+        if not configured:
+            return tenants
+        return f"({configured})|({tenants})"
 
     @property
     def stripe_is_configured(self) -> bool:

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -10,57 +11,81 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import heroImage from "@/assets/bangkok-bowl-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { DishCard } from "@/components/bangkok/dish-card";
 import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
+import { budgetChipAmount } from "@/lib/budget";
+import {
+  useMoney,
+  useRoundedMoney,
+  useStorefrontCopy,
+  useStorefrontCover,
+} from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Bangkok Bowl — Thai Food Delivery Ahmedabad" },
-      {
-        name: "description",
-        content:
-          "Order fresh Thai noodles, curries and bowls from three Bangkok Bowl branches in Ahmedabad.",
-      },
-      { property: "og:title", content: "Bangkok Bowl — Thai Food Delivery Ahmedabad" },
-      {
-        property: "og:description",
-        content: "Big Thai flavour, cooked fresh and delivered across Ahmedabad.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  // The root route already resolves this restaurant's copy from the request
+  // host; the home page renders the hero from the same nine strings, so the
+  // words in the tab and the words on the page cannot disagree.
   component: Home,
 });
 
 const CRAVING_CHIPS = [
   { label: "Something spicy", query: "Something spicy", icon: Flame },
-  { label: "Under $15", query: "Something good under $15", icon: DollarSign },
   { label: "Comfort food", query: "Comfort food", icon: Soup },
   { label: "Light and fresh", query: "Something light and fresh", icon: Leaf },
   { label: "Feed two people", query: "Something to feed two people", icon: Users },
 ];
 
 function Home() {
+  // From the root route's loader, which read it off the request host — so the
+  // hero is this restaurant's own words in the server-rendered HTML rather
+  // than after a client fetch.
+  const copy = useStorefrontCopy();
+  const money = useMoney();
+  // A budget is prose, not a price: "Under ₹150", not "Under ₹150.00".
+  const roundedMoney = useRoundedMoney();
   const store = useBangkokStore();
+  // Nothing invites a customer to a page this restaurant has switched off.
+  const askAi = hasCapability(store.capabilities, "ask_ai");
   const { restaurantId, branchId, locations } = store;
   const { isAuthenticated } = useAuth();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   const offersQuery = usePersonalizedOffers(isAuthenticated);
   const items = menuQuery.data ?? [];
-  const bestsellers = (
-    items.filter((i) => i.is_bestseller).length ? items.filter((i) => i.is_bestseller) : items
-  ).slice(0, 8);
+  // Two different sections wearing one heading. A restaurant that has marked
+  // its bestsellers gets "Crowd favourites", which is then a fact. One that
+  // has not gets the first eight rows the API returned, in no order anybody
+  // chose — for a Surat dhokla shop that was four Chinese rice dishes under
+  // the words "Most loved", which is not a small thing to be wrong about on
+  // the first screen a customer sees. So the label follows the data: the same
+  // eight dishes, honestly introduced, until somebody ticks Best seller in the
+  // admin.
+  const flagged = items.filter((i) => i.is_bestseller);
+  const hasBestsellers = flagged.length > 0;
+  const bestsellers = (hasBestsellers ? flagged : items).slice(0, 8);
   const offers = offersQuery.data ?? [];
+
+  // The restaurant's own sections, with how many dishes are in each, counted
+  // from the rows. Ordered by size, so the kitchen's biggest section leads
+  // rather than whichever happens to sort first alphabetically — which for a
+  // dhokla shop was Biryani.
+  const sections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [items]);
 
   // Everything the hero says about this restaurant comes from the branch row
   // the admin filled in. It used to assert "Open now" whether or not it was,
@@ -73,18 +98,34 @@ function Home() {
   const heroEta = Number(branch?.estimated_delivery_time);
   const branchCount = locations.length;
 
+  // A restaurant with a photograph of its own food earns the tall hero: the
+  // picture IS the content. Without one the hero is a brand wash that says
+  // nothing about the food (deliberately — see `StorefrontHero`), and at
+  // 70svh a phone opens on two thirds of a screen of flat orange before any
+  // dish appears. So the box follows what is in it. Radhe Dhokla gets the
+  // tall one back the moment a cover image is uploaded in the admin.
+  const heroHeight = useStorefrontCover() ? "min-h-[70svh]" : "min-h-[46svh] sm:min-h-[56svh]";
+
+  const budget = budgetChipAmount(items.map((i) => Number(i.price)));
+  const cravingChips = budget
+    ? [
+        ...CRAVING_CHIPS.slice(0, 1),
+        {
+          label: `Under ${roundedMoney(budget)}`,
+          query: `Something good under ${roundedMoney(budget)}`,
+          icon: DollarSign,
+        },
+        ...CRAVING_CHIPS.slice(1),
+      ]
+    : CRAVING_CHIPS;
+
   return (
     <div className="pb-20 lg:pb-0">
-      <section className="relative min-h-[70svh] overflow-hidden">
-        <img
-          src={heroImage}
-          alt="A colourful Bangkok Bowl Thai food spread"
-          width={1600}
-          height={912}
-          className="absolute inset-0 size-full object-cover"
-        />
+      <StorefrontHero className={heroHeight}>
         <div className="hero-overlay absolute inset-0" />
-        <div className="hero-copy page-pad relative flex min-h-[70svh] max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16">
+        <div
+          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16`}
+        >
           <div className="mb-5 flex flex-wrap gap-2">
             {/* Nothing is claimed until it is known: no branch count before the
                 list arrives, and no city that is not this branch's. */}
@@ -106,26 +147,26 @@ function Home() {
             )}
           </div>
           <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-7xl">
-            {store.restaurantName ?? "Bangkok Bowl"}
+            {copy.hero_headline}
           </h1>
-          <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">
-            Wok-fired noodles, velvety curries and bold Bangkok street flavours—made fresh for you.
-          </p>
+          <p className="mt-5 max-w-xl text-lg font-medium sm:text-xl">{copy.hero_subcopy}</p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Button size="lg" asChild>
               <Link to="/menu">
                 Explore the menu <ArrowRight />
               </Link>
             </Button>
-            <Button size="lg" variant="secondary" asChild>
-              <Link to="/concierge">
-                <Sparkles />
-                Ask the food concierge
-              </Link>
-            </Button>
+            {askAi ? (
+              <Button size="lg" variant="secondary" asChild>
+                <Link to="/concierge">
+                  <Sparkles />
+                  Ask the food concierge
+                </Link>
+              </Button>
+            ) : null}
           </div>
         </div>
-      </section>
+      </StorefrontHero>
 
       <WaiterPrompt placement="home" />
 
@@ -151,11 +192,44 @@ function Home() {
         </section>
       )}
 
+      {/* A way in, on the first screen.
+
+          The home page offered a hero, eight dishes and a link reading "See
+          all" — which for this restaurant is 136 dishes in 21 sections. A
+          customer who wanted dhokla had to open the whole menu and find it.
+          These are the restaurant's OWN sections, in the order its own menu
+          returns them, counted from the rows rather than asserted. */}
+      {sections.length > 1 && (
+        <section className="page-pad section-pad !pb-0">
+          <div className="mb-5">
+            <p className="eyebrow">Browse</p>
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
+              What are you after?
+            </h2>
+          </div>
+          <div className="section-rail">
+            {sections.map(({ name, count }) => (
+              <Link
+                className="section-chip"
+                key={name}
+                search={{ category: name }}
+                to="/menu"
+              >
+                <span className="section-chip__name">{name}</span>
+                <span className="section-chip__count">{count}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="page-pad section-pad">
         <div className="mb-7 flex items-end justify-between gap-4">
           <div>
-            <p className="eyebrow">Most loved</p>
-            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">Crowd favourites</h2>
+            <p className="eyebrow">{hasBestsellers ? "Most loved" : "Straight from the kitchen"}</p>
+            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
+              {hasBestsellers ? "Crowd favourites" : "On the menu today"}
+            </h2>
           </div>
           <Button variant="outline" asChild>
             <Link to="/menu">See all</Link>
@@ -185,7 +259,11 @@ function Home() {
         )}
       </section>
 
-      <section className="grid bg-surface-alt lg:grid-cols-2">
+      {/* The left half of this band is entirely about the concierge, so a
+          restaurant without it gets the right half full-width rather than an
+          invitation to a page that is not there. */}
+      <section className={askAi ? "grid bg-surface-alt lg:grid-cols-2" : "grid bg-surface-alt"}>
+        {askAi ? (
         <div className="page-pad section-pad">
           <Sparkles className="mb-5 size-10 text-primary" />
           <p className="eyebrow">Not sure what to order?</p>
@@ -196,7 +274,7 @@ function Home() {
             Tap a craving and our AI food concierge points you straight to a dish on the menu.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            {CRAVING_CHIPS.map((chip) => (
+            {cravingChips.map((chip) => (
               <Link
                 key={chip.label}
                 to="/concierge"
@@ -214,13 +292,14 @@ function Home() {
             </Link>
           </Button>
         </div>
+        ) : null}
         <div className="page-pad section-pad bg-primary text-primary-foreground">
           <Clock3 className="mb-5 size-10" />
           <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
           <h2 className="font-display text-4xl font-extrabold">
             {Number.isFinite(heroEta) && heroEta > 0
-              ? `Dinner from wok to door in about ${heroEta} minutes.`
-              : "Dinner from wok to door, cooked fresh to order."}
+              ? `Cooked to order and at your door in about ${heroEta} minutes.`
+              : "Cooked fresh to order, and on its way the moment it is ready."}
           </h2>
           <div className="mt-7 flex flex-wrap gap-3">
             {locations.map((l) => (

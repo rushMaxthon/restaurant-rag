@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import OrderStatus, PaymentMethod, PaymentStatus
 
@@ -16,6 +16,14 @@ class PaymentConfigResponse(BaseModel):
     stripe_enabled: bool
     currency: str
     supported_methods: list[PaymentMethod]
+    # The PUBLIC key of each gateway this restaurant can settle through,
+    # keyed by gateway name — Razorpay needs its `key_id` in the browser to
+    # open Checkout at all.
+    #
+    # Public by design: every one of these appears in the page source of the
+    # checkout that uses it. The matching secrets are encrypted server-side
+    # and are not reachable from any endpoint.
+    gateway_keys: dict[str, str] = Field(default_factory=dict)
 
 
 class PaymentIntentResponse(BaseModel):

@@ -24,6 +24,8 @@ both happen to speak the Ollama protocol.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 import httpx
@@ -31,6 +33,8 @@ import httpx
 from app.config import get_settings
 
 settings = get_settings()
+
+logger = logging.getLogger(__name__)
 
 # --- endpoints --------------------------------------------------------------
 #
@@ -130,6 +134,104 @@ def build_client(
     )
 
 
+# --- keeping the weights resident -------------------------------------------
+
+# Ollama accepts a Go duration for `keep_alive` — "60m", "1h30m", "90s" — or a
+# bare number, which it reads as seconds.
+_DURATION_UNITS = {"ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0, "m": 60.0, "h": 3600.0}
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ns|us|ms|s|m|h)")
+
+
+def keep_alive_seconds() -> float | None:
+    """How long this deployment asks Ollama to hold the weights, in seconds.
+
+    Parsed here rather than by whoever re-warms the model, because the two must
+    not drift apart: shortening `keep_alive` without shortening the re-warm
+    interval would put the eviction back inside a customer's turn, and it would
+    do it silently — a slow answer, never an error. Deriving one from the other
+    makes that impossible to get wrong by editing one line.
+
+    Returns None when the weights are not on a clock at all: a negative value
+    means "hold forever", and a managed endpoint decides residency itself and
+    is never sent the field, so neither has anything to re-warm.
+    """
+
+    if settings.ollama_is_cloud:
+        return None
+
+    raw = (settings.ollama_keep_alive or "").strip().lower()
+    if not raw:
+        return None
+
+    # A bare number is seconds. Negative is Ollama's "forever".
+    try:
+        plain = float(raw)
+    except ValueError:
+        pass
+    else:
+        return None if plain < 0 else plain
+
+    if raw.startswith("-"):
+        return None
+
+    parts = _DURATION_PART.findall(raw)
+    if not parts:
+        # An unreadable value is left alone rather than guessed at. Ollama will
+        # apply its own default and the model simply loads on demand, which is
+        # the behaviour this whole section exists to improve, not to break.
+        logger.warning("Unreadable ollama_keep_alive %r; not scheduling a re-warm", raw)
+        return None
+    return sum(float(amount) * _DURATION_UNITS[unit] for amount, unit in parts)
+
+
+def warm_generation_model(model: str | None = None, *, timeout_seconds: float = 300.0) -> bool:
+    """Load the generation model, so that a customer's question does not.
+
+    The cost this avoids was measured on a live WhatsApp thread, not guessed
+    at: one turn took 54 seconds against a 30-second budget, and effectively
+    all of it was a single intent read waiting on a cold qwen3:8b — 5.6GB of
+    weights — where the same read takes 4.4s once they are resident. The turn
+    then answered from its budget-exceeded path, so the cold load did not just
+    make that reply slow, it made it worse.
+
+    An empty prompt is Ollama's own way of asking for a load and nothing else:
+    it answers `done_reason: "load"` with an empty response, so this costs no
+    tokens and cannot be billed as generation. Measured against this host at
+    2.1s with the weights resident and 6.2s without.
+
+    The timeout is generous on purpose. Nobody is waiting on this call, and a
+    first load from cold storage is far slower than a reload from page cache;
+    giving up early would leave the customer to pay for the part that was left.
+
+    Never raises. Every caller of this model already handles it being
+    unreachable, and a warm-up that could take a process down would be worse
+    than the load it was meant to move.
+    """
+
+    payload = {
+        "model": model or settings.ordering_agent_model,
+        "prompt": "",
+        "stream": False,
+        **local_only_options(),
+    }
+    timeout = httpx.Timeout(connect=5.0, read=timeout_seconds, write=10.0, pool=5.0)
+    try:
+        with build_client(timeout) as client:
+            response = client.post(GENERATE_ENDPOINT, json=payload)
+            response.raise_for_status()
+    except (httpx.HTTPError, ValueError) as error:
+        logger.warning(
+            "Generation warm-up failed for %s; the next question will pay the "
+            "model load instead: %s",
+            payload["model"],
+            error,
+        )
+        return False
+
+    logger.info("Generation model warm: %s", payload["model"])
+    return True
+
+
 __all__ = [
     "EMBED_ENDPOINT",
     "GENERATE_ENDPOINT",
@@ -139,5 +241,7 @@ __all__ = [
     "embedding_headers",
     "embedding_local_only_options",
     "generation_headers",
+    "keep_alive_seconds",
     "local_only_options",
+    "warm_generation_model",
 ]

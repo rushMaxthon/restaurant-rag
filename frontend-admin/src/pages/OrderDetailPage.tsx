@@ -28,12 +28,12 @@ import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
   api,
-  formatCurrency,
   formatDate,
   toNumber,
 } from "../services/api";
 import { humanizeEnum } from "../services/format";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -112,7 +112,12 @@ const STATUS_STEPS: Array<{
 
 
 
-function describeItemCustomizations(item: OrderItem): string[] {
+// `money` is passed in rather than imported, for the same reason as above:
+// the currency belongs to the order's restaurant, not to this module.
+function describeItemCustomizations(
+  item: OrderItem,
+  money: (value: number | string) => string,
+): string[] {
   return item.selected_options_snapshot.map((option) => {
     const name = option.option_name ?? "Customization";
     const group = option.group_title ? `${option.group_title}: ` : "";
@@ -120,7 +125,7 @@ function describeItemCustomizations(item: OrderItem): string[] {
       option.quantity && option.quantity > 1 ? ` ×${option.quantity}` : "";
     const extra =
       option.extra_price && toNumber(option.extra_price) > 0
-        ? ` (+${formatCurrency(option.extra_price)})`
+        ? ` (+${money(option.extra_price)})`
         : "";
     return `${group}${name}${quantity}${extra}`;
   });
@@ -133,6 +138,8 @@ export function OrderDetailPage({
   onNavigate,
   onToast,
 }: OrderDetailPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   const isOwner = role === "OWNER";
   const scope = tokenScope(token);
   const orderKey = `order-detail:${scope}:${orderId}`;
@@ -363,7 +370,7 @@ export function OrderDetailPage({
         <div className="order-detail__metrics">
           <div className="order-detail__metric">
             <span>Total amount</span>
-            <strong>{formatCurrency(order.total_amount)}</strong>
+            <strong>{money.format(order.total_amount, order.restaurant_id)}</strong>
           </div>
           <div className="order-detail__metric">
             <span>Items</span>
@@ -652,7 +659,7 @@ export function OrderDetailPage({
             </thead>
             <tbody>
               {order.items.map((item) => {
-                const customizations = describeItemCustomizations(item);
+                const customizations = describeItemCustomizations(item, money.format);
                 return (
                   <tr key={item.id}>
                     <td>
@@ -674,16 +681,16 @@ export function OrderDetailPage({
                     </td>
                     <td className="admin-table__cell--right">{item.quantity}</td>
                     <td className="admin-table__cell--right">
-                      {formatCurrency(item.unit_price)}
+                      {money.format(item.unit_price, order.restaurant_id)}
                       {toNumber(item.customization_total_price) > 0 ? (
                         <span className="order-detail__item-subprice">
-                          incl. {formatCurrency(item.customization_total_price)}{" "}
+                          incl. {money.format(item.customization_total_price, order.restaurant_id)}{" "}
                           add-ons
                         </span>
                       ) : null}
                     </td>
                     <td className="admin-table__cell--right">
-                      <strong>{formatCurrency(item.total_price)}</strong>
+                      <strong>{money.format(item.total_price, order.restaurant_id)}</strong>
                     </td>
                   </tr>
                 );
@@ -695,33 +702,33 @@ export function OrderDetailPage({
         <div className="order-detail__totals">
           <div className="order-detail__totals-row">
             <span>Subtotal</span>
-            <strong>{formatCurrency(order.subtotal)}</strong>
+            <strong>{money.format(order.subtotal, order.restaurant_id)}</strong>
           </div>
           {customizationTotals > 0 ? (
             <div className="order-detail__totals-row order-detail__totals-row--muted">
               <span>Includes customizations</span>
-              <strong>{formatCurrency(customizationTotals)}</strong>
+              <strong>{money.format(customizationTotals, order.restaurant_id)}</strong>
             </div>
           ) : null}
           <div className="order-detail__totals-row">
             <span>Delivery fee</span>
-            <strong>{formatCurrency(order.delivery_fee)}</strong>
+            <strong>{money.format(order.delivery_fee, order.restaurant_id)}</strong>
           </div>
           <div className="order-detail__totals-row">
             <span>Taxes</span>
-            <strong>{formatCurrency(order.tax_amount)}</strong>
+            <strong>{money.format(order.tax_amount, order.restaurant_id)}</strong>
           </div>
           {discount > 0 ? (
             <div className="order-detail__totals-row order-detail__totals-row--discount">
               <span>Discount</span>
-              <strong>-{formatCurrency(order.discount_amount)}</strong>
+              <strong>-{money.format(order.discount_amount, order.restaurant_id)}</strong>
             </div>
           ) : null}
           <div className="order-detail__totals-row order-detail__totals-row--grand">
             <span>
               <ReceiptText size={15} strokeWidth={2.1} /> Total ({order.currency})
             </span>
-            <strong>{formatCurrency(order.total_amount)}</strong>
+            <strong>{money.format(order.total_amount, order.restaurant_id)}</strong>
           </div>
         </div>
       </section>

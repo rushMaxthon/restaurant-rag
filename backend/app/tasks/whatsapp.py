@@ -46,7 +46,9 @@ def session_for(from_number: str) -> uuid.UUID:
     return uuid.uuid5(WHATSAPP_SESSION_NAMESPACE, f"whatsapp:{from_number}")
 
 
-def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
+def _compose_reply(
+    answer: Any, proposed: list[dict[str, Any]], currency: str | None = None
+) -> str:
     """What to send back, and in what order.
 
     The agent's line wins when the agent owns the turn: it is the half that
@@ -62,7 +64,9 @@ def _compose_reply(answer: Any, proposed: list[dict[str, Any]]) -> str:
     # Dishes to consider go under an answer about the menu. Under "you have
     # 3 x Corn Fritters, subtotal $25.47" they are a second conversation
     # nobody started — the web dropped the same list for the same reason.
-    parts = [render_reply(spoken, [] if owns else list(answer.suggestions or []))]
+    parts = [
+        render_reply(spoken, [] if owns else list(answer.suggestions or []), currency)
+    ]
 
     placed = getattr(answer, "placed_order", None) or {}
     if placed.get("payment_url"):
@@ -149,6 +153,22 @@ def _configured_restaurant_id() -> uuid.UUID | None:
         return None
 
 
+def _configured_currency(db: Any) -> str | None:
+    """What the restaurant this number answers for charges in.
+
+    Read per message off the session the turn already holds: one lookup by
+    primary key, and a currency changed in the admin reaches the next message
+    rather than the next deploy.
+    """
+
+    restaurant_id = _configured_restaurant_id()
+    if restaurant_id is None:
+        return None
+    from app.models.restaurant import Restaurant
+
+    return db.scalar(select(Restaurant.currency).where(Restaurant.id == restaurant_id))
+
+
 @celery_app.task(
     name="app.tasks.whatsapp.answer_whatsapp_message",
     bind=True,
@@ -193,6 +213,9 @@ def answer_whatsapp_message(
             # No buttons in a chat thread: see `run_turn`'s `auto_place`.
             auto_place=True,
         )
+        # Read inside the session that answered, so the dishes listed under
+        # the reply carry the symbol the menu is priced in.
+        currency = _configured_currency(db)
 
     # No client to apply them, so this side does — the same actions, the same
     # rules about which of them may be applied at all.
@@ -207,7 +230,7 @@ def answer_whatsapp_message(
         # somebody orders the same thing twice.
         session_cart.clear(session_id)
 
-    body = _compose_reply(answer, proposed)
+    body = _compose_reply(answer, proposed, currency)
     if not body:
         # The assistant had nothing to say. Silence reads as a broken bot, so
         # say the honest thing instead.

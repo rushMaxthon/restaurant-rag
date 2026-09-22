@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.services.currency import currency_for, format_amount
 from app.models.enums import (
     OrderScheduleType,
     OrderCancellationReason,
@@ -39,11 +40,16 @@ from app.services.payments.base import (
     WebhookEvent,
     WebhookVerificationError,
 )
+from app.models.enums import PaymentGateway
+from app.services.payment_accounts import read_credentials
+from app.services.payments.razorpay_provider import RAZORPAY_WEBHOOK_EVENTS
 from app.services.payments.registry import (
+    GATEWAY_FOR_METHOD,
     available_payment_methods,
-    get_stripe_provider,
+    build_provider,
+    platform_provider_for,
+    provider_for,
     provider_name_for,
-    resolve_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,10 +165,14 @@ def create_payment_intent(
         db, customer, order_id, app_scope_restaurant_id=app_scope_restaurant_id
     )
 
-    if order.payment_method != PaymentMethod.CARD:
+    if order.payment_method == PaymentMethod.COD:
+        # Nothing to pay online. Every other method settles through a gateway
+        # and can be sent a link; this used to refuse everything but CARD,
+        # which left a Razorpay restaurant's chat orders with no way to pay
+        # at all — and the chat is exactly where a link is the only way.
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="This order is not a card order.",
+            detail="This order is paid in cash, so there is nothing to pay online.",
         )
     if order.payment_status == PaymentStatus.PAID:
         raise HTTPException(
@@ -180,11 +190,11 @@ def create_payment_intent(
             detail="This order cannot be paid right now.",
         )
 
-    provider = resolve_provider(order.payment_method)
+    provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
     if provider is None or not provider.is_configured():
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Card payments are not available right now.",
+            detail="That payment method is not available right now.",
         )
 
     # Reuse an intent that can still be paid; a double tap must not create two.
@@ -299,7 +309,7 @@ def create_payment_link(
             detail="This order cannot be paid right now.",
         )
 
-    provider = resolve_provider(order.payment_method)
+    provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
     if provider is None or not provider.is_configured():
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -396,7 +406,7 @@ def cancel_payment(
 
     transaction = _latest_transaction(db, order.id)
     if transaction is not None and transaction.status in RETRYABLE_PAYMENT_STATUSES:
-        provider = resolve_provider(order.payment_method)
+        provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
         if provider is not None and provider.is_configured():
             provider.cancel_intent(transaction.provider_intent_id)
         transaction.status = PaymentStatus.CANCELLED
@@ -466,6 +476,10 @@ def _mark_paid(db: Session, order: Order, transaction: PaymentTransaction, event
     transaction.status = PaymentStatus.PAID
     transaction.failure_code = None
     transaction.failure_message = None
+    # Only ever set, never cleared: a later event that happens to carry no
+    # payment id must not erase the one that does.
+    if event.payment_id:
+        transaction.provider_payment_id = event.payment_id
     order.payment_status = PaymentStatus.PAID
     order.payment_reference = transaction.provider_intent_id
     if order.status == OrderStatus.PAYMENT_PENDING:
@@ -519,7 +533,7 @@ def _mark_refunded(db: Session, order: Order, transaction: PaymentTransaction) -
 
 
 def _reconcile_with_provider(db: Session, order: Order) -> None:
-    """Ask the provider what really became of a card order that still looks unpaid.
+    """Ask the provider what really became of an order that still looks unpaid.
 
     Webhooks are the primary path, but delivery is not guaranteed: Stripe gives
     up after its retry window, an endpoint can be registered late or not at all,
@@ -537,7 +551,12 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     provider outage, and the next poll simply tries again.
     """
 
-    if order.payment_method != PaymentMethod.CARD:
+    # Every method that settles through a gateway, not just CARD. This read
+    # was Stripe-only, which meant a Razorpay order whose webhook was lost had
+    # no safety net at all: the reaper below would cancel an order the
+    # customer had already paid for, and the first anyone would know is a
+    # customer holding a receipt for a cancelled order.
+    if order.payment_method not in GATEWAY_FOR_METHOD:
         return
     if order.payment_status not in RETRYABLE_PAYMENT_STATUSES:
         return
@@ -546,7 +565,9 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     if transaction is None or not transaction.provider_intent_id:
         return
 
-    provider = resolve_provider(PaymentMethod.CARD)
+    provider = provider_for(
+        db, restaurant_id=order.restaurant_id, method=order.payment_method
+    )
     if provider is None or not provider.is_configured():
         return
 
@@ -584,23 +605,73 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     )
 
 
-def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None) -> dict[str, str]:
-    """Verify, deduplicate, and apply a Stripe event.
+# What an event means, in the two vocabularies that reach this module.
+#
+# Stripe's own event names on the left of each set; the normalised words on the
+# right come from `razorpay_provider`, which cannot use Stripe's names because
+# Razorpay does not have PaymentIntents. Both are accepted here rather than
+# forcing one gateway to speak the other's language, which is how a mapping
+# quietly stops matching after somebody renames a constant.
+_PAID_EVENTS = frozenset(
+    {"payment_intent.succeeded", "checkout.session.completed", "succeeded"}
+)
+_FAILED_EVENTS = frozenset({"payment_intent.payment_failed", "failed"})
+_CANCELLED_EVENTS = frozenset({"payment_intent.canceled", "cancelled"})
+_REFUNDED_EVENTS = frozenset({"charge.refunded", "refunded"})
 
-    Raises 400 only for an unverifiable payload. Anything else returns 2xx so
-    Stripe stops retrying an event we have durably recorded.
+
+def webhook_events_for(gateway: PaymentGateway) -> tuple[str, ...]:
+    """The gateway's own event names this app acts on, for its dashboard.
+
+    Derived rather than listed. Razorpay's come from the provider's map;
+    Stripe's from the four sets above, where a dotted name is Stripe's and a
+    bare word is the normalised one Razorpay is translated into — the same
+    distinction the comment above those sets already draws. So teaching the
+    webhook a new event updates what the screen tells an operator to tick,
+    with nothing to remember.
     """
 
-    provider = get_stripe_provider()
-    try:
-        event = provider.parse_webhook(payload=payload, signature=signature)
-    except WebhookVerificationError as error:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        ) from error
+    if gateway == PaymentGateway.RAZORPAY:
+        return RAZORPAY_WEBHOOK_EVENTS
+    stripe_names = {
+        name
+        for names in (_PAID_EVENTS, _FAILED_EVENTS, _CANCELLED_EVENTS, _REFUNDED_EVENTS)
+        for name in names
+        if "." in name
+    }
+    return tuple(sorted(stripe_names))
 
-    if not _record_webhook_event(db, provider.name, event):
+
+def webhook_url_for(gateway: PaymentGateway, *, restaurant_id: uuid.UUID) -> str | None:
+    """Where this restaurant's gateway should post its events, or None.
+
+    None means `public_base_url` is unset, and the screen says to set it. The
+    alternative — guessing from the request's own Host header — would put
+    whatever address the admin happens to be open on into a field that has to
+    be reachable from the gateway's servers, and `localhost` pasted into
+    Razorpay fails silently for as long as nobody looks.
+    """
+
+    base = (get_settings().public_base_url or "").strip().rstrip("/")
+    if not base:
+        return None
+    prefix = get_settings().api_v1_prefix.rstrip("/")
+    return f"{base}{prefix}/payments/webhook/{gateway.value}/{restaurant_id}"
+
+
+def _apply_webhook_event(
+    db: Session, *, provider_name: str, event: WebhookEvent
+) -> dict[str, str]:
+    """Record a verified event and move the order it refers to.
+
+    Shared by the platform's Stripe endpoint and the per-restaurant one, so
+    the two cannot drift into treating the same outcome differently. Verifying
+    the signature is the caller's job and has already happened by here — this
+    function trusts its `event` completely, which is exactly why nothing
+    unverified may reach it.
+    """
+
+    if not _record_webhook_event(db, provider_name, event):
         return {"status": "duplicate", "event_id": event.event_id}
 
     handled = "ignored"
@@ -612,23 +683,26 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         found = _order_for_intent(db, event.intent_id)
         if found is None:
             logger.warning(
-                "Stripe event %s references unknown intent %s", event.event_id, event.intent_id
+                "%s event %s references unknown intent %s",
+                provider_name,
+                event.event_id,
+                event.intent_id,
             )
         else:
             order, transaction = found
-            if event.event_type in {"payment_intent.succeeded", "checkout.session.completed"}:
+            if event.event_type in _PAID_EVENTS:
                 _mark_paid(db, order, transaction, event)
                 handled = "paid"
                 announce = partial(_confirm_in_chat, order)
-            elif event.event_type == "payment_intent.payment_failed":
+            elif event.event_type in _FAILED_EVENTS:
                 _mark_failed(db, order, transaction, event)
                 handled = "failed"
                 announce = partial(_report_failure_in_chat, db, order, transaction)
-            elif event.event_type == "payment_intent.canceled":
+            elif event.event_type in _CANCELLED_EVENTS:
                 _mark_cancelled(db, order, transaction)
                 handled = "cancelled"
                 announce = partial(_report_cancelled_in_chat, order)
-            elif event.event_type == "charge.refunded":
+            elif event.event_type in _REFUNDED_EVENTS:
                 _mark_refunded(db, order, transaction)
                 handled = "refunded"
                 announce = partial(_report_refunded_in_chat, order)
@@ -645,6 +719,163 @@ def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None)
         announce()
 
     return {"status": handled, "event_id": event.event_id}
+
+
+def handle_gateway_webhook(
+    db: Session,
+    *,
+    gateway: PaymentGateway,
+    restaurant_id: uuid.UUID,
+    payload: bytes,
+    signature: str | None,
+) -> dict[str, str]:
+    """A webhook for one restaurant's own gateway account.
+
+    **The restaurant comes from the URL, not from the body.** Each restaurant
+    holds its own webhook secret, so the secret to verify with has to be known
+    before anything in the payload is believed — and the only thing available
+    before verification is the address the request arrived at. Every gateway
+    lets an account configure its own webhook URL, so each restaurant's
+    dashboard points at its own path here.
+
+    The alternative — read the order id out of the body, find our order, learn
+    the restaurant, then verify — means making a database decision on an
+    unverified payload. It works, and it is the shape to avoid: it puts a
+    lookup driven by attacker-controlled input in front of the check that
+    exists to establish whether the input is trustworthy at all.
+
+    Posting to another restaurant's URL fails, because the signature will not
+    match that restaurant's secret. A restaurant with no webhook secret stored
+    refuses everything rather than trusting anything, which is a configuration
+    problem the admin screen already reports.
+    """
+
+    method = next(
+        (m for m, g in GATEWAY_FOR_METHOD.items() if g == gateway),
+        None,
+    )
+    if method is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Unknown payment gateway.",
+        )
+
+    # `require_enabled=False`: a gateway that has just been paused is still
+    # owed the confirmations for money it already took. Refusing them would
+    # leave paid orders sitting unpaid in this database.
+    credentials = read_credentials(
+        db, restaurant_id=restaurant_id, gateway=gateway, require_enabled=False
+    )
+    if credentials is None:
+        # Deliberately not 404: the caller is a gateway, not a person, and
+        # what it needs to know is that this delivery cannot be accepted.
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="This restaurant has no credentials for that gateway.",
+        )
+
+    provider = build_provider(gateway, credentials)
+    try:
+        event = provider.parse_webhook(payload=payload, signature=signature)
+    except WebhookVerificationError as error:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(error)
+        ) from error
+
+    return _apply_webhook_event(db, provider_name=provider.name, event=event)
+
+
+def confirm_razorpay_checkout(
+    db: Session,
+    *,
+    order: Order,
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+) -> dict[str, str]:
+    """Believe a success the browser reported, once it is signed.
+
+    Razorpay Checkout hands the browser three values and the browser posts
+    them back. Without this check a customer could post a made-up payment id
+    and have an order marked paid — so the signature is verified against the
+    restaurant's own API secret before anything moves.
+
+    This is the fast path, not the source of truth. The webhook is what
+    settles an order whose customer closed the tab before the callback ran,
+    and both routes end at `_mark_paid`, which is idempotent.
+    """
+
+    credentials = read_credentials(
+        db, restaurant_id=order.restaurant_id, gateway=PaymentGateway.RAZORPAY
+    )
+    if credentials is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Razorpay is not available for this restaurant.",
+        )
+
+    provider = build_provider(PaymentGateway.RAZORPAY, credentials)
+    if not provider.verify_checkout_signature(
+        razorpay_order_id=razorpay_order_id,
+        razorpay_payment_id=razorpay_payment_id,
+        razorpay_signature=razorpay_signature,
+    ):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="That payment could not be verified.",
+        )
+
+    transaction = _latest_transaction(db, order.id)
+    if transaction is None or transaction.provider_intent_id != razorpay_order_id:
+        # The signature was genuine but names an order that is not this one.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="That payment belongs to a different order.",
+        )
+
+    _mark_paid(
+        db,
+        order,
+        transaction,
+        WebhookEvent(
+            event_id=f"checkout:{razorpay_payment_id}",
+            event_type="succeeded",
+            intent_id=razorpay_order_id,
+            amount=order.total_amount,
+            currency=order.currency,
+        ),
+    )
+    db.commit()
+    _confirm_in_chat(order)
+    return {"status": "paid", "order_id": str(order.id)}
+
+
+def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None) -> dict[str, str]:
+    """Verify, deduplicate, and apply a Stripe event.
+
+    Raises 400 only for an unverifiable payload. Anything else returns 2xx so
+    Stripe stops retrying an event we have durably recorded.
+    """
+
+    # Still the platform's own Stripe endpoint. Per-restaurant webhooks need
+    # the order looked up from the payload FIRST, to know whose secret to
+    # verify with — see `handle_gateway_webhook` below, which does that for
+    # restaurants holding their own accounts.
+    provider = platform_provider_for(PaymentMethod.CARD)
+    if provider is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This deployment has no platform payment account.",
+        )
+    try:
+        event = provider.parse_webhook(payload=payload, signature=signature)
+    except WebhookVerificationError as error:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    return _apply_webhook_event(db, provider_name=provider.name, event=event)
 
 
 def _return_urls(order: Order) -> tuple[str, str]:
@@ -733,13 +964,26 @@ def _called(order: Order) -> str:
     return f" {name}" if name else ""
 
 
+def _money(order: Order) -> str:
+    """This order's total, in the money it was actually charged in.
+
+    Both chat lines below wrote `$%.2f`, so an Indian customer who had just
+    paid 145 rupees was told "Total paid: $145.00". The order stamps its own
+    currency at creation and never changes it, so that column is the only
+    right source here — not the platform default, and not the restaurant's
+    current setting, which may have been changed since.
+    """
+
+    return format_amount(float(order.total_amount), order.currency)
+
+
 def _confirm_in_chat(order: Order) -> None:
     """The payment landed."""
 
     _tell_in_chat(
         order,
         f"Payment received, thank you{_called(order)}. Your order is confirmed and the kitchen "
-        f"has it.{_scheduled_line(order)}\n\nTotal paid: ${order.total_amount:.2f}\n"
+        f"has it.{_scheduled_line(order)}\n\nTotal paid: {_money(order)}\n"
         f"Order reference: {str(order.id)[:8]}",
         finished=True,
     )
@@ -831,8 +1075,8 @@ def _offer_the_dishes_back(order: Order) -> None:
 def _report_refunded_in_chat(order: Order) -> None:
     _tell_in_chat(
         order,
-        f"Your refund of ${order.total_amount:.2f} is on its way back to the card you "
-        "paid with. Banks usually take a few working days to show it.",
+        f"Your refund of {_money(order)} is on its way back to how you paid. "
+        "Banks usually take a few working days to show it.",
         finished=True,
     )
 
@@ -841,10 +1085,17 @@ def _report_refunded_in_chat(order: Order) -> None:
 
 
 def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> int:
-    """Cancel card orders that were never paid, and their Stripe intents.
+    """Cancel orders that were never paid, and whatever the gateway still holds.
 
     Without this, an abandoned checkout sits in the customer's order list
-    forever and holds an open intent at the provider.
+    forever and holds an open intent — or, for a chat order, a live payment
+    link — at the provider.
+
+    Every method that settles through a gateway, not just CARD. The filter
+    used to name CARD, which meant a Razorpay order that was never paid was
+    never reaped: it stayed PAYMENT_PENDING indefinitely with its payment link
+    still payable, so a customer tapping yesterday's link would be charged for
+    an order nobody was cooking.
     """
 
     ttl_minutes = max(1, settings.payment_intent_ttl_minutes)
@@ -854,7 +1105,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         db.scalars(
             select(Order).where(
                 Order.status == OrderStatus.PAYMENT_PENDING,
-                Order.payment_method == PaymentMethod.CARD,
+                Order.payment_method.in_(list(GATEWAY_FOR_METHOD)),
                 Order.placed_at < cutoff,
             )
         )
@@ -862,9 +1113,15 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
     if not stale_orders:
         return 0
 
-    provider = resolve_provider(PaymentMethod.CARD)
     cancelled = 0
     for order in stale_orders:
+        # Resolved per order, not once for the batch. These orders come from
+        # every restaurant on the platform and each one settles through its
+        # own gateway account — a single provider hoisted out of the loop
+        # would cancel one restaurant's intents against another's account.
+        provider = provider_for(
+            db, restaurant_id=order.restaurant_id, method=order.payment_method
+        )
         # Confirm with the provider before cancelling. Cancelling an order whose
         # webhook was merely lost would leave the customer charged for an order
         # we told them was cancelled.
@@ -884,7 +1141,7 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
             order=order,
             reason=OrderCancellationReason.PAYMENT_NOT_COMPLETED,
             actor=OrderEventActor.SYSTEM,
-            note="unpaid card order past its intent TTL",
+            note="unpaid order past its payment TTL",
         )
         order.status = OrderStatus.CANCELLED
         order.payment_status = PaymentStatus.CANCELLED
@@ -892,20 +1149,64 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         cancelled += 1
 
     db.commit()
-    logger.info("Reaped %s unpaid card orders older than %s minutes", cancelled, ttl_minutes)
+    logger.info("Reaped %s unpaid orders older than %s minutes", cancelled, ttl_minutes)
     return cancelled
 
 
-def payment_config() -> dict[str, object]:
-    """Client bootstrap: publishable key and the methods this deployment offers."""
+def payment_config(
+    db: Session | None = None,
+    *,
+    currency: str | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    location: "RestaurantLocation | None" = None,
+) -> dict[str, object]:
+    """Client bootstrap: publishable key, methods on offer, and the currency.
+
+    `currency` is the calling app's restaurant's. None — the marketplace, the
+    admin panel, curl — falls back to the platform default, because there is
+    no single right answer across restaurants that charge in different money.
+    """
+
+    # The public key of every gateway this restaurant can settle through.
+    # Razorpay Checkout cannot open without its `key_id`, and the browser has
+    # no other way to obtain it. Nothing secret is in here — each of these is
+    # already in the page source of the checkout that uses it.
+    gateway_keys: dict[str, str] = {}
+    if db is not None and restaurant_id is not None:
+        for method in available_payment_methods(
+            db, restaurant_id=restaurant_id, location=location
+        ):
+            gateway = GATEWAY_FOR_METHOD.get(method)
+            if gateway is None:
+                continue
+            credentials = read_credentials(db, restaurant_id=restaurant_id, gateway=gateway)
+            if credentials is not None and credentials.public_key:
+                gateway_keys[gateway.value] = credentials.public_key
 
     return {
-        "publishable_key": settings.stripe_publishable_key
-        if settings.stripe_is_configured
-        else "",
+        "gateway_keys": gateway_keys,
+        # Stripe's own, still separate: a restaurant with no Stripe account of
+        # its own is settled through the platform's, and that key is not in
+        # `gateway_keys` because it does not belong to the restaurant.
+        "publishable_key": (
+            gateway_keys.get(PaymentGateway.STRIPE.value)
+            or (settings.stripe_publishable_key if settings.stripe_is_configured else "")
+        ),
         "stripe_enabled": settings.stripe_is_configured,
-        "currency": settings.payment_currency.upper(),
-        "supported_methods": [method.value for method in available_payment_methods()],
+        "currency": currency_for(currency or settings.payment_currency).code,
+        # This restaurant's methods, not the deployment's. A caller with no
+        # database session — there is one, in a test — gets the empty list
+        # rather than a wrong one.
+        "supported_methods": (
+            [
+                method.value
+                for method in available_payment_methods(
+                    db, restaurant_id=restaurant_id, location=location
+                )
+            ]
+            if db is not None
+            else []
+        ),
     }
 
 

@@ -12,6 +12,7 @@ from app.models.enums import (
     LocationDayOfWeek,
     OrderFulfillmentType,
     OrderScheduleType,
+    PaymentGateway,
     PaymentMethod,
 )
 
@@ -195,6 +196,160 @@ class RestaurantThemeUpdate(BaseModel):
     )
 
 
+class RestaurantStorefrontUpdate(BaseModel):
+    """The restaurant's own words for its website.
+
+    Every field optional, and only the ones sent are changed — a form that
+    edits the hero must not blank the meta description. Sending a field as an
+    empty string clears it, which means "go back to the derived default"
+    rather than "this restaurant's hero has no words".
+
+    Validation of length and shape belongs to `restaurant_storefront.py`, so
+    the rules are the same wherever copy is written, rather than half here and
+    half there.
+    """
+
+    meta_title: str | None = None
+    meta_description: str | None = None
+    og_title: str | None = None
+    og_description: str | None = None
+    hero_headline: str | None = None
+    hero_subcopy: str | None = None
+    concierge_intro: str | None = None
+    login_blurb: str | None = None
+
+
+class RestaurantStorefrontResponse(BaseModel):
+    """What this restaurant's website says, and what it would say by itself."""
+
+    restaurant_id: uuid.UUID
+    restaurant_name: str
+    # Every key filled in: stored values over derived ones.
+    storefront: dict[str, str]
+    # What each field falls back to when cleared. Shown beside the input so an
+    # owner can see what they are replacing before they replace it, and what
+    # clearing it would restore.
+    defaults: dict[str, str]
+    # Per field, so a form can say "62 / 70" rather than refusing on save.
+    limits: dict[str, int]
+    # Which keys the owner has actually written, so the UI can mark the rest
+    # as derived rather than showing eight fields that all look authored.
+    customized: list[str]
+
+
+class PaymentGatewayResponse(BaseModel):
+    """One gateway a restaurant holds an account with.
+
+    **No secret appears here, ever.** `secret_last4` is enough to tell two
+    keys apart when somebody is checking which one is live and useless to
+    anyone who obtains it; the key itself is Fernet ciphertext that no
+    endpoint decrypts for a reader.
+    """
+
+    gateway: PaymentGateway
+    label: str
+    # What the customer sees this gateway as on the checkout screen.
+    settles_method: PaymentMethod
+    # Credentials are stored. Separate from `is_enabled`, so a restaurant can
+    # keep its keys while pausing the gateway.
+    is_configured: bool
+    is_enabled: bool
+    public_key: str
+    secret_last4: str | None
+    # Webhooks are wired separately from the API key and rotated separately.
+    # A gateway can take payments before its webhook exists — it just will not
+    # hear about them asynchronously.
+    has_webhook_secret: bool
+    # Where this restaurant's own gateway dashboard should post events, and
+    # which events to tick. Null while `public_base_url` is unset — the screen
+    # says to set it rather than showing a URL that goes nowhere.
+    webhook_url: str | None = None
+    webhook_events: list[str] = Field(default_factory=list)
+    updated_by: str | None = None
+    updated_at: datetime | None = None
+
+
+class PaymentMethodAvailability(BaseModel):
+    """One checkout button, and whether it is really there.
+
+    `is_available` is the answer to the only question the screen is asking:
+    would a customer standing at this restaurant's checkout right now see this
+    button. It needs the branch toggle and a working gateway to agree, and
+    `blocked_reason` says which half is missing rather than leaving an
+    operator to guess.
+    """
+
+    method: PaymentMethod
+    label: str
+    is_available: bool
+    # "this restaurant" or "the platform" — visible rather than assumed,
+    # because being settled through the platform's account is a temporary
+    # arrangement somebody should notice they are still in.
+    settled_by: str | None = None
+    blocked_reason: str | None = None
+
+
+class RestaurantPaymentSettingsResponse(BaseModel):
+    restaurant_id: uuid.UUID
+    gateways: list[PaymentGatewayResponse]
+    methods: list[PaymentMethodAvailability]
+    # True while a restaurant without its own account is still settled through
+    # the deployment's keys. The screen says so plainly.
+    platform_fallback_in_use: bool
+
+
+class RestaurantPaymentGatewayUpdate(BaseModel):
+    """Store or update one gateway's credentials.
+
+    `secret_key` and `webhook_secret` of null mean "leave what is there". The
+    screen cannot show a stored secret, so it submits nothing whenever nobody
+    retyped one — and treating that as "clear it" would wipe a live gateway
+    every time an operator toggled it off and on.
+    """
+
+    public_key: str = Field(min_length=4, max_length=255)
+    secret_key: str | None = Field(default=None, min_length=8, max_length=512)
+    webhook_secret: str | None = Field(default=None, max_length=512)
+    is_enabled: bool = False
+
+
+class RestaurantCapabilityResponse(BaseModel):
+    """One capability, as both screens render it.
+
+    `reason` and `explanation` are not decoration. A capability that is off
+    with nothing saying why is the exact state that made the allowlist this
+    system replaced harmful — see `config/capabilities.py`.
+    """
+
+    key: str
+    label: str
+    # The sentence the restaurant's owner reads. Required by the catalog, so
+    # a capability cannot exist without one.
+    owner_description: str
+    enabled: bool
+    reason: str
+    explanation: str
+    # False when the platform has made no decision either way: this restaurant
+    # is simply on the default, and will follow it if the default changes.
+    is_customized: bool
+    # Null until somebody decides. Kept when they leave the company.
+    granted_by: str | None = None
+    granted_at: datetime | None = None
+    note: str | None = None
+
+
+class RestaurantCapabilityUpdate(BaseModel):
+    """Switch one capability, or hand it back to the default.
+
+    `enabled: null` clears the decision rather than storing "off" — an
+    operator who granted something as a one-off should be able to say "treat
+    this like everyone else" without pinning today's default in place.
+    """
+
+    enabled: bool | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
 class RestaurantOwnerSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -268,6 +423,11 @@ class RestaurantLocationUpdate(BaseModel):
     cash_on_delivery_enabled: bool | None = None
     is_open: bool | None = None
     is_active: bool | None = None
+    # Admin-only, and enforced as such in the endpoint: changing this converts
+    # no prices, it relabels every one of them, so it is not an owner's to
+    # flip. Validated against the catalog in `services/currency.py` — a
+    # free-text code reaches Stripe, where a wrong one is a declined charge.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     temporary_closed_reason: str | None = Field(default=None, max_length=255)
     preparation_time_minutes: int | None = Field(default=None, ge=0, le=240)
     service_radius_km: Decimal | None = Field(default=None, ge=0)
@@ -394,6 +554,10 @@ class RestaurantResponse(RestaurantBase):
 
     id: uuid.UUID
     owner_id: uuid.UUID
+    # What this restaurant charges in. On the response rather than derived
+    # client-side, because the panel shows several restaurants' money on one
+    # screen and has to label each figure with the right symbol.
+    currency: str
     is_approved: bool
     is_open: bool
     is_active: bool
@@ -430,3 +594,14 @@ class RestaurantSettingsUpdate(BaseModel):
     cover_image_url: str | None = Field(default=None, max_length=500)
     is_open: bool | None = None
     is_active: bool | None = None
+    # The handler has read this since per-restaurant currency shipped, and the
+    # field was never declared here — so `payload.currency` raised
+    # AttributeError on EVERY call to this endpoint, whatever was being
+    # changed. Pressing "Disable restaurant" in the admin answered "Unable to
+    # update restaurant settings", which is the client's fallback for an error
+    # carrying no detail, and a 500 carries none.
+    #
+    # Deliberately not validated against the catalogue here. The handler
+    # normalises it and answers 422 naming the supported codes, which tells an
+    # admin what to type; a schema refusal would only say the field was wrong.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)

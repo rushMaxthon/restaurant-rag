@@ -10,11 +10,21 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BranchPicker } from "./branch-picker";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { brandInitials } from "@/lib/brand-mark";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
+import { useStorefrontCopy } from "@/lib/storefront";
 import { BranchGate } from "@/components/bangkok/branch-gate";
 import { useAuth } from "@/lib/auth";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const store = useBangkokStore();
+  // Hidden entirely when this restaurant has not got it, rather than shown
+  // and refused on the way in — a nav entry that apologises is worse than no
+  // nav entry at all.
+  const askAi = hasCapability(store.capabilities, "ask_ai");
+  // The copy is server-rendered from the request host, so this is right in
+  // the first byte rather than after the store has loaded.
+  const brandName = useStorefrontCopy().name;
+  const initials = brandInitials(brandName);
   const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -23,11 +33,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BranchGate />
       <header className="site-header sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur">
         <div className="flex min-h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-10">
-          <Link to="/" className="mr-auto flex items-center gap-2" aria-label="Bangkok Bowl home">
-            <span className="brand-mark">BB</span>
-            <span className="brand-name font-display text-xl font-extrabold">
-              {store.restaurantName ?? "Bangkok Bowl"}
-            </span>
+          {/* All three from one string, so the badge, the name and the label
+              a screen reader announces cannot disagree. Every one of them was
+              a Bangkok Bowl literal: "BB", "Bangkok Bowl home", and the name
+              itself falling back to "Bangkok Bowl" on every other tenant. */}
+          <Link to="/" className="mr-auto flex items-center gap-2" aria-label={`${brandName} home`}>
+            {initials && <span className="brand-mark">{initials}</span>}
+            <span className="brand-name font-display text-xl font-extrabold">{brandName}</span>
           </Link>
           <nav className="hidden items-center gap-1 lg:flex">
             <Button variant="ghost" className="nav-link" asChild>
@@ -36,12 +48,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Button variant="ghost" className="nav-link" asChild>
               <Link to="/orders">Orders</Link>
             </Button>
-            <Button variant="ghost" className="nav-link" asChild>
-              <Link to="/concierge">
-                <Sparkles />
-                Ask AI
-              </Link>
-            </Button>
+            {askAi ? (
+              <Button variant="ghost" className="nav-link" asChild>
+                <Link to="/concierge">
+                  <Sparkles />
+                  Ask AI
+                </Link>
+              </Button>
+            ) : null}
           </nav>
           <BranchPicker className="hidden sm:flex" />
           <Button
@@ -90,16 +104,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="border-b border-border bg-surface px-4 py-2 sm:hidden">
         <BranchPicker className="w-full" />
       </div>
-      <main>{children}</main>
-      <nav className="mobile-nav-bar fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border bg-surface px-2 lg:hidden">
+      <main className="app-main">{children}</main>
+      <nav
+        className={`mobile-nav-bar fixed inset-x-0 bottom-0 z-40 grid ${
+          // Four columns with three links left a dead column, so the icons sat
+          // bunched to the left of a phone screen instead of spread across it.
+          // Ask AI is a per-restaurant capability, so the count is not fixed.
+          askAi ? "grid-cols-4" : "grid-cols-3"
+        } border-t border-border bg-surface px-2 lg:hidden`}
+      >
         <Link className="mobile-nav" to="/menu">
           <UtensilsCrossed aria-hidden="true" />
           Menu
         </Link>
-        <Link className="mobile-nav" to="/concierge">
-          <Sparkles aria-hidden="true" />
-          Ask AI
-        </Link>
+        {askAi ? (
+          <Link className="mobile-nav" to="/concierge">
+            <Sparkles aria-hidden="true" />
+            Ask AI
+          </Link>
+        ) : null}
         <Link className="mobile-nav" to="/orders">
           <ReceiptText aria-hidden="true" />
           Orders

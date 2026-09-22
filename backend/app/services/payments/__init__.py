@@ -17,8 +17,10 @@ from app.services.payments.registry import (
     SUPPORTED_PAYMENT_METHODS,
     available_payment_methods,
     is_method_supported,
+    platform_provider_for,
+    provider_for,
     provider_name_for,
-    resolve_provider,
+    settles_with_own_account,
 )
 from app.services.payments.service import (
     cancel_payment,
@@ -48,5 +50,5 @@ __all__ = [
     "payment_config",
     "provider_name_for",
     "reap_expired_unpaid_orders",
-    "resolve_provider",
+    "provider_for",
 ]

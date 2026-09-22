@@ -15,7 +15,14 @@ from app.api.deps import AppScopeDep, ensure_restaurant_readable
 from app.config.database import get_db
 from app.models.enums import OrderFulfillmentType, UserRole
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
-from app.models.restaurant import Restaurant
+from app.models.restaurant import (
+    PLACEHOLDER_ADDRESS,
+    PLACEHOLDER_CITY,
+    PLACEHOLDER_CUISINE,
+    PLACEHOLDER_POSTAL_CODE,
+    PLACEHOLDER_STATE,
+    Restaurant,
+)
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.restaurant import (
@@ -30,7 +37,15 @@ from app.schemas.restaurant import (
     LocationFulfillmentSlotCreate,
     LocationFulfillmentSlotResponse,
     LocationFulfillmentSlotUpdate,
+    PaymentGatewayResponse,
+    PaymentMethodAvailability,
+    RestaurantCapabilityResponse,
+    RestaurantCapabilityUpdate,
+    RestaurantPaymentGatewayUpdate,
+    RestaurantPaymentSettingsResponse,
     RestaurantDetailResponse,
+    RestaurantStorefrontResponse,
+    RestaurantStorefrontUpdate,
     RestaurantLocationCreate,
     RestaurantLocationGeneralSettingsUpdate,
     RestaurantLocationResponse,
@@ -42,6 +57,37 @@ from app.services.app_clients import (
     build_app_client_for_restaurant,
     get_app_client_for_restaurant,
     upsert_app_client_for_restaurant,
+)
+from app.config.capabilities import CAPABILITIES
+from app.models.restaurant_capability import RestaurantCapability
+from app.services.capabilities import (
+    UnknownCapability,
+    clear_capability,
+    resolve_capabilities,
+    set_capability,
+)
+from app.models.enums import PaymentGateway, PaymentMethod
+from app.services.currency import CurrencyNotSupported, normalize_currency
+from app.services.payment_accounts import (
+    delete_account,
+    describe_accounts,
+    list_accounts,
+    save_account,
+)
+from app.services.payments.service import webhook_events_for, webhook_url_for
+from app.services.payments.registry import (
+    GATEWAY_FOR_METHOD,
+    available_payment_methods,
+    settles_with_own_account,
+)
+from app.services.secrets import SecretsUnavailable
+from app.services.restaurant_storefront import (
+    STOREFRONT_KEYS,
+    STOREFRONT_LIMITS,
+    StorefrontValidationError,
+    default_storefront,
+    read_storefront,
+    resolve_storefront,
 )
 from app.services.restaurant_theme import (
     THEME_PRESETS,
@@ -171,13 +217,13 @@ def create_restaurant(
         name=payload.name,
         slug=_generate_unique_slug(db, payload.name),
         description=None,
-        cuisine_type="General",
-        address_line_1="Pending restaurant setup",
+        cuisine_type=PLACEHOLDER_CUISINE,
+        address_line_1=PLACEHOLDER_ADDRESS,
         address_line_2=None,
-        city="Pending",
-        state="Pending",
+        city=PLACEHOLDER_CITY,
+        state=PLACEHOLDER_STATE,
         country="India",
-        postal_code="000000",
+        postal_code=PLACEHOLDER_POSTAL_CODE,
         phone_number=None,
         minimum_order_amount=0,
         delivery_fee=0,
@@ -340,6 +386,23 @@ def update_restaurant_settings(
         restaurant.is_active = payload.is_active
         if not payload.is_active:
             restaurant.is_open = False
+
+    if payload.currency is not None:
+        # Admin-only for the same reason `is_active` is: this relabels every
+        # price the restaurant has without converting a single one, so it is a
+        # platform decision made at onboarding, not a setting an owner flips
+        # while looking at something else.
+        if current_user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can change a restaurant's currency",
+            )
+        try:
+            restaurant.currency = normalize_currency(payload.currency)
+        except CurrencyNotSupported as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
 
     db.add(restaurant)
     db.commit()
@@ -797,6 +860,398 @@ def get_restaurant_theme(
         preset=stored["preset"],
         primary_color=stored["primary_color"],
         presets=[ThemePresetResponse(**vars(preset)) for preset in THEME_PRESETS],
+    )
+
+
+def _capability_rows(
+    db: Session, *, restaurant_id: uuid.UUID
+) -> list[RestaurantCapabilityResponse]:
+    """Every capability for one restaurant, decided and explained."""
+
+    decisions = resolve_capabilities(db, restaurant_id=restaurant_id)
+    stored = {
+        row.capability_key: row
+        for row in db.scalars(
+            select(RestaurantCapability).where(
+                RestaurantCapability.restaurant_id == restaurant_id
+            )
+        ).all()
+    }
+    actors = {
+        user_id: name
+        for user_id, name in db.execute(
+            select(User.id, func.coalesce(User.full_name, User.email)).where(
+                User.id.in_(
+                    {row.granted_by_user_id for row in stored.values() if row.granted_by_user_id}
+                )
+            )
+        ).all()
+    } if stored else {}
+
+    rows: list[RestaurantCapabilityResponse] = []
+    for key, capability in CAPABILITIES.items():
+        decision = decisions[key]
+        row = stored.get(key)
+        rows.append(
+            RestaurantCapabilityResponse(
+                key=key,
+                label=capability.label,
+                owner_description=capability.owner_description,
+                enabled=decision.enabled,
+                reason=decision.reason.value,
+                explanation=decision.explanation,
+                is_customized=row is not None,
+                granted_by=actors.get(row.granted_by_user_id) if row else None,
+                granted_at=row.updated_at if row else None,
+                note=row.note if row else None,
+            )
+        )
+    return rows
+
+
+GATEWAY_LABELS: dict[PaymentGateway, str] = {
+    PaymentGateway.STRIPE: "Stripe",
+    PaymentGateway.RAZORPAY: "Razorpay",
+}
+
+METHOD_LABELS: dict[PaymentMethod, str] = {
+    PaymentMethod.CARD: "Card",
+    PaymentMethod.RAZORPAY: "UPI, cards and wallets",
+    PaymentMethod.COD: "Cash on delivery",
+}
+
+# Which gateway settles which method, in the order the screen lists them.
+_GATEWAY_ROWS = (
+    (PaymentMethod.CARD, PaymentGateway.STRIPE),
+    (PaymentMethod.RAZORPAY, PaymentGateway.RAZORPAY),
+)
+
+SETTLED_BY_RESTAURANT = "this restaurant"
+SETTLED_BY_PLATFORM = "the platform"
+
+
+def _payment_settings(db: Session, *, restaurant: Restaurant) -> RestaurantPaymentSettingsResponse:
+    """What this restaurant can take, and whose account takes it.
+
+    The second half is the part worth putting on a screen. A restaurant with
+    no account of its own is still settled through the platform keys, and that
+    is a temporary arrangement somebody should notice they are still in rather
+    than discover at a bank reconciliation.
+    """
+
+    rows = list_accounts(db, restaurant_id=restaurant.id)
+    actor_ids = {row.updated_by_user_id for row in rows if row.updated_by_user_id}
+    actors = (
+        {
+            user_id: name
+            for user_id, name in db.execute(
+                select(User.id, func.coalesce(User.full_name, User.email)).where(
+                    User.id.in_(actor_ids)
+                )
+            ).all()
+        }
+        if actor_ids
+        else {}
+    )
+    stored = {
+        summary.gateway: summary
+        for summary in describe_accounts(db, restaurant_id=restaurant.id, actor_names=actors)
+    }
+
+    gateways = []
+    for method, gateway in _GATEWAY_ROWS:
+        held = stored.get(gateway)
+        gateways.append(
+            PaymentGatewayResponse(
+                gateway=gateway,
+                label=GATEWAY_LABELS[gateway],
+                settles_method=method,
+                is_configured=held is not None,
+                is_enabled=held.is_enabled if held else False,
+                public_key=held.public_key if held else "",
+                secret_last4=held.secret_last4 if held else None,
+                has_webhook_secret=held.has_webhook_secret if held else False,
+                # Shown whether or not an account exists yet: it is what the
+                # operator needs while setting one up, not afterwards.
+                webhook_url=webhook_url_for(gateway, restaurant_id=restaurant.id),
+                webhook_events=list(webhook_events_for(gateway)),
+                updated_by=held.updated_by if held else None,
+                updated_at=held.updated_at if held else None,
+            )
+        )
+
+    # Against the restaurant rather than one branch: no branch is chosen on
+    # this screen, so this is the restaurant ceiling. Checkout re-checks
+    # against the branch the customer actually orders from.
+    available = set(available_payment_methods(db, restaurant_id=restaurant.id))
+
+    methods = []
+    for method in (PaymentMethod.CARD, PaymentMethod.RAZORPAY, PaymentMethod.COD):
+        is_available = method in available
+        if method == PaymentMethod.COD:
+            settled_by = SETTLED_BY_RESTAURANT if is_available else None
+            blocked = None if is_available else "Cash on delivery is switched off."
+        elif is_available:
+            own = settles_with_own_account(db, restaurant_id=restaurant.id, method=method)
+            settled_by = SETTLED_BY_RESTAURANT if own else SETTLED_BY_PLATFORM
+            blocked = None
+        else:
+            settled_by = None
+            gateway_label = GATEWAY_LABELS[GATEWAY_FOR_METHOD[method]]
+            blocked = f"No {gateway_label} account is set up and enabled."
+        methods.append(
+            PaymentMethodAvailability(
+                method=method,
+                label=METHOD_LABELS[method],
+                is_available=is_available,
+                settled_by=settled_by,
+                blocked_reason=blocked,
+            )
+        )
+
+    return RestaurantPaymentSettingsResponse(
+        restaurant_id=restaurant.id,
+        gateways=gateways,
+        methods=methods,
+        platform_fallback_in_use=any(
+            entry.is_available and entry.settled_by == SETTLED_BY_PLATFORM for entry in methods
+        ),
+    )
+
+
+@router.get(
+    "/{restaurant_id}/payment-settings",
+    response_model=RestaurantPaymentSettingsResponse,
+)
+def get_restaurant_payment_settings(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantPaymentSettingsResponse:
+    """Which gateways this restaurant holds, and which buttons its customers see.
+
+    Readable by the owner as well as the operator. It carries no secret — the
+    most it says about a key is its last four — and an owner who cannot see
+    whether their own gateway is live has to ask somebody every time.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    return _payment_settings(db, restaurant=restaurant)
+
+
+@router.put(
+    "/{restaurant_id}/payment-settings/{gateway}",
+    response_model=RestaurantPaymentSettingsResponse,
+)
+def put_restaurant_payment_gateway(
+    restaurant_id: uuid.UUID,
+    gateway: PaymentGateway,
+    payload: RestaurantPaymentGatewayUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> RestaurantPaymentSettingsResponse:
+    """Store or update one gateway for one restaurant.
+
+    ADMIN only. These keys decide whose bank account a customer's money lands
+    in, which makes them a platform decision rather than a restaurant setting
+    — the same reasoning that makes currency admin-only. An owner can read the
+    screen and see whether their gateway is live.
+
+    The secret is encrypted before storage and is never returned afterwards. A
+    deployment with no encryption key refuses the write rather than storing a
+    gateway secret in plaintext.
+    """
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
+
+    try:
+        save_account(
+            db,
+            restaurant_id=restaurant.id,
+            gateway=gateway,
+            public_key=payload.public_key,
+            secret_key=payload.secret_key,
+            webhook_secret=payload.webhook_secret,
+            is_enabled=payload.is_enabled,
+            updated_by_user_id=current_user.id,
+        )
+        db.commit()
+    except SecretsUnavailable as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "This deployment cannot encrypt payment secrets, so it will not store one. "
+                "Set the secrets encryption key and try again."
+            ),
+        ) from error
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    return _payment_settings(db, restaurant=restaurant)
+
+
+@router.delete(
+    "/{restaurant_id}/payment-settings/{gateway}",
+    response_model=RestaurantPaymentSettingsResponse,
+)
+def delete_restaurant_payment_gateway(
+    restaurant_id: uuid.UUID,
+    gateway: PaymentGateway,
+    db: Annotated[Session, Depends(get_db)],
+    _current_user: Annotated[User, Depends(require_admin)],
+) -> RestaurantPaymentSettingsResponse:
+    """Forget a gateway entirely.
+
+    Distinct from switching it off, which keeps the keys so bringing it back
+    does not mean finding them again. This is for a restaurant that has moved
+    gateway, or keys that were rotated and should not linger.
+    """
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
+
+    delete_account(db, restaurant_id=restaurant.id, gateway=gateway)
+    db.commit()
+    return _payment_settings(db, restaurant=restaurant)
+
+
+@router.get(
+    "/{restaurant_id}/capabilities",
+    response_model=list[RestaurantCapabilityResponse],
+)
+def get_restaurant_capabilities(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[RestaurantCapabilityResponse]:
+    """What this restaurant has, and why.
+
+    Readable by the owner as well as the operator — deliberately. "Nothing on
+    screen to explain why" is the failure the deleted allowlist is remembered
+    for, and an owner who cannot see what they have cannot ask for what they
+    do not.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    return _capability_rows(db, restaurant_id=restaurant.id)
+
+
+@router.put(
+    "/{restaurant_id}/capabilities/{capability_key}",
+    response_model=list[RestaurantCapabilityResponse],
+)
+def put_restaurant_capability(
+    restaurant_id: uuid.UUID,
+    capability_key: str,
+    payload: RestaurantCapabilityUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> list[RestaurantCapabilityResponse]:
+    """Switch one capability for one restaurant.
+
+    ADMIN only, and that is the structural point rather than a permission
+    detail: a capability is a commercial decision the platform makes about a
+    restaurant, not a preference the restaurant sets about itself. An owner
+    can read the list above; only an operator can change it.
+    """
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
+
+    try:
+        if payload.enabled is None:
+            clear_capability(db, restaurant_id=restaurant.id, capability_key=capability_key)
+        else:
+            set_capability(
+                db,
+                restaurant_id=restaurant.id,
+                capability_key=capability_key,
+                enabled=payload.enabled,
+                granted_by_user_id=current_user.id,
+                note=payload.note,
+            )
+    except UnknownCapability as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    db.commit()
+    return _capability_rows(db, restaurant_id=restaurant.id)
+
+
+@router.get("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)
+def get_restaurant_storefront(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantStorefrontResponse:
+    """The words on this restaurant's website, and what they fall back to."""
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    stored = restaurant.storefront or {}
+    return RestaurantStorefrontResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        storefront=read_storefront(restaurant),
+        defaults=default_storefront(restaurant),
+        limits=dict(STOREFRONT_LIMITS),
+        customized=sorted(
+            key
+            for key in STOREFRONT_KEYS
+            if isinstance(stored.get(key), str) and stored[key].strip()
+        ),
+    )
+
+
+@router.put("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)
+def put_restaurant_storefront(
+    restaurant_id: uuid.UUID,
+    payload: RestaurantStorefrontUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantStorefrontResponse:
+    """Change what this restaurant's website says.
+
+    Owner-writable for the same reason the theme is: this is the restaurant's
+    own marketing, not the build configuration an administrator set up, and an
+    owner should not need a support ticket to fix their own page title.
+
+    `exclude_unset` is load-bearing. Without it every absent field arrives as
+    None and clears the copy an owner wrote on another screen — which is the
+    whole-object-write failure this shape exists to avoid.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    try:
+        resolved = resolve_storefront(
+            payload.model_dump(exclude_unset=True),
+            existing=restaurant.storefront,
+        )
+    except StorefrontValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    restaurant.storefront = resolved
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    return RestaurantStorefrontResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        storefront=read_storefront(restaurant),
+        defaults=default_storefront(restaurant),
+        limits=dict(STOREFRONT_LIMITS),
+        customized=sorted(resolved),
     )
 
 

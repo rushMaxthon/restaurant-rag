@@ -13,8 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import { formatMoney } from "@/lib/bangkok-data";
-import { useBangkokStore } from "@/lib/bangkok-store";
+
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
@@ -26,22 +26,20 @@ import {
   nextOpening,
 } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
+import { pageMeta, useMoney } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 
 export const Route = createFileRoute("/cart")({
-  head: () => ({
-    meta: [
-      { title: "Your Cart — Bangkok Bowl" },
-      { name: "description", content: "Review your Bangkok Bowl order and continue to checkout." },
-      { property: "og:title", content: "Your Cart — Bangkok Bowl" },
-      { property: "og:description", content: "Review your Thai food order." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
+    meta: pageMeta(loaderData, "Your cart", "Review your order and continue to checkout."),
   }),
   component: CartPage,
 });
 
 function CartPage() {
+  // Prices in whatever this restaurant charges in.
+  const money = useMoney();
   const s = useBangkokStore();
   // The cart itself is guest-visible; it lives in localStorage and belongs to
   // the browser, not the account. The account is only needed to place the order.
@@ -99,10 +97,10 @@ function CartPage() {
             <ShoppingBag className="size-9" />
           </div>
           <h1 className="mt-8 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Your bowl is empty
+            Your cart is empty
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
-            Add a curry, a bowl of noodles or a snack to get started — or let the concierge pick for
+            Add something from the menu to get started — or let the concierge pick for
             you.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -111,9 +109,11 @@ function CartPage() {
                 Browse the menu <ArrowRight className="size-4" />
               </Link>
             </Button>
-            <Button variant="outline" className="h-12 px-6 text-base font-bold" asChild>
-              <Link to="/concierge">Ask the concierge</Link>
-            </Button>
+            {hasCapability(s.capabilities, "ask_ai") ? (
+              <Button variant="outline" className="h-12 px-6 text-base font-bold" asChild>
+                <Link to="/concierge">Ask the concierge</Link>
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -180,11 +180,11 @@ function CartPage() {
                       </div>
                     )}
                     <p className="money mt-2 text-sm text-muted">
-                      {formatMoney(line.unitPrice)} each
+                      {money(line.unitPrice)} each
                     </p>
                   </div>
                   <b className="money shrink-0 text-lg font-extrabold leading-tight">
-                    {formatMoney(line.unitPrice * line.quantity)}
+                    {money(line.unitPrice * line.quantity)}
                   </b>
                 </div>
 
@@ -262,8 +262,8 @@ function CartPage() {
           {shortfall > 0 && (
             <div className="mt-4 rounded-xl bg-primary-soft p-3.5">
               <p className="text-sm font-semibold leading-snug">
-                Add <b className="money">{formatMoney(shortfall)}</b> to reach the{" "}
-                {formatMoney(minimumOrder)} minimum.
+                Add <b className="money">{money(shortfall)}</b> to reach the{" "}
+                {money(minimumOrder)} minimum.
               </p>
               <div className="meter mt-2.5">
                 <div className="meter-fill" style={{ width: `${progress}%` }} />
@@ -279,14 +279,14 @@ function CartPage() {
             ].map(([label, value]) => (
               <div className="sum-row" key={String(label)}>
                 <dt>{label}</dt>
-                <dd>{Number(value) === 0 ? "Free" : formatMoney(Number(value))}</dd>
+                <dd>{Number(value) === 0 ? "Free" : money(Number(value))}</dd>
               </div>
             ))}
           </dl>
 
           <div className="sum-total">
             <span className="text-lg font-extrabold">Total</span>
-            <span className="sum-total-figure">{formatMoney(total)}</span>
+            <span className="sum-total-figure">{money(total)}</span>
           </div>
 
           {blocked && !loadingBranch && (
@@ -336,7 +336,7 @@ function CartPage() {
             ) : blocked && !canSchedule ? (
               <span>Closed right now</span>
             ) : shortfall > 0 ? (
-              <span>Minimum {formatMoney(minimumOrder)} to order</span>
+              <span>Minimum {money(minimumOrder)} to order</span>
             ) : isAuthenticated ? (
               <Link to="/checkout">
                 {canSchedule ? "Schedule for later" : "Continue to checkout"}{" "}
@@ -358,11 +358,19 @@ function CartPage() {
 
           <div className="mt-5 space-y-2.5 border-t border-border pt-4">
             {/* Said "pay on delivery — no card needed now" for as long as COD
-                existed. It does not any more, and a cart promising cash before
-                a card-only checkout is the kind of small lie people notice. */}
+                existed, then named Stripe once COD went. Naming a processor
+                here cannot be right: the cart is readable signed OUT, and
+                `/payments/config` — the only thing that knows which gateway
+                this restaurant settles through — needs a token. A restaurant
+                on Razorpay was told its customers pay through Stripe.
+
+                So it names none. What this line is actually for is the
+                reassurance that the app does not handle the card itself, and
+                that is true of every gateway; checkout, which HAS the config
+                by then, is where the processor gets named. */}
             <p className="sum-note" data-tone="success">
               <ShieldCheck className="size-4" />
-              Card payment is handled by Stripe — we never see your details.
+              Paid securely at checkout — this app never sees your payment details.
             </p>
             <p className="sum-note">
               <BadgePercent className="size-4" />

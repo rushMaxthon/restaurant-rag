@@ -171,6 +171,10 @@ def stream_chat_message_route(
         ),
         media_type="text/event-stream",
         headers={
+            # Opts this response out of the app's gzip middleware, which skips
+            # anything that already names an encoding. Compressing a stream
+            # buffers the tokens it exists to deliver one at a time.
+            "Content-Encoding": "identity",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",

@@ -11,10 +11,12 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import polishCss from "../polish.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import { reportError } from "../lib/error-reporting";
 import { BangkokStoreProvider } from "@/lib/bangkok-store";
 import { AuthProvider } from "@/lib/auth";
 import { AppShell } from "@/components/bangkok/app-shell";
+import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
+import { getStorefrontCopy } from "@/lib/storefront.server";
 import { Button } from "@/components/ui/button";
 
 function NotFoundComponent() {
@@ -43,7 +45,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    reportError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -77,23 +79,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
+  // Resolved from the address the request arrived on, so every page of every
+  // tenant is titled for that tenant. These nine strings used to be Bangkok
+  // Bowl's literals, which meant six restaurants shared one restaurant's
+  // name in every browser tab, link preview and search result.
+  loader: () => getStorefrontCopy(),
+  head: ({ loaderData }) => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Bangkok Bowl — Thai Food in Ahmedabad" },
-      {
-        name: "description",
-        content: "Order fresh Thai curries, noodles and bowls from Bangkok Bowl across Ahmedabad.",
-      },
-      { name: "author", content: "Bangkok Bowl" },
-      { property: "og:title", content: "Bangkok Bowl — Thai Food in Ahmedabad" },
-      {
-        property: "og:description",
-        content: "Order fresh Thai curries, noodles and bowls from three Ahmedabad branches.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
+      ...storefrontMeta(loaderData ?? UNKNOWN_STOREFRONT),
     ],
     links: [
       {

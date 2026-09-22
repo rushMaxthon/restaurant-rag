@@ -1,22 +1,20 @@
-"""per-restaurant feature switches — RECONSTRUCTED from the shared database
+"""features switched on for one restaurant
 
 Revision ID: 0066_restaurant_capabilities
-Revises: 0065_app_client_push_credentials
-Create Date: 2026-09-21 00:00:00.000000
+Revises: 0065_restaurant_currency
+Create Date: 2026-09-18 00:00:00.000000
 
-A reconstruction. See `0065_app_client_push_credentials` for why these four
-revisions exist and what they can and cannot be trusted to represent.
+"Build something for one restaurant and have it live only for them" without a
+fork, a branch or a second deployment.
 
-The table: one row per restaurant per capability, keyed on the pair, so a
-platform admin can switch a feature on for one tenant without a deploy.
-`granted_by_user_id` is SET NULL rather than CASCADE — who granted it is
-useful history, and losing the row because that admin left the company would
-make the audit trail worse than useless.
+An allowlist like this existed here before, as a module constant, and was
+deleted for becoming a permanent unexplained split. What is different is not
+discipline: it is that a row has a writer, an actor, a timestamp and a screen,
+and a module constant has none of those.
 
-This revision's id is a guess. The shared database does not record it — only
-the revision it is stamped at, which is 0068 — so the number is inferred from
-its position between two revisions whose ids are known. Nothing depends on
-the guess being right: the stamp resolves regardless.
+Empty on every restaurant, forever, unless somebody decides otherwise. No row
+means the catalog default, so this migration changes nothing for any existing
+tenant and onboarding a new one needs zero rows.
 """
 
 from __future__ import annotations
@@ -27,56 +25,43 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "0066_restaurant_capabilities"
-down_revision = "0065_app_client_push_credentials"
+down_revision = "0065_restaurant_currency"
 branch_labels = None
 depends_on = None
 
 
-TABLE = "restaurant_capabilities"
-
-
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    if TABLE in inspector.get_table_names():
+    if "restaurant_capabilities" in sa.inspect(bind).get_table_names():
         return
 
     op.create_table(
-        TABLE,
-        sa.Column(
-            "restaurant_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("restaurants.id", ondelete="CASCADE"),
-            primary_key=True,
-        ),
-        sa.Column("capability_key", sa.String(64), primary_key=True),
+        "restaurant_capabilities",
+        sa.Column("restaurant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("capability_key", sa.String(length=64), nullable=False),
         sa.Column("is_enabled", sa.Boolean(), nullable=False),
-        sa.Column(
-            "granted_by_user_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("note", sa.String(500), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
+        sa.Column("granted_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("note", sa.String(length=500), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.ForeignKeyConstraint(["restaurant_id"], ["restaurants.id"], ondelete="CASCADE"),
+        # SET NULL: a grant outlives the admin account that made it, and
+        # losing the record along with a departed colleague's login would
+        # defeat the point of storing who granted it.
+        sa.ForeignKeyConstraint(["granted_by_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("restaurant_id", "capability_key"),
     )
-    # "Who has this capability" is asked across tenants, so the key leads.
-    op.create_index(f"ix_{TABLE}_key", TABLE, ["capability_key"])
+    # "Who has Ask AI" is a question the platform matrix asks directly, and it
+    # is the wrong shape for the primary key.
+    op.create_index(
+        "ix_restaurant_capabilities_key",
+        "restaurant_capabilities",
+        ["capability_key"],
+    )
 
 
 def downgrade() -> None:
     bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    if TABLE in inspector.get_table_names():
-        op.drop_table(TABLE)
+    if "restaurant_capabilities" in sa.inspect(bind).get_table_names():
+        op.drop_index("ix_restaurant_capabilities_key", table_name="restaurant_capabilities")
+        op.drop_table("restaurant_capabilities")

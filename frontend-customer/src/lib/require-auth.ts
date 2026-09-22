@@ -44,6 +44,14 @@ export function useRequireAuth(): boolean {
     // simply "not known yet", and redirecting on it would bounce a signed-in
     // customer out of checkout on every page load.
     if (!ready || isAuthenticated) return;
+    // Already at the sign-in screen, so there is nothing left to guard — and
+    // navigating again is not harmless: `sanitizeRedirect` refuses an auth
+    // path, so this would rewrite /login?redirect=/orders&expired=true as a
+    // bare /login and throw away both the way back and the reason they are
+    // here. That is exactly what happened when the session-expiry handler
+    // started sending people here: it landed correctly and the guard on the
+    // page being left behind immediately stripped it.
+    if (AUTH_PATHS.has(hrefRef.current.split("?")[0] ?? "")) return;
     navigate({
       to: "/login",
       search: { redirect: sanitizeRedirect(hrefRef.current) },

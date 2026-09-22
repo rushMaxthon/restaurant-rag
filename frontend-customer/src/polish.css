@@ -160,6 +160,43 @@ main > * {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* The tab bar is fixed, so it sits on top of whatever a page ends with unless
+   the page reserves the room. Nothing did. The dish page found this out on its
+   own and pinned its Add button clear of the bar (see `.dish-actions`), but
+   every other page still lost its last element underneath it — and on the cart
+   that last element is the checkout button, which was visible, apparently
+   tappable, and covered by four nav icons.
+
+   Reserved once, here, rather than page by page. Released at `lg`, which is
+   where `.mobile-nav-bar` itself stops being rendered. */
+.app-main {
+  padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    padding-bottom: 0;
+  }
+}
+
+/* A bar that sits on top of the mobile tab bar — the concierge composer and
+   the checkout summary.
+
+   Both hardcoded `bottom-[58px]`, which is the tab bar's height but not its
+   SIZE: `.mobile-nav-bar` adds `env(safe-area-inset-bottom)` on a phone with
+   a home indicator, so on those the bar is taller than 58px and the thing
+   above it was overlapped by exactly that inset. Reading the same token plus
+   the same inset is what keeps them stacked wherever they are rendered. */
+.above-tab-bar {
+  bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .above-tab-bar {
+    bottom: 0;
+  }
+}
+
 /* --- Press and focus -------------------------------------------------------
    Every button gives a little under the pointer. The compound controls and
    chips declare their own transition lists in styles.css, which would drop
@@ -457,6 +494,16 @@ textarea.flex:focus-visible {
 .concierge-reply {
   animation: rise-in 0.4s var(--ease-out) both;
   line-height: 1.6;
+  /* The reply arrives with its own line structure — the model answers "here
+     is what we do have:" and then one dish per line — and a <p> collapses
+     every one of those newlines into a space. Eight dishes and their prices
+     came out as a single run-on paragraph that nobody could scan.
+
+     `pre-wrap` rather than a markdown renderer, for the reason given above
+     `stripMarkdown`: this surface shows the reply as text, and preserving the
+     breaks the server actually sent is not the same as inventing structure
+     for it. Long lines still wrap normally. */
+  white-space: pre-wrap;
 }
 /* A streaming reply ends in a caret that blinks like a cursor, not a pulse
    that fades the whole glyph in and out. */
@@ -1777,4 +1824,172 @@ html {
 .line__drop {
   grid-row: 1;
   grid-column: 3;
+}
+
+/* --- A dish with no photograph ----------------------------------------------
+   492 of this restaurant's 816 menu rows have no picture, and what filled the
+   gap was two initials on a flat tint — which reads as a failed image, not a
+   chosen one, several dozen times down a menu. A photograph cannot be invented
+   here and must not be borrowed: a picture of someone else's dhokla is a claim
+   about this kitchen, which is the bug that once put Bangkok Bowl's pad thai on
+   every tenant's home page.
+
+   So the gap is filled with something plainly drawn, in the restaurant's own
+   colour, picked from the dish's own category — see `lib/dish-motif.ts`. Five
+   grounds, chosen by a hash of the dish name, so a category does not come out
+   striped and a dish keeps its colour between visits. */
+.dish-motif {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--placeholder-a);
+  color: var(--primary);
+  isolation: isolate;
+}
+
+.dish-motif[data-ground="1"] {
+  background: var(--placeholder-b);
+}
+.dish-motif[data-ground="2"] {
+  background: var(--placeholder-c);
+}
+.dish-motif[data-ground="3"] {
+  background: var(--placeholder-d);
+}
+.dish-motif[data-ground="4"] {
+  background: color-mix(in srgb, var(--success) 10%, var(--primary-soft));
+}
+
+/* A second, softer light across the tile so the ground is not one flat wash.
+   Fixed angle rather than random: every tile lit from the same corner reads as
+   one surface, and tiles lit from different corners read as a mistake. */
+.dish-motif::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 18% 12%, rgb(255 255 255 / 0.5), transparent 60%),
+    radial-gradient(90% 70% at 100% 100%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 70%);
+  z-index: 0;
+}
+
+/* Full bleed, because the drawing inside is now a printed repeat and a focal
+   mark rather than one centred glyph. A 52%-wide icon floating in a 440px card
+   read as a stray mark in an empty box, which is the look this replaced. */
+.dish-motif__art {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+/* The repeat. Faint enough to be a surface rather than a subject: it should be
+   noticed second, after the dish's name. */
+.dish-motif__print {
+  opacity: 0.15;
+}
+
+/* The one at size in the middle. Still well short of full strength — at a
+   glance down a menu these read as texture behind the names, not as clip art
+   competing with them. */
+.dish-motif__focal {
+  opacity: 0.5;
+  transform-origin: center;
+  animation: motif-settle 0.5s var(--ease-out) both;
+}
+
+@keyframes motif-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 0.5;
+    transform: none;
+  }
+}
+
+/* The real photograph, when the dish has one. Sits over the motif rather than
+   replacing it, so the tile is never empty and never changes size while the
+   image decodes — and a photo that fails to load simply reveals the drawing
+   underneath instead of leaving a hole. */
+.dish-motif__photo {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.dish-motif__photo[data-loaded="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dish-motif__photo {
+    transition: none;
+  }
+  .dish-motif__focal {
+    animation: none;
+  }
+}
+
+/* --- Browse by section ------------------------------------------------------
+   The home page offered a hero, eight dishes and "See all" — which for a
+   restaurant with 136 dishes in 21 sections meant a customer who wanted
+   dhokla opened the whole menu and hunted. These are the kitchen's own
+   sections, biggest first, each one a link straight into it.
+
+   A rail rather than a grid: the sections are a way THROUGH to the menu, not
+   a second menu on top of it, and a grid of 10 tiles would outweigh the
+   dishes below it. */
+.section-rail {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x proximity;
+}
+
+.section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-weight: 700;
+  color: var(--text);
+  transition:
+    border-color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.section-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--primary-soft);
+}
+
+.section-chip:active {
+  transform: scale(0.97);
+}
+
+.section-chip__count {
+  min-width: 1.6rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  font-size: var(--text-xs, 0.72rem);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--muted);
 }

@@ -20,7 +20,9 @@ import { PageIntro } from "../components/PageIntro";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
 import { pluralize } from "../services/format";
-import { ApiError, api, formatCurrency, formatDate } from "../services/api";
+import { ApiError, api, formatDate } from "../services/api";
+import { useScopedRestaurantFilter } from "../hooks/useScopedFilter";
+import { useMoney } from '../hooks/useMoney';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -284,6 +286,8 @@ export function OffersPage({
   onNavigate,
   onToast,
 }: OffersPageProps) {
+  // Figures in whatever the restaurant in scope charges in.
+  const money = useMoney();
   // Remounted on every navigation to this page (see services/pageCache.ts),
   // so the key covers every input that changes what gets fetched: the
   // account (an admin sees every restaurant's offers) and, for an owner,
@@ -301,7 +305,12 @@ export function OffersPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<"ALL" | PersonalizedOfferState>("ALL");
-  const [restaurantFilter, setRestaurantFilter] = useState<"ALL" | string>("ALL");
+  // Follows the shell's tenant switcher, so picking a restaurant up there
+  // carries into this list instead of being asked for twice. Still a filter
+  // rather than a lock: "All restaurants" is a real answer here, and changing
+  // it below leaves the shell alone — the more specific control wins.
+  const [restaurantFilter, setRestaurantFilter] = useScopedRestaurantFilter("ALL");
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -479,12 +488,12 @@ export function OffersPage({
     if (offer.discount_type === "PERCENTAGE") {
       return `${offer.discount_value}% off`;
     }
-    return `${formatCurrency(offer.discount_value)} off`;
+    return `${money.format(offer.discount_value, offer.restaurant_id)} off`;
   }
 
   function formatDiscountSupport(offer: OfferRow): string {
     if (offer.discount_type === "PERCENTAGE" && offer.max_discount_amount) {
-      return `Up to ${formatCurrency(offer.max_discount_amount)}`;
+      return `Up to ${money.format(offer.max_discount_amount, offer.restaurant_id)}`;
     }
     if (offer.discount_type === "FREE_DELIVERY") {
       return offer.restaurant_location_name ?? "Eligible branches";
@@ -702,7 +711,7 @@ export function OffersPage({
       header: "Min order",
       render: (offer) => (
         <div className="offer-table__stack">
-          <strong>{formatCurrency(offer.minimum_order_amount)}</strong>
+          <strong>{money.format(offer.minimum_order_amount, offer.restaurant_id)}</strong>
           <span>{describeOfferSegment(offer)}</span>
         </div>
       ),
@@ -1159,7 +1168,7 @@ export function OffersPage({
                 </div>
                 <div>
                   <strong>Discount</strong>
-                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {formatCurrency(selectedOfferDetails.minimum_order_amount)}</span>
+                  <span>{formatDiscountSummary(selectedOfferDetails)} · Min {money.format(selectedOfferDetails.minimum_order_amount, selectedOfferDetails.restaurant_id)}</span>
                 </div>
                 <div>
                   <strong>Performance</strong>
