@@ -47,19 +47,65 @@ def from_minor_units(amount: int, currency: str) -> Decimal:
     return (Decimal(amount) / Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _is_real_key(value: str | None) -> bool:
+    """A key that could actually authenticate, rather than a placeholder.
+
+    `sk_test_mock`/`pk_test_mock` ship as defaults so the app boots without
+    Stripe, and `settings.stripe_is_configured` has always excluded them. The
+    same test is applied here so one account's keys are judged the way the
+    deployment's are, rather than by two standards that can drift.
+    """
+
+    cleaned = (value or "").strip()
+    return bool(cleaned) and not cleaned.endswith("_mock")
+
+
 class StripeProvider:
     """Thin adapter over the Stripe SDK. Holds no request state."""
 
     name = PROVIDER_NAME
 
-    def __init__(self, *, secret_key: str | None = None, webhook_secret: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        secret_key: str | None = None,
+        publishable_key: str | None = None,
+        webhook_secret: str | None = None,
+    ) -> None:
         self._secret_key = secret_key if secret_key is not None else settings.stripe_secret_key
+        self._publishable_key = (
+            publishable_key if publishable_key is not None else settings.stripe_publishable_key
+        )
         self._webhook_secret = (
             webhook_secret if webhook_secret is not None else settings.stripe_webhook_secret
         )
 
     def is_configured(self) -> bool:
-        return settings.stripe_is_configured
+        """Whether THIS account can take a card.
+
+        It used to answer `settings.stripe_is_configured` — a question about the
+        deployment — while holding one restaurant's keys. `provider_for` reads a
+        restaurant's credentials, builds a provider around them, and then asked
+        the platform whether IT had Stripe. On a deployment settling per
+        restaurant, which has no platform keys, a restaurant with its own
+        configured Stripe account was told CARD was unavailable. The sibling
+        gateway never had this: `RazorpayProvider.is_configured` reads its own.
+
+        Both halves, matching the standard the platform property has always
+        applied. The secret key creates the intent and the publishable key is
+        what the customer's browser confirms it with, so a restaurant holding
+        only a secret made an intent on its own account while `payments/config`
+        fell back to the platform's publishable key — two accounts, and a
+        confirmation that cannot succeed. `save_account` stores `public_key`
+        without requiring it, so that state is reachable and is now honestly
+        "no card" rather than a button that fails at the last step.
+
+        The platform fallback is unchanged: `platform_provider_for` builds this
+        with no arguments, so both fields default to the deployment's own
+        settings and the answer is the same one as before.
+        """
+
+        return _is_real_key(self._secret_key) and _is_real_key(self._publishable_key)
 
     def _client_kwargs(self) -> dict[str, Any]:
         return {"api_key": self._secret_key}
