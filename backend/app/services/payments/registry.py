@@ -70,6 +70,12 @@ def build_provider(gateway: PaymentGateway, credentials) -> PaymentProvider:
     if gateway == PaymentGateway.STRIPE:
         return StripeProvider(
             secret_key=credentials.secret_key,
+            # The publishable key travels with the secret, because
+            # `is_configured` needs both to answer honestly: an intent created
+            # on this account can only be confirmed with this account's
+            # publishable key. Left out, the provider fell back to the
+            # deployment's — a different account.
+            publishable_key=credentials.public_key,
             webhook_secret=credentials.webhook_secret,
         )
     return RazorpayProvider(
