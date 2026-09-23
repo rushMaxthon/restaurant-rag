@@ -1053,6 +1053,61 @@ def dishes_matching_words(
     return [(str(row.id), row.name) for row in rows]
 
 
+def prices_of(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    names: Sequence[str] = (),
+    menu_item_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """The price rows of dishes already in front of the customer.
+
+    For "how much" asked about a dish just named or a list just read out. The
+    names are OURS — they were written down when the list was said — so they
+    are matched exactly against this branch's `menu_items.name`, one query,
+    and returned in the order asked for. A sized dish carries each size's own
+    absolute price, the same as `get_dish` reports it, because a sized dish
+    has no single figure to quote (see `describe_single_dish`).
+
+    Nothing here is a search: a name the branch does not sell under exactly
+    that name is simply absent from the answer.
+    """
+
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if menu_item_id:
+        try:
+            stmt = stmt.where(MenuItem.id == uuid.UUID(str(menu_item_id)))
+        except ValueError:
+            return []
+    elif names:
+        stmt = stmt.where(func.lower(MenuItem.name).in_([n.strip().lower() for n in names if n]))
+    else:
+        return []
+    rows = list(db.scalars(stmt))
+    by_name = {row.name.strip().lower(): row for row in rows}
+    ordered = (
+        rows if menu_item_id
+        else [by_name[n.strip().lower()] for n in names if n and n.strip().lower() in by_name]
+    )
+    return [
+        {
+            "name": row.name,
+            "price": row.price,
+            "has_sizes": bool(row.has_sizes),
+            "sizes": (
+                [{"size_id": str(size.id), "name": size.name, "price": size.price}
+                 for size in row.sizes if size.is_active]
+                if row.has_sizes
+                else []
+            ),
+        }
+        for row in ordered
+    ]
+
+
 def cheapest_dishes(
     db: Session,
     scope: OrderingScope,

@@ -613,6 +613,18 @@ _PLAIN = {
         "whats your cheapest item", "anything cheap", "something cheap", "cheap",
         "lowest price",
     ),
+    # The bare question about whatever is already in front of them — a dish
+    # just named, a list just read out, the cart. Live, with the size question
+    # for a pizza standing, "how much" was searched for as a dish and answered
+    # "Sorry, I did not catch that." The figure was on the row we were already
+    # talking about. A price question that NAMES a dish ("how much is the
+    # khaman") has content of its own and is not here; it goes to the reading.
+    "price": (
+        "price", "what is the price", "price kya hai", "how much", "hw much",
+        "how much is it", "how much is that", "how much for that",
+        "how much does it cost", "cost", "how much cost", "kitne ka hai",
+        "kitna hai", "kitne ka", "kitna", "rate", "kya rate hai", "what rate",
+    ),
     "checkout": (
         "checkout", "check out", "checkout order", "place order", "order place",
         "confirm order", "confirm", "book", "book order", "finish", "finish order",
@@ -713,9 +725,10 @@ def question_asked_in(reply: str | None) -> str | None:
 def quick_read(message: str) -> str | None:
     """What this sentence plainly asks for, or None to go and read it properly.
 
-    Returns "cart", "menu", "suggest", "cheapest", "checkout" or None. Each
-    names something the branch's own rows can answer — "suggest" from
-    `is_bestseller` and `popularity_score`, "cheapest" from `price` — and
+    Returns "cart", "menu", "suggest", "cheapest", "price", "checkout" or
+    None. Each names something the branch's own rows can answer — "suggest"
+    from `is_bestseller` and `popularity_score`, "cheapest" and "price" from
+    `price` and the size rows — and
     nothing the menu has no column for: there is no jain flag and no spice
     level, so "anything jain" is deliberately not here.
 

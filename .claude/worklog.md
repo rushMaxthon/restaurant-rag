@@ -26,6 +26,77 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-23 — Pizza prices fixed in data; picking by number and asking the price
+
+**Goal:** (1) three Bangkok Bowl pizzas priced in rupees on a CAD menu; (2) the
+"think deep" WhatsApp pass — the two things a customer does constantly after a
+list is read out: answer it with a number, and ask how much.
+
+**Changed:**
+- Data only, no code: `scratchpad/fix_pizza_prices.py` set Cheese Burst 349 →
+  17.99, Farmhouse 299/329 → 17.49 (Bodakdev sizes 17.49/21.99/26.99),
+  Margherita 249 → 11.99 (Ellisbridge's own price), 8 rows across 3 branches,
+  with the admin route's side effects run by hand (discovery + bestseller cache
+  cleared, 8 embedding jobs queued and confirmed done). NOT via
+  `PUT /api/menu-items/{id}` — that route runs `_sync_menu_item_customizations`
+  and would have wiped Build Your Own Pizza's sizes and groups. **Placeholders
+  flagged for the owner:** Cheese Burst 17.99 and Farmhouse 17.49 (+ the
+  Bodakdev size ladder) are in-range guesses, not the restaurant's prices.
+- `planner.py` — `_PLAIN["price"]`: "how much", "hw much", "price", "cost",
+  "rate", "kitne ka hai", "kitna hai"... A price question that NAMES a dish
+  stays with the reading.
+- `loop.py` — `ordinal_asked_for` ("1", "the second one", "1st", "last",
+  "option 3"; refuses "2 khaman" and "1 and 2"), `listed_in_order` (counts
+  along the question's own bullet lines, so a part-answered group counts what
+  is left), `describe_prices`, `_dish_line` (a sized dish is listed "from" its
+  base — the section list said "Build Your Own Pizza - $14.99" over a $24.49
+  Large). In `run_turn`, ABOVE the reading: the price answer
+  (`_answer_price_question`: the dish being configured — its chosen size only,
+  once one is settled — the dish just offered, the list just shown, the cart,
+  else "Which dish would you like the price of?") and the pick-by-number,
+  which builds `wanted` with `chose=[name]` and skips the model. A bare number
+  with no list, no question and no cart is answered with the sections instead
+  of ten seconds of planner rounds ending on "Your cart is currently empty".
+  `ask_for_choice` drops a leading choose/pick/select from a group title
+  ("Which choose four bites for Appetizer Sampler?" was live).
+- `tools.py` — `prices_of(names=... | menu_item_id=...)`, one query, exact
+  names, sizes with ids.
+- `docs/ordering-agent-turn-routing.md` — table regenerated (re-ask guard is
+  now 3508, reading at 3257) plus a section for the two pre-reading reads.
+- New `tests/test_picking_by_number_and_asking_the_price.py` (19).
+
+**Verified:** `python -m unittest discover -s tests` OK three times over the
+session (last run after every change). Live replay through
+`handle_chat_message` with the real model, both tenants
+(`scratchpad/replay_numbers_and_prices.py`): Pizza → "2" adds Cheese Burst;
+"1" → size list; "the first one" → crust; "2" → sauce; "option 2" → toppings
+→ added; every pick 0.3–0.7s (was a 3–10s model read that returned nothing).
+"how much" over a list re-lists with prices ("from" for sized); "kitna hai"
+with a size question standing → "Cheese Butter Dhokla is ₹60 for Per Plate
+and ₹360 for 1 Kg. Which size would you like?"; "price" after "Shall I set one
+up?" → all three sizes + the offer again; "cost" with Large chosen → the Large
+price only; "how much" with only a cart → the cart read-back. Bodakdev
+"Pizza" lists Cheese Burst $17.99, Farmhouse $17.49, Margherita $11.99.
+
+**Open:**
+- Owner to confirm the two placeholder pizza prices in admin.
+- The replay uses a fixed test phone; a leftover unpaid order on 919876500000
+  turns every turn into "Shall I keep that order?" — use a fresh number.
+- Still open from before: "make the soup 2" with two lines; jain/spice have no
+  columns; Celery beat not running; webhook still on the ngrok tunnel (Mr
+  Tailor prod not receiving).
+
+**Learned:**
+- Anything that only consults what THIS conversation already wrote down
+  (`pending_choice`, `last_shown`, `awaiting`) belongs above the reading: it
+  is deterministic, it is sub-second, and the model measurably returns nothing
+  for a bare "1" or "how much" anyway.
+- `_remember_choice` stores the whole group's options; the question shows what
+  is left. Count along the question, never the store.
+- Python's stdout is block-buffered when redirected on Windows — a replay log
+  stays empty until the process exits; `PYTHONIOENCODING=utf-8` is needed too
+  or the first emoji kills the run.
+
 ## 2026-09-21 (4) — The menu, and one question at a time (b4d9a84)
 
 **Goal:** a reported WhatsApp thread — "Menu" answered with a pitch for one
