@@ -1053,6 +1053,37 @@ def dishes_matching_words(
     return [(str(row.id), row.name) for row in rows]
 
 
+def cheapest_dishes(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """The least expensive dishes AT THIS BRANCH, cheapest first.
+
+    `price` ordered, and scoped to `restaurant_location_id` like everything
+    else here — a branch's prices are its own, and answering "what is your
+    cheapest" with another branch's menu would be wrong in the one way a
+    price question cannot afford to be.
+
+    Live, before this: "what's your cheapest item" was searched for as a dish
+    name and answered "I could not find cheapest item on the menu."
+    """
+
+    query = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        query = query.where(MenuItem.is_veg.is_(is_veg))
+    rows = db.scalars(query.order_by(MenuItem.price.asc(), MenuItem.name).limit(limit))
+    return [
+        {"name": row.name, "price": f"{row.price:.2f}", "has_sizes": bool(row.has_sizes)}
+        for row in rows
+    ]
+
+
 def dishes_to_suggest(
     db: Session,
     scope: OrderingScope,

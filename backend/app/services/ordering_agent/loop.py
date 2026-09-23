@@ -3106,6 +3106,43 @@ def run_turn(
     ):
         return _reask_or_give_up(asked_before)
 
+    # "What do you recommend" and "what's your cheapest" are answerable from
+    # this branch's own columns, and were being searched for as dish names:
+    # "I could not find what do you recommend on the menu." Routed through the
+    # same guard as `wants_to_add` so that a question of ours already on the
+    # table still wins — see docs/ordering-agent-turn-routing.md.
+    if plain == "cheapest" and db is not None and scope.restaurant_location_id:
+        # Only a standing CHOICE defers this, not a list we merely showed. The
+        # greeting lists four dishes, so guarding on `shown_before` too meant
+        # "what's your cheapest item" was skipped on every turn after hello —
+        # which is every real turn.
+        if not asked_before:
+            want_veg = True if (scope.diet or "").lower() == "veg" else None
+            cheapest = tools_module.cheapest_dishes(db, scope, is_veg=want_veg)
+            if cheapest:
+                listed = "\n".join(
+                    f"- {d['name']} - {_money(d['price'])}" for d in cheapest
+                )
+                asked_now = _hold("Which one would you like?", yes="name_one")
+                _remember_dish_choice(asked_now, cheapest)
+                return TurnOutcome(
+                    answer=f"These are the cheapest we have:\n{listed}\n\n{asked_now}",
+                    answer_about="menu",
+                    actions=actions,
+                    records=records,
+                    fallback_reason=None,
+                    elapsed_seconds=clock() - start,
+                )
+    if plain == "suggest" and not asked_before:
+        # Answered here rather than by setting `wants_to_add`, because that
+        # guard sits BELOW the browse branch, and "what do you recommend" also
+        # reads as browsing — so browse answered first and searched the menu
+        # for the question. `_suggest_more` reads this branch's own bestsellers
+        # and popularity, one per section, minus what is in the cart.
+        offered_now = _suggest_more()
+        if offered_now is not None:
+            return offered_now
+
     if wanted.get("chose") and not asked_before and shown_before:
         # They picked one of the dishes the reply pipeline showed them. Only
         # ever an add: there is no question of ours to answer here, so a

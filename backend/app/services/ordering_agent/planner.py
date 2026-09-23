@@ -595,6 +595,24 @@ _PLAIN = {
         "other options", "anything else", "something else", "else",
         "full menu", "whole menu", "all items", "list of items",
     ),
+    # Answered from this branch's own columns — `is_bestseller` and
+    # `popularity_score` are what "what's good" means here. Live, at a branch
+    # with 136 dishes, "what do you recommend" was searched for as a dish name
+    # and answered "I could not find what do you recommend on the menu".
+    "suggest": (
+        "recommend", "recommends", "recommendation", "recommendations",
+        "any recommendations", "what do you recommend", "what do you suggest",
+        "suggest", "suggest something", "suggestion", "suggestions",
+        "whats good", "whats nice", "whats popular", "popular", "most popular",
+        "best", "what is the best dish", "bestseller", "bestsellers", "must try",
+    ),
+    # `price`, ordered. Same fault: "what's your cheapest item" came back
+    # "I could not find cheapest item on the menu".
+    "cheapest": (
+        "cheapest", "cheapest item", "cheapest dish", "what is cheapest",
+        "whats your cheapest item", "anything cheap", "something cheap", "cheap",
+        "lowest price",
+    ),
     "checkout": (
         "checkout", "check out", "checkout order", "place order", "order place",
         "confirm order", "confirm", "book", "book order", "finish", "finish order",
@@ -695,7 +713,13 @@ def question_asked_in(reply: str | None) -> str | None:
 def quick_read(message: str) -> str | None:
     """What this sentence plainly asks for, or None to go and read it properly.
 
-    Returns "cart", "menu", "checkout" or None. None is the common answer and
+    Returns "cart", "menu", "suggest", "cheapest", "checkout" or None. Each
+    names something the branch's own rows can answer — "suggest" from
+    `is_bestseller` and `popularity_score`, "cheapest" from `price` — and
+    nothing the menu has no column for: there is no jain flag and no spice
+    level, so "anything jain" is deliberately not here.
+
+    None is the common answer and
     the safe one: anything with content of its own — a dish, a name, an
     address, a negation — belongs to `read_order_intent`, which reads meaning
     rather than matching words.
