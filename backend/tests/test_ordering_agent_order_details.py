@@ -1146,20 +1146,26 @@ class ChooseThreeTests(unittest.TestCase):
             }],
         }
 
+    # Case-insensitive since the question became one thing at a time: these
+    # phrases used to open their own sentence and are now clauses inside one,
+    # so "pick 3" became "Pick 3." and "you have" became "You have". What each
+    # test encodes — that the count is stated, and that a pick already made is
+    # credited rather than asked for again — is unchanged.
+
     def test_it_says_how_many_are_wanted(self) -> None:
         from app.services.ordering_agent.loop import ask_for_choice
 
         said = ask_for_choice(self.result())
-        self.assertIn("pick 3", said)
+        self.assertIn("pick 3", said.lower())
         self.assertIn("Mango sticky rice", said)
 
     def test_it_credits_what_is_already_chosen_and_counts_down(self) -> None:
         from app.services.ordering_agent.loop import ask_for_choice
 
         said = ask_for_choice(self.result(chosen=["a"]))
-        self.assertIn("you have Mango sticky rice", said)
-        self.assertIn("Pick 2 more", said)
-        self.assertNotIn("Mango sticky rice,", said.split("Pick 2 more")[1])
+        self.assertIn("you have mango sticky rice", said.lower())
+        self.assertIn("pick 2 more", said.lower())
+        self.assertNotIn("\n- Mango sticky rice", said, "offered again after being chosen")
 
     def test_the_reading_takes_several_at_once(self) -> None:
         from app.services.ordering_agent.planner import read_order_intent

@@ -727,8 +727,17 @@ class NeedsChoiceTemplateTests(OrderingAgentLoopTestCase):
             clock=ScriptedClock(0.0), max_rounds=2, budget_seconds=1000.0,
         )
         self.assertIsNone(outcome.fallback_reason)
-        self.assertIn("Which size for Thai Basil Fried Rice? Small ($13.99).", outcome.answer)
-        self.assertIn("Choose your protein for Thai Basil Fried Rice: Tofu, Chicken (+$1.50).", outcome.answer)
+        # The size, and ONLY the size. This used to assert the protein group in
+        # the same breath, which is the thing that was wrong with it live:
+        # eleven options and two questions in one paragraph, closing on a
+        # single "Which would you like?" that could mean either. The point this
+        # test encodes — the loop asks from the tool's own rows instead of
+        # leaving the model to fail at it — is unchanged, and the protein
+        # question follows on the next turn.
+        self.assertIn("Which size for Thai Basil Fried Rice?", outcome.answer)
+        self.assertIn("Small", outcome.answer)
+        self.assertIn("$13.99", outcome.answer)
+        self.assertNotIn("protein", outcome.answer.lower(), "two questions in one message")
 
     def test_a_cap_without_a_needs_choice_result_is_still_a_fallback(self) -> None:
         self.register("dish_lookup", DishLookupArgs, _recording_handler([], {"found": True}))

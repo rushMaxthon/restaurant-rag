@@ -150,27 +150,66 @@ def _money(value: Any) -> str:
         return str(value)
 
 
+def _option_line(name: str, price: Any = None, extra: Any = None) -> str:
+    """One option on its own line, with a figure only when there is one.
+
+    A free option marked "(+$0.00)" reads as a charge, and eleven options run
+    together in a paragraph read as none at all.
+    """
+
+    if price is not None:
+        return f"- {name} \u2014 {_money(price)}"
+    try:
+        if extra is not None and float(extra) > 0:
+            return f"- {name} (+{_money(extra)})"
+    except (TypeError, ValueError):
+        pass
+    return f"- {name}"
+
+
 def ask_for_choice(result: Any) -> str | None:
-    """The question a `needs_choice` tool result already contains, as prose.
+    """The next single question a `needs_choice` result asks, as prose.
 
     A dish that needs a size or a required group is the one case where the
-    deterministic layer holds the complete answer — the dish, its sizes,
-    its groups, their options and every price came from the tool's rows —
-    and on the first live turn the model still spent four rounds on it and
-    said nothing. So when the loop ends on a cap with that result in hand,
-    it asks the question itself, from those rows and nothing else: the
-    house rule's template fallback, applied to the one outcome that has a
-    fixed shape. Returns None for anything that is not a needs_choice.
+    deterministic layer holds the complete answer — the dish, its sizes, its
+    groups, their options and every price came from the tool's rows — and on
+    the first live turn the model still spent four rounds on it and said
+    nothing. So the loop asks the question itself, from those rows and nothing
+    else: the house rule's template fallback, applied to the one outcome that
+    has a fixed shape.
+
+    **One thing at a time.** This used to compose a part for the size and a
+    part for every outstanding group and join them, which produced, live:
+
+        Crust for Build Your Own Pizza: Thin crust, Classic hand tossed,
+        Cheese burst (+$4.00), Stuffed garlic crust (+$4.50). Sauce for Build
+        Your Own Pizza: Tomato, Green curry (+$1.00), Tom yum cream (+$1.50),
+        Garlic butter. Which would you like?
+
+    Two questions, eleven options and four prices in one paragraph, closing on
+    a "Which would you like?" that could mean either. Nobody orders like that,
+    and nothing downstream could read the answer either.
+
+    The size goes first, and not merely for tidiness: Crust is size-scoped on
+    this menu — three separate groups, one per size, with different options at
+    different prices — so a crust chosen before a size is an answer that
+    cannot be used.
+
+    Returns None for anything that is not a needs_choice, and None once
+    nothing is outstanding.
     """
 
     if not isinstance(result, dict) or result.get("outcome") != "needs_choice":
         return None
     name = result.get("name") or "that dish"
-    parts: list[str] = []
+
     sizes = result.get("available_sizes") or []
     if result.get("needs_size") and sizes:
-        listed = ", ".join(f"{s.get('name')} ({_money(s.get('price'))})" for s in sizes)
-        parts.append(f"Which size for {name}? {listed}.")
+        listed = "\n".join(
+            _option_line(str(size.get("name")), price=size.get("price")) for size in sizes
+        )
+        return f"Which size for {name}?\n{listed}"
+
     for group in result.get("customization_groups") or []:
         if not group.get("needs_selection"):
             continue
@@ -179,36 +218,43 @@ def ask_for_choice(result: Any) -> str | None:
         # pick with the identical question — the same list, the same count,
         # no sign anybody had heard.
         already = {str(o) for o in (group.get("selected_option_ids") or [])}
-        chosen_names, options = [], []
+        chosen_names, lines = [], []
         for option in group.get("options") or []:
-            extra = option.get("extra_price") or 0
-            try:
-                extra_text = f" (+{_money(extra)})" if float(extra) > 0 else ""
-            except (TypeError, ValueError):
-                extra_text = ""
             if str(option.get("option_id")) in already:
                 chosen_names.append(str(option.get("name")))
             else:
-                options.append(f"{option.get('name')}{extra_text}")
-        if not options:
+                lines.append(
+                    _option_line(str(option.get("name")), extra=option.get("extra_price"))
+                )
+        if not lines:
             continue
+
         title = group.get("title") or "Choose"
+        try:
+            most = int(group.get("max_selection") or 1)
+        except (TypeError, ValueError):
+            most = 1
         try:
             still = max(1, int(group.get("min_selection") or 1) - len(already))
         except (TypeError, ValueError):
             still = 1
+
+        # Always a question, and always the shape of the size question above
+        # it. "Crust for Build Your Own Pizza:" is a heading; a customer
+        # answers a question.
+        head = f"Which {title.lower()} for {name}?"
         if chosen_names:
-            parts.append(
-                f"{title} for {name}: you have {', '.join(chosen_names)}. "
-                f"Pick {still} more: {', '.join(options)}."
-            )
+            head += f" You have {', '.join(chosen_names)} \u2014 pick {still} more."
         elif still > 1:
-            parts.append(f"{title} for {name} — pick {still}: {', '.join(options)}.")
-        else:
-            parts.append(f"{title} for {name}: {', '.join(options)}.")
-    if not parts:
-        return None
-    return " ".join(parts) + " Which would you like?"
+            head += f" Pick {still}."
+        elif most > 1:
+            # Nobody picks two of something they were not told they could have
+            # two of. This menu's Toppings group takes seven, and was selling
+            # them one at a time.
+            head += " You can choose more than one."
+        return head + "\n" + "\n".join(lines)
+
+    return None
 
 
 #: The question the menu offer ends on, as the MODEL should see it next turn.
