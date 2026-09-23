@@ -270,6 +270,47 @@ _WHICH_SECTION = "Which of those would you like to see?"
 _READY_TO_CHECK_OUT = "Ready to check out?"
 
 
+def chosen_options_in(line: Any) -> list[str]:
+    """What the customer picked on this cart line, group by group.
+
+    `view_cart` has carried this all along — every line holds its groups, each
+    with `selected_option_ids` and the options' names — and the read-back used
+    the size and dropped the rest, so a built pizza came back as
+
+        - 1 x Build Your Own Pizza (Large (14")) - $25.49
+
+    with the crust and the sauce nowhere in it, and the extra dollar in the
+    price unexplained.
+
+    Groups are named: "Green curry, Thin crust" is a list of words, and
+    "Sauce: Green curry" is an order. An id matching no option is dropped
+    rather than guessed at — this sentence is what somebody checks before
+    paying, so a name it cannot prove has no business in it.
+    """
+
+    if not isinstance(line, dict):
+        return []
+    said: list[str] = []
+    for group in line.get("customization_groups") or []:
+        if not isinstance(group, dict):
+            continue
+        chosen = {str(o) for o in (group.get("selected_option_ids") or [])}
+        if not chosen:
+            continue
+        names = [
+            str(option.get("name"))
+            for option in (group.get("options") or [])
+            if isinstance(option, dict)
+            and str(option.get("option_id")) in chosen
+            and option.get("name")
+        ]
+        if not names:
+            continue
+        title = str(group.get("title") or "").strip()
+        said.append(f"{title}: {', '.join(names)}" if title else ", ".join(names))
+    return said
+
+
 def describe_single_dish(dish: dict[str, Any]) -> str:
     """One dish read back, with an offer to add it.
 
@@ -357,7 +398,14 @@ def describe_cart(result: Any) -> str | None:
         quantity = line.get("quantity") or 1
         total = line.get("total_price")
         label = f"{name} ({size})" if size else name
-        parts.append(f"- {quantity} x {label} - {_money(total)}")
+        said_line = f"- {quantity} x {label} - {_money(total)}"
+        # What they picked, under the line it belongs to. A built pizza used
+        # to read "(Large (14")) - $25.49" with the crust and the sauce
+        # nowhere in it, and the extra dollar in the price unexplained.
+        picked = chosen_options_in(line)
+        if picked:
+            said_line += "\n  " + "; ".join(picked)
+        parts.append(said_line)
     # One line per dish. As a single sentence — "1 x Margherita Pizza -
     # $249.00; 2 x Corn Fritters - $16.98" — a cart was hard to read on a
     # phone and harder to trust with money. Plain dashes, so the web reads
@@ -397,7 +445,14 @@ def describe_order_to_confirm(
         name = line.get("name") or "a dish"
         size = line.get("size_name")
         label = f"{name} ({size})" if size else name
-        said.append(f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}")
+        confirmed = f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}"
+        # The same picks as the cart read-back, and for a stronger reason:
+        # this is the last thing said before money is asked for, so it has to
+        # be the whole of what they are agreeing to.
+        picked = chosen_options_in(line)
+        if picked:
+            confirmed += "\n  " + "; ".join(picked)
+        said.append(confirmed)
     # Their name at the moment it means most: the last thing said before
     # money is asked for.
     called = order_draft.first_name(getattr(draft, "contact_name", None)) if draft is not None else None
