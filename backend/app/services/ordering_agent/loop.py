@@ -270,6 +270,48 @@ _WHICH_SECTION = "Which of those would you like to see?"
 _READY_TO_CHECK_OUT = "Ready to check out?"
 
 
+def reask_standing_choice(standing: Any) -> str | None:
+    """Put a standing question again, with its answers spelled out.
+
+    Shared by the two places that need it. The re-ask path uses it when a
+    message answered nothing; the dish lookup uses it when a message DID look
+    like something — a dish to add — but only as a guess.
+
+    That second case is why this is a function. Mid-build, with the crust
+    question standing:
+
+        > Mozzarella and mushroom
+          Did you mean Farmhouse Pizza?
+
+    Safe, and the wrong thing to say: the customer was naming toppings, and
+    the reply abandoned the crust question to offer an unrelated pizza. A
+    guess is not a reason to change the subject.
+
+    None when there is nothing to put again — a question with no answers
+    listed is not worth repeating, and repeating it is how a customer ends up
+    reading the same sentence twice.
+    """
+
+    if not isinstance(standing, dict):
+        return None
+    options = ", ".join(
+        str(option.get("name"))
+        for option in (standing.get("options") or [])
+        if isinstance(option, dict) and option.get("name")
+    )
+    if not options:
+        return None
+    question = str(standing.get("question") or "").rstrip()
+    lead = f"Sorry, I did not catch that. {question}".rstrip()
+    if "\n- " in question:
+        # The question already lays its own options out, one per line, so
+        # spelling them out again said everything twice and ran the tail onto
+        # the last bullet: "- Thin crust Just reply with one of these: Classic
+        # hand tossed, Cheese burst, ...".
+        return lead
+    return f"{lead} Just reply with one of these: {options}."
+
+
 def chosen_options_in(line: Any) -> list[str]:
     """What the customer picked on this cart line, group by group.
 
@@ -1687,11 +1729,7 @@ def run_turn(
             asked["asks"] = int(asked.get("asks", 1)) + 1
             draft_now.pending_choice = json.dumps(asked)
             order_draft.save(scope.session_id, draft_now)
-            question = str(asked.get("question") or "").rstrip()
-            answer = (
-                f"Sorry, I did not catch that. {question} "
-                f"Just reply with one of these: {options}."
-            )
+            answer = reask_standing_choice(asked) or ""
         return TurnOutcome(
             answer=answer,
             answer_about="cart",
@@ -2269,11 +2307,21 @@ def run_turn(
         # so "khaman dhokla" keeps its one-step path and only a dish that
         # would land silently costs a confirmation.
         if would_be_added_without_asking(lookup):
+            # A question of ours is worth more than a guess of ours. Live,
+            # mid-build with the crust question standing, "Mozzarella and
+            # mushroom" — a customer naming toppings — was answered "Did you
+            # mean Farmhouse Pizza?", which dropped the crust question and
+            # offered an unrelated $329 pizza. Putting our own question again
+            # keeps the half-built pizza alive.
+            standing = reask_standing_choice(_pending_choice())
             found = str((lookup or {}).get("name") or "").strip()
-            if found:
+            if standing or found:
                 records.append(ToolCallRecord(
                     tool="get_dish", args={"name": name},
-                    result={"outcome": "ambiguous", "question": f"Did you mean {found}?"},
+                    result={
+                        "outcome": "ambiguous",
+                        "question": standing or f"Did you mean {found}?",
+                    },
                 ))
             return []
         return _run_add(resolved_args)

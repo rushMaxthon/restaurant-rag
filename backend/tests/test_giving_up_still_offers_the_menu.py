@@ -173,8 +173,11 @@ class TheGiveUpPathUsesItTests(unittest.TestCase):
     def test_the_second_ask_still_repeats_the_question(self) -> None:
         # Untouched on purpose: a live question with known answers is better
         # than a menu, because it keeps the thread the customer is already in.
+        # The sentence itself moved into `reask_standing_choice` when the dish
+        # lookup needed the same one — a guessed dish must not drop a question
+        # we are waiting on — so this asserts the call rather than the words.
         block = self.give_up_block()
-        self.assertIn("Just reply with one of these", block)
+        self.assertIn("reask_standing_choice(asked)", block)
 
 
 if __name__ == "__main__":
