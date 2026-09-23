@@ -350,6 +350,54 @@ def options_named_in(message: str, asked: Any) -> list[str]:
     return named
 
 
+def cart_lines_named_in(message: str, lines: Any) -> list[dict[str, Any]]:
+    """Which lines of this cart the message names, in the order they sit in it.
+
+    Matched on the cart's OWN rows rather than on the reading, because the
+    reading has no way to say "take one line out": "remove the khaman", "take
+    it off" and "delete the dhokla" all come back as `cancel_order`, and
+    nothing in that says which line.
+
+    Whole words, for the same reason everywhere else does it — "remove the
+    soupçon" must not take somebody's soup off the order.
+    """
+
+    if not lines:
+        return []
+    words = _words_of(message)
+    if not words:
+        return []
+    said = f" {' '.join(words)} "
+    named: list[dict[str, Any]] = []
+    for line in lines:
+        if not isinstance(line, dict) or not line.get("name"):
+            continue
+        for word in _words_of(str(line["name"])):
+            if len(word) > 2 and f" {word} " in said:
+                named.append(line)
+                break
+    return named
+
+
+def line_to_remove(message: str, lines: Any) -> dict[str, Any] | None:
+    """The one line to take off, or None when that is a question.
+
+    Removing is destructive, so this follows the rule the rest of the cart
+    tools follow: act where there is one obvious answer, ask where there is
+    not. One line named is obvious. A cart holding one thing is obvious —
+    "take it off" can only mean that. Anything else is a guess that throws
+    away something somebody chose, so it returns None and the caller asks.
+    """
+
+    named = cart_lines_named_in(message, lines)
+    if len(named) == 1:
+        return named[0]
+    if not named and lines and len(lines) == 1:
+        only = lines[0]
+        return only if isinstance(only, dict) else None
+    return None
+
+
 def next_optional_group(asked: Any, args: Any) -> dict[str, Any] | None:
     """The optional group worth offering before this dish lands, if any.
 
@@ -2554,6 +2602,40 @@ def run_turn(
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
+    def _run_remove(line: dict[str, Any]) -> list[dict[str, Any]]:
+        """Take one line off, through the same guard a planned call goes
+        through.
+
+        The line comes from `view_cart`, so its id is one the customer's own
+        cart is holding rather than a name the model hopes exists — which is
+        exactly what `RemoveFromCartArgs` asks for. It is grown into `seen`
+        for the same reason: the guard refuses a dish nothing showed this
+        turn, and our own cart read-back is what showed it.
+        """
+
+        args = {
+            "menu_item_id": line.get("menu_item_id"),
+            "existing_lines": _as_tool_lines(cart),
+        }
+        guards.grow_seen_ids(seen, {"menu_item_id": line.get("menu_item_id")})
+        prepared, guard_error = guards.prepare_tool_call(
+            "remove_from_cart", args, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            logger.info("Ordering agent could not take that off: %s", guard_error)
+            return []
+        try:
+            result = TOOLS["remove_from_cart"].handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - never lose the turn over it
+            logger.warning("Ordering agent remove raised: %s", error, exc_info=True)
+            return []
+        result = guards.enforce_destructive_policy(result)
+        records.append(
+            ToolCallRecord(tool="remove_from_cart", args=prepared.model_dump(), result=result)
+        )
+        action = result.get("action") if isinstance(result, dict) else None
+        return [action] if action else []
+
     def _add_what_was_asked_for() -> list[dict[str, Any]]:
         """Carry out the add the planner would not.
 
@@ -3026,6 +3108,30 @@ def run_turn(
         order = _waiting_order()
         if order is not None:
             return _ask_about_waiting(order, they_asked_to_cancel=True)
+
+        # No order to cancel, but a cart to edit. The comment above is the
+        # whole reason: "a message naming a dish is a cart edit however it is
+        # read". The reading collapses "remove the khaman", "take it off" and
+        # "delete the dhokla" into `cancel_order` alike, so which line — if
+        # any — is decided here from the cart's own rows. Live, before this,
+        # all of those were answered by reading the cart back with the dish
+        # still in it; whether anything came off depended on whether the
+        # model's tool loop happened to call `remove_from_cart` by itself.
+        cart_lines = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+        if cart_lines:
+            going = line_to_remove(message, cart_lines)
+            if going is not None:
+                taken = _run_remove(going)
+                if taken:
+                    actions.extend(taken)
+                    return _settled()
+            elif len(cart_lines) > 1:
+                # Several to choose from and nothing named. Guessing throws
+                # away something somebody chose.
+                listed = ", ".join(str(line.get("name")) for line in cart_lines if line.get("name"))
+                return _answering(
+                    _hold(f"Which one shall I take off? {listed}.", yes="name_one")
+                )
 
     if wanted.get("when") and scope.session_id is not None:
         _take_time(wanted["when"])
