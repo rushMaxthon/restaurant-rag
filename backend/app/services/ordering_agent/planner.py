@@ -800,7 +800,7 @@ def read_order_intent(
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
         "category": None, "wants_to_add": False, "cancel_order": False,
-        "pay_now": False, "max_price": None,
+        "pay_now": False, "max_price": None, "clear_cart": False,
     }
     if not message.strip():
         return empty
@@ -877,6 +877,10 @@ def read_order_intent(
             'option: "the first one", "the 2nd", "the last one", "number 3" '
             "are picks, and the option at that position is what goes in "
             '"chose".\n'
+            # Live: "All", to "Which one shall I take off?", came back as
+            # nothing. Every option is an answer too.
+            'If they mean all of them ("all", "everything", "both", "sab"), '
+            '"chose" is the whole list.\n'
         )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
@@ -897,6 +901,8 @@ def read_order_intent(
         '  "wants_to_add": true if they want to order something MORE but have not '
         "said what, else false\n"
         '  "cancel_order": true if they want to call off an order they have already placed, else false\n'
+        '  "clear_cart": true if they want EVERYTHING taken out of their cart or basket '
+        "— cleared, emptied, started over — else false\n"
         '  "pay_now": true if they are asking to pay, or for the payment link again, else false\n'
         '  "asks_hours": true if they are asking WHEN — when you open, when the '
         "order would arrive, what times are possible — else false\n"
@@ -948,6 +954,15 @@ def read_order_intent(
         '- "cancel_order" is dropping an order already placed: "cancel my order", '
         '"forget it", "I do not want it any more". Removing one dish from a cart '
         "is not this.\n"
+        # Live: "Clear cart" over four lines came back as `cancel_order` and
+        # was handled as taking ONE line off. The reading is the only thing
+        # that can tell "clear it" from "take the rice off", however either
+        # is worded — no list of phrases decides this.
+        '- "clear_cart" is wanting the whole cart gone, however they say it: '
+        '"clear my cart", "empty the basket", "remove everything", "start over", '
+        '"sab hata do". Taking one dish out is not this — "remove one", "take '
+        'one off", "remove something" want ONE dish gone and are not "clear_cart" '
+        "— and neither is cancelling a placed order.\n"
         '- "pay_now" is asking to pay or for the link again: "send the link", '
         '"how do I pay", "I want to pay now", "payment link".\n'
         '- "wants_to_add" is wanting more without saying what: "I want to add '
@@ -1052,6 +1067,7 @@ def read_order_intent(
     asks_hours = parsed.get("asks_hours") is True
     wants_to_add = parsed.get("wants_to_add") is True
     cancel_order = parsed.get("cancel_order") is True
+    clear_cart = parsed.get("clear_cart") is True
     pay_now = parsed.get("pay_now") is True
 
     category = parsed.get("category")
@@ -1112,6 +1128,7 @@ def read_order_intent(
         "asks_hours": asks_hours,
         "wants_to_add": wants_to_add,
         "cancel_order": cancel_order,
+        "clear_cart": clear_cart,
         "pay_now": pay_now,
         "max_price": max_price,
     }

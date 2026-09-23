@@ -78,6 +78,26 @@ up?" → all three sizes + the offer again; "cost" with Large chosen → the Lar
 price only; "how much" with only a cart → the cart read-back. Bodakdev
 "Pizza" lists Cheese Burst $17.99, Farmhouse $17.49, Margherita $11.99.
 
+**Later the same day — "Clear cart" / "All" (screenshot thread).** "Clear
+cart" over four lines was answered "Which one shall I take off?", and "All"
+— the answer to that — was read against the GREETING's four dishes and added
+them. First fix was two phrase lists; the user rejected that ("don't depend
+on static words ... figure out based on user input") and the house rule
+agrees. Shipped instead: the READING carries `clear_cart` (told what it
+means and what it is not) and, when our own take-off or clear question is
+standing, is briefed with that question and the cart's lines as the options
+— never `last_shown` — and told "all of them" is every option. The code acts
+only on what was read, against rows (`lines_named_among`); naming every line
+clears. Clearing is always a question first (`yes="clear_cart"`) and the
+question names the lines, because qwen reads "remove one" as clear often
+enough; a bare position while it stands takes THAT line off and is never a
+yes (measured: "2" to "Take all 2 items off?" was read as yes). Also: a pick
+that landed switches the browse branch off (a dish was added and then
+offered), and "remove something" on an empty cart is answered from the rows.
+Verified live on Bodakdev: Clear cart → question → All → empty; no → kept;
+remove one → question with names → 2 → second line off; the tofu → the only
+line off. Suite 2283 OK.
+
 **Open:**
 - Owner to confirm the two placeholder pizza prices in admin.
 - The replay uses a fixed test phone; a leftover unpaid order on 919876500000

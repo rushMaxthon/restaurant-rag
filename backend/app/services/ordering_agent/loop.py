@@ -539,6 +539,22 @@ def line_to_remove(message: str, lines: Any) -> dict[str, Any] | None:
     return None
 
 
+def lines_named_among(chose: Sequence[str], lines: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cart lines the reading's `chose` names, in cart order.
+
+    The names were OURS — the reading was handed this cart's line names as
+    the options and told to copy them exactly — so they are matched exactly,
+    case aside. A line named twice is one line; a name matching no line is
+    dropped, never guessed at.
+    """
+
+    wanted = {str(name).strip().casefold() for name in chose if str(name).strip()}
+    return [
+        line for line in lines
+        if isinstance(line, dict) and str(line.get("name") or "").strip().casefold() in wanted
+    ]
+
+
 def next_optional_group(asked: Any, args: Any) -> dict[str, Any] | None:
     """The optional group worth offering before this dish lands, if any.
 
@@ -2199,6 +2215,27 @@ def run_turn(
                     _with_link(order, "Kept. It will be ready once the payment lands.")
                 )
             return _drop_the_order(order)
+        if kind == "clear_cart":
+            if also_says:
+                return None
+            if not agreed:
+                # Kept as it is, and read back so they can see it still is.
+                return _settled(asked_to_see_cart=True)
+            return _clear_whole_cart()
+        if kind == "remove_one":
+            # A yes/no to "which one?" names nothing. "No" means leave it;
+            # "yes" means they still want one off and did not say which, so
+            # the list is put again — the deterministic read above this
+            # handles a name, a position or "all" before the reading runs.
+            if also_says:
+                return None
+            if not agreed:
+                return _settled(asked_to_see_cart=True)
+            lines_asked = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+            lines_asked = [line for line in (lines_asked or []) if isinstance(line, dict)]
+            if lines_asked:
+                return _which_to_take_off(lines_asked)
+            return None
         if kind == "restore_cart":
             if not agreed:
                 return _answering("No problem. Tell me whenever you would like to order.")
@@ -2897,6 +2934,47 @@ def run_turn(
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
+    def _clear_whole_cart() -> TurnOutcome:
+        """Take every line off, now that the customer has said so.
+
+        `clear_cart` the tool is always `proposed` — "destructive is never
+        applied" — and on a chat thread nothing can ever apply a proposal:
+        the reply says "Just say the word" and the word has nowhere to land.
+        So the clearing is one applied removal per dish, which is what a
+        proposal would have become had a client accepted it. The policy is
+        not skipped: the yes was obtained on the previous turn, to a question
+        that said how many lines were going.
+        """
+
+        going: list[dict[str, Any]] = []
+        for line in cart:
+            menu_item_id = str(line.menu_item_id)
+            if any(a["menu_item_id"] == menu_item_id for a in going):
+                continue
+            going.append({
+                "kind": "remove", "status": "applied", "reason": "named",
+                "menu_item_id": menu_item_id,
+            })
+        actions.extend(going)
+        # Nothing being configured survives an empty cart either.
+        _forget_choice()
+        _forget_shown()
+        return _answering(
+            _hold(
+                "Done — your order is empty. Tell me what you would like instead, "
+                "or say menu to see what we have.",
+                yes="name_one",
+            )
+        )
+
+    def _which_to_take_off(lines: list[dict[str, Any]]) -> TurnOutcome:
+        """Ask which line goes, and remember that THAT is the question."""
+
+        listed = ", ".join(str(line.get("name")) for line in lines if line.get("name"))
+        return _answering(
+            _hold(f"Which one shall I take off? {listed}. Or say all.", yes="remove_one")
+        )
+
     def _run_set_quantity(line: dict[str, Any], quantity: int) -> list[dict[str, Any]]:
         """Change one line's count, through the same guard a planned call uses.
 
@@ -3138,6 +3216,36 @@ def run_turn(
     held_question = _awaiting()
     if held_question is not None:
         _forget_awaiting()
+
+    # "Which one shall I take off?" is standing: this message is read against
+    # THAT question, with the cart's own lines as its options. Live, "All" —
+    # the answer to it — reached the reading with the greeting's four dishes
+    # as the options and came back as a choice of all four: added, not
+    # removed. A position is the one thing settled without the reading; what
+    # the words mean is the reading's to say.
+    lines_now = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+    lines_now = [line for line in (lines_now or []) if isinstance(line, dict)]
+    #
+    # The clear question ("Take all N items off? ... or name the one to take
+    # off") is briefed the same way: its answers are the cart's lines too.
+    # Measured without this: "2", to "Take all 2 items off your order?", was
+    # read as a yes and emptied the cart. A bare position is a line to take
+    # off, never a yes to a destructive question.
+    removing = (
+        held_question
+        if held_question is not None
+        and held_question.get("yes") in {"remove_one", "clear_cart"}
+        and lines_now
+        else None
+    )
+    if removing is not None:
+        position = ordinal_asked_for(message, count=len(lines_now))
+        if position is not None:
+            taken = _run_remove(lines_now[position - 1])
+            if taken:
+                actions.extend(taken)
+                return _settled()
+
     plain = quick_read(message)
     # Kept, so a reading that makes nothing of the message can fall back to
     # it rather than lose it. See where it is restored, below.
@@ -3222,7 +3330,7 @@ def run_turn(
     # What was last put in front of them, when no question of ours is
     # standing. The agent's own question wins where there is one: it is the
     # more specific thing outstanding.
-    shown_before = None if asked_before else _last_shown()
+    shown_before = None if asked_before or removing is not None else _last_shown()
     # The sections this branch actually sells, so "some drink" can find
     # Beverages. Rows, given to the reading; the mapping is meaning.
     sections: list[str] = []
@@ -3302,13 +3410,19 @@ def run_turn(
             generate=generate,
             now_local=now_local.strftime("%A %Y-%m-%d %H:%M"),
             offered=standing_offer,
+            # Our own "which one shall I take off?" outranks any list: its
+            # options are the cart's lines, and the reading is told so.
             choice_question=(
-                (asked_before or {}).get("question")
+                "Which one shall I take off your order?"
+                if removing is not None
+                else (asked_before or {}).get("question")
                 or ("These were just shown to them." if shown_before else None)
             ),
-            choice_options=[
-                o["name"] for o in (asked_before or shown_before or {}).get("options", [])
-            ],
+            choice_options=(
+                [str(line.get("name")) for line in lines_now if line.get("name")]
+                if removing is not None
+                else [o["name"] for o in (asked_before or shown_before or {}).get("options", [])]
+            ),
             # Whatever a bare "yes" would be agreeing to. Measured: with a
             # time offered but nothing named as the question, the reading
             # answered "yes" with nothing at all, the turn fell through to
@@ -3342,6 +3456,52 @@ def run_turn(
             categories=sections,
         )
     )
+
+    # The answer to "which one shall I take off?", as the reading read it
+    # against the cart's own lines: one, several, or all of them. Naming every
+    # line is clearing the cart, and the customer asked for the removal a
+    # turn ago, so no second confirmation.
+    if removing is not None and wanted.get("chose"):
+        going = lines_named_among(wanted["chose"], lines_now)
+        if going and len(going) == len(lines_now):
+            return _clear_whole_cart()
+        taken = [action for line in going for action in _run_remove(line)]
+        if taken:
+            actions.extend(taken)
+            return _settled()
+        # Named nothing we hold; whatever else the message says goes on, but
+        # not as a pick from a list — there is no list.
+        wanted["chose"] = None
+
+    # The whole cart, as the reading read it — however it was worded. It is
+    # destructive, so it becomes a question, and only a yes (or asking again
+    # while the question stands) clears anything. Live: "Clear cart" over four
+    # lines was answered "Which one shall I take off?".
+    if wanted.get("clear_cart"):
+        if not cart:
+            return TurnOutcome(
+                answer=_PLACE_FAILURE_LINES["empty_cart"], answer_about="cart",
+                actions=actions, records=records, fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+        if held_question is not None and held_question.get("yes") == "clear_cart":
+            return _clear_whole_cart()
+        count = len(lines_now) or len(cart)
+        noun = "item" if count == 1 else "items"
+        # The lines are named, because the model reads "remove one" as this
+        # often enough: a customer who wanted one dish gone sees the names
+        # and answers with one, and the question has cost them nothing.
+        names = [str(line.get("name")) for line in lines_now if line.get("name")]
+        listed = f" ({', '.join(names)})" if 0 < len(names) <= 6 else ""
+        return _answering(
+            _hold(
+                f"Take all {count} {noun} off your order{listed}? Say yes to "
+                "clear it, or name the one to take off.",
+                yes="clear_cart",
+                asks=f"Take all {count} {noun} off your order? Say yes to clear it, "
+                     "or name the one to take off.",
+            )
+        )
 
     # An optional group is an offer, not a gate, and this is the only window
     # in which that can be enforced: after the reading, and before the guard
@@ -3465,6 +3625,14 @@ def run_turn(
         # still in it; whether anything came off depended on whether the
         # model's tool loop happened to call `remove_from_cart` by itself.
         cart_lines = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+        if not cart_lines and not cart:
+            # Nothing to take off. Measured: "remove something" on an empty
+            # cart spent 10.8 seconds in planner rounds to say so.
+            return TurnOutcome(
+                answer=_PLACE_FAILURE_LINES["empty_cart"], answer_about="cart",
+                actions=actions, records=records, fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
         if cart_lines:
             going = line_to_remove(message, cart_lines)
             if going is not None:
@@ -3475,10 +3643,7 @@ def run_turn(
             elif len(cart_lines) > 1:
                 # Several to choose from and nothing named. Guessing throws
                 # away something somebody chose.
-                listed = ", ".join(str(line.get("name")) for line in cart_lines if line.get("name"))
-                return _answering(
-                    _hold(f"Which one shall I take off? {listed}.", yes="name_one")
-                )
+                return _which_to_take_off(cart_lines)
 
     if wanted.get("when") and scope.session_id is not None:
         _take_time(wanted["when"])
@@ -3659,6 +3824,13 @@ def run_turn(
         answered = _answer_dish_choice(shown_before, wanted["chose"])
         if answered:
             actions.extend(answered)
+            # The pick landed, so the message is not ALSO a request to see
+            # things. Live: "Pad Thai Veg", after the greeting listed it, was
+            # added here and then answered by the browse branch with "Pad Thai
+            # Veg is $13.84. Shall I add one?" — over a cart that had it.
+            wanted["browse"] = None
+            wanted["category"] = None
+            wanted["wants_to_add"] = False
     elif wanted.get("chose") and asked_before:
         # Two kinds of question end on a list. A size or a customization
         # option carries the id that settles it; a dish carries only its
@@ -3671,6 +3843,9 @@ def run_turn(
         )
         if answered:
             actions.extend(answered)
+            wanted["browse"] = None
+            wanted["category"] = None
+            wanted["wants_to_add"] = False
 
     # Only when they have not named one. "Make it 12:30" reads as both a
     # question about time and a time, and the time is the instruction.

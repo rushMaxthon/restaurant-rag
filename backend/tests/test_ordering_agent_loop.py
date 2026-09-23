@@ -455,7 +455,10 @@ class DestructivePolicyTests(OrderingAgentLoopTestCase):
         outcome = loop.run_turn(
             db=None,
             scope=SCOPE,
-            message="clear my cart",
+            # Not "clear my cart": the plain request is now answered off the
+            # words before the model's loop runs (`asks_to_clear_cart`), and
+            # this test is about the loop's gate, not the phrase.
+            message="wipe the basket",
             cart=[],
             generate=generate,
             clock=ScriptedClock(0.0),

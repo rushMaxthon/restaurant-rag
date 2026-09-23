@@ -35,52 +35,55 @@ so the model is never asked what a bare number or a bare "how much" means
 
 | line | returns | condition | what it is for |
 |---|---|---|---|
-| 3249 | **yes** | `plain == "price" and db and location` | "how much" / "kitne ka hai" about the dish being configured, the dish just offered, the list just shown, or the cart — `_answer_price_question`, from `prices_of` rows |
-| 3261 | **partly** | `listed_now and plain is None` / `elif` a bare number with no list, no held question and no cart | "1", "the second one", "last": `ordinal_asked_for` against `listed_in_order(asked_before or shown_before)`. Sets `picked_by_number`; `wanted` is then built with `chose=[that name]` and the reading is skipped. The `elif` returns: a position with nothing to count along is answered with the sections |
+| 3234 | **partly** | `removing is not None` — our own "which one shall I take off?" or "take all N off?" is standing | the reading is briefed with THAT question and the cart's lines as its options (never the last-shown list); a bare position takes that line off here and returns — it is never a yes to a destructive question |
+| 3357 | **yes** | `plain == "price" and db and location` | "how much" / "kitne ka hai" about the dish being configured, the dish just offered, the list just shown, or the cart — `_answer_price_question`, from `prices_of` rows |
+| 3369 | **partly** | `listed_now and plain is None` / `elif` a bare number with no list, no held question and no cart | "1", "the second one", "last": `ordinal_asked_for` against `listed_in_order(asked_before or shown_before)`. Sets `picked_by_number`; `wanted` is then built with `chose=[that name]` and the reading is skipped. The `elif` returns: a position with nothing to count along is answered with the sections |
 
 ## The guards, in order
 
 | line | returns | condition | what it is for |
 |---|---|---|---|
-| 3362 | | `asked_before and asked_before.get("optional")` | the optional-group offer: whatever the message was, the dish is added, with the options it names (or `picked_by_number`) |
-| 3384 | | `plain_before_holding == "checkout" and plain is None and not any(...)` | "that's all" with a list standing — the model made nothing of a message that plainly says "I am done" |
-| 3402 | | `confirms is True and standing_offer and ...` | agreeing to a time we offered |
-| 3412 | **yes** | `standing is not None and confirms is not None` | yes/no to a question `_hold` wrote down |
-| 3420 | **yes** | `when and not cart and db` | a time, with nothing to order |
-| 3440 | **yes** | `pay_now and db` | asking to pay |
-| 3483 | **yes** | `cancel_order and not add and not browse and db` | cancelling, and only when the message is about nothing else; with no order waiting, a cart edit |
-| 3483 | | `when and session_id` | a time, with a cart |
-| 3487 | **yes** | `confirms is True and session_id` | agreeing to something |
-| **3542** | **yes** | `asked_before and session_id and not any(chose, add, details, checkout, when, browse, category, wants_to_add, cancel_order, pay_now, asks_hours) and confirms is None` | **the re-ask.** A choice is standing and the message answered nothing, so the question is put again |
-| 3568 | **yes** | `wants_to_add and not add and not chose and not browse ...` | a change of count — "make it 3" — read off the message |
-| 3622 | **yes** | `plain == "cheapest" and db and location` | the cheapest dishes, from `price` |
-| 3644 | **yes** | `plain == "suggest" and not asked_before` | "what do you recommend", from bestsellers and popularity |
-| 3654 | | `chose and not asked_before and shown_before` | picking from a list we showed |
-| 3677 | **yes** | `asks_hours and not when and db and location` | opening hours |
-| 3706 | **yes** | `(browse or category) and (not add or names_the_section) and db and location` | showing a section or the menu |
-| 3726 | **yes** | `wants_to_add and not add and not browse and not category and db and location` | "something else" with nothing named — suggest |
+| 3464 | **yes** | `removing is not None and chose` | the answer to "which one shall I take off?", as the reading read it against the cart's own lines (`lines_named_among`): one, several, or all — all is `_clear_whole_cart` |
+| 3480 | **yes** | `clear_cart` | the reading says the whole cart should go, however it was worded: a question (`yes="clear_cart"`), or the clearing itself when that question is already standing; the empty-cart line when there is nothing to clear |
+| 3522 | | `asked_before and asked_before.get("optional")` | the optional-group offer: whatever the message was, the dish is added, with the options it names (or `picked_by_number`) |
+| 3544 | | `plain_before_holding == "checkout" and plain is None and not any(...)` | "that's all" with a list standing — the model made nothing of a message that plainly says "I am done" |
+| 3562 | | `confirms is True and standing_offer and ...` | agreeing to a time we offered |
+| 3572 | **yes** | `standing is not None and confirms is not None` | yes/no to a question `_hold` wrote down |
+| 3580 | **yes** | `when and not cart and db` | a time, with nothing to order |
+| 3600 | **yes** | `pay_now and db` | asking to pay |
+| 3648 | **yes** | `cancel_order and not add and not browse and db` | cancelling, and only when the message is about nothing else; with no order waiting, a cart edit |
+| 3648 | | `when and session_id` | a time, with a cart |
+| 3652 | **yes** | `confirms is True and session_id` | agreeing to something |
+| **3707** | **yes** | `asked_before and session_id and not any(chose, add, details, checkout, when, browse, category, wants_to_add, cancel_order, pay_now, asks_hours) and confirms is None` | **the re-ask.** A choice is standing and the message answered nothing, so the question is put again |
+| 3733 | **yes** | `wants_to_add and not add and not chose and not browse ...` | a change of count — "make it 3" — read off the message |
+| 3787 | **yes** | `plain == "cheapest" and db and location` | the cheapest dishes, from `price` |
+| 3809 | **yes** | `plain == "suggest" and not asked_before` | "what do you recommend", from bestsellers and popularity |
+| 3994 | | `chose and not asked_before and shown_before` | picking from a list we showed |
+| 3852 | **yes** | `asks_hours and not when and db and location` | opening hours |
+| 3881 | **yes** | `(browse or category) and (not add or names_the_section) and db and location` | showing a section or the menu |
+| 3901 | **yes** | `wants_to_add and not add and not browse and not category and db and location` | "something else" with nothing named — suggest |
 | | | `for one_dish in wanted["add"]` | the adds themselves |
-| 3791 | **yes** | `details and session_id` | a name, an email, an address |
-| 3791 | **yes** | `checkout and not cart and not actions` | checking out an empty cart |
-| 3819 | **yes** | `records` | something happened — settle and say so |
-| 3843 | **yes** | `not cart and db and session_id` | nothing happened and there is no cart |
+| 3966 | **yes** | `details and session_id` | a name, an email, an address |
+| 3966 | **yes** | `checkout and not cart and not actions` | checking out an empty cart |
+| 3994 | **yes** | `records` | something happened — settle and say so |
+| 4018 | **yes** | `not cart and db and session_id` | nothing happened and there is no cart |
 | | **yes** | `for _round_index in range(rounds)` | the model's tool loop |
 
 ## The two rules this encodes
 
-**A rule about the pending choice belongs above line 3542.** That guard is the
+**A rule about the pending choice belongs above line 3707.** That guard is the
 first thing to consult `asked_before`, and it returns. Below it, `asked_before`
 is only ever read by branches that have already decided the message meant
 something else.
 
-**A rule that needs the reading belongs below line 3291.** `wanted` does not
+**A rule that needs the reading belongs below line 3399.** `wanted` does not
 exist before that.
 
-So the window for "the customer is answering a choice" is **3291 → 3542**, and
+So the window for "the customer is answering a choice" is **3399 → 3707**, and
 it is the only window. That is where the optional-group offer has to go: after
 the reading, before the re-ask.
 
-**A rule that needs neither the reading nor the model belongs above 3291**,
+**A rule that needs neither the reading nor the model belongs above 3399**,
 where the price question and the pick-by-number sit: they only ever consult
 what this conversation already wrote down, and skipping the reading is what
 makes them answer in a fraction of a second rather than three.
