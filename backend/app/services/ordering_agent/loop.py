@@ -270,6 +270,73 @@ _WHICH_SECTION = "Which of those would you like to see?"
 _READY_TO_CHECK_OUT = "Ready to check out?"
 
 
+def describe_single_dish(dish: dict[str, Any]) -> str:
+    """One dish read back, with an offer to add it.
+
+    A dish sold in sizes has no single price to quote. This used to take
+    `price` off the row and say it:
+
+        > Build Your Own Pizza
+          Build Your Own Pizza is $14.99. Shall I add one?
+
+    $14.99 is the Small of three; the Large is $24.49. A quote the customer
+    can say yes to and then be charged something else for is the same fault
+    that put a Large in a cart at the base price.
+
+    So a sized dish is named and offered without a figure, and the size
+    question that follows carries every price. `has_sizes` is a column on
+    `menu_items`, so the row being read out already knows.
+    """
+
+    name = dish.get("name") or "that dish"
+    if dish.get("has_sizes"):
+        return f"{name} comes in a few sizes. Shall I set one up?"
+    return f"{name} is {_money(dish.get('price'))}. Shall I add one?"
+
+
+def would_be_added_without_asking(lookup: Any) -> bool:
+    """Whether adding this dish would put it in the cart with no further word.
+
+    A dish that still needs a size or a required choice answers with "Which
+    size for Vagharela Khaman?", which names the dish as plainly as any
+    confirmation and lets the customer correct it before a penny is committed.
+    A dish with nothing left to ask just lands.
+
+    That is the difference between the two ways a name can be a guess. Live:
+
+        > Mozzarella and mushroom
+          Added 1 x Farmhouse Pizza to your order. Anything else?
+
+    — a customer naming toppings, and a $329 pizza in the cart with nothing
+    asked. Whereas "khaman dhokla" is also a guess (Radhe Dhokla sells
+    Vagharela Khaman, and no dish name contains both words) and needs no
+    second question, because the size question carries the dish's name.
+
+    An optional group is not a question: it does not block an add, so it is
+    not something the customer is about to be asked. Nothing readable counts
+    as "would land", which is the cautious way round — confirm rather than
+    spend.
+    """
+
+    if not isinstance(lookup, dict):
+        return True
+    # Two shapes reach this. `add_to_cart`'s needs_choice result says
+    # `available_sizes` and marks a group `needs_selection`; `get_dish`'s
+    # catalog result says `sizes`/`has_sizes` and describes a group by
+    # `is_required`. Reading only the first was the bug in the first version
+    # of this: `available_sizes` is absent from a `get_dish` result, so every
+    # sized dish looked like one that would land silently, and "khaman dhokla"
+    # started asking "Did you mean Vagharela Khaman?" instead of its size.
+    if lookup.get("available_sizes") or lookup.get("sizes") or lookup.get("has_sizes"):
+        return False
+    for group in lookup.get("customization_groups") or []:
+        if not isinstance(group, dict):
+            continue
+        if group.get("needs_selection") or group.get("is_required"):
+            return False
+    return True
+
+
 def describe_cart(result: Any) -> str | None:
     """A `view_cart` result read back as a sentence, or None.
 
@@ -1372,7 +1439,7 @@ def run_turn(
             _forget_shown()
             return TurnOutcome(
                 answer=_hold(
-                    f"{only['name']} is {_money(only['price'])}. Shall I add one?",
+                    describe_single_dish(only),
                     yes="add",
                     subject=only["name"],
                 ),
@@ -2112,6 +2179,29 @@ def run_turn(
             records.append(ToolCallRecord(tool="get_dish", args={"name": name}, result=lookup))
         if exact:
             guards.grow_seen_ids(seen, {"menu_item_id": exact[0][0]})
+            return _run_add(resolved_args)
+
+        # Nobody said this dish's name. The guard above only refuses when
+        # SEVERAL dish names matched the words; a phrase matching none of them
+        # fell straight through to the semantic cascade, which resolved a dish
+        # and bought it. Live, from a customer naming pizza toppings:
+        #
+        #     > Mozzarella and mushroom
+        #       Added 1 x Farmhouse Pizza to your order. Anything else?
+        #
+        # The count of near misses never changed whether the customer asked
+        # for it. Only whether anything else would be asked before it landed:
+        # a dish still needing a size says its own name in the size question,
+        # so "khaman dhokla" keeps its one-step path and only a dish that
+        # would land silently costs a confirmation.
+        if would_be_added_without_asking(lookup):
+            found = str((lookup or {}).get("name") or "").strip()
+            if found:
+                records.append(ToolCallRecord(
+                    tool="get_dish", args={"name": name},
+                    result={"outcome": "ambiguous", "question": f"Did you mean {found}?"},
+                ))
+            return []
         return _run_add(resolved_args)
 
     def _run_add(args: dict[str, Any]) -> list[dict[str, Any]]:

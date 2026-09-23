@@ -1355,7 +1355,11 @@ def dishes_to_show(
                 report["found_by"] = "section"
                 report["section"] = section
             return [
-                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg),
+                 # So a read-back of ONE dish knows not to quote a single
+                 # price for a dish that has three. A column on the row,
+                 # so it costs no query.
+                 "has_sizes": bool(row.has_sizes)}
                 for row in rows
             ]
 
@@ -1407,7 +1411,11 @@ def dishes_to_show(
         rows = list(db.scalars(at_this_branch.order_by(MenuItem.price).limit(limit)))
         found_by = "over_budget"
     listed = [
-        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg),
+                 # So a read-back of ONE dish knows not to quote a single
+                 # price for a dish that has three. A column on the row,
+                 # so it costs no query.
+                 "has_sizes": bool(row.has_sizes)}
         for row in rows
     ]
     if report is not None:

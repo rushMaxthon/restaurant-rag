@@ -899,7 +899,7 @@ class ShowingTheMenuTests(unittest.TestCase):
 
         return [
             SimpleNamespace(id=_uuid.uuid4(), name=n, price=Decimal("9.99"),
-                            is_veg=v, category="Mains")
+                            is_veg=v, category="Mains", has_sizes=False)
             for n, v in names_and_veg
         ]
 
@@ -917,7 +917,12 @@ class ShowingTheMenuTests(unittest.TestCase):
 
     def test_dishes_come_back_with_their_names_and_prices(self) -> None:
         shown = self.shown(self.rows([("Margherita Pizza", True)]), "pizza")
-        self.assertEqual(shown, [{"name": "Margherita Pizza", "price": "9.99", "is_veg": True}])
+        # `has_sizes` joined the row so a read-back of ONE dish knows not to
+        # quote a single price for a dish sold in three sizes.
+        self.assertEqual(
+            shown,
+            [{"name": "Margherita Pizza", "price": "9.99", "is_veg": True, "has_sizes": False}],
+        )
 
     def test_a_diet_is_asked_of_the_query_not_remembered_by_a_model(self) -> None:
         import uuid as _uuid
@@ -1213,10 +1218,13 @@ class _MenuDb:
         return _Rows(self.rows)
 
 
-def _dish(name, price=4.5, is_veg=True):
+def _dish(name, price=4.5, is_veg=True, has_sizes=False):
     from types import SimpleNamespace
 
-    return SimpleNamespace(name=name, price=price, is_veg=is_veg)
+    # `has_sizes` is a real column on menu_items, and `dishes_to_show`
+    # carries it so a read-back of ONE dish knows not to quote a single
+    # price for a dish sold in three.
+    return SimpleNamespace(name=name, price=price, is_veg=is_veg, has_sizes=has_sizes)
 
 
 class TheQuestionWeEndedOnTests(unittest.TestCase):
