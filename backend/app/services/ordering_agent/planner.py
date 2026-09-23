@@ -585,6 +585,15 @@ _PLAIN = {
     "menu": (
         "menu", "menu card", "menu list", "food menu", "dishes", "dish list",
         "items", "item list", "options", "food", "food list", "menu items",
+        # The other half of how people ask. Live, on a thread where "Show me
+        # menu" worked perfectly: "Show me categories" and "Show me other
+        # items" were both searched for as though they were dishes, and both
+        # came back "I could not find categories on the menu" over eight
+        # appetizers. The branch's own sections were the answer to all three.
+        "categories", "category", "menu categories", "sections", "section",
+        "other items", "more items", "other dishes", "more dishes",
+        "other options", "anything else", "something else", "else",
+        "full menu", "whole menu", "all items", "list of items",
     ),
     "checkout": (
         "checkout", "check out", "checkout order", "place order", "order place",
