@@ -270,6 +270,127 @@ _WHICH_SECTION = "Which of those would you like to see?"
 _READY_TO_CHECK_OUT = "Ready to check out?"
 
 
+def storable_group(group: Any) -> dict[str, Any]:
+    """One customization group, in a form that survives `json.dumps`.
+
+    The live rows carry UUIDs and Decimals and the pending choice is stored as
+    JSON, so writing a group through unchanged raised
+
+        TypeError: Object of type UUID is not JSON serializable
+
+    on every turn that asked for a size. Caught by driving a real order, not by
+    the suite, whose fixtures use strings for ids. Every field is named and
+    coerced rather than leaning on a default encoder, so the stored shape is
+    the one the readers below expect.
+    """
+
+    if not isinstance(group, dict):
+        return {}
+    return {
+        "group_id": str(group.get("group_id") or ""),
+        "title": str(group.get("title") or ""),
+        "is_required": bool(group.get("is_required")),
+        "min_selection": int(group.get("min_selection") or 0),
+        "max_selection": int(group.get("max_selection") or 1),
+        "options": [
+            {
+                "option_id": str(option.get("option_id")),
+                "name": str(option.get("name")),
+                "extra_price": str(option.get("extra_price") or "0"),
+            }
+            for option in (group.get("options") or [])
+            if isinstance(option, dict) and option.get("option_id") and option.get("name")
+        ],
+    }
+
+
+def _words_of(text: str) -> list[str]:
+    """A message reduced to its words, for matching option names against."""
+
+    lowered = (text or "").lower().replace("'", "").replace("\u2019", "")
+    return [word for word in re.split(r"[^a-z0-9]+", lowered) if word]
+
+
+def options_named_in(message: str, asked: Any) -> list[str]:
+    """Which of the offered options this message names, in the order offered.
+
+    Decided here rather than taken from the reading, because the reading is a
+    model and does not agree with itself. Measured, with the toppings question
+    standing: "Mozzarella" came back as `chose: ["Mozzarella"]` on one run and
+    "Mozzarella and mushroom" as `add: [("Mozzarella and mushroom", 1)]` on the
+    next — one dish, by that name, which does not exist. Meanwhile "no" read as
+    `confirms: False`, and "none" and "skip" set nothing at all.
+
+    Whole words only. A name found inside a longer word would let a refusal buy
+    a topping — "tofurkey" is not an order of Tofu.
+
+    Returning names rather than ids keeps this the same currency
+    `_answer_choice` already matches in.
+    """
+
+    if not isinstance(asked, dict):
+        return []
+    words = _words_of(message)
+    if not words:
+        return []
+    said = " ".join(words)
+    named: list[str] = []
+    for option in asked.get("options") or []:
+        if not isinstance(option, dict) or not option.get("name"):
+            continue
+        name = str(option["name"])
+        wanted = " ".join(_words_of(name))
+        if not wanted or name in named:
+            continue
+        # Word-boundary containment: the option's words, in order, somewhere in
+        # the message. " x " padding makes the boundaries explicit without a
+        # regular expression per option.
+        if f" {wanted} " in f" {said} ":
+            named.append(name)
+    return named
+
+
+def next_optional_group(asked: Any, args: Any) -> dict[str, Any] | None:
+    """The optional group worth offering before this dish lands, if any.
+
+    Bangkok Bowl's Build Your Own Pizza has a Toppings group — MULTI, seven of
+    them — that no customer has ever been shown. That is correct one layer
+    down: an optional group is never "unmet", because its default IS the empty
+    selection, so it does not block. The consequence is that `add_to_cart`
+    applies the instant the required things are settled and the pizza is in the
+    cart before anything could ask.
+
+    So the last required answer checks here first. Nothing is offered until
+    every required thing IS settled — asking about toppings before the sauce is
+    a waiter interrupting himself — and a group carrying no options is not a
+    question, so it is passed over rather than asked emptily.
+
+    Answered from what `_remember_choice` wrote down, so it costs no query.
+    """
+
+    if not isinstance(asked, dict) or not isinstance(args, dict):
+        return None
+    later = [g for g in (asked.get("later") or []) if isinstance(g, dict)]
+    if not later:
+        return None
+
+    if asked.get("needs_size") and not args.get("menu_item_size_id"):
+        return None
+    chosen = {
+        str(option.get("option_id"))
+        for option in (args.get("selected_options") or [])
+        if isinstance(option, dict) and option.get("option_id")
+    }
+    for required in asked.get("required") or []:
+        if not chosen.intersection(str(o) for o in (required or [])):
+            return None
+
+    for group in later:
+        if group.get("options"):
+            return group
+    return None
+
+
 def reask_standing_choice(standing: Any) -> str | None:
     """Put a standing question again, with its answers spelled out.
 
@@ -2011,11 +2132,23 @@ def run_turn(
             return None
         return stored if isinstance(stored, dict) and stored.get("options") else None
 
-    def _remember_choice(result: dict[str, Any], base: dict[str, Any] | None = None) -> None:
+    def _remember_choice(
+        result: dict[str, Any],
+        base: dict[str, Any] | None = None,
+        later: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Write down the question just asked, with the ids behind it.
 
         A turn's records do not survive it. Without this the size question
         was asked correctly and the answer had nothing to land on.
+
+        Three more things travel with it so the last required answer can decide
+        whether anything optional is still worth offering, without going back
+        to the database: each required group's option ids, whether a size is
+        still wanted, and the optional groups nobody has been shown. `later` is
+        passed explicitly once one of them has been offered, so the rest carry
+        forward rather than being re-derived from a question that no longer
+        mentions them.
         """
 
         if scope.session_id is None:
@@ -2040,11 +2173,29 @@ def run_turn(
         settled = dict(base or {})
         settled.setdefault("menu_item_id", str(result.get("menu_item_id")))
         settled.setdefault("quantity", int(result.get("quantity") or 1))
+        groups = [g for g in (result.get("customization_groups") or []) if isinstance(g, dict)]
         draft_now = order_draft.load(scope.session_id)
         draft_now.pending_choice = json.dumps({
             "base": {k: v for k, v in settled.items() if v is not None},
             "question": ask_for_choice(result) or "",
             "options": options,
+            # For `next_optional_group`, which runs when the last required
+            # answer arrives and has no database to ask.
+            "name": str(result.get("name") or ""),
+            "needs_size": bool(result.get("needs_size")),
+            "required": [
+                [str(o.get("option_id")) for o in (g.get("options") or []) if o.get("option_id")]
+                for g in groups
+                if g.get("is_required")
+            ],
+            "later": [
+                storable_group(g)
+                for g in (
+                    later
+                    if later is not None
+                    else [g for g in groups if not g.get("is_required") and g.get("options")]
+                )
+            ],
             # How many times this has been put to the customer.
             # Reset whenever something was actually settled. A customer
             # answering a three-part question correctly is not a customer
@@ -2235,10 +2386,55 @@ def run_turn(
         if chosen:
             args["selected_options"] = chosen
         guards.grow_seen_ids(seen, args)
+
+        # Everything required is settled, so this add would land — which is the
+        # only moment an optional group can still be offered. After it, the
+        # dish is in the cart and nothing asks.
+        offering = next_optional_group(asked, args)
+        if offering is not None:
+            _offer_optional(asked, args, offering)
+            return []
+
         added = _run_add(args)
         if added:
             _forget_choice()
         return added
+
+    def _offer_optional(
+        asked: dict[str, Any], args: dict[str, Any], group: dict[str, Any]
+    ) -> None:
+        """Ask about one optional group, carrying everything settled with it.
+
+        Built as a `needs_choice` so it goes through the same composer and the
+        same memory as every other question: `ask_for_choice` already says "you
+        can choose more than one" for a group that takes several, and
+        `_remember_choice` already matches an answer against the ids offered.
+        """
+
+        rest = [
+            other
+            for other in (asked.get("later") or [])
+            if isinstance(other, dict) and other.get("group_id") != group.get("group_id")
+        ]
+        offered = {
+            "outcome": "needs_choice",
+            "name": asked.get("name") or "",
+            "menu_item_id": args.get("menu_item_id"),
+            "quantity": args.get("quantity") or 1,
+            "needs_size": False,
+            "available_sizes": [],
+            # Marked as wanted, because that is exactly what asking means.
+            "customization_groups": [{**group, "needs_selection": True}],
+        }
+        records.append(ToolCallRecord(tool="add_to_cart", args=dict(args), result=offered))
+        _remember_choice(offered, args, later=rest)
+        # Marked optional so the turn knows this question may be walked past.
+        if scope.session_id is not None:
+            draft_now = order_draft.load(scope.session_id)
+            stored = _pending_choice() or {}
+            stored["optional"] = True
+            draft_now.pending_choice = json.dumps(stored)
+            order_draft.save(scope.session_id, draft_now)
 
     def _add_named_dish(name: str, quantity: int) -> list[dict[str, Any]]:
         """Put a dish the customer named into the cart.
@@ -2711,6 +2907,38 @@ def run_turn(
             categories=sections,
         )
     )
+
+    # An optional group is an offer, not a gate, and this is the only window
+    # in which that can be enforced: after the reading, and before the guard
+    # below that re-asks a standing choice and returns. See
+    # `docs/ordering-agent-turn-routing.md`.
+    #
+    # Resolved against the options HERE rather than from the reading, because
+    # the reading is a model and does not agree with itself. Measured, with the
+    # toppings question standing: "Mozzarella" came back as `chose` on one run
+    # and "Mozzarella and mushroom" as an `add` for a dish of that name on the
+    # next, while "no" read as `confirms: False` and "none" and "skip" set
+    # nothing at all. The first version of this branched on those keys, and
+    # lost pizzas: four questions answered, then "no", and the dish was never
+    # added.
+    #
+    # Whatever the message was, the dish is added. The worst an optional group
+    # may cost somebody is a pizza without toppings, never the pizza.
+    if asked_before and asked_before.get("optional"):
+        picked = options_named_in(message, asked_before)
+        base_args = dict(asked_before.get("base") or {})
+        # This dish is one WE put in front of them a turn ago, and the guard
+        # that refuses a dish "the model never saw this turn" would otherwise
+        # refuse our own offer back. Without it `_run_add` returned nothing
+        # and the pizza was silently dropped on every refusal.
+        guards.grow_seen_ids(seen, base_args)
+        settled_now = (
+            _answer_choice(asked_before, picked) if picked else _run_add(base_args)
+        )
+        if settled_now:
+            actions.extend(settled_now)
+            _forget_choice()
+            asked_before = None
 
     # The model made nothing of a message that plainly says "I am done".
     # Measured: with a list standing, "that's all", "no", "nothing else" and
