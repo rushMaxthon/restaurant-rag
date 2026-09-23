@@ -350,6 +350,46 @@ def options_named_in(message: str, asked: Any) -> list[str]:
     return named
 
 
+#: Above this, a number in a message is not a count of dishes. Sizes are
+#: written "500 ml" and "1 Kg", phone numbers arrive in the same conversation,
+#: and "anything under 100" is a budget — none of them is a quantity, and a
+#: wrong one here changes what somebody pays.
+_MOST_ANYBODY_ORDERS = 50
+
+
+def quantity_asked_for(message: str) -> int | None:
+    """The count a message asks for, or None when that is not clear.
+
+    The reading has no way to say "change the count": "actually make it 3",
+    "make that two" and "change to 2" all come back as `wants_to_add` with the
+    number gone. So it is read off the message.
+
+    ONLY the number. Whether the message also names a dish, an option or a
+    cart line is the caller's question — this refuses wherever it cannot be
+    sure which number it is looking at, because two numbers in a sentence is
+    an order rather than a change of count, and a big one is a size, a price
+    or a phone number.
+
+    Zero is not a quantity either. "Make it 0" is a removal, and removal has
+    its own path, which asks before it throws anything away.
+    """
+
+    words = _words_of(message)
+    if not words:
+        return None
+    by_word = {name: value for value, name in _NUMERALS.items()}
+    found: list[int] = []
+    for word in words:
+        if word.isdigit():
+            found.append(int(word))
+        elif word in by_word:
+            found.append(by_word[word])
+    if len(found) != 1:
+        return None
+    wanted = found[0]
+    return wanted if 1 <= wanted <= _MOST_ANYBODY_ORDERS else None
+
+
 def cart_lines_named_in(message: str, lines: Any) -> list[dict[str, Any]]:
     """Which lines of this cart the message names, in the order they sit in it.
 
@@ -2636,6 +2676,37 @@ def run_turn(
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
+    def _run_set_quantity(line: dict[str, Any], quantity: int) -> list[dict[str, Any]]:
+        """Change one line's count, through the same guard a planned call uses.
+
+        `quantity` is the FINAL count, not a delta — "make it two" means the
+        line reads two afterwards, which is what `SetQuantityArgs` documents.
+        """
+
+        args = {
+            "menu_item_id": line.get("menu_item_id"),
+            "quantity": quantity,
+            "existing_lines": _as_tool_lines(cart),
+        }
+        guards.grow_seen_ids(seen, {"menu_item_id": line.get("menu_item_id")})
+        prepared, guard_error = guards.prepare_tool_call(
+            "set_quantity", args, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            logger.info("Ordering agent could not change that count: %s", guard_error)
+            return []
+        try:
+            result = TOOLS["set_quantity"].handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - never lose the turn over it
+            logger.warning("Ordering agent set_quantity raised: %s", error, exc_info=True)
+            return []
+        result = guards.enforce_destructive_policy(result)
+        records.append(
+            ToolCallRecord(tool="set_quantity", args=prepared.model_dump(), result=result)
+        )
+        action = result.get("action") if isinstance(result, dict) else None
+        return [action] if action else []
+
     def _add_what_was_asked_for() -> list[dict[str, Any]]:
         """Carry out the add the planner would not.
 
@@ -3211,6 +3282,61 @@ def run_turn(
         and wanted.get("confirms") is None
     ):
         return _reask_or_give_up(asked_before)
+
+    # A change of count. The reading loses the number — "actually make it 3"
+    # and "make that two" both come back as `wants_to_add` and nothing else —
+    # so it is read off the message, and applied to whatever this conversation
+    # is actually about. Placed above the suggestion and browse branches,
+    # which would otherwise answer first: see
+    # docs/ordering-agent-turn-routing.md.
+    if (
+        wanted.get("wants_to_add")
+        and not wanted["add"]
+        and not wanted.get("chose")
+        and not wanted.get("browse")
+        and not wanted.get("category")
+    ):
+        how_many = quantity_asked_for(message)
+        if how_many is not None:
+            if asked_before and asked_before.get("base"):
+                # Mid-build. The dish has not landed yet, so the count belongs
+                # to the question still standing rather than to a cart line —
+                # and the question is put again, because it is still open.
+                changed = dict(asked_before)
+                changed["base"] = {**changed["base"], "quantity": how_many}
+                if scope.session_id is not None:
+                    draft_now = order_draft.load(scope.session_id)
+                    draft_now.pending_choice = json.dumps(changed)
+                    order_draft.save(scope.session_id, draft_now)
+                # The question as it was, with no apology in front of it:
+                # `reask_standing_choice` opens "Sorry, I did not catch that",
+                # which is the opposite of what happened here.
+                again = str(changed.get("question") or "").strip()
+                return _answering(f"Make it {how_many}. {again}".strip())
+
+            cart_lines = (
+                (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+            )
+            if cart_lines:
+                # Which line, by the same rule removal uses: one named, or a
+                # cart holding one thing. Otherwise it is a guess about
+                # somebody's money.
+                line = line_to_remove(message, cart_lines)
+                if line is not None:
+                    counted = _run_set_quantity(line, how_many)
+                    if counted:
+                        actions.extend(counted)
+                        return _settled()
+                elif len(cart_lines) > 1:
+                    listed = ", ".join(
+                        str(l.get("name")) for l in cart_lines if l.get("name")
+                    )
+                    return _answering(
+                        _hold(
+                            f"Which one shall I make {how_many}? {listed}.",
+                            yes="name_one",
+                        )
+                    )
 
     # "What do you recommend" and "what's your cheapest" are answerable from
     # this branch's own columns, and were being searched for as dish names:

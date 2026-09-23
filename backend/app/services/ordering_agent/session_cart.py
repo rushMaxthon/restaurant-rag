@@ -91,7 +91,16 @@ def apply_actions(
     because a drifted shape must fail towards asking.
     """
 
-    current = list(lines)
+    # Copied line by line, not just the list. A shallow copy shares the
+    # `CartLinePayload` objects with the caller, and merging into an existing
+    # line does `existing.quantity += quantity` — on the caller's own object.
+    # Every caller then asks `if updated != cart: save(...)`, both sides hold
+    # the same mutated line, the comparison says nothing changed, and the save
+    # is skipped. Ordering the same dish twice and every change of count were
+    # answered "Added 1 x ..." / "now x3" over a cart that never moved. A NEW
+    # dish appends a line, so the lists differ and it saved — which is why
+    # carts filled at all, and why this went unnoticed.
+    current = [line.model_copy(deep=True) for line in lines]
     proposed: list[dict[str, Any]] = []
 
     for action in actions:
