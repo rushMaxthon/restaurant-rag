@@ -2047,9 +2047,17 @@ def run_turn(
                 # cart it says so plainly instead.
                 wanted["checkout"] = True
                 return None
-            # They agreed and named nothing. A list is answerable in a way
-            # the question is not, and it records what it offered, so the
-            # next message can pick from it.
+            # They agreed and named nothing. If a list of ours is already in
+            # front of them, that is what they agreed to — put it again
+            # rather than replacing it with three different dishes. Live,
+            # eight dhoklas were listed, "yes" arrived, and the reply was
+            # "Of course. These go quickly:" over an unrelated three.
+            standing_list = reask_standing_choice(_pending_choice() or _last_shown())
+            if standing_list:
+                return _answering(standing_list)
+            # Nothing in front of them. A list is answerable in a way the
+            # question is not, and it records what it offered, so the next
+            # message can pick from it.
             offered = _suggest_more()
             if offered is not None:
                 return offered
@@ -3175,6 +3183,14 @@ def run_turn(
         and not wanted["add"]
         and not wanted.get("browse")
         and not wanted.get("category")
+        # ...and nothing of ours is waiting. A question already on the table
+        # is a better answer than three new dishes. Live, with eight dhoklas
+        # listed and "Which one would you like?" standing, "1" and "actually
+        # make it 3" both read as `wants_to_add`, landed here, and were
+        # answered "Of course. These go quickly:" over three unrelated
+        # bestsellers — the dhoklas thrown away and the question dropped.
+        and not asked_before
+        and not shown_before
         and db is not None
         and scope.restaurant_location_id
     ):
