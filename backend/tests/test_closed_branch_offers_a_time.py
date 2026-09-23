@@ -60,7 +60,11 @@ class ClosedWithNoTimeNamedTests(unittest.TestCase):
         # The time is offered, never chosen for them: a scheduled order they
         # did not agree to is food arriving when nobody is home.
         self.assertIn("shall I place it for then", self.said)
-        self.assertIn("another time", self.said)
+        # It used to end "...or would you like another time?" — two questions,
+        # and live a "no" answered the second one and the model took the
+        # turn. One question now; a no to it already has its own path, which
+        # holds the order and asks for a time.
+        self.assertNotIn(", or ", self.said)
 
     def test_it_never_says_the_dead_end(self) -> None:
         self.assertNotIn("could not place", self.said)
@@ -86,7 +90,8 @@ class ATimeTheBranchCannotKeepTests(unittest.TestCase):
 
     def test_it_still_asks(self) -> None:
         self.assertIn("shall I make it that", self.said)
-        self.assertIn("another time", self.said)
+        # Same as above: one question, never "...or would you like another time?".
+        self.assertNotIn(", or ", self.said)
 
     def test_it_never_says_the_dead_end(self) -> None:
         self.assertNotIn("could not place", self.said)

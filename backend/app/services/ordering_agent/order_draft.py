@@ -203,6 +203,20 @@ def load(session_id: uuid.UUID | str) -> OrderDraft:
             "collecting", "confirmed", "confirm_asks", "order_confirmed", "place_asks",
         } and isinstance(stored.get(name), str):
             kept[name] = stored[name]
+
+    # A time that has gone by is not a plan any more. The draft lives 24 hours
+    # and that clock restarts on every save, so a time chosen one evening was
+    # still here the next afternoon — and the placement reused it. Live: "I
+    # cannot do Wed 11:00 for delivery" at 14:57 on the Wednesday, about an
+    # 11:00 nobody had mentioned that day. `_parse_when` refuses a past time
+    # on the way in; this refuses one on the way out. An offer made against
+    # that time goes with it, since it was measured from it. A time that
+    # cannot be read at all is left alone — the placement already treats an
+    # unreadable time as no time, and that is its call, not this one's.
+    when = _parse_when(kept.get("scheduled_at") or "")
+    if when is not None and when <= datetime.now(when.tzinfo):
+        kept.pop("scheduled_at", None)
+        kept.pop("offered_scheduled_at", None)
     return OrderDraft(**kept)
 
 

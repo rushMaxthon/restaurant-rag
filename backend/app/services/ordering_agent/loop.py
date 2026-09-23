@@ -1053,14 +1053,18 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
                     # They named a time and the branch cannot keep it. Saying
                     # which time is the point: "that will not work" about an
                     # unnamed time reads as a refusal of the whole order.
+                    # One question. "...or would you like another time?" made
+                    # two, and live a "no" answered the second one and the
+                    # model took the turn. A no to this already has its own
+                    # path: the order is held and a time is asked for.
                     return (
                         f"I cannot do {wanted} for {label}. The closest I can do is "
-                        f"{nearest} — shall I make it that, or would you like another time?"
+                        f"{nearest} — shall I make it that?"
                     )
                 return (
                     f"We are closed for {label} right now, but I can still take this "
                     f"for later. The next time I can do is {nearest} — shall I place it "
-                    f"for then, or would you like another time?"
+                    f"for then?"
                 )
             short = _short_of_minimum(record.result)
             if short is not None:

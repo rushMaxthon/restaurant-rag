@@ -1794,6 +1794,29 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def reference_for_next_slot(scheduled_for, *, now=None):
+    """Where to count the next available slot from.
+
+    The time the customer asked for, when it is still ahead — somebody asking
+    for tomorrow lunch is not helped by being offered this morning. But a time
+    already gone by is not a reference, it is history: measured from a stale
+    11:00 at 14:57, the "nearest" slot was 11:30, which the validator then
+    refused as being in the past, and the customer was told no to the very
+    time we had just offered them.
+
+    So it is the LATER of what they asked for and now.
+    """
+
+    from datetime import datetime
+
+    current = now or datetime.now(branch_hours.BUSINESS_TIMEZONE)
+    if scheduled_for is None:
+        return current
+    if scheduled_for.tzinfo is None:
+        scheduled_for = scheduled_for.replace(tzinfo=branch_hours.BUSINESS_TIMEZONE)
+    return max(scheduled_for, current)
+
+
 def _parse_iso(value: str | None):
     """An ISO datetime with a zone, or None — the draft only ever stores it
     that way (`order_draft._parse_when`), so anything else is not ours."""
@@ -2034,7 +2057,9 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
                     nearest = branch_hours.next_available_slot_start(
                         location,
                         fulfillment_type=fulfillment,
-                        reference_dt=scheduled_for,
+                        # ...and never from a time already gone by: that offered
+                        # Wed 11:30 at 14:57, which was then refused as past.
+                        reference_dt=reference_for_next_slot(scheduled_for),
                     )
                     if nearest is not None:
                         refusal["next_open"] = nearest.isoformat()

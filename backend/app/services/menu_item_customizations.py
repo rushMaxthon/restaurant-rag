@@ -142,21 +142,26 @@ def fetch_menu_items_for_customized_order(
     restaurant_location_id: uuid.UUID,
     menu_item_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, MenuItem]:
-    if len(set(menu_item_ids)) != len(menu_item_ids):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Duplicate menu items are not allowed in the cart",
-        )
+    # A repeated id is the same dish, differently made — two Build Your Own
+    # Pizzas, one with green curry sauce and one with tomato — and it is a
+    # legitimate cart. This used to refuse it outright ("Duplicate menu items
+    # are not allowed in the cart"), and live that refused a whole order the
+    # customer had built through eight questions. Neither caller needed the
+    # rule: both walk the cart's lines and look each one up in the dict this
+    # returns, so a repeat simply finds the same dish twice. The cart itself
+    # already merges IDENTICAL lines into one, so the only repeats that ever
+    # reach here are the legitimate ones.
+    wanted_ids = list(dict.fromkeys(menu_item_ids))
 
     menu_items = db.scalars(
         menu_item_query_with_customizations().where(
             MenuItem.restaurant_id == restaurant_id,
             MenuItem.restaurant_location_id == restaurant_location_id,
-            MenuItem.id.in_(menu_item_ids),
+            MenuItem.id.in_(wanted_ids),
         )
     ).all()
     found = {menu_item.id: menu_item for menu_item in menu_items}
-    if len(found) != len(menu_item_ids):
+    if len(found) != len(wanted_ids):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="One or more menu items were not found for this restaurant",
