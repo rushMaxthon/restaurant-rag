@@ -62,7 +62,7 @@ list is read out: answer it with a number, and ask how much.
 - `tools.py` — `prices_of(names=... | menu_item_id=...)`, one query, exact
   names, sizes with ids.
 - `docs/ordering-agent-turn-routing.md` — table regenerated (re-ask guard is
-  now 3508, reading at 3257) plus a section for the two pre-reading reads.
+  now 3542, reading at 3291) plus a section for the two pre-reading reads.
 - New `tests/test_picking_by_number_and_asking_the_price.py` (19).
 
 **Verified:** `python -m unittest discover -s tests` OK three times over the
