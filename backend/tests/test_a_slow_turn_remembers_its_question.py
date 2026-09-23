@@ -116,7 +116,12 @@ class BothPathsRecordWhatTheyAskedTests(unittest.TestCase):
         # the same object that was put in the reply. `describe_applied` twice
         # returns two equal strings that are not the same object.
         block = SOURCE[SOURCE.index("Computed once and reused") : SOURCE.index("asked the needs_choice")]
-        self.assertEqual(block.count("describe_applied(records)"), 1)
+        # Counted on the call, not on its arguments: it grew a `goes_with`
+        # when an add started offering something alongside it, and the point
+        # here is that it is called ONCE — a second call returns an equal
+        # string that is not the same object, and the identity check below
+        # would stop recognising it.
+        self.assertEqual(block.count("describe_applied("), 1)
 
 
 class AnsweringNoIsStillHandledTests(unittest.TestCase):

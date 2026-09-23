@@ -571,7 +571,9 @@ def _identifiable(scope: OrderingScope) -> bool:
     return scope.customer is not None or bool(scope.verified_phone)
 
 
-def describe_applied(records: list[ToolCallRecord]) -> str | None:
+def describe_applied(
+    records: list[ToolCallRecord], goes_with: list[dict[str, Any]] | None = None
+) -> str | None:
     """What the turn actually did to the cart, said from the tool's own rows.
 
     A turn that added something and then had nothing to say let the reply
@@ -581,6 +583,7 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
     """
 
     said = []
+    anything_added = False
     for record in records:
         result = record.result
         if not isinstance(result, dict) or result.get("outcome") != "action":
@@ -592,16 +595,32 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
         quantity = result.get("quantity") or action.get("quantity") or 1
         if action.get("kind") == "add":
             said.append(f"Added {quantity} x {name} to your order.")
+            anything_added = True
         elif action.get("kind") == "set_quantity":
             said.append(f"{name} is now x{quantity}.")
         elif action.get("kind") == "remove":
             said.append(f"Removed {name} from your order.")
     if not said:
         return None
+    head = " ".join(said)
+
+    # Somebody who has just chosen a dish is the easiest person in the world
+    # to offer a drink to, and "Anything else?" on its own hands the work of
+    # remembering the menu back to them at exactly that moment. Only after an
+    # ADD: taking something out is not an opening to sell.
+    #
+    # The rows are `dishes_to_suggest`'s — the branch's own bestseller and
+    # popularity columns, one per section, minus what is already in the cart —
+    # so nothing here is a guess about what goes with what.
+    if anything_added and goes_with:
+        listed = "\n".join(f"- {d.get('name')} - {_money(d.get('price'))}" for d in goes_with)
+        head = f"{head}\n\nPeople often add:\n{listed}"
+
     # One question, so that "yes" to it has one meaning. "Anything else, or
     # shall we get it on its way?" put two to a customer at once, and the
-    # answer to both of them is yes.
-    return " ".join(said) + " Anything else?"
+    # answer to both of them is yes. It goes last, because buried above a
+    # price list it reads as part of the list.
+    return f"{head}\n\nAnything else?" if anything_added and goes_with else head + " Anything else?"
 
 
 _PLACE_FAILURE_LINES = {
@@ -2347,7 +2366,7 @@ def run_turn(
         # Computed once and reused below, because `_hold_the_question` tells
         # which sentence this is by identity: calling `describe_applied` twice
         # returns two equal strings that are not the same object.
-        applied = describe_applied(records)
+        applied = describe_applied(records, goes_with=_goes_with(records))
         summary = _cart_summary_in(records) or cart_readback
         question = (
             describe_placed_order(placed_order_in(records))
@@ -2406,6 +2425,39 @@ def run_turn(
         elif summary is not None and answer is summary:
             _hold("Ready to check out?", yes="checkout")
 
+    def _goes_with(records: list[ToolCallRecord]) -> list[dict[str, Any]]:
+        """A couple of things to offer alongside what was just added.
+
+        Rows, never taste: `dishes_to_suggest` orders by this branch's own
+        bestseller and popularity columns and takes at most one per section,
+        so three suggestions are three ideas rather than three main courses.
+
+        The dish just added is excluded explicitly. The cart this turn was
+        handed predates it — the caller applies the actions afterwards — so
+        without this the first thing offered alongside a pizza was that pizza.
+        """
+
+        if db is None or not scope.restaurant_location_id:
+            return []
+        just_added = [
+            (r.result or {}).get("action", {}).get("menu_item_id")
+            for r in records
+            if isinstance(r.result, dict)
+            and (r.result.get("action") or {}).get("kind") == "add"
+        ]
+        want_veg = True if (scope.diet or "").lower() == "veg" else None
+        try:
+            return tools_module.dishes_to_suggest(
+                db,
+                scope,
+                in_cart=[line.menu_item_id for line in cart] + [i for i in just_added if i],
+                is_veg=want_veg,
+                limit=2,
+            )
+        except Exception:  # noqa: BLE001 - a suggestion is never worth the turn
+            logger.warning("Ordering agent could not read suggestions", exc_info=True)
+            return []
+
     def _settled(asked_to_see_cart: bool = False) -> TurnOutcome:
         """The turn as the rows alone can end it — no words from the model.
 
@@ -2420,7 +2472,7 @@ def run_turn(
         """
 
         placed = placed_order_in(records)
-        applied = describe_applied(records)
+        applied = describe_applied(records, goes_with=_goes_with(records))
         summary = _cart_summary_in(records) or cart_readback
         if asked_to_see_cart and summary:
             answer = summary
