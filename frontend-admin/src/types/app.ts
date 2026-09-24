@@ -1,4 +1,10 @@
-export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER';
+/**
+ * KITCHEN cannot sign into this panel — no route in `routes.tsx` admits it.
+ * It is here because `/admin/users` returns every account to an ADMIN, so a
+ * cook appears in the Users list, and a union that did not know the role made
+ * `ROLE_META[user.role]` undefined and crashed the page on `meta.icon`.
+ */
+export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER' | 'KITCHEN';
 export type NotificationAudience =
   | 'ALL_USERS'
   | 'CUSTOMERS'
@@ -1360,4 +1366,48 @@ export interface PaymentGatewayPayload {
   secret_key?: string | null;
   webhook_secret?: string | null;
   is_enabled: boolean;
+}
+
+
+/**
+ * A kitchen account, as `GET /kitchen-staff` returns it.
+ *
+ * The login an order board runs on, pinned to one restaurant and optionally to
+ * one branch of it. `restaurant_location_id` being null is a real answer — it
+ * means every branch of the restaurant — and not a value waiting to be filled
+ * in. See "The kitchen board" in CLAUDE.md.
+ */
+export interface KitchenStaff {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number: string | null;
+  is_active: boolean;
+  restaurant_id: string;
+  restaurant_location_id: string | null;
+  /** Resolved server-side, so a list is readable without a second fetch. */
+  branch_name: string | null;
+  created_at: string;
+}
+
+export interface KitchenStaffCreatePayload {
+  full_name: string;
+  email: string;
+  password: string;
+  phone_number?: string | null;
+  /** Omitted means every branch of the restaurant. */
+  restaurant_location_id?: string | null;
+  /** ADMIN only. An OWNER is pinned to their own and may not name another. */
+  restaurant_id?: string | null;
+}
+
+export interface KitchenStaffUpdatePayload {
+  full_name?: string;
+  restaurant_location_id?: string | null;
+  /**
+   * Widen the account back to every branch. Needed because `null` and "not
+   * sent" are different intentions and JSON cannot tell the server apart.
+   */
+  clear_restaurant_location?: boolean;
+  is_active?: boolean;
 }

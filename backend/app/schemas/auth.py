@@ -71,7 +71,15 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: UserRole
+    # The restaurant this account is bound to: an OWNER's own, or the one a
+    # KITCHEN account is assigned to. Null for an ADMIN, who has none, and for
+    # a CUSTOMER, who is not staff.
     restaurant_id: uuid.UUID | None = None
+    # The single branch a KITCHEN account is pinned to, and null for every
+    # other role — including a kitchen account assigned to a restaurant rather
+    # than to one of its branches. The order board reads it to decide whether
+    # to offer a branch picker at all.
+    restaurant_location_id: uuid.UUID | None = None
     # The app this account belongs to; null for platform staff. Clients can
     # persist it alongside the token to detect a rebuilt/re-branded app.
     app_client_id: uuid.UUID | None = None

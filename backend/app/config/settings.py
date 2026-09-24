@@ -53,8 +53,11 @@ class Settings(BaseSettings):
     # (the customer web app), and the fallback identity scope.
     default_app_client_key: str = "marketplace"
 
+    # 5173 customer web, 5174 the admin/owner panel, 5175 the kitchen board.
+    # Each dev server pins its own port (`strictPort`) so this list stays true
+    # rather than drifting the first time one of them is already in use.
     backend_cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081"
+        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:8080,http://localhost:8081"
     )
 
     # A phone or a second laptop on the same wifi reaches the dev servers by this

@@ -12,13 +12,14 @@ did. Read the last 2-3 entries before starting work, append an entry when done.
 
 A monorepo for a multi-restaurant ordering platform with two AI surfaces —
 customer-facing RAG food chat, and an AI Restaurant Manager for owners — plus a
-Marketing Hub for owner-run campaigns.
+Marketing Hub for owner-run campaigns and a kitchen order board.
 
 | Path | What it is | Stack |
 |---|---|---|
 | `backend/` | source of truth for every business rule | FastAPI 0.115, SQLAlchemy 2.0, Postgres + pgvector, Celery + Redis, Ollama (qwen3:8b, nomic-embed-text), Stripe, Firebase Admin |
 | `frontend-customer/` | customer web app | TanStack Start + React 19, Tailwind, shadcn/Radix, TanStack Query (SSR) |
 | `frontend-admin/` | shared ADMIN + OWNER dashboard | React 19 + Vite, only `lucide-react` + fontsource |
+| `frontend-kitchen/` | the kitchen order board (KDS) | React 19 + Vite, TanStack Query, hand-written CSS, `lucide-react` + fontsource |
 | `mobile/` | customer app | React Native 0.85 CLI, React Navigation, Firebase phone auth, Stripe RN, Notifee |
 
 ---
@@ -128,10 +129,13 @@ Identity:
 - `AppClient` scopes customers. The same phone in the Marketplace app and in a
   single-restaurant app are **two separate accounts**; JWTs are bound to their
   app. See `docs/per-app-identity.md`.
-- Roles: `ADMIN`, `OWNER` (platform staff, `app_client_id` NULL), `CUSTOMER`.
-  One owner to exactly one restaurant. The role/app-client split is a DB CHECK
-  (`ck_users_app_client_scope_matches_role`), and customer uniqueness lives in
-  partial indexes defined in migration `0036`, not in the SQLAlchemy model.
+- Roles: `ADMIN`, `OWNER`, `KITCHEN` (all platform staff, `app_client_id`
+  NULL), `CUSTOMER`. One owner to exactly one restaurant. The role/app-client
+  split is a DB CHECK (`ck_users_app_client_scope_matches_role`), and customer
+  uniqueness lives in partial indexes defined in migration `0036`, not in the
+  SQLAlchemy model. Those platform-uniqueness indexes name the staff roles
+  explicitly — `0071` had to widen them, or a KITCHEN account would have had
+  no uniqueness on its email at all.
 
 Orders: `PAYMENT_PENDING -> PLACED -> ACCEPTED -> PREPARING -> OUT_FOR_DELIVERY
 -> DELIVERED`, strictly linear, plus `CANCELLED`. There is no human cancellation
@@ -292,6 +296,74 @@ for.
 
 ---
 
+## The kitchen board
+
+`frontend-kitchen/` is the screen a kitchen works from, and `UserRole.KITCHEN`
+(migration `0071_kitchen_staff`) is the login it runs on. Both exist because
+advancing an order was `require_owner`, so the only way to put a board in a
+kitchen was to leave the owner signed in on it — one token that also edits the
+menu, spends marketing budget and reads revenue, on a tablet on a wall.
+
+**`resolve_order_board_scope` is the rule, and it is the only rule.** One
+function in `services/auth.py` answers "which restaurant, which branch" for all
+three board roles, and `GET /orders`, `GET /orders/{id}` and `PATCH
+/orders/{id}/status` all go through it — so a cook can never be shown an order
+they may not advance, or advance one they were never shown. An ADMIN names a
+restaurant or gets all of them, an OWNER gets their own, a KITCHEN account gets
+what is stored on its row. A requested value may only ever NARROW a scope;
+asking outside it is 403, never silently ignored.
+
+**The assignment is two columns on `users`, and the database enforces the
+pairing.** `staff_restaurant_id` and `staff_restaurant_location_id`, with
+`ck_users_kitchen_assignment` making it exhaustive — a KITCHEN row without a
+restaurant is rejected, and any other role carrying either column is too. The
+branch is tied to the restaurant by a COMPOSITE foreign key onto
+`(id, restaurant_id)`, not a plain one onto `id`, so a cook pinned to somebody
+else's branch is unrepresentable rather than merely unlikely. A NULL location
+means every branch of that restaurant and is a real answer, not a missing one.
+All of it is mirrored in `__table_args__` as well as in the migration, because
+the test suites build from `create_all` and never run a migration.
+
+**Out-of-scope orders are 404, not 403.** The scope narrows the query rather
+than being checked after it, so a cook learns nothing about an order that is
+not theirs — including whether it exists.
+
+**Nothing else creates a kitchen account.** `POST /kitchen-staff` is the only
+route that does; the platform's one other staff-creating path is
+`POST /restaurants`, which makes a single OWNER beside a new restaurant. A
+KITCHEN account cannot create another, and deactivating or re-branching one
+bumps `token_version`, or the tablet keeps working until its token expires.
+`PATCH /admin/users/{id}` — the Users page's own deactivate — now bumps it
+too, for any role: it reaches the same row by another door, and only the
+kitchen route was ending sessions.
+
+**The owner-facing screen is `KitchenStaffPage`** (`/kitchen-staff`, both
+staff roles). Add, rename, reassign a branch, activate/deactivate — and no
+delete, because `order_status_events.actor_user_id` points at these rows and
+removing one would take its audit trail with it. The email and password are
+not editable after creation, because the backend refuses both: re-pointing a
+live login at a different person is how a revoked account quietly comes back.
+It reuses `useMarketingScope` for the admin restaurant picker rather than
+growing a fourth copy of that logic, and the form rules live in
+`services/kitchenStaff.ts` so they can be tested without rendering a form.
+
+**A KITCHEN account shows up in the Users list.** `/admin/users` returns every
+account to an ADMIN, so `ROLE_META` in `AdminUsersPage` has to be exhaustive —
+a missing role is not a cosmetic gap, it is `meta.icon` on `undefined` and the
+whole page goes down. That is why `UserRole` in `frontend-admin/src/types` now
+includes `KITCHEN` even though no route in the panel admits that role.
+
+**`OrderEventActor.KITCHEN` exists so the audit log stays honest.** Without it
+`actor_for_user` falls through to SYSTEM and every advance a cook makes reads
+as something the platform did by itself.
+
+Client side: "live" is a **poll**, because there is no WebSocket or SSE anywhere
+in this backend. Four queries, one per column, six seconds,
+`refetchIntervalInBackground` on because a wall-mounted board is never focused.
+The rules worth testing are pure and live in `src/lib/board.ts`.
+
+---
+
 ## Where to make changes
 
 - business rules -> `backend/app/services/`
@@ -300,6 +372,7 @@ for.
 - routes and contracts -> `backend/app/api/` + `backend/app/schemas/`
 - schema -> `backend/app/models/` + `backend/alembic/versions/`
 - admin UI -> `frontend-admin/src/pages/`, `frontend-admin/src/components/`
+- kitchen board -> `frontend-kitchen/src/` (rules in `src/lib/board.ts`)
 - customer web UI -> `frontend-customer/src/pages/`, `.../components/`
 - mobile UI -> `mobile/src/screens/`, `.../components/`, `.../navigation/`
 
@@ -317,7 +390,7 @@ celery -A app.config.celery:celery_app worker --loglevel=info -Q embeddings,noti
 python -m unittest discover -s tests      # tests are unittest-based, not pytest
 python -m compileall app alembic          # the repo's usual syntax check
 
-# web (from frontend-admin/ or frontend-customer/)
+# web (from frontend-admin/, frontend-customer/ or frontend-kitchen/)
 npm run dev | npm run build | npm run lint
 
 # mobile (from mobile/)
@@ -329,9 +402,9 @@ npm run lint | npm run test
 Verification this repo actually uses: `compileall` for backend, `npm run build`
 for both webs, `tsc --noEmit` for mobile.
 
-`frontend-admin` and `frontend-customer` both also have vitest suites
-(`npm run test`), and `mobile` has jest (`npm run test`) — worth running when
-touching their logic, since none of them is covered by a build alone. The
+`frontend-admin`, `frontend-customer` and `frontend-kitchen` all have vitest
+suites (`npm run test`), and `mobile` has jest (`npm run test`) — worth running
+when touching their logic, since none of them is covered by a build alone. The
 backend suites need the local Postgres up: each creates and drops its own
 throwaway database and skips itself entirely if it cannot connect, so a green
 run with Postgres down means nothing ran.
@@ -455,10 +528,13 @@ Start the three services, each in its own shell:
 cd backend && ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd frontend-customer && npm run dev -- --port 5173 --strictPort
 cd frontend-admin && npm run dev -- --port 5174 --strictPort
+cd frontend-kitchen && npm run dev            # 5175, pinned in vite.config.ts
 ```
 
-The ports are not arbitrary: both web apps hardcode `http://localhost:8000/api`
-for dev, and 5173/5174 are both in the backend's default CORS list. Seeded
+The ports are not arbitrary: all three web apps hardcode
+`http://localhost:8000/api` for dev, and 5173/5174/5175 are in the backend's
+default CORS list. **`backend/.env` overrides that default**, so a new port has
+to be added in both places — which is how 5175 was missed the first time. Seeded
 logins are `admin@example.com` and `customer1@example.com`, password
 `password123`.
 
@@ -564,11 +640,28 @@ Kept because the notes are hard-won, not because they apply here.
   failure this whole exercise existed to fix. Read the chain from
   `down_revision`, never from the filename.
 
-  **Supabase is still stamped `0070_channel_connections`** and that stamp
-  still resolves, so `alembic upgrade head` remains a no-op there. Nothing
+  **`0071_kitchen_staff` is the first revision past that stamp**, so unlike
+  0063-0068 it is not a no-op on Supabase — it genuinely runs there. It is
+  additive (a new enum value on `user_role` and `order_event_actor`, two
+  nullable columns, a CHECK, a composite FK, and a rewrite of the two
+  platform-uniqueness indexes) and it round-trips: verified upgrade →
+  downgrade → upgrade on a throwaway database.
+
+  Two traps it documents, both of which bite anything that adds an enum value
+  here. `alembic/env.py` does not set `transaction_per_migration`, so an
+  upgrade runs EVERY pending revision in one transaction — and Postgres
+  refuses to let a newly added enum value be used until that transaction
+  commits, so a later CHECK naming `'KITCHEN'` fails with *unsafe use of new
+  value*. Splitting into two revisions does not help; `op.get_context().
+  autocommit_block()` is what does. And the metadata naming convention is
+  `ck_%(table_name)s_%(constraint_name)s`, which alembic applies to a DROP as
+  well as a CREATE — pass the bare name to both, or the downgrade tries to
+  drop `ck_users_ck_users_kitchen_assignment`.
+
+  **Supabase is otherwise still stamped `0070_channel_connections`** and that
+  stamp still resolves, so everything before 0071 remains a no-op there. Nothing
   re-runs: every object V2's 0063-0068 create already exists, and each of
-  those migrations is guarded to return early when it does. New migrations
-  take `0071+`.
+  those migrations is guarded to return early when it does. New migrations take `0072+`.
 
 - Migration numbering also skips `0033`-`0035` (jumps `0032` to `0036`).
   Intentional or not, do not "fix" it; the chain is defined by `down_revision`.

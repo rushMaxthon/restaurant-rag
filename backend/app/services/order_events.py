@@ -47,6 +47,11 @@ def actor_for_user(user: User | None) -> OrderEventActor:
         return OrderEventActor.OWNER
     if user.role == UserRole.CUSTOMER:
         return OrderEventActor.CUSTOMER
+    # Before this branch existed a cook's advance was logged as SYSTEM, which
+    # reads as "the platform did this by itself" — the opposite of what this
+    # table is for.
+    if user.role == UserRole.KITCHEN:
+        return OrderEventActor.KITCHEN
     return OrderEventActor.SYSTEM
 
 

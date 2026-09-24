@@ -523,6 +523,14 @@ def update_user_status(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin cannot deactivate themselves")
 
     user.is_active = payload.is_active
+    if not payload.is_active:
+        # Deactivating has to END the sessions already issued, not just stop
+        # new ones. Without this the account keeps working until its token
+        # expires on its own — which for a KITCHEN account means the tablet on
+        # the kitchen wall carries on taking orders after it was switched off.
+        # `POST /kitchen-staff`'s own deactivate path has always done this;
+        # this route is the other way to reach the same row.
+        user.token_version += 1
     db.add(user)
     db.commit()
 

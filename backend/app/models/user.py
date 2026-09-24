@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +29,7 @@ if TYPE_CHECKING:
     from app.models.personalized_recommendation_snapshot import PersonalizedRecommendationSnapshot
     from app.models.push_notification_campaign import PushNotificationCampaign
     from app.models.restaurant import Restaurant
+    from app.models.restaurant_location import RestaurantLocation
     from app.models.user_device_token import UserDeviceToken
     from app.models.user_saved_address import UserSavedAddress
     from app.models.user_preferences import UserPreferences
@@ -41,10 +52,42 @@ class User(TimestampMixin, Base):
 
     A CHECK constraint (`ck_users_app_client_scope_matches_role`) enforces the
     CUSTOMER/staff split, so `app_client_id` must be set explicitly on every
-    insert; leaving it to the default fails at the database.
+    insert; leaving it to the default fails at the database. KITCHEN is staff
+    for that constraint's purposes and so carries no app client either.
     """
 
     __tablename__ = "users"
+    # Mirrors migration 0071. Declared here as well as there because the test
+    # suites build their schema from `Base.metadata.create_all` and never run
+    # a migration — without these a throwaway test database would accept a
+    # kitchen account with no restaurant, which is the one state that would
+    # let it read every order on the platform.
+    #
+    # `ck_users_app_client_scope_matches_role` is NOT repeated here: it
+    # predates this pattern and stays migration-only, as its own docstring in
+    # 0036 describes.
+    __table_args__ = (
+        CheckConstraint(
+            "(role = 'KITCHEN' AND staff_restaurant_id IS NOT NULL) "
+            "OR (role <> 'KITCHEN' "
+            "AND staff_restaurant_id IS NULL "
+            "AND staff_restaurant_location_id IS NULL)",
+            # The metadata convention is "ck_%(table_name)s_%(constraint_name)s",
+            # so this bare name is what produces `ck_users_kitchen_assignment` —
+            # the same name migration 0071 creates. Spelling the full name here
+            # yields `ck_users_ck_users_kitchen_assignment`.
+            name="kitchen_assignment",
+        ),
+        # Composite, so the branch must belong to the restaurant named beside
+        # it. A NULL location satisfies it by default (MATCH SIMPLE), which is
+        # the "every branch of this restaurant" case.
+        ForeignKeyConstraint(
+            ["staff_restaurant_location_id", "staff_restaurant_id"],
+            ["restaurant_locations.id", "restaurant_locations.restaurant_id"],
+            name="fk_users_staff_location_matches_restaurant",
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     app_client_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -69,6 +112,33 @@ class User(TimestampMixin, Base):
         nullable=False,
         default=0,
         server_default="0",
+    )
+    # Where a KITCHEN account works, and NULL for every other role.
+    #
+    # An OWNER reaches their restaurant through `Restaurant.owner_id` and an
+    # ADMIN names one per request; a cook can do neither, so the assignment is
+    # stored. `ck_users_kitchen_assignment` (migration 0072) makes the pairing
+    # exhaustive: KITCHEN must have a restaurant, everyone else must have
+    # neither column set. So "a kitchen account with no restaurant" — which
+    # would read every order on the platform — cannot be written at all.
+    staff_restaurant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("restaurants.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # The one branch this account sees, or NULL for every branch of the
+    # restaurant above. NULL is a real answer: a single-branch restaurant has
+    # nothing to pin, and a head kitchen may legitimately watch all of them.
+    #
+    # There is no plain foreign key here. The composite one in 0072 points at
+    # `(id, restaurant_id)`, so a branch belonging to a DIFFERENT restaurant
+    # than `staff_restaurant_id` is rejected by the database rather than by a
+    # check somebody has to remember to write.
+    staff_restaurant_location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
     )
     # Marketing consent, opt-out: true until the customer says otherwise.
     #
@@ -103,6 +173,18 @@ class User(TimestampMixin, Base):
         uselist=False,
         cascade="all, delete-orphan",
         foreign_keys="Restaurant.owner_id",
+    )
+    # Read-only views onto the assignment above. `viewonly` because the
+    # composite foreign key spans two columns and SQLAlchemy must not try to
+    # maintain either side of it from here.
+    staff_restaurant: Mapped["Restaurant | None"] = relationship(
+        foreign_keys=[staff_restaurant_id],
+        viewonly=True,
+    )
+    staff_restaurant_location: Mapped["RestaurantLocation | None"] = relationship(
+        primaryjoin="User.staff_restaurant_location_id == RestaurantLocation.id",
+        foreign_keys=[staff_restaurant_location_id],
+        viewonly=True,
     )
     customer_orders: Mapped[list["Order"]] = relationship(
         back_populates="customer",

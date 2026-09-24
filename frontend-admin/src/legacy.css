@@ -2579,6 +2579,35 @@ select:focus-visible {
   padding-left: 9px;
 }
 
+/* Which branch a kitchen account works, in the staff table.
+   Shaped like `.usr-role` above — same shrink-wrap rules, same reasons — but
+   neutral rather than toned: a branch is not a status, and colouring it would
+   make "All branches" read as a warning about an account that is in fact
+   configured exactly as intended. */
+.kds-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 10px 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--hint);
+  font-size: var(--fs-tiny);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.kds-branch svg {
+  flex: none;
+  opacity: 0.7;
+}
+
 .status-pill--interactive {
   padding-right: 8px;
   cursor: pointer;

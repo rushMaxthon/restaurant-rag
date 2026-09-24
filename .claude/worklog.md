@@ -26,6 +26,197 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-23 — The kitchen board, redesigned
+
+**Goal:** rebuild `frontend-kitchen`'s UI against a supplied KDS reference —
+premium, dark, four columns, compact tickets — without touching the backend or
+the workflow.
+
+**Changed:** `index.css` rewritten (~1070 lines), `App.tsx` (header, live
+metrics, filter/search toolbar), `Board.tsx`, `Ticket.tsx`, `SignIn.tsx` all
+rewritten; `lib/metrics.ts` + tests (new); `formatWait` added to `lib/board.ts`;
+`api.ts` now reads the restaurant's name for the header. 33 tests.
+
+**Three things in the reference were NOT built, because no data supports them:**
+dine-in and table numbers (`OrderFulfillmentType` is DELIVERY|PICKUP),
+veg/non-veg dots (`OrderItemResponse` has no `is_veg`), and an OPEN/BUSY/PAUSED
+mode (nothing here can set one — the chip shows the branch's own `is_open`
+instead). `HIGH`/`URGENT` ARE shown, derived from elapsed time via `urgencyOf`
+rather than from a priority column that does not exist.
+
+**Verified by driving the real app with Playwright** against the running API,
+not by reading the code — which is the only reason the two defects below were
+found:
+- Signed in as a real kitchen account, advanced a ticket through the UI:
+  New→Accepted, counts 3/2/4/3 → 2/3/4/3, no page errors.
+- Filters, search-by-code, per-column empty states, offline fault panel, and
+  1024/1560/1920 viewports all checked.
+- `tsc -b`, `eslint`, 33 tests, `npm run build` all clean.
+
+**Two real bugs found by running it:**
+- **Infinite render loop.** `Board` fetched the orders and reported them up
+  through an effect so the summary bar could count the same rows. `useQueries`
+  returns a NEW array every render, so the effect fired every render → React
+  gave up with "Maximum update depth exceeded". Fixed by moving ownership: the
+  shell fetches and counts during render, `Board` renders. No effect, and the
+  metrics cannot drift from the columns because they are the columns.
+- **`132388m`.** Elapsed time was rendered as raw minutes, so a forgotten
+  ticket printed a five-figure minute count — unreadable, and somehow less
+  alarming than "91d". `formatWait` now switches to hours past an hour and
+  days past a day.
+
+**Follow-up the same day — urgency stopped owning the border.** On a real
+board every card had a red outline, because during service most tickets are
+past their threshold. That is the same argument already written into the CSS
+for the Overdue tile: a signal that is always on is not a signal. The border
+is now always neutral; the 3px leading stripe carries both stage and wait —
+the column's own tone when calm (so New / Accepted / Cooking / Ready stay
+distinguishable), amber at the warning point, red when overdue. A late ticket
+lifts a shade off the rail instead of being outlined. Badges went from filled
+to outlined so dish names stay the most prominent text on the card.
+
+**Learned:**
+- Inside a grid that is a scroll container with a definite height, `minmax(X,
+  auto)` resolves `auto` to X — it has nothing to grow into. The tablet rows
+  stayed a flat 440px and cards spilled out of their columns, letting the next
+  row's sticky heading draw over them. `grid-auto-rows: max-content` is what
+  sizes a row to its content there.
+- `eslint-disable-next-line` applies to the literal next line, so a multi-line
+  justification comment placed above it silently disables nothing and reports
+  an unused directive.
+
+
+## 2026-09-23 — Kitchen staff management in the admin panel
+
+**Goal:** the owner-facing half of the kitchen feature. Until now a kitchen
+account could only be created with curl, so in practice kitchens would have
+kept running on the owner's own login — the thing `UserRole.KITCHEN` exists to
+stop.
+
+**Changed — frontend-admin:**
+- `pages/KitchenStaffPage.tsx` (new) — list, add, edit, reassign branch,
+  activate/deactivate. No delete.
+- `services/kitchenStaff.ts` + test (new, 15 tests) — form rules and the
+  update-diff, pure so they can be checked without a form.
+- `routes.tsx` — `/kitchen-staff`, both staff roles, Manage section.
+- `services/api.ts`, `types/app.ts` — the three `/kitchen-staff` calls.
+- `legacy.css` — one class, `.kds-branch`.
+
+**Reused rather than rebuilt:** `useMarketingScope` for the admin restaurant
+picker (its own docstring asks the next page to do this), `RestaurantScopePicker`,
+and the existing table/modal/confirm components. No backend logic was copied —
+`resolve_order_board_scope` still decides everything.
+
+**Two live bugs found and fixed while doing it:**
+- `/admin/users` returns EVERY account to an admin, so the three KITCHEN rows
+  now in the local database were reaching `AdminUsersPage`, where
+  `ROLE_META[user.role]` was `undefined` and `meta.icon` threw. The Users page
+  was already crashing for any admin. `UserRole` in the panel's types now
+  includes KITCHEN, which made TypeScript point at the crash site.
+- `PATCH /admin/users/{id}` did not bump `token_version` on deactivate, so
+  switching an account off left its sessions live until the token expired.
+  For a kitchen account that means the tablet on the wall keeps taking orders
+  after it was switched off. Fixed for every role, not just KITCHEN.
+
+**Verified:**
+- Backend: 2306 tests, 24 failures, all in `test_ordering_agent_order_details`
+  — the documented pre-existing baseline. Zero regressions.
+  `tests/test_kitchen_staff_scope.py` now 34.
+- frontend-admin: `tsc -b`, `npm run build`, 193 tests all pass. `eslint` on
+  the new files is clean; the panel's ~60 pre-existing problems are untouched.
+- End to end against the running API: admin with no `restaurant_id` → 400
+  (which is why the page asks before it fetches); admin scoped → list; create
+  pinned to a branch → reassign to all branches via
+  `clear_restaurant_location` → deactivate → login refused 401.
+
+**Learned:**
+- `react-hooks/set-state-in-effect` is on in this panel and the older pages
+  trip it. `ChannelsPage` says a new page should not inherit that, so the
+  three cases here were written differently: loading DERIVED from a load key
+  rather than stored, branch data TAGGED with its restaurant rather than
+  cleared in an effect, and the page reset adjusted during render.
+- Pydantic's `EmailStr` refuses the `.local` TLD. It bit twice — once in a
+  request schema, once in `AdminUserResponse` on the way out — so the test
+  fixtures now use `example.com` throughout.
+- `--border` is defined in `frontend-shared/tokens.css`, not in the panel's
+  own CSS; `--surface-muted` and `--text-secondary` do not exist at all. The
+  panel's names are `--surface-subtle` and `--hint`.
+
+
+## 2026-09-22 — A kitchen role, and the board it signs into
+
+**Goal:** a kitchen order-board web app. The user asked for it to accept a new
+KITCHEN staff role plus OWNER and ADMIN, as its own app, with polling, one-tap
+advance, a new-order alert, a branch picker and prep timers.
+
+**Why a backend slice came first:** `PATCH /orders/{id}/status` was
+`require_owner`, so the only way to put a screen in a kitchen was to leave the
+owner signed in on it — the token that also edits the menu, spends marketing
+budget and reads revenue, on a wall-mounted tablet.
+
+**Changed — backend:**
+- `models/enums.py` — `UserRole.KITCHEN`, `OrderEventActor.KITCHEN`.
+- `models/user.py` — `staff_restaurant_id` / `staff_restaurant_location_id`,
+  plus `__table_args__` carrying `ck_users_kitchen_assignment` and the
+  composite FK, so a `create_all` test database comes up as closed as a
+  migrated one.
+- `models/restaurant_location.py` — `uq_restaurant_locations_id_restaurant_id`,
+  the target that composite FK needs.
+- `alembic/versions/0071_kitchen_staff.py` — new.
+- `services/auth.py` — `OrderBoardScope`, `resolve_kitchen_assignment`,
+  `resolve_order_board_scope`, `require_order_board`, `require_kitchen`.
+- `services/orders.py` — KITCHEN branch in `list_orders` and
+  `get_order_for_user`; `update_order_status` takes an optional restaurant
+  scope and applies the location narrowing.
+- `services/order_events.py` — KITCHEN maps to its own actor.
+- `api/orders.py` — all three order routes go through the one resolver.
+- `api/kitchen_staff.py` + `schemas/kitchen_staff.py` — new; nothing else on
+  the platform creates a staff account.
+- `api/auth.py`, `schemas/auth.py` — login returns the staff assignment.
+- `config/settings.py` — 5175 in the CORS default. **`backend/.env` overrides
+  it and also needed the port**; that is gitignored, so a fresh checkout only
+  gets the default.
+- `tests/test_kitchen_staff_scope.py` — new, 32 tests.
+
+**Changed — frontend:** `frontend-kitchen/` (new app, Vite + React 19 +
+TanStack Query), `CLAUDE.md` (kitchen section, roles, ports, migration notes).
+
+**Verified:**
+- `python -m unittest discover -s tests` → 2291 tests, 24 failures, ALL in
+  `test_ordering_agent_order_details` — the documented pre-existing baseline.
+  Zero regressions.
+- `tests.test_kitchen_staff_scope` → 32 pass.
+- Migration on a throwaway database: `upgrade head` → `downgrade -1` →
+  `upgrade head`, with the schema inspected at each step.
+- `frontend-kitchen`: `tsc -b` clean, `npm run build` clean, `npm run lint`
+  clean, `npm run test` 17 pass.
+
+**NOT done — needs a decision:**
+- **0071 has not been run against Supabase.** It is the first revision past
+  the `0070_channel_connections` stamp, so it is a real deploy rather than a
+  no-op, and running it is an outward-facing act on a shared database. The
+  app cannot be used end to end until it does.
+- No live smoke test against a running backend for the same reason. Coverage
+  is the TestClient suites, which exercise the real HTTP routes.
+- `docker-compose.yml` / `render.yaml` have no `frontend-kitchen` service.
+
+**Learned:**
+- `alembic/env.py` does not set `transaction_per_migration`, so an upgrade runs
+  every pending revision in ONE transaction. Postgres allows `ALTER TYPE ...
+  ADD VALUE` in a transaction but refuses to let the value be USED until it
+  commits — so a CHECK naming the new value fails with *unsafe use of new
+  value*, and splitting into two revisions does not help. `autocommit_block()`
+  is the fix.
+- The metadata naming convention `ck_%(table_name)s_%(constraint_name)s` is
+  applied by alembic to `drop_constraint` as well as to create. Pass the bare
+  name to both.
+- `uq_users_email_platform` was `WHERE role IN ('ADMIN', 'OWNER')`. Any new
+  staff role silently gets NO email uniqueness until that index is widened.
+- Pydantic's `EmailStr` rejects the `.local` TLD as special-use, so model-level
+  fixtures using `@t.local` pass while anything going through a request schema
+  gets a 422.
+
+
 ## 2026-09-22 — Merging V2: the real 0065-0068 finally arrived
 
 **Goal:** resolve the conflicted merge of `V2` into `marketing`, keeping both

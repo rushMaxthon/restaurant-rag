@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -24,11 +25,11 @@ from app.services.payments import (
     get_payment_status,
 )
 from app.services.auth import (
+    ORDER_BOARD_ROLES,
     get_current_user,
-    get_owner_restaurant_id,
     require_customer,
-    require_owner,
-    resolve_owner_restaurant_id,
+    require_order_board,
+    resolve_order_board_scope,
 )
 from app.services.orders import (
     create_order,
@@ -73,33 +74,45 @@ def get_orders(
     restaurant_location_id: uuid.UUID | None = Query(default=None),
     search: str | None = Query(default=None, max_length=120),
     order_status: OrderStatus | None = Query(default=None),
+    # The live-queue window, measured on when the kitchen must COOK an order
+    # rather than when it was ordered. A scheduled order is placed days before
+    # its slot — one in this database 21 days before — so a `placed_at` window
+    # would hide tonight's work because it was ordered last week. Optional and
+    # unset by every existing caller, so the owner and admin lists are
+    # untouched: they want history, which is a different question.
+    due_from: datetime | None = Query(default=None),
     sort: str | None = Query(default=None, max_length=40),
     limit: int | None = Query(default=None, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[OrderResponse]:
-    owner_restaurant_id = (
-        resolve_owner_restaurant_id(db, current_user)
-        if current_user.role == UserRole.OWNER
-        else None
-    )
-    if (
-        current_user.role == UserRole.OWNER
-        and restaurant_id is not None
-        and restaurant_id != owner_restaurant_id
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Owners can only access orders for their own restaurant",
+    # One resolver for every staff role, so the board a cook is shown and the
+    # orders they can advance are decided by the same rule. A CUSTOMER never
+    # reaches it: `list_orders` narrows them to their own orders by id, which
+    # is a different question entirely.
+    owner_restaurant_id: uuid.UUID | None = None
+    scoped_location_id = restaurant_location_id
+    if current_user.role in ORDER_BOARD_ROLES:
+        scope = resolve_order_board_scope(
+            db,
+            current_user,
+            requested_restaurant_id=restaurant_id,
+            requested_restaurant_location_id=restaurant_location_id,
         )
+        scoped_location_id = scope.restaurant_location_id
+        # An ADMIN keeps reaching `list_orders` through `restaurant_id` below,
+        # which is the unnarrowed platform-staff path it has always used.
+        if current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
+            owner_restaurant_id = scope.restaurant_id
     orders, total = list_orders(
         db,
         current_user,
         owner_restaurant_id=owner_restaurant_id,
         restaurant_id=restaurant_id,
         app_scope_restaurant_id=app_scope.restaurant_filter_id,
-        restaurant_location_id=restaurant_location_id,
+        restaurant_location_id=scoped_location_id,
         search=search,
         status_filter=order_status,
+        due_from=due_from,
         sort=sort,
         limit=limit,
         offset=offset,
@@ -191,12 +204,19 @@ def get_order(
     current_user: Annotated[User, Depends(get_current_user)],
     app_scope: AppScopeDep,
 ) -> OrderResponse:
-    owner_restaurant_id = (
-        resolve_owner_restaurant_id(db, current_user)
-        if current_user.role == UserRole.OWNER
-        else None
+    owner_restaurant_id: uuid.UUID | None = None
+    owner_restaurant_location_id: uuid.UUID | None = None
+    if current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
+        scope = resolve_order_board_scope(db, current_user)
+        owner_restaurant_id = scope.restaurant_id
+        owner_restaurant_location_id = scope.restaurant_location_id
+    order = get_order_for_user(
+        db,
+        current_user,
+        order_id,
+        owner_restaurant_id=owner_restaurant_id,
+        owner_restaurant_location_id=owner_restaurant_location_id,
     )
-    order = get_order_for_user(db, current_user, order_id, owner_restaurant_id=owner_restaurant_id)
     ensure_restaurant_readable(app_scope, order.restaurant_id)
     return order
 
@@ -206,13 +226,33 @@ def patch_order_status(
     order_id: uuid.UUID,
     payload: OrderStatusUpdateRequest,
     db: Annotated[Session, Depends(get_db)],
-    owner_restaurant_id: Annotated[uuid.UUID, Depends(get_owner_restaurant_id)],
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(require_order_board)],
+    restaurant_id: uuid.UUID | None = Query(default=None),
 ) -> OrderResponse:
+    """Advance one order by one step.
+
+    Was `require_owner`, which meant the only way to put a screen in a kitchen
+    was to leave the owner signed in on it. It now admits the three roles that
+    have a reason to touch an order board — and `resolve_order_board_scope`,
+    not this route, decides what each of them may reach: an ADMIN names a
+    restaurant or gets all of them, an OWNER gets their own, and a KITCHEN
+    account gets the restaurant and branch stored on its row.
+
+    `restaurant_id` is for an ADMIN, who has no restaurant of their own. An
+    OWNER or KITCHEN account passing one is checked against their real scope
+    and refused if it disagrees, never trusted.
+    """
+
+    scope = resolve_order_board_scope(
+        db,
+        current_user,
+        requested_restaurant_id=restaurant_id,
+    )
     return update_order_status(
         db,
         current_user,
         order_id=order_id,
         new_status=payload.status,
-        owner_restaurant_id=owner_restaurant_id,
+        owner_restaurant_id=scope.restaurant_id,
+        owner_restaurant_location_id=scope.restaurant_location_id,
     )

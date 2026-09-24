@@ -7,6 +7,19 @@ class UserRole(StrEnum):
     ADMIN = "ADMIN"
     OWNER = "OWNER"
     CUSTOMER = "CUSTOMER"
+    # Someone who works in one kitchen, and whose whole job is the order board.
+    #
+    # Platform staff like ADMIN and OWNER, so `app_client_id` is NULL and the
+    # CHECK constraint needs no change. What is different is that a KITCHEN
+    # account carries no implicit restaurant the way an OWNER does (via
+    # `Restaurant.owner_id`) and cannot name one the way an ADMIN does: it is
+    # pinned to a restaurant, and optionally to a single branch, by
+    # `users.staff_restaurant_id` / `users.staff_restaurant_location_id`.
+    #
+    # The role exists because the alternative was handing a kitchen tablet the
+    # owner's own credentials — the same token that edits the menu, spends
+    # money on marketing campaigns and reads revenue.
+    KITCHEN = "KITCHEN"
 
 
 class AppMode(StrEnum):
@@ -293,6 +306,11 @@ class OrderEventActor(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     CUSTOMER = "CUSTOMER"
+    # Distinct from OWNER on purpose. Without it `actor_for_user` falls through
+    # to SYSTEM, and every advance a cook made would be logged as something the
+    # platform did by itself — which is exactly the question this table exists
+    # to answer.
+    KITCHEN = "KITCHEN"
     SYSTEM = "SYSTEM"
     PAYMENT_PROVIDER = "PAYMENT_PROVIDER"
 

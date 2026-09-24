@@ -1,4 +1,4 @@
-import { Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
+import { ChefHat, Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -29,10 +29,15 @@ interface AdminUsersPageProps {
 
 type RoleFilter = 'ALL' | UserRole;
 
+// Exhaustive on purpose. `/admin/users` returns EVERY account to an admin, so
+// a role missing from this map is not a cosmetic gap — `meta.icon` throws and
+// takes the whole page down. Kitchen accounts started appearing here the
+// moment the role existed.
 const ROLE_META: Record<UserRole, { label: string; icon: typeof Shield }> = {
   ADMIN: { label: 'Admin', icon: Shield },
   OWNER: { label: 'Owner', icon: Store },
   CUSTOMER: { label: 'Customer', icon: UserRound },
+  KITCHEN: { label: 'Kitchen', icon: ChefHat },
 };
 
 // Shared with NotificationsPage, which fetches the exact same user list to
@@ -124,6 +129,7 @@ export function AdminUsersPage({
       ADMIN: byRole('ADMIN'),
       OWNER: byRole('OWNER'),
       CUSTOMER: byRole('CUSTOMER'),
+      KITCHEN: byRole('KITCHEN'),
     };
   }, [users]);
 
@@ -273,6 +279,7 @@ export function AdminUsersPage({
     { key: 'ALL', label: 'All accounts', icon: UsersIcon, value: roleStats.all.total, hint: `${roleStats.all.active} active` },
     { key: 'ADMIN', label: 'Admins', icon: Shield, value: roleStats.ADMIN.total, hint: `${roleStats.ADMIN.active} active` },
     { key: 'OWNER', label: 'Owners', icon: Store, value: roleStats.OWNER.total, hint: `${roleStats.OWNER.active} active` },
+    { key: 'KITCHEN', label: 'Kitchen', icon: ChefHat, value: roleStats.KITCHEN.total, hint: `${roleStats.KITCHEN.active} active` },
     { key: 'CUSTOMER', label: 'Customers', icon: UserRound, value: roleStats.CUSTOMER.total, hint: `${roleStats.CUSTOMER.active} active` },
   ];
 
@@ -314,6 +321,7 @@ export function AdminUsersPage({
                   <option value="ALL">All roles</option>
                   <option value="ADMIN">Admins</option>
                   <option value="OWNER">Owners</option>
+                  <option value="KITCHEN">Kitchen staff</option>
                   <option value="CUSTOMER">Customers</option>
                 </select>
               )}

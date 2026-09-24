@@ -30,10 +30,27 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
 
-def _owner_restaurant_id(user: User):
-    if user.role != UserRole.OWNER or user.owned_restaurant is None:
+def _staff_restaurant_id(user: User):
+    """The restaurant a staff account belongs to, however it belongs to one.
+
+    An OWNER reaches theirs through `Restaurant.owner_id`; a KITCHEN account
+    carries it on its own row because it owns nothing. An ADMIN has none on
+    purpose and names one per request instead.
+    """
+
+    if user.role == UserRole.OWNER:
+        return user.owned_restaurant.id if user.owned_restaurant is not None else None
+    if user.role == UserRole.KITCHEN:
+        return user.staff_restaurant_id
+    return None
+
+
+def _staff_restaurant_location_id(user: User):
+    """The one branch a kitchen account sees, or None for all of them."""
+
+    if user.role != UserRole.KITCHEN:
         return None
-    return user.owned_restaurant.id
+    return user.staff_restaurant_location_id
 
 
 def _auth_response(db: Session, user: User) -> AuthResponse:
@@ -44,7 +61,8 @@ def _auth_response(db: Session, user: User) -> AuthResponse:
     return AuthResponse(
         access_token=create_access_token(user),
         role=user.role,
-        restaurant_id=_owner_restaurant_id(user),
+        restaurant_id=_staff_restaurant_id(user),
+        restaurant_location_id=_staff_restaurant_location_id(user),
         app_client_id=user.app_client_id,
         app_key=app_key,
         user=UserResponse.model_validate(user),

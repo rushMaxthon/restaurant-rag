@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 from typing import Annotated, Callable
@@ -308,3 +309,140 @@ def get_owner_restaurant_id(
     db: Annotated[Session, Depends(get_db)],
 ) -> uuid.UUID:
     return resolve_owner_restaurant_id(db, current_user)
+
+
+require_kitchen = _require_role(UserRole.KITCHEN)
+
+# Who may read and advance an order board. An ADMIN runs the platform, an OWNER
+# runs one restaurant, and a KITCHEN account works one branch of one — three
+# different answers to "which orders", which is why `resolve_order_board_scope`
+# exists rather than a single dependency.
+ORDER_BOARD_ROLES = (UserRole.ADMIN, UserRole.OWNER, UserRole.KITCHEN)
+require_order_board = _require_role(*ORDER_BOARD_ROLES)
+
+
+@dataclass(frozen=True, slots=True)
+class OrderBoardScope:
+    """The restaurant and branch a staff account may see and act on.
+
+    `restaurant_id is None` means no narrowing at all, and is reachable ONLY by
+    an ADMIN who named no restaurant — platform staff have no restaurant of
+    their own, which is the same rule `resolve_insights_scope` follows. An
+    OWNER and a KITCHEN account always resolve to a real id, so neither can
+    reach this state by omitting a parameter.
+
+    `restaurant_location_id is None` means every branch of that restaurant.
+    """
+
+    restaurant_id: uuid.UUID | None
+    restaurant_location_id: uuid.UUID | None
+
+
+def resolve_kitchen_assignment(db: Session, user: User) -> OrderBoardScope:
+    """Where this kitchen account works, read off its own row.
+
+    Both halves are re-read from the database rather than trusted from the
+    token: a token outlives an assignment, and a cook moved from one branch to
+    another should not keep the old board until their session expires.
+
+    The restaurant is treated as mandatory even though the column is nullable,
+    because `ck_users_kitchen_assignment` guarantees it for this role. If that
+    guarantee is ever missing — a row written before the constraint, a database
+    restored without it — this refuses rather than falling through to a scope
+    of None, which is the one outcome that would show a cook every order on the
+    platform.
+    """
+
+    if user.role != UserRole.KITCHEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only kitchen accounts have a kitchen assignment",
+        )
+    if user.staff_restaurant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This kitchen account has no restaurant assigned",
+        )
+    return OrderBoardScope(
+        restaurant_id=user.staff_restaurant_id,
+        restaurant_location_id=user.staff_restaurant_location_id,
+    )
+
+
+def resolve_order_board_scope(
+    db: Session,
+    user: User,
+    *,
+    requested_restaurant_id: uuid.UUID | None = None,
+    requested_restaurant_location_id: uuid.UUID | None = None,
+) -> OrderBoardScope:
+    """Narrow a staff account's request down to what it is allowed to touch.
+
+    One function for all three roles so the order list and the status write
+    cannot disagree about who may see what — the failure that would let a cook
+    advance an order they were never shown.
+
+    A requested value may only ever NARROW an account's own scope. Asking for
+    something outside it is refused with 403 rather than quietly ignored: a
+    board that silently answers about a different branch than the one asked for
+    is worse than one that says no.
+    """
+
+    if user.role == UserRole.KITCHEN:
+        assigned = resolve_kitchen_assignment(db, user)
+        if (
+            requested_restaurant_id is not None
+            and requested_restaurant_id != assigned.restaurant_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Kitchen accounts can only access their assigned restaurant",
+            )
+        if assigned.restaurant_location_id is not None:
+            # Pinned to one branch. A request for any other branch is refused;
+            # a request for the same one is simply what they already have.
+            if (
+                requested_restaurant_location_id is not None
+                and requested_restaurant_location_id != assigned.restaurant_location_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Kitchen accounts can only access their assigned branch",
+                )
+            return assigned
+        # Assigned to the restaurant rather than to one branch, so narrowing to
+        # a branch is theirs to do. Which branch is still checked against the
+        # restaurant by every query, because `restaurant_id` is applied too.
+        return OrderBoardScope(
+            restaurant_id=assigned.restaurant_id,
+            restaurant_location_id=requested_restaurant_location_id,
+        )
+
+    if user.role == UserRole.OWNER:
+        owned_restaurant_id = resolve_owner_restaurant_id(db, user)
+        if (
+            requested_restaurant_id is not None
+            and requested_restaurant_id != owned_restaurant_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Owners can only access orders for their own restaurant",
+            )
+        return OrderBoardScope(
+            restaurant_id=owned_restaurant_id,
+            restaurant_location_id=requested_restaurant_location_id,
+        )
+
+    if user.role == UserRole.ADMIN:
+        # No implicit restaurant, by design — see `resolve_insights_scope`. An
+        # ADMIN who names none gets the unnarrowed board, which is what
+        # platform staff are for.
+        return OrderBoardScope(
+            restaurant_id=requested_restaurant_id,
+            restaurant_location_id=requested_restaurant_location_id,
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have permission to access this resource",
+    )

@@ -22,6 +22,7 @@ import {
   BarChart3,
   BellRing,
   Bot,
+  ChefHat,
   Layers3,
   LayoutDashboard,
   type LucideIcon,
@@ -46,6 +47,7 @@ import { BrandingPage } from "./pages/BrandingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
 import { LocationDetailPage } from "./pages/LocationDetailPage";
+import { KitchenStaffPage } from "./pages/KitchenStaffPage";
 import { LocationsPage } from "./pages/LocationsPage";
 import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
@@ -420,6 +422,24 @@ export const ROUTES: RouteDef[] = [
       <OrdersPage
         onNavigate={ctx.navigate}
         onToast={ctx.pushToast}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
+  },
+  {
+    // Beside Orders on purpose: these accounts exist to work the order queue,
+    // and an owner looking for "who can open the kitchen screen" looks where
+    // the orders are. Both staff roles, with the backend scoping the list —
+    // an ADMIN chooses a restaurant, an OWNER is pinned to their own.
+    id: "kitchen-staff",
+    pattern: "/kitchen-staff",
+    roles: BOTH,
+    nav: { section: "Manage", label: "Kitchen Staff", icon: ChefHat },
+    render: (ctx) => (
+      <KitchenStaffPage
+        onToast={ctx.pushToast}
+        restaurantId={ctx.restaurantId}
         role={ctx.role}
         token={ctx.token}
       />

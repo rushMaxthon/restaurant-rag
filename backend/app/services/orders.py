@@ -715,6 +715,7 @@ def list_orders(
     app_scope_restaurant_id: uuid.UUID | None = None,
     search: str | None = None,
     status_filter: OrderStatus | None = None,
+    due_from: datetime | None = None,
     sort: str | None = None,
     limit: int | None = None,
     offset: int = 0,
@@ -722,11 +723,16 @@ def list_orders(
     query = _order_base_query()
     if current_user.role == UserRole.CUSTOMER:
         query = query.where(Order.customer_id == current_user.id)
-    elif current_user.role == UserRole.OWNER:
+    elif current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
+        # Both are bound to exactly one restaurant, so both refuse rather than
+        # widening when the caller failed to resolve it. A KITCHEN account gets
+        # its id from `users.staff_restaurant_id` and an OWNER from
+        # `Restaurant.owner_id`, but from here they are the same rule: never
+        # answer an unscoped question for an account that has a scope.
         if owner_restaurant_id is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Owner restaurant scope is required",
+                detail="Staff restaurant scope is required",
             )
         query = query.where(Order.restaurant_id == owner_restaurant_id)
     elif restaurant_id is not None:
@@ -743,6 +749,19 @@ def list_orders(
 
     if status_filter is not None:
         query = query.where(Order.status == status_filter)
+
+    # The kitchen board's live window. COALESCE and not `placed_at`, because
+    # the two diverge for a scheduled order and the kitchen cares about the
+    # later one: an order placed on the 23rd for a slot on the 14th of next
+    # month is not live now, and one placed three weeks ago for tonight is.
+    # `placed_at` is NOT NULL, so the coalesce can never be null and quietly
+    # drop a row. Applied before the count below, so `X-Total-Count` describes
+    # the window the caller asked about rather than all history — that total is
+    # what tells the board whether it is showing everything.
+    if due_from is not None:
+        query = query.where(
+            sa.func.coalesce(Order.scheduled_at, Order.placed_at) >= due_from
+        )
 
     if search:
         normalized = f"%{search.strip()}%"
@@ -780,17 +799,23 @@ def get_order_for_user(
     order_id: uuid.UUID,
     *,
     owner_restaurant_id: uuid.UUID | None = None,
+    owner_restaurant_location_id: uuid.UUID | None = None,
 ) -> OrderResponse:
     query = _order_base_query().where(Order.id == order_id)
     if current_user.role == UserRole.CUSTOMER:
         query = query.where(Order.customer_id == current_user.id)
-    elif current_user.role == UserRole.OWNER:
+    elif current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
         if owner_restaurant_id is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Owner restaurant scope is required",
+                detail="Staff restaurant scope is required",
             )
         query = query.where(Order.restaurant_id == owner_restaurant_id)
+        # Narrowed rather than checked afterwards, so a branch a kitchen
+        # account is not pinned to reads as "no such order" instead of
+        # confirming that one exists.
+        if owner_restaurant_location_id is not None:
+            query = query.where(Order.restaurant_location_id == owner_restaurant_location_id)
 
     order = db.scalar(query)
     if order is None:
@@ -804,16 +829,26 @@ def update_order_status(
     *,
     order_id: uuid.UUID,
     new_status: OrderStatus,
-    owner_restaurant_id: uuid.UUID,
+    owner_restaurant_id: uuid.UUID | None,
     owner_restaurant_location_id: uuid.UUID | None = None,
 ) -> OrderResponse:
-    query = (
-        _order_base_query()
-        .where(
-            Order.id == order_id,
-            Order.restaurant_id == owner_restaurant_id,
-        )
-    )
+    """Advance one order by exactly one step, within the caller's own scope.
+
+    Both scope arguments narrow the lookup rather than being checked after it,
+    so an order outside the caller's restaurant or branch is a 404 and not a
+    403 — the caller learns nothing about an order they may not touch.
+
+    `owner_restaurant_id=None` means no restaurant narrowing and is reachable
+    only by an ADMIN who named none; see `resolve_order_board_scope`, which is
+    the only thing that should ever produce these two values.
+    """
+
+    query = _order_base_query().where(Order.id == order_id)
+    if owner_restaurant_id is not None:
+        query = query.where(Order.restaurant_id == owner_restaurant_id)
+    # The branch a kitchen account is pinned to. Applied here rather than in
+    # the route so no caller can forget it: without this a cook at one branch
+    # could advance a different branch's order by pasting its id.
     if owner_restaurant_location_id is not None:
         query = query.where(Order.restaurant_location_id == owner_restaurant_location_id)
     order = db.scalar(query)

@@ -28,6 +28,9 @@ import type {
   MenuItemUpsertPayload,
   Order,
   OrderStatus,
+  KitchenStaff,
+  KitchenStaffCreatePayload,
+  KitchenStaffUpdatePayload,
   RestaurantDetail,
   LocationFulfillmentSlot,
   RestaurantLocation,
@@ -379,6 +382,48 @@ export const api = {
   },
   getRestaurantLocations(token: string, restaurantId: string): Promise<RestaurantLocation[]> {
     return request<RestaurantLocation[]>(`/restaurants/${restaurantId}/locations`, {token});
+  },
+
+  /**
+   * The kitchen accounts for one restaurant.
+   *
+   * `restaurantId` is for an ADMIN, who has no restaurant of their own and
+   * gets `400 restaurant_id is required` without one. An OWNER must pass null:
+   * the backend resolves their restaurant from `Restaurant.owner_id`, and
+   * naming one that disagrees is refused with 403. That asymmetry is
+   * `resolve_order_board_scope`'s, not this panel's — see CLAUDE.md.
+   */
+  getKitchenStaff(token: string, restaurantId: string | null): Promise<KitchenStaff[]> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<KitchenStaff[]>(`/kitchen-staff${suffix}`, { token });
+  },
+
+  createKitchenStaff(
+    token: string,
+    payload: KitchenStaffCreatePayload,
+  ): Promise<KitchenStaff> {
+    return request<KitchenStaff>('/kitchen-staff', { method: 'POST', token, body: payload });
+  },
+
+  /**
+   * Rename, reassign a branch, or activate/deactivate.
+   *
+   * Never the email or the password: the backend refuses both, because
+   * re-pointing a live login at a different person is how a revoked account
+   * quietly comes back. Deactivate and create another instead.
+   */
+  updateKitchenStaff(
+    token: string,
+    staffId: string,
+    payload: KitchenStaffUpdatePayload,
+    restaurantId: string | null,
+  ): Promise<KitchenStaff> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<KitchenStaff>(`/kitchen-staff/${staffId}${suffix}`, {
+      method: 'PATCH',
+      token,
+      body: payload,
+    });
   },
   getRestaurantMenuItems(
     token: string,
