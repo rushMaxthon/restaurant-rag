@@ -25,6 +25,7 @@ import hmac
 import logging
 import re
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -104,6 +105,48 @@ def may_answer(from_number: str, *, allowed: str | None = None) -> bool:
     return bool(digits) and digits in entries
 
 
+#: What a tapped button or list row carries back, so the tap can be read as
+#: the words the customer would otherwise have typed.
+#:
+#: The ID is what we act on, never the title. Meta caps a row title at 24
+#: characters and a button title at 20, so "Iced Matcha Coconut Latte" comes
+#: back truncated — and a truncated dish name matches nothing. A position does
+#: not truncate, and the list it counts along is already written down.
+_TAPPED = re.compile(r"^(pick|say):(.+)$", re.S)
+
+
+def tapped_answer(interactive: Any) -> str:
+    """A tapped button or list row, as the message it stands for.
+
+    Everything downstream — the ordinal reader, the plain-phrase table, the
+    model — sees exactly what a customer typing the same answer would have
+    sent. That is the whole design: tapping adds no new path through the turn,
+    so nothing that works by typing can break by tapping.
+
+    A reply whose id is not ours falls back to its title, because a message
+    built by something else (a template, a flow added later) is still an
+    answer and is better read than dropped.
+    """
+
+    if not isinstance(interactive, dict):
+        return ""
+    reply = interactive.get(str(interactive.get("type") or ""))
+    if not isinstance(reply, dict):
+        # Meta has used both `button_reply` and `list_reply` under a `type`
+        # naming them; a shape that does not self-describe is searched for the
+        # one key that could be a reply rather than guessed at.
+        reply = next(
+            (v for k, v in interactive.items() if k.endswith("_reply") and isinstance(v, dict)),
+            None,
+        )
+    if not isinstance(reply, dict):
+        return ""
+    ours = _TAPPED.match(str(reply.get("id") or "").strip())
+    if ours is not None:
+        return ours.group(2).strip()
+    return str(reply.get("title") or "").strip()
+
+
 def inbound_messages(payload: Any) -> list[InboundMessage]:
     """Every answerable message in one delivery.
 
@@ -132,12 +175,17 @@ def inbound_messages(payload: Any) -> list[InboundMessage]:
                 phone_number_id = str(metadata.get("phone_number_id") or "")
 
             for message in value.get("messages") or []:
-                if not isinstance(message, dict) or message.get("type") != "text":
+                if not isinstance(message, dict):
                     continue
-                text_block = message.get("text")
-                body = ""
-                if isinstance(text_block, dict):
-                    body = str(text_block.get("body") or "").strip()
+                if message.get("type") == "text":
+                    text_block = message.get("text")
+                    body = ""
+                    if isinstance(text_block, dict):
+                        body = str(text_block.get("body") or "").strip()
+                elif message.get("type") == "interactive":
+                    body = tapped_answer(message.get("interactive"))
+                else:
+                    continue
                 if not body:
                     continue
                 found.append(
@@ -233,6 +281,78 @@ _LABEL_RE = re.compile(
 )
 
 
+#: A line of a list we printed: "1. Margherita Pizza - $11.99".
+_NUMBERED_LINE = re.compile(r"^\d{1,2}\. ")
+
+#: The invitation that goes under a printed list. Dropped when the list is
+#: tappable instead, because "reply with the number" under a row somebody taps
+#: is an instruction for a message they are not sending.
+_NUMBER_OR_NAME = "Reply with the number or the name."
+
+
+#: What separates a listed thing from its price: "Margherita Pizza - $11.99",
+#: 'Small (8") — $14.99', "Green curry (+$1.00)". All three are written by this
+#: app, which is why they can be taken apart again.
+_LISTED_PRICE = re.compile(r"\s+—\s+|\s+-\s+|\s+\(\+")
+
+
+def split_printed_list(body: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """The message without the list it printed, and that list as tappable rows.
+
+    Built from the PRINTED lines rather than from what the turn recorded, and
+    that is the whole point. Two things go wrong when rows come from the draft
+    instead, and both were measured:
+
+    * A stale choice attaches rows to a message that printed no list. Live,
+      "There is nothing in your order yet." went out carrying seven topping
+      rows from a question two turns earlier — a list the customer could tap
+      that had nothing to do with what they had just been told.
+    * The price disappears. The draft stores names and ids; the printed line
+      is where 'Small (8") — $14.99' exists. Offering a size with no price is
+      the money bug this app already fixed once, in the other direction.
+
+    So the rows say exactly what the text said, or there are no rows. Returns
+    an empty list whenever it would have to guess, and the caller then sends
+    the words it was going to send anyway.
+    """
+
+    lines = str(body or "").split("\n")
+    rows: list[tuple[str, str, str]] = []
+    kept: list[str] = []
+    for line in lines:
+        numbered = _NUMBERED_LINE.match(line)
+        if numbered is None:
+            kept.append(line)
+            continue
+        rest = line[numbered.end() :].strip()
+        parts = _LISTED_PRICE.split(rest, maxsplit=1)
+        title = parts[0].strip()
+        priced = parts[1].strip().rstrip(")") if len(parts) > 1 else ""
+        if priced and " (+" in rest:
+            # The separator ate the plus, and "$1.00" beside a topping reads
+            # as its price rather than as what it adds.
+            priced = f"+{priced}"
+        if not title:
+            # A line we cannot take apart means the rows and the text would
+            # disagree, and a row that says the wrong thing is worse than no
+            # rows at all.
+            return body, []
+        rows.append((f"pick:{len(rows) + 1}", title, priced))
+    # One line is not a list, and a list of one is not worth a tap.
+    if len(rows) < 2:
+        return body, []
+    kept = [line for line in kept if line.strip() != _NUMBER_OR_NAME]
+    # On the sections offer the invitation is the tail of a sentence rather
+    # than a line of its own.
+    kept = [line.replace(f" {_NUMBER_OR_NAME}", "").rstrip() for line in kept]
+    said = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    if not said:
+        # Nothing left to say above the rows. Meta requires a body, and a list
+        # with no question over it is not one either.
+        return body, []
+    return said, rows
+
+
 def format_for_whatsapp(text: str) -> str:
     """Dress a plain message for the phone. Presentation, never meaning.
 
@@ -320,8 +440,8 @@ def show_typing(message_id: str) -> bool:
     return True
 
 
-def send_text(to: str, body: str) -> bool:
-    """Send one message back. True if Meta accepted it.
+def _send(to: str, message: dict[str, Any]) -> bool:
+    """Post one composed message to Meta. True if it was accepted.
 
     Failures are logged and swallowed: this runs on a worker, and the only
     thing a raise would achieve is a retry that sends the customer the same
@@ -341,8 +461,7 @@ def send_text(to: str, body: str) -> bool:
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
                 "to": to,
-                "type": "text",
-                "text": {"preview_url": False, "body": format_for_whatsapp(body)},
+                **message,
             },
             timeout=20.0,
         )
@@ -358,3 +477,110 @@ def send_text(to: str, body: str) -> bool:
         )
         return False
     return True
+
+
+def send_text(to: str, body: str) -> bool:
+    """Send one message back. True if Meta accepted it."""
+
+    return _send(
+        to,
+        {"type": "text", "text": {"preview_url": False, "body": format_for_whatsapp(body)}},
+    )
+
+
+#: Meta's caps on what a tappable reply may say. Titles are truncated to fit
+#: rather than refused: a row the customer can read and tap beats no row, and
+#: nothing downstream reads the title anyway — the id carries the answer.
+BUTTON_TITLE_CHARS = 20
+ROW_TITLE_CHARS = 24
+ROW_DESCRIPTION_CHARS = 72
+MOST_BUTTONS = 3
+MOST_ROWS = 10
+
+
+def _fits(text: str, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def send_buttons(to: str, body: str, buttons: Sequence[tuple[str, str]]) -> bool:
+    """A question with up to three tappable answers.
+
+    For the yes/no turns — "Take all 2 items off your order?", "Ready to check
+    out?" — which are exactly where reading the answer goes wrong: measured,
+    "2" in reply to "Take all 2 items off?" was read as a yes. A tap carries
+    an id we wrote, so on those turns the model is not asked to interpret
+    anything at all.
+
+    Falls back to plain text when there is nothing tappable to offer, so a
+    caller never has to check first.
+    """
+
+    offered = [(i, t) for i, t in buttons if str(t).strip()][:MOST_BUTTONS]
+    if not offered:
+        return send_text(to, body)
+    return _send(
+        to,
+        {
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": format_for_whatsapp(body)},
+                "action": {
+                    "buttons": [
+                        {
+                            "type": "reply",
+                            "reply": {"id": str(i), "title": _fits(t, BUTTON_TITLE_CHARS)},
+                        }
+                        for i, t in offered
+                    ]
+                },
+            },
+        },
+    )
+
+
+def send_list(
+    to: str, body: str, rows: Sequence[tuple[str, str, str]], *, label: str = "Choose"
+) -> bool:
+    """A question with up to ten tappable rows behind one button.
+
+    The customer taps rather than typing a name they have to copy or a number
+    they have to count. Ten is Meta's cap on rows in one list, and it is why
+    the numbered text version has to keep working: a branch with eleven
+    sections cannot be a list message.
+    """
+
+    offered = [(i, t, d) for i, t, d in rows if str(t).strip()][:MOST_ROWS]
+    if not offered:
+        return send_text(to, body)
+    return _send(
+        to,
+        {
+            "type": "interactive",
+            "interactive": {
+                "type": "list",
+                "body": {"text": format_for_whatsapp(body)},
+                "action": {
+                    "button": _fits(label, BUTTON_TITLE_CHARS),
+                    "sections": [
+                        {
+                            "title": _fits(label, ROW_TITLE_CHARS),
+                            "rows": [
+                                {
+                                    "id": str(i),
+                                    "title": _fits(t, ROW_TITLE_CHARS),
+                                    **(
+                                        {"description": _fits(d, ROW_DESCRIPTION_CHARS)}
+                                        if str(d or "").strip()
+                                        else {}
+                                    ),
+                                }
+                                for i, t, d in offered
+                            ],
+                        }
+                    ],
+                },
+            },
+        },
+    )

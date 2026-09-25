@@ -3436,7 +3436,26 @@ def run_turn(
         # yet". Asking to SEE something is never an answer to yes or no, so
         # "cart" and "menu" keep the fast path.
         plain = None
+    # A dish built to the last optional question is not "nothing in your
+    # order". Live: size, crust and sauce all chosen, then "checkout" — and
+    # the short circuit below answered "There is nothing in your order yet",
+    # losing a pizza that had taken four answers to build. An optional group
+    # is an offer, not a gate, so asking to check out settles it the same way
+    # any other message does: the dish is added, and the checkout carries on
+    # with something to check out.
     if plain in {"cart", "checkout"} and not cart:
+        standing_optional = _pending_choice() or {}
+        if standing_optional.get("optional"):
+            base_args = dict(standing_optional.get("base") or {})
+            # This dish is one WE put in front of them a turn ago, and the
+            # guard that refuses a dish "the model never saw this turn" would
+            # otherwise refuse our own offer back.
+            guards.grow_seen_ids(seen, base_args)
+            landed = _run_add(base_args)
+            if landed:
+                actions.extend(landed)
+                _forget_choice()
+    if plain in {"cart", "checkout"} and not cart and not actions:
         # Asking about an order that has nothing in it. Measured: "checkout"
         # on an empty cart spent 17.9 seconds arriving at a menu suggestion,
         # and "cart" spent 6.5 — for a fact known before either started.

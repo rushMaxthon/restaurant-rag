@@ -19,6 +19,7 @@ placed without a sign-in nobody can perform in a chat thread.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Any
@@ -31,7 +32,15 @@ from app.config.database import SessionLocal
 from app.services.chat_principal import guest_principal_for_session
 from app.services.ordering_agent import order_draft, session_cart
 from app.services.rag import handle_chat_message
-from app.services.whatsapp import render_reply, send_text, show_typing
+from app.services.whatsapp import (
+    MOST_ROWS,
+    render_reply,
+    send_buttons,
+    send_list,
+    send_text,
+    show_typing,
+    split_printed_list,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -76,6 +85,57 @@ def dishes_listed_under(answer: Any) -> list[str]:
         if name:
             names.append(str(name))
     return names
+
+
+#: The questions a tap can answer with yes or no, and what the two taps say.
+#:
+#: The LABELS are cosmetic; the ids carry "yes" and "no", which is what the
+#: turn already reads against the question it wrote down (`_answer_standing`).
+#: So a tap takes the path a typed "yes" takes, and nothing new can go wrong
+#: on it — which matters most here, because these are the turns where reading
+#: the answer goes wrong today: "2", in reply to "Take all 2 items off your
+#: order?", was read as a yes.
+_YES_NO_BUTTONS = {
+    "more": ("Yes, add more", "No, that's all"),
+    "checkout": ("Check out", "Not yet"),
+    "add": ("Yes, add it", "No thanks"),
+    "clear_cart": ("Yes, clear it", "Keep it"),
+    "place": ("Place the order", "Not yet"),
+    "keep_order": ("Yes, keep it", "No, cancel it"),
+    "drop_order": ("Yes, cancel it", "No, keep it"),
+    "restore_cart": ("Yes please", "No thanks"),
+}
+
+
+def buttons_for(awaiting: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """The tappable answers to the question this turn ended on, if it has two.
+
+    `name_one` and `time_on_day` are deliberately absent: they want a dish or
+    a time, and two buttons cannot offer either.
+    """
+
+    if not isinstance(awaiting, dict):
+        return []
+    labels = _YES_NO_BUTTONS.get(str(awaiting.get("yes") or ""))
+    if labels is None:
+        return []
+    return [("say:yes", labels[0]), ("say:no", labels[1])]
+
+
+def rows_that_fit(rows: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """The rows, or none at all when there are more than a list can hold.
+
+    Ten is Meta's cap and several of this menu's lists are longer — Bodakdev
+    has eleven sections and eleven pizzas. Those stay as numbered text, which
+    is why the numbered text has to keep working: a tappable list improves a
+    message that already worked, it is never the only way to answer.
+
+    None rather than the first ten, because a list that silently stops at ten
+    of eleven is a claim that the menu ends there — the same reason the
+    sections offer says how many more it has.
+    """
+
+    return rows if 2 <= len(rows) <= MOST_ROWS else []
 
 
 def _compose_reply(
@@ -276,12 +336,70 @@ def answer_whatsapp_message(
         # say the honest thing instead.
         body = "Sorry — I could not find anything for that. Try naming a dish or a craving?"
 
-    sent = send_text(from_number, body)
+    # Offer the answer as taps where the question has a small, fixed set of
+    # them. Read from the draft the turn just wrote rather than from its prose:
+    # the turn already recorded what it asked and what answers it will accept,
+    # and re-deriving that by reading our own sentence back is how the two
+    # would come to disagree.
+    #
+    # Every one of these degrades to the text that was going to be sent
+    # anyway, so a question that does not fit a button or a list is not a
+    # question that fails.
+    sent, how = _answer_by_tap(session_id, from_number, body)
+    if not sent and how == "text":
+        sent = send_text(from_number, body)
     logger.info(
-        "WhatsApp answered message_id=%s to=%s chars=%s sent=%s",
+        "WhatsApp answered message_id=%s to=%s chars=%s as=%s sent=%s",
         message_id,
         from_number,
         len(body),
+        how,
         sent,
     )
     return {"status": "sent" if sent else "failed", "message_id": message_id}
+
+
+def _answer_by_tap(session_id: uuid.UUID, to: str, body: str) -> tuple[bool, str]:
+    """Send the reply as buttons or a list where the question allows it.
+
+    Returns whether it was sent and which shape was used; `("...", "text")`
+    means nothing tappable applied and the caller should send the words.
+
+    The QUESTION decides, not the longest thing on screen. `awaiting.yes` is
+    the turn's own record of what it asked, so a message that ends on yes or
+    no gets buttons even when it also printed a list — live, "Added 1 x Build
+    Your Own Pizza. People often add: ... Anything else?" was going out as a
+    tappable list of the two suggestions, hiding the actual question behind a
+    Choose button. The suggestions stay in the text, where they can be read
+    and typed.
+
+    A list only when the question IS the list: those end on `name_one`, or on
+    no held question at all, and then the rows are the answers.
+
+    Never both. Two questions in one message is what the agent spent a week
+    removing. `awaiting` is cleared at the top of every turn and rewritten
+    only by a turn that ends on a question, so what is in it now is what this
+    message just asked — not something left over from two turns ago.
+    """
+
+    buttons = buttons_for(_stored(order_draft.load(session_id).awaiting))
+    if buttons:
+        return send_buttons(to, body, buttons), "buttons"
+
+    asked, rows = split_printed_list(body)
+    rows = rows_that_fit(rows)
+    if rows:
+        return send_list(to, asked, rows), "list"
+    return False, "text"
+
+
+def _stored(raw: str | None) -> dict[str, Any] | None:
+    """One of the draft's JSON stores, or None if it will not read."""
+
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None

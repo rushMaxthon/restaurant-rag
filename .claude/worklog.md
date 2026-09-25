@@ -153,12 +153,40 @@ of the late one ("Hey 👋"). It passed all day and failed every night. Now
 asserts the real invariant — the opener survives and the name goes before the
 wave.
 
+**Then #3, WhatsApp interactive messages.** Tapping adds NO new path: a tap
+arrives as exactly the message a customer typing the same answer would have
+sent, so every guard and test that covers typing covers tapping. Button ids
+are `say:yes`/`say:no`, row ids are `pick:<n>` — the POSITION, never the
+title, because Meta truncates a row title at 24 chars and a truncated dish
+name matches nothing. `tapped_answer` translates on the way in;
+`inbound_messages` now accepts `interactive` alongside `text`.
+
+Which shape is decided by the QUESTION (`awaiting.yes`), not by what is
+longest on screen: yes/no → buttons, `name_one`/no held question → list.
+Three things the first cut got wrong, all caught by replaying what Meta would
+receive (`scratchpad/replay_taps.py`, only the HTTP call stubbed):
+- Rows built from the draft attached seven topping rows to "There is nothing
+  in your order yet" — a stale choice. Rows now come from the PRINTED lines
+  (`split_printed_list`), so they exist only when the message printed a list.
+- The draft holds names and ids, so every price vanished from the rows. The
+  printed line is where 'Small (8") — $14.99' exists; descriptions carry it,
+  with the `+` kept on extras.
+- "Added ... People often add: ... Anything else?" went out as a list of the
+  two suggestions, hiding the real question behind a Choose button.
+
+Ten rows is Meta's cap and Bodakdev has eleven sections and eleven pizzas, so
+those stay numbered text — none rather than the first ten, since stopping
+silently at ten of eleven claims the menu ends there. **Not verified against
+Meta**: payload shapes match the documented API and inbound parsing is tested,
+but real delivery needs a phone. `_send` logs Meta's refusal body at ERROR.
+
+**Found while replaying, pre-existing and costly:** "checkout" with an
+optional group standing hit the `plain in {"cart","checkout"} and not cart`
+short circuit and answered "There is nothing in your order yet" — losing a
+pizza that had taken four answers to build. An optional group is an offer,
+not a gate, so checkout now settles it the same way any other message does.
+
 **Open:**
-- Next: WhatsApp interactive messages (#3) — tappable list rows for sections,
-  reply buttons for the yes/no turns. Buttons matter most: they arrive as a
-  structured payload, so the model never reads them, and those confirmations
-  are exactly where qwen misreads today. Limits already noted in
-  `render_reply`: ten rows, 24-character titles, three buttons.
 - Open product question, not answered: does a WhatsApp order need
   `contact_email` when the phone is already verified by Meta? It is a required
   field, so it costs every first-time customer a turn.
