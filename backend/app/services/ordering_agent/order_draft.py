@@ -21,6 +21,7 @@ learns that the field is filled.
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import re
 import uuid
 from dataclasses import asdict, dataclass, fields
@@ -411,12 +412,55 @@ def _parse_when(value: str) -> datetime | None:
     return parsed if parsed.tzinfo is not None else None
 
 
+def remember_offered(session_id: uuid.UUID | str, names: list[str]) -> None:
+    """Record the dishes just put in front of this customer, so "1" picks one.
+
+    Every list this app prints is numbered, and a printed number means nothing
+    unless the list behind it is written down. Two places print one: the agent,
+    when it offers something alongside what was just added, and the reply
+    pipeline, whose suggestions are listed under its answer — including the
+    four dishes in the greeting, which was the first message every customer
+    ever saw and the one list "1" did not answer.
+
+    The list they were BROWSING is not thrown away. It moves to `beneath`, and
+    the caller reads a number too large for the new list against it: somebody
+    working down a numbered section and saying "6" after adding the second
+    means the sixth dish there, and "6" cannot be one of two suggestions.
+
+    Not a history. `beneath` is one level deep and holds what was browsed, so
+    a second offer in a row does not push the section out in favour of the
+    previous offer. The older `"pairings"` spelling is still recognised,
+    because a draft written by the previous build can be in Redis when this
+    one reads it.
+    """
+
+    options = [{"name": str(name)} for name in names if str(name).strip()]
+    if not options:
+        return
+    draft = load(session_id)
+    was: dict[str, Any] = {}
+    if draft.last_shown:
+        try:
+            parsed = json.loads(draft.last_shown)
+            was = parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            was = {}
+    beneath = (
+        was.get("beneath") if was.get("kind") in {"offered", "pairings"} else was.get("options")
+    ) or []
+    draft.last_shown = json.dumps(
+        {"kind": "offered", "options": options, "beneath": beneath}
+    )
+    save(session_id, draft)
+
+
 __all__ = [
     "DRAFT_TTL_SECONDS",
     "OrderDraft",
     "clear",
     "load",
     "remember",
+    "remember_offered",
     "save",
     "seed_from_profile",
 ]

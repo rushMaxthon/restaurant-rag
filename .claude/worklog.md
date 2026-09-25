@@ -128,7 +128,40 @@ both lists; only the numbering stays separate. `_remember_shown` was dead code
 and became `_remember_pairings`. Verified live: 1 → the pairing, 6 → the sixth
 pizza, and two adds then 5 → the fifth pizza. Suite 2305 OK.
 
+**Then checkout friction and the greeting list** (user picked these two off a
+ranked list of what to do next). (1) `describe_collecting` named every missing
+field in one sentence — "I still need whether you want delivery or pickup,
+your name, an email address and the delivery address" — four questions at the
+moment of maximum drop-off, against the agent's own "one thing at a time"
+rule. Now `_DETAILS_IN_ORDER` asks one: fulfillment (it decides whether an
+address is wanted at all), then address, name, phone, email; "Thanks." only
+when something actually landed (`details_were_saved`), "Last thing —" on the
+final one. The QUESTION narrows, not the reading: `missing` is still passed
+whole so "delivery to 12 Main St, I'm Hitesh" lands both. (2) The greeting's
+four dishes came from the reply pipeline, were bulleted, and nothing recorded
+them — the first message a customer ever saw was the one list "1" did not
+answer. `render_reply` numbers them and `dishes_listed_under` reports exactly
+what it printed so the task records it; the agent owning the turn records
+nothing, since it has already stored what it showed. The options/beneath rule
+moved to `order_draft.remember_offered` so the agent and the pipeline cannot
+drift. Verified live: Hi → numbered list → "1" adds Red Curry Tofu; checkout →
+one question per turn → read-back. Suite 2317 OK.
+
+**Incidental:** `test_the_customers_name_still_fits` asserted the greeting
+opener starts with "Good", which is true of morning/afternoon/evening and NOT
+of the late one ("Hey 👋"). It passed all day and failed every night. Now
+asserts the real invariant — the opener survives and the name goes before the
+wave.
+
 **Open:**
+- Next: WhatsApp interactive messages (#3) — tappable list rows for sections,
+  reply buttons for the yes/no turns. Buttons matter most: they arrive as a
+  structured payload, so the model never reads them, and those confirmations
+  are exactly where qwen misreads today. Limits already noted in
+  `render_reply`: ten rows, 24-character titles, three buttons.
+- Open product question, not answered: does a WhatsApp order need
+  `contact_email` when the phone is already verified by Meta? It is a required
+  field, so it costs every first-time customer a turn.
 - Owner to confirm the two placeholder pizza prices in admin.
 - The replay uses a fixed test phone; a leftover unpaid order on 919876500000
   turns every turn into "Shall I keep that order?" — use a fresh number.

@@ -981,28 +981,74 @@ def describe_placed_order(placed: dict[str, Any] | None) -> str | None:
     return f"Your order is placed and comes to {total}. The payment link is just below."
 
 
-def describe_collecting(missing: list[str] | None) -> str | None:
-    """What is still needed, in words, from the field names.
+#: The order the details are asked for, one per turn.
+#:
+#: Fulfillment first, because it decides whether an address is wanted at all —
+#: asking for one and then not needing it is the worst order there is. Then
+#: the address, which changes whether the order can happen. Then the two that
+#: only reach the receipt.
+_DETAILS_IN_ORDER = (
+    "fulfillment_type",
+    "delivery_address",
+    "contact_name",
+    "contact_phone",
+    "contact_email",
+)
 
-    Used when a collecting turn runs out of rounds: the customer has just
-    handed over their address and deserves better than the reply pipeline's
-    "that one's outside my kitchen", which is what an intent extractor makes
-    of a street name.
+#: Each one as a question somebody can answer in a word.
+_DETAIL_QUESTIONS = {
+    "fulfillment_type": "Delivery or pickup?",
+    "delivery_address": "What is the delivery address?",
+    "contact_name": "What name should I put on the order?",
+    "contact_phone": "What is the best number for the order?",
+    "contact_email": "What is your email address? The receipt goes there.",
+}
+
+
+def details_were_saved(records: list[ToolCallRecord]) -> bool:
+    """Whether this turn wrote any of the customer's details down.
+
+    So that the question below can open with "Thanks" only when something
+    actually landed. Thanking somebody for nothing is how a reply stops
+    meaning anything.
     """
 
-    if not missing:
+    return any(record.tool == "save_order_details" for record in records)
+
+
+def describe_collecting(
+    missing: list[str] | None, *, saved: bool = False
+) -> str | None:
+    """The ONE thing still needed, asked as a question.
+
+    This used to name every missing field in a single sentence:
+
+        Thanks. I still need whether you want delivery or pickup, your name,
+        an email address and the delivery address.
+
+    Four questions at once, at the moment the customer has chosen their food
+    and is closest to walking away — and against the rule the rest of this
+    agent keeps for exactly this reason (`ask_for_choice`: "One thing at a
+    time"). Nobody types four answers, and an answer to four questions cannot
+    be read back to the field it belongs to.
+
+    Only the QUESTION narrows. `read_order_intent` is still told every missing
+    field, so somebody who volunteers "delivery to 12 Main St, I'm Hitesh"
+    still has both land on the one turn — asking for less must never mean
+    accepting less.
+    """
+
+    wanted = [name for name in _DETAILS_IN_ORDER if name in (missing or [])]
+    # A field this build does not have a question for would otherwise ask for
+    # nothing at all, so the order is a filter rather than a lookup.
+    wanted = [name for name in wanted if name in _DETAIL_QUESTIONS]
+    if not wanted:
         return None
-    said = {
-        "fulfillment_type": "whether you want delivery or pickup",
-        "contact_name": "your name",
-        "contact_phone": "a phone number",
-        "contact_email": "an email address",
-        "delivery_address": "the delivery address",
-    }
-    wanted = [said.get(name, name) for name in missing]
+    asking = _DETAIL_QUESTIONS[wanted[0]]
     if len(wanted) == 1:
-        return f"Thanks. I still need {wanted[0]}."
-    return f"Thanks. I still need {', '.join(wanted[:-1])} and {wanted[-1]}."
+        # Saying it is the last one is what makes the last one worth typing.
+        asking = f"Last thing — {asking[0].lower()}{asking[1:]}"
+    return f"Thanks. {asking}" if saved else asking
 
 
 def _identifiable(scope: OrderingScope) -> bool:
@@ -2567,29 +2613,15 @@ def run_turn(
         is the tofu, and until this it was the first PIZZA, off a list that
         had scrolled away.
 
-        The browsed list does not vanish, it moves to `beneath`: a number too
-        large to be a pairing is read against it, because somebody working
-        down a numbered section and saying "6" means the sixth dish there.
-        Two pairings make that unambiguous — "6" cannot be one of two.
-
-        Not a history. `beneath` is one level deep, and it holds the list the
-        customer was BROWSING: a second add in a row would otherwise push the
-        section out in favour of the previous pairings, which is the "stale
-        name wins" this store has always refused.
+        `order_draft.remember_offered` owns the rule about what happens to the
+        list they were browsing, because the reply pipeline records its own
+        listed dishes the same way and two implementations of "what is in
+        front of them" would drift apart.
         """
 
-        options = [{"name": str(name)} for name in names if str(name).strip()]
-        if scope.session_id is None or not options:
+        if scope.session_id is None:
             return
-        was = _last_shown() or {}
-        beneath = (
-            was.get("beneath") if was.get("kind") == "pairings" else was.get("options")
-        ) or []
-        draft_now = order_draft.load(scope.session_id)
-        draft_now.last_shown = json.dumps(
-            {"kind": "pairings", "options": options, "beneath": beneath}
-        )
-        order_draft.save(scope.session_id, draft_now)
+        order_draft.remember_offered(scope.session_id, names)
 
     def _forget_shown() -> None:
         """Nothing is in front of them as a list any more.
@@ -3209,7 +3241,7 @@ def run_turn(
             or describe_time_problem(records)
             or describe_time_settled(records)
             or describe_place_failure(records)
-            or describe_collecting(_still_missing())
+            or describe_collecting(_still_missing(), saved=details_were_saved(records))
             or (describe_ready() if ready_now else None)
             or summary
         )
@@ -3334,7 +3366,7 @@ def run_turn(
                 or describe_time_problem(records)
                 or describe_time_settled(records)
                 or describe_place_failure(records)
-                or describe_collecting(_still_missing())
+                or describe_collecting(_still_missing(), saved=details_were_saved(records))
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or summary
             )
@@ -4341,7 +4373,7 @@ def run_turn(
                 or describe_place_failure(records)
                 or describe_time_problem(records)
                 or describe_place_failure(records)
-            or describe_collecting(_still_missing())
+            or describe_collecting(_still_missing(), saved=details_were_saved(records))
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or _cart_summary_in(records)
                 or cart_readback

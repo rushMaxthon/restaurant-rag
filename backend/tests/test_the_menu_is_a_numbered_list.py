@@ -34,6 +34,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.ordering_agent import loop as loop_module
+from app.services.ordering_agent import order_draft
 from app.services.ordering_agent.loop import (
     _dish_line,
     lays_its_options_out,
@@ -165,12 +166,22 @@ class ThePairingsAreTheListInFrontOfThemTests(unittest.TestCase):
         # Somebody working down a numbered section and saying "6" after
         # adding the second means the sixth dish there — "6" cannot be one of
         # two pairings, so the number itself says which list is meant.
-        start = SOURCE.index("def _remember_pairings(")
-        body = SOURCE[start : SOURCE.index("def _forget_shown(", start)]
-        self.assertIn('"beneath"', body)
-        # One level deep, and it holds what was BROWSED: a second add in a row
-        # must not push the section out in favour of the previous pairings.
-        self.assertIn('was.get("kind") == "pairings"', body)
+        #
+        # The rule lives in `order_draft.remember_offered`, because the reply
+        # pipeline records its own listed dishes the same way and two
+        # implementations of "what is in front of them" would drift apart.
+        rule = inspect.getsource(order_draft.remember_offered)
+        self.assertIn('"beneath"', rule)
+        # One level deep, and it holds what was BROWSED: a second offer in a
+        # row must not push the section out in favour of the previous offer.
+        self.assertIn('was.get("kind") in {"offered", "pairings"}', rule)
+
+    def test_an_empty_offer_never_clears_what_is_shown(self) -> None:
+        # Called with nothing, it must leave the list alone rather than
+        # replacing it with an empty one nobody can pick from.
+        rule = inspect.getsource(order_draft.remember_offered)
+        self.assertIn("if not options:", rule)
+        self.assertIn("return", rule)
 
     def test_a_number_too_big_for_the_pairings_falls_through_to_it(self) -> None:
         start = SOURCE.index("listed_now = asked_before or shown_before")

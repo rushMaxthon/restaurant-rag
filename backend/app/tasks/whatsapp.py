@@ -29,7 +29,7 @@ from app.config import get_settings
 from app.config.celery import celery_app
 from app.config.database import SessionLocal
 from app.services.chat_principal import guest_principal_for_session
-from app.services.ordering_agent import session_cart
+from app.services.ordering_agent import order_draft, session_cart
 from app.services.rag import handle_chat_message
 from app.services.whatsapp import render_reply, send_text, show_typing
 
@@ -46,6 +46,38 @@ def session_for(from_number: str) -> uuid.UUID:
     return uuid.uuid5(WHATSAPP_SESSION_NAMESPACE, f"whatsapp:{from_number}")
 
 
+def _agent_owns(answer: Any) -> bool:
+    """Whether the agent's own sentence is the answer this turn.
+
+    Named because two things depend on it and must not disagree: what gets
+    said, and which dishes — if any — end up listed under it.
+    """
+
+    return bool(getattr(answer, "agent_asks", False) and getattr(answer, "agent_reply", None))
+
+
+def dishes_listed_under(answer: Any) -> list[str]:
+    """The dish names this reply will list under it, in the order shown.
+
+    Recorded by the caller so a number answers them. The condition is the
+    agent's: when it owns the turn its suggestions are dropped, because
+    "you have 3 x Corn Fritters, subtotal $25.47" followed by two dishes to
+    consider is a second conversation nobody started — and a list that was
+    never printed must never be what a number counts along.
+    """
+
+    if _agent_owns(answer):
+        return []
+    names: list[str] = []
+    for item in getattr(answer, "suggestions", None) or []:
+        name = getattr(item, "name", None) or (
+            item.get("name") if isinstance(item, dict) else None
+        )
+        if name:
+            names.append(str(name))
+    return names
+
+
 def _compose_reply(
     answer: Any, proposed: list[dict[str, Any]], currency: str | None = None
 ) -> str:
@@ -59,7 +91,7 @@ def _compose_reply(
     cannot pay for.
     """
 
-    owns = bool(getattr(answer, "agent_asks", False) and answer.agent_reply)
+    owns = _agent_owns(answer)
     spoken = answer.agent_reply if owns else answer.reply
     # Dishes to consider go under an answer about the menu. Under "you have
     # 3 x Corn Fritters, subtotal $25.47" they are a second conversation
@@ -231,6 +263,14 @@ def answer_whatsapp_message(
         session_cart.clear(session_id)
 
     body = _compose_reply(answer, proposed, currency)
+    # The dishes this reply lists are now the list in front of the customer,
+    # so a number answers them. Only the pipeline's own suggestions reach
+    # here: when the agent owns the turn it has already recorded whatever it
+    # showed, and `dishes_listed_under` returns nothing rather than
+    # overwriting it with a list that was never printed.
+    listed = dishes_listed_under(answer)
+    if listed:
+        order_draft.remember_offered(session_id, listed)
     if not body:
         # The assistant had nothing to say. Silence reads as a broken bot, so
         # say the honest thing instead.

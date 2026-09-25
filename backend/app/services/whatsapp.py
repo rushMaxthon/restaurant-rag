@@ -186,6 +186,7 @@ def render_reply(
     """
 
     parts = [reply.strip()]
+    listed = 0
     for item in suggestions or []:
         name = getattr(item, "name", None) or (item.get("name") if isinstance(item, dict) else None)
         if not name:
@@ -193,10 +194,24 @@ def render_reply(
         price = getattr(item, "price", None) or (
             item.get("price") if isinstance(item, dict) else None
         )
+        listed += 1
+        # Numbered, not bulleted, and recorded by the caller through
+        # `dishes_listed_under` — every other list this app prints is
+        # answerable by position, and these were the exception. The greeting
+        # is the first message a customer ever sees and its four dishes were
+        # the one list "1" did not answer.
+        #
         # With a symbol, or not at all. This was `f" — {price}"`, which put a
         # bare "185.00" under a dish on a rupee menu — a number with no unit,
         # which every reader silently supplies from their own expectations.
-        parts.append(f"• {name}" + (f" — {_priced(price, currency)}" if price else ""))
+        parts.append(
+            f"{listed}. {name}" + (f" — {_priced(price, currency)}" if price else "")
+        )
+    if listed:
+        # Its own paragraph. Run straight onto the last dish it reads as a
+        # fifth item in the list. The empty strings the join drops are why
+        # the newline is inside the string rather than a part of its own.
+        parts.append("\nReply with the number or the name.")
 
     body = "\n".join(part for part in parts if part).strip()
     limit = int(settings.whatsapp_max_body_chars)

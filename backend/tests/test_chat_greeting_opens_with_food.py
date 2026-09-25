@@ -60,10 +60,20 @@ class TheGreetingNamesTheRestaurantTests(unittest.TestCase):
     def test_the_customers_name_still_fits(self) -> None:
         # `_greeting_with_name` splits on the wave, so the opener has to keep
         # ending in one.
+        #
+        # It used to assert the result started with "Good", which is true of
+        # the morning/afternoon/evening openers and NOT of the late one —
+        # "Hey 👋 You're through to Radhe Dhokla." So this failed every night
+        # and passed every day, which is worse than either. The invariant is
+        # that whatever the opener was, it survives with the name inside it.
         reply = rag._build_greeting_reply("Hi", restaurant_name="Radhe Dhokla")
         self.assertIn("\U0001f44b", reply)
-        self.assertTrue(rag._greeting_with_name(reply, "Vishal").startswith("Good"))
-        self.assertIn("Vishal", rag._greeting_with_name(reply, "Vishal"))
+        named = rag._greeting_with_name(reply, "Vishal")
+        opener = reply.split("\U0001f44b", 1)[0].strip()
+        self.assertTrue(named.startswith(opener), named)
+        self.assertIn("Vishal", named)
+        # The name goes before the wave, where a person would put it.
+        self.assertLess(named.index("Vishal"), named.index("\U0001f44b"))
 
 
 class ItOnlyPromisesDishesItHasTests(unittest.TestCase):

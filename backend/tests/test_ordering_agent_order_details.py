@@ -320,7 +320,9 @@ class SettledByTheRowsTests(unittest.TestCase):
         self.assertEqual(
             generate.prompts, [], "'checkout' says one plain thing; no model round at all"
         )
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
         self.assertEqual(outcome.answer_about, "order")
 
 
@@ -413,7 +415,13 @@ class DetailsReadFirstTests(unittest.TestCase):
         self.assertEqual(generate.prompts, [], "the reading settled it; no planner round")
         self.assertEqual(store["draft"].contact_name, "Hitesh")
         self.assertEqual(store["draft"].contact_email, "h@example.com")
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
+        # And it says thanks, because two of their details DID just land.
+        # Asking the next question with no sign the last answer was heard is
+        # how a customer starts repeating themselves.
+        self.assertTrue((outcome.answer or "").startswith("Thanks."), outcome.answer)
 
     def test_a_message_wanting_nothing_falls_through_to_the_planner(self) -> None:
         # A question about the menu is none of the three things an order can
@@ -1328,7 +1336,9 @@ class TheQuestionWeEndedOnTests(unittest.TestCase):
         )
         # Nothing is invented: with no details held, checking out asks for
         # them. What matters is that a bare yes reached the order at all.
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
 
     def test_no_to_ready_to_check_out_keeps_the_conversation_open(self) -> None:
         outcome, _ = self.turn(
@@ -1352,7 +1362,9 @@ class TheQuestionWeEndedOnTests(unittest.TestCase):
             draft=self.holding("more", question="Anything else?"),
             intent=self.agreeing(False),
         )
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
 
     def test_yes_to_which_one_is_not_answered_with_the_same_question(self) -> None:
         # The screenshot: "Which one would you like?" answered "Yes". A real
