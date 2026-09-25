@@ -98,7 +98,29 @@ Verified live on Bodakdev: Clear cart → question → All → empty; no → kep
 remove one → question with names → 2 → second line off; the tofu → the only
 line off. Suite 2283 OK.
 
+**2026-09-25 — every list is numbered.** The user's ask: "menu" answered with
+one comma-joined line is a paragraph to read and nothing to answer; show
+`1, 2, 3` and accept either the number or the name. Shipped: `offer_of_sections`
+is numbered one per line and closes on "Reply with the number or the name";
+`sections_offered` returns exactly what was printed and the turn records THAT
+(`_remember_sections`, `kind: "section"`, deliberately NOT in `last_shown` —
+that store is dishes and `_answer_dish_choice` buys from it). Picking a
+section sets `category`, the same field typing "Pizza" produces, because
+picking a dish adds it and picking a section shows it. Dish lists and
+size/topping lists were already answerable by position — the numbers were
+just never printed — so `_dish_line`/`_option_line` now print them, and
+`listed_in_order`/`lays_its_options_out` read both `1. ` and the old `- `
+(a question written by the previous build can still be standing in Redis).
+The re-ask stopped falling back to a comma list too. Three offer sites
+collapsed into `_offer_the_sections`. Verified live end to end on Bodakdev:
+menu → 8 → Pizza → 2 → added → 1 → sizes → 1 → crust → 1 → sauce, each pick
+0.2–0.9s, and the same journey by name unchanged. Suite 2300 OK.
+
 **Open:**
+- The "People often add:" pairings under a confirmation are still un-numbered,
+  on purpose: they are not the recorded list, so a "1" there would pick off
+  the list the customer was browsing instead. Numbering them means recording
+  them as `last_shown` — a real behaviour decision, not done.
 - Owner to confirm the two placeholder pizza prices in admin.
 - The replay uses a fixed test phone; a leftover unpaid order on 919876500000
   turns every turn into "Shall I keep that order?" — use a fresh number.

@@ -108,12 +108,18 @@ class TheSpelledOutAnswerTests(unittest.TestCase):
         self.assertTrue(said.startswith("Sorry, I did not catch that."), said)
 
     def test_a_one_line_question_still_gets_its_answers(self) -> None:
-        # The questions that do not lay their own options out still need them.
+        # The questions that do not lay their own options out still need them
+        # — numbered, in the order they are stored, which is the order
+        # `listed_in_order` counts along. So the numbers printed on the turn
+        # where the customer has already failed to be understood once are the
+        # ones that answer.
         said = self.rule({
             "question": "Which would you like?",
             "options": [{"name": "Per Plate"}, {"name": "1 Kg"}],
         })
-        self.assertIn("Just reply with one of these: Per Plate, 1 Kg.", said)
+        self.assertIn("\n1. Per Plate", said)
+        self.assertIn("\n2. 1 Kg", said)
+        self.assertIn("number or the name", said)
 
     def test_a_choice_with_no_options_is_not_worth_repeating(self) -> None:
         self.assertIsNone(self.rule({"question": "Which crust?", "options": []}))

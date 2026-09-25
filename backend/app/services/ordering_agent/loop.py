@@ -150,25 +150,36 @@ def _money(value: Any) -> str:
         return str(value)
 
 
-def _option_line(name: str, price: Any = None, extra: Any = None) -> str:
+def _option_line(name: str, price: Any = None, extra: Any = None, position: int = 0) -> str:
     """One option on its own line, with a figure only when there is one.
 
     A free option marked "(+$0.00)" reads as a charge, and eleven options run
     together in a paragraph read as none at all.
+
+    Numbered when the caller knows the position, so "2" answers the question
+    as well as "Medium" does \u2014 which it already did, silently, since
+    `listed_in_order` counts along these lines. A number nobody can see is an
+    affordance nobody uses.
     """
 
+    lead = f"{position}. " if position else "- "
     if price is not None:
-        return f"- {name} \u2014 {_money(price)}"
+        return f"{lead}{name} \u2014 {_money(price)}"
     try:
         if extra is not None and float(extra) > 0:
-            return f"- {name} (+{_money(extra)})"
+            return f"{lead}{name} (+{_money(extra)})"
     except (TypeError, ValueError):
         pass
-    return f"- {name}"
+    return f"{lead}{name}"
 
 
-def _dish_line(dish: dict[str, Any]) -> str:
-    """One dish in a list, with a figure the customer can rely on.
+def _dish_line(dish: dict[str, Any], position: int) -> str:
+    """One dish in a list, numbered, with a figure the customer can rely on.
+
+    Numbered because every list we show is answerable by position already —
+    `_remember_dish_choice` records the names in the order they were read out
+    and `ordinal_asked_for` counts along them — and until the numbers were
+    printed, only a customer who guessed found that out.
 
     A sized dish is quoted "from" its base price rather than AS it. The
     section listing said "Build Your Own Pizza - $14.99" over a dish whose
@@ -178,7 +189,7 @@ def _dish_line(dish: dict[str, Any]) -> str:
     """
 
     lead = "from " if dish.get("has_sizes") else ""
-    return f"- {dish['name']} - {lead}{_money(dish['price'])}"
+    return f"{position}. {dish['name']} - {lead}{_money(dish['price'])}"
 
 
 def ask_for_choice(result: Any) -> str | None:
@@ -220,7 +231,8 @@ def ask_for_choice(result: Any) -> str | None:
     sizes = result.get("available_sizes") or []
     if result.get("needs_size") and sizes:
         listed = "\n".join(
-            _option_line(str(size.get("name")), price=size.get("price")) for size in sizes
+            _option_line(str(size.get("name")), price=size.get("price"), position=position)
+            for position, size in enumerate(sizes, 1)
         )
         return f"Which size for {name}?\n{listed}"
 
@@ -237,8 +249,15 @@ def ask_for_choice(result: Any) -> str | None:
             if str(option.get("option_id")) in already:
                 chosen_names.append(str(option.get("name")))
             else:
+                # Numbered against what is LEFT, which is what the customer
+                # is looking at — the credited picks are named in the
+                # sentence above, not in the list.
                 lines.append(
-                    _option_line(str(option.get("name")), extra=option.get("extra_price"))
+                    _option_line(
+                        str(option.get("name")),
+                        extra=option.get("extra_price"),
+                        position=len(lines) + 1,
+                    )
                 )
         if not lines:
             continue
@@ -459,6 +478,23 @@ def ordinal_asked_for(message: str, *, count: int) -> int | None:
     return position
 
 
+#: One line of a list we wrote: "1. Margherita" or, before the lists were
+#: numbered, "- Margherita". Both, because a question asked by the previous
+#: build can still be standing in Redis when this one answers it.
+_LISTED_LINE = re.compile(r"^(?:- |\d{1,2}\. )")
+
+
+def lays_its_options_out(question: str) -> bool:
+    """Whether this question already lists its own answers, one per line.
+
+    Two places need the same answer: the re-ask, which must not spell the
+    options out a second time under a list that already has them, and
+    `listed_in_order`, which counts positions along them.
+    """
+
+    return any(_LISTED_LINE.match(line) for line in str(question or "").split("\n")[1:])
+
+
 def listed_in_order(asked: Any) -> list[dict[str, Any]]:
     """The options of a standing question, in the order the customer saw them.
 
@@ -476,15 +512,19 @@ def listed_in_order(asked: Any) -> list[dict[str, Any]]:
         if isinstance(option, dict) and option.get("name")
     ]
     question = str(asked.get("question") or "")
-    if "\n- " not in question:
+    if not lays_its_options_out(question):
         return options
     by_name = {str(option["name"]).strip().casefold(): option for option in options}
     shown: list[dict[str, Any]] = []
     for line in question.split("\n"):
-        if not line.startswith("- "):
+        listed = _LISTED_LINE.match(line)
+        if listed is None:
             continue
-        # `_option_line` writes "- Name — $9.99" or "- Name (+$1.00)".
-        name = re.split(r" — | \(\+", line[2:], maxsplit=1)[0].strip().casefold()
+        # `_option_line` writes "1. Name — $9.99" or "1. Name (+$1.00)", and
+        # "- Name" before the lists were numbered — both are read, because a
+        # question written by the previous build can still be standing in
+        # Redis when this one starts answering it.
+        name = re.split(r" — | \(\+", line[listed.end() :], maxsplit=1)[0].strip().casefold()
         option = by_name.get(name)
         if option is not None and option not in shown:
             shown.append(option)
@@ -620,22 +660,28 @@ def reask_standing_choice(standing: Any) -> str | None:
 
     if not isinstance(standing, dict):
         return None
-    options = ", ".join(
+    names = [
         str(option.get("name"))
         for option in (standing.get("options") or [])
         if isinstance(option, dict) and option.get("name")
-    )
-    if not options:
+    ]
+    if not names:
         return None
     question = str(standing.get("question") or "").rstrip()
     lead = f"Sorry, I did not catch that. {question}".rstrip()
-    if "\n- " in question:
+    if lays_its_options_out(question):
         # The question already lays its own options out, one per line, so
         # spelling them out again said everything twice and ran the tail onto
         # the last bullet: "- Thin crust Just reply with one of these: Classic
         # hand tossed, Cheese burst, ...".
         return lead
-    return f"{lead} Just reply with one of these: {options}."
+    # Numbered, in the order they are stored — which is the order
+    # `listed_in_order` counts along, so the numbers printed here are the ones
+    # that answer. The comma-joined line this replaces was the same paragraph
+    # the numbered lists were introduced to get rid of, and it appeared on the
+    # one turn where the customer has already failed to be understood once.
+    listed = "\n".join(f"{position}. {name}" for position, name in enumerate(names, 1))
+    return f"{lead}\n{listed}\n\nReply with the number or the name."
 
 
 def chosen_options_in(line: Any) -> list[str]:
@@ -1856,7 +1902,7 @@ def run_turn(
         )
         if not shown:
             return None
-        listed = "\n".join(_dish_line(d) for d in shown)
+        listed = "\n".join(_dish_line(d, i) for i, d in enumerate(shown, 1))
         opening = "Of course. People often add:" if cart else "Of course. These go quickly:"
         asked = _hold("Tell me the name and I will add it.", yes="name_one")
         _remember_dish_choice(asked, shown)
@@ -1927,7 +1973,7 @@ def run_turn(
                 fallback_reason=None,
                 elapsed_seconds=clock() - start,
             )
-        listed = "\n".join(_dish_line(d) for d in shown)
+        listed = "\n".join(_dish_line(d, i) for i, d in enumerate(shown, 1))
         veg_note = "" if want_veg is None else ", all vegetarian"
         asked_for = phrase.strip()
         if found_by == "budget":
@@ -2073,18 +2119,16 @@ def run_turn(
                 if order_so_far.rstrip().endswith(_READY_TO_CHECK_OUT):
                     _hold(_READY_TO_CHECK_OUT, yes="checkout")
             else:
-                offer = (
-                    tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
-                    if db is not None and scope.restaurant_location_id
-                    else None
-                )
+                # The sections, numbered and recorded, so the next message
+                # can be a number. Returned rather than folded into `answer`
+                # below because the list has to be written down to be
+                # answerable — see `_offer_the_sections`.
+                offered = _offer_the_sections("Sorry — I did not follow that.")
+                if offered is not None:
+                    return offered
                 answer = (
-                    f"Sorry — I did not follow that. {offer}"
-                    if offer
-                    else (
-                        "Sorry — I did not follow that. Let's start that one again: tell me "
-                        "the dish you would like and I will set it up."
-                    )
+                    "Sorry — I did not follow that. Let's start that one again: tell me "
+                    "the dish you would like and I will set it up."
                 )
         else:
             draft_now = order_draft.load(scope.session_id)
@@ -2563,6 +2607,61 @@ def run_turn(
         # given up on, the dishes are still the ones they were just shown.
         draft_now.last_shown = json.dumps({"options": options})
         order_draft.save(scope.session_id, draft_now)
+
+    def _remember_sections(question: str, sections: list[str]) -> None:
+        """Write down the sections just read out, so a number picks one.
+
+        The same job `_remember_dish_choice` does for a dish list, and the
+        reason it is separate is what a pick MEANS: picking a dish adds it,
+        picking a section shows it. So this records `kind: "section"`, and the
+        turn turns that into `category` rather than `chose` — the same field
+        typing "Pizza" produces, so both answers walk the one proven path.
+
+        Deliberately NOT written to `last_shown`: that store holds dishes and
+        `_answer_dish_choice` adds from it, so a section name left there would
+        let "the first one" try to buy a dish called Pizza. A list of sections
+        supersedes whatever dishes were in front of them, so it is cleared.
+        """
+
+        options = [{"name": str(name)} for name in sections if str(name).strip()]
+        if scope.session_id is None or not options:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.pending_choice = json.dumps(
+            {"kind": "section", "question": question, "options": options, "asks": 1}
+        )
+        draft_now.last_shown = None
+        order_draft.save(scope.session_id, draft_now)
+
+    def _offer_the_sections(said: str | None = None) -> TurnOutcome | None:
+        """Read the sections out, numbered, and remember them as the answer.
+
+        Three places offer the menu — a plain "menu", a message we could not
+        read twice, and a number with nothing to count along — and all three
+        have to record the list, or the numbers they just printed answer
+        nothing.
+        """
+
+        if db is None or not scope.restaurant_location_id:
+            return None
+        raw = tools_module.branch_sections(db, scope)
+        offer = tools_module.offer_of_sections(raw)
+        if not offer:
+            return None
+        # `asks` is the short question; the customer gets the list. `_hold`
+        # records a short one on purpose — a long read-back given to the model
+        # AS the question gets mined for its contents, and a list of every
+        # section is that shape exactly.
+        answer = _hold(f"{said} {offer}" if said else offer, yes="name_one", asks=_WHICH_SECTION)
+        _remember_sections(_WHICH_SECTION, tools_module.sections_offered(raw))
+        return TurnOutcome(
+            answer=answer,
+            answer_about="menu",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
 
     def _answer_dish_choice(asked: dict[str, Any], chose: list[str]) -> list[dict[str, Any]]:
         """Add the dishes they picked out of the list we read them.
@@ -3283,25 +3382,9 @@ def run_turn(
         # The sections are the answer, for the reason a restaurant hands over
         # a menu with sections instead of reciting 136 dishes — and naming one
         # back now reads out that whole section, so it leads somewhere.
-        sections = (
-            tools_module.branch_sections(db, scope)
-            if db is not None and scope.restaurant_location_id
-            else []
-        )
-        offer = tools_module.offer_of_sections(sections)
-        if offer:
-            return TurnOutcome(
-                # `asks` is the short question; the customer gets the list.
-                # `_hold` records a short one on purpose — a long read-back
-                # given to the model AS the question gets mined for its
-                # contents, and a list of every section is that shape exactly.
-                answer=_hold(offer, yes="name_one", asks=_WHICH_SECTION),
-                answer_about="menu",
-                actions=actions,
-                records=records,
-                fallback_reason=None,
-                elapsed_seconds=clock() - start,
-            )
+        offered = _offer_the_sections()
+        if offered is not None:
+            return offered
         # A branch with no sections has nothing better to offer than whatever
         # the pipeline makes of it, which is the one case the old behaviour
         # was right about.
@@ -3366,6 +3449,11 @@ def run_turn(
     # typed name does. See `ordinal_asked_for` and `listed_in_order`.
     listed_now = asked_before or shown_before
     picked_by_number: str | None = None
+    # Which KIND of list it was decides what picking off it means: a dish is
+    # added, a section is shown. Both end up in the field the same answer
+    # typed by name produces — `chose` for a dish, `category` for a section —
+    # so neither invents a path of its own.
+    picked_a_section = (listed_now or {}).get("kind") == "section"
     if listed_now and plain is None:
         in_order = listed_in_order(listed_now)
         position = ordinal_asked_for(message, count=len(in_order))
@@ -3386,23 +3474,18 @@ def run_turn(
         # are what there is to pick from, so they are what is offered, the
         # same way "menu" is answered. With a cart, a bare number may be a
         # count and is left to the reading.
-        offer = tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
-        if offer:
-            return TurnOutcome(
-                answer=_hold(
-                    f"I have not shown you a list to pick from yet. {offer}",
-                    yes="name_one", asks=_WHICH_SECTION,
-                ),
-                answer_about="menu", actions=actions, records=records,
-                fallback_reason=None, elapsed_seconds=clock() - start,
-            )
+        offered = _offer_the_sections("I have not shown you a list to pick from yet.")
+        if offered is not None:
+            return offered
     wanted = (
         {"add": None, "details": {}, "checkout": True, "when": None,
          "chose": None, "confirms": None, "browse": None, "asks_hours": False}
         if plain == "checkout"
         else {"add": None, "details": {}, "checkout": False, "when": None,
-              "chose": [picked_by_number], "confirms": None, "browse": None,
-              "asks_hours": False}
+              "chose": None if picked_a_section else [picked_by_number],
+              "category": picked_by_number if picked_a_section else None,
+              "browse": picked_by_number if picked_a_section else None,
+              "confirms": None, "asks_hours": False}
         if picked_by_number
         else read_order_intent(
             message,
@@ -3471,6 +3554,20 @@ def run_turn(
             return _settled()
         # Named nothing we hold; whatever else the message says goes on, but
         # not as a pick from a list — there is no list.
+        wanted["chose"] = None
+
+    # A section list is standing and they named one of its sections. The
+    # reading reports that as `chose`, because `chose` is the shape it is
+    # asked for whenever options are listed — but picking a section SHOWS it.
+    # Left alone, this reached `_answer_choice`, which raised KeyError on
+    # `option_id` (a section has none) or, worse through the dish handler,
+    # tried to buy a dish called Pizza. `category` is what typing the name
+    # produces, so both answers walk the one proven path.
+    if asked_before and asked_before.get("kind") == "section" and wanted.get("chose"):
+        named = lines_named_among(wanted["chose"], asked_before.get("options") or [])
+        if named:
+            wanted["category"] = str(named[0]["name"])
+            wanted["browse"] = wanted.get("browse") or str(named[0]["name"])
         wanted["chose"] = None
 
     # The whole cart, as the reading read it — however it was worded. It is
@@ -3794,7 +3891,7 @@ def run_turn(
             cheapest = tools_module.cheapest_dishes(db, scope, is_veg=want_veg)
             if cheapest:
                 listed = "\n".join(
-                    _dish_line(d) for d in cheapest
+                    _dish_line(d, i) for i, d in enumerate(cheapest, 1)
                 )
                 asked_now = _hold("Which one would you like?", yes="name_one")
                 _remember_dish_choice(asked_now, cheapest)

@@ -1341,8 +1341,36 @@ def offer_of_sections(sections: list[str | None]) -> str | None:
     sections is what a restaurant hands across the table, and for the same
     reason: nobody holds 136 names in their head.
 
+    Numbered, one per line, because a comma-joined line of 18 sections is a
+    paragraph to read and nothing to answer: "Salads, Curry, Rice, Beverages,
+    Combo, Main Course, Appetizer, Pizza, ..." asks somebody to type a name
+    they have to pick out of prose first. A number is the shortest possible
+    answer and the list carries its own numbering, so both "2" and "Curry"
+    reach the same section — see `sections_offered` for the half that reads
+    the answer.
+
     None when the menu has no sections, so the caller keeps its own words
     rather than introducing a list with nothing in it.
+    """
+
+    shown = sections_offered(sections)
+    if not shown:
+        return None
+    listed = "\n".join(f"{position}. {name}" for position, name in enumerate(shown, 1))
+    total = len({(s or "").strip() for s in sections if (s or "").strip()})
+    more = f"\n\n...and {total - len(shown)} more." if total > len(shown) else ""
+    return (
+        f"Here is what we serve:\n{listed}{more}\n\n"
+        "Which one would you like to see? Reply with the number or the name."
+    )
+
+
+def sections_offered(sections: list[str | None]) -> list[str]:
+    """The sections `offer_of_sections` will actually list, in that order.
+
+    Split out because the answer has to be read against exactly what was
+    shown: the caller records THIS list, so "2" means the second line the
+    customer read rather than the second row the query returned.
     """
 
     seen: list[str] = []
@@ -1350,13 +1378,7 @@ def offer_of_sections(sections: list[str | None]) -> str | None:
         name = (section or "").strip()
         if name and name not in seen:
             seen.append(name)
-    if not seen:
-        return None
-    shown = seen[:_SECTIONS_OFFERED]
-    listed = ", ".join(shown)
-    if len(seen) > len(shown):
-        listed = f"{listed} and {len(seen) - len(shown)} more"
-    return f"Here is what we serve: {listed}. Which of those would you like to see?"
+    return seen[:_SECTIONS_OFFERED]
 
 
 def dishes_to_show(

@@ -61,8 +61,19 @@ class TheOfferItselfTests(unittest.TestCase):
 
     def test_it_asks_for_something_answerable(self) -> None:
         # The failure being fixed is an invitation the customer cannot act on.
+        # It asks a question AND says how to answer it: the sections are
+        # numbered, so the shortest valid answer is one character.
         offer = offer_of_sections(RADHE_SECTIONS)
-        self.assertTrue(offer.rstrip().endswith("?"), offer)
+        self.assertIn("?", offer)
+        self.assertIn("number or the name", offer)
+
+    def test_every_section_is_numbered_on_its_own_line(self) -> None:
+        # The comma-joined line this replaced asked somebody to pick a name
+        # out of prose first. A number is the shortest possible answer.
+        offer = offer_of_sections(RADHE_SECTIONS)
+        for position, section in enumerate(RADHE_SECTIONS, 1):
+            with self.subTest(section=section):
+                self.assertIn(f"\n{position}. {section}", offer)
 
     def test_a_menu_with_no_sections_offers_nothing(self) -> None:
         # Rather than "Here is what we serve:" followed by nothing at all.
@@ -106,7 +117,10 @@ class TheGiveUpPathUsesItTests(unittest.TestCase):
         return SOURCE[start : SOURCE.index("def _awaiting", start)]
 
     def test_giving_up_offers_the_sections(self) -> None:
-        self.assertIn("offer_of_sections", self.give_up_block())
+        # Through `_offer_the_sections`, which is `offer_of_sections` plus the
+        # half that makes the printed numbers mean anything: it records the
+        # list it just read out, so the next message can be "2".
+        self.assertIn("_offer_the_sections", self.give_up_block())
 
     def test_it_no_longer_asks_them_to_start_again_unaided(self) -> None:
         # The old sentence stays as the fallback for a menu with no sections

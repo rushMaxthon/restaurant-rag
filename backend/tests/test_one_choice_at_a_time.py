@@ -120,11 +120,14 @@ class OneThingAtATimeTests(unittest.TestCase):
 class TheOptionsAreLaidOutTests(unittest.TestCase):
     """A price list is read, not parsed."""
 
-    def test_each_option_is_on_its_own_line(self) -> None:
+    def test_each_option_is_on_its_own_line_and_numbered(self) -> None:
+        # Numbered, because "2" already answers this question — the options
+        # are recorded in the order they are printed and counted along them —
+        # and a number nobody can see is an affordance nobody uses.
         said = ask_for_choice(pizza())
-        for size in ('Small (8")', 'Medium (11")', 'Large (14")'):
+        for position, size in enumerate(('Small (8")', 'Medium (11")', 'Large (14")'), 1):
             with self.subTest(size=size):
-                self.assertIn(f"\n- {size}", said)
+                self.assertIn(f"\n{position}. {size}", said)
 
     def test_every_size_carries_its_own_price(self) -> None:
         # The money bug this sits next to: a Large was quoted at the base
