@@ -186,7 +186,38 @@ short circuit and answered "There is nothing in your order yet" — losing a
 pizza that had taken four answers to build. An optional group is an offer,
 not a gate, so checkout now settles it the same way any other message does.
 
+**Then the customer web UI** (user: item description, checkout, mobile,
+"cover max spacing" on desktop). Looked at it in the browser rather than
+guessing — and since the extension could not shrink the viewport below 1920,
+mobile was previewed by mounting the pages in 390px same-origin **iframes**,
+which respond to media queries properly. That found:
+- **A flat-priced dish showed no price at all in the lede.** `dish-lede__price`
+  was gated on `sizes.length > 0`, so the Punjabi Thali's only figure was
+  "TOTAL ₹155" inside the order panel — below the fold on a phone. The page
+  said what the dish was and never what it cost. Now always rendered.
+- **The description was the least legible thing on the page**: `text-muted`
+  (the colour used for LABELS) at body size under a 4xl title. Now
+  `.dish-description` — `--text` at 85%, 1rem/1.65, capped at 46ch.
+- **The title wrapped to three lines** at 390px. `text-[1.75rem]` stepping up
+  to `sm:text-4xl`.
+- **Checkout's slot grid was two-up on a phone** — a branch open 10:30–22:00
+  in quarter hours is ~53 chips, so twenty-five rows between "when would you
+  like it" and the pay button. `minmax(7.2rem)` → `minmax(5.75rem)` under
+  480px gives three across (measured: 3 × 96px, 53 chips, **0 clipped**), and
+  the page went 3615px → 3251px.
+- **Desktop spacing**: `max-w-7xl` left a third of a 1920 screen empty, so
+  dish/checkout/cart take `2xl:max-w-[88rem]`.
+
+**Verified:** `npm run build` exit 0, `npm run test` 297 passed, and the
+edited files carry no new lint errors. Note `npm run lint` fails repo-wide
+(78 files, ~11k `Delete ␍`) — CRLF vs prettier on this Windows checkout,
+pre-existing and untouched.
+
 **Open:**
+- `npm run lint` is unusable on this checkout until the CRLF/prettier clash is
+  settled (`.gitattributes` or `endOfLine: "auto"`). It hides real errors —
+  there are genuine ones in `checkout.tsx` (a `react-hooks/rules-of-hooks`
+  violation at ~747) buried under the noise.
 - Open product question, not answered: does a WhatsApp order need
   `contact_email` when the phone is already verified by Meta? It is a required
   field, so it costs every first-time customer a turn.

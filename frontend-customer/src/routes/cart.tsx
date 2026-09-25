@@ -121,7 +121,7 @@ function CartPage() {
   }
 
   return (
-    <div className="page-pad mx-auto max-w-7xl pb-32 pt-10">
+    <div className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] pb-32 pt-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">Your cart</h1>

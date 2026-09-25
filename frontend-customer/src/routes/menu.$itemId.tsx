@@ -173,7 +173,7 @@ function DishPage() {
 
   if (itemQuery.isLoading) {
     return (
-      <div className="page-pad mx-auto max-w-7xl py-10" aria-busy="true">
+      <div className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] py-10" aria-busy="true">
         <div className="grid gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="skeleton aspect-[16/10] !rounded-2xl" />
           <div className="elevated-panel skeleton-panel p-5 sm:p-6">
@@ -204,7 +204,7 @@ function DishPage() {
 
   return (
     <div className="pb-24">
-      <div className="page-pad mx-auto max-w-7xl pt-6">
+      <div className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] pt-6">
         <Link to="/menu" className="back-link">
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
@@ -273,7 +273,13 @@ function DishPage() {
                 </span>
               </div>
 
-              <h1 className="mt-3 font-display text-4xl font-extrabold leading-[1.05]">{item.name}</h1>
+              {/* Steps down on a phone. At a flat `text-4xl`, "Nawabi Pudina
+                  Ghee Biryani (Green)" took three lines of a 390px screen and
+                  pushed the price below the fold — the two things somebody
+                  opens a dish to find. */}
+              <h1 className="mt-3 font-display text-[1.75rem] font-extrabold leading-[1.1] sm:text-4xl sm:leading-[1.05]">
+                {item.name}
+              </h1>
 
               {(dishRestaurant.data?.name || item.cuisine_type) && (
                 <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-muted">
@@ -290,16 +296,26 @@ function DishPage() {
                   its top margin and its line box — so most of the menu had a
                   hole punched between the dish's name and its price. Every
                   other field on this page is guarded; this one was missed. */}
-              {item.description?.trim() && (
-                <p className="mt-3 leading-relaxed text-muted">{item.description}</p>
-              )}
+              {/* The most informative thing on the page, and it used to be the
+                  least legible: grey at body size in a 440px column. It is
+                  what the customer is actually reading to decide, so it gets
+                  the reading treatment — a measure it does not run past, a
+                  line height that survives three lines, and the page's own
+                  text colour rather than the muted grey used for labels. */}
+              {item.description?.trim() && <p className="dish-description">{item.description}</p>}
 
               {/* "From $12" until a size is picked, because that is the only
                   honest single number then. Once one IS picked the guess is
                   replaced by what that size actually costs — leaving "From"
                   up there asks the customer to keep discounting the headline. */}
-              {sizes.length > 0 && (
-                <div className="dish-lede__price">
+              {/* Always, not only when the dish has sizes. A dish priced flat
+                  — the Punjabi Thali, and every other one-price dish — had no
+                  price anywhere in the lede: the only figure on the page sat
+                  inside the order panel as "TOTAL", which on a phone is below
+                  the fold. The page said what the dish was and never what it
+                  cost. */}
+              <div className="dish-lede__price">
+                {sizes.length > 0 ? (
                   <p className="money font-display text-3xl font-extrabold">
                     {chosenSize ? (
                       money(chosenSize.price)
@@ -315,21 +331,32 @@ function DishPage() {
                       </>
                     )}
                   </p>
+                ) : (
+                  <p className="money font-display text-3xl font-extrabold">
+                    {money(item.price)}
+                  </p>
+                )}
                   {/* "extras are charged on top" was said for every dish
                       with a size, including the ones that have no extras to
                       charge — which is most of them. It is a sentence about
                       money on the screen where the customer decides to spend
                       it, so it is only said when it is true of THIS dish at
                       THIS size. */}
+                {/* Nothing at all for a flat-priced dish with no extras: the
+                    price above is the whole truth, and a line under it saying
+                    so is noise. */}
+                {(sizes.length > 0 || groups.length > 0) && (
                   <p className="text-sm text-muted">
-                    {chosenSize
-                      ? groups.length > 0
-                        ? `${chosenSize.name} · extras are charged on top`
-                        : chosenSize.name
-                      : "Final price depends on the size you pick"}
+                    {sizes.length === 0
+                      ? "Extras are charged on top"
+                      : chosenSize
+                        ? groups.length > 0
+                          ? `${chosenSize.name} · extras are charged on top`
+                          : chosenSize.name
+                        : "Final price depends on the size you pick"}
                   </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
@@ -673,7 +700,7 @@ function DishPage() {
       </div>
 
       {related.length > 0 && (
-        <section className="page-pad section-pad mx-auto max-w-7xl">
+        <section className="page-pad section-pad mx-auto max-w-7xl 2xl:max-w-[88rem]">
           <h2 className="mb-6 font-display text-3xl font-extrabold">Goes well with this</h2>
           <div className="menu-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {related.map((dish, i) => (

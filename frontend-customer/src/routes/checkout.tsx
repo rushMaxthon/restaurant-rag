@@ -682,7 +682,10 @@ function Checkout() {
   const submitting = validateOrder.isPending || createOrder.isPending || payingCard;
 
   return (
-    <form className="page-pad mx-auto max-w-7xl pb-40 pt-10" onSubmit={handleSubmit}>
+    <form
+      className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] pb-40 pt-10"
+      onSubmit={handleSubmit}
+    >
       <Link
         to="/cart"
         className="inline-flex items-center gap-1.5 text-sm font-bold text-muted hover:text-foreground"
