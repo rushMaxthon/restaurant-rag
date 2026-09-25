@@ -82,9 +82,7 @@ function RegisterPage() {
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
             Create your account
           </h1>
-          <p className="auth-sub mt-3 text-lg text-muted">
-            Order from {copy.name} in minutes.
-          </p>
+          <p className="auth-sub mt-3 text-lg text-muted">Order from {copy.name} in minutes.</p>
           <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">
               <form className="space-y-4" onSubmit={handleSubmit}>

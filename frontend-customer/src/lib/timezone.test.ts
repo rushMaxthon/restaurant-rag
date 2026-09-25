@@ -36,10 +36,7 @@ describe("zoneOffsetMs", () => {
 describe("zonedTimeToUtc", () => {
   it("turns a branch wall clock into the instant it actually names", () => {
     // 7pm in Ahmedabad is 13:30 UTC, whatever the device thinks 7pm is.
-    const instant = zonedTimeToUtc(
-      { year: 2026, month: 9, day: 14, hour: 19, minute: 0 },
-      KOLKATA,
-    );
+    const instant = zonedTimeToUtc({ year: 2026, month: 9, day: 14, hour: 19, minute: 0 }, KOLKATA);
     expect(instant.toISOString()).toBe("2026-09-14T13:30:00.000Z");
   });
 
@@ -52,10 +49,7 @@ describe("zonedTimeToUtc", () => {
   });
 
   it("handles a winter date in a zone that observes DST", () => {
-    const instant = zonedTimeToUtc(
-      { year: 2026, month: 1, day: 15, hour: 19, minute: 0 },
-      TORONTO,
-    );
+    const instant = zonedTimeToUtc({ year: 2026, month: 1, day: 15, hour: 19, minute: 0 }, TORONTO);
     expect(instant.toISOString()).toBe("2026-01-16T00:00:00.000Z");
   });
 
@@ -95,8 +89,12 @@ describe("zonedParts", () => {
 describe("formatInZone", () => {
   it("prints the branch's clock, not the device's", () => {
     const instant = new Date("2026-09-14T13:30:00Z");
-    expect(formatInZone(instant, KOLKATA, { hour: "numeric", minute: "2-digit" })).toContain("7:00");
-    expect(formatInZone(instant, TORONTO, { hour: "numeric", minute: "2-digit" })).toContain("9:30");
+    expect(formatInZone(instant, KOLKATA, { hour: "numeric", minute: "2-digit" })).toContain(
+      "7:00",
+    );
+    expect(formatInZone(instant, TORONTO, { hour: "numeric", minute: "2-digit" })).toContain(
+      "9:30",
+    );
   });
 
   it("falls back to the device zone when given nothing", () => {

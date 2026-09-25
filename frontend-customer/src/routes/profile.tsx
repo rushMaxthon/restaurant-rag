@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type SavedAddress } from "@/lib/api";
-import { orderCode, type Order} from "@/lib/bangkok-data";
+import { orderCode, type Order } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { formatPhoneAsTyped, validatePhone } from "@/lib/delivery-address";
 import { useFavorites, useProfile, useToggleFavorite } from "@/lib/queries";

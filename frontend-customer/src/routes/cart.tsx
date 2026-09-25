@@ -100,8 +100,7 @@ function CartPage() {
             Your cart is empty
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-muted">
-            Add something from the menu to get started — or let the concierge pick for
-            you.
+            Add something from the menu to get started — or let the concierge pick for you.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button className="h-12 px-6 text-base font-bold" asChild>
@@ -124,7 +123,9 @@ function CartPage() {
     <div className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] pb-32 pt-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">Your cart</h1>
+          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">
+            Your cart
+          </h1>
           <p className="mt-2 text-muted">
             {s.totalItems} {s.totalItems === 1 ? "item" : "items"} from{" "}
             <span className="font-semibold text-foreground">
@@ -179,9 +180,7 @@ function CartPage() {
                         )}
                       </div>
                     )}
-                    <p className="money mt-2 text-sm text-muted">
-                      {money(line.unitPrice)} each
-                    </p>
+                    <p className="money mt-2 text-sm text-muted">{money(line.unitPrice)} each</p>
                   </div>
                   <b className="money shrink-0 text-lg font-extrabold leading-tight">
                     {money(line.unitPrice * line.quantity)}
@@ -262,8 +261,8 @@ function CartPage() {
           {shortfall > 0 && (
             <div className="mt-4 rounded-xl bg-primary-soft p-3.5">
               <p className="text-sm font-semibold leading-snug">
-                Add <b className="money">{money(shortfall)}</b> to reach the{" "}
-                {money(minimumOrder)} minimum.
+                Add <b className="money">{money(shortfall)}</b> to reach the {money(minimumOrder)}{" "}
+                minimum.
               </p>
               <div className="meter mt-2.5">
                 <div className="meter-fill" style={{ width: `${progress}%` }} />

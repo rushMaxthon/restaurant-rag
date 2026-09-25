@@ -698,10 +698,11 @@ export const api = {
       razorpay_signature: string;
     },
   ) =>
-    request<{ status: string; order_id: string }>(
-      `/payments/razorpay/confirm/${orderId}`,
-      { method: "POST", auth: true, body: payload },
-    ),
+    request<{ status: string; order_id: string }>(`/payments/razorpay/confirm/${orderId}`, {
+      method: "POST",
+      auth: true,
+      body: payload,
+    }),
 
   getPaymentStatus: (orderId: string) =>
     request<PaymentStatus>(`/orders/${orderId}/payment-status`, { auth: true }),

@@ -16,7 +16,7 @@ import {
   type ChatStreamDone,
   type ChatSuggestion,
 } from "@/lib/api";
-import { type MenuItem} from "@/lib/bangkok-data";
+import { type MenuItem } from "@/lib/bangkok-data";
 import { clearChatSession, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { guestPreferencesForRequest, mergeGuestPreferences } from "@/lib/guest-preferences";
 import { cartLinesForRequest } from "@/lib/suggestions";
@@ -65,11 +65,14 @@ export const Route = createFileRoute("/concierge")({
     typeof search["q"] === "string" ? { q: search["q"] as string } : {},
   loader: () => getStorefrontCopy(),
   head: ({ loaderData }) => ({
-    meta: pageMeta(loaderData, "Food concierge", "Ask about the menu and get help choosing what to order."),
+    meta: pageMeta(
+      loaderData,
+      "Food concierge",
+      "Ask about the menu and get help choosing what to order.",
+    ),
   }),
   component: ConciergePage,
 });
-
 
 /**
  * The openers offered before anybody has typed anything.
@@ -80,10 +83,7 @@ export const Route = createFileRoute("/concierge")({
  * then reasoned about dollars nobody charges. The budget opener is built
  * separately, below, from this menu's own prices.
  */
-const STARTERS = [
-  "Something spicy and vegetarian",
-  "Comfort food for a rainy day",
-];
+const STARTERS = ["Something spicy and vegetarian", "Comfort food for a rainy day"];
 
 type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 
@@ -452,7 +452,12 @@ function ConciergePage() {
         prev.map((t) =>
           t.id !== turn.id
             ? t
-            : { ...t, proposals: t.proposals?.map((p, i) => (i === index ? { ...p, resolution: "confirmed" } : p)) },
+            : {
+                ...t,
+                proposals: t.proposals?.map((p, i) =>
+                  i === index ? { ...p, resolution: "confirmed" } : p,
+                ),
+              },
         ),
       );
       void navigate({ to: "/checkout" });
@@ -561,8 +566,10 @@ function ConciergePage() {
 
   function proposalCopy(action: CartAction, menu: MenuItem[], confirmed: boolean): string {
     const dish = proposalDishLabel(action, menu);
-    if (action.kind === "checkout") return confirmed ? "Taking you to checkout." : "Ready to check out?";
-    if (action.kind === "clear") return confirmed ? "Cleared your whole cart." : "Clear your whole cart?";
+    if (action.kind === "checkout")
+      return confirmed ? "Taking you to checkout." : "Ready to check out?";
+    if (action.kind === "clear")
+      return confirmed ? "Cleared your whole cart." : "Clear your whole cart?";
     if (action.kind === "remove") return confirmed ? `Removed ${dish}.` : `Remove ${dish}?`;
     if (action.kind === "set_quantity")
       return confirmed ? `Updated ${dish}.` : `Update the quantity of ${dish}?`;
@@ -610,8 +617,7 @@ function ConciergePage() {
       <div className="page-pad flex min-h-[60svh] flex-col items-center justify-center text-center">
         <h1 className="font-display text-3xl font-extrabold">Not available here</h1>
         <p className="mt-3 max-w-md text-muted">
-          {copy.name} does not offer the food concierge. Browse the menu and order as
-          usual.
+          {copy.name} does not offer the food concierge. Browse the menu and order as usual.
         </p>
         <Button className="mt-6" asChild>
           <Link to="/menu">See the menu</Link>
@@ -631,9 +637,7 @@ function ConciergePage() {
               <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">
                 Ask the food concierge
               </h1>
-              <p className="mt-4 max-w-xl text-lg font-medium">
-                {copy.concierge_intro}
-              </p>
+              <p className="mt-4 max-w-xl text-lg font-medium">{copy.concierge_intro}</p>
             </div>
           </StorefrontHero>
           <div className="page-pad mx-auto max-w-5xl py-10">
@@ -668,7 +672,6 @@ function ConciergePage() {
 
           <div className="mb-8 flex flex-col gap-8">
             {turns.map((turn, index) => {
-
               if (turn.role === "user") {
                 return (
                   <div key={turn.id} className="flex justify-end">
@@ -740,11 +743,7 @@ function ConciergePage() {
                   )}
 
                   {turn.orderReady && !turn.placedOrder && (
-                    <Button
-                      className="w-fit"
-                      disabled={placing}
-                      onClick={() => placeOrder(turn)}
-                    >
+                    <Button className="w-fit" disabled={placing} onClick={() => placeOrder(turn)}>
                       {placing ? "Placing…" : "Place order"}
                     </Button>
                   )}

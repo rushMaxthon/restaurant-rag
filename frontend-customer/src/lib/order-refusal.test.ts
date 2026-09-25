@@ -18,9 +18,7 @@ describe("a refusal the cart can fix", () => {
   });
 
   it("names the cart", () => {
-    expect(
-      refusalNeedsCart("Unavailable items in cart: Green Curry, Pad Thai", lines),
-    ).toBe(true);
+    expect(refusalNeedsCart("Unavailable items in cart: Green Curry, Pad Thai", lines)).toBe(true);
     expect(refusalNeedsCart("Duplicate menu items are not allowed in the cart", lines)).toBe(true);
   });
 

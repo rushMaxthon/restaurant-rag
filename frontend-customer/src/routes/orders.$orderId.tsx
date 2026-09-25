@@ -64,7 +64,11 @@ function paidByLine(method: string | undefined): string {
 export const Route = createFileRoute("/orders/$orderId")({
   loader: () => getStorefrontCopy(),
   head: ({ loaderData }) => ({
-    meta: pageMeta(loaderData, "Track order", "Follow your order from the kitchen to your doorstep."),
+    meta: pageMeta(
+      loaderData,
+      "Track order",
+      "Follow your order from the kitchen to your doorstep.",
+    ),
   }),
   component: OrderDetail,
 });

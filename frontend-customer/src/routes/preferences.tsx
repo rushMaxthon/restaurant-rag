@@ -120,9 +120,8 @@ function PreferencesPage() {
       <Sparkles className="mb-4 size-8 text-primary" />
       <h1 className="font-display text-3xl font-extrabold sm:text-4xl">Your preferences</h1>
       <p className="mt-3 max-w-xl text-lg text-muted">
-        The concierge uses these on every question, so you don't have to repeat
-        yourself. You can still ask for something different any time — what you
-        say wins over what's saved here.
+        The concierge uses these on every question, so you don't have to repeat yourself. You can
+        still ask for something different any time — what you say wins over what's saved here.
       </p>
 
       {status === "loading" ? (
@@ -190,7 +189,10 @@ function PreferencesPage() {
               {status === "saving" ? "Saving…" : "Save preferences"}
             </Button>
             {status === "saved" && (
-              <span className="flex items-center gap-1 text-sm font-bold text-primary" role="status">
+              <span
+                className="flex items-center gap-1 text-sm font-bold text-primary"
+                role="status"
+              >
                 <Check className="size-4" /> Saved
               </span>
             )}

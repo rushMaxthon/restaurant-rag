@@ -62,10 +62,9 @@ export const getStorefrontCopy = createServerFn({ method: "GET" }).handler(
     if (hit && Date.now() - hit.at < TTL_MS) return hit.copy;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/app-config?host=${encodeURIComponent(host)}`,
-        { headers: { Accept: "application/json", "X-Forwarded-Host": host } },
-      );
+      const response = await fetch(`${API_BASE_URL}/app-config?host=${encodeURIComponent(host)}`, {
+        headers: { Accept: "application/json", "X-Forwarded-Host": host },
+      });
       if (!response.ok) return UNKNOWN_CONFIG;
 
       const copy = storefrontConfigFrom((await response.json()) as AppConfigPayload);

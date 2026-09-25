@@ -44,9 +44,7 @@ function MenuPage() {
   return (
     <div className="page-pad pb-24 pt-6 sm:pt-10">
       <p className="eyebrow">Cooked to order</p>
-      <h1 className="font-display text-3xl font-extrabold sm:text-6xl">
-        The {copy.name} menu
-      </h1>
+      <h1 className="font-display text-3xl font-extrabold sm:text-6xl">The {copy.name} menu</h1>
       <p className="mt-3 hidden max-w-2xl text-muted sm:block">
         Made fresh to order. Pick a favourite or discover something new.
       </p>

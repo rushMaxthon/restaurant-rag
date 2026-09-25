@@ -90,16 +90,18 @@ export function MenuGrid({
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return items
-      .filter((item) => category === "All" || item.category === category)
-      .filter((item) => !vegOnly || item.is_veg)
-      // In `lib/menu-search.ts` rather than inline: this predicate crashed the
-      // whole grid on a null description, and nothing could test it while it
-      // lived inside a useMemo inside a component that needs a store, a query
-      // client and a router to render.
-      .filter((item) => matchesQuery(item, needle))
-      .sort((a, b) => compare(sort, a, b))
-      .slice(0, limit);
+    return (
+      items
+        .filter((item) => category === "All" || item.category === category)
+        .filter((item) => !vegOnly || item.is_veg)
+        // In `lib/menu-search.ts` rather than inline: this predicate crashed the
+        // whole grid on a null description, and nothing could test it while it
+        // lived inside a useMemo inside a component that needs a store, a query
+        // client and a router to render.
+        .filter((item) => matchesQuery(item, needle))
+        .sort((a, b) => compare(sort, a, b))
+        .slice(0, limit)
+    );
   }, [items, category, query, vegOnly, sort, limit]);
 
   const loading = isRestaurantLoading || menuQuery.isLoading;

@@ -72,8 +72,8 @@ export function cartSuggestionSignature(cart: SignatureLine[]): string {
  */
 function categoryNoun(category: string | null | undefined): string | null {
   const map: Record<string, string> = {
-    "Beverages": "drink",
-    "Dessert": "something sweet",
+    Beverages: "drink",
+    Dessert: "something sweet",
   };
   return (category && map[category]) ?? null;
 }
@@ -111,7 +111,9 @@ export function suggestionCopy(
       // Every other price on the site goes through the tenant's formatter —
       // interpolating the raw decimal string here would be the one place on
       // the site that showed a bare, currency-less number.
-      return saving ? `Make it the ${itemName} and save ${money(saving)}.` : `Make it the ${itemName}.`;
+      return saving
+        ? `Make it the ${itemName} and save ${money(saving)}.`
+        : `Make it the ${itemName}.`;
     }
     case "size_upgrade": {
       const cost = suggestion.extra_cost?.trim();

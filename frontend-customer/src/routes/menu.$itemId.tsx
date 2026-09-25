@@ -332,11 +332,9 @@ function DishPage() {
                     )}
                   </p>
                 ) : (
-                  <p className="money font-display text-3xl font-extrabold">
-                    {money(item.price)}
-                  </p>
+                  <p className="money font-display text-3xl font-extrabold">{money(item.price)}</p>
                 )}
-                  {/* "extras are charged on top" was said for every dish
+                {/* "extras are charged on top" was said for every dish
                       with a size, including the ones that have no extras to
                       charge — which is most of them. It is a sentence about
                       money on the screen where the customer decides to spend
@@ -682,9 +680,7 @@ function DishPage() {
                     disabled={!valid || !item.is_available}
                     onClick={() => handleAdd(false)}
                   >
-                    {item.is_available
-                      ? `Add to cart · ${money(total)}`
-                      : "Currently unavailable"}
+                    {item.is_available ? `Add to cart · ${money(total)}` : "Currently unavailable"}
                   </Button>
                   {/* Say what is missing. A greyed-out button with no reason is
                     the dead end this app keeps producing; the customer has to
