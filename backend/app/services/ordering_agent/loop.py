@@ -1017,6 +1017,13 @@ def _identifiable(scope: OrderingScope) -> bool:
     return scope.customer is not None or bool(scope.verified_phone)
 
 
+#: The heading the pairings sit under. Named because two places have to agree
+#: on it exactly: `describe_applied` writes it, and the turn checks for it to
+#: know whether the pairings were actually SHOWN before recording them as the
+#: list a number now counts along.
+_PEOPLE_OFTEN_ADD = "People often add:"
+
+
 def describe_applied(
     records: list[ToolCallRecord], goes_with: list[dict[str, Any]] | None = None
 ) -> str | None:
@@ -1059,8 +1066,14 @@ def describe_applied(
     # popularity columns, one per section, minus what is already in the cart —
     # so nothing here is a guess about what goes with what.
     if anything_added and goes_with:
-        listed = "\n".join(f"- {d.get('name')} - {_money(d.get('price'))}" for d in goes_with)
-        head = f"{head}\n\nPeople often add:\n{listed}"
+        # Numbered like every other list, and recorded by the caller as the
+        # list now in front of them, so "1" here is the first thing offered
+        # rather than the first dish of a section that has scrolled away.
+        listed = "\n".join(
+            f"{position}. {d.get('name')} - {_money(d.get('price'))}"
+            for position, d in enumerate(goes_with, 1)
+        )
+        head = f"{head}\n\n{_PEOPLE_OFTEN_ADD}\n{listed}"
 
     # One question, so that "yes" to it has one meaning. "Anything else, or
     # shall we get it on its way?" put two to a customer at once, and the
@@ -2546,18 +2559,36 @@ def run_turn(
             return None
         return order_draft.load(scope.session_id).last_question
 
-    def _remember_shown(names: list[str]) -> None:
-        """Write down what was just shown, replacing whatever was there.
+    def _remember_pairings(names: list[str]) -> None:
+        """Write the pairings down as the list now in front of them.
 
-        Only the last list. Two turns back is not what "the first one" means,
-        and keeping a history would let a stale name win over a fresh one.
+        "Added 1 x Cheese Burst Pizza. People often add: 1. Red Curry Tofu,
+        2. Pad Thai Veg. Anything else?" — that is what is on screen, so "1"
+        is the tofu, and until this it was the first PIZZA, off a list that
+        had scrolled away.
+
+        The browsed list does not vanish, it moves to `beneath`: a number too
+        large to be a pairing is read against it, because somebody working
+        down a numbered section and saying "6" means the sixth dish there.
+        Two pairings make that unambiguous — "6" cannot be one of two.
+
+        Not a history. `beneath` is one level deep, and it holds the list the
+        customer was BROWSING: a second add in a row would otherwise push the
+        section out in favour of the previous pairings, which is the "stale
+        name wins" this store has always refused.
         """
 
         options = [{"name": str(name)} for name in names if str(name).strip()]
         if scope.session_id is None or not options:
             return
+        was = _last_shown() or {}
+        beneath = (
+            was.get("beneath") if was.get("kind") == "pairings" else was.get("options")
+        ) or []
         draft_now = order_draft.load(scope.session_id)
-        draft_now.last_shown = json.dumps({"options": options})
+        draft_now.last_shown = json.dumps(
+            {"kind": "pairings", "options": options, "beneath": beneath}
+        )
         order_draft.save(scope.session_id, draft_now)
 
     def _forget_shown() -> None:
@@ -3169,7 +3200,7 @@ def run_turn(
         # Computed once and reused below, because `_hold_the_question` tells
         # which sentence this is by identity: calling `describe_applied` twice
         # returns two equal strings that are not the same object.
-        applied = describe_applied(records, goes_with=_goes_with(records))
+        applied = _applied_with_pairings()
         summary = _cart_summary_in(records) or cart_readback
         question = (
             describe_placed_order(placed_order_in(records))
@@ -3228,6 +3259,22 @@ def run_turn(
         elif summary is not None and answer is summary:
             _hold("Ready to check out?", yes="checkout")
 
+    def _applied_with_pairings() -> str | None:
+        """What the turn did to the cart, plus what goes with it.
+
+        The recording is the point: a printed number means nothing unless the
+        list behind it is written down, and the pairings are the last thing
+        the customer was shown. Keyed on the heading actually appearing,
+        because `describe_applied` decides that — only an ADD gets pairings,
+        and taking something out is not an opening to sell.
+        """
+
+        offered = _goes_with(records)
+        said = describe_applied(records, goes_with=offered)
+        if offered and said and _PEOPLE_OFTEN_ADD in said:
+            _remember_pairings([str(d.get("name")) for d in offered if d.get("name")])
+        return said
+
     def _goes_with(records: list[ToolCallRecord]) -> list[dict[str, Any]]:
         """A couple of things to offer alongside what was just added.
 
@@ -3275,7 +3322,7 @@ def run_turn(
         """
 
         placed = placed_order_in(records)
-        applied = describe_applied(records, goes_with=_goes_with(records))
+        applied = _applied_with_pairings()
         summary = _cart_summary_in(records) or cart_readback
         if asked_to_see_cart and summary:
             answer = summary
@@ -3459,6 +3506,17 @@ def run_turn(
         position = ordinal_asked_for(message, count=len(in_order))
         if position is not None:
             picked_by_number = str(in_order[position - 1]["name"])
+        else:
+            # Too large to be one of the two pairings just offered, so it is
+            # read against the list they were browsing — somebody working
+            # down a numbered section and saying "6" after adding the second
+            # means the sixth dish there. See `_remember_pairings`.
+            beneath = [
+                o for o in (listed_now.get("beneath") or []) if isinstance(o, dict) and o.get("name")
+            ]
+            deeper = ordinal_asked_for(message, count=len(beneath))
+            if deeper is not None:
+                picked_by_number = str(beneath[deeper - 1]["name"])
     elif (
         plain is None
         and held_question is None
@@ -3918,7 +3976,18 @@ def run_turn(
         # ever an add: there is no question of ours to answer here, so a
         # message that names nothing on that list simply carries on to the
         # planner.
-        answered = _answer_dish_choice(shown_before, wanted["chose"])
+        #
+        # Both lists, for a NAME. The numbering is what has to stay separate —
+        # "1" is the first pairing, not the first pizza — but "Margherita
+        # Pizza" is unambiguous whichever of the two it came off, and the
+        # reading reports a name it recognises as `chose` rather than `add`.
+        answered = _answer_dish_choice(
+            {
+                "options": (shown_before.get("options") or [])
+                + (shown_before.get("beneath") or [])
+            },
+            wanted["chose"],
+        )
         if answered:
             actions.extend(answered)
             # The pick landed, so the message is not ALSO a request to see

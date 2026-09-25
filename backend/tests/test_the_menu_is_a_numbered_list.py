@@ -23,6 +23,7 @@ produces — because picking a dish adds it and picking a section shows it.
 
 from __future__ import annotations
 
+import inspect
 import sys
 import unittest
 from pathlib import Path
@@ -32,12 +33,15 @@ BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.services.ordering_agent import loop as loop_module
 from app.services.ordering_agent.loop import (
     _dish_line,
     lays_its_options_out,
     listed_in_order,
     ordinal_asked_for,
 )
+
+SOURCE = inspect.getsource(loop_module.run_turn)
 from app.services.ordering_agent.tools import offer_of_sections, sections_offered
 
 SECTIONS = ["Salads", "Curry", "Rice", "Beverages", "Pizza", "Dessert"]
@@ -130,6 +134,55 @@ class CountingAlongANumberedListTests(unittest.TestCase):
             "options": toppings,
         }
         self.assertEqual([o["name"] for o in listed_in_order(asked)], ["Mushroom", "Thai basil"])
+
+
+class ThePairingsAreTheListInFrontOfThemTests(unittest.TestCase):
+    """"Added 1 x Cheese Burst. People often add: 1. ... 2. ... Anything else?"
+
+    That message is what is on screen, so "1" is the first thing offered. It
+    used to be the first dish of the section they had been browsing, off a
+    list that had scrolled away.
+    """
+
+    def helper(self) -> str:
+        start = SOURCE.index("def _applied_with_pairings(")
+        return SOURCE[start : SOURCE.index("def _goes_with(", start)]
+
+    def test_what_was_printed_is_recorded(self) -> None:
+        # A printed number means nothing unless the list behind it is written
+        # down, and only an ADD is offered pairings — so the recording is
+        # keyed on the heading actually appearing.
+        helper = self.helper()
+        self.assertIn("_remember_pairings", helper)
+        self.assertIn("_PEOPLE_OFTEN_ADD in said", helper)
+
+    def test_it_is_computed_once(self) -> None:
+        # `_hold_the_question` tells which sentence this is by identity, and
+        # a second call returns an equal string that is not the same object.
+        self.assertEqual(self.helper().count("describe_applied("), 1)
+
+    def test_the_browsed_list_is_kept_beneath_the_pairings(self) -> None:
+        # Somebody working down a numbered section and saying "6" after
+        # adding the second means the sixth dish there — "6" cannot be one of
+        # two pairings, so the number itself says which list is meant.
+        start = SOURCE.index("def _remember_pairings(")
+        body = SOURCE[start : SOURCE.index("def _forget_shown(", start)]
+        self.assertIn('"beneath"', body)
+        # One level deep, and it holds what was BROWSED: a second add in a row
+        # must not push the section out in favour of the previous pairings.
+        self.assertIn('was.get("kind") == "pairings"', body)
+
+    def test_a_number_too_big_for_the_pairings_falls_through_to_it(self) -> None:
+        start = SOURCE.index("listed_now = asked_before or shown_before")
+        body = SOURCE[start : SOURCE.index("wanted = (", start)]
+        self.assertIn('listed_now.get("beneath")', body)
+
+    def test_a_name_is_matched_against_both(self) -> None:
+        # The numbering stays separate, but "Margherita Pizza" is unambiguous
+        # whichever of the two lists it came off.
+        start = SOURCE.index("They picked one of the dishes the reply pipeline showed")
+        body = SOURCE[start : SOURCE.index("elif wanted.get(\"chose\") and asked_before", start)]
+        self.assertIn('shown_before.get("beneath")', body)
 
 
 class SpellingTheOptionsOutTwiceTests(unittest.TestCase):

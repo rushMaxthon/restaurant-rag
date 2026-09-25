@@ -116,11 +116,19 @@ collapsed into `_offer_the_sections`. Verified live end to end on Bodakdev:
 menu → 8 → Pizza → 2 → added → 1 → sizes → 1 → crust → 1 → sauce, each pick
 0.2–0.9s, and the same journey by name unchanged. Suite 2300 OK.
 
+**Then the pairings too** (user asked for it right after). "People often add:"
+is numbered and `_applied_with_pairings` records it as `last_shown`, keyed on
+the heading actually appearing (only an ADD gets pairings). The list they were
+BROWSING is not lost — it moves to `beneath`, and a number too large to be a
+pairing is read against it, so "6" after adding the second pizza is still the
+sixth pizza. `beneath` is one level deep and survives consecutive adds
+(`kind: "pairings"` marks a store whose `beneath` should carry forward), which
+is what stops the second add pushing the section out. A NAME matches against
+both lists; only the numbering stays separate. `_remember_shown` was dead code
+and became `_remember_pairings`. Verified live: 1 → the pairing, 6 → the sixth
+pizza, and two adds then 5 → the fifth pizza. Suite 2305 OK.
+
 **Open:**
-- The "People often add:" pairings under a confirmation are still un-numbered,
-  on purpose: they are not the recorded list, so a "1" there would pick off
-  the list the customer was browsing instead. Numbering them means recording
-  them as `last_shown` — a real behaviour decision, not done.
 - Owner to confirm the two placeholder pizza prices in admin.
 - The replay uses a fixed test phone; a leftover unpaid order on 919876500000
   turns every turn into "Shall I keep that order?" — use a fresh number.

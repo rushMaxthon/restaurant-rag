@@ -89,9 +89,12 @@ class SomethingToSuggestTests(unittest.TestCase):
         )
 
     def test_each_suggestion_is_named_and_priced(self) -> None:
+        # Numbered like every other list, and the turn records them as the
+        # list now in front of the customer, so "1" here is this offer rather
+        # than the first dish of a section that has scrolled away.
         said = self.said()
-        self.assertIn("- Thai Iced Tea - $4.49", said)
-        self.assertIn("- Mango Sticky Rice - $8.99", said)
+        self.assertIn("1. Thai Iced Tea - $4.49", said)
+        self.assertIn("2. Mango Sticky Rice - $8.99", said)
 
     def test_it_is_offered_rather_than_asserted(self) -> None:
         # "Goes well with" is a claim about the kitchen; these rows are only
