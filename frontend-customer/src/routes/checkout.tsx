@@ -258,7 +258,7 @@ function Checkout() {
   }, [profile.data, savedAddresses]);
 
   /** Put a saved address in the form, replacing whatever is there. */
-  const useSavedAddress = (id: string) => {
+  const applySavedAddress = (id: string) => {
     const picked = savedAddresses.find((entry) => entry.id === id);
     if (!picked) return;
     setAddress(addressFromSaved(picked));
@@ -747,7 +747,7 @@ function Checkout() {
                     key={entry.id}
                     className="saved-address"
                     data-on={addressId === entry.id}
-                    onClick={() => useSavedAddress(entry.id)}
+                    onClick={() => applySavedAddress(entry.id)}
                   >
                     <span className="saved-address__label">
                       {entry.label === "HOME" ? "Home" : entry.label === "WORK" ? "Work" : "Other"}
