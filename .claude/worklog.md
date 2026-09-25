@@ -213,11 +213,29 @@ edited files carry no new lint errors. Note `npm run lint` fails repo-wide
 (78 files, ~11k `Delete ␍`) — CRLF vs prettier on this Windows checkout,
 pre-existing and untouched.
 
+**Then "make it working right": the lint blindfold came off, and there was a
+real bug under it.** `npm run lint` reported 11,279 problems, 11,258 of them
+`Delete ␍` — prettier defaults `endOfLine` to "lf" and this working tree is
+CRLF, so every line of every file failed and four real errors were buried.
+`endOfLine: "auto"` (no reformatting, no line-ending churn) dropped it to 329
+and exposed:
+- **`BranchGate` called `useStorefrontCopy()` below its `return null`.** That
+  return fires on exactly the first render (`isRestaurantLoading`), so render 1
+  ran one hook and render 2 ran two — "Rendered more hooks than during the
+  previous render", on the first screen a new visitor meets. Moved above.
+- `useSavedAddress` was a plain click handler wearing the `use` prefix
+  reserved for hooks, which is why the rule flagged it too → `applySavedAddress`.
+Then `eslint --fix` + prettier over src/ and e2e/, as its own commit so the
+hook fix stays readable: **0 errors, 20 warnings** (exhaustive-deps and
+react-refresh, which want judgement, left alone). Build 0, 297 tests.
+
+**Whole stack up and verified** (backend :8000, ngrok tunnel, customer :5173,
+admin :5174, worker, Redis, Ollama) — and **Celery beat was started for the
+first time this session**, which immediately reaped 2 stale unpaid orders.
+That is the thing that had been making every WhatsApp turn open with "Shall I
+keep that order?"; it was never a bot bug, it was beat not running.
+
 **Open:**
-- `npm run lint` is unusable on this checkout until the CRLF/prettier clash is
-  settled (`.gitattributes` or `endOfLine: "auto"`). It hides real errors —
-  there are genuine ones in `checkout.tsx` (a `react-hooks/rules-of-hooks`
-  violation at ~747) buried under the noise.
 - Open product question, not answered: does a WhatsApp order need
   `contact_email` when the phone is already verified by Meta? It is a required
   field, so it costs every first-time customer a turn.
