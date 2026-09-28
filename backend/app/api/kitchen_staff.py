@@ -32,6 +32,7 @@ from app.schemas.kitchen_staff import (
     KitchenStaffResponse,
     KitchenStaffUpdate,
 )
+from app.services.realtime.outbox import queue_session_revoked
 from app.services.auth import (
     get_current_user,
     hash_password,
@@ -221,6 +222,7 @@ def update_kitchen_staff(
             # Deactivating must end the sessions already issued, or the tablet
             # in the kitchen keeps working until its token expires on its own.
             staff.token_version += 1
+            queue_session_revoked(db, user_id=staff.id)
 
     branch: RestaurantLocation | None = None
     if payload.clear_restaurant_location:
@@ -229,8 +231,10 @@ def update_kitchen_staff(
         branch = _validate_branch(db, scoped_restaurant_id, payload.restaurant_location_id)
         staff.staff_restaurant_location_id = payload.restaurant_location_id
         # A cook moved to another branch must not keep the old board on the
-        # strength of a token issued before the move.
+        # strength of a token issued before the move — nor the old branch's
+        # room on a socket opened before it.
         staff.token_version += 1
+        queue_session_revoked(db, user_id=staff.id)
 
     db.commit()
     db.refresh(staff)

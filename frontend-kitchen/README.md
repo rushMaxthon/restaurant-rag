@@ -63,11 +63,13 @@ next status. `nextStatus` in `src/lib/board.ts` mirrors it so the button can
 carry the right verb, but it is not a second opinion — when the two disagree
 the server is right and its sentence is shown on the ticket.
 
-**"Live" is a poll.** There is no WebSocket or SSE anywhere in this backend.
-Four queries, one per column, every six seconds, with
-`refetchIntervalInBackground` on because a board on a wall is never the focused
-window. When any column fails the header says "Not updating" rather than
-letting a stale rail look current.
+**"Live" is a push, with a poll underneath.** A Socket.IO push
+(`src/lib/realtime.ts`) refetches the columns the moment an order moves. The
+four queries, one per column, still poll — every 30 seconds while the socket is
+live, every six the moment it is not — with `refetchIntervalInBackground` on
+because a board on a wall is never the focused window. The header says "Live"
+only when a push can arrive, "Polling" when it cannot, and "Not updating" when
+REST itself fails, rather than letting a stale rail look current.
 
 **The first poll must not sound the alarm.** Every ticket is new against an
 empty set, so `Board.tsx` records the first successful poll without announcing
@@ -125,7 +127,8 @@ src/
 │   ├── auth-context.ts  the context and hook, split for Fast Refresh
 │   ├── board.ts         the rules — pure, and the only tested part
 │   ├── board.test.ts
-│   ├── queries.ts       polling and the advance mutation
+│   ├── queries.ts       queries, polling and the advance mutation
+│   ├── realtime.ts      the Socket.IO client: push → refetch, poll speed
 │   └── sound.ts         the new-order chime, synthesised not fetched
 │   ├── metrics.ts       the summary bar and the filters — pure, tested
 │   ├── metrics.test.ts

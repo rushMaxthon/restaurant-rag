@@ -213,6 +213,15 @@ input {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--kds-warn) 18%, transparent);
 }
 
+/* Current, but only as current as the next poll — not a fault, so amber
+   rather than red, and still rather than breathing: the breathing dot is
+   reserved for a board a push can actually reach. */
+.kds-live[data-state='polling'] .kds-live__dot {
+  background: var(--kds-warn);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kds-warn) 18%, transparent);
+  animation: none;
+}
+
 @keyframes kds-breathe {
   0%,
   100% {

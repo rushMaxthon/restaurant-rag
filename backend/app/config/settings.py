@@ -440,6 +440,37 @@ class Settings(BaseSettings):
     # service. That is a dry run an owner can inspect, not a silent no-op.
     enable_marketing_dispatch: bool = False
 
+    # --- Realtime (Socket.IO) -----------------------------------------------
+    #
+    # Pushes "this order changed" to the kitchen board, the admin panel and the
+    # customer's own order screens. A push is only ever a HINT: every client
+    # reacts by refetching over REST, so the socket can never show anybody a row
+    # the REST scope would not — and a client that misses a push (asleep,
+    # reconnecting, Redis down) is corrected by its next refetch or poll.
+    #
+    # Off by default, like every other flag that changes what a client sees
+    # unprompted. With it off the endpoint still answers, and refuses every
+    # connection with "realtime_disabled" — the clients recognise that reason,
+    # stop retrying, and carry on polling exactly as they did before.
+    enable_realtime: bool = False
+    # Every API process subscribes to this Redis channel; it is how an event
+    # emitted by one gunicorn worker — or by a Celery worker, which is where the
+    # unpaid-order reaper and the WhatsApp agent change orders — reaches a
+    # socket held by another. Measured: 4 clients split across 2 workers all
+    # received an emit made from a third, unrelated process.
+    realtime_redis_channel: str = "realtime:socketio"
+    # Engine.IO heartbeat. Under nginx's 75s read timeout on the socket route so
+    # an idle board is never cut off as a stalled upstream; the ping IS the
+    # traffic that keeps it open.
+    realtime_ping_interval_seconds: int = 25
+    realtime_ping_timeout_seconds: int = 20
+    # How often each API process re-checks the accounts behind its open sockets
+    # (token expiry, `token_version`, `is_active`). Revocation is normally
+    # immediate — the routes that bump `token_version` announce it — so this is
+    # the backstop for an announcement lost to a Redis blip, and the only thing
+    # that notices a token simply expiring while its socket is open.
+    realtime_session_sweep_seconds: int = 60
+
     # How many device tokens go to Firebase in one multicast. 500 is the API's
     # own per-message ceiling; it is named here because the dispatcher reports
     # progress per batch and the batch size is therefore the granularity the

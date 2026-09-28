@@ -32,7 +32,11 @@ dependency-free at runtime: routing hand-rolled over the History API in
 Context (`src/store/AdminStore.tsx`), styling hand-written CSS in
 `src/index.css` (9.5k lines) — no Tailwind, no CSS-in-JS, no component
 library. Reaching for react-router, redux or a UI kit breaks the house style
-there.
+there. **One documented exception: `socket.io-client`** (2026-09-24), because
+the kitchen board, customer web and mobile all speak Socket.IO to the same
+server and a hand-written Engine.IO client would be a fourth implementation of
+a protocol with heartbeats and reconnection to get wrong. It is the only one;
+it does not reopen the rule.
 
 **`frontend-customer` no longer follows that rule.** It was replaced wholesale
 on 2026-09-13 with a generated TanStack Start app: file-based routing,
@@ -357,10 +361,65 @@ includes `KITCHEN` even though no route in the panel admits that role.
 `actor_for_user` falls through to SYSTEM and every advance a cook makes reads
 as something the platform did by itself.
 
-Client side: "live" is a **poll**, because there is no WebSocket or SSE anywhere
-in this backend. Four queries, one per column, six seconds,
-`refetchIntervalInBackground` on because a wall-mounted board is never focused.
-The rules worth testing are pure and live in `src/lib/board.ts`.
+Client side: four queries, one per column, `refetchIntervalInBackground` on
+because a wall-mounted board is never focused. A Socket.IO push (see "Realtime"
+below) invalidates them the moment an order moves; the poll is the safety net —
+30s while the socket is live, 6s the moment it is not. The header says Live /
+Polling / Not updating accordingly. The rules worth testing are pure and live
+in `src/lib/board.ts` and `src/lib/realtime.ts`.
+
+---
+
+## Realtime (Socket.IO)
+
+`backend/app/services/realtime/` + one `realtime.ts` client per app (kitchen
+`src/lib`, admin `src/services`, customer `src/lib`, mobile `src/services`,
+kept identical in behaviour). Behind **`enable_realtime`, default off** — with
+it off every handshake is refused with `realtime_disabled`, the clients stop
+retrying and poll exactly as before.
+
+**A push is a hint, never data.** `order:updated` carries an order id and its
+new status, nothing else; every client reacts by refetching over REST. So the
+socket cannot show anybody a row the REST scope would not, and REST stays the
+only source of truth.
+
+**Rooms ARE the scope, chosen by `resolve_order_board_scope`.** A staff socket
+joins exactly one room — `location:{id}` (pinned cook), `restaurant:{id}`
+(owner, unpinned cook), `admin:all` (admin with no restaurant). A customer
+joins `user:{id}` only. An order event goes to its branch, restaurant,
+`admin:all` and customer rooms. A pinned cook must never sit in the restaurant
+room, or they hear every branch.
+
+**Every transition is emitted from one line**, in `record_order_status_event`,
+and only **after commit** (`realtime/outbox.py`: queued on `session.info`,
+flushed by a class-level `after_commit` listener, dropped on
+`after_soft_rollback` — `after_rollback` was tried and leaked a queue into the
+next commit, see `test_realtime`). A Celery worker emits through a write-only
+`RedisManager`; the API processes fan out through `AsyncRedisManager`. An emit
+failure is logged and swallowed — a push must never cost an order.
+
+**WebSocket transport only, on both ends.** Long-polling needs sticky sessions
+and gunicorn has none between workers. Mounted INSIDE FastAPI at
+`/api/socket.io` so `app.main:app` and every `TestClient(app)` test are
+unchanged. The Origin check is engine.io's, fed this backend's own CORS rule.
+
+**The handshake is `get_current_user`** (`_get_user_from_token` itself), with
+the app identity in the `auth` payload — `app_host` from a storefront,
+`bundle_id`/`platform` from mobile — because a browser cannot set
+`X-Forwarded-Host` on a WebSocket. Refusal reasons are a contract the clients
+branch on: `auth` signs out, `realtime_disabled`/`forbidden` stop retrying,
+anything else retries.
+
+**Revocation is immediate and has a backstop.** The four places that bump
+`token_version` also queue `session:revoked`; after commit it is emitted AND
+published on `{realtime_redis_channel}:control`, which every API process
+listens to and disconnects its own sockets for that account — a write-only
+manager cannot disconnect anything (verified). A per-process sweep
+(`realtime_session_sweep_seconds`) catches expired tokens and lost messages.
+
+**A reconnect always refetches.** Redis pub/sub keeps nothing for a
+disconnected client, so the client reports a (re)connect as "anything may have
+changed" (`onChange(null)`).
 
 ---
 
@@ -675,6 +734,14 @@ Kept because the notes are hard-won, not because they apply here.
 - `readme.md` and several docs cross-link with absolute paths
   (`/Users/imac/Desktop/restaurant-rag/...`) that do not match this checkout's
   location (`/Users/imac/data/restaurant-rag`).
+- **nginx drops the shared proxy headers on every `/api` route.** nginx
+  inherits `proxy_set_header` from the `http` level ONLY into a location that
+  sets none of its own, and both `/api` locations in `snippets/api-proxy.conf`
+  set `Connection ""` — so `Host` and `X-Forwarded-*` from `nginx.conf` never
+  reach the API there. Found while adding the Socket.IO location (which
+  restates them); not fixed, because it changes what the API sees on every
+  request. The storefront masks it by sending `X-Forwarded-Host` itself.
+  nginx is not installed on this Mac, so none of that config has been run here.
 - `backend/celerybeat-schedule.{bak,dat,dir}` are tracked as of the V2 merge.
   They are Celery beat's local shelve of when each periodic task last ran —
   runtime state, regenerated on every beat start, and committed by accident.

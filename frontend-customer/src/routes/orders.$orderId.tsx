@@ -16,6 +16,8 @@ import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, usePaymentReconciliation } from "@/lib/queries";
+import { ORDER_FALLBACK_POLL_MS } from "@/lib/realtime";
+import { useRealtimeStatus } from "@/lib/realtime-context";
 import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
@@ -85,7 +87,13 @@ function OrderDetail() {
   const money = useMoney();
   const { orderId } = Route.useParams();
   const isAuthenticated = useRequireAuth();
-  const orderQuery = useOrder(orderId, isAuthenticated);
+  // Pushed while the socket is live; polled slowly only while it is not.
+  const realtime = useRealtimeStatus();
+  const orderQuery = useOrder(
+    orderId,
+    isAuthenticated,
+    realtime === "live" ? false : ORDER_FALLBACK_POLL_MS,
+  );
 
   // Stripe has taken the money by the time the customer lands here, but the
   // order only moves once the webhook is verified. Locally that never arrives

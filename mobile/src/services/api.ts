@@ -193,6 +193,26 @@ export function setAppIdentityHeaders(identity: AppIdentity): void {
   );
 }
 
+/**
+ * The identity `setAppIdentityHeaders` applied, for the realtime handshake.
+ *
+ * A token is only valid for the app it was issued to, and the socket cannot
+ * reuse axios's default headers, so it sends the same two values in its own
+ * handshake payload.
+ */
+export function getAppIdentityHeaders(): {
+  bundleId: string | null;
+  platform: string | null;
+} {
+  const common = client.defaults.headers.common as Record<string, unknown>;
+  const bundleId = common[APP_BUNDLE_ID_HEADER];
+  const platform = common[APP_PLATFORM_HEADER];
+  return {
+    bundleId: typeof bundleId === 'string' ? bundleId : null,
+    platform: typeof platform === 'string' ? platform : null,
+  };
+}
+
 export const api = {
   /**
    * Resolves this build's bundle ID to its app configuration.

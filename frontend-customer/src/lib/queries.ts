@@ -159,11 +159,27 @@ export function useOrders(enabled: boolean) {
   return useQuery({ queryKey: queryKeys.orders, queryFn: api.getOrders, enabled });
 }
 
-export function useOrder(orderId: string | undefined, enabled: boolean) {
+/**
+ * One order, for the tracking page.
+ *
+ * `fallbackPollMs` is only for when no realtime push can arrive; with the
+ * socket live the push invalidates this query and nothing polls. It stops by
+ * itself once the order is finished, because nothing will change after that.
+ */
+export function useOrder(
+  orderId: string | undefined,
+  enabled: boolean,
+  fallbackPollMs: number | false = false,
+) {
   return useQuery({
     queryKey: queryKeys.order(orderId ?? ""),
     queryFn: () => api.getOrder(orderId as string),
     enabled: Boolean(orderId) && enabled,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "DELIVERED" || status === "CANCELLED") return false;
+      return fallbackPollMs;
+    },
   });
 }
 

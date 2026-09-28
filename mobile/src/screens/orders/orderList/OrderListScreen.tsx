@@ -9,12 +9,17 @@ import {
 } from 'react-native';
 import type { ListRenderItem } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useIsFocused,
+  useNavigation,
+} from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useSession } from '@hooks/useAppStore';
+import { useOrdersChanged } from '@hooks/useRealtime';
 import { api, formatCurrency, formatDateTime } from '@services/api';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
@@ -139,7 +144,7 @@ export function OrderListScreen(): React.JSX.Element {
   );
 
   const loadOrders = useCallback(
-    async (mode: 'initial' | 'refresh' = 'initial') => {
+    async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
       if (!token) {
         setOrders([]);
         setLoading(false);
@@ -147,17 +152,24 @@ export function OrderListScreen(): React.JSX.Element {
         return;
       }
 
+      // 'silent' is a realtime push: the list stays on screen and updates in
+      // place, with no spinner and no error toast for a background refresh.
       if (mode === 'refresh') {
         setRefreshing(true);
-      } else {
+      } else if (mode === 'initial') {
         setLoading(true);
       }
 
-      setError(null);
+      if (mode !== 'silent') {
+        setError(null);
+      }
       try {
         const rows = await api.getOrders(token);
         setOrders(rows);
       } catch (nextError) {
+        if (mode === 'silent') {
+          return;
+        }
         const message =
           nextError instanceof Error
             ? nextError.message
@@ -273,6 +285,15 @@ export function OrderListScreen(): React.JSX.Element {
       void loadOrders('initial');
     }, [loadOrders]),
   );
+
+  // Pushes only matter while the list is on screen; a hidden list reloads on
+  // focus above, and the push already dropped its cached copy.
+  const isFocused = useIsFocused();
+  useOrdersChanged(() => {
+    if (isFocused) {
+      void loadOrders('silent');
+    }
+  });
 
   if (!token) {
     return (

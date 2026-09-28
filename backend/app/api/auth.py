@@ -25,6 +25,7 @@ from app.services.auth import (
     hash_password,
     normalize_phone_number,
 )
+from app.services.realtime.outbox import queue_session_revoked
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -205,6 +206,8 @@ def logout_all(
     """
 
     current_user.token_version += 1
+    # Open sockets are sessions too; ended once the bump has committed.
+    queue_session_revoked(db, user_id=current_user.id)
     db.add(current_user)
     db.commit()
     db.refresh(current_user)

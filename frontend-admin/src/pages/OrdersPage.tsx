@@ -23,6 +23,7 @@ import { readWorkspaceSettings } from "../services/workspaceSettings";
 import { ApiError, api, formatDate } from "../services/api";
 import { humanizeEnum, pluralize } from "../services/format";
 import { useMoney } from '../hooks/useMoney';
+import { useOrdersChanged } from "../hooks/useRealtime";
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -164,10 +165,22 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   const [page, setPage] = useState(DEFAULT_PAGE);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const onToastRef = useRef(onToast);
+  // Set by a realtime push so the refetch it causes keeps the rows on screen
+  // instead of swapping them for a skeleton — a list that blanks every time
+  // somebody else's order moves is unusable during service.
+  const silentReload = useRef(false);
 
   useEffect(() => {
     onToastRef.current = onToast;
   }, [onToast]);
+
+  // An order changed somewhere in this account's scope. The realtime layer has
+  // already dropped the cached pages; bumping the nonce re-runs both fetches,
+  // which then miss the cache and ask the server — the only source of rows.
+  useOrdersChanged(() => {
+    silentReload.current = true;
+    setReloadNonce((current) => current + 1);
+  });
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(query), 350);
@@ -200,7 +213,11 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
       return;
     }
 
-    setIsLoading(true);
+    if (silentReload.current) {
+      silentReload.current = false;
+    } else {
+      setIsLoading(true);
+    }
     api
       .getOrdersPage(token, {
         page,
@@ -274,7 +291,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
     return () => {
       active = false;
     };
-  }, [token, scope, debouncedQuery]);
+  }, [token, scope, debouncedQuery, reloadNonce]);
 
   const statusTiles = useMemo<Array<StatTileItem<"ALL" | OrderStatus>>>(
     () => [

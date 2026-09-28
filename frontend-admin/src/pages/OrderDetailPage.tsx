@@ -20,6 +20,7 @@ import {
   Truck,
   User,
 } from "lucide-react";
+import { useOrdersChanged } from "../hooks/useRealtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyPanel } from "../components/EmptyPanel";
@@ -160,6 +161,15 @@ export function OrderDetailPage({
   useEffect(() => {
     onToastRef.current = onToast;
   }, [onToast]);
+
+  // This order moved (or the socket reconnected and anything may have). The
+  // realtime layer has already dropped the cached copy, so re-running the
+  // fetch asks the server; the page keeps showing the old row until it lands.
+  useOrdersChanged((orderIds) => {
+    if (orderIds === null || orderIds.includes(orderId)) {
+      setReloadNonce((current) => current + 1);
+    }
+  });
 
   // The page is mounted with key={orderId}, so loading state starts fresh
   // for every order and does not need to be reset inside the effect.

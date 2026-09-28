@@ -10,6 +10,8 @@ import { setEnabled } from './lib/sound'
 import { Board, type BoardColumn } from './components/Board'
 import { SignIn } from './components/SignIn'
 import { useBoard, type BoardScope } from './lib/queries'
+import { pollIntervalFor, type RealtimeStatus } from './lib/realtime'
+import { useRealtimeBoard } from './lib/useRealtime'
 
 const SOUND_KEY = 'kitchen-sound'
 const BRANCH_KEY = 'kitchen-branch'
@@ -106,7 +108,18 @@ export function App() {
    * during render from one source has no such failure mode, and the numbers
    * cannot drift from the columns beneath them because they ARE the columns.
    */
-  const results = useBoard(scope, Boolean(session?.restaurantId))
+  // The socket only says "something changed"; `useBoard` still does all the
+  // fetching. Polling slows to a safety net while the socket is live.
+  const realtime = useRealtimeBoard(
+    session?.restaurantId ? session.token : null,
+    scope,
+    signOut,
+  )
+  const results = useBoard(
+    scope,
+    Boolean(session?.restaurantId),
+    pollIntervalFor(realtime ?? 'offline'),
+  )
   const columns = useMemo<BoardColumn[]>(
     () =>
       BOARD_COLUMNS.map((column, index) => ({
@@ -184,6 +197,7 @@ export function App() {
         onSignOut={signOut}
         onToggleSound={() => setSoundOn((on) => !on)}
         restaurantName={restaurantQuery.data?.name ?? null}
+        realtime={realtime}
         soundOn={soundOn}
         stale={boardFailed}
       />
@@ -290,6 +304,7 @@ function Header({
   branchName,
   isOpen,
   clock,
+  realtime,
   stale,
   soundOn,
   onToggleSound,
@@ -299,6 +314,7 @@ function Header({
   branchName: string | null
   isOpen?: boolean
   clock: Date
+  realtime?: RealtimeStatus | null
   stale: boolean
   soundOn: boolean
   onToggleSound: () => void
@@ -326,10 +342,7 @@ function Header({
       ) : null}
 
       <div className="kds-top__right">
-        <span className="kds-live" data-state={stale ? 'stale' : 'live'}>
-          <span className="kds-live__dot" />
-          {stale ? 'Not updating' : 'Live'}
-        </span>
+        <LiveIndicator realtime={realtime ?? null} stale={stale} />
 
         <span className="kds-clock">
           {new Intl.DateTimeFormat(undefined, {
@@ -370,5 +383,26 @@ function Header({
         </button>
       </div>
     </header>
+  )
+}
+
+/**
+ * Three honest states. "Live" only when a push can actually arrive; "Polling"
+ * when the board is fresh but only as fresh as the next poll (socket down, or
+ * realtime switched off server-side); "Not updating" when REST itself fails —
+ * which outranks everything, because then nothing on screen is current.
+ */
+function LiveIndicator({ realtime, stale }: { realtime: RealtimeStatus | null; stale: boolean }) {
+  const state = stale ? 'stale' : realtime === 'live' ? 'live' : 'polling'
+  const label = state === 'stale' ? 'Not updating' : state === 'live' ? 'Live' : 'Polling'
+  const title =
+    state === 'polling'
+      ? 'Realtime updates unavailable — refreshing every few seconds'
+      : undefined
+  return (
+    <span className="kds-live" data-state={state} title={title}>
+      <span className="kds-live__dot" />
+      {label}
+    </span>
   )
 }

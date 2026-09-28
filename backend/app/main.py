@@ -11,6 +11,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.api import api_router
 from app.config import get_settings
 from app.services.model_warmup import start_model_warm_up
+from app.services.realtime.server import (
+    asgi_app as realtime_asgi_app,
+    start_background_tasks as start_realtime,
+    stop_background_tasks as stop_realtime,
+)
 
 settings = get_settings()
 
@@ -38,7 +43,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
 
     start_model_warm_up(name="model-warmup-api")
-    yield
+    # The realtime revocation listener and session sweep, one pair per worker
+    # process because each worker holds its own sockets. No-ops while
+    # `enable_realtime` is off.
+    await start_realtime()
+    try:
+        yield
+    finally:
+        await stop_realtime()
 
 
 app = FastAPI(
@@ -75,6 +87,14 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# Socket.IO, mounted rather than wrapped around the app, so `app.main:app`
+# stays the FastAPI object gunicorn runs and the test suites import. Under the
+# API prefix so every proxy that already routes `/api` routes this too; nginx
+# still needs the Upgrade headers on it (`nginx/snippets/api-proxy.conf`).
+# Always mounted: with `enable_realtime` off it refuses each handshake with a
+# reason the clients understand, rather than a 404 they would retry forever.
+app.mount(f"{settings.api_v1_prefix}/socket.io", realtime_asgi_app)
 
 
 @app.get("/health", tags=["Health"])

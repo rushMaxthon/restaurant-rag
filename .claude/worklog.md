@@ -26,6 +26,68 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-24 — Realtime order updates over Socket.IO
+
+**Goal:** Socket.IO across backend, kitchen, admin, customer web and mobile.
+REST stays the source of truth, WebSocket-only transport, Redis fan-out,
+after-commit events, refetch on reconnect, polling as the fallback. Decisions
+from the user: `socket.io-client` allowed in frontend-admin as a documented
+exception; ADMIN hears every restaurant via `admin:all`; no marketing realtime.
+
+**Changed:**
+- backend: `services/realtime/` (rooms, outbox, server), mounted in `main.py`;
+  one queue call in `record_order_status_event`; `queue_session_revoked` at the
+  four `token_version` bumps; settings block `enable_realtime` (off);
+  `python-socketio==5.17.0`; `tests/test_realtime.py` (29).
+- nginx: `location ^~ /api/socket.io/` with Upgrade headers, 75s read timeout.
+- kitchen: `lib/realtime.ts` + `useRealtime.ts`, poll 30s live / 6s not, header
+  Live / Polling / Not updating. admin: `services/realtime.ts`,
+  `hooks/useRealtime.ts`, one socket in `App`, Orders list/detail, Dashboard,
+  Restaurant/Location order tabs refresh silently. customer: `RealtimeProvider`
+  in `__root`, tracking page polls 20s only while not live. mobile:
+  `RealtimeBootstrap` (closed on background, reopened on foreground), order
+  detail + list follow pushes, detail polls 20s only while not live.
+
+**Verified:**
+- Phase 0 spike, gunicorn -w 2: 4 clients split across both workers all got an
+  emit from a third process; polling transport refused; foreign Origin refused;
+  write-only `RedisManager.disconnect` RAISES → control channel instead.
+- Backend 2341 tests: 24 failures, all `test_ordering_agent_order_details`
+  (the known baseline). Kitchen 57 / admin 209 / customer 318 / mobile 149
+  tests pass; `tsc` clean everywhere; all three webs build; Metro bundles
+  Android with socket.io-client. Lint: no new problems on any touched file.
+  Mobile `App.test.tsx` fails as before (RNGestureHandler native module).
+- E2E on a throwaway local DB (`restaurant_rag_e2e`, migrated + seeded, gunicorn
+  -w 2, realtime on): pinned cook heard only its branch, owner and admin both
+  orders, each customer only their own, a wrong-app token refused `auth`; an
+  advance from a separate non-API process reached everyone. Deactivating the
+  cook → `session:revoked`, server disconnect, reconnect refused. Playwright
+  drove the real kitchen, admin and customer UIs: each updated without reload
+  in 0.3–1.3s on every step. API killed mid-shift → header "Not updating", board
+  caught up 786ms after restart; flag off → header "Polling", change picked up
+  by the 6s poll.
+
+**Open:**
+- Mobile was not run on a device or simulator; its handshake shape was
+  exercised at protocol level only.
+- `enable_realtime` is off everywhere; nothing sets it in `.env`, compose or
+  `render.yaml` yet. Render passes WebSockets natively.
+- nginx config untested here (no nginx on this Mac), and the pre-existing
+  `proxy_set_header` inheritance hole is recorded in CLAUDE.md, not fixed.
+- Dropped from the plan: `payment:updated` for payment-only transitions. The
+  customer's 2.5s payment poll also drives provider reconciliation, so it stays
+  regardless and already covers those.
+
+**Learned:**
+- `after_rollback` fires only on a REAL DBAPI rollback: a queue made before any
+  SQL survived `rollback()` and went out with the next commit. `after_soft_
+  rollback`, plus beginning the transaction when queueing, closes it.
+- Starlette's `TestClient.websocket_connect` omits `Upgrade: websocket`, which
+  engine.io checks — pass it explicitly or every handshake is "Invalid
+  websocket upgrade".
+- socket.io-client does not reconnect after `io server disconnect`; one manual
+  `connect()` is what turns a revoked session into a clean `auth` refusal.
+
 ## 2026-09-23 — The kitchen board, redesigned
 
 **Goal:** rebuild `frontend-kitchen`'s UI against a supplied KDS reference —

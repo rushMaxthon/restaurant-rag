@@ -1,20 +1,20 @@
 /**
- * The polling layer.
+ * The data layer: REST queries, refreshed by push and by poll.
  *
- * There is no WebSocket or SSE anywhere in this backend, so "live" is a poll.
- * That is a deliberate constraint rather than a shortcut: `GET /orders` takes
- * `order_status` and `restaurant_location_id` and returns a small live queue,
- * which is cheap enough to ask for every few seconds and honest about being a
- * snapshot.
+ * `GET /orders` takes `order_status` and `restaurant_location_id` and returns
+ * a small live queue, cheap enough to ask for every few seconds and honest
+ * about being a snapshot. That poll used to be the only way the board moved.
+ * It is now the safety net: a Socket.IO push (`lib/realtime.ts`) invalidates
+ * these queries the moment an order changes, and the poll slows to 30s while
+ * the socket is live — returning to 6s the moment it is not. The data itself
+ * only ever comes from here.
  */
 
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
 
 import { api, type KitchenOrder, type OrderStatus } from './api'
 import { BOARD_COLUMNS, hiddenCount, inServiceOrder, liveWindowStart } from './board'
-
-/** Fast enough that a cook does not notice, slow enough to be unremarkable. */
-export const POLL_INTERVAL_MS = 6000
+import { POLL_INTERVAL_MS } from './realtime'
 
 export type BoardScope = { restaurantId: string | null; locationId: string | null }
 
@@ -29,7 +29,7 @@ export function boardQueryKey(status: OrderStatus, scope: BoardScope) {
  * or is slow — does not blank the other three. A kitchen with a working
  * "Cooking" column and a broken "New" one is still a kitchen that can work.
  */
-export function useBoard(scope: BoardScope, enabled: boolean) {
+export function useBoard(scope: BoardScope, enabled: boolean, pollIntervalMs = POLL_INTERVAL_MS) {
   return useQueries({
     queries: BOARD_COLUMNS.map((column) => ({
       queryKey: boardQueryKey(column.status, scope),
@@ -47,7 +47,7 @@ export function useBoard(scope: BoardScope, enabled: boolean) {
         }
       },
       enabled,
-      refetchInterval: POLL_INTERVAL_MS,
+      refetchInterval: pollIntervalMs,
       // A board left open on a wall must keep polling; the default pauses
       // when the window is not focused, which is its permanent state here.
       refetchIntervalInBackground: true,

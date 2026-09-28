@@ -10,6 +10,7 @@ import {
   Store,
   UtensilsCrossed,
 } from "lucide-react";
+import { useOrdersChanged } from "../hooks/useRealtime";
 import { Modal } from "../components/Modal";
 import { AppClientFields } from "../components/AppClientFields";
 import { BrandingPanel } from "../components/BrandingPanel";
@@ -238,6 +239,18 @@ export function RestaurantDetailPage({
     () => cachedDetail?.restaurant ?? null,
   );
   const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
+
+  // The Orders tab follows pushes. Only the order list is refetched — the
+  // restaurant itself did not change — and the snapshot the realtime layer
+  // dropped is rebuilt on the next full visit.
+  useOrdersChanged(() => {
+    api
+      .getOrders(token, restaurantId)
+      .then(setOrders)
+      .catch(() => {
+        // The tab keeps its last good list; the next push or visit retries.
+      });
+  });
   // Only true when this restaurant has never been fetched this session - not
   // on every mount, so revisiting it keeps showing its data instead of a
   // skeleton.
