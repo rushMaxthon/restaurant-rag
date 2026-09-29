@@ -26,6 +26,74 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-29 — The courier prices the delivery, and the checkout prints that
+
+**Goal:** add a delivery fee to checkout driven by the delivery API and the
+customer's address. Asked mid-task to pass static lat/lng for now and see
+whether Pidge returns a cost at all — with the explicit instruction that
+nothing about the AMOUNT may be static.
+
+**Changed:**
+- `services/delivery/base.py` — `DeliveryQuote`, and `quote()` on the protocol.
+- `services/delivery/pidge_provider.py` — `quote()` over `/serviceability` then
+  `/estimate`; `_call` takes a per-call timeout; prices parsed as Decimal via
+  str.
+- `services/delivery/geocoding.py` — NEW. The only place that knows a
+  coordinate can be stood in for. `Coordinates.exact` travels with the point.
+- `services/delivery/quoting.py` — NEW. Branch-fee-versus-courier decision,
+  which end of the band is charged, and every fallback.
+- `services/delivery/registry.py` — either delivery flag builds a courier.
+- `services/delivery/service.py` — `should_dispatch` now reads
+  `enable_delivery_dispatch` itself.
+- `services/orders.py` — the order draft prices delivery off the courier.
+- `api/orders.py` + `schemas/order.py` — `POST /orders/delivery-quote`.
+- `config/settings.py` — `enable_delivery_quotes`, `delivery_quote_basis`,
+  `delivery_quote_timeout_seconds`.
+- `frontend-customer` — `useDeliveryQuote`, the checkout total reads the
+  server's fee, a provenance line and an unserviceable warning.
+- `backend/docs/delivery-integration.md` — corrected; it said twice that Pidge
+  has no quote endpoint.
+
+**Verified:** live Pidge sandbox, three coordinate pairs — 441 m → ₹30-₹50,
+6.7 km → ₹67.04-₹87.04, 13.1 km → ₹131.14-₹151.14. The endpoint through
+FastAPI against local Postgres returned `{"delivery_fee": "87.04", "currency":
+"INR", "source": "courier", "distance_metres": 6704.0, "assign_seconds": 1080,
+"exact_location": false}`. `python -m unittest discover -s tests` → 2,413 OK.
+`npm run build` and `npm run lint` clean in `frontend-customer`.
+
+**Open:**
+- **A geocoder is the only genuinely missing piece.** 0 of 25 branches have
+  lat/lng and `user_saved_addresses` has no coordinate columns. Google, Mapbox
+  or Nominatim — the trade is licence terms against accuracy in Indian cities.
+  It changes `geocoding.py` and nothing else.
+- `ENABLE_DELIVERY_QUOTES=true` is now in `backend/.env`; dispatch stays off.
+- Migration `0069` is still forked with `marketing`'s `0069_campaign_recipients`
+  and needs an `alembic merge`.
+- Pidge aggregator (type 6) account still blocks per-tenant brand mapping.
+
+**Learned:**
+- **Pidge prices ahead of time and the documentation does not say so.** I
+  concluded twice that they could not, and wrote it into the integration doc
+  both times. The user pushed back; probing the sandbox found
+  `/serviceability`, `/estimate` and `/quote` all answering. Probing beats
+  reading their page — every correction in this integration came from a 400.
+- **The two endpoints disagree about coordinate names.** `serviceability` wants
+  `lat`/`lng`, `estimate` wants `latitude`/`longitude`. Undocumented, and a 400
+  if you assume they match.
+- **A courier quoting the wrong currency is a real bug, not a theoretical
+  one.** The first end-to-end run quoted ₹87.04 for a branch billing in CAD,
+  and the fee was on its way onto a CAD total. Discarded, never converted —
+  converting needs a rate nobody chose.
+- **Separating the quote flag from the dispatch flag moved a safety guard.**
+  Dispatch was gated by the registry refusing to build a courier at all.
+  Quoting needs a live courier, so that gate would have silently stopped
+  gating. It moved onto `should_dispatch`. Worth remembering generally: a
+  guard that works by withholding an object stops working the moment anything
+  else legitimately needs that object.
+- The `rules-of-hooks` trap from the admin's `BranchGate` recurred verbatim in
+  `checkout.tsx` — the new hook first landed below `if (!isAuthenticated)
+  return null`. Lint caught it only after prettier; the build did not.
+
 ## 2026-09-23 — Pizza prices fixed in data; picking by number and asking the price
 
 **Goal:** (1) three Bangkok Bowl pizzas priced in rupees on a CAD menu; (2) the
