@@ -860,6 +860,34 @@ def update_order_status(
             "new_status": new_status.value,
         },
     )
+    # The kitchen has taken the order, so this is the moment a rider should be
+    # asked for. Queued rather than called: the courier's API is somebody
+    # else's server, and an order must not fail to be accepted because Pidge
+    # had a bad minute.
+    #
+    # After the commit, deliberately. The task loads the order by id in its own
+    # session, and an enqueue inside the transaction races the worker against
+    # a row it cannot see yet.
+    #
+    # Swallowed like the combo refresh below it, and for the same reason: a
+    # broker that is down must not stop a kitchen accepting food. The order
+    # stands with no delivery row, which the admin shows as plainly as it shows
+    # a refused dispatch.
+    if (
+        new_status == OrderStatus.ACCEPTED
+        and settings.enable_delivery_dispatch
+        and updated_order.fulfillment_type == OrderFulfillmentType.DELIVERY
+    ):
+        try:
+            celery_app.send_task(
+                "app.tasks.delivery.dispatch_order_task",
+                kwargs={"order_id": str(order.id)},
+            )
+        except Exception:
+            logger.warning(
+                "Could not queue a courier for order %s", order.id, exc_info=True
+            )
+
     if new_status == OrderStatus.DELIVERED:
         try:
             celery_app.send_task(
