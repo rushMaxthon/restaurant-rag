@@ -13,6 +13,7 @@ from app.models.menu_item_size import MenuItemSize
 from app.models.order import Order
 from app.models.action_outcome import ActionOutcome
 from app.models.menu_availability_event import MenuItemAvailabilityEvent
+from app.models.order_delivery import OrderDelivery
 from app.models.order_item import OrderItem
 from app.models.order_status_event import OrderStatusEvent
 from app.models.owner_action import OwnerActionProposal
@@ -62,6 +63,7 @@ __all__ = [
     "Order",
     "ActionOutcome",
     "MenuItemAvailabilityEvent",
+    "OrderDelivery",
     "OrderItem",
     "OrderStatusEvent",
     "OwnerActionProposal",

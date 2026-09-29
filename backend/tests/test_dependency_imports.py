@@ -57,6 +57,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.embed",
             "app.tasks.generated_combos",
             "app.tasks.insights",
+            "app.tasks.delivery",
             "app.tasks.notifications",
             "app.tasks.payments",
             "app.tasks.whatsapp",
@@ -70,6 +71,7 @@ class ImportOrderTests(unittest.TestCase):
         expected = {
             "app.tasks.ai_offers.generate_ai_offers_task",
             "app.tasks.ai_recommendations.generate_ai_recommendations_task",
+            "app.tasks.delivery.dispatch_order_task",
             "app.tasks.embed.backfill_menu_embeddings",
             "app.tasks.embed.embed_menu_item",
             "app.tasks.generated_combos.rebuild_generated_combos_task",

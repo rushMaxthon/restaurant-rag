@@ -21,6 +21,7 @@ from app.models.enums import (
 )
 
 if TYPE_CHECKING:
+    from app.models.order_delivery import OrderDelivery
     from app.models.order_item import OrderItem
     from app.models.payment import PaymentTransaction
     from app.models.restaurant import Restaurant
@@ -191,4 +192,11 @@ class Order(TimestampMixin, Base):
     payment_transactions: Mapped[list["PaymentTransaction"]] = relationship(
         back_populates="order",
         cascade="all, delete-orphan",
+    )
+    # At most one: a second rider for the same food is a bug, and the unique
+    # constraint on `order_deliveries.order_id` is what enforces it.
+    delivery: Mapped["OrderDelivery | None"] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
