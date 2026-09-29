@@ -310,6 +310,7 @@ logins are `admin@example.com` and `customer1@example.com`, password
 | `LLM_ARCHITECTURE.md` | which model, why, backend vs LLM responsibilities |
 | `PROJECT_UNDERSTANDING.md` | broad product overview |
 | `backend/docs/chat-rag-workflow.md` | customer chat internals |
+| `backend/docs/delivery-integration.md` | getting the food to the customer: Pidge, the courier contract, and the webhook that does not trust its payload |
 | `docs/per-app-identity.md` | the AppClient identity split |
 | `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |
 | `MENU_ITEM_CUSTOMIZATION_FLOW.md`, `STRIPE_PAYMENT_INTEGRATION_PLAN.md` | those flows |

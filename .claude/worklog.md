@@ -98,6 +98,54 @@ Verified live on Bodakdev: Clear cart → question → All → empty; no → kep
 remove one → question with names → 2 → second line off; the tofu → the only
 line off. Suite 2283 OK.
 
+## 2026-09-29 — Delivery: Pidge integrated end to end
+
+**Goal:** the user shared Pidge's Postman docs and sandbox credentials, asked
+what was useful, then to build it: provider → persistence → dispatch → webhook
+→ admin.
+
+**Changed:** `services/delivery/` (base, pidge_provider, registry, service),
+`models/order_delivery.py`, migration `0069`, `tasks/delivery.py`,
+`api/delivery.py`, the dispatch trigger in `services/orders.py`,
+`DeliveryPanel.tsx`, `docs/delivery-integration.md`.
+
+**Written against the sandbox, not the docs**, which disagree in four places —
+`address_line_1` not `line1`, notes `{name,value}` not `{key,value}`, the
+create response keyed by OUR `source_order_id` not `data.id`, and `brand`
+refused on a vendor account ("allowed only for aggregator(6)"). All pinned in
+tests so nobody rediscovers them from a production 400.
+
+**The judgement that matters:** sixteen Pidge statuses collapse to seven, and
+the return-to-origin family is `FAILED`, not `CANCELLED`. The food was cooked
+and came back; that is a different fact from "nobody started it", and only one
+of them leaves somebody out of pocket. `FAILED` moves the order nowhere — a
+person decides.
+
+**The webhook does not trust its payload.** Pidge signs nothing, so a push is
+read only for which delivery it concerns and the state is then fetched over our
+own authenticated connection. Proven: a forged `DELIVERED` left the order on
+`ACCEPTED`.
+
+**Verified:** full journey against the live sandbox — kitchen accepts → task
+queued → Pidge returns a job id → row stored → forged webhook ignored → real
+progression walked `PICKED_UP → OUT_FOR_DELIVERY → DELIVERED` carrying the
+order with it. Backend 2392 tests; admin builds clean, 131 tests.
+
+**Open:**
+- **Aggregator account from Pidge** — blocks per-tenant brand mapping.
+- **No cancel and no quote/serviceability endpoint** documented. The second
+  means we cannot price delivery or validate an address before taking money.
+- `ENABLE_DELIVERY_DISPATCH` is off in `.env`; nothing fires on real orders yet.
+
+**Learned — the shared database is a trap.** Supabase reads
+`0071_kitchen_staff`, a revision only `origin/marketing` has; V2 ends at `0068`
+and there are already two different `0064_*` files across branches. So `0069`
+exists twice (`order_deliveries` here, `campaign_recipients` there). The table
+was created on Supabase directly with RLS enabled (50 tables, 50 with RLS,
+0 policies — the documented deny-by-default), and `0069` now tolerates the
+table already existing so reconciling the chains is not an outage. **Branches
+sharing one database with forked chains needs sorting before either merges.**
+
 **2026-09-25 — every list is numbered.** The user's ask: "menu" answered with
 one comma-joined line is a paragraph to read and nothing to answer; show
 `1, 2, 3` and accept either the number or the name. Shipped: `offer_of_sections`
