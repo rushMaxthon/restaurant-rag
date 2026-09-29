@@ -15,6 +15,8 @@ export const queryKeys = {
   order: (id: string) => ["order", id] as const,
   combos: ["generated-combos"] as const,
   offers: ["personalized-offers"] as const,
+  deliveryQuote: (locationId: string, address: string) =>
+    ["delivery-quote", locationId, address] as const,
 };
 
 export function useAppConfig() {
@@ -197,6 +199,35 @@ export function usePaymentReconciliation(orderId: string | undefined, unpaid: bo
     refetchOnWindowFocus: true,
     // Nothing here is worth showing stale: the whole point is the newest answer.
     staleTime: 0,
+  });
+}
+
+/**
+ * What delivery costs for this address, from the server.
+ *
+ * Keyed on the address text, so editing a flat number asks again and a page
+ * that has already asked does not. Disabled until there is an address to
+ * quote: a courier priced against an empty string is a number about nothing.
+ *
+ * `placeholderData` keeps the previous fee on screen while a new one is in
+ * flight. Without it the delivery line blinks to the branch fee and back on
+ * every keystroke, which reads as the price changing while you type.
+ */
+export function useDeliveryQuote(locationId: string | null | undefined, address: string) {
+  const ready = Boolean(locationId) && address.trim().length > 0;
+  return useQuery({
+    queryKey: queryKeys.deliveryQuote(locationId ?? "", address),
+    queryFn: () =>
+      api.quoteDelivery({
+        restaurant_location_id: locationId as string,
+        delivery_address: address,
+      }),
+    enabled: ready,
+    placeholderData: (previous) => previous,
+    // A courier's price for one pair of points does not move minute to
+    // minute, and this sits on the checkout's critical path.
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 

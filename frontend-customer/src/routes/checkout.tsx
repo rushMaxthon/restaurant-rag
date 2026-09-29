@@ -55,7 +55,13 @@ import {
   type AddressFields,
 } from "@/lib/delivery-address";
 import { useRequireAuth } from "@/lib/require-auth";
-import { useCreateOrder, usePaymentConfig, useProfile, useValidateOrder } from "@/lib/queries";
+import {
+  useCreateOrder,
+  useDeliveryQuote,
+  usePaymentConfig,
+  useProfile,
+  useValidateOrder,
+} from "@/lib/queries";
 import { ApiError, api, type OrderCreateRequest } from "@/lib/api";
 import { refusalNeedsCart } from "@/lib/order-refusal";
 import { pageMeta, useCurrencyCode, useStorefrontCopy, useMoney } from "@/lib/storefront";
@@ -313,6 +319,21 @@ function Checkout() {
   const sessionExpired =
     paymentConfig.error instanceof ApiError && paymentConfig.error.status === 401;
 
+  // Must sit ABOVE the `isAuthenticated` early return: a hook called after a
+  // conditional return runs on some renders and not others, and React fails
+  // the next render with "rendered more hooks than during the previous
+  // render". The same trap that crashed the admin's branch gate.
+  //
+  // The address is quoted as the string the ORDER will carry, so the fee
+  // shown is the fee for the trip that gets booked — and only once the form
+  // is valid, because a courier priced against half an address is a number
+  // about nothing.
+  const quotableAddress =
+    s.fulfillment === "DELIVERY" && Object.keys(validateAddress(address, postalName)).length === 0
+      ? composeDeliveryAddress(address)
+      : "";
+  const deliveryQuote = useDeliveryQuote(s.orderLocation?.id, quotableAddress);
+
   if (!isAuthenticated) return null;
 
   // The branch the ORDER names, not the one the picker is showing. Slot rules,
@@ -324,11 +345,6 @@ function Checkout() {
   // read as "use the device zone" — the old behaviour, and harmless.
   const tz = s.timeZone;
   const isDelivery = s.fulfillment === "DELIVERY";
-  // 0, not 45 — see the note in cart.tsx. An invented $45 delivery fee is
-  // the worst thing to show someone one second before they pay.
-  const delivery = isDelivery ? Number(branch?.delivery_fee ?? 0) : 0;
-  const tax = s.subtotal * 0.05;
-  const total = s.subtotal + delivery + tax;
   const eta = isDelivery ? branch?.estimated_delivery_time : branch?.estimated_pickup_time;
   // The clock time that ETA lands on, on the branch's clock.
   const etaAt = etaClockTime(eta, now, tz);
@@ -336,6 +352,25 @@ function Checkout() {
   // Validation lives in lib/delivery-address.ts so the form and the submit
   // handler cannot disagree about what "valid" means.
   const addressProblems = isDelivery ? validateAddress(address, postalName) : {};
+  // 0, not 45 — see the note in cart.tsx. An invented $45 delivery fee is
+  // the worst thing to show someone one second before they pay.
+  //
+  // The branch's flat fee is the starting point and the server's quote wins
+  // when there is one. The arithmetic is deliberately NOT the authority: the
+  // order is priced again server-side when it is placed, from the same rule,
+  // and this line exists to show a customer the figure rather than to decide
+  // it. A courier prices by distance, so a flat fee quietly overcharges the
+  // customer next door and undercharges the one across the city.
+  const delivery = isDelivery
+    ? Number(deliveryQuote.data?.delivery_fee ?? branch?.delivery_fee ?? 0)
+    : 0;
+  const quotedByCourier = deliveryQuote.data?.source === "courier";
+  // A courier that will not drive to this address at all. The fee falls back
+  // to the branch's, so the total stays honest, but saying nothing would let
+  // somebody pay for a delivery no rider is going to accept.
+  const unserviceable = Boolean(deliveryQuote.data && !deliveryQuote.data.serviceable);
+  const tax = s.subtotal * 0.05;
+  const total = s.subtotal + delivery + tax;
   const phoneProblem = validatePhone(phone);
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
   const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
@@ -1276,6 +1311,22 @@ function Checkout() {
               </div>
             ))}
           </dl>
+
+          {isDelivery && quotedByCourier ? (
+            <p className="mt-2 text-xs text-muted">
+              Delivery priced for your address
+              {deliveryQuote.data?.distance_metres
+                ? `, about ${(deliveryQuote.data.distance_metres / 1000).toFixed(1)} km away`
+                : ""}
+              .
+            </p>
+          ) : null}
+          {unserviceable ? (
+            <p className="inline-error mt-2 text-xs">
+              No courier covers this address right now. The restaurant may still deliver it
+              themselves, or choose pickup instead.
+            </p>
+          ) : null}
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
             <span className="text-lg font-extrabold">Total</span>

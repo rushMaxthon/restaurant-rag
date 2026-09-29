@@ -142,10 +142,66 @@ production and an order nobody collects:
 | `brand` accepted | refused on a vendor account |
 
 Undocumented but useful: the order carries **`pickup_drop_distance`** in metres.
-It is the only distance figure this app has, and what a distance-based delivery
-fee would be priced from — which partly covers Pidge having no quote endpoint.
 Package dimensions feed their volumetric weight, so they affect the price;
 placeholders there are a wrong invoice later.
+
+**They do price ahead of time, and the Postman page does not say so.** Three
+endpoints exist and all three answer:
+
+| Endpoint | Answers | Coordinate keys |
+|---|---|---|
+| `POST .../vendor/serviceability` | will anyone drive it | `lat` / `lng` |
+| `POST .../vendor/estimate` | what it costs | `latitude` / `longitude` |
+| `POST .../vendor/quote` | a multi-drop batch | `pickup.coordinates`, `drop` as an array with `ref` |
+
+The two we use **disagree about what a coordinate is called**, which is a 400
+if you assume they match. `estimate` answers with `minCost`, `maxCost`,
+`pickupToDropDistance`, `pickupToDropTime` and `timeToAssign`.
+
+## What delivery costs, before the order exists
+
+A flat `restaurant_location.delivery_fee` charged the customer next door and
+the customer across the city the same amount. A courier prices by distance, so
+the restaurant carried that difference without ever seeing it.
+
+```
+checkout types an address
+  -> POST /api/orders/delivery-quote
+  -> geocoding turns both ends into points     (a STAND-IN today)
+  -> Pidge says serviceable, then prices it
+  -> the checkout shows the courier's number
+  -> placing the order recomputes it server-side from the same rule
+```
+
+Measured against their sandbox, from Bodakdev in Ahmedabad:
+
+| Drop | Distance | Quoted |
+|---|---|---|
+| next street | 441 m | ₹30 – ₹50 |
+| Navrangpura | 6.7 km | ₹67.04 – ₹87.04 |
+| Maninagar | 13.1 km | ₹131.14 – ₹151.14 |
+
+**A band, not a price**, because no rider has been assigned yet.
+`DELIVERY_QUOTE_BASIS` chooses which end is printed and defaults to `max` —
+the only end that cannot leave the platform paying the difference on a busy
+evening.
+
+**The branch's flat fee is the fallback for everything.** Flag off, no
+credentials, courier slow, courier down, address unserviceable, courier
+quoting a currency this order is not in — each one lands on the fee every
+order has charged until now. That is what makes switching this on safe: with
+the flag off, nothing anybody pays changes.
+
+⚠️ **A courier quoting the wrong currency is discarded, not converted.** Found
+by running it: Pidge quoted ₹87.04 for a branch that bills in CAD, and adding
+those produces a figure that is not money in any currency. Converting would
+need an exchange rate nobody chose, applied to an amount the restaurant never
+agreed to charge.
+
+**Nothing here invents a number.** There is no default courier fee and no
+distance formula of our own. The only figures that reach a customer are the
+branch's own fee or the courier's own quote — the stand-in is in the
+COORDINATES, never in the price.
 
 ## Switching it on
 
@@ -154,6 +210,8 @@ Off by default. Nothing calls Pidge until `ENABLE_DELIVERY_DISPATCH` is true
 
 ```
 ENABLE_DELIVERY_DISPATCH=true
+ENABLE_DELIVERY_QUOTES=true   # a separate decision: pricing is not dispatching
+DELIVERY_QUOTE_BASIS=max      # max | mid | min — which end of the band is charged
 PIDGE_BASE_URL=https://store.dev.pidge.in
 PIDGE_USERNAME=…
 PIDGE_PASSWORD=…
@@ -169,8 +227,12 @@ Point Pidge's webhook at `POST /api/delivery/webhook`.
 - **No cancel endpoint** is documented. If an order is cancelled after a rider
   is dispatched, there is no way to call it off from code — ask Pidge whether
   one exists.
-- **No serviceability or quote endpoint.** You cannot tell a customer the
-  delivery fee, or whether an address is deliverable, before they pay.
+- **A geocoder.** The only genuinely missing piece. No branch has
+  coordinates and a customer's address is free text with nowhere to put one,
+  so `services/delivery/geocoding.py` stands in a fixed point at both ends.
+  The price that comes back is the courier's own and real; the trip it prices
+  is approximate, which is why `exact_location` travels to the checkout.
+  Choosing a provider (Google, Mapbox or Nominatim) changes that one file.
 - **Migration `0069` is forked.** This branch's `0069_order_deliveries` and
   `marketing`'s `0069_campaign_recipients` both descend from `0068`, and the
   shared database reads `0071`. The migration is written to tolerate the table

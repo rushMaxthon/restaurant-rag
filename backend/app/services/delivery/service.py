@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.enums import OrderFulfillmentType, OrderStatus
 from app.models.order import Order
 from app.models.order_delivery import OrderDelivery
@@ -149,8 +150,19 @@ def _coord(value: object) -> float | None:
 
 
 def should_dispatch(order: Order) -> bool:
-    """Whether this order is one a courier should be asked about at all."""
+    """Whether this order is one a courier should be asked about at all.
 
+    The `enable_delivery_dispatch` check lives HERE rather than only at the
+    call site, and that is deliberate. It used to be enforced further out — by
+    the registry refusing to build a courier at all — and loosening that so a
+    checkout could quote a fee without also booking riders would have left
+    dispatch ungated for anything reaching the task directly: a retry, a
+    replay, a console call. Booking a rider costs real money, so the guard
+    belongs on the function that decides to book one.
+    """
+
+    if not get_settings().enable_delivery_dispatch:
+        return False
     if order.fulfillment_type != OrderFulfillmentType.DELIVERY:
         return False
     if order.status in {OrderStatus.CANCELLED, OrderStatus.DELIVERED, OrderStatus.PAYMENT_PENDING}:

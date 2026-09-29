@@ -17,18 +17,21 @@ order back on the road.
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 import uuid
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.config import get_settings
 from app.models.enums import OrderFulfillmentType, OrderStatus, PaymentMethod
 from app.services.delivery.base import DeliveryState
 from app.services.delivery.service import advance_order, build_request, should_dispatch
@@ -77,6 +80,30 @@ def an_order(**over):
 
 
 class WhichOrdersGoToACourierTests(unittest.TestCase):
+    """`should_dispatch` is the last gate before real money is spent.
+
+    Every test here runs with `ENABLE_DELIVERY_DISPATCH` on, because that is
+    now part of the answer rather than a condition checked somewhere else.
+    The flag used to be enforced by the registry refusing to build a courier
+    at all; once a checkout needed to quote a fee WITHOUT booking riders, that
+    could no longer be the guard, so it moved onto the function that decides
+    to book one.
+    """
+
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ, {"ENABLE_DELIVERY_DISPATCH": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def test_the_flag_being_off_dispatches_nobody(self) -> None:
+        # Not a UI guard and not the caller's job: a retry, a replay or a
+        # console call reaching the task directly must still book no rider.
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_DISPATCH": "false"}):
+            get_settings.cache_clear()
+            self.assertFalse(should_dispatch(an_order()))
+
     def test_a_delivery_order_in_flight_does(self) -> None:
         for status in (OrderStatus.PLACED, OrderStatus.ACCEPTED, OrderStatus.PREPARING):
             with self.subTest(status=status):

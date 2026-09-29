@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.services.delivery.base import (
     DeliveryAddress,
     DeliveryProviderError,
+    DeliveryQuote,
     DeliveryRequest,
     DeliveryResult,
     DeliveryState,
@@ -205,15 +206,22 @@ class PidgeProvider:
         # produces "Bearer Bearer ..." and a 401 that looks like expiry.
         return {"Authorization": token if token.startswith("Bearer ") else f"Bearer {token}"}
 
-    def _call(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        """One authenticated request, retried once through a fresh login."""
+    def _call(
+        self, method: str, path: str, *, timeout: float | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        """One authenticated request, retried once through a fresh login.
+
+        `timeout` overrides the instance default for calls on a human's
+        critical path. A dispatch runs on a worker and can afford to wait; a
+        quote is blocking a checkout and cannot.
+        """
 
         url = f"{self._base_url}{path}"
         for attempt in (1, 2):
             headers = self._auth_header(force=attempt == 2)
             try:
                 response = httpx.request(
-                    method, url, headers=headers, timeout=self._timeout, **kwargs
+                    method, url, headers=headers, timeout=timeout or self._timeout, **kwargs
                 )
             except httpx.HTTPError as error:
                 raise DeliveryProviderError(f"Could not reach Pidge: {error}") from error
@@ -235,6 +243,79 @@ class PidgeProvider:
         raise DeliveryProviderError("Pidge kept refusing the token")
 
     # --- the contract -----------------------------------------------------
+
+    def quote(
+        self,
+        *,
+        pickup_lat: float,
+        pickup_lng: float,
+        drop_lat: float,
+        drop_lng: float,
+        timeout: float | None = None,
+    ) -> DeliveryQuote:
+        """What Pidge would charge for this trip, asked before it exists.
+
+        Two calls, because they answer two different questions and only one of
+        them can say no. `/serviceability` says whether any rider covers that
+        pair of points; `/estimate` prices it. Asking for a price first and
+        inferring "unserviceable" from a missing number would turn their
+        outage into our silent free delivery.
+
+        The two endpoints disagree about what a coordinate is called —
+        serviceability wants `lat`/`lng`, estimate wants
+        `latitude`/`longitude` — which is not in the documentation and is a
+        400 if you assume they match.
+
+        Nothing here invents a number. If Pidge prices nothing, the quote
+        carries no cost and the caller decides what to do about it; a default
+        fee baked in at this layer would be a made-up figure wearing a
+        courier's name.
+        """
+
+        reachable = self._call(
+            "POST",
+            "/v1.0/store/channel/vendor/serviceability",
+            timeout=timeout,
+            json={
+                "pickup": {"lat": pickup_lat, "lng": pickup_lng},
+                "drop": {"lat": drop_lat, "lng": drop_lng},
+            },
+        )
+        data = reachable.get("data")
+        data = data if isinstance(data, dict) else {}
+        # Absent rather than false is treated as serviceable: their own reply
+        # for a covered pair is `{"serviceable": true}`, and a shape we do not
+        # recognise should not silently refuse a customer who can be served.
+        serviceable = data.get("serviceable")
+        if serviceable is None:
+            serviceable = reachable.get("serviceable", True)
+        if not serviceable:
+            return DeliveryQuote(serviceable=False, raw=reachable)
+
+        priced = self._call(
+            "POST",
+            "/v1.0/store/channel/vendor/estimate",
+            timeout=timeout,
+            json={
+                "pickup": {"latitude": pickup_lat, "longitude": pickup_lng},
+                "drop": {"latitude": drop_lat, "longitude": drop_lng},
+            },
+        )
+        estimate = priced.get("data")
+        estimate = estimate if isinstance(estimate, dict) else priced
+
+        return DeliveryQuote(
+            serviceable=True,
+            min_cost=_money(estimate.get("minCost")),
+            max_cost=_money(estimate.get("maxCost")),
+            # Pidge is an Indian courier and quotes rupees. They do not say so
+            # in the payload, so it is asserted here rather than read.
+            currency="INR",
+            distance_metres=_float(estimate.get("pickupToDropDistance")),
+            travel_seconds=_seconds(estimate.get("pickupToDropTime")),
+            assign_seconds=_seconds(estimate.get("timeToAssign")),
+            raw={"serviceability": reachable, "estimate": priced},
+        )
 
     def create(self, request: DeliveryRequest) -> DeliveryResult:
         trip: dict[str, Any] = {
@@ -341,6 +422,28 @@ class PidgeProvider:
             provider_status=str(fulfillment_status or data.get("status") or ""),
             raw=data,
         )
+
+
+def _money(value: Any) -> Decimal | None:
+    """A courier's price as Decimal, via str — never through float.
+
+    `Decimal(71.26)` is 71.2599999... and money that arrives at a checkout
+    three places wrong is money somebody has to explain.
+    """
+
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+
+
+def _seconds(value: Any) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _float(value: Any) -> float | None:

@@ -42,8 +42,19 @@ def delivery_provider() -> DeliveryProvider | None:
             return _provider
         _built = True
         settings = get_settings()
-        if not settings.enable_delivery_dispatch:
-            logger.info("Delivery dispatch is switched off; no courier will be called")
+        # Either flag is enough to want a courier object, because the two ask
+        # it different questions. Gating this on dispatch alone meant a
+        # restaurant could not show customers a real delivery fee without
+        # also committing the platform to booking riders — which is exactly
+        # the pair of decisions the second flag exists to separate.
+        #
+        # This is not a way around the dispatch flag. `should_dispatch`
+        # reads `enable_delivery_dispatch` itself, so a quote-only
+        # deployment with a live courier object still books nobody — the
+        # guard moved onto the function that spends the money rather than
+        # relying on there being no courier to spend it with.
+        if not (settings.enable_delivery_dispatch or settings.enable_delivery_quotes):
+            logger.info("No delivery flag is on; no courier will be called")
             _provider = None
             return None
         candidate = PidgeProvider(

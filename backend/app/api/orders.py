@@ -13,6 +13,8 @@ from app.config.database import get_db
 from app.models.enums import OrderStatus, UserRole
 from app.models.user import User
 from app.schemas.order import (
+    DeliveryQuoteRequest,
+    DeliveryQuoteResponse,
     OrderCreateRequest,
     OrderDeliveryResponse,
     OrderResponse,
@@ -33,8 +35,12 @@ from app.services.auth import (
     require_owner,
     resolve_owner_restaurant_id,
 )
+from app.models.restaurant_location import RestaurantLocation
+from app.services.delivery import geocoding
+from app.services.delivery.quoting import fee_from, quote_for, usable_in
 from app.services.orders import (
     create_order,
+    normalize_stored_currency,
     get_order_for_user,
     list_orders,
     update_order_status,
@@ -64,6 +70,74 @@ def validate_order(
 ) -> OrderValidationResponse:
     ensure_restaurant_writable(app_scope, payload.restaurant_id)
     return validate_order_draft(db, current_user, payload)
+
+
+@router.post("/delivery-quote", response_model=DeliveryQuoteResponse)
+def quote_delivery(
+    payload: DeliveryQuoteRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_customer)],
+    app_scope: AppScopeDep,
+) -> DeliveryQuoteResponse:
+    """What delivery will cost, asked before the order exists.
+
+    Always answers with a fee. A courier that is switched off, unconfigured,
+    slow or unwilling to serve the address falls back to the branch's own flat
+    rate — the figure every order has been charged until now — and says so in
+    `source`. A checkout that could be left with no number to print would just
+    invent one, which is the thing this whole path exists to avoid.
+
+    Placing the order recomputes all of this server-side. This endpoint is for
+    showing a customer a figure while they type, never the authority on what
+    they are charged.
+    """
+
+    location = db.get(RestaurantLocation, payload.restaurant_location_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    ensure_restaurant_writable(app_scope, location.restaurant_id)
+
+    branch_fee = location.delivery_fee or 0
+    # The same source an order is stamped from, so the figure shown here
+    # and the figure charged cannot be in different currencies.
+    currency = normalize_stored_currency(location.restaurant.currency)
+    quote = quote_for(location, payload.delivery_address)
+    if quote is None:
+        return DeliveryQuoteResponse(
+            delivery_fee=branch_fee, currency=currency, source="branch"
+        )
+
+    if not usable_in(quote, currency):
+        # A courier pricing in a currency this order is not charged in has not
+        # answered the question. The branch fee stands, and `source` says so
+        # rather than a rupee figure appearing beside a dollar subtotal.
+        return DeliveryQuoteResponse(
+            delivery_fee=branch_fee, currency=currency, source="branch"
+        )
+
+    fee = fee_from(quote)
+    if fee is None:
+        # Unserviceable, or priced at nothing. The branch's fee stands and the
+        # flag travels, so the page can warn without the fee disappearing.
+        return DeliveryQuoteResponse(
+            delivery_fee=branch_fee,
+            currency=currency,
+            source="branch",
+            serviceable=quote.serviceable,
+            exact_location=False,
+        )
+
+    pickup = geocoding.for_branch(location)
+    drop = geocoding.for_address(payload.delivery_address)
+    return DeliveryQuoteResponse(
+        delivery_fee=fee,
+        currency=currency,
+        source="courier",
+        serviceable=True,
+        distance_metres=quote.distance_metres,
+        assign_seconds=quote.assign_seconds,
+        exact_location=pickup.exact and drop.exact,
+    )
 
 
 @router.get("", response_model=list[OrderResponse])

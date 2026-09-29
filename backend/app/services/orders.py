@@ -30,6 +30,7 @@ from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
+from app.services.delivery.quoting import delivery_fee_for
 from app.models.user import User
 from app.schemas.order import (
     OrderCreateRequest,
@@ -444,11 +445,23 @@ def _prepare_order_draft(
             detail=f"Minimum order amount for this restaurant is {minimum_order_amount:.2f}",
         )
 
-    delivery_fee = (
-        _safe_decimal(restaurant_location.delivery_fee)
-        if payload.fulfillment_type == OrderFulfillmentType.DELIVERY
-        else Decimal("0.00")
-    )
+    delivery_fee = Decimal("0.00")
+    if payload.fulfillment_type == OrderFulfillmentType.DELIVERY:
+        # The branch's own flat fee is the floor of this decision and the
+        # answer whenever a courier does not produce one. A flat fee charges
+        # the customer next door and the customer across the city the same
+        # amount, so when a courier will price the actual trip, that price
+        # wins — and `delivery_fee_for` returns None for every way it can
+        # fail, which is what keeps a switched-off, unconfigured or unhappy
+        # courier from changing what anybody is charged.
+        delivery_fee = _safe_decimal(restaurant_location.delivery_fee)
+        quoted = delivery_fee_for(
+            restaurant_location,
+            payload.delivery_address or "",
+            currency=normalize_stored_currency(restaurant.currency),
+        )
+        if quoted is not None:
+            delivery_fee = _quantize(quoted)
     tax_amount = _quantize(subtotal * Decimal("0.05"))
     discount_amount = Decimal("0.00")
     applied_offer = None

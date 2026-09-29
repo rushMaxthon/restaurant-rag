@@ -172,6 +172,47 @@ class OrderValidationResponse(BaseModel):
     item_count: int
 
 
+class DeliveryQuoteRequest(BaseModel):
+    """Where to, so a courier can price the trip.
+
+    Deliberately not the whole cart. A customer typing their address wants to
+    know the delivery fee before they have finished choosing food, and making
+    them assemble a valid order first to learn the price is the wrong way
+    round.
+    """
+
+    restaurant_location_id: uuid.UUID
+    delivery_address: str = Field(default="", max_length=500)
+
+
+class DeliveryQuoteResponse(BaseModel):
+    """What delivery costs, and where the figure came from.
+
+    `source` is the point of this response. A checkout showing a number the
+    customer will pay should be able to say whether a courier priced this
+    particular trip or whether it is the restaurant's own flat rate — and a
+    support call six weeks later is unanswerable without it.
+    """
+
+    delivery_fee: Decimal
+    currency: str
+    #: "courier" when a courier priced this trip, "branch" for the flat fee.
+    source: str
+    #: False when the courier will not serve the address at all. The fee then
+    #: falls back to the branch's, because refusing an order on a courier's
+    #: say-so is the restaurant's decision to make, not this endpoint's.
+    serviceable: bool = True
+    #: Straight-line-ish distance as the courier measured it, when it said.
+    distance_metres: float | None = None
+    #: Seconds the courier expects to need to find a rider at all. Often
+    #: larger than the drive, and the difference between an honest ETA and an
+    #: optimistic one.
+    assign_seconds: int | None = None
+    #: False when either end of the trip was a stand-in coordinate rather than
+    #: a geocoded address. The price is real; the trip it prices may not be.
+    exact_location: bool = True
+
+
 class OrderStatusUpdateRequest(BaseModel):
     status: OrderStatus
 

@@ -687,6 +687,33 @@ class Settings(BaseSettings):
     # header that ends up in logs and proxies like any other.
     delivery_webhook_secret: str = ""
 
+    # --- delivery quotes ----------------------------------------------------
+    #
+    # A separate switch from dispatch on purpose, the same way the analyst has
+    # three. Asking a courier what a trip would cost and booking a rider are
+    # different decisions: quoting is a read that shows a number on a checkout
+    # page, dispatch commits the platform to a job someone has to pay for. A
+    # restaurant may well want the first without the second while it is still
+    # deciding whether to use the courier at all.
+    #
+    # Off means the branch's own flat `delivery_fee` stands, which is what
+    # every order has charged until now — so this changes nothing until it is
+    # switched on.
+    enable_delivery_quotes: bool = False
+    # What the customer is charged out of the range a courier quotes. Pidge
+    # answers with a min and a max because no rider has been found yet and the
+    # price moves with demand; somebody has to choose a single number to print.
+    # "max" is the honest default: it is the figure that cannot leave the
+    # platform out of pocket, and a customer charged the ceiling and delivered
+    # for less is a margin, while the reverse is a loss on every busy evening.
+    # "min" and "mid" exist for an operator who would rather compete on the
+    # headline number and absorb the spread.
+    delivery_quote_basis: str = "max"
+    # A quote is one HTTP call on the checkout's critical path. Short on
+    # purpose: a courier having a slow minute must not hold up a customer who
+    # is ready to pay, and the fallback is the branch's own fee, not an error.
+    delivery_quote_timeout_seconds: float = 6.0
+
     fcm_project_id: str = "quickbite-7833a"
     fcm_credentials_path: str = "firebase-service-account.json"
 

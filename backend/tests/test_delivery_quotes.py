@@ -1,0 +1,249 @@
+"""What delivery costs, and every way that question can go unanswered.
+
+This exists because a delivery fee is the last number a customer reads before
+they pay, and the ways it can be wrong are all quiet. A courier priced in the
+wrong currency, a courier that did not answer at all, a courier that will not
+serve the street - none of them raise. Each one has to land on the branch's
+own flat fee, which is what every order was charged before any of this
+existed, so switching the feature on cannot change what anybody pays until a
+courier actually prices their trip.
+
+Each case below is a way the checkout could have printed a wrong figure.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from decimal import Decimal
+from unittest import mock
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.config import get_settings  # noqa: E402
+from app.services.delivery import quoting  # noqa: E402
+from app.services.delivery.base import DeliveryProviderError, DeliveryQuote  # noqa: E402
+from app.services.delivery.pidge_provider import PidgeProvider  # noqa: E402
+
+
+class _Branch:
+    """Just enough of a RestaurantLocation to be quoted for."""
+
+    id = "branch-1"
+    latitude = None
+    longitude = None
+    delivery_fee = Decimal("40.00")
+
+
+def _quote(**kwargs) -> DeliveryQuote:
+    base = {
+        "serviceable": True,
+        "min_cost": Decimal("67.04"),
+        "max_cost": Decimal("87.04"),
+        "currency": "INR",
+    }
+    base.update(kwargs)
+    return DeliveryQuote(**base)
+
+
+class ChoosingTheFigureToPrint(unittest.TestCase):
+    """A courier quotes a band; a checkout prints one number."""
+
+    def setUp(self) -> None:
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def test_the_ceiling_is_charged_by_default(self) -> None:
+        # The end that cannot leave the platform paying the difference when a
+        # rider turns out to cost the top of the band.
+        with mock.patch.dict(os.environ, {"DELIVERY_QUOTE_BASIS": "max"}):
+            get_settings.cache_clear()
+            self.assertEqual(quoting.fee_from(_quote()), Decimal("87.04"))
+
+    def test_an_operator_can_choose_the_floor(self) -> None:
+        with mock.patch.dict(os.environ, {"DELIVERY_QUOTE_BASIS": "min"}):
+            get_settings.cache_clear()
+            self.assertEqual(quoting.fee_from(_quote()), Decimal("67.04"))
+
+    def test_the_middle_is_available_and_rounds_to_two_places(self) -> None:
+        with mock.patch.dict(os.environ, {"DELIVERY_QUOTE_BASIS": "mid"}):
+            get_settings.cache_clear()
+            self.assertEqual(quoting.fee_from(_quote()), Decimal("77.04"))
+
+    def test_an_unserviceable_address_has_no_fee_at_all(self) -> None:
+        # Not a fee of zero. Free delivery to an address nobody will drive to
+        # is the most expensive bug available here.
+        self.assertIsNone(quoting.fee_from(DeliveryQuote(serviceable=False)))
+
+    def test_a_quote_with_no_numbers_produces_none(self) -> None:
+        self.assertIsNone(quoting.fee_from(_quote(min_cost=None, max_cost=None)))
+
+    def test_one_end_of_the_band_is_enough(self) -> None:
+        self.assertEqual(quoting.fee_from(_quote(max_cost=None)), Decimal("67.04"))
+
+
+class WhenTheQuoteCannotBeUsed(unittest.TestCase):
+    """Every path back to the branch's own fee."""
+
+    def setUp(self) -> None:
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def test_a_quote_in_another_currency_is_refused(self) -> None:
+        # Found by running it: an Indian courier quoted rupees for a branch
+        # billing in CAD. Adding those is not money in any currency.
+        self.assertFalse(quoting.usable_in(_quote(currency="INR"), "CAD"))
+        self.assertTrue(quoting.usable_in(_quote(currency="INR"), "INR"))
+
+    def test_a_courier_that_names_no_currency_is_trusted(self) -> None:
+        # Refusing here would discard a good quote over a missing field.
+        self.assertTrue(quoting.usable_in(_quote(currency=""), "INR"))
+
+    def test_the_wrong_currency_charges_the_branch_fee(self) -> None:
+        with mock.patch.object(quoting, "quote_for", return_value=_quote(currency="INR")):
+            self.assertIsNone(quoting.delivery_fee_for(_Branch(), "somewhere", currency="CAD"))
+
+    def test_the_right_currency_charges_the_courier(self) -> None:
+        with mock.patch.dict(os.environ, {"DELIVERY_QUOTE_BASIS": "max"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "quote_for", return_value=_quote()):
+                self.assertEqual(
+                    quoting.delivery_fee_for(_Branch(), "somewhere", currency="INR"),
+                    Decimal("87.04"),
+                )
+
+    def test_the_flag_being_off_asks_nobody(self) -> None:
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "false"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider") as provider:
+                self.assertIsNone(quoting.quote_for(_Branch(), "somewhere"))
+                provider.assert_not_called()
+
+    def test_no_courier_configured_quotes_nothing(self) -> None:
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=None):
+                self.assertIsNone(quoting.quote_for(_Branch(), "somewhere"))
+
+    def test_a_courier_that_cannot_price_is_not_an_error(self) -> None:
+        # A second courier added later may only dispatch. That is a missing
+        # feature, not a broken checkout.
+        class DispatchOnly:
+            name = "someone"
+
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=DispatchOnly()):
+                self.assertIsNone(quoting.quote_for(_Branch(), "somewhere"))
+
+    def test_a_courier_failure_does_not_reach_the_customer(self) -> None:
+        # Somebody holding a card must not be blocked by a courier having a
+        # bad minute.
+        for boom in (DeliveryProviderError("down"), RuntimeError("worse")):
+            with self.subTest(boom=type(boom).__name__):
+                provider = mock.Mock(name="provider")
+                provider.quote.side_effect = boom
+                with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+                    get_settings.cache_clear()
+                    with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                        self.assertIsNone(quoting.quote_for(_Branch(), "somewhere"))
+
+
+class AskingPidgeForAPrice(unittest.TestCase):
+    """The two calls, and the fact that they disagree about coordinates."""
+
+    def setUp(self) -> None:
+        self.provider = PidgeProvider(base_url="https://store.example", username="u", password="p")
+
+    def test_serviceability_and_estimate_use_different_coordinate_keys(self) -> None:
+        # Undocumented, and a 400 if you assume they match: serviceability
+        # wants lat/lng, estimate wants latitude/longitude.
+        calls: list[tuple[str, dict]] = []
+
+        def fake(method, path, *, timeout=None, **kwargs):
+            calls.append((path, kwargs["json"]))
+            if path.endswith("serviceability"):
+                return {"data": {"serviceable": True}}
+            return {
+                "data": {
+                    "minCost": 67.04,
+                    "maxCost": 87.04,
+                    "pickupToDropDistance": 6704,
+                    "pickupToDropTime": 1609,
+                    "timeToAssign": 1080,
+                }
+            }
+
+        with mock.patch.object(self.provider, "_call", side_effect=fake):
+            quote = self.provider.quote(
+                pickup_lat=23.0395, pickup_lng=72.5066, drop_lat=23.0395, drop_lng=72.56
+            )
+
+        self.assertEqual(set(calls[0][1]["pickup"]), {"lat", "lng"})
+        self.assertEqual(set(calls[1][1]["pickup"]), {"latitude", "longitude"})
+        self.assertTrue(quote.serviceable)
+        self.assertEqual(quote.min_cost, Decimal("67.04"))
+        self.assertEqual(quote.max_cost, Decimal("87.04"))
+        self.assertEqual(quote.currency, "INR")
+        self.assertEqual(quote.distance_metres, 6704.0)
+        self.assertEqual(quote.assign_seconds, 1080)
+
+    def test_prices_are_decimal_not_float(self) -> None:
+        # Decimal(71.26) is 71.2599999..., and money three places wrong at a
+        # checkout is money somebody has to explain.
+        with mock.patch.object(
+            self.provider,
+            "_call",
+            side_effect=[{"data": {"serviceable": True}}, {"data": {"minCost": 71.26}}],
+        ):
+            quote = self.provider.quote(pickup_lat=1.0, pickup_lng=2.0, drop_lat=3.0, drop_lng=4.0)
+        self.assertEqual(quote.min_cost, Decimal("71.26"))
+
+    def test_an_unserviceable_pair_is_never_priced(self) -> None:
+        # The estimate call must not happen: asking for a price and inferring
+        # "unserviceable" from a missing number turns their outage into our
+        # silent free delivery.
+        with mock.patch.object(
+            self.provider, "_call", return_value={"data": {"serviceable": False}}
+        ) as call:
+            quote = self.provider.quote(pickup_lat=1.0, pickup_lng=2.0, drop_lat=3.0, drop_lng=4.0)
+        self.assertFalse(quote.serviceable)
+        self.assertIsNone(quote.min_cost)
+        self.assertEqual(call.call_count, 1)
+
+    def test_an_unrecognised_reply_does_not_refuse_a_customer(self) -> None:
+        # A shape we do not know should not silently decide somebody cannot be
+        # served.
+        with mock.patch.object(
+            self.provider,
+            "_call",
+            side_effect=[{"data": {}}, {"data": {"minCost": 30, "maxCost": 50}}],
+        ):
+            quote = self.provider.quote(pickup_lat=1.0, pickup_lng=2.0, drop_lat=3.0, drop_lng=4.0)
+        self.assertTrue(quote.serviceable)
+
+
+class TheCoordinatesAreAStandIn(unittest.TestCase):
+    """The one part that is not real yet says so."""
+
+    def test_a_branch_with_coordinates_uses_its_own(self) -> None:
+        from app.services.delivery import geocoding
+
+        branch = _Branch()
+        branch.latitude, branch.longitude = Decimal("23.05"), Decimal("72.51")
+        point = geocoding.for_branch(branch)
+        self.assertEqual((point.latitude, point.longitude), (23.05, 72.51))
+        self.assertTrue(point.exact)
+
+    def test_a_branch_without_coordinates_is_marked_inexact(self) -> None:
+        # The price is real; the trip it prices is a guess, and whoever bills
+        # it has to be able to tell.
+        from app.services.delivery import geocoding
+
+        self.assertFalse(geocoding.for_branch(_Branch()).exact)
+        self.assertFalse(geocoding.for_address("12 Somewhere Road").exact)
+
+
+if __name__ == "__main__":
+    unittest.main()

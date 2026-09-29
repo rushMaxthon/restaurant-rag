@@ -137,6 +137,37 @@ class DeliveryResult:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class DeliveryQuote:
+    """What a courier would charge to take this trip, before it exists.
+
+    The thing that lets a checkout show a real delivery fee and refuse an
+    address nobody will drive to — rather than taking the money first and
+    finding out afterwards.
+
+    `min_cost`/`max_cost` are a RANGE, because that is what couriers quote: a
+    rider has not been found yet and the price moves with demand. What the
+    customer is charged is a separate decision — most food apps show one
+    rounded number and absorb the spread, because "delivery ₹71.26 to ₹91.26"
+    is not a thing anyone wants to read at a checkout.
+
+    `serviceable` False means there is no price at all, not a price of zero.
+    """
+
+    serviceable: bool
+    min_cost: Decimal | None = None
+    max_cost: Decimal | None = None
+    currency: str = ""
+    distance_metres: float | None = None
+    #: Seconds from pickup to drop, as the courier reckons it.
+    travel_seconds: int | None = None
+    #: Seconds they expect to take finding a rider at all. Worth showing: on
+    #: the sandbox this was 18 minutes, which dwarfs the drive and is the
+    #: difference between an honest ETA and an optimistic one.
+    assign_seconds: int | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
 class DeliveryProviderError(RuntimeError):
     """A courier call failed in a way worth surfacing.
 
@@ -160,6 +191,22 @@ class DeliveryProvider(Protocol):
         """Whether this provider has what it needs to be called at all."""
         ...
 
+    def quote(
+        self,
+        *,
+        pickup_lat: float,
+        pickup_lng: float,
+        drop_lat: float,
+        drop_lng: float,
+        timeout: float | None = None,
+    ) -> DeliveryQuote:
+        """What this trip would cost, and whether anyone will drive it.
+
+        Coordinates, not addresses — every courier prices off a point, and
+        turning a customer's typed address into one is the caller's problem.
+        """
+        ...
+
     def create(self, request: DeliveryRequest) -> DeliveryResult:
         """Ask for a pickup. Raises `DeliveryProviderError` if it is refused."""
         ...
@@ -178,6 +225,7 @@ __all__ = [
     "DeliveryItem",
     "DeliveryProvider",
     "DeliveryProviderError",
+    "DeliveryQuote",
     "DeliveryRequest",
     "DeliveryResult",
     "DeliveryState",

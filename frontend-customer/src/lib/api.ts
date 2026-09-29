@@ -432,6 +432,26 @@ export type OrderValidationResponse = {
   item_count: number;
 };
 
+/**
+ * What delivery costs on this trip, as the server worked it out.
+ *
+ * `source` is the field that matters. "courier" means a courier priced these
+ * two points; "branch" means the restaurant's own flat rate, which is what
+ * every order charged before couriers were integrated and what the server
+ * still falls back to whenever a courier is off, unconfigured, slow, or
+ * quoting in another currency. The page shows the fee either way and never
+ * computes one of its own.
+ */
+export type DeliveryQuote = {
+  delivery_fee: Money;
+  currency: string;
+  source: "courier" | "branch";
+  serviceable: boolean;
+  distance_metres: number | null;
+  assign_seconds: number | null;
+  exact_location: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -709,6 +729,13 @@ export const api = {
 
   cancelPayment: (orderId: string) =>
     request<PaymentStatus>(`/orders/${orderId}/payment-cancel`, { method: "POST", auth: true }),
+
+  quoteDelivery: (payload: { restaurant_location_id: string; delivery_address: string }) =>
+    request<DeliveryQuote>("/orders/delivery-quote", {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
 
   validateOrder: (payload: OrderCreateRequest) =>
     request<OrderValidationResponse>("/orders/validate", {
