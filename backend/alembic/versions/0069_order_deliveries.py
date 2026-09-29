@@ -37,6 +37,20 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Guarded because the table may already be there. The shared development
+    # database is on another branch's chain (it reads 0071 while this branch
+    # ends at 0068), so the table was created on it directly rather than by
+    # this migration. An unguarded `create_table` would then fail the first
+    # time the chains are reconciled and this revision finally runs — turning
+    # a merge into an outage for the sake of a table that already exists.
+    #
+    # The RLS statement below is repeated for the same reason: it is what the
+    # direct creation also did, and enabling it twice is a no-op.
+    inspector = sa.inspect(op.get_bind())
+    if "order_deliveries" in inspector.get_table_names():
+        op.execute("ALTER TABLE public.order_deliveries ENABLE ROW LEVEL SECURITY")
+        return
+
     op.create_table(
         "order_deliveries",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
