@@ -150,27 +150,92 @@ def _money(value: Any) -> str:
         return str(value)
 
 
+def _option_line(name: str, price: Any = None, extra: Any = None, position: int = 0) -> str:
+    """One option on its own line, with a figure only when there is one.
+
+    A free option marked "(+$0.00)" reads as a charge, and eleven options run
+    together in a paragraph read as none at all.
+
+    Numbered when the caller knows the position, so "2" answers the question
+    as well as "Medium" does \u2014 which it already did, silently, since
+    `listed_in_order` counts along these lines. A number nobody can see is an
+    affordance nobody uses.
+    """
+
+    lead = f"{position}. " if position else "- "
+    if price is not None:
+        return f"{lead}{name} \u2014 {_money(price)}"
+    try:
+        if extra is not None and float(extra) > 0:
+            return f"{lead}{name} (+{_money(extra)})"
+    except (TypeError, ValueError):
+        pass
+    return f"{lead}{name}"
+
+
+def _dish_line(dish: dict[str, Any], position: int) -> str:
+    """One dish in a list, numbered, with a figure the customer can rely on.
+
+    Numbered because every list we show is answerable by position already —
+    `_remember_dish_choice` records the names in the order they were read out
+    and `ordinal_asked_for` counts along them — and until the numbers were
+    printed, only a customer who guessed found that out.
+
+    A sized dish is quoted "from" its base price rather than AS it. The
+    section listing said "Build Your Own Pizza - $14.99" over a dish whose
+    Large is $24.49 — the same fault `describe_single_dish` guards against,
+    one line at a time. `has_sizes` is a column on `menu_items` and every
+    listing row carries it.
+    """
+
+    lead = "from " if dish.get("has_sizes") else ""
+    return f"{position}. {dish['name']} - {lead}{_money(dish['price'])}"
+
+
 def ask_for_choice(result: Any) -> str | None:
-    """The question a `needs_choice` tool result already contains, as prose.
+    """The next single question a `needs_choice` result asks, as prose.
 
     A dish that needs a size or a required group is the one case where the
-    deterministic layer holds the complete answer — the dish, its sizes,
-    its groups, their options and every price came from the tool's rows —
-    and on the first live turn the model still spent four rounds on it and
-    said nothing. So when the loop ends on a cap with that result in hand,
-    it asks the question itself, from those rows and nothing else: the
-    house rule's template fallback, applied to the one outcome that has a
-    fixed shape. Returns None for anything that is not a needs_choice.
+    deterministic layer holds the complete answer — the dish, its sizes, its
+    groups, their options and every price came from the tool's rows — and on
+    the first live turn the model still spent four rounds on it and said
+    nothing. So the loop asks the question itself, from those rows and nothing
+    else: the house rule's template fallback, applied to the one outcome that
+    has a fixed shape.
+
+    **One thing at a time.** This used to compose a part for the size and a
+    part for every outstanding group and join them, which produced, live:
+
+        Crust for Build Your Own Pizza: Thin crust, Classic hand tossed,
+        Cheese burst (+$4.00), Stuffed garlic crust (+$4.50). Sauce for Build
+        Your Own Pizza: Tomato, Green curry (+$1.00), Tom yum cream (+$1.50),
+        Garlic butter. Which would you like?
+
+    Two questions, eleven options and four prices in one paragraph, closing on
+    a "Which would you like?" that could mean either. Nobody orders like that,
+    and nothing downstream could read the answer either.
+
+    The size goes first, and not merely for tidiness: Crust is size-scoped on
+    this menu — three separate groups, one per size, with different options at
+    different prices — so a crust chosen before a size is an answer that
+    cannot be used.
+
+    Returns None for anything that is not a needs_choice, and None once
+    nothing is outstanding.
     """
 
     if not isinstance(result, dict) or result.get("outcome") != "needs_choice":
         return None
     name = result.get("name") or "that dish"
-    parts: list[str] = []
+
     sizes = result.get("available_sizes") or []
     if result.get("needs_size") and sizes:
-        listed = ", ".join(f"{s.get('name')} ({_money(s.get('price'))})" for s in sizes)
-        parts.append(f"Which size for {name}? {listed}.")
+        listed = "\n".join(
+            _option_line(str(size.get("name")), price=size.get("price"), position=position)
+            for position, size in enumerate(sizes, 1)
+        )
+        return f"Which size for {name}?\n{listed}"
+
     for group in result.get("customization_groups") or []:
         if not group.get("needs_selection"):
             continue
@@ -179,36 +244,53 @@ def ask_for_choice(result: Any) -> str | None:
         # pick with the identical question — the same list, the same count,
         # no sign anybody had heard.
         already = {str(o) for o in (group.get("selected_option_ids") or [])}
-        chosen_names, options = [], []
+        chosen_names, lines = [], []
         for option in group.get("options") or []:
-            extra = option.get("extra_price") or 0
-            try:
-                extra_text = f" (+{_money(extra)})" if float(extra) > 0 else ""
-            except (TypeError, ValueError):
-                extra_text = ""
             if str(option.get("option_id")) in already:
                 chosen_names.append(str(option.get("name")))
             else:
-                options.append(f"{option.get('name')}{extra_text}")
-        if not options:
+                # Numbered against what is LEFT, which is what the customer
+                # is looking at — the credited picks are named in the
+                # sentence above, not in the list.
+                lines.append(
+                    _option_line(
+                        str(option.get("name")),
+                        extra=option.get("extra_price"),
+                        position=len(lines) + 1,
+                    )
+                )
+        if not lines:
             continue
+
         title = group.get("title") or "Choose"
+        try:
+            most = int(group.get("max_selection") or 1)
+        except (TypeError, ValueError):
+            most = 1
         try:
             still = max(1, int(group.get("min_selection") or 1) - len(already))
         except (TypeError, ValueError):
             still = 1
+
+        # Always a question, and always the shape of the size question above
+        # it. "Crust for Build Your Own Pizza:" is a heading; a customer
+        # answers a question. A title that is itself an instruction —
+        # "Choose four bites" — loses its verb, or the question reads "Which
+        # choose four bites for Appetizer Sampler?" (live).
+        label = re.sub(r"^(choose|pick|select)\s+", "", title.lower())
+        head = f"Which {label} for {name}?"
         if chosen_names:
-            parts.append(
-                f"{title} for {name}: you have {', '.join(chosen_names)}. "
-                f"Pick {still} more: {', '.join(options)}."
-            )
+            head += f" You have {', '.join(chosen_names)} \u2014 pick {still} more."
         elif still > 1:
-            parts.append(f"{title} for {name} — pick {still}: {', '.join(options)}.")
-        else:
-            parts.append(f"{title} for {name}: {', '.join(options)}.")
-    if not parts:
-        return None
-    return " ".join(parts) + " Which would you like?"
+            head += f" Pick {still}."
+        elif most > 1:
+            # Nobody picks two of something they were not told they could have
+            # two of. This menu's Toppings group takes seven, and was selling
+            # them one at a time.
+            head += " You can choose more than one."
+        return head + "\n" + "\n".join(lines)
+
+    return None
 
 
 #: The question the menu offer ends on, as the MODEL should see it next turn.
@@ -222,6 +304,524 @@ _WHICH_SECTION = "Which of those would you like to see?"
 #: actually asked it, since a cart with an unchosen size ends on a different
 #: sentence and must not be told it is ready.
 _READY_TO_CHECK_OUT = "Ready to check out?"
+
+
+def storable_group(group: Any) -> dict[str, Any]:
+    """One customization group, in a form that survives `json.dumps`.
+
+    The live rows carry UUIDs and Decimals and the pending choice is stored as
+    JSON, so writing a group through unchanged raised
+
+        TypeError: Object of type UUID is not JSON serializable
+
+    on every turn that asked for a size. Caught by driving a real order, not by
+    the suite, whose fixtures use strings for ids. Every field is named and
+    coerced rather than leaning on a default encoder, so the stored shape is
+    the one the readers below expect.
+    """
+
+    if not isinstance(group, dict):
+        return {}
+    return {
+        "group_id": str(group.get("group_id") or ""),
+        "title": str(group.get("title") or ""),
+        "is_required": bool(group.get("is_required")),
+        "min_selection": int(group.get("min_selection") or 0),
+        "max_selection": int(group.get("max_selection") or 1),
+        "options": [
+            {
+                "option_id": str(option.get("option_id")),
+                "name": str(option.get("name")),
+                "extra_price": str(option.get("extra_price") or "0"),
+            }
+            for option in (group.get("options") or [])
+            if isinstance(option, dict) and option.get("option_id") and option.get("name")
+        ],
+    }
+
+
+def _words_of(text: str) -> list[str]:
+    """A message reduced to its words, for matching option names against."""
+
+    lowered = (text or "").lower().replace("'", "").replace("\u2019", "")
+    return [word for word in re.split(r"[^a-z0-9]+", lowered) if word]
+
+
+def options_named_in(message: str, asked: Any) -> list[str]:
+    """Which of the offered options this message names, in the order offered.
+
+    Decided here rather than taken from the reading, because the reading is a
+    model and does not agree with itself. Measured, with the toppings question
+    standing: "Mozzarella" came back as `chose: ["Mozzarella"]` on one run and
+    "Mozzarella and mushroom" as `add: [("Mozzarella and mushroom", 1)]` on the
+    next — one dish, by that name, which does not exist. Meanwhile "no" read as
+    `confirms: False`, and "none" and "skip" set nothing at all.
+
+    Whole words only. A name found inside a longer word would let a refusal buy
+    a topping — "tofurkey" is not an order of Tofu.
+
+    Returning names rather than ids keeps this the same currency
+    `_answer_choice` already matches in.
+    """
+
+    if not isinstance(asked, dict):
+        return []
+    words = _words_of(message)
+    if not words:
+        return []
+    said = " ".join(words)
+    named: list[str] = []
+    for option in asked.get("options") or []:
+        if not isinstance(option, dict) or not option.get("name"):
+            continue
+        name = str(option["name"])
+        wanted = " ".join(_words_of(name))
+        if not wanted or name in named:
+            continue
+        # Word-boundary containment: the option's words, in order, somewhere in
+        # the message. " x " padding makes the boundaries explicit without a
+        # regular expression per option.
+        if f" {wanted} " in f" {said} ":
+            named.append(name)
+    return named
+
+
+#: Above this, a number in a message is not a count of dishes. Sizes are
+#: written "500 ml" and "1 Kg", phone numbers arrive in the same conversation,
+#: and "anything under 100" is a budget — none of them is a quantity, and a
+#: wrong one here changes what somebody pays.
+_MOST_ANYBODY_ORDERS = 50
+
+
+def quantity_asked_for(message: str) -> int | None:
+    """The count a message asks for, or None when that is not clear.
+
+    The reading has no way to say "change the count": "actually make it 3",
+    "make that two" and "change to 2" all come back as `wants_to_add` with the
+    number gone. So it is read off the message.
+
+    ONLY the number. Whether the message also names a dish, an option or a
+    cart line is the caller's question — this refuses wherever it cannot be
+    sure which number it is looking at, because two numbers in a sentence is
+    an order rather than a change of count, and a big one is a size, a price
+    or a phone number.
+
+    Zero is not a quantity either. "Make it 0" is a removal, and removal has
+    its own path, which asks before it throws anything away.
+    """
+
+    words = _words_of(message)
+    if not words:
+        return None
+    by_word = {name: value for value, name in _NUMERALS.items()}
+    found: list[int] = []
+    for word in words:
+        if word.isdigit():
+            found.append(int(word))
+        elif word in by_word:
+            found.append(by_word[word])
+    if len(found) != 1:
+        return None
+    wanted = found[0]
+    return wanted if 1 <= wanted <= _MOST_ANYBODY_ORDERS else None
+
+
+#: Spelling for a position in a list. Like `_NUMERALS`, not a list that decides
+#: meaning: it only lets "the second one" and "2" be read as the same thing.
+_ORDINALS = {
+    "first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3,
+    "fourth": 4, "4th": 4, "fifth": 5, "5th": 5, "sixth": 6, "6th": 6,
+    "seventh": 7, "7th": 7, "eighth": 8, "8th": 8, "ninth": 9, "9th": 9,
+    "tenth": 10, "10th": 10, "eleventh": 11, "11th": 11, "twelfth": 12, "12th": 12,
+}
+
+#: The words around a position that carry nothing of their own — "the second
+#: one", "option 3", "number 2 please". Anything else beside the number is
+#: content, and content means the message is not a pick.
+_AROUND_A_POSITION = frozenset(
+    "the one option number no num item dish pick choose select want take give "
+    "me i ll will would like please pls plz go with ok okay yes yeah k".split()
+)
+
+
+def ordinal_asked_for(message: str, *, count: int) -> int | None:
+    """Which position, 1-based, in a list of `count` this message points at.
+
+    After a list is read out, "1" is how most people answer it — the list is
+    numbered in their head whether or not it is on screen. Live, with eight
+    dhoklas listed and "Which one would you like?" standing, "1" came back
+    from the reading as nothing at all and was answered "Sorry, I did not
+    catch that." The list is ours, in the order we said it, so which dish "1"
+    means is not a question for the model.
+
+    ONLY a position. A number with anything else beside it — "2 khaman" — is
+    an order for two of something, and reading it as the second item on a
+    list would put the wrong dish in somebody's cart; that message is left to
+    the path that reads orders. Two numbers are an order, not a pick. A
+    position past the end of the list is not the position of something else.
+    """
+
+    if count <= 0:
+        return None
+    words = [word for word in _words_of(message) if word not in _AROUND_A_POSITION]
+    if len(words) != 1:
+        return None
+    word = words[0]
+    if word == "last":
+        return count
+    if word.isdigit():
+        position = int(word)
+    else:
+        position = _ORDINALS.get(word)
+    if position is None or not 1 <= position <= count:
+        return None
+    return position
+
+
+#: One line of a list we wrote: "1. Margherita" or, before the lists were
+#: numbered, "- Margherita". Both, because a question asked by the previous
+#: build can still be standing in Redis when this one answers it.
+_LISTED_LINE = re.compile(r"^(?:- |\d{1,2}\. )")
+
+
+def lays_its_options_out(question: str) -> bool:
+    """Whether this question already lists its own answers, one per line.
+
+    Two places need the same answer: the re-ask, which must not spell the
+    options out a second time under a list that already has them, and
+    `listed_in_order`, which counts positions along them.
+    """
+
+    return any(_LISTED_LINE.match(line) for line in str(question or "").split("\n")[1:])
+
+
+def listed_in_order(asked: Any) -> list[dict[str, Any]]:
+    """The options of a standing question, in the order the customer saw them.
+
+    A question about a required group that is part-answered lists only what is
+    left — "You have Mozzarella — pick 1 more" over the remaining options —
+    while the stored options hold the whole group. So when the question lays
+    its options out one per line, THAT order is the one "2" counts along, and
+    the stored list is only the fallback for a question that does not.
+    """
+
+    if not isinstance(asked, dict):
+        return []
+    options = [
+        option for option in (asked.get("options") or [])
+        if isinstance(option, dict) and option.get("name")
+    ]
+    question = str(asked.get("question") or "")
+    if not lays_its_options_out(question):
+        return options
+    by_name = {str(option["name"]).strip().casefold(): option for option in options}
+    shown: list[dict[str, Any]] = []
+    for line in question.split("\n"):
+        listed = _LISTED_LINE.match(line)
+        if listed is None:
+            continue
+        # `_option_line` writes "1. Name — $9.99" or "1. Name (+$1.00)", and
+        # "- Name" before the lists were numbered — both are read, because a
+        # question written by the previous build can still be standing in
+        # Redis when this one starts answering it.
+        name = re.split(r" — | \(\+", line[listed.end() :], maxsplit=1)[0].strip().casefold()
+        option = by_name.get(name)
+        if option is not None and option not in shown:
+            shown.append(option)
+    return shown or options
+
+
+def cart_lines_named_in(message: str, lines: Any) -> list[dict[str, Any]]:
+    """Which lines of this cart the message names, in the order they sit in it.
+
+    Matched on the cart's OWN rows rather than on the reading, because the
+    reading has no way to say "take one line out": "remove the khaman", "take
+    it off" and "delete the dhokla" all come back as `cancel_order`, and
+    nothing in that says which line.
+
+    Whole words, for the same reason everywhere else does it — "remove the
+    soupçon" must not take somebody's soup off the order.
+    """
+
+    if not lines:
+        return []
+    words = _words_of(message)
+    if not words:
+        return []
+    said = f" {' '.join(words)} "
+    named: list[dict[str, Any]] = []
+    for line in lines:
+        if not isinstance(line, dict) or not line.get("name"):
+            continue
+        for word in _words_of(str(line["name"])):
+            if len(word) > 2 and f" {word} " in said:
+                named.append(line)
+                break
+    return named
+
+
+def line_to_remove(message: str, lines: Any) -> dict[str, Any] | None:
+    """The one line to take off, or None when that is a question.
+
+    Removing is destructive, so this follows the rule the rest of the cart
+    tools follow: act where there is one obvious answer, ask where there is
+    not. One line named is obvious. A cart holding one thing is obvious —
+    "take it off" can only mean that. Anything else is a guess that throws
+    away something somebody chose, so it returns None and the caller asks.
+    """
+
+    named = cart_lines_named_in(message, lines)
+    if len(named) == 1:
+        return named[0]
+    if not named and lines and len(lines) == 1:
+        only = lines[0]
+        return only if isinstance(only, dict) else None
+    return None
+
+
+def lines_named_among(chose: Sequence[str], lines: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cart lines the reading's `chose` names, in cart order.
+
+    The names were OURS — the reading was handed this cart's line names as
+    the options and told to copy them exactly — so they are matched exactly,
+    case aside. A line named twice is one line; a name matching no line is
+    dropped, never guessed at.
+    """
+
+    wanted = {str(name).strip().casefold() for name in chose if str(name).strip()}
+    return [
+        line for line in lines
+        if isinstance(line, dict) and str(line.get("name") or "").strip().casefold() in wanted
+    ]
+
+
+def next_optional_group(asked: Any, args: Any) -> dict[str, Any] | None:
+    """The optional group worth offering before this dish lands, if any.
+
+    Bangkok Bowl's Build Your Own Pizza has a Toppings group — MULTI, seven of
+    them — that no customer has ever been shown. That is correct one layer
+    down: an optional group is never "unmet", because its default IS the empty
+    selection, so it does not block. The consequence is that `add_to_cart`
+    applies the instant the required things are settled and the pizza is in the
+    cart before anything could ask.
+
+    So the last required answer checks here first. Nothing is offered until
+    every required thing IS settled — asking about toppings before the sauce is
+    a waiter interrupting himself — and a group carrying no options is not a
+    question, so it is passed over rather than asked emptily.
+
+    Answered from what `_remember_choice` wrote down, so it costs no query.
+    """
+
+    if not isinstance(asked, dict) or not isinstance(args, dict):
+        return None
+    later = [g for g in (asked.get("later") or []) if isinstance(g, dict)]
+    if not later:
+        return None
+
+    if asked.get("needs_size") and not args.get("menu_item_size_id"):
+        return None
+    chosen = {
+        str(option.get("option_id"))
+        for option in (args.get("selected_options") or [])
+        if isinstance(option, dict) and option.get("option_id")
+    }
+    for required in asked.get("required") or []:
+        if not chosen.intersection(str(o) for o in (required or [])):
+            return None
+
+    for group in later:
+        if group.get("options"):
+            return group
+    return None
+
+
+def reask_standing_choice(standing: Any) -> str | None:
+    """Put a standing question again, with its answers spelled out.
+
+    Shared by the two places that need it. The re-ask path uses it when a
+    message answered nothing; the dish lookup uses it when a message DID look
+    like something — a dish to add — but only as a guess.
+
+    That second case is why this is a function. Mid-build, with the crust
+    question standing:
+
+        > Mozzarella and mushroom
+          Did you mean Farmhouse Pizza?
+
+    Safe, and the wrong thing to say: the customer was naming toppings, and
+    the reply abandoned the crust question to offer an unrelated pizza. A
+    guess is not a reason to change the subject.
+
+    None when there is nothing to put again — a question with no answers
+    listed is not worth repeating, and repeating it is how a customer ends up
+    reading the same sentence twice.
+    """
+
+    if not isinstance(standing, dict):
+        return None
+    names = [
+        str(option.get("name"))
+        for option in (standing.get("options") or [])
+        if isinstance(option, dict) and option.get("name")
+    ]
+    if not names:
+        return None
+    question = str(standing.get("question") or "").rstrip()
+    lead = f"Sorry, I did not catch that. {question}".rstrip()
+    if lays_its_options_out(question):
+        # The question already lays its own options out, one per line, so
+        # spelling them out again said everything twice and ran the tail onto
+        # the last bullet: "- Thin crust Just reply with one of these: Classic
+        # hand tossed, Cheese burst, ...".
+        return lead
+    # Numbered, in the order they are stored — which is the order
+    # `listed_in_order` counts along, so the numbers printed here are the ones
+    # that answer. The comma-joined line this replaces was the same paragraph
+    # the numbered lists were introduced to get rid of, and it appeared on the
+    # one turn where the customer has already failed to be understood once.
+    listed = "\n".join(f"{position}. {name}" for position, name in enumerate(names, 1))
+    return f"{lead}\n{listed}\n\nReply with the number or the name."
+
+
+def chosen_options_in(line: Any) -> list[str]:
+    """What the customer picked on this cart line, group by group.
+
+    `view_cart` has carried this all along — every line holds its groups, each
+    with `selected_option_ids` and the options' names — and the read-back used
+    the size and dropped the rest, so a built pizza came back as
+
+        - 1 x Build Your Own Pizza (Large (14")) - $25.49
+
+    with the crust and the sauce nowhere in it, and the extra dollar in the
+    price unexplained.
+
+    Groups are named: "Green curry, Thin crust" is a list of words, and
+    "Sauce: Green curry" is an order. An id matching no option is dropped
+    rather than guessed at — this sentence is what somebody checks before
+    paying, so a name it cannot prove has no business in it.
+    """
+
+    if not isinstance(line, dict):
+        return []
+    said: list[str] = []
+    for group in line.get("customization_groups") or []:
+        if not isinstance(group, dict):
+            continue
+        chosen = {str(o) for o in (group.get("selected_option_ids") or [])}
+        if not chosen:
+            continue
+        names = [
+            str(option.get("name"))
+            for option in (group.get("options") or [])
+            if isinstance(option, dict)
+            and str(option.get("option_id")) in chosen
+            and option.get("name")
+        ]
+        if not names:
+            continue
+        title = str(group.get("title") or "").strip()
+        said.append(f"{title}: {', '.join(names)}" if title else ", ".join(names))
+    return said
+
+
+def describe_single_dish(dish: dict[str, Any]) -> str:
+    """One dish read back, with an offer to add it.
+
+    A dish sold in sizes has no single price to quote. This used to take
+    `price` off the row and say it:
+
+        > Build Your Own Pizza
+          Build Your Own Pizza is $14.99. Shall I add one?
+
+    $14.99 is the Small of three; the Large is $24.49. A quote the customer
+    can say yes to and then be charged something else for is the same fault
+    that put a Large in a cart at the base price.
+
+    So a sized dish is named and offered without a figure, and the size
+    question that follows carries every price. `has_sizes` is a column on
+    `menu_items`, so the row being read out already knows.
+    """
+
+    name = dish.get("name") or "that dish"
+    if dish.get("has_sizes"):
+        return f"{name} comes in a few sizes. Shall I set one up?"
+    return f"{name} is {_money(dish.get('price'))}. Shall I add one?"
+
+
+def describe_prices(rows: Sequence[dict[str, Any]]) -> str | None:
+    """The answer to "how much", over the rows `prices_of` returned.
+
+    One dish is a sentence; a list is the list again with its figures. The
+    rule from `describe_single_dish` holds throughout: a sized dish is never
+    quoted as one number. Alone it gets every size's price; in a list it is
+    quoted "from" its cheapest size, which is a floor the customer can rely
+    on rather than a figure they could be charged more than.
+    """
+
+    priced = [row for row in rows if isinstance(row, dict) and row.get("name")]
+    if not priced:
+        return None
+    if len(priced) == 1:
+        only = priced[0]
+        sizes = [s for s in (only.get("sizes") or []) if s.get("name")]
+        if only.get("has_sizes") and sizes:
+            parts = [f"{_money(s.get('price'))} for {s['name']}" for s in sizes]
+            joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f" and {parts[-1]}"
+            return f"{only['name']} is {joined}."
+        return f"{only['name']} is {_money(only.get('price'))}."
+    lines = []
+    for row in priced:
+        sizes = [s for s in (row.get("sizes") or []) if s.get("price") is not None]
+        if row.get("has_sizes") and sizes:
+            lowest = min(sizes, key=lambda s: Decimal(str(s["price"])))
+            lines.append(f"- {row['name']} - from {_money(lowest['price'])}")
+        else:
+            lines.append(f"- {row['name']} - {_money(row.get('price'))}")
+    return "\n".join(lines)
+
+
+def would_be_added_without_asking(lookup: Any) -> bool:
+    """Whether adding this dish would put it in the cart with no further word.
+
+    A dish that still needs a size or a required choice answers with "Which
+    size for Vagharela Khaman?", which names the dish as plainly as any
+    confirmation and lets the customer correct it before a penny is committed.
+    A dish with nothing left to ask just lands.
+
+    That is the difference between the two ways a name can be a guess. Live:
+
+        > Mozzarella and mushroom
+          Added 1 x Farmhouse Pizza to your order. Anything else?
+
+    — a customer naming toppings, and a $329 pizza in the cart with nothing
+    asked. Whereas "khaman dhokla" is also a guess (Radhe Dhokla sells
+    Vagharela Khaman, and no dish name contains both words) and needs no
+    second question, because the size question carries the dish's name.
+
+    An optional group is not a question: it does not block an add, so it is
+    not something the customer is about to be asked. Nothing readable counts
+    as "would land", which is the cautious way round — confirm rather than
+    spend.
+    """
+
+    if not isinstance(lookup, dict):
+        return True
+    # Two shapes reach this. `add_to_cart`'s needs_choice result says
+    # `available_sizes` and marks a group `needs_selection`; `get_dish`'s
+    # catalog result says `sizes`/`has_sizes` and describes a group by
+    # `is_required`. Reading only the first was the bug in the first version
+    # of this: `available_sizes` is absent from a `get_dish` result, so every
+    # sized dish looked like one that would land silently, and "khaman dhokla"
+    # started asking "Did you mean Vagharela Khaman?" instead of its size.
+    if lookup.get("available_sizes") or lookup.get("sizes") or lookup.get("has_sizes"):
+        return False
+    for group in lookup.get("customization_groups") or []:
+        if not isinstance(group, dict):
+            continue
+        if group.get("needs_selection") or group.get("is_required"):
+            return False
+    return True
 
 
 def describe_cart(result: Any) -> str | None:
@@ -244,7 +844,14 @@ def describe_cart(result: Any) -> str | None:
         quantity = line.get("quantity") or 1
         total = line.get("total_price")
         label = f"{name} ({size})" if size else name
-        parts.append(f"- {quantity} x {label} - {_money(total)}")
+        said_line = f"- {quantity} x {label} - {_money(total)}"
+        # What they picked, under the line it belongs to. A built pizza used
+        # to read "(Large (14")) - $25.49" with the crust and the sauce
+        # nowhere in it, and the extra dollar in the price unexplained.
+        picked = chosen_options_in(line)
+        if picked:
+            said_line += "\n  " + "; ".join(picked)
+        parts.append(said_line)
     # One line per dish. As a single sentence — "1 x Margherita Pizza -
     # $249.00; 2 x Corn Fritters - $16.98" — a cart was hard to read on a
     # phone and harder to trust with money. Plain dashes, so the web reads
@@ -284,7 +891,14 @@ def describe_order_to_confirm(
         name = line.get("name") or "a dish"
         size = line.get("size_name")
         label = f"{name} ({size})" if size else name
-        said.append(f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}")
+        confirmed = f"- {line.get('quantity') or 1} x {label} - {_money(line.get('total_price'))}"
+        # The same picks as the cart read-back, and for a stronger reason:
+        # this is the last thing said before money is asked for, so it has to
+        # be the whole of what they are agreeing to.
+        picked = chosen_options_in(line)
+        if picked:
+            confirmed += "\n  " + "; ".join(picked)
+        said.append(confirmed)
     # Their name at the moment it means most: the last thing said before
     # money is asked for.
     called = order_draft.first_name(getattr(draft, "contact_name", None)) if draft is not None else None
@@ -367,28 +981,74 @@ def describe_placed_order(placed: dict[str, Any] | None) -> str | None:
     return f"Your order is placed and comes to {total}. The payment link is just below."
 
 
-def describe_collecting(missing: list[str] | None) -> str | None:
-    """What is still needed, in words, from the field names.
+#: The order the details are asked for, one per turn.
+#:
+#: Fulfillment first, because it decides whether an address is wanted at all —
+#: asking for one and then not needing it is the worst order there is. Then
+#: the address, which changes whether the order can happen. Then the two that
+#: only reach the receipt.
+_DETAILS_IN_ORDER = (
+    "fulfillment_type",
+    "delivery_address",
+    "contact_name",
+    "contact_phone",
+    "contact_email",
+)
 
-    Used when a collecting turn runs out of rounds: the customer has just
-    handed over their address and deserves better than the reply pipeline's
-    "that one's outside my kitchen", which is what an intent extractor makes
-    of a street name.
+#: Each one as a question somebody can answer in a word.
+_DETAIL_QUESTIONS = {
+    "fulfillment_type": "Delivery or pickup?",
+    "delivery_address": "What is the delivery address?",
+    "contact_name": "What name should I put on the order?",
+    "contact_phone": "What is the best number for the order?",
+    "contact_email": "What is your email address? The receipt goes there.",
+}
+
+
+def details_were_saved(records: list[ToolCallRecord]) -> bool:
+    """Whether this turn wrote any of the customer's details down.
+
+    So that the question below can open with "Thanks" only when something
+    actually landed. Thanking somebody for nothing is how a reply stops
+    meaning anything.
     """
 
-    if not missing:
+    return any(record.tool == "save_order_details" for record in records)
+
+
+def describe_collecting(
+    missing: list[str] | None, *, saved: bool = False
+) -> str | None:
+    """The ONE thing still needed, asked as a question.
+
+    This used to name every missing field in a single sentence:
+
+        Thanks. I still need whether you want delivery or pickup, your name,
+        an email address and the delivery address.
+
+    Four questions at once, at the moment the customer has chosen their food
+    and is closest to walking away — and against the rule the rest of this
+    agent keeps for exactly this reason (`ask_for_choice`: "One thing at a
+    time"). Nobody types four answers, and an answer to four questions cannot
+    be read back to the field it belongs to.
+
+    Only the QUESTION narrows. `read_order_intent` is still told every missing
+    field, so somebody who volunteers "delivery to 12 Main St, I'm Hitesh"
+    still has both land on the one turn — asking for less must never mean
+    accepting less.
+    """
+
+    wanted = [name for name in _DETAILS_IN_ORDER if name in (missing or [])]
+    # A field this build does not have a question for would otherwise ask for
+    # nothing at all, so the order is a filter rather than a lookup.
+    wanted = [name for name in wanted if name in _DETAIL_QUESTIONS]
+    if not wanted:
         return None
-    said = {
-        "fulfillment_type": "whether you want delivery or pickup",
-        "contact_name": "your name",
-        "contact_phone": "a phone number",
-        "contact_email": "an email address",
-        "delivery_address": "the delivery address",
-    }
-    wanted = [said.get(name, name) for name in missing]
+    asking = _DETAIL_QUESTIONS[wanted[0]]
     if len(wanted) == 1:
-        return f"Thanks. I still need {wanted[0]}."
-    return f"Thanks. I still need {', '.join(wanted[:-1])} and {wanted[-1]}."
+        # Saying it is the last one is what makes the last one worth typing.
+        asking = f"Last thing — {asking[0].lower()}{asking[1:]}"
+    return f"Thanks. {asking}" if saved else asking
 
 
 def _identifiable(scope: OrderingScope) -> bool:
@@ -403,7 +1063,16 @@ def _identifiable(scope: OrderingScope) -> bool:
     return scope.customer is not None or bool(scope.verified_phone)
 
 
-def describe_applied(records: list[ToolCallRecord]) -> str | None:
+#: The heading the pairings sit under. Named because two places have to agree
+#: on it exactly: `describe_applied` writes it, and the turn checks for it to
+#: know whether the pairings were actually SHOWN before recording them as the
+#: list a number now counts along.
+_PEOPLE_OFTEN_ADD = "People often add:"
+
+
+def describe_applied(
+    records: list[ToolCallRecord], goes_with: list[dict[str, Any]] | None = None
+) -> str | None:
     """What the turn actually did to the cart, said from the tool's own rows.
 
     A turn that added something and then had nothing to say let the reply
@@ -413,6 +1082,7 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
     """
 
     said = []
+    anything_added = False
     for record in records:
         result = record.result
         if not isinstance(result, dict) or result.get("outcome") != "action":
@@ -424,16 +1094,38 @@ def describe_applied(records: list[ToolCallRecord]) -> str | None:
         quantity = result.get("quantity") or action.get("quantity") or 1
         if action.get("kind") == "add":
             said.append(f"Added {quantity} x {name} to your order.")
+            anything_added = True
         elif action.get("kind") == "set_quantity":
             said.append(f"{name} is now x{quantity}.")
         elif action.get("kind") == "remove":
             said.append(f"Removed {name} from your order.")
     if not said:
         return None
+    head = " ".join(said)
+
+    # Somebody who has just chosen a dish is the easiest person in the world
+    # to offer a drink to, and "Anything else?" on its own hands the work of
+    # remembering the menu back to them at exactly that moment. Only after an
+    # ADD: taking something out is not an opening to sell.
+    #
+    # The rows are `dishes_to_suggest`'s — the branch's own bestseller and
+    # popularity columns, one per section, minus what is already in the cart —
+    # so nothing here is a guess about what goes with what.
+    if anything_added and goes_with:
+        # Numbered like every other list, and recorded by the caller as the
+        # list now in front of them, so "1" here is the first thing offered
+        # rather than the first dish of a section that has scrolled away.
+        listed = "\n".join(
+            f"{position}. {d.get('name')} - {_money(d.get('price'))}"
+            for position, d in enumerate(goes_with, 1)
+        )
+        head = f"{head}\n\n{_PEOPLE_OFTEN_ADD}\n{listed}"
+
     # One question, so that "yes" to it has one meaning. "Anything else, or
     # shall we get it on its way?" put two to a customer at once, and the
-    # answer to both of them is yes.
-    return " ".join(said) + " Anything else?"
+    # answer to both of them is yes. It goes last, because buried above a
+    # price list it reads as part of the list.
+    return f"{head}\n\nAnything else?" if anything_added and goes_with else head + " Anything else?"
 
 
 _PLACE_FAILURE_LINES = {
@@ -615,14 +1307,18 @@ def describe_place_failure(records: list[ToolCallRecord]) -> str | None:
                     # They named a time and the branch cannot keep it. Saying
                     # which time is the point: "that will not work" about an
                     # unnamed time reads as a refusal of the whole order.
+                    # One question. "...or would you like another time?" made
+                    # two, and live a "no" answered the second one and the
+                    # model took the turn. A no to this already has its own
+                    # path: the order is held and a time is asked for.
                     return (
                         f"I cannot do {wanted} for {label}. The closest I can do is "
-                        f"{nearest} — shall I make it that, or would you like another time?"
+                        f"{nearest} — shall I make it that?"
                     )
                 return (
                     f"We are closed for {label} right now, but I can still take this "
                     f"for later. The next time I can do is {nearest} — shall I place it "
-                    f"for then, or would you like another time?"
+                    f"for then?"
                 )
             short = _short_of_minimum(record.result)
             if short is not None:
@@ -1265,7 +1961,7 @@ def run_turn(
         )
         if not shown:
             return None
-        listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
+        listed = "\n".join(_dish_line(d, i) for i, d in enumerate(shown, 1))
         opening = "Of course. People often add:" if cart else "Of course. These go quickly:"
         asked = _hold("Tell me the name and I will add it.", yes="name_one")
         _remember_dish_choice(asked, shown)
@@ -1326,7 +2022,7 @@ def run_turn(
             _forget_shown()
             return TurnOutcome(
                 answer=_hold(
-                    f"{only['name']} is {_money(only['price'])}. Shall I add one?",
+                    describe_single_dish(only),
                     yes="add",
                     subject=only["name"],
                 ),
@@ -1336,7 +2032,7 @@ def run_turn(
                 fallback_reason=None,
                 elapsed_seconds=clock() - start,
             )
-        listed = "\n".join(f"- {d['name']} - {_money(d['price'])}" for d in shown)
+        listed = "\n".join(_dish_line(d, i) for i, d in enumerate(shown, 1))
         veg_note = "" if want_veg is None else ", all vegetarian"
         asked_for = phrase.strip()
         if found_by == "budget":
@@ -1482,29 +2178,23 @@ def run_turn(
                 if order_so_far.rstrip().endswith(_READY_TO_CHECK_OUT):
                     _hold(_READY_TO_CHECK_OUT, yes="checkout")
             else:
-                offer = (
-                    tools_module.offer_of_sections(tools_module.branch_sections(db, scope))
-                    if db is not None and scope.restaurant_location_id
-                    else None
-                )
+                # The sections, numbered and recorded, so the next message
+                # can be a number. Returned rather than folded into `answer`
+                # below because the list has to be written down to be
+                # answerable — see `_offer_the_sections`.
+                offered = _offer_the_sections("Sorry — I did not follow that.")
+                if offered is not None:
+                    return offered
                 answer = (
-                    f"Sorry — I did not follow that. {offer}"
-                    if offer
-                    else (
-                        "Sorry — I did not follow that. Let's start that one again: tell me "
-                        "the dish you would like and I will set it up."
-                    )
+                    "Sorry — I did not follow that. Let's start that one again: tell me "
+                    "the dish you would like and I will set it up."
                 )
         else:
             draft_now = order_draft.load(scope.session_id)
             asked["asks"] = int(asked.get("asks", 1)) + 1
             draft_now.pending_choice = json.dumps(asked)
             order_draft.save(scope.session_id, draft_now)
-            question = str(asked.get("question") or "").rstrip()
-            answer = (
-                f"Sorry, I did not catch that. {question} "
-                f"Just reply with one of these: {options}."
-            )
+            answer = reask_standing_choice(asked) or ""
         return TurnOutcome(
             answer=answer,
             answer_about="cart",
@@ -1628,6 +2318,27 @@ def run_turn(
                     _with_link(order, "Kept. It will be ready once the payment lands.")
                 )
             return _drop_the_order(order)
+        if kind == "clear_cart":
+            if also_says:
+                return None
+            if not agreed:
+                # Kept as it is, and read back so they can see it still is.
+                return _settled(asked_to_see_cart=True)
+            return _clear_whole_cart()
+        if kind == "remove_one":
+            # A yes/no to "which one?" names nothing. "No" means leave it;
+            # "yes" means they still want one off and did not say which, so
+            # the list is put again — the deterministic read above this
+            # handles a name, a position or "all" before the reading runs.
+            if also_says:
+                return None
+            if not agreed:
+                return _settled(asked_to_see_cart=True)
+            lines_asked = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+            lines_asked = [line for line in (lines_asked or []) if isinstance(line, dict)]
+            if lines_asked:
+                return _which_to_take_off(lines_asked)
+            return None
         if kind == "restore_cart":
             if not agreed:
                 return _answering("No problem. Tell me whenever you would like to order.")
@@ -1701,9 +2412,17 @@ def run_turn(
                 # cart it says so plainly instead.
                 wanted["checkout"] = True
                 return None
-            # They agreed and named nothing. A list is answerable in a way
-            # the question is not, and it records what it offered, so the
-            # next message can pick from it.
+            # They agreed and named nothing. If a list of ours is already in
+            # front of them, that is what they agreed to — put it again
+            # rather than replacing it with three different dishes. Live,
+            # eight dhoklas were listed, "yes" arrived, and the reply was
+            # "Of course. These go quickly:" over an unrelated three.
+            standing_list = reask_standing_choice(_pending_choice() or _last_shown())
+            if standing_list:
+                return _answering(standing_list)
+            # Nothing in front of them. A list is answerable in a way the
+            # question is not, and it records what it offered, so the next
+            # message can pick from it.
             offered = _suggest_more()
             if offered is not None:
                 return offered
@@ -1786,11 +2505,23 @@ def run_turn(
             return None
         return stored if isinstance(stored, dict) and stored.get("options") else None
 
-    def _remember_choice(result: dict[str, Any], base: dict[str, Any] | None = None) -> None:
+    def _remember_choice(
+        result: dict[str, Any],
+        base: dict[str, Any] | None = None,
+        later: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Write down the question just asked, with the ids behind it.
 
         A turn's records do not survive it. Without this the size question
         was asked correctly and the answer had nothing to land on.
+
+        Three more things travel with it so the last required answer can decide
+        whether anything optional is still worth offering, without going back
+        to the database: each required group's option ids, whether a size is
+        still wanted, and the optional groups nobody has been shown. `later` is
+        passed explicitly once one of them has been offered, so the rest carry
+        forward rather than being re-derived from a question that no longer
+        mentions them.
         """
 
         if scope.session_id is None:
@@ -1815,11 +2546,29 @@ def run_turn(
         settled = dict(base or {})
         settled.setdefault("menu_item_id", str(result.get("menu_item_id")))
         settled.setdefault("quantity", int(result.get("quantity") or 1))
+        groups = [g for g in (result.get("customization_groups") or []) if isinstance(g, dict)]
         draft_now = order_draft.load(scope.session_id)
         draft_now.pending_choice = json.dumps({
             "base": {k: v for k, v in settled.items() if v is not None},
             "question": ask_for_choice(result) or "",
             "options": options,
+            # For `next_optional_group`, which runs when the last required
+            # answer arrives and has no database to ask.
+            "name": str(result.get("name") or ""),
+            "needs_size": bool(result.get("needs_size")),
+            "required": [
+                [str(o.get("option_id")) for o in (g.get("options") or []) if o.get("option_id")]
+                for g in groups
+                if g.get("is_required")
+            ],
+            "later": [
+                storable_group(g)
+                for g in (
+                    later
+                    if later is not None
+                    else [g for g in groups if not g.get("is_required") and g.get("options")]
+                )
+            ],
             # How many times this has been put to the customer.
             # Reset whenever something was actually settled. A customer
             # answering a three-part question correctly is not a customer
@@ -1856,19 +2605,23 @@ def run_turn(
             return None
         return order_draft.load(scope.session_id).last_question
 
-    def _remember_shown(names: list[str]) -> None:
-        """Write down what was just shown, replacing whatever was there.
+    def _remember_pairings(names: list[str]) -> None:
+        """Write the pairings down as the list now in front of them.
 
-        Only the last list. Two turns back is not what "the first one" means,
-        and keeping a history would let a stale name win over a fresh one.
+        "Added 1 x Cheese Burst Pizza. People often add: 1. Red Curry Tofu,
+        2. Pad Thai Veg. Anything else?" — that is what is on screen, so "1"
+        is the tofu, and until this it was the first PIZZA, off a list that
+        had scrolled away.
+
+        `order_draft.remember_offered` owns the rule about what happens to the
+        list they were browsing, because the reply pipeline records its own
+        listed dishes the same way and two implementations of "what is in
+        front of them" would drift apart.
         """
 
-        options = [{"name": str(name)} for name in names if str(name).strip()]
-        if scope.session_id is None or not options:
+        if scope.session_id is None:
             return
-        draft_now = order_draft.load(scope.session_id)
-        draft_now.last_shown = json.dumps({"options": options})
-        order_draft.save(scope.session_id, draft_now)
+        order_draft.remember_offered(scope.session_id, names)
 
     def _forget_shown() -> None:
         """Nothing is in front of them as a list any more.
@@ -1918,6 +2671,61 @@ def run_turn(
         draft_now.last_shown = json.dumps({"options": options})
         order_draft.save(scope.session_id, draft_now)
 
+    def _remember_sections(question: str, sections: list[str]) -> None:
+        """Write down the sections just read out, so a number picks one.
+
+        The same job `_remember_dish_choice` does for a dish list, and the
+        reason it is separate is what a pick MEANS: picking a dish adds it,
+        picking a section shows it. So this records `kind: "section"`, and the
+        turn turns that into `category` rather than `chose` — the same field
+        typing "Pizza" produces, so both answers walk the one proven path.
+
+        Deliberately NOT written to `last_shown`: that store holds dishes and
+        `_answer_dish_choice` adds from it, so a section name left there would
+        let "the first one" try to buy a dish called Pizza. A list of sections
+        supersedes whatever dishes were in front of them, so it is cleared.
+        """
+
+        options = [{"name": str(name)} for name in sections if str(name).strip()]
+        if scope.session_id is None or not options:
+            return
+        draft_now = order_draft.load(scope.session_id)
+        draft_now.pending_choice = json.dumps(
+            {"kind": "section", "question": question, "options": options, "asks": 1}
+        )
+        draft_now.last_shown = None
+        order_draft.save(scope.session_id, draft_now)
+
+    def _offer_the_sections(said: str | None = None) -> TurnOutcome | None:
+        """Read the sections out, numbered, and remember them as the answer.
+
+        Three places offer the menu — a plain "menu", a message we could not
+        read twice, and a number with nothing to count along — and all three
+        have to record the list, or the numbers they just printed answer
+        nothing.
+        """
+
+        if db is None or not scope.restaurant_location_id:
+            return None
+        raw = tools_module.branch_sections(db, scope)
+        offer = tools_module.offer_of_sections(raw)
+        if not offer:
+            return None
+        # `asks` is the short question; the customer gets the list. `_hold`
+        # records a short one on purpose — a long read-back given to the model
+        # AS the question gets mined for its contents, and a list of every
+        # section is that shape exactly.
+        answer = _hold(f"{said} {offer}" if said else offer, yes="name_one", asks=_WHICH_SECTION)
+        _remember_sections(_WHICH_SECTION, tools_module.sections_offered(raw))
+        return TurnOutcome(
+            answer=answer,
+            answer_about="menu",
+            actions=actions,
+            records=records,
+            fallback_reason=None,
+            elapsed_seconds=clock() - start,
+        )
+
     def _answer_dish_choice(asked: dict[str, Any], chose: list[str]) -> list[dict[str, Any]]:
         """Add the dishes they picked out of the list we read them.
 
@@ -1953,6 +2761,90 @@ def run_turn(
         if added:
             _forget_choice()
         return added
+
+    def _answer_price_question(
+        asked: dict[str, Any] | None,
+        shown: dict[str, Any] | None,
+        held: dict[str, Any] | None,
+    ) -> TurnOutcome | None:
+        """"How much?" — about whatever is already in front of them.
+
+        Four things it can be about, most specific first: the dish a
+        standing question is configuring, the one dish the last reply offered
+        ("Shall I set one up?" — held with the dish as its subject), the list
+        a standing question or the last reply put in front of them, and
+        failing all three, the cart. Every figure is a row's own price;
+        nothing is searched for. None when there is nothing in front of
+        them, and the message goes on to be read properly. Live, before the
+        second of those: "price" straight after "Build Your Own Pizza comes
+        in a few sizes. Shall I set one up?" was searched for as a dish and
+        answered with eight appetizers.
+
+        The question they were in the middle of is put again afterwards,
+        because a price is not an answer to it — but the size question
+        already carries every price, and repeating it in full under the same
+        figures says everything twice.
+        """
+
+        def _said(answer: str) -> TurnOutcome:
+            return TurnOutcome(
+                answer=answer, answer_about="menu", actions=actions, records=records,
+                fallback_reason=None, elapsed_seconds=clock() - start,
+            )
+
+        base = (asked or {}).get("base") or {}
+        if base.get("menu_item_id"):
+            rows = tools_module.prices_of(db, scope, menu_item_id=str(base["menu_item_id"]))
+            # A size already settled is the one they are paying for. Live,
+            # "cost" with a Large chosen and the toppings question standing
+            # read all three sizes back — three prices for a dish that had one.
+            chosen_size = str(base.get("menu_item_size_id") or "")
+            if chosen_size:
+                for row in rows:
+                    only = [s for s in row.get("sizes") or [] if str(s.get("size_id")) == chosen_size]
+                    if only:
+                        row["sizes"] = only
+            priced = describe_prices(rows)
+            if priced is None:
+                return None
+            question = str((asked or {}).get("question") or "").strip()
+            if question.startswith("Which size"):
+                question = "Which size would you like?"
+            return _said(f"{priced}\n\n{question}".strip())
+        if held and held.get("subject") and held.get("yes") == "add":
+            priced = describe_prices(
+                tools_module.prices_of(db, scope, names=[str(held["subject"])])
+            )
+            if priced is None:
+                return None
+            # The offer stands: the question was consumed at the top of this
+            # turn and is put back, so "yes" still adds the dish.
+            # Only its closing sentence: the dish's name and its sizes were
+            # just said, and "Build Your Own Pizza comes in a few sizes" read
+            # again under its own prices is the same sentence twice.
+            offer = re.split(r"(?<=[.!?])\s+", str(held["question"]).strip())[-1]
+            again = _hold(offer, yes="add", subject=str(held["subject"]))
+            return _said(f"{priced} {again}" if "\n" not in priced else f"{priced}\n\n{again}")
+        listed = asked if asked and asked.get("options") else shown
+        if listed and listed.get("options"):
+            names = [str(o.get("name")) for o in listed["options"] if o.get("name")]
+            priced = describe_prices(tools_module.prices_of(db, scope, names=names))
+            if priced is None:
+                return None
+            return _said(f"{priced}\n\n{_hold('Which one would you like?', yes='name_one')}")
+        if cart_readback:
+            return _settled(asked_to_see_cart=True)
+        # Nothing is in front of them and nothing is in the cart, so there is
+        # nothing to price — and nothing for the reading to find either.
+        # Live, "cost" on a cold chat was searched for as a dish: "I could not
+        # find cost on the menu", over eight appetizers.
+        return _said(
+            _hold(
+                "Which dish would you like the price of? Tell me its name, "
+                "or say menu to see what we have.",
+                yes="name_one",
+            )
+        )
 
     def _made_progress(base: dict[str, Any] | None) -> bool:
         """Whether this attempt settled something the last one had not."""
@@ -2010,10 +2902,55 @@ def run_turn(
         if chosen:
             args["selected_options"] = chosen
         guards.grow_seen_ids(seen, args)
+
+        # Everything required is settled, so this add would land — which is the
+        # only moment an optional group can still be offered. After it, the
+        # dish is in the cart and nothing asks.
+        offering = next_optional_group(asked, args)
+        if offering is not None:
+            _offer_optional(asked, args, offering)
+            return []
+
         added = _run_add(args)
         if added:
             _forget_choice()
         return added
+
+    def _offer_optional(
+        asked: dict[str, Any], args: dict[str, Any], group: dict[str, Any]
+    ) -> None:
+        """Ask about one optional group, carrying everything settled with it.
+
+        Built as a `needs_choice` so it goes through the same composer and the
+        same memory as every other question: `ask_for_choice` already says "you
+        can choose more than one" for a group that takes several, and
+        `_remember_choice` already matches an answer against the ids offered.
+        """
+
+        rest = [
+            other
+            for other in (asked.get("later") or [])
+            if isinstance(other, dict) and other.get("group_id") != group.get("group_id")
+        ]
+        offered = {
+            "outcome": "needs_choice",
+            "name": asked.get("name") or "",
+            "menu_item_id": args.get("menu_item_id"),
+            "quantity": args.get("quantity") or 1,
+            "needs_size": False,
+            "available_sizes": [],
+            # Marked as wanted, because that is exactly what asking means.
+            "customization_groups": [{**group, "needs_selection": True}],
+        }
+        records.append(ToolCallRecord(tool="add_to_cart", args=dict(args), result=offered))
+        _remember_choice(offered, args, later=rest)
+        # Marked optional so the turn knows this question may be walked past.
+        if scope.session_id is not None:
+            draft_now = order_draft.load(scope.session_id)
+            stored = _pending_choice() or {}
+            stored["optional"] = True
+            draft_now.pending_choice = json.dumps(stored)
+            order_draft.save(scope.session_id, draft_now)
 
     def _add_named_dish(name: str, quantity: int) -> list[dict[str, Any]]:
         """Put a dish the customer named into the cart.
@@ -2066,6 +3003,39 @@ def run_turn(
             records.append(ToolCallRecord(tool="get_dish", args={"name": name}, result=lookup))
         if exact:
             guards.grow_seen_ids(seen, {"menu_item_id": exact[0][0]})
+            return _run_add(resolved_args)
+
+        # Nobody said this dish's name. The guard above only refuses when
+        # SEVERAL dish names matched the words; a phrase matching none of them
+        # fell straight through to the semantic cascade, which resolved a dish
+        # and bought it. Live, from a customer naming pizza toppings:
+        #
+        #     > Mozzarella and mushroom
+        #       Added 1 x Farmhouse Pizza to your order. Anything else?
+        #
+        # The count of near misses never changed whether the customer asked
+        # for it. Only whether anything else would be asked before it landed:
+        # a dish still needing a size says its own name in the size question,
+        # so "khaman dhokla" keeps its one-step path and only a dish that
+        # would land silently costs a confirmation.
+        if would_be_added_without_asking(lookup):
+            # A question of ours is worth more than a guess of ours. Live,
+            # mid-build with the crust question standing, "Mozzarella and
+            # mushroom" — a customer naming toppings — was answered "Did you
+            # mean Farmhouse Pizza?", which dropped the crust question and
+            # offered an unrelated $329 pizza. Putting our own question again
+            # keeps the half-built pizza alive.
+            standing = reask_standing_choice(_pending_choice())
+            found = str((lookup or {}).get("name") or "").strip()
+            if standing or found:
+                records.append(ToolCallRecord(
+                    tool="get_dish", args={"name": name},
+                    result={
+                        "outcome": "ambiguous",
+                        "question": standing or f"Did you mean {found}?",
+                    },
+                ))
+            return []
         return _run_add(resolved_args)
 
     def _run_add(args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2089,6 +3059,112 @@ def run_turn(
         records.append(ToolCallRecord(tool="add_to_cart", args=prepared.model_dump(), result=result))
         if isinstance(result, dict) and result.get("outcome") == "needs_choice":
             _remember_choice(result, args)
+        action = result.get("action") if isinstance(result, dict) else None
+        return [action] if action else []
+
+    def _run_remove(line: dict[str, Any]) -> list[dict[str, Any]]:
+        """Take one line off, through the same guard a planned call goes
+        through.
+
+        The line comes from `view_cart`, so its id is one the customer's own
+        cart is holding rather than a name the model hopes exists — which is
+        exactly what `RemoveFromCartArgs` asks for. It is grown into `seen`
+        for the same reason: the guard refuses a dish nothing showed this
+        turn, and our own cart read-back is what showed it.
+        """
+
+        args = {
+            "menu_item_id": line.get("menu_item_id"),
+            "existing_lines": _as_tool_lines(cart),
+        }
+        guards.grow_seen_ids(seen, {"menu_item_id": line.get("menu_item_id")})
+        prepared, guard_error = guards.prepare_tool_call(
+            "remove_from_cart", args, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            logger.info("Ordering agent could not take that off: %s", guard_error)
+            return []
+        try:
+            result = TOOLS["remove_from_cart"].handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - never lose the turn over it
+            logger.warning("Ordering agent remove raised: %s", error, exc_info=True)
+            return []
+        result = guards.enforce_destructive_policy(result)
+        records.append(
+            ToolCallRecord(tool="remove_from_cart", args=prepared.model_dump(), result=result)
+        )
+        action = result.get("action") if isinstance(result, dict) else None
+        return [action] if action else []
+
+    def _clear_whole_cart() -> TurnOutcome:
+        """Take every line off, now that the customer has said so.
+
+        `clear_cart` the tool is always `proposed` — "destructive is never
+        applied" — and on a chat thread nothing can ever apply a proposal:
+        the reply says "Just say the word" and the word has nowhere to land.
+        So the clearing is one applied removal per dish, which is what a
+        proposal would have become had a client accepted it. The policy is
+        not skipped: the yes was obtained on the previous turn, to a question
+        that said how many lines were going.
+        """
+
+        going: list[dict[str, Any]] = []
+        for line in cart:
+            menu_item_id = str(line.menu_item_id)
+            if any(a["menu_item_id"] == menu_item_id for a in going):
+                continue
+            going.append({
+                "kind": "remove", "status": "applied", "reason": "named",
+                "menu_item_id": menu_item_id,
+            })
+        actions.extend(going)
+        # Nothing being configured survives an empty cart either.
+        _forget_choice()
+        _forget_shown()
+        return _answering(
+            _hold(
+                "Done — your order is empty. Tell me what you would like instead, "
+                "or say menu to see what we have.",
+                yes="name_one",
+            )
+        )
+
+    def _which_to_take_off(lines: list[dict[str, Any]]) -> TurnOutcome:
+        """Ask which line goes, and remember that THAT is the question."""
+
+        listed = ", ".join(str(line.get("name")) for line in lines if line.get("name"))
+        return _answering(
+            _hold(f"Which one shall I take off? {listed}. Or say all.", yes="remove_one")
+        )
+
+    def _run_set_quantity(line: dict[str, Any], quantity: int) -> list[dict[str, Any]]:
+        """Change one line's count, through the same guard a planned call uses.
+
+        `quantity` is the FINAL count, not a delta — "make it two" means the
+        line reads two afterwards, which is what `SetQuantityArgs` documents.
+        """
+
+        args = {
+            "menu_item_id": line.get("menu_item_id"),
+            "quantity": quantity,
+            "existing_lines": _as_tool_lines(cart),
+        }
+        guards.grow_seen_ids(seen, {"menu_item_id": line.get("menu_item_id")})
+        prepared, guard_error = guards.prepare_tool_call(
+            "set_quantity", args, cart=cart, seen=seen, diet=scope.diet
+        )
+        if guard_error is not None:
+            logger.info("Ordering agent could not change that count: %s", guard_error)
+            return []
+        try:
+            result = TOOLS["set_quantity"].handler(db, scope, prepared)
+        except Exception as error:  # noqa: BLE001 - never lose the turn over it
+            logger.warning("Ordering agent set_quantity raised: %s", error, exc_info=True)
+            return []
+        result = guards.enforce_destructive_policy(result)
+        records.append(
+            ToolCallRecord(tool="set_quantity", args=prepared.model_dump(), result=result)
+        )
         action = result.get("action") if isinstance(result, dict) else None
         return [action] if action else []
 
@@ -2156,7 +3232,7 @@ def run_turn(
         # Computed once and reused below, because `_hold_the_question` tells
         # which sentence this is by identity: calling `describe_applied` twice
         # returns two equal strings that are not the same object.
-        applied = describe_applied(records)
+        applied = _applied_with_pairings()
         summary = _cart_summary_in(records) or cart_readback
         question = (
             describe_placed_order(placed_order_in(records))
@@ -2165,7 +3241,7 @@ def run_turn(
             or describe_time_problem(records)
             or describe_time_settled(records)
             or describe_place_failure(records)
-            or describe_collecting(_still_missing())
+            or describe_collecting(_still_missing(), saved=details_were_saved(records))
             or (describe_ready() if ready_now else None)
             or summary
         )
@@ -2215,6 +3291,55 @@ def run_turn(
         elif summary is not None and answer is summary:
             _hold("Ready to check out?", yes="checkout")
 
+    def _applied_with_pairings() -> str | None:
+        """What the turn did to the cart, plus what goes with it.
+
+        The recording is the point: a printed number means nothing unless the
+        list behind it is written down, and the pairings are the last thing
+        the customer was shown. Keyed on the heading actually appearing,
+        because `describe_applied` decides that — only an ADD gets pairings,
+        and taking something out is not an opening to sell.
+        """
+
+        offered = _goes_with(records)
+        said = describe_applied(records, goes_with=offered)
+        if offered and said and _PEOPLE_OFTEN_ADD in said:
+            _remember_pairings([str(d.get("name")) for d in offered if d.get("name")])
+        return said
+
+    def _goes_with(records: list[ToolCallRecord]) -> list[dict[str, Any]]:
+        """A couple of things to offer alongside what was just added.
+
+        Rows, never taste: `dishes_to_suggest` orders by this branch's own
+        bestseller and popularity columns and takes at most one per section,
+        so three suggestions are three ideas rather than three main courses.
+
+        The dish just added is excluded explicitly. The cart this turn was
+        handed predates it — the caller applies the actions afterwards — so
+        without this the first thing offered alongside a pizza was that pizza.
+        """
+
+        if db is None or not scope.restaurant_location_id:
+            return []
+        just_added = [
+            (r.result or {}).get("action", {}).get("menu_item_id")
+            for r in records
+            if isinstance(r.result, dict)
+            and (r.result.get("action") or {}).get("kind") == "add"
+        ]
+        want_veg = True if (scope.diet or "").lower() == "veg" else None
+        try:
+            return tools_module.dishes_to_suggest(
+                db,
+                scope,
+                in_cart=[line.menu_item_id for line in cart] + [i for i in just_added if i],
+                is_veg=want_veg,
+                limit=2,
+            )
+        except Exception:  # noqa: BLE001 - a suggestion is never worth the turn
+            logger.warning("Ordering agent could not read suggestions", exc_info=True)
+            return []
+
     def _settled(asked_to_see_cart: bool = False) -> TurnOutcome:
         """The turn as the rows alone can end it — no words from the model.
 
@@ -2229,7 +3354,7 @@ def run_turn(
         """
 
         placed = placed_order_in(records)
-        applied = describe_applied(records)
+        applied = _applied_with_pairings()
         summary = _cart_summary_in(records) or cart_readback
         if asked_to_see_cart and summary:
             answer = summary
@@ -2241,7 +3366,7 @@ def run_turn(
                 or describe_time_problem(records)
                 or describe_time_settled(records)
                 or describe_place_failure(records)
-                or describe_collecting(_still_missing())
+                or describe_collecting(_still_missing(), saved=details_were_saved(records))
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or summary
             )
@@ -2269,6 +3394,36 @@ def run_turn(
     held_question = _awaiting()
     if held_question is not None:
         _forget_awaiting()
+
+    # "Which one shall I take off?" is standing: this message is read against
+    # THAT question, with the cart's own lines as its options. Live, "All" —
+    # the answer to it — reached the reading with the greeting's four dishes
+    # as the options and came back as a choice of all four: added, not
+    # removed. A position is the one thing settled without the reading; what
+    # the words mean is the reading's to say.
+    lines_now = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+    lines_now = [line for line in (lines_now or []) if isinstance(line, dict)]
+    #
+    # The clear question ("Take all N items off? ... or name the one to take
+    # off") is briefed the same way: its answers are the cart's lines too.
+    # Measured without this: "2", to "Take all 2 items off your order?", was
+    # read as a yes and emptied the cart. A bare position is a line to take
+    # off, never a yes to a destructive question.
+    removing = (
+        held_question
+        if held_question is not None
+        and held_question.get("yes") in {"remove_one", "clear_cart"}
+        and lines_now
+        else None
+    )
+    if removing is not None:
+        position = ordinal_asked_for(message, count=len(lines_now))
+        if position is not None:
+            taken = _run_remove(lines_now[position - 1])
+            if taken:
+                actions.extend(taken)
+                return _settled()
+
     plain = quick_read(message)
     # Kept, so a reading that makes nothing of the message can fall back to
     # it rather than lose it. See where it is restored, below.
@@ -2281,7 +3436,26 @@ def run_turn(
         # yet". Asking to SEE something is never an answer to yes or no, so
         # "cart" and "menu" keep the fast path.
         plain = None
+    # A dish built to the last optional question is not "nothing in your
+    # order". Live: size, crust and sauce all chosen, then "checkout" — and
+    # the short circuit below answered "There is nothing in your order yet",
+    # losing a pizza that had taken four answers to build. An optional group
+    # is an offer, not a gate, so asking to check out settles it the same way
+    # any other message does: the dish is added, and the checkout carries on
+    # with something to check out.
     if plain in {"cart", "checkout"} and not cart:
+        standing_optional = _pending_choice() or {}
+        if standing_optional.get("optional"):
+            base_args = dict(standing_optional.get("base") or {})
+            # This dish is one WE put in front of them a turn ago, and the
+            # guard that refuses a dish "the model never saw this turn" would
+            # otherwise refuse our own offer back.
+            guards.grow_seen_ids(seen, base_args)
+            landed = _run_add(base_args)
+            if landed:
+                actions.extend(landed)
+                _forget_choice()
+    if plain in {"cart", "checkout"} and not cart and not actions:
         # Asking about an order that has nothing in it. Measured: "checkout"
         # on an empty cart spent 17.9 seconds arriving at a menu suggestion,
         # and "cart" spent 6.5 — for a fact known before either started.
@@ -2306,25 +3480,9 @@ def run_turn(
         # The sections are the answer, for the reason a restaurant hands over
         # a menu with sections instead of reciting 136 dishes — and naming one
         # back now reads out that whole section, so it leads somewhere.
-        sections = (
-            tools_module.branch_sections(db, scope)
-            if db is not None and scope.restaurant_location_id
-            else []
-        )
-        offer = tools_module.offer_of_sections(sections)
-        if offer:
-            return TurnOutcome(
-                # `asks` is the short question; the customer gets the list.
-                # `_hold` records a short one on purpose — a long read-back
-                # given to the model AS the question gets mined for its
-                # contents, and a list of every section is that shape exactly.
-                answer=_hold(offer, yes="name_one", asks=_WHICH_SECTION),
-                answer_about="menu",
-                actions=actions,
-                records=records,
-                fallback_reason=None,
-                elapsed_seconds=clock() - start,
-            )
+        offered = _offer_the_sections()
+        if offered is not None:
+            return offered
         # A branch with no sections has nothing better to offer than whatever
         # the pipeline makes of it, which is the one case the old behaviour
         # was right about.
@@ -2353,7 +3511,7 @@ def run_turn(
     # What was last put in front of them, when no question of ours is
     # standing. The agent's own question wins where there is one: it is the
     # more specific thing outstanding.
-    shown_before = None if asked_before else _last_shown()
+    shown_before = None if asked_before or removing is not None else _last_shown()
     # The sections this branch actually sells, so "some drink" can find
     # Beverages. Rows, given to the reading; the mapping is meaning.
     sections: list[str] = []
@@ -2370,23 +3528,93 @@ def run_turn(
     # A time the kitchen offered, or details read back, are the more
     # specific thing outstanding and answer a "yes" first.
     standing = held_question if not standing_offer and not unconfirmed else None
+
+    # The bare price question, answered off the rows already in front of
+    # them. Above the reading, because there is nothing for a model to read:
+    # the message names nothing, and what it is about was written down when
+    # we said it. Live, with the size question for a pizza standing, "how
+    # much" reached the reading as nothing and was answered "Sorry, I did not
+    # catch that." See `_PLAIN["price"]` and `_answer_price_question`.
+    if plain == "price" and db is not None and scope.restaurant_location_id:
+        priced = _answer_price_question(asked_before, shown_before, held_question)
+        if priced is not None:
+            return priced
+
+    # A pick by position off the list we read out — "1", "the second one".
+    # Read here, against the list in the order it was said, so the reading is
+    # never asked what a bare number means; measured, it answered "1" with
+    # nothing. The NAME at that position then goes through exactly the path a
+    # typed name does. See `ordinal_asked_for` and `listed_in_order`.
+    listed_now = asked_before or shown_before
+    picked_by_number: str | None = None
+    # Which KIND of list it was decides what picking off it means: a dish is
+    # added, a section is shown. Both end up in the field the same answer
+    # typed by name produces — `chose` for a dish, `category` for a section —
+    # so neither invents a path of its own.
+    picked_a_section = (listed_now or {}).get("kind") == "section"
+    if listed_now and plain is None:
+        in_order = listed_in_order(listed_now)
+        position = ordinal_asked_for(message, count=len(in_order))
+        if position is not None:
+            picked_by_number = str(in_order[position - 1]["name"])
+        else:
+            # Too large to be one of the two pairings just offered, so it is
+            # read against the list they were browsing — somebody working
+            # down a numbered section and saying "6" after adding the second
+            # means the sixth dish there. See `_remember_pairings`.
+            beneath = [
+                o for o in (listed_now.get("beneath") or []) if isinstance(o, dict) and o.get("name")
+            ]
+            deeper = ordinal_asked_for(message, count=len(beneath))
+            if deeper is not None:
+                picked_by_number = str(beneath[deeper - 1]["name"])
+    elif (
+        plain is None
+        and held_question is None
+        and not cart
+        and ordinal_asked_for(message, count=_MOST_ANYBODY_ORDERS) is not None
+        and db is not None
+        and scope.restaurant_location_id
+    ):
+        # A position, and nothing to count along: no list standing, no
+        # question of ours, nothing in the cart. Measured, the reading made
+        # "1" into nothing and ten seconds of planner rounds ended on "Your
+        # cart is currently empty" — true, and not an answer. The sections
+        # are what there is to pick from, so they are what is offered, the
+        # same way "menu" is answered. With a cart, a bare number may be a
+        # count and is left to the reading.
+        offered = _offer_the_sections("I have not shown you a list to pick from yet.")
+        if offered is not None:
+            return offered
     wanted = (
         {"add": None, "details": {}, "checkout": True, "when": None,
          "chose": None, "confirms": None, "browse": None, "asks_hours": False}
         if plain == "checkout"
+        else {"add": None, "details": {}, "checkout": False, "when": None,
+              "chose": None if picked_a_section else [picked_by_number],
+              "category": picked_by_number if picked_a_section else None,
+              "browse": picked_by_number if picked_a_section else None,
+              "confirms": None, "asks_hours": False}
+        if picked_by_number
         else read_order_intent(
             message,
             missing=collecting or (),
             generate=generate,
             now_local=now_local.strftime("%A %Y-%m-%d %H:%M"),
             offered=standing_offer,
+            # Our own "which one shall I take off?" outranks any list: its
+            # options are the cart's lines, and the reading is told so.
             choice_question=(
-                (asked_before or {}).get("question")
+                "Which one shall I take off your order?"
+                if removing is not None
+                else (asked_before or {}).get("question")
                 or ("These were just shown to them." if shown_before else None)
             ),
-            choice_options=[
-                o["name"] for o in (asked_before or shown_before or {}).get("options", [])
-            ],
+            choice_options=(
+                [str(line.get("name")) for line in lines_now if line.get("name")]
+                if removing is not None
+                else [o["name"] for o in (asked_before or shown_before or {}).get("options", [])]
+            ),
             # Whatever a bare "yes" would be agreeing to. Measured: with a
             # time offered but nothing named as the question, the reading
             # answered "yes" with nothing at all, the turn fell through to
@@ -2420,6 +3648,100 @@ def run_turn(
             categories=sections,
         )
     )
+
+    # The answer to "which one shall I take off?", as the reading read it
+    # against the cart's own lines: one, several, or all of them. Naming every
+    # line is clearing the cart, and the customer asked for the removal a
+    # turn ago, so no second confirmation.
+    if removing is not None and wanted.get("chose"):
+        going = lines_named_among(wanted["chose"], lines_now)
+        if going and len(going) == len(lines_now):
+            return _clear_whole_cart()
+        taken = [action for line in going for action in _run_remove(line)]
+        if taken:
+            actions.extend(taken)
+            return _settled()
+        # Named nothing we hold; whatever else the message says goes on, but
+        # not as a pick from a list — there is no list.
+        wanted["chose"] = None
+
+    # A section list is standing and they named one of its sections. The
+    # reading reports that as `chose`, because `chose` is the shape it is
+    # asked for whenever options are listed — but picking a section SHOWS it.
+    # Left alone, this reached `_answer_choice`, which raised KeyError on
+    # `option_id` (a section has none) or, worse through the dish handler,
+    # tried to buy a dish called Pizza. `category` is what typing the name
+    # produces, so both answers walk the one proven path.
+    if asked_before and asked_before.get("kind") == "section" and wanted.get("chose"):
+        named = lines_named_among(wanted["chose"], asked_before.get("options") or [])
+        if named:
+            wanted["category"] = str(named[0]["name"])
+            wanted["browse"] = wanted.get("browse") or str(named[0]["name"])
+        wanted["chose"] = None
+
+    # The whole cart, as the reading read it — however it was worded. It is
+    # destructive, so it becomes a question, and only a yes (or asking again
+    # while the question stands) clears anything. Live: "Clear cart" over four
+    # lines was answered "Which one shall I take off?".
+    if wanted.get("clear_cart"):
+        if not cart:
+            return TurnOutcome(
+                answer=_PLACE_FAILURE_LINES["empty_cart"], answer_about="cart",
+                actions=actions, records=records, fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+        if held_question is not None and held_question.get("yes") == "clear_cart":
+            return _clear_whole_cart()
+        count = len(lines_now) or len(cart)
+        noun = "item" if count == 1 else "items"
+        # The lines are named, because the model reads "remove one" as this
+        # often enough: a customer who wanted one dish gone sees the names
+        # and answers with one, and the question has cost them nothing.
+        names = [str(line.get("name")) for line in lines_now if line.get("name")]
+        listed = f" ({', '.join(names)})" if 0 < len(names) <= 6 else ""
+        return _answering(
+            _hold(
+                f"Take all {count} {noun} off your order{listed}? Say yes to "
+                "clear it, or name the one to take off.",
+                yes="clear_cart",
+                asks=f"Take all {count} {noun} off your order? Say yes to clear it, "
+                     "or name the one to take off.",
+            )
+        )
+
+    # An optional group is an offer, not a gate, and this is the only window
+    # in which that can be enforced: after the reading, and before the guard
+    # below that re-asks a standing choice and returns. See
+    # `docs/ordering-agent-turn-routing.md`.
+    #
+    # Resolved against the options HERE rather than from the reading, because
+    # the reading is a model and does not agree with itself. Measured, with the
+    # toppings question standing: "Mozzarella" came back as `chose` on one run
+    # and "Mozzarella and mushroom" as an `add` for a dish of that name on the
+    # next, while "no" read as `confirms: False` and "none" and "skip" set
+    # nothing at all. The first version of this branched on those keys, and
+    # lost pizzas: four questions answered, then "no", and the dish was never
+    # added.
+    #
+    # Whatever the message was, the dish is added. The worst an optional group
+    # may cost somebody is a pizza without toppings, never the pizza.
+    if asked_before and asked_before.get("optional"):
+        picked = options_named_in(message, asked_before) or (
+            [picked_by_number] if picked_by_number else []
+        )
+        base_args = dict(asked_before.get("base") or {})
+        # This dish is one WE put in front of them a turn ago, and the guard
+        # that refuses a dish "the model never saw this turn" would otherwise
+        # refuse our own offer back. Without it `_run_add` returned nothing
+        # and the pizza was silently dropped on every refusal.
+        guards.grow_seen_ids(seen, base_args)
+        settled_now = (
+            _answer_choice(asked_before, picked) if picked else _run_add(base_args)
+        )
+        if settled_now:
+            actions.extend(settled_now)
+            _forget_choice()
+            asked_before = None
 
     # The model made nothing of a message that plainly says "I am done".
     # Measured: with a list standing, "that's all", "no", "nothing else" and
@@ -2500,6 +3822,35 @@ def run_turn(
         if order is not None:
             return _ask_about_waiting(order, they_asked_to_cancel=True)
 
+        # No order to cancel, but a cart to edit. The comment above is the
+        # whole reason: "a message naming a dish is a cart edit however it is
+        # read". The reading collapses "remove the khaman", "take it off" and
+        # "delete the dhokla" into `cancel_order` alike, so which line — if
+        # any — is decided here from the cart's own rows. Live, before this,
+        # all of those were answered by reading the cart back with the dish
+        # still in it; whether anything came off depended on whether the
+        # model's tool loop happened to call `remove_from_cart` by itself.
+        cart_lines = (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+        if not cart_lines and not cart:
+            # Nothing to take off. Measured: "remove something" on an empty
+            # cart spent 10.8 seconds in planner rounds to say so.
+            return TurnOutcome(
+                answer=_PLACE_FAILURE_LINES["empty_cart"], answer_about="cart",
+                actions=actions, records=records, fallback_reason=None,
+                elapsed_seconds=clock() - start,
+            )
+        if cart_lines:
+            going = line_to_remove(message, cart_lines)
+            if going is not None:
+                taken = _run_remove(going)
+                if taken:
+                    actions.extend(taken)
+                    return _settled()
+            elif len(cart_lines) > 1:
+                # Several to choose from and nothing named. Guessing throws
+                # away something somebody chose.
+                return _which_to_take_off(cart_lines)
+
     if wanted.get("when") and scope.session_id is not None:
         _take_time(wanted["when"])
         placing_wanted = True
@@ -2579,14 +3930,124 @@ def run_turn(
     ):
         return _reask_or_give_up(asked_before)
 
+    # A change of count. The reading loses the number — "actually make it 3"
+    # and "make that two" both come back as `wants_to_add` and nothing else —
+    # so it is read off the message, and applied to whatever this conversation
+    # is actually about. Placed above the suggestion and browse branches,
+    # which would otherwise answer first: see
+    # docs/ordering-agent-turn-routing.md.
+    if (
+        wanted.get("wants_to_add")
+        and not wanted["add"]
+        and not wanted.get("chose")
+        and not wanted.get("browse")
+        and not wanted.get("category")
+    ):
+        how_many = quantity_asked_for(message)
+        if how_many is not None:
+            if asked_before and asked_before.get("base"):
+                # Mid-build. The dish has not landed yet, so the count belongs
+                # to the question still standing rather than to a cart line —
+                # and the question is put again, because it is still open.
+                changed = dict(asked_before)
+                changed["base"] = {**changed["base"], "quantity": how_many}
+                if scope.session_id is not None:
+                    draft_now = order_draft.load(scope.session_id)
+                    draft_now.pending_choice = json.dumps(changed)
+                    order_draft.save(scope.session_id, draft_now)
+                # The question as it was, with no apology in front of it:
+                # `reask_standing_choice` opens "Sorry, I did not catch that",
+                # which is the opposite of what happened here.
+                again = str(changed.get("question") or "").strip()
+                return _answering(f"Make it {how_many}. {again}".strip())
+
+            cart_lines = (
+                (cart_result or {}).get("lines") if isinstance(cart_result, dict) else None
+            )
+            if cart_lines:
+                # Which line, by the same rule removal uses: one named, or a
+                # cart holding one thing. Otherwise it is a guess about
+                # somebody's money.
+                line = line_to_remove(message, cart_lines)
+                if line is not None:
+                    counted = _run_set_quantity(line, how_many)
+                    if counted:
+                        actions.extend(counted)
+                        return _settled()
+                elif len(cart_lines) > 1:
+                    listed = ", ".join(
+                        str(l.get("name")) for l in cart_lines if l.get("name")
+                    )
+                    return _answering(
+                        _hold(
+                            f"Which one shall I make {how_many}? {listed}.",
+                            yes="name_one",
+                        )
+                    )
+
+    # "What do you recommend" and "what's your cheapest" are answerable from
+    # this branch's own columns, and were being searched for as dish names:
+    # "I could not find what do you recommend on the menu." Routed through the
+    # same guard as `wants_to_add` so that a question of ours already on the
+    # table still wins — see docs/ordering-agent-turn-routing.md.
+    if plain == "cheapest" and db is not None and scope.restaurant_location_id:
+        # Only a standing CHOICE defers this, not a list we merely showed. The
+        # greeting lists four dishes, so guarding on `shown_before` too meant
+        # "what's your cheapest item" was skipped on every turn after hello —
+        # which is every real turn.
+        if not asked_before:
+            want_veg = True if (scope.diet or "").lower() == "veg" else None
+            cheapest = tools_module.cheapest_dishes(db, scope, is_veg=want_veg)
+            if cheapest:
+                listed = "\n".join(
+                    _dish_line(d, i) for i, d in enumerate(cheapest, 1)
+                )
+                asked_now = _hold("Which one would you like?", yes="name_one")
+                _remember_dish_choice(asked_now, cheapest)
+                return TurnOutcome(
+                    answer=f"These are the cheapest we have:\n{listed}\n\n{asked_now}",
+                    answer_about="menu",
+                    actions=actions,
+                    records=records,
+                    fallback_reason=None,
+                    elapsed_seconds=clock() - start,
+                )
+    if plain == "suggest" and not asked_before:
+        # Answered here rather than by setting `wants_to_add`, because that
+        # guard sits BELOW the browse branch, and "what do you recommend" also
+        # reads as browsing — so browse answered first and searched the menu
+        # for the question. `_suggest_more` reads this branch's own bestsellers
+        # and popularity, one per section, minus what is in the cart.
+        offered_now = _suggest_more()
+        if offered_now is not None:
+            return offered_now
+
     if wanted.get("chose") and not asked_before and shown_before:
         # They picked one of the dishes the reply pipeline showed them. Only
         # ever an add: there is no question of ours to answer here, so a
         # message that names nothing on that list simply carries on to the
         # planner.
-        answered = _answer_dish_choice(shown_before, wanted["chose"])
+        #
+        # Both lists, for a NAME. The numbering is what has to stay separate —
+        # "1" is the first pairing, not the first pizza — but "Margherita
+        # Pizza" is unambiguous whichever of the two it came off, and the
+        # reading reports a name it recognises as `chose` rather than `add`.
+        answered = _answer_dish_choice(
+            {
+                "options": (shown_before.get("options") or [])
+                + (shown_before.get("beneath") or [])
+            },
+            wanted["chose"],
+        )
         if answered:
             actions.extend(answered)
+            # The pick landed, so the message is not ALSO a request to see
+            # things. Live: "Pad Thai Veg", after the greeting listed it, was
+            # added here and then answered by the browse branch with "Pad Thai
+            # Veg is $13.84. Shall I add one?" — over a cart that had it.
+            wanted["browse"] = None
+            wanted["category"] = None
+            wanted["wants_to_add"] = False
     elif wanted.get("chose") and asked_before:
         # Two kinds of question end on a list. A size or a customization
         # option carries the id that settles it; a dish carries only its
@@ -2599,6 +4060,9 @@ def run_turn(
         )
         if answered:
             actions.extend(answered)
+            wanted["browse"] = None
+            wanted["category"] = None
+            wanted["wants_to_add"] = False
 
     # Only when they have not named one. "Make it 12:30" reads as both a
     # question about time and a time, and the time is the instruction.
@@ -2656,6 +4120,14 @@ def run_turn(
         and not wanted["add"]
         and not wanted.get("browse")
         and not wanted.get("category")
+        # ...and nothing of ours is waiting. A question already on the table
+        # is a better answer than three new dishes. Live, with eight dhoklas
+        # listed and "Which one would you like?" standing, "1" and "actually
+        # make it 3" both read as `wants_to_add`, landed here, and were
+        # answered "Of course. These go quickly:" over three unrelated
+        # bestsellers — the dhoklas thrown away and the question dropped.
+        and not asked_before
+        and not shown_before
         and db is not None
         and scope.restaurant_location_id
     ):
@@ -2920,7 +4392,7 @@ def run_turn(
                 or describe_place_failure(records)
                 or describe_time_problem(records)
                 or describe_place_failure(records)
-            or describe_collecting(_still_missing())
+            or describe_collecting(_still_missing(), saved=details_were_saved(records))
                 or (describe_ready() if _still_missing() == [] and collecting is not None and cart else None)
                 or _cart_summary_in(records)
                 or cart_readback

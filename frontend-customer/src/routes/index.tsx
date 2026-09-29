@@ -22,12 +22,7 @@ import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
 import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
 import { budgetChipAmount } from "@/lib/budget";
-import {
-  useMoney,
-  useRoundedMoney,
-  useStorefrontCopy,
-  useStorefrontCover,
-} from "@/lib/storefront";
+import { useMoney, useRoundedMoney, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
   // The root route already resolves this restaurant's copy from the request
@@ -209,12 +204,7 @@ function Home() {
           </div>
           <div className="section-rail">
             {sections.map(({ name, count }) => (
-              <Link
-                className="section-chip"
-                key={name}
-                search={{ category: name }}
-                to="/menu"
-              >
+              <Link className="section-chip" key={name} search={{ category: name }} to="/menu">
                 <span className="section-chip__name">{name}</span>
                 <span className="section-chip__count">{count}</span>
               </Link>
@@ -264,34 +254,34 @@ function Home() {
           invitation to a page that is not there. */}
       <section className={askAi ? "grid bg-surface-alt lg:grid-cols-2" : "grid bg-surface-alt"}>
         {askAi ? (
-        <div className="page-pad section-pad">
-          <Sparkles className="mb-5 size-10 text-primary" />
-          <p className="eyebrow">Not sure what to order?</p>
-          <h2 className="font-display text-4xl font-extrabold">
-            Not sure what to eat? Tell us your craving.
-          </h2>
-          <p className="mt-4 max-w-xl text-muted">
-            Tap a craving and our AI food concierge points you straight to a dish on the menu.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            {cravingChips.map((chip) => (
-              <Link
-                key={chip.label}
-                to="/concierge"
-                search={{ q: chip.query }}
-                className="craving-chip"
-              >
-                <chip.icon className="size-4" />
-                {chip.label}
+          <div className="page-pad section-pad">
+            <Sparkles className="mb-5 size-10 text-primary" />
+            <p className="eyebrow">Not sure what to order?</p>
+            <h2 className="font-display text-4xl font-extrabold">
+              Not sure what to eat? Tell us your craving.
+            </h2>
+            <p className="mt-4 max-w-xl text-muted">
+              Tap a craving and our AI food concierge points you straight to a dish on the menu.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              {cravingChips.map((chip) => (
+                <Link
+                  key={chip.label}
+                  to="/concierge"
+                  search={{ q: chip.query }}
+                  className="craving-chip"
+                >
+                  <chip.icon className="size-4" />
+                  {chip.label}
+                </Link>
+              ))}
+            </div>
+            <Button variant="outline" className="mt-6" asChild>
+              <Link to="/concierge">
+                Or describe your own craving <ArrowRight />
               </Link>
-            ))}
+            </Button>
           </div>
-          <Button variant="outline" className="mt-6" asChild>
-            <Link to="/concierge">
-              Or describe your own craving <ArrowRight />
-            </Link>
-          </Button>
-        </div>
         ) : null}
         <div className="page-pad section-pad bg-primary text-primary-foreground">
           <Clock3 className="mb-5 size-10" />

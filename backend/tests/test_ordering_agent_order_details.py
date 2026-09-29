@@ -320,7 +320,9 @@ class SettledByTheRowsTests(unittest.TestCase):
         self.assertEqual(
             generate.prompts, [], "'checkout' says one plain thing; no model round at all"
         )
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
         self.assertEqual(outcome.answer_about, "order")
 
 
@@ -413,7 +415,13 @@ class DetailsReadFirstTests(unittest.TestCase):
         self.assertEqual(generate.prompts, [], "the reading settled it; no planner round")
         self.assertEqual(store["draft"].contact_name, "Hitesh")
         self.assertEqual(store["draft"].contact_email, "h@example.com")
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
+        # And it says thanks, because two of their details DID just land.
+        # Asking the next question with no sign the last answer was heard is
+        # how a customer starts repeating themselves.
+        self.assertTrue((outcome.answer or "").startswith("Thanks."), outcome.answer)
 
     def test_a_message_wanting_nothing_falls_through_to_the_planner(self) -> None:
         # A question about the menu is none of the three things an order can
@@ -899,7 +907,7 @@ class ShowingTheMenuTests(unittest.TestCase):
 
         return [
             SimpleNamespace(id=_uuid.uuid4(), name=n, price=Decimal("9.99"),
-                            is_veg=v, category="Mains")
+                            is_veg=v, category="Mains", has_sizes=False)
             for n, v in names_and_veg
         ]
 
@@ -917,7 +925,12 @@ class ShowingTheMenuTests(unittest.TestCase):
 
     def test_dishes_come_back_with_their_names_and_prices(self) -> None:
         shown = self.shown(self.rows([("Margherita Pizza", True)]), "pizza")
-        self.assertEqual(shown, [{"name": "Margherita Pizza", "price": "9.99", "is_veg": True}])
+        # `has_sizes` joined the row so a read-back of ONE dish knows not to
+        # quote a single price for a dish sold in three sizes.
+        self.assertEqual(
+            shown,
+            [{"name": "Margherita Pizza", "price": "9.99", "is_veg": True, "has_sizes": False}],
+        )
 
     def test_a_diet_is_asked_of_the_query_not_remembered_by_a_model(self) -> None:
         import uuid as _uuid
@@ -1146,20 +1159,26 @@ class ChooseThreeTests(unittest.TestCase):
             }],
         }
 
+    # Case-insensitive since the question became one thing at a time: these
+    # phrases used to open their own sentence and are now clauses inside one,
+    # so "pick 3" became "Pick 3." and "you have" became "You have". What each
+    # test encodes — that the count is stated, and that a pick already made is
+    # credited rather than asked for again — is unchanged.
+
     def test_it_says_how_many_are_wanted(self) -> None:
         from app.services.ordering_agent.loop import ask_for_choice
 
         said = ask_for_choice(self.result())
-        self.assertIn("pick 3", said)
+        self.assertIn("pick 3", said.lower())
         self.assertIn("Mango sticky rice", said)
 
     def test_it_credits_what_is_already_chosen_and_counts_down(self) -> None:
         from app.services.ordering_agent.loop import ask_for_choice
 
         said = ask_for_choice(self.result(chosen=["a"]))
-        self.assertIn("you have Mango sticky rice", said)
-        self.assertIn("Pick 2 more", said)
-        self.assertNotIn("Mango sticky rice,", said.split("Pick 2 more")[1])
+        self.assertIn("you have mango sticky rice", said.lower())
+        self.assertIn("pick 2 more", said.lower())
+        self.assertNotIn("\n- Mango sticky rice", said, "offered again after being chosen")
 
     def test_the_reading_takes_several_at_once(self) -> None:
         from app.services.ordering_agent.planner import read_order_intent
@@ -1207,10 +1226,13 @@ class _MenuDb:
         return _Rows(self.rows)
 
 
-def _dish(name, price=4.5, is_veg=True):
+def _dish(name, price=4.5, is_veg=True, has_sizes=False):
     from types import SimpleNamespace
 
-    return SimpleNamespace(name=name, price=price, is_veg=is_veg)
+    # `has_sizes` is a real column on menu_items, and `dishes_to_show`
+    # carries it so a read-back of ONE dish knows not to quote a single
+    # price for a dish sold in three.
+    return SimpleNamespace(name=name, price=price, is_veg=is_veg, has_sizes=has_sizes)
 
 
 class TheQuestionWeEndedOnTests(unittest.TestCase):
@@ -1314,7 +1336,9 @@ class TheQuestionWeEndedOnTests(unittest.TestCase):
         )
         # Nothing is invented: with no details held, checking out asks for
         # them. What matters is that a bare yes reached the order at all.
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
 
     def test_no_to_ready_to_check_out_keeps_the_conversation_open(self) -> None:
         outcome, _ = self.turn(
@@ -1338,7 +1362,9 @@ class TheQuestionWeEndedOnTests(unittest.TestCase):
             draft=self.holding("more", question="Anything else?"),
             intent=self.agreeing(False),
         )
-        self.assertIn("still need", outcome.answer or "")
+        # One question, not four: the checkout used to name every missing
+        # field in one sentence. `_DETAILS_IN_ORDER` puts fulfillment first.
+        self.assertIn("Delivery or pickup?", outcome.answer or "")
 
     def test_yes_to_which_one_is_not_answered_with_the_same_question(self) -> None:
         # The screenshot: "Which one would you like?" answered "Yes". A real

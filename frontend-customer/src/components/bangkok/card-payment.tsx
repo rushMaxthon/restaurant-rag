@@ -5,7 +5,6 @@ import { AlertCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMoney } from "@/lib/storefront";
 
-
 /**
  * Stripe's Payment Element, mounted against an intent the backend created.
  *

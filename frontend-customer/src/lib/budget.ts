@@ -30,7 +30,9 @@ function stepFor(amount: number): number {
 }
 
 export function budgetChipAmount(prices: number[]): number | null {
-  const sorted = prices.filter((price) => Number.isFinite(price) && price > 0).sort((a, b) => a - b);
+  const sorted = prices
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
   // Too few dishes to say anything general about the menu. The chip is then
   // left out entirely rather than shown with a number drawn from two prices.
   if (sorted.length < 4) {

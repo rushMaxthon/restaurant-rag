@@ -1629,6 +1629,33 @@ def _flatten_stretched_letters(token: str) -> str:
     return token
 
 
+def _a_choice_is_standing(session_id: "uuid.UUID | None") -> bool:
+    """Whether the ordering agent is waiting on an answer right now.
+
+    "Thanks" ends a conversation; it does not end a question. Live, with the
+    toppings question standing on a pizza that had taken four answers to
+    build, "no thanks" was read as an acknowledgement, answered "Happy to help
+    😊" before the agent ran at all, and the pizza was never added.
+
+    So an acknowledgement stops short-circuiting while a choice is open, and
+    the agent — which can tell "no thanks" from "thanks" by matching it
+    against the options it offered — gets the turn.
+
+    Never raises: a draft that cannot be read means answering as before, which
+    is the behaviour this narrows rather than replaces.
+    """
+
+    if session_id is None:
+        return False
+    try:
+        from app.services.ordering_agent import order_draft
+
+        return bool(order_draft.load(session_id).pending_choice)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not read the pending choice for this session", exc_info=True)
+        return False
+
+
 def _is_acknowledgement_message(message: str) -> bool:
     normalized = _normalize_match_text(message)
     acknowledgements = {
@@ -8283,7 +8310,7 @@ def handle_chat_message(
     # Before anything is retrieved or written, so every price this turn puts
     # in front of the model is in the money the menu is actually priced in.
     bind_reply_currency(_currency_of(db, restaurant_id))
-    if _is_acknowledgement_message(message):
+    if _is_acknowledgement_message(message) and not _a_choice_is_standing(session_id):
         prepared = _prepare_instant_reply_turn(
             message=message,
             session_id=session_id,
@@ -8765,7 +8792,7 @@ def stream_chat_message(
     # Before anything is retrieved or written, so every price this turn puts
     # in front of the model is in the money the menu is actually priced in.
     bind_reply_currency(_currency_of(db, restaurant_id))
-    if _is_acknowledgement_message(message):
+    if _is_acknowledgement_message(message) and not _a_choice_is_standing(session_id):
         prepared = _prepare_instant_reply_turn(
             message=message,
             session_id=session_id,

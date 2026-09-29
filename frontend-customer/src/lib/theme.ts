@@ -8,9 +8,18 @@ export function applyBrandColor(primaryColor: string | undefined | null) {
   if (typeof document === "undefined" || !primaryColor) return;
   const root = document.documentElement;
   root.style.setProperty("--primary", primaryColor);
-  root.style.setProperty("--primary-soft", `color-mix(in srgb, ${primaryColor} 15%, var(--surface))`);
-  root.style.setProperty("--placeholder-a", `color-mix(in srgb, ${primaryColor} 15%, var(--surface))`);
-  root.style.setProperty("--placeholder-b", `color-mix(in srgb, ${primaryColor} 25%, var(--surface))`);
+  root.style.setProperty(
+    "--primary-soft",
+    `color-mix(in srgb, ${primaryColor} 15%, var(--surface))`,
+  );
+  root.style.setProperty(
+    "--placeholder-a",
+    `color-mix(in srgb, ${primaryColor} 15%, var(--surface))`,
+  );
+  root.style.setProperty(
+    "--placeholder-b",
+    `color-mix(in srgb, ${primaryColor} 25%, var(--surface))`,
+  );
   root.style.setProperty("--on-primary", pickReadableForeground(primaryColor));
 }
 

@@ -185,7 +185,13 @@ describe("applyCartActionsToCart (store-level idempotency)", () => {
 
 describe("the checkout hand-off", () => {
   const checkout = (status: "applied" | "proposed"): CartAction => ({
-    kind: "checkout", status, reason: "named", menu_item_id: null, menu_item_size_id: null, selected_option_ids: [], quantity: null,
+    kind: "checkout",
+    status,
+    reason: "named",
+    menu_item_id: null,
+    menu_item_size_id: null,
+    selected_option_ids: [],
+    quantity: null,
   });
 
   it("proposed goes to proposals and changes nothing", () => {
@@ -200,4 +206,3 @@ describe("the checkout hand-off", () => {
     expect(result.proposals).toHaveLength(0);
   });
 });
-

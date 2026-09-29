@@ -191,11 +191,7 @@ export function useCurrencyCode(): string {
  * Eleven routes used to spell "Bangkok Bowl" into their own titles, so eleven
  * pages of every tenant's website were named after one restaurant.
  */
-export function pageMeta(
-  copy: StorefrontCopy | undefined,
-  page: string,
-  description: string,
-) {
+export function pageMeta(copy: StorefrontCopy | undefined, page: string, description: string) {
   const title = `${page} — ${(copy ?? UNKNOWN_STOREFRONT).name}`;
   return [
     { title },

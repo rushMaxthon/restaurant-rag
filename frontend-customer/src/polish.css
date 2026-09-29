@@ -723,21 +723,38 @@ textarea.flex:focus-visible {
   background: var(--surface-alt);
 }
 
-/* Slot picker on checkout. */
+/* Slot picker on checkout.
+   Three across on a phone, not two. A branch open 10:30–22:00 in quarter
+   hours offers about fifty times, and at `minmax(7.2rem)` only two fitted a
+   390px screen — twenty-five rows of chips between "when would you like it"
+   and the pay button, on the screen where somebody is trying to finish. The
+   chips hold "10:30 a.m." at three across with room to spare; the wider
+   minimum comes back as soon as there is width for it. */
 .slot-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(5.75rem, 1fr));
   gap: 0.5rem;
+}
+@media (min-width: 480px) {
+  .slot-grid {
+    grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr));
+  }
+  .slot-chip {
+    padding: 0 0.85rem;
+  }
 }
 .slot-chip {
   min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
-  padding: 0 0.85rem;
+  padding: 0 0.7rem;
   font-weight: 700;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+  /* The time is one thing; wrapped over two lines it stops being readable at
+     a glance, which is the only way a grid of fifty is usable at all. */
+  white-space: nowrap;
   cursor: pointer;
   transition:
     border-color 0.16s,
@@ -1214,6 +1231,26 @@ html {
 .dish-lede__price {
   border-top: 1px solid var(--border);
   padding-top: 0.9rem;
+}
+
+/* What the dish IS, given the weight that deserves.
+   It was `text-muted` at body size — the colour this app uses for LABELS —
+   so the one paragraph a customer actually reads to decide was the faintest
+   thing on the page, under a 4xl title and beside a 3xl price. `--text` at
+   85% keeps it below the title in the hierarchy without pushing it into the
+   grey used for captions, and the measure stops a long one (the Punjabi
+   Thali's runs to three lines) from setting the column's width. */
+.dish-description {
+  margin-top: 0.9rem;
+  max-width: 46ch;
+  color: color-mix(in srgb, var(--text) 85%, transparent);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+@media (min-width: 640px) {
+  .dish-description {
+    font-size: 1.05rem;
+  }
 }
 
 /* Padding lives here rather than in utility classes so the action block below

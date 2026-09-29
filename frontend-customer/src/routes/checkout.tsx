@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { CardPayment } from "@/components/bangkok/card-payment";
 import { RazorpayPayment } from "@/components/bangkok/razorpay-payment";
 import { DishImage } from "@/components/bangkok/dish-image";
-import { orderCode} from "@/lib/bangkok-data";
+import { orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import {
   activeSlots,
@@ -62,7 +62,6 @@ import { refusalNeedsCart } from "@/lib/order-refusal";
 import { pageMeta, useCurrencyCode, useStorefrontCopy, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
-
 export const Route = createFileRoute("/checkout")({
   loader: () => getStorefrontCopy(),
   head: ({ loaderData }) => ({
@@ -88,9 +87,7 @@ function StepRail({ step }: { step: 1 | 2 | 3 }) {
         const todo = index > step;
         return (
           <li className="flex items-center gap-2 sm:gap-3" key={label}>
-            {index > 1 && (
-              <span className="h-px w-4 bg-border sm:w-10" aria-hidden="true" />
-            )}
+            {index > 1 && <span className="h-px w-4 bg-border sm:w-10" aria-hidden="true" />}
             <span className="flex items-center gap-1.5 sm:gap-2">
               <span className="step-pill" data-done={done} data-todo={todo}>
                 {done ? <CheckCircle2 className="size-4" /> : index}
@@ -263,7 +260,7 @@ function Checkout() {
   }, [profile.data, savedAddresses]);
 
   /** Put a saved address in the form, replacing whatever is there. */
-  const useSavedAddress = (id: string) => {
+  const applySavedAddress = (id: string) => {
     const picked = savedAddresses.find((entry) => entry.id === id);
     if (!picked) return;
     setAddress(addressFromSaved(picked));
@@ -690,7 +687,10 @@ function Checkout() {
   const submitting = validateOrder.isPending || createOrder.isPending || payingCard;
 
   return (
-    <form className="page-pad mx-auto max-w-7xl pb-40 pt-10" onSubmit={handleSubmit}>
+    <form
+      className="page-pad mx-auto max-w-7xl 2xl:max-w-[88rem] pb-40 pt-10"
+      onSubmit={handleSubmit}
+    >
       <Link
         to="/cart"
         className="inline-flex items-center gap-1.5 text-sm font-bold text-muted hover:text-foreground"
@@ -752,7 +752,7 @@ function Checkout() {
                     key={entry.id}
                     className="saved-address"
                     data-on={addressId === entry.id}
-                    onClick={() => useSavedAddress(entry.id)}
+                    onClick={() => applySavedAddress(entry.id)}
                   >
                     <span className="saved-address__label">
                       {entry.label === "HOME" ? "Home" : entry.label === "WORK" ? "Work" : "Other"}
@@ -790,9 +790,7 @@ function Checkout() {
                       "+1" while the server prepended something else, so the
                       code the customer was shown and the code their number
                       was stored under could differ with nothing to say so. */}
-                  {s.phoneCountryCode && (
-                    <span className="country-code">{s.phoneCountryCode}</span>
-                  )}
+                  {s.phoneCountryCode && <span className="country-code">{s.phoneCountryCode}</span>}
                   <Input
                     id="phone"
                     required
@@ -1182,11 +1180,7 @@ function Checkout() {
                   {sessionExpired ? (
                     <>
                       Your sign-in has expired.{" "}
-                      <Link
-                        className="underline"
-                        to="/login"
-                        search={{ redirect: "/checkout" }}
-                      >
+                      <Link className="underline" to="/login" search={{ redirect: "/checkout" }}>
                         Sign in again
                       </Link>{" "}
                       — your cart is saved and you will come straight back here.

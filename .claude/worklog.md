@@ -88,6 +88,237 @@ exception; ADMIN hears every restaurant via `admin:all`; no marketing realtime.
 - socket.io-client does not reconnect after `io server disconnect`; one manual
   `connect()` is what turns a revoked session into a clean `auth` refusal.
 
+## 2026-09-23 — Pizza prices fixed in data; picking by number and asking the price
+
+**Goal:** (1) three Bangkok Bowl pizzas priced in rupees on a CAD menu; (2) the
+"think deep" WhatsApp pass — the two things a customer does constantly after a
+list is read out: answer it with a number, and ask how much.
+
+**Changed:**
+- Data only, no code: `scratchpad/fix_pizza_prices.py` set Cheese Burst 349 →
+  17.99, Farmhouse 299/329 → 17.49 (Bodakdev sizes 17.49/21.99/26.99),
+  Margherita 249 → 11.99 (Ellisbridge's own price), 8 rows across 3 branches,
+  with the admin route's side effects run by hand (discovery + bestseller cache
+  cleared, 8 embedding jobs queued and confirmed done). NOT via
+  `PUT /api/menu-items/{id}` — that route runs `_sync_menu_item_customizations`
+  and would have wiped Build Your Own Pizza's sizes and groups. **Placeholders
+  flagged for the owner:** Cheese Burst 17.99 and Farmhouse 17.49 (+ the
+  Bodakdev size ladder) are in-range guesses, not the restaurant's prices.
+- `planner.py` — `_PLAIN["price"]`: "how much", "hw much", "price", "cost",
+  "rate", "kitne ka hai", "kitna hai"... A price question that NAMES a dish
+  stays with the reading.
+- `loop.py` — `ordinal_asked_for` ("1", "the second one", "1st", "last",
+  "option 3"; refuses "2 khaman" and "1 and 2"), `listed_in_order` (counts
+  along the question's own bullet lines, so a part-answered group counts what
+  is left), `describe_prices`, `_dish_line` (a sized dish is listed "from" its
+  base — the section list said "Build Your Own Pizza - $14.99" over a $24.49
+  Large). In `run_turn`, ABOVE the reading: the price answer
+  (`_answer_price_question`: the dish being configured — its chosen size only,
+  once one is settled — the dish just offered, the list just shown, the cart,
+  else "Which dish would you like the price of?") and the pick-by-number,
+  which builds `wanted` with `chose=[name]` and skips the model. A bare number
+  with no list, no question and no cart is answered with the sections instead
+  of ten seconds of planner rounds ending on "Your cart is currently empty".
+  `ask_for_choice` drops a leading choose/pick/select from a group title
+  ("Which choose four bites for Appetizer Sampler?" was live).
+- `tools.py` — `prices_of(names=... | menu_item_id=...)`, one query, exact
+  names, sizes with ids.
+- `docs/ordering-agent-turn-routing.md` — table regenerated (re-ask guard is
+  now 3542, reading at 3291) plus a section for the two pre-reading reads.
+- New `tests/test_picking_by_number_and_asking_the_price.py` (19).
+
+**Verified:** `python -m unittest discover -s tests` OK three times over the
+session (last run after every change). Live replay through
+`handle_chat_message` with the real model, both tenants
+(`scratchpad/replay_numbers_and_prices.py`): Pizza → "2" adds Cheese Burst;
+"1" → size list; "the first one" → crust; "2" → sauce; "option 2" → toppings
+→ added; every pick 0.3–0.7s (was a 3–10s model read that returned nothing).
+"how much" over a list re-lists with prices ("from" for sized); "kitna hai"
+with a size question standing → "Cheese Butter Dhokla is ₹60 for Per Plate
+and ₹360 for 1 Kg. Which size would you like?"; "price" after "Shall I set one
+up?" → all three sizes + the offer again; "cost" with Large chosen → the Large
+price only; "how much" with only a cart → the cart read-back. Bodakdev
+"Pizza" lists Cheese Burst $17.99, Farmhouse $17.49, Margherita $11.99.
+
+**Later the same day — "Clear cart" / "All" (screenshot thread).** "Clear
+cart" over four lines was answered "Which one shall I take off?", and "All"
+— the answer to that — was read against the GREETING's four dishes and added
+them. First fix was two phrase lists; the user rejected that ("don't depend
+on static words ... figure out based on user input") and the house rule
+agrees. Shipped instead: the READING carries `clear_cart` (told what it
+means and what it is not) and, when our own take-off or clear question is
+standing, is briefed with that question and the cart's lines as the options
+— never `last_shown` — and told "all of them" is every option. The code acts
+only on what was read, against rows (`lines_named_among`); naming every line
+clears. Clearing is always a question first (`yes="clear_cart"`) and the
+question names the lines, because qwen reads "remove one" as clear often
+enough; a bare position while it stands takes THAT line off and is never a
+yes (measured: "2" to "Take all 2 items off?" was read as yes). Also: a pick
+that landed switches the browse branch off (a dish was added and then
+offered), and "remove something" on an empty cart is answered from the rows.
+Verified live on Bodakdev: Clear cart → question → All → empty; no → kept;
+remove one → question with names → 2 → second line off; the tofu → the only
+line off. Suite 2283 OK.
+
+**2026-09-25 — every list is numbered.** The user's ask: "menu" answered with
+one comma-joined line is a paragraph to read and nothing to answer; show
+`1, 2, 3` and accept either the number or the name. Shipped: `offer_of_sections`
+is numbered one per line and closes on "Reply with the number or the name";
+`sections_offered` returns exactly what was printed and the turn records THAT
+(`_remember_sections`, `kind: "section"`, deliberately NOT in `last_shown` —
+that store is dishes and `_answer_dish_choice` buys from it). Picking a
+section sets `category`, the same field typing "Pizza" produces, because
+picking a dish adds it and picking a section shows it. Dish lists and
+size/topping lists were already answerable by position — the numbers were
+just never printed — so `_dish_line`/`_option_line` now print them, and
+`listed_in_order`/`lays_its_options_out` read both `1. ` and the old `- `
+(a question written by the previous build can still be standing in Redis).
+The re-ask stopped falling back to a comma list too. Three offer sites
+collapsed into `_offer_the_sections`. Verified live end to end on Bodakdev:
+menu → 8 → Pizza → 2 → added → 1 → sizes → 1 → crust → 1 → sauce, each pick
+0.2–0.9s, and the same journey by name unchanged. Suite 2300 OK.
+
+**Then the pairings too** (user asked for it right after). "People often add:"
+is numbered and `_applied_with_pairings` records it as `last_shown`, keyed on
+the heading actually appearing (only an ADD gets pairings). The list they were
+BROWSING is not lost — it moves to `beneath`, and a number too large to be a
+pairing is read against it, so "6" after adding the second pizza is still the
+sixth pizza. `beneath` is one level deep and survives consecutive adds
+(`kind: "pairings"` marks a store whose `beneath` should carry forward), which
+is what stops the second add pushing the section out. A NAME matches against
+both lists; only the numbering stays separate. `_remember_shown` was dead code
+and became `_remember_pairings`. Verified live: 1 → the pairing, 6 → the sixth
+pizza, and two adds then 5 → the fifth pizza. Suite 2305 OK.
+
+**Then checkout friction and the greeting list** (user picked these two off a
+ranked list of what to do next). (1) `describe_collecting` named every missing
+field in one sentence — "I still need whether you want delivery or pickup,
+your name, an email address and the delivery address" — four questions at the
+moment of maximum drop-off, against the agent's own "one thing at a time"
+rule. Now `_DETAILS_IN_ORDER` asks one: fulfillment (it decides whether an
+address is wanted at all), then address, name, phone, email; "Thanks." only
+when something actually landed (`details_were_saved`), "Last thing —" on the
+final one. The QUESTION narrows, not the reading: `missing` is still passed
+whole so "delivery to 12 Main St, I'm Hitesh" lands both. (2) The greeting's
+four dishes came from the reply pipeline, were bulleted, and nothing recorded
+them — the first message a customer ever saw was the one list "1" did not
+answer. `render_reply` numbers them and `dishes_listed_under` reports exactly
+what it printed so the task records it; the agent owning the turn records
+nothing, since it has already stored what it showed. The options/beneath rule
+moved to `order_draft.remember_offered` so the agent and the pipeline cannot
+drift. Verified live: Hi → numbered list → "1" adds Red Curry Tofu; checkout →
+one question per turn → read-back. Suite 2317 OK.
+
+**Incidental:** `test_the_customers_name_still_fits` asserted the greeting
+opener starts with "Good", which is true of morning/afternoon/evening and NOT
+of the late one ("Hey 👋"). It passed all day and failed every night. Now
+asserts the real invariant — the opener survives and the name goes before the
+wave.
+
+**Then #3, WhatsApp interactive messages.** Tapping adds NO new path: a tap
+arrives as exactly the message a customer typing the same answer would have
+sent, so every guard and test that covers typing covers tapping. Button ids
+are `say:yes`/`say:no`, row ids are `pick:<n>` — the POSITION, never the
+title, because Meta truncates a row title at 24 chars and a truncated dish
+name matches nothing. `tapped_answer` translates on the way in;
+`inbound_messages` now accepts `interactive` alongside `text`.
+
+Which shape is decided by the QUESTION (`awaiting.yes`), not by what is
+longest on screen: yes/no → buttons, `name_one`/no held question → list.
+Three things the first cut got wrong, all caught by replaying what Meta would
+receive (`scratchpad/replay_taps.py`, only the HTTP call stubbed):
+- Rows built from the draft attached seven topping rows to "There is nothing
+  in your order yet" — a stale choice. Rows now come from the PRINTED lines
+  (`split_printed_list`), so they exist only when the message printed a list.
+- The draft holds names and ids, so every price vanished from the rows. The
+  printed line is where 'Small (8") — $14.99' exists; descriptions carry it,
+  with the `+` kept on extras.
+- "Added ... People often add: ... Anything else?" went out as a list of the
+  two suggestions, hiding the real question behind a Choose button.
+
+Ten rows is Meta's cap and Bodakdev has eleven sections and eleven pizzas, so
+those stay numbered text — none rather than the first ten, since stopping
+silently at ten of eleven claims the menu ends there. **Not verified against
+Meta**: payload shapes match the documented API and inbound parsing is tested,
+but real delivery needs a phone. `_send` logs Meta's refusal body at ERROR.
+
+**Found while replaying, pre-existing and costly:** "checkout" with an
+optional group standing hit the `plain in {"cart","checkout"} and not cart`
+short circuit and answered "There is nothing in your order yet" — losing a
+pizza that had taken four answers to build. An optional group is an offer,
+not a gate, so checkout now settles it the same way any other message does.
+
+**Then the customer web UI** (user: item description, checkout, mobile,
+"cover max spacing" on desktop). Looked at it in the browser rather than
+guessing — and since the extension could not shrink the viewport below 1920,
+mobile was previewed by mounting the pages in 390px same-origin **iframes**,
+which respond to media queries properly. That found:
+- **A flat-priced dish showed no price at all in the lede.** `dish-lede__price`
+  was gated on `sizes.length > 0`, so the Punjabi Thali's only figure was
+  "TOTAL ₹155" inside the order panel — below the fold on a phone. The page
+  said what the dish was and never what it cost. Now always rendered.
+- **The description was the least legible thing on the page**: `text-muted`
+  (the colour used for LABELS) at body size under a 4xl title. Now
+  `.dish-description` — `--text` at 85%, 1rem/1.65, capped at 46ch.
+- **The title wrapped to three lines** at 390px. `text-[1.75rem]` stepping up
+  to `sm:text-4xl`.
+- **Checkout's slot grid was two-up on a phone** — a branch open 10:30–22:00
+  in quarter hours is ~53 chips, so twenty-five rows between "when would you
+  like it" and the pay button. `minmax(7.2rem)` → `minmax(5.75rem)` under
+  480px gives three across (measured: 3 × 96px, 53 chips, **0 clipped**), and
+  the page went 3615px → 3251px.
+- **Desktop spacing**: `max-w-7xl` left a third of a 1920 screen empty, so
+  dish/checkout/cart take `2xl:max-w-[88rem]`.
+
+**Verified:** `npm run build` exit 0, `npm run test` 297 passed, and the
+edited files carry no new lint errors. Note `npm run lint` fails repo-wide
+(78 files, ~11k `Delete ␍`) — CRLF vs prettier on this Windows checkout,
+pre-existing and untouched.
+
+**Then "make it working right": the lint blindfold came off, and there was a
+real bug under it.** `npm run lint` reported 11,279 problems, 11,258 of them
+`Delete ␍` — prettier defaults `endOfLine` to "lf" and this working tree is
+CRLF, so every line of every file failed and four real errors were buried.
+`endOfLine: "auto"` (no reformatting, no line-ending churn) dropped it to 329
+and exposed:
+- **`BranchGate` called `useStorefrontCopy()` below its `return null`.** That
+  return fires on exactly the first render (`isRestaurantLoading`), so render 1
+  ran one hook and render 2 ran two — "Rendered more hooks than during the
+  previous render", on the first screen a new visitor meets. Moved above.
+- `useSavedAddress` was a plain click handler wearing the `use` prefix
+  reserved for hooks, which is why the rule flagged it too → `applySavedAddress`.
+Then `eslint --fix` + prettier over src/ and e2e/, as its own commit so the
+hook fix stays readable: **0 errors, 20 warnings** (exhaustive-deps and
+react-refresh, which want judgement, left alone). Build 0, 297 tests.
+
+**Whole stack up and verified** (backend :8000, ngrok tunnel, customer :5173,
+admin :5174, worker, Redis, Ollama) — and **Celery beat was started for the
+first time this session**, which immediately reaped 2 stale unpaid orders.
+That is the thing that had been making every WhatsApp turn open with "Shall I
+keep that order?"; it was never a bot bug, it was beat not running.
+
+**Open:**
+- Open product question, not answered: does a WhatsApp order need
+  `contact_email` when the phone is already verified by Meta? It is a required
+  field, so it costs every first-time customer a turn.
+- Owner to confirm the two placeholder pizza prices in admin.
+- The replay uses a fixed test phone; a leftover unpaid order on 919876500000
+  turns every turn into "Shall I keep that order?" — use a fresh number.
+- Still open from before: "make the soup 2" with two lines; jain/spice have no
+  columns; Celery beat not running; webhook still on the ngrok tunnel (Mr
+  Tailor prod not receiving).
+
+**Learned:**
+- Anything that only consults what THIS conversation already wrote down
+  (`pending_choice`, `last_shown`, `awaiting`) belongs above the reading: it
+  is deterministic, it is sub-second, and the model measurably returns nothing
+  for a bare "1" or "how much" anyway.
+- `_remember_choice` stores the whole group's options; the question shows what
+  is left. Count along the question, never the store.
+- Python's stdout is block-buffered when redirected on Windows — a replay log
+  stays empty until the process exits; `PYTHONIOENCODING=utf-8` is needed too
+  or the first emoji kills the run.
+
 ## 2026-09-23 — The kitchen board, redesigned
 
 **Goal:** rebuild `frontend-kitchen`'s UI against a supplied KDS reference —

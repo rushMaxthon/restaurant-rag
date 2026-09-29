@@ -585,6 +585,45 @@ _PLAIN = {
     "menu": (
         "menu", "menu card", "menu list", "food menu", "dishes", "dish list",
         "items", "item list", "options", "food", "food list", "menu items",
+        # The other half of how people ask. Live, on a thread where "Show me
+        # menu" worked perfectly: "Show me categories" and "Show me other
+        # items" were both searched for as though they were dishes, and both
+        # came back "I could not find categories on the menu" over eight
+        # appetizers. The branch's own sections were the answer to all three.
+        "categories", "category", "menu categories", "sections", "section",
+        "other items", "more items", "other dishes", "more dishes",
+        "other options", "anything else", "something else", "else",
+        "full menu", "whole menu", "all items", "list of items",
+    ),
+    # Answered from this branch's own columns — `is_bestseller` and
+    # `popularity_score` are what "what's good" means here. Live, at a branch
+    # with 136 dishes, "what do you recommend" was searched for as a dish name
+    # and answered "I could not find what do you recommend on the menu".
+    "suggest": (
+        "recommend", "recommends", "recommendation", "recommendations",
+        "any recommendations", "what do you recommend", "what do you suggest",
+        "suggest", "suggest something", "suggestion", "suggestions",
+        "whats good", "whats nice", "whats popular", "popular", "most popular",
+        "best", "what is the best dish", "bestseller", "bestsellers", "must try",
+    ),
+    # `price`, ordered. Same fault: "what's your cheapest item" came back
+    # "I could not find cheapest item on the menu".
+    "cheapest": (
+        "cheapest", "cheapest item", "cheapest dish", "what is cheapest",
+        "whats your cheapest item", "anything cheap", "something cheap", "cheap",
+        "lowest price",
+    ),
+    # The bare question about whatever is already in front of them — a dish
+    # just named, a list just read out, the cart. Live, with the size question
+    # for a pizza standing, "how much" was searched for as a dish and answered
+    # "Sorry, I did not catch that." The figure was on the row we were already
+    # talking about. A price question that NAMES a dish ("how much is the
+    # khaman") has content of its own and is not here; it goes to the reading.
+    "price": (
+        "price", "what is the price", "price kya hai", "how much", "hw much",
+        "how much is it", "how much is that", "how much for that",
+        "how much does it cost", "cost", "how much cost", "kitne ka hai",
+        "kitna hai", "kitne ka", "kitna", "rate", "kya rate hai", "what rate",
     ),
     "checkout": (
         "checkout", "check out", "checkout order", "place order", "order place",
@@ -686,7 +725,14 @@ def question_asked_in(reply: str | None) -> str | None:
 def quick_read(message: str) -> str | None:
     """What this sentence plainly asks for, or None to go and read it properly.
 
-    Returns "cart", "menu", "checkout" or None. None is the common answer and
+    Returns "cart", "menu", "suggest", "cheapest", "price", "checkout" or
+    None. Each names something the branch's own rows can answer — "suggest"
+    from `is_bestseller` and `popularity_score`, "cheapest" and "price" from
+    `price` and the size rows — and
+    nothing the menu has no column for: there is no jain flag and no spice
+    level, so "anything jain" is deliberately not here.
+
+    None is the common answer and
     the safe one: anything with content of its own — a dish, a name, an
     address, a negation — belongs to `read_order_intent`, which reads meaning
     rather than matching words.
@@ -754,7 +800,7 @@ def read_order_intent(
         "add": None, "details": {}, "checkout": False, "when": None,
         "chose": None, "confirms": None, "browse": None, "asks_hours": False,
         "category": None, "wants_to_add": False, "cancel_order": False,
-        "pay_now": False, "max_price": None,
+        "pay_now": False, "max_price": None, "clear_cart": False,
     }
     if not message.strip():
         return empty
@@ -831,6 +877,10 @@ def read_order_intent(
             'option: "the first one", "the 2nd", "the last one", "number 3" '
             "are picks, and the option at that position is what goes in "
             '"chose".\n'
+            # Live: "All", to "Which one shall I take off?", came back as
+            # nothing. Every option is an answer too.
+            'If they mean all of them ("all", "everything", "both", "sab"), '
+            '"chose" is the whole list.\n'
         )
     prompt = (
         "A customer is talking to a restaurant over chat. Read this ONE message and "
@@ -851,6 +901,8 @@ def read_order_intent(
         '  "wants_to_add": true if they want to order something MORE but have not '
         "said what, else false\n"
         '  "cancel_order": true if they want to call off an order they have already placed, else false\n'
+        '  "clear_cart": true if they want EVERYTHING taken out of their cart or basket '
+        "— cleared, emptied, started over — else false\n"
         '  "pay_now": true if they are asking to pay, or for the payment link again, else false\n'
         '  "asks_hours": true if they are asking WHEN — when you open, when the '
         "order would arrive, what times are possible — else false\n"
@@ -902,6 +954,15 @@ def read_order_intent(
         '- "cancel_order" is dropping an order already placed: "cancel my order", '
         '"forget it", "I do not want it any more". Removing one dish from a cart '
         "is not this.\n"
+        # Live: "Clear cart" over four lines came back as `cancel_order` and
+        # was handled as taking ONE line off. The reading is the only thing
+        # that can tell "clear it" from "take the rice off", however either
+        # is worded — no list of phrases decides this.
+        '- "clear_cart" is wanting the whole cart gone, however they say it: '
+        '"clear my cart", "empty the basket", "remove everything", "start over", '
+        '"sab hata do". Taking one dish out is not this — "remove one", "take '
+        'one off", "remove something" want ONE dish gone and are not "clear_cart" '
+        "— and neither is cancelling a placed order.\n"
         '- "pay_now" is asking to pay or for the link again: "send the link", '
         '"how do I pay", "I want to pay now", "payment link".\n'
         '- "wants_to_add" is wanting more without saying what: "I want to add '
@@ -1006,6 +1067,7 @@ def read_order_intent(
     asks_hours = parsed.get("asks_hours") is True
     wants_to_add = parsed.get("wants_to_add") is True
     cancel_order = parsed.get("cancel_order") is True
+    clear_cart = parsed.get("clear_cart") is True
     pay_now = parsed.get("pay_now") is True
 
     category = parsed.get("category")
@@ -1066,6 +1128,7 @@ def read_order_intent(
         "asks_hours": asks_hours,
         "wants_to_add": wants_to_add,
         "cancel_order": cancel_order,
+        "clear_cart": clear_cart,
         "pay_now": pay_now,
         "max_price": max_price,
     }

@@ -25,6 +25,13 @@ import { useStorefrontCopy } from "@/lib/storefront";
  */
 export function BranchGate() {
   const store = useBangkokStore();
+  // Read BEFORE the early return, not after it. A hook below a `return null`
+  // is only called on the renders that get past it, and this component returns
+  // early on exactly the first one — `isRestaurantLoading` is true until the
+  // restaurant arrives. So the first render ran one hook and the second ran
+  // two, which is the shape React refuses with "Rendered more hooks than
+  // during the previous render". On the first screen a new visitor ever sees.
+  const initials = brandInitials(useStorefrontCopy().name);
 
   // Nothing to choose between yet. Rendering a gate with no options would trap
   // the visitor behind a screen that cannot be satisfied.
@@ -32,18 +39,21 @@ export function BranchGate() {
     return null;
   }
 
-  const initials = brandInitials(useStorefrontCopy().name);
-
   return (
-    <div className="branch-gate" role="dialog" aria-modal="true" aria-labelledby="branch-gate-title">
+    <div
+      className="branch-gate"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="branch-gate-title"
+    >
       <div className="branch-gate__panel">
         {initials && <span className="brand-mark">{initials}</span>}
         <h1 id="branch-gate-title" className="font-display text-3xl font-extrabold sm:text-4xl">
           Which branch are you ordering from?
         </h1>
         <p className="mt-2 text-muted">
-          Menus and opening hours differ by branch, so we will only show you what
-          this kitchen can actually make.
+          Menus and opening hours differ by branch, so we will only show you what this kitchen can
+          actually make.
         </p>
 
         <ul className="branch-gate__list">

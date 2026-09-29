@@ -36,7 +36,9 @@ function idsOf(item: Record<string, never>): Fingerprint {
     sizes: sizes.map((size) => size.id as string).sort(),
     groups: groups.map((group) => group.id as string).sort(),
     options: groups
-      .flatMap((group) => ((group.options ?? []) as Record<string, never>[]).map((o) => o.id as string))
+      .flatMap((group) =>
+        ((group.options ?? []) as Record<string, never>[]).map((o) => o.id as string),
+      )
       .sort(),
   };
 }
@@ -129,13 +131,17 @@ test.describe("saving a dish keeps the ids customers are holding", () => {
     const fingerprint = idsOf(before);
     const groupOf = (item: Record<string, never>) =>
       (item.sizes as Record<string, never>[])
-        .flatMap((z) => (z.customization_groups ?? []) as { title: string; max_selection: number }[])
+        .flatMap(
+          (z) => (z.customization_groups ?? []) as { title: string; max_selection: number }[],
+        )
         .find((g) => g.title === "Toppings");
     const original = groupOf(before)?.max_selection ?? 2;
     const target = original === 1 ? 2 : 1;
 
     await save(request, before, (body) => {
-      for (const size of body.sizes as unknown as { customization_groups: { title: string; max_selection: number }[] }[]) {
+      for (const size of body.sizes as unknown as {
+        customization_groups: { title: string; max_selection: number }[];
+      }[]) {
         for (const group of size.customization_groups) {
           if (group.title === "Toppings") group.max_selection = target;
         }
@@ -148,7 +154,9 @@ test.describe("saving a dish keeps the ids customers are holding", () => {
     } finally {
       const now = await readItem(request);
       await save(request, now, (body) => {
-        for (const size of body.sizes as unknown as { customization_groups: { title: string; max_selection: number }[] }[]) {
+        for (const size of body.sizes as unknown as {
+          customization_groups: { title: string; max_selection: number }[];
+        }[]) {
           for (const group of size.customization_groups) {
             if (group.title === "Toppings") group.max_selection = original;
           }

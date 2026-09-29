@@ -57,9 +57,7 @@ function loadCheckoutScript(): Promise<boolean> {
   if (scriptPromise) return scriptPromise;
 
   scriptPromise = new Promise<boolean>((resolve) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${CHECKOUT_SCRIPT}"]`,
-    );
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${CHECKOUT_SCRIPT}"]`);
     const script = existing ?? document.createElement("script");
     script.src = CHECKOUT_SCRIPT;
     script.async = true;
@@ -191,8 +189,8 @@ export function RazorpayPayment({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Pay {money(amount)} with UPI, a card, netbanking or a wallet. The
-        payment window opens over this page.
+        Pay {money(amount)} with UPI, a card, netbanking or a wallet. The payment window opens over
+        this page.
       </p>
 
       {error ? (

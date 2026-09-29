@@ -166,7 +166,10 @@ class WhatItFoundIsReportedHonestlyTests(unittest.TestCase):
         return rows, report
 
     def a_dish(self, name: str, price: str):
-        return SimpleNamespace(name=name, price=Decimal(price), is_veg=True)
+        # `has_sizes` is a real column; `dishes_to_show` carries it so a
+        # single-dish read-back knows not to quote one price for a dish
+        # sold in three.
+        return SimpleNamespace(name=name, price=Decimal(price), is_veg=True, has_sizes=False)
 
     def test_rows_under_the_ceiling_are_not_called_a_fallback(self) -> None:
         # They are an answer to what was asked, not the shrug that "fallback"

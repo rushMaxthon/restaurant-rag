@@ -181,8 +181,12 @@ describe("suggestionReason", () => {
 
 describe("cartSuggestionSignature", () => {
   it("is unchanged when only a quantity changes", () => {
-    const before = cartSuggestionSignature([{ itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] }]);
-    const after = cartSuggestionSignature([{ itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] }]);
+    const before = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] },
+    ]);
+    const after = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: "size-1", optionIds: ["opt-1"] },
+    ]);
 
     // Same identity, different quantities is the case that matters — but a
     // signature has no quantity field to begin with, so identical lines with
@@ -207,14 +211,20 @@ describe("cartSuggestionSignature", () => {
 
   it("changes when an option is added", () => {
     const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: [] }]);
-    const b = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-1"] }]);
+    const b = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: undefined, optionIds: ["opt-1"] },
+    ]);
 
     expect(a).not.toEqual(b);
   });
 
   it("is order-independent within a single line's options", () => {
-    const a = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-1", "opt-2"] }]);
-    const b = cartSuggestionSignature([{ itemId: "item-1", sizeId: undefined, optionIds: ["opt-2", "opt-1"] }]);
+    const a = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: undefined, optionIds: ["opt-1", "opt-2"] },
+    ]);
+    const b = cartSuggestionSignature([
+      { itemId: "item-1", sizeId: undefined, optionIds: ["opt-2", "opt-1"] },
+    ]);
 
     expect(a).toEqual(b);
   });

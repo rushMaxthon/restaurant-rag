@@ -10,10 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
-import { lineSelections,
-  orderCode,
-  scheduledFor,
-  type Order,} from "@/lib/bangkok-data";
+import { lineSelections, orderCode, scheduledFor, type Order } from "@/lib/bangkok-data";
 import { useAuth } from "@/lib/auth";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrders } from "@/lib/queries";
@@ -286,7 +283,9 @@ function Orders() {
           <div className="empty-state-icon">
             <ReceiptText className="size-9" />
           </div>
-          <h2 className="mt-8 font-display text-3xl font-extrabold tracking-tight">No orders yet</h2>
+          <h2 className="mt-8 font-display text-3xl font-extrabold tracking-tight">
+            No orders yet
+          </h2>
           <p className="mx-auto mt-3 max-w-sm text-muted">
             Your order history will show up here once you place one.
           </p>

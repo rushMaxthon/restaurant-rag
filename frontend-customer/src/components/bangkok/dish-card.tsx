@@ -3,7 +3,7 @@ import { Heart, Minus, Plus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
-import { type MenuItem} from "@/lib/bangkok-data";
+import { type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";

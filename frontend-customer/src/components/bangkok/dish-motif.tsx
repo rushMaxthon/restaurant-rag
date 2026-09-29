@@ -59,7 +59,15 @@ function Grains() {
         [29, 31],
         [35, 31],
       ].map(([x, y], i) => (
-        <ellipse key={i} cx={x} cy={y} rx={2.1} ry={1.2} opacity={0.6} transform={`rotate(${i * 27} ${x} ${y})`} />
+        <ellipse
+          key={i}
+          cx={x}
+          cy={y}
+          rx={2.1}
+          ry={1.2}
+          opacity={0.6}
+          transform={`rotate(${i * 27} ${x} ${y})`}
+        />
       ))}
     </g>
   );
@@ -192,7 +200,9 @@ const MARKS: Record<Motif, () => React.ReactElement> = {
   flatbread: () => <circle cx={6} cy={6} r={3.6} />,
   noodles: () => <path d="M2 6c1.6-2.2 3.2 2.2 4.8 0S9.4 3.8 10.8 6" />,
   bowl: () => <path d="M2.4 5h7.2c0 2.6-1.6 4.2-3.6 4.2S2.4 7.6 2.4 5Z" />,
-  cubes: () => <rect x={3.2} y={3.2} width={5.6} height={5.6} rx={1.6} transform="rotate(14 6 6)" />,
+  cubes: () => (
+    <rect x={3.2} y={3.2} width={5.6} height={5.6} rx={1.6} transform="rotate(14 6 6)" />
+  ),
   thali: () => (
     <>
       <circle cx={6} cy={6} r={3.8} />

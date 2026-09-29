@@ -1053,6 +1053,92 @@ def dishes_matching_words(
     return [(str(row.id), row.name) for row in rows]
 
 
+def prices_of(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    names: Sequence[str] = (),
+    menu_item_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """The price rows of dishes already in front of the customer.
+
+    For "how much" asked about a dish just named or a list just read out. The
+    names are OURS — they were written down when the list was said — so they
+    are matched exactly against this branch's `menu_items.name`, one query,
+    and returned in the order asked for. A sized dish carries each size's own
+    absolute price, the same as `get_dish` reports it, because a sized dish
+    has no single figure to quote (see `describe_single_dish`).
+
+    Nothing here is a search: a name the branch does not sell under exactly
+    that name is simply absent from the answer.
+    """
+
+    stmt = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if menu_item_id:
+        try:
+            stmt = stmt.where(MenuItem.id == uuid.UUID(str(menu_item_id)))
+        except ValueError:
+            return []
+    elif names:
+        stmt = stmt.where(func.lower(MenuItem.name).in_([n.strip().lower() for n in names if n]))
+    else:
+        return []
+    rows = list(db.scalars(stmt))
+    by_name = {row.name.strip().lower(): row for row in rows}
+    ordered = (
+        rows if menu_item_id
+        else [by_name[n.strip().lower()] for n in names if n and n.strip().lower() in by_name]
+    )
+    return [
+        {
+            "name": row.name,
+            "price": row.price,
+            "has_sizes": bool(row.has_sizes),
+            "sizes": (
+                [{"size_id": str(size.id), "name": size.name, "price": size.price}
+                 for size in row.sizes if size.is_active]
+                if row.has_sizes
+                else []
+            ),
+        }
+        for row in ordered
+    ]
+
+
+def cheapest_dishes(
+    db: Session,
+    scope: OrderingScope,
+    *,
+    is_veg: bool | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """The least expensive dishes AT THIS BRANCH, cheapest first.
+
+    `price` ordered, and scoped to `restaurant_location_id` like everything
+    else here — a branch's prices are its own, and answering "what is your
+    cheapest" with another branch's menu would be wrong in the one way a
+    price question cannot afford to be.
+
+    Live, before this: "what's your cheapest item" was searched for as a dish
+    name and answered "I could not find cheapest item on the menu."
+    """
+
+    query = select(MenuItem).where(
+        MenuItem.restaurant_location_id == scope.restaurant_location_id,
+        MenuItem.is_available.is_(True),
+    )
+    if is_veg is not None:
+        query = query.where(MenuItem.is_veg.is_(is_veg))
+    rows = db.scalars(query.order_by(MenuItem.price.asc(), MenuItem.name).limit(limit))
+    return [
+        {"name": row.name, "price": f"{row.price:.2f}", "has_sizes": bool(row.has_sizes)}
+        for row in rows
+    ]
+
+
 def dishes_to_suggest(
     db: Session,
     scope: OrderingScope,
@@ -1255,8 +1341,36 @@ def offer_of_sections(sections: list[str | None]) -> str | None:
     sections is what a restaurant hands across the table, and for the same
     reason: nobody holds 136 names in their head.
 
+    Numbered, one per line, because a comma-joined line of 18 sections is a
+    paragraph to read and nothing to answer: "Salads, Curry, Rice, Beverages,
+    Combo, Main Course, Appetizer, Pizza, ..." asks somebody to type a name
+    they have to pick out of prose first. A number is the shortest possible
+    answer and the list carries its own numbering, so both "2" and "Curry"
+    reach the same section — see `sections_offered` for the half that reads
+    the answer.
+
     None when the menu has no sections, so the caller keeps its own words
     rather than introducing a list with nothing in it.
+    """
+
+    shown = sections_offered(sections)
+    if not shown:
+        return None
+    listed = "\n".join(f"{position}. {name}" for position, name in enumerate(shown, 1))
+    total = len({(s or "").strip() for s in sections if (s or "").strip()})
+    more = f"\n\n...and {total - len(shown)} more." if total > len(shown) else ""
+    return (
+        f"Here is what we serve:\n{listed}{more}\n\n"
+        "Which one would you like to see? Reply with the number or the name."
+    )
+
+
+def sections_offered(sections: list[str | None]) -> list[str]:
+    """The sections `offer_of_sections` will actually list, in that order.
+
+    Split out because the answer has to be read against exactly what was
+    shown: the caller records THIS list, so "2" means the second line the
+    customer read rather than the second row the query returned.
     """
 
     seen: list[str] = []
@@ -1264,13 +1378,7 @@ def offer_of_sections(sections: list[str | None]) -> str | None:
         name = (section or "").strip()
         if name and name not in seen:
             seen.append(name)
-    if not seen:
-        return None
-    shown = seen[:_SECTIONS_OFFERED]
-    listed = ", ".join(shown)
-    if len(seen) > len(shown):
-        listed = f"{listed} and {len(seen) - len(shown)} more"
-    return f"Here is what we serve: {listed}. Which of those would you like to see?"
+    return seen[:_SECTIONS_OFFERED]
 
 
 def dishes_to_show(
@@ -1355,7 +1463,11 @@ def dishes_to_show(
                 report["found_by"] = "section"
                 report["section"] = section
             return [
-                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+                {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg),
+                 # So a read-back of ONE dish knows not to quote a single
+                 # price for a dish that has three. A column on the row,
+                 # so it costs no query.
+                 "has_sizes": bool(row.has_sizes)}
                 for row in rows
             ]
 
@@ -1407,7 +1519,11 @@ def dishes_to_show(
         rows = list(db.scalars(at_this_branch.order_by(MenuItem.price).limit(limit)))
         found_by = "over_budget"
     listed = [
-        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg)}
+        {"name": row.name, "price": f"{row.price:.2f}", "is_veg": bool(row.is_veg),
+                 # So a read-back of ONE dish knows not to quote a single
+                 # price for a dish that has three. A column on the row,
+                 # so it costs no query.
+                 "has_sizes": bool(row.has_sizes)}
         for row in rows
     ]
     if report is not None:
@@ -1755,6 +1871,29 @@ def _payment_options(db: Session, scope: OrderingScope, args: PaymentOptionsArgs
     }
 
 
+def reference_for_next_slot(scheduled_for, *, now=None):
+    """Where to count the next available slot from.
+
+    The time the customer asked for, when it is still ahead — somebody asking
+    for tomorrow lunch is not helped by being offered this morning. But a time
+    already gone by is not a reference, it is history: measured from a stale
+    11:00 at 14:57, the "nearest" slot was 11:30, which the validator then
+    refused as being in the past, and the customer was told no to the very
+    time we had just offered them.
+
+    So it is the LATER of what they asked for and now.
+    """
+
+    from datetime import datetime
+
+    current = now or datetime.now(branch_hours.BUSINESS_TIMEZONE)
+    if scheduled_for is None:
+        return current
+    if scheduled_for.tzinfo is None:
+        scheduled_for = scheduled_for.replace(tzinfo=branch_hours.BUSINESS_TIMEZONE)
+    return max(scheduled_for, current)
+
+
 def _parse_iso(value: str | None):
     """An ISO datetime with a zone, or None — the draft only ever stores it
     that way (`order_draft._parse_when`), so anything else is not ours."""
@@ -1995,7 +2134,9 @@ def _place_order(db: Session, scope: OrderingScope, args: PlaceOrderArgs) -> dic
                     nearest = branch_hours.next_available_slot_start(
                         location,
                         fulfillment_type=fulfillment,
-                        reference_dt=scheduled_for,
+                        # ...and never from a time already gone by: that offered
+                        # Wed 11:30 at 14:57, which was then refused as past.
+                        reference_dt=reference_for_next_slot(scheduled_for),
                     )
                     if nearest is not None:
                         refusal["next_open"] = nearest.isoformat()

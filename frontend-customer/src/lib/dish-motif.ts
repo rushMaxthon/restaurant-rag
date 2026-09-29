@@ -20,15 +20,7 @@
  */
 
 export type Motif =
-  | "squares"
-  | "grains"
-  | "flatbread"
-  | "noodles"
-  | "bowl"
-  | "cubes"
-  | "thali"
-  | "leaf"
-  | "plate";
+  "squares" | "grains" | "flatbread" | "noodles" | "bowl" | "cubes" | "thali" | "leaf" | "plate";
 
 /**
  * Word → motif, in priority order: the FIRST match wins, so the specific

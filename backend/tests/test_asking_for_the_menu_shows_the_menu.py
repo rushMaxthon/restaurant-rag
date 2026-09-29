@@ -63,27 +63,43 @@ class TheAgentAnswersItTests(unittest.TestCase):
         start = SOURCE.index('if plain == "menu":')
         return SOURCE[start : SOURCE.index("now_local", start)]
 
+    def offer_helper(self) -> str:
+        # Three places offer the menu — a plain "menu", a message we could not
+        # read twice, and a number with nothing to count along — so the
+        # offering itself lives in one helper they all call.
+        start = SOURCE.index("def _offer_the_sections(")
+        return SOURCE[start : SOURCE.index("def _answer_dish_choice(", start)]
+
     def test_it_answers_rather_than_standing_aside(self) -> None:
         # The whole bug: `answer=None` handed "Menu" to a pipeline with no
         # handler for it, which sold a prawn pizza.
-        branch = self.menu_branch()
-        self.assertIn("offer_of_sections", branch)
+        self.assertIn("_offer_the_sections", self.menu_branch())
+        self.assertIn("offer_of_sections", self.offer_helper())
 
     def test_it_reads_the_sections_off_this_branch(self) -> None:
         # Not a fixed list, and not the model's idea of what a menu contains.
-        self.assertIn("branch_sections", self.menu_branch())
+        self.assertIn("branch_sections", self.offer_helper())
 
     def test_the_question_it_ends_on_is_held(self) -> None:
         # Otherwise the next message answers a question nothing recorded —
         # which is the failure that produced the thread this file is about.
-        self.assertIn("_hold(", self.menu_branch())
+        self.assertIn("_hold(", self.offer_helper())
+
+    def test_the_sections_it_printed_are_what_it_records(self) -> None:
+        # The numbers are only real if the list behind them is written down:
+        # `sections_offered` returns exactly the sections `offer_of_sections`
+        # listed, so "2" means the second line the customer read rather than
+        # the second row the query returned.
+        helper = self.offer_helper()
+        self.assertIn("_remember_sections", helper)
+        self.assertIn("sections_offered", helper)
 
     def test_the_model_is_given_the_short_question_not_the_whole_list(self) -> None:
         # `_hold` records a SHORT question on purpose: a long read-back handed
         # to the model as "the question" got mined for its contents. A list of
         # every section is exactly that shape, so `asks` carries the question
         # and the customer gets the list.
-        self.assertIn("asks=", self.menu_branch())
+        self.assertIn("asks=", self.offer_helper())
 
     def test_a_branch_with_no_sections_still_defers(self) -> None:
         # Nothing to show is the one case the old behaviour was right for.

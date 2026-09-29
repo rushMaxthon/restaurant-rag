@@ -92,8 +92,8 @@ function LoginPage() {
                   <div className="inline-error form-error" role="status">
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span>
-                      Your sign-in expired, so we brought you here. Everything you had is
-                      saved — sign in and you will go straight back.
+                      Your sign-in expired, so we brought you here. Everything you had is saved —
+                      sign in and you will go straight back.
                     </span>
                   </div>
                 )}

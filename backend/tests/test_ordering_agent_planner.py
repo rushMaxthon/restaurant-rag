@@ -473,7 +473,7 @@ class ReadOrderIntentTests(unittest.TestCase):
 
     def test_a_message_wanting_nothing_reads_as_nothing(self) -> None:
         got = self.read('{"add": null, "details": {}, "checkout": false}')
-        self.assertEqual(got, {"add": None, "details": {}, "checkout": False, "when": None, "chose": None, "confirms": None, "browse": None, "asks_hours": False, "category": None, "wants_to_add": False, "cancel_order": False, "pay_now": False, "max_price": None})
+        self.assertEqual(got, {"add": None, "details": {}, "checkout": False, "when": None, "chose": None, "confirms": None, "browse": None, "asks_hours": False, "category": None, "wants_to_add": False, "cancel_order": False, "pay_now": False, "max_price": None, "clear_cart": False})
 
     def test_nulls_and_empties_are_not_details(self) -> None:
         got = self.read(
@@ -491,7 +491,7 @@ class ReadOrderIntentTests(unittest.TestCase):
 
     def test_nonsense_wants_nothing_rather_than_raising(self) -> None:
         got = self.read("the model said something else entirely")
-        self.assertEqual(got, {"add": None, "details": {}, "checkout": False, "when": None, "chose": None, "confirms": None, "browse": None, "asks_hours": False, "category": None, "wants_to_add": False, "cancel_order": False, "pay_now": False, "max_price": None})
+        self.assertEqual(got, {"add": None, "details": {}, "checkout": False, "when": None, "chose": None, "confirms": None, "browse": None, "asks_hours": False, "category": None, "wants_to_add": False, "cancel_order": False, "pay_now": False, "max_price": None, "clear_cart": False})
 
     def test_a_silly_quantity_is_brought_back_into_range(self) -> None:
         got = self.read('{"add": {"dish": "Pizza", "quantity": 900}, "details": {}, "checkout": false}')

@@ -35,7 +35,6 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
         target: el,
         currentTarget: el,
       });
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     return (
