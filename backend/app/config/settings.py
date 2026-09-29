@@ -681,6 +681,11 @@ class Settings(BaseSettings):
     pidge_brand_code: str = ""
     pidge_brand_location_code: str = ""
     pidge_brand_name: str = ""
+    # Defence in depth, not the guarantee. Pidge signs nothing, so the webhook
+    # confirms every push by fetching the order over our own authenticated
+    # connection; this secret only keeps casual noise out, and it travels in a
+    # header that ends up in logs and proxies like any other.
+    delivery_webhook_secret: str = ""
 
     fcm_project_id: str = "quickbite-7833a"
     fcm_credentials_path: str = "firebase-service-account.json"

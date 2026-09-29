@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { DeliveryPanel } from "../components/DeliveryPanel";
 import { EmptyPanel } from "../components/EmptyPanel";
 import { ErrorPanel } from "../components/ErrorPanel";
 import { StatusPill } from "../components/StatusPill";
@@ -497,6 +498,9 @@ export function OrderDetailPage({
             </div>
           </div>
         </section>
+
+        {/* Renders nothing for a pickup order, or when no courier was asked. */}
+        <DeliveryPanel token={token} orderId={orderId} />
 
         <section className="admin-surface order-detail__card">
           <header className="order-detail__card-header">

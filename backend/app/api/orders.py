@@ -4,14 +4,17 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.order_delivery import OrderDelivery
 from app.api.deps import AppScopeDep, ensure_restaurant_readable, ensure_restaurant_writable
 from app.config.database import get_db
 from app.models.enums import OrderStatus, UserRole
 from app.models.user import User
 from app.schemas.order import (
     OrderCreateRequest,
+    OrderDeliveryResponse,
     OrderResponse,
     OrderStatusUpdateRequest,
     OrderValidationResponse,
@@ -199,6 +202,31 @@ def get_order(
     order = get_order_for_user(db, current_user, order_id, owner_restaurant_id=owner_restaurant_id)
     ensure_restaurant_readable(app_scope, order.restaurant_id)
     return order
+
+
+@router.get("/{order_id}/delivery", response_model=OrderDeliveryResponse | None)
+def get_order_delivery(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """What the courier is doing with this order, or null if nobody was asked.
+
+    Behind the same reader as the order itself rather than a looser check: a
+    delivery carries a rider's phone number and the customer's distance, and
+    whoever may not read the order may not read those either.
+    """
+
+    owner_restaurant_id = (
+        resolve_owner_restaurant_id(db, current_user)
+        if current_user.role == UserRole.OWNER
+        else None
+    )
+    order = get_order_for_user(db, current_user, order_id, owner_restaurant_id=owner_restaurant_id)
+    ensure_restaurant_readable(app_scope, order.restaurant_id)
+    delivery = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    return OrderDeliveryResponse.model_validate(delivery) if delivery is not None else None
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)
