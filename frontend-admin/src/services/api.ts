@@ -1,4 +1,5 @@
 import type {
+  BranchLocationLookup,
   OrderDelivery,
   AdminAILog,
   AdminPreferenceOption,
@@ -506,6 +507,23 @@ export const api = {
       token,
       body: payload,
     });
+  },
+  /**
+   * Ask the server to find this branch's coordinates from its own address.
+   *
+   * Answers; does not save. A geocoder never refuses — it returns the middle of
+   * the city for an address it does not know — so the owner sees what was found
+   * and how precise it is before committing it.
+   */
+  locateRestaurantLocation(
+    token: string,
+    restaurantId: string,
+    locationId: string,
+  ): Promise<BranchLocationLookup> {
+    return request<BranchLocationLookup>(
+      `/restaurants/${restaurantId}/locations/${locationId}/locate`,
+      { method: 'POST', token },
+    );
   },
   getRestaurantLocationGeneralSettings(
     token: string,

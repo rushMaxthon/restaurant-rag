@@ -605,3 +605,26 @@ class RestaurantSettingsUpdate(BaseModel):
     # normalises it and answers 422 naming the supported codes, which tells an
     # admin what to type; a schema refusal would only say the field was wrong.
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
+class BranchLocationLookup(BaseModel):
+    """What a geocoder made of a branch's own address.
+
+    Every field but `found` exists so a person can judge the answer before
+    saving it. A geocoder always answers something, so "it returned a
+    coordinate" is not evidence that it found the right building — `precise`
+    and `matched` are what make the difference visible.
+    """
+
+    found: bool
+    latitude: float | None = None
+    longitude: float | None = None
+    #: `GeocodeConfidence`: ROOFTOP, STREET, POSTCODE, LOCALITY or REGION.
+    confidence: str = ""
+    #: Whether this is precise enough to price a delivery from. A POSTCODE or
+    #: LOCALITY match is a real coordinate and the wrong one to charge from.
+    precise: bool = False
+    #: The address as the geocoder understood it. The only way to catch a
+    #: lookup that quietly landed in a different part of the city.
+    matched: str = ""
+    provider: str = ""

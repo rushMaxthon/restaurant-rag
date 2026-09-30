@@ -395,15 +395,40 @@ function Checkout() {
   // and this line exists to show a customer the figure rather than to decide
   // it. A courier prices by distance, so a flat fee quietly overcharges the
   // customer next door and undercharges the one across the city.
-  const delivery = isDelivery
-    ? Number(deliveryQuote.data?.delivery_fee ?? branch?.delivery_fee ?? 0)
-    : 0;
-  const quotedByCourier = deliveryQuote.data?.source === "courier";
+  // Whether a fee is KNOWN yet, which is not the same as whether it is zero.
+  //
+  // Until the address is filled in there is nothing to quote, and the row used
+  // to fall back to the branch's flat fee — usually 0, so it rendered as the
+  // word "Free" on an empty form. That is a promise, made before anyone knows
+  // the distance, and contradicted by a real number a moment later.
+  //
+  // `addressIsQuotable` is half of this and not redundant. The hook keeps the
+  // previous answer as placeholder data so the fee does not blink on every
+  // keystroke — which also means that when the address is emptied and the query
+  // goes disabled, `data` still holds the fee for the address that WAS there.
+  // Clearing the street box left a confident fee on screen for a trip with no
+  // destination.
+  // `isPlaceholderData` is the third half of this. The hook keeps the previous
+  // answer while a new one is in flight so the fee does not blink, but during
+  // that window the number on screen belongs to the PREVIOUS address. Typing a
+  // new street showed the old street's fee as final for about a second, which
+  // is long enough to read and believe.
+  const deliveryKnown =
+    !isDelivery ||
+    (addressIsQuotable && Boolean(deliveryQuote.data) && !deliveryQuote.isPlaceholderData);
+  const delivery =
+    deliveryKnown && deliveryQuote.data ? Number(deliveryQuote.data.delivery_fee) : 0;
+  const quotedByCourier = deliveryKnown && deliveryQuote.data?.source === "courier";
   // A courier that will not drive to this address at all. The fee falls back
   // to the branch's, so the total stays honest, but saying nothing would let
   // somebody pay for a delivery no rider is going to accept.
-  const unserviceable = Boolean(deliveryQuote.data && !deliveryQuote.data.serviceable);
+  const unserviceable = Boolean(
+    deliveryKnown && deliveryQuote.data && !deliveryQuote.data.serviceable,
+  );
   const tax = s.subtotal * 0.05;
+  // Delivery is in the total only once it is known. A total that quietly counts
+  // an unknown fee as zero is a number the customer will be asked to pay more
+  // than.
   const total = s.subtotal + delivery + tax;
   const phoneProblem = validatePhone(phone);
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
@@ -917,6 +942,7 @@ function Checkout() {
                     </Label>
                     <AddressAutocomplete
                       autoComplete="address-line1"
+                      icon={<MapPin className="size-4" />}
                       inputId="line1"
                       invalid={Boolean(show("line1") && addressProblems.line1)}
                       locationId={branch?.id}
@@ -927,7 +953,9 @@ function Checkout() {
                       value={address.line1}
                     />
                     {show("line1") && addressProblems.line1 && (
-                      <p className="inline-error text-xs">{addressProblems.line1}</p>
+                      <p className="field-error" id="line1-error">
+                        {addressProblems.line1}
+                      </p>
                     )}
                   </div>
                   <AddressField
@@ -1379,14 +1407,25 @@ function Checkout() {
               ["Subtotal", s.subtotal],
               [isDelivery ? "Delivery fee" : "Pickup", delivery],
               ["Tax", tax],
-            ].map(([label, value]) => (
-              <div className="flex justify-between" key={String(label)}>
-                <dt className="text-muted">{label}</dt>
-                <dd className="money font-semibold">
-                  {Number(value) === 0 ? "Free" : money(Number(value))}
-                </dd>
-              </div>
-            ))}
+            ].map(([label, value]) => {
+              // The delivery row says what it does not yet know, rather than
+              // printing a zero that reads as a promise of free delivery.
+              const unknown = label === "Delivery fee" && !deliveryKnown;
+              return (
+                <div className="flex justify-between gap-3" key={String(label)}>
+                  <dt className="text-muted">{label}</dt>
+                  <dd className={unknown ? "text-right text-xs text-muted" : "money font-semibold"}>
+                    {unknown
+                      ? deliveryQuote.isFetching
+                        ? "Working it out…"
+                        : "Once you add your address"
+                      : Number(value) === 0
+                        ? "Free"
+                        : money(Number(value))}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
 
           {isDelivery && quotedByCourier ? (
@@ -1406,9 +1445,14 @@ function Checkout() {
           ) : null}
 
           <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
-            <span className="text-lg font-extrabold">Total</span>
+            <span className="text-lg font-extrabold">{deliveryKnown ? "Total" : "So far"}</span>
             <span className="font-display text-3xl font-extrabold">{money(total)}</span>
           </div>
+          {!deliveryKnown && (
+            <p className="mt-1.5 text-xs text-muted">
+              Delivery is added once you add your address.
+            </p>
+          )}
 
           <Button
             className="mt-5 hidden h-12 w-full text-base lg:flex"
@@ -1419,7 +1463,9 @@ function Checkout() {
               ? payingCard
                 ? "Opening payment…"
                 : "Preparing your order…"
-              : `Pay ${money(total)}`}
+              : deliveryKnown
+                ? `Pay ${money(total)}`
+                : "Add your address to continue"}
           </Button>
         </aside>
       </div>
@@ -1440,6 +1486,10 @@ function Checkout() {
             <p className="money font-display text-xl font-extrabold leading-tight">
               {money(total)}
             </p>
+            {/* The same honesty as the panel above: on a phone this bar is the
+                only total in view, so it must not read as final while the
+                delivery fee is still unknown. */}
+            {!deliveryKnown && <p className="text-[11px] text-muted">before delivery</p>}
           </div>
           <Button
             className="h-13 flex-1 text-base"

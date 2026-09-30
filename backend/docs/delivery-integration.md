@@ -290,6 +290,50 @@ that must match an OSM street and will not fall back. Google is the opposite way
 round. That is why each provider builds its own request from `AddressQuery`
 instead of a shared builder deciding for both.
 
+### ⚠️ The branch's own coordinate is half the price
+
+Easy to overlook, because the customer's address is the one being typed. Pidge's
+`estimate` takes **two coordinate pairs and no addresses** — there is no form of
+the call that accepts a street — so the pickup point has to come from us, and
+the pickup point is the branch.
+
+A branch with no coordinates used to fall through to the stand-in, and the
+result was not subtly wrong. Caught in a browser: the stand-in is in Ahmedabad,
+the customer was in Surat, and the courier honestly priced **258 km — ₹2,601.48
+delivery on a ₹50 loaf of bread**, printed as the fee. Pidge was not wrong. It
+was asked about a journey nobody was making.
+
+**So a stand-in at either end is not quoted at all.** The branch's flat fee
+stands and `source` says `branch`. The distinction is invented versus vague: a
+geocoder that only reached a suburb still answered about the real address, so
+the distance is roughly right and the price is worth showing. A stand-in is a
+constant with no relationship to the order.
+
+Three ways a branch gets its coordinates, in the order to try them:
+
+| | How | When it works |
+|---|---|---|
+| 1 | **Paste from a map.** Latitude and longitude fields on the branch form; right-clicking a spot in Google Maps copies the pair. | Always. |
+| 2 | **"Find from the address above"** on the same form, or `scripts/locate_branches.py` in bulk. | When a geocoder knows the address. |
+| 3 | Automatically, on the first quote, written back onto the row. | Only on a precise match. |
+
+Option 2 answers and does **not** save, and shows what the geocoder thought the
+address was. A geocoder never refuses, so reading `matched` back is the only
+thing that catches a lookup that landed confidently in the wrong suburb.
+
+For the record, option 2 fails on the pilot tenant's own address —
+"Radhe Shyam Society, Singanpor" returns nothing from OpenStreetMap — which is
+why option 1 is listed first and why it exists at all.
+
+Once a branch is located the numbers are sane. Measured from a located Surat
+branch:
+
+| Drop | Distance | Fee |
+|---|---|---|
+| Ring Road | 0.5 km | ₹50.00 |
+| Athwalines | 6.3 km | ₹83.50 |
+| Varachha Road | 6.3 km | ₹82.89 |
+
 ### Nothing is looked up twice
 
 Three layers, cheapest first:

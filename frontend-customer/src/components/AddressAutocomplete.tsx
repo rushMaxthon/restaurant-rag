@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
+import { Input } from "@/components/ui/input";
 import { api, type Suggestion } from "@/lib/api";
 
 /** What a picked place resolved to, for the form to fill itself in from. */
@@ -75,6 +76,7 @@ export function AddressAutocomplete({
   autoComplete,
   onBlur,
   invalid,
+  icon,
 }: {
   value: string;
   /** Every keystroke. The parent owns the text; this component owns the list. */
@@ -87,6 +89,8 @@ export function AddressAutocomplete({
   autoComplete: string;
   onBlur: () => void;
   invalid?: boolean;
+  /** The same leading glyph the sibling fields carry, so the row matches. */
+  icon?: React.ReactNode;
 }) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -193,13 +197,22 @@ export function AddressAutocomplete({
 
   return (
     <div className="relative">
+      {/*
+       * `field-wrap` + `Input`, exactly as every other box on this form. A bare
+       * `<input>` here rendered with no border, no background and no height —
+       * the styling lives on the shared component, not on the wrapper, so the
+       * first address box looked like loose text beside five proper fields.
+       */}
       <div className="field-wrap" data-invalid={invalid ? true : undefined}>
-        <input
+        {icon}
+        <Input
           aria-activedescendant={highlighted >= 0 ? `${listId}-${highlighted}` : undefined}
           aria-autocomplete="list"
           aria-controls={open ? listId : undefined}
           aria-expanded={open}
+          aria-invalid={invalid}
           autoComplete={autoComplete}
+          className="h-12"
           id={inputId}
           onBlur={() => {
             // Deferred past the click that may be landing on an option: a

@@ -46,12 +46,20 @@ function CartPage() {
   const { isAuthenticated } = useAuth();
 
   const isDelivery = s.fulfillment === "DELIVERY";
-  // Falls back to 0, not 45. The branch's real fee is around three dollars, so
-  // while it loaded the summary announced a $45.00 delivery charge and a total
-  // to match — the single most alarming number the app could invent.
-  const delivery = isDelivery ? Number(s.orderLocation?.delivery_fee ?? 0) : 0;
+  // No delivery line here, on purpose, and this replaces a row that used to
+  // read "Delivery fee — Free".
+  //
+  // The fee is a courier's price for the trip between the branch and the
+  // CUSTOMER'S ADDRESS, and this page has never seen an address — the form for
+  // it is on the next screen. The old row printed the branch's flat fee, which
+  // was usually 0 and so rendered as the word "Free", promising something
+  // nobody had agreed to and that the checkout then contradicted with a real
+  // number a moment later.
+  //
+  // So the total here is the part that IS known, and the line beneath it says
+  // what is still to come. An honest partial total beats a confident wrong one.
   const tax = s.subtotal * 0.05;
-  const total = s.subtotal + delivery + tax;
+  const total = s.subtotal + tax;
 
   // Both of these are real fields on the location — no invented delivery promises.
   const minimumOrder = Number(s.orderLocation?.minimum_order_amount ?? 0);
@@ -273,20 +281,24 @@ function CartPage() {
           <dl className="mt-6 space-y-2.5 text-sm">
             {[
               ["Subtotal", s.subtotal],
-              [isDelivery ? "Delivery fee" : "Pickup", delivery],
               ["Tax", tax],
             ].map(([label, value]) => (
               <div className="sum-row" key={String(label)}>
                 <dt>{label}</dt>
-                <dd>{Number(value) === 0 ? "Free" : money(Number(value))}</dd>
+                <dd>{money(Number(value))}</dd>
               </div>
             ))}
           </dl>
 
           <div className="sum-total">
-            <span className="text-lg font-extrabold">Total</span>
+            <span className="text-lg font-extrabold">{isDelivery ? "So far" : "Total"}</span>
             <span className="sum-total-figure">{money(total)}</span>
           </div>
+          {isDelivery && (
+            <p className="mt-2 text-xs text-muted">
+              Delivery is worked out from your address at checkout.
+            </p>
+          )}
 
           {blocked && !loadingBranch && (
             <div className="closed-notice mt-5" data-tone="soft">

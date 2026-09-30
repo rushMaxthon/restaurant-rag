@@ -12,6 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AppScopeDep, ensure_restaurant_readable
+from app.services.geocoding.base import AddressQuery
+from app.services.geocoding.service import locate as locate_address
 from app.config.database import get_db
 from app.models.enums import OrderFulfillmentType, UserRole
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
@@ -26,6 +28,7 @@ from app.models.restaurant import (
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.schemas.restaurant import (
+    BranchLocationLookup,
     RestaurantThemeResponse,
     RestaurantThemeUpdate,
     ThemePresetResponse,
@@ -612,6 +615,71 @@ def update_restaurant_location(
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
     return build_location_response(location)
+
+
+@router.post("/{restaurant_id}/locations/{location_id}/locate", response_model=BranchLocationLookup)
+def locate_restaurant_location(
+    restaurant_id: uuid.UUID,
+    location_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> BranchLocationLookup:
+    """Find this branch's coordinates from its own address.
+
+    A courier prices every delivery as the distance between two POINTS, and the
+    pickup point is the branch. Without it there is nothing to price from —
+    Pidge's estimate endpoint takes coordinates only, with no address form — so
+    a branch that has never been located has its deliveries fall back to the
+    flat fee.
+
+    This answers, and deliberately does not SAVE. A geocoder never refuses: ask
+    it for an address it does not know and it returns the middle of the city
+    with no complaint. So the owner sees what was found, how precise it is, and
+    what the geocoder thought the address was, and then decides. Storing it
+    silently is how a branch ends up confidently located in the wrong suburb.
+
+    When this finds nothing — which is common for Indian society and mall
+    addresses — the answer is to paste the pair from a map into the fields
+    directly. That path always works and needs no provider at all.
+    """
+
+    if current_user.role not in {UserRole.ADMIN, UserRole.OWNER}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage restaurant locations",
+        )
+    _get_accessible_restaurant(db, restaurant_id, current_user)
+    location = require_location_for_restaurant(
+        db,
+        restaurant_id=restaurant_id,
+        location_id=location_id,
+        include_inactive=True,
+    )
+
+    point = locate_address(
+        db,
+        AddressQuery(
+            line1=location.address_line_1 or "",
+            line2=location.address_line_2 or "",
+            city=location.city or "",
+            state=location.state or "",
+            postal_code=location.postal_code or "",
+        ),
+    )
+    # The lookup is cached durably, so committing here means a second press of
+    # the button costs nothing.
+    db.commit()
+    if point is None:
+        return BranchLocationLookup(found=False)
+    return BranchLocationLookup(
+        found=True,
+        latitude=point.latitude,
+        longitude=point.longitude,
+        confidence=point.confidence.value,
+        precise=point.is_precise,
+        matched=point.matched,
+        provider=point.provider,
+    )
 
 
 @router.delete("/{restaurant_id}/locations/{location_id}", response_model=RestaurantLocationResponse)

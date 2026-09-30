@@ -125,6 +125,34 @@ def quote_for(
     pickup, drop = points or points_for(
         location, delivery_address, db=db, known_drop=known_drop
     )
+
+    # A STAND-IN at either end means there is no trip to price.
+    #
+    # This is the difference between a vague point and a made-up one, and it is
+    # not a fine distinction. A geocoder that only resolved to a suburb still
+    # answered about the real address: the distance is roughly right and the
+    # price is roughly right. A stand-in is a hardcoded constant with no
+    # relationship to this order at all.
+    #
+    # Caught in the browser: a branch with no coordinates fell back to the
+    # Ahmedabad stand-in while the customer was in Surat, and the courier
+    # honestly priced 258 km — ₹2,601.48 delivery on a ₹50 loaf of bread,
+    # displayed as the fee. The courier was not wrong; it was asked about a
+    # journey nobody was making.
+    #
+    # Pidge's estimate endpoint takes coordinates only — there is no address
+    # form of it — so there is no way to ask them to work the pickup out for
+    # themselves. Without a real pickup point the only honest fee is the
+    # branch's own.
+    if pickup.source == "stand-in" or drop.source == "stand-in":
+        logger.warning(
+            "Not quoting: pickup=%s drop=%s. A stand-in coordinate prices the "
+            "wrong journey; charging the branch fee instead.",
+            pickup.source,
+            drop.source,
+        )
+        return None
+
     try:
         return quoter(
             pickup_lat=pickup.latitude,

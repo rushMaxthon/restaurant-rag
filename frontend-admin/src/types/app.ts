@@ -1384,3 +1384,18 @@ export interface OrderDelivery {
   created_at: string;
   updated_at: string;
 }
+
+
+/** What a geocoder made of a branch's own address. */
+export type BranchLocationLookup = {
+  found: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  /** ROOFTOP, STREET, POSTCODE, LOCALITY or REGION. */
+  confidence: string;
+  /** Whether it is precise enough to price a delivery from. */
+  precise: boolean;
+  /** The address as the geocoder understood it. */
+  matched: string;
+  provider: string;
+};

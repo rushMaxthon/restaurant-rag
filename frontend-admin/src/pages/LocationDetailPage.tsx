@@ -45,6 +45,7 @@ import {
   type OrderFulfillmentType,
   type OrderStatus,
   type RestaurantDetail,
+  type BranchLocationLookup,
   type RestaurantLocation,
   type UserRole,
 } from "../types/app";
@@ -297,6 +298,49 @@ export function LocationDetailPage({
   const [slotForm, setSlotForm] = useState<SlotFormState>(() => emptySlotFormForType("PICKUP"));
   const [slotView, setSlotView] = useState<OrderFulfillmentType>("PICKUP");
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  // What the last coordinate lookup found, so the owner can judge it before
+  // saving. Null until they press the button.
+  const [lookup, setLookup] = useState<BranchLocationLookup | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+
+  /**
+   * Find this branch's coordinates from its address.
+   *
+   * Fills the fields but does NOT save, and shows what the geocoder thought the
+   * address was. A geocoder always answers something — ask for an address it
+   * does not know and it hands back the middle of the city — so the owner
+   * reading `matched` back is the only check that catches a confident wrong
+   * answer.
+   */
+  const locateBranch = async () => {
+    if (!token || !restaurant || !location) return;
+    setIsLocating(true);
+    setLookup(null);
+    try {
+      const found = await api.locateRestaurantLocation(token, restaurant.id, location.id);
+      setLookup(found);
+      if (found.found && found.latitude != null && found.longitude != null) {
+        setSettingsForm((current) =>
+          current
+            ? {
+                ...current,
+                latitude: String(found.latitude),
+                longitude: String(found.longitude),
+              }
+            : current,
+        );
+      }
+    } catch (error: unknown) {
+      onToast(
+        'Could not look that up',
+        error instanceof ApiError ? error.message : 'The address lookup failed.',
+        'error',
+      );
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingGeneralSettings, setIsSavingGeneralSettings] = useState(false);
   const [isSavingSlot, setIsSavingSlot] = useState(false);
@@ -1091,15 +1135,40 @@ export function LocationDetailPage({
                 }
               />
             </label>
-            <p className="hint-text" style={{ gridColumn: "1 / -1" }}>
-              The courier prices every delivery from this point, so it is worth
-              getting right. Right-click the branch&rsquo;s exact door in Google
-              Maps and the first item on the menu is the pair, ready to paste.
-              Left empty, the address above is looked up instead &mdash; which
-              works for a numbered street and often fails for a society or a
-              mall, and a branch nobody can locate has its deliveries priced
-              from a stand-in point.
-            </p>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <button
+                className="secondary-button"
+                disabled={isLocating}
+                onClick={locateBranch}
+                type="button"
+              >
+                {isLocating ? 'Looking up…' : 'Find from the address above'}
+              </button>
+              {lookup && !lookup.found && (
+                <p className="hint-text" style={{ marginTop: 8 }}>
+                  No map provider could place that address. Paste the pair from a
+                  map instead &mdash; right-click the branch&rsquo;s door in
+                  Google Maps and the first item on the menu is the coordinates,
+                  ready to copy.
+                </p>
+              )}
+              {lookup && lookup.found && (
+                <p className="hint-text" style={{ marginTop: 8 }}>
+                  {lookup.precise ? 'Found' : 'Only roughly placed'} by{' '}
+                  {lookup.provider} as <strong>{lookup.confidence}</strong>:{' '}
+                  {lookup.matched || 'no description given'}.{' '}
+                  {lookup.precise
+                    ? 'Check it is the right building, then save.'
+                    : 'That is not precise enough to price a delivery from — it will still fall back to the flat fee. Paste the exact pair from a map instead.'}
+                </p>
+              )}
+              <p className="hint-text" style={{ marginTop: 8 }}>
+                The courier prices every delivery as the distance between this
+                point and the customer&rsquo;s. It takes coordinates only, so a
+                branch that is not located here has <strong>no trip to price</strong>{' '}
+                and every delivery falls back to the flat fee above.
+              </p>
+            </div>
             <label className="field">
               <span>Phone</span>
               <input

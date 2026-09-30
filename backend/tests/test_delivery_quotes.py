@@ -150,6 +150,77 @@ class WhenTheQuoteCannotBeUsed(unittest.TestCase):
                         self.assertIsNone(quoting.quote_for(_Branch(), "somewhere"))
 
 
+class AStandInIsNotATrip(unittest.TestCase):
+    """The pickup point is half the price, and it was the half going wrong.
+
+    Caught in a browser, not in a test. A branch with no coordinates fell back
+    to the hardcoded Ahmedabad stand-in while the customer was in Surat; the
+    courier honestly priced 258 km and the checkout showed ₹2,601.48 delivery on
+    a ₹50 loaf of bread. The courier was not wrong — it was asked about a
+    journey nobody was making.
+
+    The distinction that matters is vague versus invented. A geocoder that only
+    reached a suburb still answered about the real address, so the distance is
+    roughly right. A stand-in is a constant with no relationship to the order.
+    Pidge's estimate endpoint takes coordinates only, with no address form, so
+    there is no way to hand the problem back to them.
+    """
+
+    def setUp(self) -> None:
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def _quote_with(self, pickup_source: str, drop_source: str):
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote()
+        points = (
+            Coordinates(23.0, 72.5, exact=True, source=pickup_source),
+            Coordinates(21.1, 72.8, exact=True, source=drop_source),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                result = quoting.quote_for(_Branch(), "somewhere", points=points)
+        return result, provider
+
+    def test_a_stand_in_pickup_asks_no_courier(self) -> None:
+        result, provider = self._quote_with("stand-in", "geocoder")
+        self.assertIsNone(result)
+        # Not merely discarded afterwards: the courier is never called, because
+        # a request about the wrong journey is a wasted one.
+        provider.quote.assert_not_called()
+
+    def test_a_stand_in_drop_asks_no_courier(self) -> None:
+        result, provider = self._quote_with("row", "stand-in")
+        self.assertIsNone(result)
+        provider.quote.assert_not_called()
+
+    def test_two_real_points_are_quoted(self) -> None:
+        result, provider = self._quote_with("row", "geocoder")
+        self.assertIsNotNone(result)
+        provider.quote.assert_called_once()
+
+    def test_a_vague_point_is_still_quoted(self) -> None:
+        # A suburb-level match is imprecise, not invented. It is priced from,
+        # and `exact_location` is what tells the caller not to over-trust it.
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote()
+        points = (
+            Coordinates(23.0, 72.5, exact=False, source="geocoder"),
+            Coordinates(23.1, 72.6, exact=False, source="geocoder"),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                self.assertIsNotNone(quoting.quote_for(_Branch(), "x", points=points))
+
+
 class AskingPidgeForAPrice(unittest.TestCase):
     """The two calls, and the fact that they disagree about coordinates."""
 
