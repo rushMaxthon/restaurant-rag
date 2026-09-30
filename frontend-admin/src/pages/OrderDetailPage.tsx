@@ -113,6 +113,69 @@ const STATUS_STEPS: Array<{
 
 
 
+/**
+ * What to say about an order, and what the next button does.
+ *
+ * Written in the words a kitchen uses rather than the enum's. "Advance to
+ * Out for delivery" is a state machine talking to itself; "Hand it to the
+ * rider" is an instruction somebody can follow.
+ *
+ * `delivery` differs where the step differs: a pickup order is handed over a
+ * counter and never sees a courier, so telling that restaurant a rider is on
+ * the way would be a lie.
+ */
+function nextStepFor(
+  status: OrderStatus,
+  isDelivery: boolean,
+): { eyebrow: string; heading: string; detail: string; action: string } | null {
+  switch (status) {
+    case "PLACED":
+      return {
+        eyebrow: "Needs you",
+        heading: "New order waiting to be accepted",
+        detail: isDelivery
+          ? "Accepting confirms it to the customer and books a rider automatically."
+          : "Accepting confirms it to the customer and sends it to the kitchen.",
+        action: "Accept order",
+      };
+    case "ACCEPTED":
+      return {
+        eyebrow: "Accepted",
+        heading: "Ready for the kitchen",
+        detail: "Mark it as preparing once somebody starts cooking.",
+        action: "Start preparing",
+      };
+    case "PREPARING":
+      return {
+        eyebrow: "In the kitchen",
+        heading: "Being prepared",
+        detail: isDelivery
+          ? "Mark it out for delivery once the rider has the food."
+          : "Mark it ready once the customer can collect it.",
+        action: isDelivery ? "Hand to the rider" : "Ready for collection",
+      };
+    case "OUT_FOR_DELIVERY":
+      return {
+        eyebrow: isDelivery ? "On the way" : "Ready",
+        heading: isDelivery ? "Out for delivery" : "Waiting to be collected",
+        detail: "Mark it delivered once the customer has the food.",
+        action: "Mark delivered",
+      };
+    case "PAYMENT_PENDING":
+      return {
+        eyebrow: "Waiting",
+        heading: "Not paid yet",
+        detail:
+          "This order stays out of the kitchen until the payment is confirmed. Nothing to do here.",
+        action: "",
+      };
+    default:
+      // DELIVERED and CANCELLED are over. A card saying so would be one more
+      // thing to read on a page about an order nobody has to act on.
+      return null;
+  }
+}
+
 // `money` is passed in rather than imported, for the same reason as above:
 // the currency belongs to the order's restaurant, not to this module.
 function describeItemCustomizations(
@@ -141,7 +204,10 @@ export function OrderDetailPage({
 }: OrderDetailPageProps) {
   // Figures in whatever the restaurant in scope charges in.
   const money = useMoney();
-  const isOwner = role === "OWNER";
+  // An admin is platform staff supporting a tenant, and the backend now lets
+  // them move an order along too. Before this the page offered them no action
+  // whatsoever, which reads as a broken screen rather than a permission.
+  const canAdvance = role === "OWNER" || role === "ADMIN";
   const scope = tokenScope(token);
   const orderKey = `order-detail:${scope}:${orderId}`;
   const [order, setOrder] = useState<Order | null>(
@@ -229,7 +295,7 @@ export function OrderDetailPage({
   };
 
   const advanceStatus = async () => {
-    if (!order || !isOwner || isUpdating) {
+    if (!order || !canAdvance || isUpdating) {
       return;
     }
     const nextStatus = nextStatusMap[order.status];
@@ -315,6 +381,7 @@ export function OrderDetailPage({
   const isSettled =
     order.payment_status === "PAID" || order.payment_status === "COD";
   const nextStatus = isSettled ? nextStatusMap[order.status] : undefined;
+  const nextStep = nextStepFor(order.status, order.fulfillment_type === "DELIVERY");
   const discount = toNumber(order.discount_amount);
   const customizationTotals = order.items.reduce(
     (sum, item) => sum + toNumber(item.customization_total_price) * item.quantity,
@@ -327,20 +394,7 @@ export function OrderDetailPage({
 
   return (
     <div className="page-stack order-detail">
-      <div className="order-detail__topbar">
-        {backButton}
-        {isOwner && nextStatus ? (
-          <button
-            className="primary-button"
-            disabled={isUpdating}
-            onClick={advanceStatus}
-            type="button"
-          >
-            {isUpdating ? "Updating..." : `Advance to ${humanizeEnum(nextStatus)}`}
-            <ArrowRight size={16} strokeWidth={2.2} />
-          </button>
-        ) : null}
-      </div>
+      <div className="order-detail__topbar">{backButton}</div>
 
       <header className="admin-surface order-detail__hero">
         <div className="order-detail__hero-copy">
@@ -391,6 +445,40 @@ export function OrderDetailPage({
           </div>
         </div>
       </header>
+
+      {/*
+        * The one thing somebody opens this page to DO.
+        *
+        * It used to be a small button in the top bar beside the back link,
+        * shown only to an owner. A restaurant looking at a new order saw a
+        * status pipeline that looks clickable and is not, and no way to accept
+        * anything — reported as "the restaurant has no option to accept the
+        * order", which is exactly right.
+        *
+        * So the next step is a card of its own, above everything else, saying
+        * in plain words what state the order is in and what pressing the button
+        * will do.
+        */}
+      {nextStep ? (
+        <section className="admin-surface order-detail__next">
+          <div className="order-detail__next-copy">
+            <p className="order-detail__next-eyebrow">{nextStep.eyebrow}</p>
+            <h2>{nextStep.heading}</h2>
+            <p className="order-detail__next-detail">{nextStep.detail}</p>
+          </div>
+          {canAdvance && nextStatus ? (
+            <button
+              className="primary-button order-detail__next-action"
+              disabled={isUpdating}
+              onClick={advanceStatus}
+              type="button"
+            >
+              {isUpdating ? "Working…" : nextStep.action}
+              <ArrowRight size={17} strokeWidth={2.2} />
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="admin-surface order-detail__card">
         <header className="order-detail__card-header">
@@ -613,8 +701,13 @@ export function OrderDetailPage({
           </div>
         </section>
 
-        {/* Renders nothing for a pickup order, or when no courier was asked. */}
-        <DeliveryPanel token={token} orderId={orderId} />
+        {/* Says what will happen for a delivery order with no rider yet, and
+            renders nothing at all for a pickup one. */}
+        <DeliveryPanel
+          awaiting={order.fulfillment_type === "DELIVERY"}
+          orderId={orderId}
+          token={token}
+        />
 
         <section className="admin-surface order-detail__card">
           <header className="order-detail__card-header">

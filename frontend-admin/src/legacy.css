@@ -10759,3 +10759,71 @@ summary:focus-visible,
 .method-row--off strong {
   color: var(--muted);
 }
+
+
+/*
+ * The next step on an order, as a card rather than a button somebody has to
+ * find. This is the one thing a restaurant opens the page to do, so it sits
+ * above the pipeline and reads as an instruction.
+ */
+.order-detail__next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  border-left: 4px solid var(--primary);
+}
+
+.order-detail__next-copy {
+  min-width: 0;
+}
+
+.order-detail__next-eyebrow {
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+}
+
+.order-detail__next h2 {
+  margin: 4px 0 0;
+  font-size: var(--fs-title);
+}
+
+.order-detail__next-detail {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+/* Bigger than an ordinary button, because it is the only action on the page
+   and a restaurant is reaching for it in a hurry. */
+.order-detail__next-action {
+  flex-shrink: 0;
+  height: 46px;
+  padding: 0 22px;
+  font-size: var(--fs-label);
+}
+
+@media (max-width: 720px) {
+  .order-detail__next {
+    align-items: stretch;
+  }
+
+  .order-detail__next-action {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+
+.order-detail__courier-waiting {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}

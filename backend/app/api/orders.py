@@ -3,10 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.order import Order
 from app.models.order_delivery import OrderDelivery
 from app.api.deps import AppScopeDep, ensure_restaurant_readable, ensure_restaurant_writable
 from app.config.database import get_db
@@ -419,9 +420,41 @@ def patch_order_status(
     order_id: uuid.UUID,
     payload: OrderStatusUpdateRequest,
     db: Annotated[Session, Depends(get_db)],
-    owner_restaurant_id: Annotated[uuid.UUID, Depends(get_owner_restaurant_id)],
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> OrderResponse:
+    """Move an order along the kitchen's pipeline.
+
+    Open to the restaurant's OWNER and to a platform ADMIN. It used to be the
+    owner alone, which read as a sensible boundary and was a support problem:
+    an operator watching a tenant's orders could see one sitting unaccepted and
+    had no way to help, and the page offered them no action at all — which is
+    how this was reported.
+
+    The scoping is unchanged and does the real work. An owner is still confined
+    to their own restaurant by `resolve_owner_restaurant_id`; an admin is
+    platform staff and may act on any, which is the same reach they already
+    have over every other order screen. Nothing else about the transition
+    moves: the flow stays linear and an unpaid order still never reaches a
+    kitchen.
+    """
+
+    if current_user.role not in {UserRole.OWNER, UserRole.ADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to change this order",
+        )
+
+    if current_user.role == UserRole.ADMIN:
+        # Platform staff are not bound to one restaurant, so the order's own
+        # restaurant is the scope. `update_order_status` still looks the order
+        # up by both, so a mismatched id is a 404 rather than a silent edit.
+        found = db.get(Order, order_id)
+        if found is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        owner_restaurant_id = found.restaurant_id
+    else:
+        owner_restaurant_id = resolve_owner_restaurant_id(db, current_user)
+
     return update_order_status(
         db,
         current_user,

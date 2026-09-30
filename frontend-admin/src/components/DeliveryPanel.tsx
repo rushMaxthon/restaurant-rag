@@ -26,6 +26,14 @@ import type { OrderDelivery } from '../types/app';
  * library, and a panel inventing its own classes is how that drifts.
  */
 interface DeliveryPanelProps {
+  /**
+   * True for a delivery order that has not been dispatched yet.
+   *
+   * Without this the card renders nothing at all before the kitchen accepts,
+   * and an empty space where a courier should be reads as something broken
+   * rather than as something that has not happened yet.
+   */
+  awaiting?: boolean;
   token: string;
   orderId: string;
 }
@@ -44,7 +52,7 @@ const STATES: Record<string, { label: string; tone: 'ok' | 'busy' | 'warn' }> = 
 /** States a delivery cannot move on from, so there is nothing left to watch. */
 const DONE = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
 
-export function DeliveryPanel({ token, orderId }: DeliveryPanelProps) {
+export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) {
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -67,7 +75,14 @@ export function DeliveryPanel({ token, orderId }: DeliveryPanelProps) {
           // being a request per second per open tab. The server refreshes from
           // the courier every minute, so a faster poll here would mostly
           // re-read the same row.
-          if (row && !DONE.has(row.state)) timer = setTimeout(read, 10_000);
+          // Keep looking while there is anything left to happen, and that
+          // INCLUDES having no row at all: a delivery order that has just been
+          // accepted has no courier for a second or two while the task runs,
+          // and stopping there left the card saying "no rider yet" over a
+          // rider who had already been booked. Only a finished delivery, or a
+          // pickup order with nothing to watch, ends the loop.
+          const stillMoving = row ? !DONE.has(row.state) : Boolean(awaiting);
+          if (stillMoving) timer = setTimeout(read, 10_000);
         })
         .catch(() => {
           // A courier we cannot read about must not take the order screen down
@@ -85,10 +100,34 @@ export function DeliveryPanel({ token, orderId }: DeliveryPanelProps) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [token, orderId]);
+  }, [token, orderId, awaiting]);
 
-  // Nothing was dispatched, so there is nothing to say.
-  if (loading || !delivery) return null;
+  if (loading) return null;
+
+  // Nothing dispatched. For a delivery order that is a stage, not an absence,
+  // so it says what will happen. For a pickup order there is no courier in the
+  // story at all and the card stays away.
+  if (!delivery) {
+    if (!awaiting) return null;
+    return (
+      <section className="admin-surface order-detail__card">
+        <header className="order-detail__card-header">
+          <span className="order-detail__card-icon">
+            <Bike size={17} strokeWidth={2.1} />
+          </span>
+          <div>
+            <h2>Courier</h2>
+            <p>Who is carrying this order, and where they are.</p>
+          </div>
+        </header>
+        <p className="order-detail__courier-waiting">
+          No rider yet. One is booked automatically the moment this order is
+          accepted, and this card then shows who they are and how far they have
+          to go.
+        </p>
+      </section>
+    );
+  }
 
   const state = STATES[delivery.state] ?? { label: delivery.state, tone: 'busy' as const };
   const distanceKm =
