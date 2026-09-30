@@ -461,6 +461,12 @@ export type DeliveryQuote = {
   distance_metres: number | null;
   assign_seconds: number | null;
   /**
+   * Seconds from the branch to the door, as the courier reckons the drive.
+   * NOT an ETA: it excludes the time the kitchen spends cooking, which is most
+   * of the wait.
+   */
+  travel_seconds: number | null;
+  /**
    * False when either end of the trip was a stand-in rather than a located
    * address. A geocoder never refuses — ask for a street that does not exist
    * and it hands back a city centroid — so this means "precise enough to

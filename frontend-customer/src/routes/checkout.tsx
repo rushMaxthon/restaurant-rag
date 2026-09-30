@@ -350,11 +350,19 @@ function Checkout() {
     s.orderLocation?.id,
     addressIsQuotable
       ? {
-          // `house` is left out on purpose. A house number inside a society the
-          // map has never heard of resolves to nothing, while the society
-          // alone resolves cleanly — so the flat number goes to the rider and
-          // never to the geocoder.
-          delivery_address: [address.line1, address.line2, address.landmark]
+          // `house` and `landmark` are BOTH left out, and this was measured.
+          //
+          // Sending "A-31, Rangdarshan Soc, Near Dhanmora" resolves to the
+          // NEIGHBOURHOOD — 124 m from the building, and graded LOCALITY.
+          // Sending "Rang Darshan Society" on its own resolves to the rooftop,
+          // exactly where picking it from the dropdown lands. The door number
+          // and the landmark are directions for a human; to a geocoder they are
+          // noise that drags a precise answer down to a vague one, and a vague
+          // one prices the wrong trip.
+          //
+          // Both still reach the rider: they are in the address line the order
+          // stores. They are simply not part of the question asked of the map.
+          delivery_address: [address.line1, address.line2]
             .map((part) => part.trim())
             .filter(Boolean)
             .join(", "),
@@ -424,6 +432,22 @@ function Checkout() {
   const delivery =
     deliveryKnown && deliveryQuote.data ? Number(deliveryQuote.data.delivery_fee) : 0;
   const quotedByCourier = deliveryKnown && deliveryQuote.data?.source === "courier";
+  /**
+   * How far the food has to travel, in words.
+   *
+   * The courier measures this to the metre and it was buried in a muted line
+   * under the totals. It belongs beside the branch it is measured FROM, which
+   * is the only place it means anything.
+   *
+   * Under a kilometre reads in metres rounded to fifty, because "0.4 km" is a
+   * worse way of saying "400 m" and "377 m" is a precision nobody asked for.
+   */
+  const distanceLabel = (() => {
+    const metres = quotedByCourier ? deliveryQuote.data?.distance_metres : null;
+    if (!metres) return null;
+    if (metres < 1000) return `${Math.round(metres / 50) * 50} m away`;
+    return `${(metres / 1000).toFixed(1)} km away`;
+  })();
   // Why the courier's price is missing, when it is. Not every fallback is a
   // problem: a restaurant with no courier charges its own flat fee on purpose,
   // and that is a real price. A fallback because nobody could find the address
@@ -1389,6 +1413,12 @@ function Checkout() {
           <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
             <MapPin className="size-3.5 shrink-0 text-primary" />
             {isDelivery ? "Delivery" : "Pickup"} from {branch?.branch_name ?? "your branch"}
+            {distanceLabel && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-semibold text-foreground">{distanceLabel}</span>
+              </>
+            )}
           </p>
           {eta != null && eta !== "" && (
             <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold">
@@ -1474,11 +1504,15 @@ function Checkout() {
 
           {isDelivery && quotedByCourier ? (
             <p className="mt-2 text-xs text-muted">
-              Delivery priced for your address
-              {deliveryQuote.data?.distance_metres
-                ? `, about ${(deliveryQuote.data.distance_metres / 1000).toFixed(1)} km away`
+              {/* The distance now sits beside the branch it is measured from,
+                  so repeating it here would be the same fact twice. What is
+                  worth saying is that the FEE is for this address rather than a
+                  flat rate. */}
+              Priced for your address, not a flat rate.
+              {deliveryQuote.data?.travel_seconds
+                ? ` About ${Math.max(1, Math.round(deliveryQuote.data.travel_seconds / 60))} min
+                    of riding once your food is ready.`
                 : ""}
-              .
             </p>
           ) : null}
           {fallback === "address_unknown" ? (

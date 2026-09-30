@@ -252,6 +252,13 @@ class DeliveryQuoteResponse(BaseModel):
     #: larger than the drive, and the difference between an honest ETA and an
     #: optimistic one.
     assign_seconds: int | None = None
+    #: Seconds from the branch to the door, as the courier reckons the drive.
+    #:
+    #: NOT an ETA on its own and must never be shown as one: it excludes the
+    #: time the kitchen spends cooking, which is most of the wait. The
+    #: restaurant's own `estimated_delivery_time` is the figure that covers the
+    #: whole journey.
+    travel_seconds: int | None = None
     #: False when either end of the trip was a stand-in coordinate rather than
     #: a located address. The price is real; the trip it prices may not be.
     #:

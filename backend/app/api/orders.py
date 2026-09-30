@@ -197,6 +197,7 @@ def quote_delivery(
         serviceable=True,
         distance_metres=quote.distance_metres,
         assign_seconds=quote.assign_seconds,
+        travel_seconds=quote.travel_seconds,
         **located,
     )
 
