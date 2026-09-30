@@ -26,6 +26,58 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 (later) — The pickup point was the half going wrong
+
+**Goal:** remove "Delivery fee — Free" from the cart, show the fee only after an
+address, fix a broken Address line 1, and check it in a browser. Mid-task the
+user asked how the RESTAURANT's coordinates are obtained — which turned out to
+be the real bug.
+
+**Changed:**
+- `services/delivery/quoting.py` — a stand-in coordinate at either end is
+  refused; the branch flat fee stands.
+- `api/restaurants.py` + `schemas/restaurant.py` — `POST .../locations/{id}/locate`:
+  geocodes a branch's own address, answers without saving.
+- `frontend-admin` LocationDetailPage — "Find from the address above" button,
+  the lookup verdict, and a note that an unlocated branch has no trip to price.
+- `routes/cart.tsx` — delivery row removed; total is "So far" with a note.
+- `routes/checkout.tsx` — delivery row reads "Once you add your address" until a
+  fee is known for the address CURRENTLY in the form; Address line 1 uses the
+  shared Input.
+- `components/AddressAutocomplete.tsx` — shared Input + icon, matching siblings.
+
+**Verified:** browser, on the real checkout. Before: an empty street box still
+showed ₹87.04 and Address line 1 had no box at all. After: "Once you add your
+address", "So far ₹52.50", and a proper field. Against the running server:
+an unlocated branch now answers `source: branch` instead of a 258 km quote; with
+the branch located, Surat addresses price at ₹50.00 for 0.5 km and ₹83.50 for
+6.3 km, all `exact_location: true`. `unittest discover` → 2,454 OK. Admin lint
+unchanged at its pre-existing 60.
+
+**Open:** unchanged from the entry below — a Google key for India, and
+coordinates for the 25 branches.
+
+**Learned:**
+- **The pickup coordinate is half the price and it had no owner.** Pidge's
+  estimate takes two coordinate pairs and NO addresses, so there is no way to
+  hand the problem to the courier. A branch with no coordinates fell to the
+  Ahmedabad stand-in while the customer was in Surat and the courier honestly
+  priced 258 km — ₹2,601.48 on a ₹50 loaf. The lesson is not "add a null check":
+  it is that `exact_location: false` was already being reported and nothing ACTED
+  on it. A flag nobody consumes is not a safeguard.
+- **Invented is not the same as vague.** A suburb-level geocode still answers
+  about the real address. A stand-in is a constant. Only the second must be
+  refused, and collapsing them would throw away usable quotes.
+- **`placeholderData` outlives the thing it describes.** Keeping the last answer
+  stops the fee blinking, and also kept a fee on screen after its address was
+  deleted, and showed the old address's fee while a new one was in flight.
+  Anything derived from a query with placeholder data needs
+  `isPlaceholderData` and the enabled-condition checked too, not just `data`.
+- **Looking at the page found what the build did not.** Address line 1 rendered
+  with no border, background or height because the autocomplete used a bare
+  `<input>` where siblings use the shared component. It type-checked, built and
+  linted clean.
+
 ## 2026-09-30 — A real geocoder, so a real address gets a real price
 
 **Goal:** replace the stand-in coordinates with a real geocoder, keep the price
