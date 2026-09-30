@@ -11,6 +11,7 @@ from app.api.generated_combos import router as generated_combos_router
 from app.api.insights import router as insights_router
 from app.api.menu_items import router as menu_items_router
 from app.api.notifications import router as notifications_router
+from app.api.addresses import router as addresses_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
 from app.api.short_links import router as short_links_router
@@ -38,6 +39,7 @@ api_router.include_router(restaurants_router)
 api_router.include_router(menu_items_router)
 api_router.include_router(notifications_router)
 api_router.include_router(orders_router)
+api_router.include_router(addresses_router)
 api_router.include_router(payments_router)
 api_router.include_router(short_links_router)
 api_router.include_router(personalized_offers_router)

@@ -15,6 +15,7 @@ import {
   Zap,
   User,
 } from "lucide-react";
+import { AddressAutocomplete, type PickedAddress } from "@/components/AddressAutocomplete";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -195,6 +196,15 @@ function Checkout() {
     state: "",
     zip: "",
   });
+  // The coordinates of a place the customer PICKED, when they picked one.
+  //
+  // Kept separately from the address text on purpose. The text is what a rider
+  // reads at the door; this is what the courier prices, and they are not the
+  // same fact. Cleared the moment any part of the address is typed over,
+  // because a stale coordinate prices the wrong trip with complete confidence.
+  const [pickedPoint, setPickedPoint] = useState<{ latitude: number; longitude: number } | null>(
+    null,
+  );
   // Errors appear once a field has been left, not while it is being typed in.
   // Marking a half-typed ZIP wrong is the fastest way to make a form feel
   // hostile; saying nothing until submit is the slowest way to fix it.
@@ -328,11 +338,35 @@ function Checkout() {
   // shown is the fee for the trip that gets booked — and only once the form
   // is valid, because a courier priced against half an address is a number
   // about nothing.
-  const quotableAddress =
-    s.fulfillment === "DELIVERY" && Object.keys(validateAddress(address, postalName)).length === 0
-      ? composeDeliveryAddress(address)
-      : "";
-  const deliveryQuote = useDeliveryQuote(s.orderLocation?.id, quotableAddress);
+  const addressIsQuotable =
+    s.fulfillment === "DELIVERY" && Object.keys(validateAddress(address, postalName)).length === 0;
+  // Sent in PARTS rather than as one joined string. A geocoder given separate
+  // fields can refuse a house number in the wrong city; given a blob it
+  // silently picks whichever reading scores best. The form already has the
+  // parts, so flattening them and asking the server to take them apart again
+  // loses accuracy for nothing.
+  const deliveryQuote = useDeliveryQuote(
+    s.orderLocation?.id,
+    addressIsQuotable
+      ? {
+          delivery_address: [address.line1, address.line2, address.landmark]
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .join(", "),
+          city: address.city.trim(),
+          state: address.state.trim(),
+          postal_code: address.zip.trim(),
+          // A saved address the customer chose carries coordinates already, so
+          // the server prices from those and calls no geocoder at all.
+          saved_address_id: addressId ?? undefined,
+          // The place the customer picked, when they picked one. Sent so the
+          // courier prices the building they pointed at rather than the
+          // server's best reading of the text.
+          latitude: pickedPoint?.latitude,
+          longitude: pickedPoint?.longitude,
+        }
+      : null,
+  );
 
   if (!isAuthenticated) return null;
 
@@ -383,8 +417,41 @@ function Checkout() {
    * corrected flat number would be typed, sent, and forgotten by the next
    * order.
    */
+  /**
+   * Fill the form in from a place the customer picked.
+   *
+   * The coordinates are the map provider's own record for that building, so
+   * they are kept and sent with the delivery quote — which is the whole point
+   * of a dropdown over a text box. The address parts are filled in too, but
+   * only where the provider actually returned something: overwriting a city the
+   * customer typed with an empty string because the provider omitted it is a
+   * worse form than the one they had.
+   *
+   * `landmark` is deliberately untouched. No provider knows the gate somebody
+   * tells a rider to look for.
+   */
+  const applyPickedAddress = (picked: PickedAddress) => {
+    setAddress((current) => ({
+      ...current,
+      line1: picked.line1 || picked.formatted || current.line1,
+      line2: picked.line2 || current.line2,
+      city: picked.city || current.city,
+      state: picked.state || current.state,
+      zip: picked.postal_code || current.zip,
+    }));
+    setPickedPoint({ latitude: picked.latitude, longitude: picked.longitude });
+    // A picked address is a different address from the saved one that was
+    // showing, so the chip stops claiming otherwise.
+    setAddressId(null);
+    setTouched((t) => ({ ...t, line1: true, city: true, state: true, zip: true }));
+  };
+
   const editAddress = (part: keyof AddressFields, next: string) => {
     setAddress((a) => ({ ...a, [part]: next }));
+    // The resolved coordinate described what was in the box a moment ago. Typed
+    // over, it no longer does, and a stale point would price the wrong trip
+    // with complete confidence.
+    if (part !== "landmark") setPickedPoint(null);
     if (addressId) {
       setAddressId(null);
       setSaveAddress(true);
@@ -841,18 +908,28 @@ function Checkout() {
               </div>
               {isDelivery && (
                 <>
-                  <AddressField
-                    id="line1"
-                    label="Address line 1"
-                    placeholder="Street address"
-                    autoComplete="address-line1"
-                    className="sm:col-span-2"
-                    icon={<MapPin className="size-4" />}
-                    value={address.line1}
-                    problem={show("line1") ? addressProblems.line1 : undefined}
-                    onChange={(next) => editAddress("line1", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
-                  />
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="line1">
+                      Address line 1
+                      <span className="ml-1.5 text-xs font-medium text-muted">
+                        Start typing and pick your address
+                      </span>
+                    </Label>
+                    <AddressAutocomplete
+                      autoComplete="address-line1"
+                      inputId="line1"
+                      invalid={Boolean(show("line1") && addressProblems.line1)}
+                      locationId={branch?.id}
+                      onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
+                      onPick={applyPickedAddress}
+                      onTextChange={(next) => editAddress("line1", next)}
+                      placeholder="Street address"
+                      value={address.line1}
+                    />
+                    {show("line1") && addressProblems.line1 && (
+                      <p className="inline-error text-xs">{addressProblems.line1}</p>
+                    )}
+                  </div>
                   <AddressField
                     id="line2"
                     label="Address line 2"

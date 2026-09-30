@@ -73,6 +73,13 @@ type LocationSettingsForm = {
   phone_number: string;
   opening_time: string;
   closing_time: string;
+  // Text, not numbers, because these are form fields: a half-typed "23." is
+  // not a number and a numeric state would fight the person typing it.
+  // Converted once on submit, where an unparseable value becomes null rather
+  // than a zero — a branch at 0,0 is in the Atlantic Ocean and would price
+  // every delivery as unserviceable.
+  latitude: string;
+  longitude: string;
 };
 
 type LocationGeneralSettingsForm = {
@@ -158,6 +165,22 @@ function formatSlotTimeLabel(value: string): string {
   }).format(new Date(2000, 0, 1, hours, minutes));
 }
 
+/**
+ * A typed coordinate, or null.
+ *
+ * Empty and unparseable both become null, which means "nobody has located this
+ * branch" and is handled everywhere. The alternative — falling back to 0 — puts
+ * the branch in the Gulf of Guinea, and the courier then reports every delivery
+ * as thousands of kilometres away and unserviceable, which looks like a broken
+ * integration rather than a typo in one field.
+ */
+function coordinateOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function toLocationSettingsForm(location: RestaurantLocation): LocationSettingsForm {
   return {
     branch_name: location.branch_name,
@@ -167,6 +190,8 @@ function toLocationSettingsForm(location: RestaurantLocation): LocationSettingsF
     state: location.state,
     postal_code: location.postal_code,
     phone_number: location.phone_number ?? "",
+    latitude: location.latitude == null ? "" : String(location.latitude),
+    longitude: location.longitude == null ? "" : String(location.longitude),
     opening_time: toTimeInputValue(location.opening_time),
     closing_time: toTimeInputValue(location.closing_time),
   };
@@ -458,6 +483,8 @@ export function LocationDetailPage({
         state: settingsForm.state.trim(),
         postal_code: settingsForm.postal_code.trim(),
         phone_number: settingsForm.phone_number.trim() || null,
+        latitude: coordinateOrNull(settingsForm.latitude),
+        longitude: coordinateOrNull(settingsForm.longitude),
         opening_time: settingsForm.opening_time || null,
         closing_time: settingsForm.closing_time || null,
       });
@@ -1038,6 +1065,41 @@ export function LocationDetailPage({
                 }
               />
             </label>
+            <label className="field">
+              <span>Latitude</span>
+              <input
+                inputMode="decimal"
+                placeholder="23.039500"
+                value={settingsForm.latitude}
+                onChange={(event) =>
+                  setSettingsForm((current) =>
+                    current ? { ...current, latitude: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Longitude</span>
+              <input
+                inputMode="decimal"
+                placeholder="72.506600"
+                value={settingsForm.longitude}
+                onChange={(event) =>
+                  setSettingsForm((current) =>
+                    current ? { ...current, longitude: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <p className="hint-text" style={{ gridColumn: "1 / -1" }}>
+              The courier prices every delivery from this point, so it is worth
+              getting right. Right-click the branch&rsquo;s exact door in Google
+              Maps and the first item on the menu is the pair, ready to paste.
+              Left empty, the address above is looked up instead &mdash; which
+              works for a numbered street and often fails for a society or a
+              mall, and a branch nobody can locate has its deliveries priced
+              from a stand-in point.
+            </p>
             <label className="field">
               <span>Phone</span>
               <input

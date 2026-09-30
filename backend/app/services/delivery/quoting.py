@@ -29,11 +29,14 @@ from __future__ import annotations
 import logging
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
 from app.models.restaurant_location import RestaurantLocation
 from app.services.delivery import geocoding
 from app.services.delivery.base import DeliveryProviderError, DeliveryQuote
 from app.services.delivery.registry import delivery_provider
+from app.services.geocoding.base import AddressQuery
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +71,42 @@ def fee_from(quote: DeliveryQuote) -> Decimal | None:
     return Decimal(chosen).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def quote_for(location: RestaurantLocation, delivery_address: str) -> DeliveryQuote | None:
+def points_for(
+    location: RestaurantLocation,
+    delivery_address: AddressQuery | str,
+    *,
+    db: Session | None = None,
+    known_drop: tuple[float, float, str] | None = None,
+) -> tuple[geocoding.Coordinates, geocoding.Coordinates]:
+    """The two ends of the trip, located as well as they can be.
+
+    Separated out because both the quote and the response need them, and
+    geocoding twice would double every paid lookup — which caching hides in
+    development and a bill exposes in production.
+    """
+
+    return (
+        geocoding.for_branch(location, db),
+        geocoding.for_address(delivery_address, db, known=known_drop),
+    )
+
+
+def quote_for(
+    location: RestaurantLocation,
+    delivery_address: AddressQuery | str,
+    *,
+    db: Session | None = None,
+    known_drop: tuple[float, float, str] | None = None,
+    points: tuple[geocoding.Coordinates, geocoding.Coordinates] | None = None,
+) -> DeliveryQuote | None:
     """Ask the courier what this trip would cost. None if nobody answered.
 
     None covers every way this can decline to produce a figure, and they are
     deliberately indistinguishable to the caller: the answer to all of them is
     the branch's own fee.
+
+    `points` lets a caller that has already located both ends pass them in
+    rather than have them looked up again.
     """
 
     settings = get_settings()
@@ -89,8 +122,9 @@ def quote_for(location: RestaurantLocation, delivery_address: str) -> DeliveryQu
         logger.info("Courier %s cannot quote; falling back to the branch fee", provider.name)
         return None
 
-    pickup = geocoding.for_branch(location)
-    drop = geocoding.for_address(delivery_address)
+    pickup, drop = points or points_for(
+        location, delivery_address, db=db, known_drop=known_drop
+    )
     try:
         return quoter(
             pickup_lat=pickup.latitude,
@@ -128,7 +162,12 @@ def usable_in(quote: DeliveryQuote, currency: str) -> bool:
 
 
 def delivery_fee_for(
-    location: RestaurantLocation, delivery_address: str, *, currency: str = ""
+    location: RestaurantLocation,
+    delivery_address: AddressQuery | str,
+    *,
+    currency: str = "",
+    db: Session | None = None,
+    known_drop: tuple[float, float, str] | None = None,
 ) -> Decimal | None:
     """The courier's fee for this trip, or None to use the branch's own.
 
@@ -136,7 +175,7 @@ def delivery_fee_for(
     is discarded rather than converted.
     """
 
-    quote = quote_for(location, delivery_address)
+    quote = quote_for(location, delivery_address, db=db, known_drop=known_drop)
     if quote is None:
         return None
     if not usable_in(quote, currency):
@@ -152,4 +191,4 @@ def delivery_fee_for(
     return fee
 
 
-__all__ = ["delivery_fee_for", "fee_from", "quote_for", "usable_in"]
+__all__ = ["delivery_fee_for", "fee_from", "points_for", "quote_for", "usable_in"]

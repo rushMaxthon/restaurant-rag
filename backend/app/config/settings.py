@@ -714,6 +714,37 @@ class Settings(BaseSettings):
     # is ready to pay, and the fallback is the branch's own fee, not an error.
     delivery_quote_timeout_seconds: float = 6.0
 
+    # --- geocoding ----------------------------------------------------------
+    #
+    # No flag, because there is nothing to switch on: a geocoder is always
+    # available. With a Google key it is accurate; without one it falls back to
+    # OpenStreetMap, which needs no account and works the moment this ships.
+    # That fallback is why the delivery quote is real in every deployment
+    # rather than only in the ones that have been through a Cloud console.
+    #
+    # The key is read SERVER SIDE only and never reaches a browser. The
+    # autocomplete on the checkout calls our own endpoint precisely so that a
+    # credential with a billing quota attached does not ship inside a
+    # JavaScript bundle.
+    google_maps_api_key: str = ""
+    # Nominatim's usage policy requires a genuine identifying User-Agent and
+    # treats a default library string as abuse, so this is a setting rather
+    # than a constant — a deployment should say who it is.
+    geocoding_user_agent: str = "restaurant-rag/1.0 (+https://github.com/restaurant-rag)"
+    # Comma-separated ISO country codes. The cheapest accuracy win available:
+    # without it an Indian street name matches a same-named street elsewhere
+    # and the answer looks entirely reasonable. India and Canada are the two
+    # markets this platform is being deployed into.
+    geocoding_country_codes: str = "in,ca"
+    # Short, because this sits on the checkout's critical path and the fallback
+    # is an unlocated address rather than an error.
+    geocoding_timeout_seconds: float = 5.0
+    # A geocode does not change, but a "not found" can: new buildings appear,
+    # and OSM coverage improves month to month. Long enough that the cache does
+    # its job, short enough that a thin month does not become permanent. 0
+    # disables expiry entirely.
+    geocoding_cache_days: int = 90
+
     fcm_project_id: str = "quickbite-7833a"
     fcm_credentials_path: str = "firebase-service-account.json"
 

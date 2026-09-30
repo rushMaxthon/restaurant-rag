@@ -459,6 +459,10 @@ def _prepare_order_draft(
             restaurant_location,
             payload.delivery_address or "",
             currency=normalize_stored_currency(restaurant.currency),
+            # The session is what makes the geocode real: it reads the durable
+            # cache, writes new lookups to it, and lets a branch's coordinates
+            # be stored back on its row the first time it is located.
+            db=db,
         )
         if quoted is not None:
             delivery_fee = _quantize(quoted)

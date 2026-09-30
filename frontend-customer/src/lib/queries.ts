@@ -213,14 +213,27 @@ export function usePaymentReconciliation(orderId: string | undefined, unpaid: bo
  * flight. Without it the delivery line blinks to the branch fee and back on
  * every keystroke, which reads as the price changing while you type.
  */
-export function useDeliveryQuote(locationId: string | null | undefined, address: string) {
-  const ready = Boolean(locationId) && address.trim().length > 0;
+export function useDeliveryQuote(
+  locationId: string | null | undefined,
+  address: {
+    delivery_address: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    saved_address_id?: string | undefined;
+    latitude?: number | undefined;
+    longitude?: number | undefined;
+  } | null,
+) {
+  const ready = Boolean(locationId) && Boolean(address?.delivery_address.trim());
   return useQuery({
-    queryKey: queryKeys.deliveryQuote(locationId ?? "", address),
+    // Keyed on every part, so correcting a postcode asks again and a page that
+    // has already asked does not.
+    queryKey: queryKeys.deliveryQuote(locationId ?? "", JSON.stringify(address ?? {})),
     queryFn: () =>
       api.quoteDelivery({
         restaurant_location_id: locationId as string,
-        delivery_address: address,
+        ...(address as NonNullable<typeof address>),
       }),
     enabled: ready,
     placeholderData: (previous) => previous,

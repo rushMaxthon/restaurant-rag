@@ -203,6 +203,123 @@ distance formula of our own. The only figures that reach a customer are the
 branch's own fee or the courier's own quote — the stand-in is in the
 COORDINATES, never in the price.
 
+## Where an address becomes a point
+
+A courier prices a trip between two COORDINATES, and until this existed the app
+had none: branch `latitude`/`longitude` columns nobody filled in, and a
+customer's address as free text with nowhere to put one. Every quote priced the
+same stand-in trip.
+
+```
+app/services/geocoding/
+  base.py        AddressQuery, GeocodedPoint, GeocodeConfidence, the protocol
+  google.py      geocoding + Places autocomplete. Accurate. Needs a key.
+  nominatim.py   OpenStreetMap. No key, no account, works immediately.
+  registry.py    Google when a key exists, OSM otherwise
+  service.py     locate(): the three cache layers
+app/api/addresses.py                     /suggest and /resolve
+app/services/delivery/geocoding.py       the seam: branch + address -> points
+scripts/locate_branches.py               locate every branch, report failures
+frontend-customer/src/components/AddressAutocomplete.tsx
+```
+
+### The dropdown is the accurate path
+
+Geocoding what somebody typed is a guess. Having them PICK a place and taking
+the coordinates from that place's own record is not. So the checkout's first
+address box is an autocomplete, and a picked place sends its latitude and
+longitude with the quote — the courier then prices the building the customer
+pointed at.
+
+It proxies through `POST /api/addresses/suggest` and `/resolve` rather than
+loading Google's JavaScript with a key in the bundle. Three reasons, in order of
+weight:
+
+1. **The key never reaches a browser.** A referrer-restricted browser key is
+   normal practice and not wrong, but it is a credential with a billing quota in
+   public.
+2. **The session token is managed in one place.** Providers bill autocomplete
+   per SESSION when the keystrokes and the final details call share a token, and
+   **per request** when they do not. A client that forgets it turns one charge
+   into one per character typed.
+3. **Resolved coordinates get stored** on the customer's saved address, so their
+   next order is priced with no provider call at all.
+
+With no key configured, `/suggest` answers `available: false`, the dropdown
+never appears, the form behaves exactly as before, and the backend geocoder
+still prices the order. A missing dropdown costs accuracy, never correctness.
+
+### A geocoder never says no
+
+This is the failure the whole package is shaped around. Ask for "12 Fake Street,
+Nowhere" and a geocoder returns the centroid of the nearest city with a 200 and
+no complaint. A delivery priced from a country centroid is a real courier price
+for a trip nobody is taking, and it is indistinguishable from a correct answer.
+
+So `GeocodeConfidence` grades every answer and only `ROOFTOP` and `STREET` may
+price a delivery. `exact_location` on the quote response means "precise enough to
+charge for", not "something answered". Measured:
+
+| Asked | Got | Priced from |
+|---|---|---|
+| Ashram Road, Ahmedabad | `STREET` | yes |
+| Yonge Street, Toronto | `STREET` | yes |
+| 380015, Ahmedabad | `POSTCODE` | no — an Indian PIN spans kilometres |
+| Kankaria Lake, Ahmedabad | `LOCALITY` | no — a landmark, not a door |
+| 12 Nowhere Street, Atlantis | not found | no |
+
+### ⚠️ OpenStreetMap is not enough for India
+
+Measured against real Ahmedabad addresses, not assumed. Nominatim finds
+numbered streets and finds **none** of these:
+
+```
+Shivalik Plaza, Ahmedabad                  0 results
+Iscon Cross Road, S G Highway, Ahmedabad   0 results
+Singanpor, Surat                           0 results
+```
+
+All 18 seeded branches came back not found. Indian addresses are written from
+societies, malls and crossroads, which is the half of the map OSM is thinnest
+on. **Set `GOOGLE_MAPS_API_KEY` for the India deployment.** The fallback exists
+so the feature works at all without an account, not because it is sufficient.
+
+Also measured: Nominatim's **structured** search (`street=`, `city=`) returns
+nothing for these and freeform finds them, because it treats `street` as a field
+that must match an OSM street and will not fall back. Google is the opposite way
+round. That is why each provider builds its own request from `AddressQuery`
+instead of a shared builder deciding for both.
+
+### Nothing is looked up twice
+
+Three layers, cheapest first:
+
+1. **The row.** A branch's stored coordinates, or a saved address the customer
+   picked. Free, and the reason a returning customer costs zero provider calls.
+2. **`geocode_cache`**, keyed by a hash of the normalised address text.
+3. **Redis**, in front of the table.
+
+A NULL latitude in `geocode_cache` is a remembered **miss**. An address that
+will not resolve today will not resolve on the next page load, and re-asking
+every time is how a quota disappears quietly.
+
+⚠️ **Only a real "no match" is cached.** A timeout or a rejected key says nothing
+about the address. This bit during development: a misconfigured provider cached
+misses for every address tried during it, and the addresses kept failing after
+the bug was fixed. `test_a_transport_failure_is_not_remembered` is the guard.
+
+### When a branch cannot be located
+
+`scripts/locate_branches.py` geocodes every branch and prints three lists:
+located, too vague to trust, and not found. `--write` stores only the precise
+ones. Nothing is stored without it, because coordinates decide what customers
+are charged.
+
+For the rest, the branch form in the admin now has latitude and longitude
+fields. Right-clicking a spot in Google Maps puts the pair on the clipboard.
+This is the escape hatch that always works, and for a society or a mall in India
+it is faster than arguing with a geocoder.
+
 ## Switching it on
 
 Off by default. Nothing calls Pidge until `ENABLE_DELIVERY_DISPATCH` is true
@@ -212,6 +329,8 @@ Off by default. Nothing calls Pidge until `ENABLE_DELIVERY_DISPATCH` is true
 ENABLE_DELIVERY_DISPATCH=true
 ENABLE_DELIVERY_QUOTES=true   # a separate decision: pricing is not dispatching
 DELIVERY_QUOTE_BASIS=max      # max | mid | min — which end of the band is charged
+GOOGLE_MAPS_API_KEY=…         # accuracy + the checkout dropdown. Required for India.
+GEOCODING_COUNTRY_CODES=in,ca # narrows every lookup to where you deliver
 PIDGE_BASE_URL=https://store.dev.pidge.in
 PIDGE_USERNAME=…
 PIDGE_PASSWORD=…
@@ -227,12 +346,16 @@ Point Pidge's webhook at `POST /api/delivery/webhook`.
 - **No cancel endpoint** is documented. If an order is cancelled after a rider
   is dispatched, there is no way to call it off from code — ask Pidge whether
   one exists.
-- **A geocoder.** The only genuinely missing piece. No branch has
-  coordinates and a customer's address is free text with nowhere to put one,
-  so `services/delivery/geocoding.py` stands in a fixed point at both ends.
-  The price that comes back is the courier's own and real; the trip it prices
-  is approximate, which is why `exact_location` travels to the checkout.
-  Choosing a provider (Google, Mapbox or Nominatim) changes that one file.
+- **A Google Maps key for the India deployment.** Built and wired; see
+  "Where an address becomes a point" above. Without it the OpenStreetMap
+  fallback answers, and measured against real Ahmedabad addresses it finds
+  numbered streets and finds none of the societies, malls or crossroads that
+  Indian addresses are actually written from. Until a key is set, branch
+  coordinates should be pasted in by hand.
+- **Coordinates for the 25 existing branches.** All 25 are empty, so their
+  deliveries price from the stand-in point. `scripts/locate_branches.py`
+  reports which ones a geocoder can place; the rest are a paste job in the
+  admin.
 - **Migration `0069` is forked.** This branch's `0069_order_deliveries` and
   `marketing`'s `0069_campaign_recipients` both descend from `0068`, and the
   shared database reads `0071`. The migration is written to tolerate the table

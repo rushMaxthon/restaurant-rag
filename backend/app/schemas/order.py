@@ -183,6 +183,33 @@ class DeliveryQuoteRequest(BaseModel):
 
     restaurant_location_id: uuid.UUID
     delivery_address: str = Field(default="", max_length=500)
+    #: The address in parts, when the form has them. Structured beats a single
+    #: blob and it is not close: a geocoder given separate fields can refuse a
+    #: house number in the wrong city, while one given a joined string silently
+    #: picks whichever reading scores best. The form collects these as separate
+    #: boxes already, so flattening them and asking a geocoder to take them
+    #: apart again loses accuracy for nothing.
+    city: str = Field(default="", max_length=120)
+    state: str = Field(default="", max_length=120)
+    postal_code: str = Field(default="", max_length=20)
+    country: str = Field(default="", max_length=120)
+    #: A saved address the customer chose. Its stored coordinates are used
+    #: directly, so a repeat order is priced with no geocoder call at all.
+    saved_address_id: uuid.UUID | None = None
+    #: The coordinates of a place the customer PICKED from the autocomplete.
+    #:
+    #: The whole reason a dropdown beats a text box. These come from the map
+    #: provider's own record of that building, so accepting them is strictly
+    #: better than geocoding the text underneath — which would be a second paid
+    #: call to get a worse answer.
+    #:
+    #: Range-checked because they arrive from a client. A client cannot invent a
+    #: DELIVERY FEE with these: the courier is still the only thing that prices
+    #: the trip, and a wrong coordinate produces a wrong distance rather than a
+    #: chosen number. The bounds keep a malformed pair from being sent to the
+    #: courier as a real request.
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class DeliveryQuoteResponse(BaseModel):
@@ -209,8 +236,20 @@ class DeliveryQuoteResponse(BaseModel):
     #: optimistic one.
     assign_seconds: int | None = None
     #: False when either end of the trip was a stand-in coordinate rather than
-    #: a geocoded address. The price is real; the trip it prices may not be.
+    #: a located address. The price is real; the trip it prices may not be.
+    #:
+    #: A geocoder never refuses — ask it for a street that does not exist and
+    #: it hands back a city centroid without complaint. So this is not "did
+    #: something answer" but "is the point precise enough to price": a
+    #: locality-level match is a coordinate, not an address.
     exact_location: bool = True
+    #: Where the drop coordinate came from: "row", "geocoder" or "stand-in".
+    #: The field that makes a wrong quote diagnosable instead of mysterious.
+    located_by: str = ""
+    #: The address as the geocoder understood it. Shown when it disagrees with
+    #: what the customer typed, which is the failure that otherwise looks
+    #: exactly like success.
+    matched_address: str = ""
 
 
 class OrderStatusUpdateRequest(BaseModel):

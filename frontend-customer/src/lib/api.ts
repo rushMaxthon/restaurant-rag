@@ -449,7 +449,45 @@ export type DeliveryQuote = {
   serviceable: boolean;
   distance_metres: number | null;
   assign_seconds: number | null;
+  /**
+   * False when either end of the trip was a stand-in rather than a located
+   * address. A geocoder never refuses — ask for a street that does not exist
+   * and it hands back a city centroid — so this means "precise enough to
+   * price", not "something answered".
+   */
   exact_location: boolean;
+  /** "row", "geocoder" or "stand-in". Makes a wrong quote diagnosable. */
+  located_by: string;
+  /** The address as the geocoder understood it, when it disagrees. */
+  matched_address: string;
+};
+
+/** One row of the address dropdown, as the map provider formatted it. */
+export type Suggestion = {
+  place_id: string;
+  primary: string;
+  secondary: string;
+  description: string;
+};
+
+export type SuggestResponse = {
+  suggestions: Suggestion[];
+  /** False when no provider is configured: show plain text boxes instead. */
+  available: boolean;
+};
+
+/** A place the customer picked, with the coordinates from its own record. */
+export type ResolvedAddress = {
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  formatted: string;
+  latitude: number;
+  longitude: number;
+  confidence: string;
 };
 
 export class ApiError extends Error {
@@ -730,7 +768,40 @@ export const api = {
   cancelPayment: (orderId: string) =>
     request<PaymentStatus>(`/orders/${orderId}/payment-cancel`, { method: "POST", auth: true }),
 
-  quoteDelivery: (payload: { restaurant_location_id: string; delivery_address: string }) =>
+  suggestAddresses: (payload: {
+    text: string;
+    session_token: string;
+    restaurant_location_id?: string | undefined;
+  }) =>
+    request<SuggestResponse>("/addresses/suggest", {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  resolveAddress: (payload: {
+    place_id: string;
+    session_token: string;
+    saved_address_id?: string | undefined;
+  }) =>
+    request<ResolvedAddress>("/addresses/resolve", {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  quoteDelivery: (payload: {
+    restaurant_location_id: string;
+    delivery_address: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    country?: string;
+    saved_address_id?: string | undefined;
+    /** From a picked place. Beats anything the server could geocode. */
+    latitude?: number | undefined;
+    longitude?: number | undefined;
+  }) =>
     request<DeliveryQuote>("/orders/delivery-quote", {
       method: "POST",
       body: payload,

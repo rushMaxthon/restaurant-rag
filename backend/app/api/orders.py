@@ -36,8 +36,9 @@ from app.services.auth import (
     resolve_owner_restaurant_id,
 )
 from app.models.restaurant_location import RestaurantLocation
-from app.services.delivery import geocoding
-from app.services.delivery.quoting import fee_from, quote_for, usable_in
+from app.models.user_saved_address import UserSavedAddress
+from app.services.delivery.quoting import fee_from, points_for, quote_for, usable_in
+from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services.orders import (
     create_order,
     normalize_stored_currency,
@@ -84,12 +85,12 @@ def quote_delivery(
     Always answers with a fee. A courier that is switched off, unconfigured,
     slow or unwilling to serve the address falls back to the branch's own flat
     rate — the figure every order has been charged until now — and says so in
-    `source`. A checkout that could be left with no number to print would just
-    invent one, which is the thing this whole path exists to avoid.
+    `source`. A checkout left with no number to print would invent one, which
+    is the thing this whole path exists to avoid.
 
-    Placing the order recomputes all of this server-side. This endpoint is for
-    showing a customer a figure while they type, never the authority on what
-    they are charged.
+    Placing the order recomputes all of this server-side from the same rule.
+    This endpoint shows a customer a figure while they type; it is never the
+    authority on what they are charged.
     """
 
     location = db.get(RestaurantLocation, payload.restaurant_location_id)
@@ -98,21 +99,62 @@ def quote_delivery(
     ensure_restaurant_writable(app_scope, location.restaurant_id)
 
     branch_fee = location.delivery_fee or 0
-    # The same source an order is stamped from, so the figure shown here
-    # and the figure charged cannot be in different currencies.
+    # The same source an order is stamped from, so the figure shown here and
+    # the figure charged cannot be in different currencies.
     currency = normalize_stored_currency(location.restaurant.currency)
-    quote = quote_for(location, payload.delivery_address)
-    if quote is None:
-        return DeliveryQuoteResponse(
-            delivery_fee=branch_fee, currency=currency, source="branch"
-        )
 
-    if not usable_in(quote, currency):
-        # A courier pricing in a currency this order is not charged in has not
-        # answered the question. The branch fee stands, and `source` says so
-        # rather than a rupee figure appearing beside a dollar subtotal.
+    # A saved address the customer picked from the autocomplete already carries
+    # the map provider's own coordinates for that building. Re-geocoding it
+    # would be a paid call that returns a worse answer than the stored one.
+    known_drop: tuple[float, float, str] | None = None
+    if payload.latitude is not None and payload.longitude is not None:
+        # A place the customer picked. ROOFTOP because they chose a building
+        # from a list rather than typed a string somebody has to interpret —
+        # which is the one case where the coordinate is better than anything
+        # this server could work out for itself.
+        known_drop = (payload.latitude, payload.longitude, GeocodeConfidence.ROOFTOP.value)
+    elif payload.saved_address_id is not None:
+        saved = db.get(UserSavedAddress, payload.saved_address_id)
+        # Scoped to the caller: an address id is a guessable handle, and
+        # quoting against somebody else's would leak where they live by way of
+        # a delivery distance.
+        if saved is not None and saved.user_id == current_user.id:
+            if saved.latitude is not None and saved.longitude is not None:
+                known_drop = (saved.latitude, saved.longitude, saved.geocode_confidence)
+
+    query = AddressQuery(
+        line1=payload.delivery_address,
+        city=payload.city,
+        state=payload.state,
+        postal_code=payload.postal_code,
+        country=payload.country,
+        # When the form sent no parts, the line is all there is and it is a
+        # whole address rather than a street — so it is geocoded as freeform.
+        freeform="" if payload.city else payload.delivery_address,
+    )
+
+    # Located once and passed down. Geocoding both ends twice would double
+    # every paid lookup, which caching hides in development and a bill exposes
+    # in production.
+    pickup, drop = points_for(location, query, db=db, known_drop=known_drop)
+    located = {
+        "exact_location": pickup.exact and drop.exact,
+        "located_by": drop.source,
+        "matched_address": drop.matched,
+    }
+    # A branch located for the first time has its coordinates written onto its
+    # row by `for_branch`. Committing here is what makes every later order free.
+    if db.is_modified(location):
+        db.commit()
+
+    quote = quote_for(location, query, db=db, points=(pickup, drop))
+    if quote is None or not usable_in(quote, currency):
+        # No courier, or one pricing in a currency this order is not charged
+        # in — which has not answered the question. Either way the branch fee
+        # stands, and `source` says so rather than a rupee figure appearing
+        # beside a dollar subtotal.
         return DeliveryQuoteResponse(
-            delivery_fee=branch_fee, currency=currency, source="branch"
+            delivery_fee=branch_fee, currency=currency, source="branch", **located
         )
 
     fee = fee_from(quote)
@@ -124,11 +166,9 @@ def quote_delivery(
             currency=currency,
             source="branch",
             serviceable=quote.serviceable,
-            exact_location=False,
+            **located,
         )
 
-    pickup = geocoding.for_branch(location)
-    drop = geocoding.for_address(payload.delivery_address)
     return DeliveryQuoteResponse(
         delivery_fee=fee,
         currency=currency,
@@ -136,7 +176,7 @@ def quote_delivery(
         serviceable=True,
         distance_metres=quote.distance_metres,
         assign_seconds=quote.assign_seconds,
-        exact_location=pickup.exact and drop.exact,
+        **located,
     )
 
 
