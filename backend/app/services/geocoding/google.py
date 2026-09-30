@@ -86,27 +86,40 @@ _EMPTY_STATUSES = {"ZERO_RESULTS", "NOT_FOUND"}
 def confidence_for(result: dict[str, Any]) -> GeocodeConfidence:
     """How precise a Google result is.
 
-    Takes the BEST of what `location_type` and `types` claim, because they
-    disagree in both directions: a society entrance comes back
-    `establishment` with `location_type: APPROXIMATE`, and reading only the
-    latter would refuse to price a perfectly deliverable address.
+    `types` says WHAT was found; `location_type` says how the point was
+    derived. They disagree in both directions and neither alone is enough:
+    reading only `location_type` marks a society entrance APPROXIMATE and
+    throws away a perfectly deliverable address, while reading the more
+    optimistic of the two grades a country centroid as good enough to charge
+    for. So the type wins, except that an actual address point outranks any
+    label.
     """
 
-    best: GeocodeConfidence | None = None
     geometry = result.get("geometry")
     geometry = geometry if isinstance(geometry, dict) else {}
-    mapped = _LOCATION_TYPES.get(str(geometry.get("location_type") or "").strip().upper())
-    if mapped is not None:
-        best = mapped
+    located = _LOCATION_TYPES.get(str(geometry.get("location_type") or "").strip().upper())
+
+    # `types` is authoritative about WHAT was found; `location_type` only says
+    # how the point was derived. Taking the more optimistic of the two was a
+    # bug with a price on it: gibberish geocodes to `types: ["country"]` with
+    # `location_type: APPROXIMATE`, and reading APPROXIMATE as a locality
+    # graded the centroid of India as precise enough to price a delivery from.
+    # The courier honestly quoted 769 km and ₹7,715.85 to deliver a ₹50 loaf.
+    typed: GeocodeConfidence | None = None
     for entry in result.get("types") or []:
         candidate = _RESULT_TYPES.get(str(entry).strip().lower())
         if candidate is None:
             continue
-        # Enum members are not ordered, so "better" is spelled out: precise
-        # beats imprecise, and among the rest the first reading stands.
-        if best is None or (candidate.is_precise and not best.is_precise):
-            best = candidate
-    return best or GeocodeConfidence.LOCALITY
+        # The most precise recognised type wins, which is what rescues a
+        # society entrance typed `establishment` alongside vaguer labels.
+        if typed is None or candidate.rank > typed.rank:
+            typed = candidate
+
+    # ROOFTOP and RANGE_INTERPOLATED are a stronger claim than any type name:
+    # they mean Google has an actual address point rather than a centroid.
+    if located is not None and located.is_precise:
+        return located
+    return typed or located or GeocodeConfidence.LOCALITY
 
 
 class GoogleGeocoder:

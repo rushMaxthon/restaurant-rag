@@ -17,6 +17,7 @@ import os
 import sys
 import unittest
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -281,6 +282,66 @@ class AStandInIsNotATrip(unittest.TestCase):
             get_settings.cache_clear()
             with mock.patch.object(quoting, "delivery_provider", return_value=provider):
                 self.assertIsNotNone(quoting.quote_for(_Branch(), "x", points=points))
+
+
+class ADeliveryNobodyWouldDrive(unittest.TestCase):
+    """The backstop, and the most expensive bug this work turned up.
+
+    A typo'd address geocoded to the centroid of India. The coordinates were
+    graded honestly, the cascade then found a same-named place elsewhere, and
+    Pidge quoted the journey without complaint: 1,605 km, ₹16,076.02 to deliver
+    a ₹50 loaf of bread, shown to the customer as the delivery fee.
+
+    Grading coordinates does not catch every variant of a lookup landing in the
+    wrong place. A distance nobody would ever drive does, and the courier
+    cannot be expected to apply that judgement — it is our order, not theirs.
+    """
+
+    def setUp(self) -> None:
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def test_a_journey_across_the_country_is_refused(self) -> None:
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote(distance_metres=1_605_603.0)
+        points = (
+            Coordinates(21.2, 72.8, exact=True, source="row"),
+            Coordinates(20.6, 78.9, exact=False, source="geocoder", confidence="LOCALITY"),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                self.assertIsNone(quoting.quote_for(_Branch(), "x", points=points))
+
+    def test_an_ordinary_trip_is_not(self) -> None:
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote(distance_metres=6_704.0)
+        points = (
+            Coordinates(21.2, 72.8, exact=True, source="row"),
+            Coordinates(21.3, 72.9, exact=True, source="geocoder", confidence="ROOFTOP"),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                self.assertIsNotNone(quoting.quote_for(_Branch(), "x", points=points))
+
+    def test_the_branch_radius_wins_over_the_platform_bound(self) -> None:
+        # A restaurant that says it delivers 5 km is answering the question
+        # better than any default could.
+        near = SimpleNamespace(service_radius_km=Decimal("5"))
+        self.assertTrue(quoting.within_reach(near, 4_000))
+        self.assertFalse(quoting.within_reach(near, 9_000))
+
+    def test_an_unknown_distance_is_allowed_through(self) -> None:
+        # A courier that priced the trip without saying how far it is has still
+        # answered. Refusing on a missing field throws away good quotes.
+        self.assertTrue(quoting.within_reach(_Branch(), None))
 
 
 class AskingPidgeForAPrice(unittest.TestCase):

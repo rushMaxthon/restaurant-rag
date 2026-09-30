@@ -713,6 +713,19 @@ class Settings(BaseSettings):
     # purpose: a courier having a slow minute must not hold up a customer who
     # is ready to pay, and the fallback is the branch's own fee, not an error.
     delivery_quote_timeout_seconds: float = 6.0
+    # The furthest a food delivery can sensibly be, in kilometres.
+    #
+    # A backstop, not a business rule, and it exists because a geocoder that
+    # lands in the wrong place produces a REAL courier price for it. A typo'd
+    # address resolved to the centroid of India and Pidge honestly quoted 1,605
+    # km — ₹16,076 to deliver a ₹50 loaf of bread, shown to the customer as the
+    # fee. No amount of grading coordinates catches every variant of that;
+    # a distance nobody would ever drive does.
+    #
+    # 50 km is generous for any real order and tight enough to catch a lookup
+    # landing in another state. A branch's own `service_radius_km` overrides it
+    # when set, because that is the restaurant's actual answer.
+    delivery_max_distance_km: float = 50.0
 
     # --- geocoding ----------------------------------------------------------
     #

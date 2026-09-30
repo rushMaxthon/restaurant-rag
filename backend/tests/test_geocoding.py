@@ -197,6 +197,36 @@ class ReadingGoogle(unittest.TestCase):
         }
         self.assertTrue(google_module.confidence_for(result).is_precise)
 
+    def test_a_country_centroid_is_never_precise(self) -> None:
+        """The most expensive bug found in this work, caught by a live probe.
+
+        Gibberish geocodes to `types: ["country"]` with
+        `location_type: APPROXIMATE`. Reading the more optimistic of the two
+        graded the centroid of India as good enough to price a delivery from,
+        and the courier honestly quoted 769 km — ₹7,715.85 to deliver a ₹50
+        loaf of bread, shown to the customer as the fee.
+
+        `types` says WHAT was found and outranks `location_type`, which only
+        says how the point was derived.
+        """
+
+        result = {"types": ["country", "political"], "geometry": {"location_type": "APPROXIMATE"}}
+        self.assertEqual(google_module.confidence_for(result), GeocodeConfidence.REGION)
+        self.assertFalse(google_module.confidence_for(result).is_precise)
+
+    def test_a_state_centroid_is_never_precise(self) -> None:
+        result = {
+            "types": ["administrative_area_level_1"],
+            "geometry": {"location_type": "APPROXIMATE"},
+        }
+        self.assertEqual(google_module.confidence_for(result), GeocodeConfidence.REGION)
+
+    def test_an_actual_address_point_outranks_a_vague_label(self) -> None:
+        # ROOFTOP means Google holds a real address point. That is a stronger
+        # claim than any type name, so it must not be dragged down.
+        result = {"types": ["locality"], "geometry": {"location_type": "ROOFTOP"}}
+        self.assertTrue(google_module.confidence_for(result).is_precise)
+
     def test_a_postcode_result_is_not_precise(self) -> None:
         result = {"types": ["postal_code"], "geometry": {"location_type": "APPROXIMATE"}}
         self.assertFalse(google_module.confidence_for(result).is_precise)

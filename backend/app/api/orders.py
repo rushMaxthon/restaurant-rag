@@ -38,6 +38,7 @@ from app.services.auth import (
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
 from app.services.delivery.quoting import fee_from, points_for, quote_for, usable_in
+from app.services.delivery.registry import delivery_provider
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services import order_charges
 from app.services.orders import (
@@ -96,6 +97,29 @@ def _priced(location, payload: DeliveryQuoteRequest, delivery_fee) -> dict:
         discount_amount=payload.discount_amount,
     )
     return {"charges": charges_response(charges), "total_amount": charges.total_amount}
+
+
+def _why_no_quote(quote, unusable: str, drop) -> str:
+    """Which of the several reasons the branch fee is standing.
+
+    Worth getting right because the page acts on it: one reason tells the
+    customer to check their address, another tells them there is nothing they
+    can do. Reporting "no courier" for a lookup that landed in the wrong city
+    sends them to wait for a problem that is theirs to fix.
+
+    A refused quote with an INEXACT drop is almost always the address. That is
+    how the 1,605 km quote arrived: the coordinates graded as usable, the
+    courier priced the journey honestly, and the distance backstop threw it
+    out — which is a statement about the address, not about the courier.
+    """
+
+    if unusable:
+        return unusable
+    if quote is not None:
+        return "currency_mismatch"
+    if delivery_provider() is None:
+        return "no_courier"
+    return "address_unknown" if not drop.exact else "unserviceable"
 
 
 @router.post("/delivery-quote", response_model=DeliveryQuoteResponse)
@@ -195,10 +219,7 @@ def quote_delivery(
             delivery_fee=branch_fee,
             currency=currency,
             source="branch",
-            fallback_reason=(
-                unusable
-                or ("currency_mismatch" if quote is not None else "no_courier")
-            ),
+            fallback_reason=_why_no_quote(quote, unusable, drop),
             **_priced(location, payload, branch_fee),
             **located,
         )

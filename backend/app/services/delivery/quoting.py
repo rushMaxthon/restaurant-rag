@@ -91,6 +91,26 @@ def points_for(
     )
 
 
+def within_reach(location: RestaurantLocation, metres: float | None) -> bool:
+    """Whether a distance is one a food delivery could plausibly cover.
+
+    The branch's own `service_radius_km` when it has one, because that is the
+    restaurant's actual answer, and a platform bound otherwise.
+
+    Unknown distance passes: a courier that priced the trip without saying how
+    far it is has still answered the question, and refusing on a missing field
+    would throw away good quotes.
+    """
+
+    if metres is None:
+        return True
+    radius = getattr(location, "service_radius_km", None)
+    limit_km = float(radius) if radius else get_settings().delivery_max_distance_km
+    if limit_km <= 0:
+        return True
+    return metres <= limit_km * 1000
+
+
 def quote_for(
     location: RestaurantLocation,
     delivery_address: AddressQuery | str,
@@ -156,7 +176,7 @@ def quote_for(
         return None
 
     try:
-        return quoter(
+        quote = quoter(
             pickup_lat=pickup.latitude,
             pickup_lng=pickup.longitude,
             drop_lat=drop.latitude,
@@ -169,6 +189,19 @@ def quote_for(
     except Exception:  # noqa: BLE001 - a checkout must survive any courier bug
         logger.exception("Quoting the courier raised; charging the branch fee instead")
         return None
+
+    if quote is not None and not within_reach(location, quote.distance_metres):
+        # A real price for a journey nobody would make. The courier cannot be
+        # expected to catch this — Pidge quoted 1,605 km without complaint when
+        # a typo'd address resolved to the middle of the country — so the
+        # backstop lives here, where the order is.
+        logger.warning(
+            "Not quoting: %.1f km is further than this branch delivers; "
+            "the address almost certainly resolved to the wrong place.",
+            (quote.distance_metres or 0) / 1000,
+        )
+        return None
+    return quote
 
 
 def usable_in(quote: DeliveryQuote, currency: str) -> bool:
@@ -221,4 +254,11 @@ def delivery_fee_for(
     return fee
 
 
-__all__ = ["delivery_fee_for", "fee_from", "points_for", "quote_for", "usable_in"]
+__all__ = [
+    "delivery_fee_for",
+    "fee_from",
+    "points_for",
+    "quote_for",
+    "usable_in",
+    "within_reach",
+]
