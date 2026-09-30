@@ -686,8 +686,8 @@ Kept because the notes are hard-won, not because they apply here.
   `ix_payment_transactions_provider_payment_id`, which a refund webhook needs
   to match a payment back to an order.
 
-  **The chain is now single-headed and linear**, 68 revisions from
-  `0001_initial_schema` to `0070_channel_connections`, with the two branches
+  **The chain is now single-headed and linear**, 70 revisions from
+  `0001_initial_schema` to `0069_order_deliveries`, with the two branches
   joined at `0062_app_client_domains`:
 
   ```
@@ -697,7 +697,15 @@ Kept because the notes are hard-won, not because they apply here.
     -> 0067_restaurant_payment_accounts -> 0068_payment_transaction_payment_id
     -> 0063_marketing_consent -> 0064_marketing_campaign_fields
     -> 0069_campaign_recipients -> 0070_channel_connections
+    -> 0071_kitchen_staff -> 0069_order_deliveries
   ```
+
+  **`0069_order_deliveries` is the head, and it runs after `0071`.** V2 wrote
+  it against `0068`, which the marketing chain had already continued from, so
+  the 2026-09-30 merge produced two heads. It was re-pointed rather than
+  renumbered, for the same reason as 0063/0064 below. Its table was created on
+  Supabase by hand before the merge, so there it takes its guarded early return
+  and only moves the stamp.
 
   **`0063_marketing_consent` and `0064_marketing_campaign_fields` run after
   `0068`, despite their numbers.** They were re-pointed off the fork rather
@@ -725,8 +733,9 @@ Kept because the notes are hard-won, not because they apply here.
   well as a CREATE — pass the bare name to both, or the downgrade tries to
   drop `ck_users_ck_users_kitchen_assignment`.
 
-  **Supabase is otherwise still stamped `0070_channel_connections`** and that
-  stamp still resolves, so everything before 0071 remains a no-op there. Nothing
+  **Supabase is stamped `0071_kitchen_staff`** (checked 2026-09-30), so the
+  only pending revision there is `0069_order_deliveries`, a no-op beyond the
+  stamp. Everything before it remains a no-op there. Nothing
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
@@ -769,6 +778,7 @@ Kept because the notes are hard-won, not because they apply here.
 | `LLM_ARCHITECTURE.md` | which model, why, backend vs LLM responsibilities |
 | `PROJECT_UNDERSTANDING.md` | broad product overview |
 | `backend/docs/chat-rag-workflow.md` | customer chat internals |
+| `backend/docs/delivery-integration.md` | getting the food to the customer: Pidge, the courier contract, and the webhook that does not trust its payload |
 | `docs/per-app-identity.md` | the AppClient identity split |
 | `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |
 | `MENU_ITEM_CUSTOMIZATION_FLOW.md`, `STRIPE_PAYMENT_INTEGRATION_PLAN.md` | those flows |

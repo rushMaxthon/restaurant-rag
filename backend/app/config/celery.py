@@ -17,6 +17,7 @@ celery_app = Celery(
     include=[
         "app.tasks.ai_recommendations",
         "app.tasks.ai_offers",
+        "app.tasks.delivery",
         "app.tasks.embed",
         "app.tasks.generated_combos",
         "app.tasks.insights",

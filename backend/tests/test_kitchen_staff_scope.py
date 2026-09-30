@@ -848,6 +848,64 @@ class KitchenBoardRouteTests(KitchenFixture, unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
 
+    # `GET /orders/{id}/delivery` arrived from V2 written against the owner-only
+    # scope, and the merge left it calling a function it no longer imported —
+    # a NameError for every owner, with no test to notice. It now shares
+    # `get_order`'s reader; these pin that it stays there, because what it
+    # returns includes a rider's phone number.
+
+    def _delivery(self, order: Order) -> None:
+        from app.models.order_delivery import OrderDelivery
+
+        self.session.add(
+            OrderDelivery(
+                order_id=order.id,
+                provider="pidge",
+                provider_order_id="P-1",
+                state="ASSIGNED",
+                rider_mobile="+910000000000",
+            )
+        )
+        self.session.commit()
+
+    def test_an_owner_reads_the_delivery_of_their_own_order(self) -> None:
+        import sqlalchemy as sa
+
+        owner = self.session.scalar(
+            sa.select(User).join(Restaurant, Restaurant.owner_id == User.id).where(
+                Restaurant.id == self.restaurant_a_id
+            )
+        )
+        undispatched = self._order(self.restaurant_a_id, self.location_a_id)
+        dispatched = self._order(self.restaurant_a_id, self.location_a_id)
+        self._delivery(dispatched)
+        client = self._client_as(owner.id)
+
+        response = client.get(f"/api/orders/{undispatched.id}/delivery")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json())
+
+        response = client.get(f"/api/orders/{dispatched.id}/delivery")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["provider_order_id"], "P-1")
+
+    def test_a_cook_reads_their_own_branchs_delivery(self) -> None:
+        order = self._order(self.restaurant_a_id, self.location_a_id)
+        self._delivery(order)
+        cook = self._pinned_cook()
+
+        response = self._client_as(cook.id).get(f"/api/orders/{order.id}/delivery")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["state"], "ASSIGNED")
+
+    def test_a_cook_cannot_read_another_branchs_delivery(self) -> None:
+        order = self._order(self.restaurant_b_id, self.location_b_id)
+        self._delivery(order)
+        cook = self._pinned_cook()
+
+        response = self._client_as(cook.id).get(f"/api/orders/{order.id}/delivery")
+        self.assertEqual(response.status_code, 404)
+
 
 @unittest.skipUnless(postgres_available(), "Postgres is not reachable")
 class LiveWindowTests(KitchenFixture, unittest.TestCase):

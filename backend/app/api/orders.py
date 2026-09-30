@@ -5,14 +5,17 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import AppScopeDep, ensure_restaurant_readable, ensure_restaurant_writable
+from app.api.deps import AppScope, AppScopeDep, ensure_restaurant_readable, ensure_restaurant_writable
 from app.config.database import get_db
 from app.models.enums import OrderStatus, UserRole
+from app.models.order_delivery import OrderDelivery
 from app.models.user import User
 from app.schemas.order import (
     OrderCreateRequest,
+    OrderDeliveryResponse,
     OrderResponse,
     OrderStatusUpdateRequest,
     OrderValidationResponse,
@@ -201,13 +204,16 @@ def read_order_payment_status(
     )
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
-def get_order(
+def _read_order(
+    db: Session,
+    current_user: User,
     order_id: uuid.UUID,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    app_scope: AppScopeDep,
+    app_scope: AppScope,
 ) -> OrderResponse:
+    # One reader for the order and everything hung off it. The delivery route
+    # was written against the owner-only scope and would otherwise have been a
+    # second copy of this rule to fall out of step — a pinned cook must not
+    # read a rider's phone number for a branch whose order they cannot open.
     owner_restaurant_id: uuid.UUID | None = None
     owner_restaurant_location_id: uuid.UUID | None = None
     if current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
@@ -223,6 +229,35 @@ def get_order(
     )
     ensure_restaurant_readable(app_scope, order.restaurant_id)
     return order
+
+
+@router.get("/{order_id}", response_model=OrderResponse)
+def get_order(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderResponse:
+    return _read_order(db, current_user, order_id, app_scope)
+
+
+@router.get("/{order_id}/delivery", response_model=OrderDeliveryResponse | None)
+def get_order_delivery(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """What the courier is doing with this order, or null if nobody was asked.
+
+    Behind the same reader as the order itself rather than a looser check: a
+    delivery carries a rider's phone number and the customer's distance, and
+    whoever may not read the order may not read those either.
+    """
+
+    order = _read_order(db, current_user, order_id, app_scope)
+    delivery = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    return OrderDeliveryResponse.model_validate(delivery) if delivery is not None else None
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)

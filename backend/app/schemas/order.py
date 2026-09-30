@@ -252,3 +252,30 @@ class OrderResponse(BaseModel):
     # `list_orders` for DELIVERED rows only; null for every other status, and
     # for delivered orders older than event tracking, which have no such row.
     completed_at: datetime | None = None
+
+
+class OrderDeliveryResponse(BaseModel):
+    """What the courier is doing with this order, for the admin.
+
+    `state` is ours; `provider_status` is the courier's own word, kept so a
+    status nobody has seen before is diagnosable from the screen rather than
+    from the logs. `raw` is deliberately NOT here — it can carry a customer's
+    address and phone in a shape nothing validates, and the panel has no use
+    for it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    provider_order_id: str
+    state: str
+    provider_status: str
+    rider_name: str
+    rider_mobile: str
+    tracking_url: str
+    distance_metres: float | None
+    picked_up_at: datetime | None
+    delivered_at: datetime | None
+    last_error: str
+    created_at: datetime
+    updated_at: datetime

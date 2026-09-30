@@ -1,4 +1,5 @@
 import type {
+  OrderDelivery,
   AdminAILog,
   AdminPreferenceOption,
   AdminPreferenceQuestion,
@@ -895,6 +896,15 @@ export const api = {
       token,
       body: payload,
     });
+  },
+  /**
+   * What the courier is doing with this order, or null if nobody was asked.
+   *
+   * Behind the same reader as the order itself: a delivery carries a rider's
+   * phone number, and whoever may not read the order may not read that.
+   */
+  getOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery`, { token });
   },
   /** What this restaurant has switched on, and why. Owners may read it too. */
   getRestaurantCapabilities(token: string, restaurantId: string): Promise<RestaurantCapability[]> {

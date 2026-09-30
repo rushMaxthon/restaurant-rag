@@ -1411,3 +1411,26 @@ export interface KitchenStaffUpdatePayload {
   clear_restaurant_location?: boolean;
   is_active?: boolean;
 }
+
+/**
+ * What a courier is doing with one order.
+ *
+ * `state` is ours — seven values, mapped from the courier's sixteen.
+ * `provider_status` is their own word, kept beside it so an unmapped status
+ * is still readable on the screen rather than only in a log.
+ */
+export interface OrderDelivery {
+  provider: string;
+  provider_order_id: string;
+  state: string;
+  provider_status: string;
+  rider_name: string;
+  rider_mobile: string;
+  tracking_url: string;
+  distance_metres: number | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  last_error: string;
+  created_at: string;
+  updated_at: string;
+}

@@ -26,6 +26,42 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 — Merged origin/V2 (Pidge delivery) into marketing
+
+**Goal:** merge V2 into `marketing`, keeping both sides, and verify.
+
+**Changed:**
+- Merged `origin/V2` at `67b7531` (the local `V2` branch is stale and was
+  already in `marketing`). Three textual conflicts, all "both added":
+  `schemas/order.py` (`completed_at` + `OrderDeliveryResponse`),
+  `tests/test_dependency_imports.py` (`app.tasks.marketing` + `.delivery`),
+  `frontend-admin/src/types/app.ts` (`KitchenStaff*` + `OrderDelivery`).
+- `api/orders.py` — the conflict git did NOT flag. V2's
+  `GET /orders/{id}/delivery` called `resolve_owner_restaurant_id`, whose
+  import marketing had replaced, so the merge left a NameError for every
+  owner. Both routes now share `_read_order` (the `resolve_order_board_scope`
+  path), so a pinned cook reads a delivery only on their own branch.
+- `0069_order_deliveries` re-pointed `0068` -> `0071_kitchen_staff` (was a
+  second head); revision id kept. Also enables RLS on the fresh-create path,
+  which V2 only did on the already-exists path.
+- `tests/test_kitchen_staff_scope.py` — three route tests for `/delivery`.
+- `CLAUDE.md` — migration chain and Supabase stamp updated.
+
+**Verified:** `alembic heads` -> single head `0069_order_deliveries`;
+empty DB -> head -> downgrade -1 -> head on a throwaway local DB, RLS on;
+`compileall` clean; `import app.main` OK; backend full suite 2641 tests,
+24 failures/errors all in `test_ordering_agent_order_details` (the known
+pre-existing set; the merge touches no agent code); delivery, kitchen,
+realtime and import suites 140/140 OK; admin `tsc`, build, vitest 209/209.
+Admin lint: nothing new in merged files (`OrderDetailPage.tsx:179` is from
+2026-08-24).
+
+**Open:**
+- Supabase is stamped `0071_kitchen_staff`; `alembic upgrade head` there only
+  moves the stamp (table + RLS + indexes already exist). Not run — shared DB.
+- `.claude/worklog_{BACKUP,BASE,LOCAL,REMOTE}_7330.md` are mergetool debris
+  committed in `d4b685f`; left alone.
+
 ## 2026-09-30 — Kitchen board: silent chime after reload, stuck board on 401
 
 **Goal:** review the kitchen workflow, then fix the two bugs found: (1) no
@@ -227,6 +263,54 @@ offered), and "remove something" on an empty cart is answered from the rows.
 Verified live on Bodakdev: Clear cart → question → All → empty; no → kept;
 remove one → question with names → 2 → second line off; the tofu → the only
 line off. Suite 2283 OK.
+
+## 2026-09-29 — Delivery: Pidge integrated end to end
+
+**Goal:** the user shared Pidge's Postman docs and sandbox credentials, asked
+what was useful, then to build it: provider → persistence → dispatch → webhook
+→ admin.
+
+**Changed:** `services/delivery/` (base, pidge_provider, registry, service),
+`models/order_delivery.py`, migration `0069`, `tasks/delivery.py`,
+`api/delivery.py`, the dispatch trigger in `services/orders.py`,
+`DeliveryPanel.tsx`, `docs/delivery-integration.md`.
+
+**Written against the sandbox, not the docs**, which disagree in four places —
+`address_line_1` not `line1`, notes `{name,value}` not `{key,value}`, the
+create response keyed by OUR `source_order_id` not `data.id`, and `brand`
+refused on a vendor account ("allowed only for aggregator(6)"). All pinned in
+tests so nobody rediscovers them from a production 400.
+
+**The judgement that matters:** sixteen Pidge statuses collapse to seven, and
+the return-to-origin family is `FAILED`, not `CANCELLED`. The food was cooked
+and came back; that is a different fact from "nobody started it", and only one
+of them leaves somebody out of pocket. `FAILED` moves the order nowhere — a
+person decides.
+
+**The webhook does not trust its payload.** Pidge signs nothing, so a push is
+read only for which delivery it concerns and the state is then fetched over our
+own authenticated connection. Proven: a forged `DELIVERED` left the order on
+`ACCEPTED`.
+
+**Verified:** full journey against the live sandbox — kitchen accepts → task
+queued → Pidge returns a job id → row stored → forged webhook ignored → real
+progression walked `PICKED_UP → OUT_FOR_DELIVERY → DELIVERED` carrying the
+order with it. Backend 2392 tests; admin builds clean, 131 tests.
+
+**Open:**
+- **Aggregator account from Pidge** — blocks per-tenant brand mapping.
+- **No cancel and no quote/serviceability endpoint** documented. The second
+  means we cannot price delivery or validate an address before taking money.
+- `ENABLE_DELIVERY_DISPATCH` is off in `.env`; nothing fires on real orders yet.
+
+**Learned — the shared database is a trap.** Supabase reads
+`0071_kitchen_staff`, a revision only `origin/marketing` has; V2 ends at `0068`
+and there are already two different `0064_*` files across branches. So `0069`
+exists twice (`order_deliveries` here, `campaign_recipients` there). The table
+was created on Supabase directly with RLS enabled (50 tables, 50 with RLS,
+0 policies — the documented deny-by-default), and `0069` now tolerates the
+table already existing so reconciling the chains is not an outage. **Branches
+sharing one database with forked chains needs sorting before either merges.**
 
 **2026-09-25 — every list is numbered.** The user's ask: "menu" answered with
 one comma-joined line is a paragraph to read and nothing to answer; show

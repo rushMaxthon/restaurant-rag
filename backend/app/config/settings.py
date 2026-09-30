@@ -784,6 +784,29 @@ class Settings(BaseSettings):
     razorpay_key_id: str = "rzp_test_mock"
     razorpay_key_secret: str = "razorpay_mock_secret"
 
+    # --- delivery dispatch --------------------------------------------------
+    #
+    # Off by default, like every other AI and integration flag here: a courier
+    # that starts dispatching riders because a deploy shipped is worse than one
+    # that has to be switched on. Nothing calls Pidge until this is true AND
+    # credentials exist.
+    enable_delivery_dispatch: bool = False
+    pidge_base_url: str = "https://store.dev.pidge.in"
+    pidge_username: str = ""
+    pidge_password: str = ""
+    # Sent only on an aggregator account. A vendor account refuses the whole
+    # order with "Brand is allowed only for aggregator(6)", so an empty code
+    # means the block is omitted rather than sent empty. Measured against
+    # their sandbox, where the test account is a vendor (type 4).
+    pidge_brand_code: str = ""
+    pidge_brand_location_code: str = ""
+    pidge_brand_name: str = ""
+    # Defence in depth, not the guarantee. Pidge signs nothing, so the webhook
+    # confirms every push by fetching the order over our own authenticated
+    # connection; this secret only keeps casual noise out, and it travels in a
+    # header that ends up in logs and proxies like any other.
+    delivery_webhook_secret: str = ""
+
     fcm_project_id: str = "quickbite-7833a"
     fcm_credentials_path: str = "firebase-service-account.json"
 
