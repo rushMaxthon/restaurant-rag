@@ -41,27 +41,49 @@ const STATES: Record<string, { label: string; tone: 'ok' | 'busy' | 'warn' }> = 
   FAILED: { label: 'Could not be delivered', tone: 'warn' },
 };
 
+/** States a delivery cannot move on from, so there is nothing left to watch. */
+const DONE = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
+
 export function DeliveryPanel({ token, orderId }: DeliveryPanelProps) {
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getOrderDelivery(token, orderId)
-      .then((row) => {
-        if (!cancelled) setDelivery(row);
-      })
-      .catch(() => {
-        // A courier we cannot read about must not take the order screen down
-        // with it. The rest of the page is what somebody came here for.
-        if (!cancelled) setDelivery(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const read = () => {
+      api
+        .getOrderDelivery(token, orderId)
+        .then((row) => {
+          if (cancelled) return;
+          setDelivery(row);
+          // Keep watching while the rider is still moving, and STOP once the
+          // delivery is over. A terminal state cannot change, so polling it
+          // forever turns a fixed cost into one that grows with every order
+          // this restaurant has ever completed.
+          //
+          // Ten seconds reads as live to somebody watching an order without
+          // being a request per second per open tab. The server refreshes from
+          // the courier every minute, so a faster poll here would mostly
+          // re-read the same row.
+          if (row && !DONE.has(row.state)) timer = setTimeout(read, 10_000);
+        })
+        .catch(() => {
+          // A courier we cannot read about must not take the order screen down
+          // with it. The rest of the page is what somebody came here for.
+          if (cancelled) return;
+          setDelivery(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+
+    read();
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [token, orderId]);
 

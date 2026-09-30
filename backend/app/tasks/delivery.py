@@ -15,8 +15,12 @@ import uuid
 from app.config.celery import celery_app
 from app.config.database import SessionLocal
 from app.models.order import Order
-from app.services.delivery.base import DeliveryProviderError
-from app.services.delivery.service import dispatch
+from sqlalchemy import select
+
+from app.models.order_delivery import OrderDelivery
+from app.services.delivery.base import DeliveryProviderError, DeliveryState
+from app.services.delivery.registry import delivery_provider
+from app.services.delivery.service import dispatch, record
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +60,53 @@ def dispatch_order_task(self, order_id: str) -> dict[str, str]:
             "order_id": str(order_id),
             "provider_order_id": row.provider_order_id,
         }
+
+
+@celery_app.task(name="app.tasks.delivery.refresh_deliveries_task")
+def refresh_deliveries_task() -> dict[str, int]:
+    """Ask the courier what is happening to every delivery still in flight.
+
+    The webhook is an accelerator, not the mechanism. Pidge offers no API to
+    register a push URL — it is configured on their side — so a deployment that
+    has not arranged that yet would otherwise show a rider as PENDING forever.
+    Worse, a push that is dropped, retried into a closed port, or sent while
+    this service is restarting is simply lost, and nothing would ever correct
+    it.
+
+    So the status is PULLED on a schedule and pushed as a bonus. Both paths run
+    through the same `record`, so there is one way a delivery's state changes
+    however the news arrived, and a push that beats the poll costs nothing.
+
+    Only unfinished deliveries are asked about. A terminal one cannot change,
+    and polling it forever would turn a fixed cost into a growing one.
+    """
+
+    provider = delivery_provider()
+    if provider is None:
+        return {"checked": 0, "changed": 0}
+
+    done = [s.value for s in DeliveryState if s.is_terminal]
+    checked = changed = 0
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(OrderDelivery)
+            .where(OrderDelivery.state.notin_(done))
+            .where(OrderDelivery.provider_order_id != "")
+            .limit(200)
+        ).all()
+        for row in rows:
+            checked += 1
+            was = row.state
+            try:
+                result = provider.fetch(row.provider_order_id)
+            except DeliveryProviderError as error:
+                # One courier having a bad minute must not stop the rest of the
+                # sweep; the next run picks this row up again.
+                logger.warning("Could not refresh delivery %s: %s", row.id, error)
+                continue
+            record(db, row, result)
+            if row.state != was:
+                changed += 1
+                logger.info("Delivery %s moved %s -> %s", row.id, was, row.state)
+        db.commit()
+    return {"checked": checked, "changed": changed}

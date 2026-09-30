@@ -47,6 +47,22 @@ celery_app.conf.update(
             "task": "app.tasks.payments.reap_unpaid_orders_task",
             "schedule": crontab(minute="*/5"),
         },
+        # Pulls the status of every delivery still in flight. The courier's
+        # webhook is an accelerator on top of this, not a replacement for it:
+        # Pidge has no API to register a push URL, and a push that is dropped or
+        # arrives during a restart is simply lost with nothing to correct it.
+        # A minute is the coarsest interval that still reads as live to somebody
+        # watching a rider move.
+        **(
+            {
+                "refresh-deliveries": {
+                    "task": "app.tasks.delivery.refresh_deliveries_task",
+                    "schedule": crontab(minute="*"),
+                },
+            }
+            if settings.enable_delivery_dispatch
+            else {}
+        ),
         **(
             {
                 "generate-ai-offers-daily": {

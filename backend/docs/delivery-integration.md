@@ -88,6 +88,29 @@ An unknown status becomes `PENDING` rather than raising: a courier adding to
 its own vocabulary must not take an order down, and `PENDING` keeps everything
 watching.
 
+## Status is PULLED, and pushed as a bonus
+
+**Pidge has no API to register a webhook.** Probed: `/vendor/webhook`,
+`/vendor/settings` and `/vendor/profile` all refuse. The push URL is configured
+on their side, which means a deployment that has not arranged it yet would show
+every rider as PENDING forever.
+
+So `app.tasks.delivery.refresh_deliveries_task` runs every minute and asks the
+courier about every delivery still in flight. The webhook is an accelerator on
+top of that, not the mechanism. Even once Pidge is pushing, a push that is
+dropped, retried into a closed port, or sent while this service restarts is
+simply lost with nothing to correct it — the sweep corrects it within a minute.
+
+Both paths go through the same `record`, so a delivery's state changes one way
+however the news arrived.
+
+⚠️ **Only unfinished deliveries are asked about**, filtered in the query rather
+than after it. A terminal delivery cannot change, and re-asking would mean one
+HTTP call per completed order, forever.
+
+The admin panel polls its own API every ten seconds while a delivery is in
+flight and **stops on a terminal state**, for the same reason.
+
 ## The webhook does not believe its payload
 
 **Pidge signs nothing.** No signature header, no shared secret, nothing in

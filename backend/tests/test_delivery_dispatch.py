@@ -208,3 +208,106 @@ class ACourierMayNotRewindAnOrderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PullingTheStatusRatherThanWaitingForIt(unittest.TestCase):
+    """The sweep that keeps the admin honest without a webhook.
+
+    Pidge offers no API to register a push URL — it is configured on their
+    side — so a deployment that has not arranged that yet would show every
+    rider as PENDING forever. And even once it is arranged, a push that is
+    dropped, retried into a closed port, or sent while this service restarts is
+    simply lost, with nothing to correct it.
+
+    So the status is PULLED on a schedule and pushed as a bonus. Both paths go
+    through the same `record`, so a delivery's state changes one way however the
+    news arrived.
+    """
+
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ, {"ENABLE_DELIVERY_DISPATCH": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        get_settings.cache_clear()
+        self.addCleanup(get_settings.cache_clear)
+
+    def test_only_unfinished_deliveries_are_asked_about(self) -> None:
+        # A terminal delivery cannot change. Re-asking forever would turn a
+        # fixed cost into one that grows with every order ever completed.
+        from app.tasks import delivery as task
+
+        captured: dict[str, object] = {}
+
+        class FakeQuery:
+            def where(self, clause):
+                captured.setdefault("clauses", []).append(str(clause))
+                return self
+
+            def limit(self, n):
+                return self
+
+        class FakeSession:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def scalars(self_inner, q):
+                return SimpleNamespace(all=lambda: [])
+
+            def commit(self_inner):
+                pass
+
+        with mock.patch.object(task, "delivery_provider", return_value=mock.Mock()):
+            with mock.patch.object(task, "SessionLocal", FakeSession):
+                with mock.patch.object(task, "select", return_value=FakeQuery()):
+                    result = task.refresh_deliveries_task()
+
+        self.assertEqual(result, {"checked": 0, "changed": 0})
+        joined = " ".join(str(c) for c in captured.get("clauses", []))
+        # The filter has to be IN the query rather than applied afterwards, or
+        # every delivered order is fetched from the courier before being
+        # ignored — one HTTP call per finished order, forever.
+        self.assertIn("state", joined)
+        self.assertIn("provider_order_id", joined)
+
+    def test_no_courier_configured_does_nothing_quietly(self) -> None:
+        from app.tasks import delivery as task
+
+        with mock.patch.object(task, "delivery_provider", return_value=None):
+            self.assertEqual(task.refresh_deliveries_task(), {"checked": 0, "changed": 0})
+
+    def test_one_courier_failure_does_not_stop_the_sweep(self) -> None:
+        # A bad minute on one delivery must not leave every other one stale.
+        from app.tasks import delivery as task
+        from app.services.delivery.base import DeliveryProviderError, DeliveryState
+
+        rows = [
+            SimpleNamespace(id=1, provider_order_id="a", state=DeliveryState.PENDING),
+            SimpleNamespace(id=2, provider_order_id="b", state=DeliveryState.PENDING),
+        ]
+        provider = mock.Mock()
+        provider.fetch.side_effect = [DeliveryProviderError("down"), mock.Mock()]
+
+        class FakeSession:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def scalars(self_inner, q):
+                return SimpleNamespace(all=lambda: rows)
+
+            def commit(self_inner):
+                pass
+
+        with mock.patch.object(task, "delivery_provider", return_value=provider):
+            with mock.patch.object(task, "SessionLocal", FakeSession):
+                with mock.patch.object(task, "record") as recorded:
+                    result = task.refresh_deliveries_task()
+
+        # Both were attempted; only the one that answered was recorded.
+        self.assertEqual(result["checked"], 2)
+        self.assertEqual(recorded.call_count, 1)
