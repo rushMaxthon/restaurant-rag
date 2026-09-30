@@ -473,39 +473,6 @@ def patch_order_status(
         current_user,
         requested_restaurant_id=restaurant_id,
     )
-    """Move an order along the kitchen's pipeline.
-
-    Open to the restaurant's OWNER and to a platform ADMIN. It used to be the
-    owner alone, which read as a sensible boundary and was a support problem:
-    an operator watching a tenant's orders could see one sitting unaccepted and
-    had no way to help, and the page offered them no action at all — which is
-    how this was reported.
-
-    The scoping is unchanged and does the real work. An owner is still confined
-    to their own restaurant by `resolve_owner_restaurant_id`; an admin is
-    platform staff and may act on any, which is the same reach they already
-    have over every other order screen. Nothing else about the transition
-    moves: the flow stays linear and an unpaid order still never reaches a
-    kitchen.
-    """
-
-    if current_user.role not in {UserRole.OWNER, UserRole.ADMIN}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to change this order",
-        )
-
-    if current_user.role == UserRole.ADMIN:
-        # Platform staff are not bound to one restaurant, so the order's own
-        # restaurant is the scope. `update_order_status` still looks the order
-        # up by both, so a mismatched id is a 404 rather than a silent edit.
-        found = db.get(Order, order_id)
-        if found is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-        owner_restaurant_id = found.restaurant_id
-    else:
-        owner_restaurant_id = resolve_owner_restaurant_id(db, current_user)
-
     return update_order_status(
         db,
         current_user,

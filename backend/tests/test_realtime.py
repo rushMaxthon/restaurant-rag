@@ -83,6 +83,27 @@ settings = get_settings()
 TEST_DB_NAME = os.environ.get("REALTIME_TEST_DB", "restaurant_rag_realtime_test")
 
 
+def realtime(enabled: bool):
+    """Turn the feature on or off in a way that survives a cache clear.
+
+    `get_settings()` is `@lru_cache`d, and this module used to patch
+    `enable_realtime` on the ONE instance it captured at import. Any other test
+    that calls `get_settings.cache_clear()` — several do, to exercise their own
+    flags — makes the next `get_settings()` build a fresh Settings, so the patch
+    was still sitting on an object nobody read any more. These tests then passed
+    alone and failed in a full run, with nothing emitted and no explanation.
+
+    Patching the environment and clearing the cache sets the value wherever it
+    is read from, whenever it is read, which is the only form of this that
+    cannot be undone by somebody else's cleanup.
+    """
+
+    patcher = mock.patch.dict(os.environ, {"ENABLE_REALTIME": "true" if enabled else "false"})
+    patcher.start()
+    get_settings.cache_clear()
+    return patcher
+
+
 def _admin_url() -> str:
     return (
         f"postgresql+psycopg://{settings.postgres_user}:{settings.postgres_password}"
@@ -170,8 +191,12 @@ class TransportTests(unittest.TestCase):
 
     def test_disabled_flag_refuses_the_handshake_with_a_reason(self) -> None:
         # Clients stop retrying on exactly this reason and keep polling.
-        with mock.patch.object(settings, "enable_realtime", False):
+        patcher = realtime(False)
+        try:
             reason = _socketio_handshake({"token": "irrelevant"})
+        finally:
+            patcher.stop()
+            get_settings.cache_clear()
         self.assertEqual(reason, ("refused", "realtime_disabled"))
 
 
@@ -292,8 +317,8 @@ class RealtimeFixture:
         self.published: list[tuple[str, str]] = []
         outbox.set_emitter_for_tests(self.emitter, lambda ch, msg: self.published.append((ch, msg)))
         self.addCleanup(outbox.set_emitter_for_tests, None, None)
-        flag = mock.patch.object(settings, "enable_realtime", True)
-        flag.start()
+        flag = realtime(True)
+        self.addCleanup(get_settings.cache_clear)
         self.addCleanup(flag.stop)
 
     def _user(self, user_id: uuid.UUID) -> User:
@@ -397,8 +422,12 @@ class OutboxTests(RealtimeFixture, unittest.TestCase):
 
     def test_flag_off_queues_nothing(self) -> None:
         order = self._order()
-        with mock.patch.object(settings, "enable_realtime", False):
+        patcher = realtime(False)
+        try:
             self._advance(order)
+        finally:
+            patcher.stop()
+            get_settings.cache_clear()
         self.assertEqual(self.emitter.emitted, [])
 
     def test_revocation_announces_and_publishes_after_commit(self) -> None:
