@@ -488,6 +488,75 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         self.assertEqual(built.branding["cover_image_url"], "https://cdn.test/app/hero.jpg")
 
 
+class EditingATenantMustNotCollideWithItselfTests(unittest.TestCase):
+    """Reported as: editing a restaurant fails with the address already in use.
+
+    The storefront host is DERIVED from the app key, so an edit that keeps the
+    same key re-derives the same host, finds the tenant's own domain row, and
+    reports the tenant as colliding with itself:
+
+        "The storefront address 'bhagwati-bakery.localhost' is already used by
+         another app client"
+
+    Every other check in `validate_app_client_identity_is_available` passes
+    `exclude_app_client_id`; the host check did not. These tests hold both
+    halves — the exclusion must be honoured, and the guard must still catch a
+    genuine clash, which is not the same thing as never refusing.
+    """
+
+    def test_the_host_check_excludes_the_record_being_edited(self) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_is_host_taken(db, *, host, exclude_app_client_id=None):
+            seen["host"] = host
+            seen["exclude"] = exclude_app_client_id
+            # The row that IS this tenant's own, which is what made the bug.
+            return exclude_app_client_id is None
+
+        editing = uuid.uuid4()
+        with patch.object(app_clients, "is_host_taken", side_effect=fake_is_host_taken):
+            with patch.object(app_clients, "_is_app_key_taken", return_value=False):
+                with patch.object(app_clients, "_is_identifier_taken", return_value=False):
+                    app_clients.validate_app_client_identity_is_available(
+                        _Scalar(),
+                        app_key="bhagwati_bakery",
+                        ios_bundle_id="com.example.bakery",
+                        android_package_name="com.example.bakery",
+                        exclude_app_client_id=editing,
+                    )
+
+        # Not merely "it did not raise": the exclusion has to REACH the query,
+        # or the next person to change this passes it and gets the same silence.
+        self.assertEqual(seen["exclude"], editing)
+
+    def test_a_different_tenant_claiming_the_host_is_still_refused(self) -> None:
+        # The half the fix must not break. Two different app keys can derive the
+        # SAME host — "bhagwati_bakery" and "bhagwati-bakery" both become
+        # "bhagwati-bakery" — which the app-key check cannot see, and is exactly
+        # why this guard exists.
+        with patch.object(app_clients, "is_host_taken", return_value=True):
+            with patch.object(app_clients, "_is_app_key_taken", return_value=False):
+                with patch.object(app_clients, "_is_identifier_taken", return_value=False):
+                    with self.assertRaises(HTTPException) as caught:
+                        app_clients.validate_app_client_identity_is_available(
+                            _Scalar(),
+                            app_key="bhagwati-bakery",
+                            ios_bundle_id="com.example.other",
+                            android_package_name="com.example.other",
+                            exclude_app_client_id=None,
+                        )
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIn("storefront address", str(caught.exception.detail))
+
+    def test_two_spellings_of_one_name_share_an_address(self) -> None:
+        # The collision the guard is for, stated plainly so nobody "simplifies"
+        # the check away on the grounds that the app key is already unique.
+        self.assertEqual(
+            app_clients.platform_host_for("bhagwati_bakery"),
+            app_clients.platform_host_for("bhagwati-bakery"),
+        )
+
+
 class OnboardingIssuesAnAddressTests(unittest.TestCase):
     """A restaurant onboarded today has a storefront today.
 

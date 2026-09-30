@@ -178,8 +178,16 @@ def validate_app_client_identity_is_available(
     # Checked here with the rest of the identity so a clash is reported as a
     # conflict the form can show, rather than surfacing as an integrity error
     # from the unique constraint halfway through creating a restaurant.
+    #
+    # `exclude_app_client_id` is not optional here, and leaving it off was a
+    # bug: the storefront host is DERIVED from the app key, so an edit that
+    # keeps the same key re-derives the same host, finds the tenant's own
+    # domain row, and reports the tenant as colliding with itself. Every other
+    # check in this function excludes the record being edited; this one did not,
+    # and editing any existing restaurant failed with "the storefront address
+    # ... is already used by another app client".
     storefront_host = platform_host_for(app_key)
-    if is_host_taken(db, host=storefront_host):
+    if is_host_taken(db, host=storefront_host, exclude_app_client_id=exclude_app_client_id):
         raise _conflict(
             f"The storefront address '{storefront_host}' is already used by another app client"
         )
