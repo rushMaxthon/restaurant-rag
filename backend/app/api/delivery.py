@@ -110,6 +110,24 @@ async def receive(
         logger.warning("Could not confirm delivery %s: %s", provider_order_id, error)
         return ACCEPTED
 
+    # The ONE thing taken from the push rather than the fetch.
+    #
+    # Pidge's tracking link is a short `track_code` they send on the webhook and
+    # nowhere else — their order response does not carry it, so a fetch can
+    # never learn it. Discarding the payload wholesale, which is what this
+    # endpoint does with everything else, would mean the tracking link is
+    # always empty however well the courier is configured.
+    #
+    # Safe to take on trust in a way the STATE is not. It moves no order, bills
+    # nobody and settles nothing; the worst a forged one can do is point a
+    # tracking button at the wrong page, and it is only used when the courier's
+    # own answer has none. Everything that decides what happens to the order
+    # still comes from the fetch.
+    if not result.tracking_url:
+        pushed = provider.parse_webhook(body)
+        if pushed.tracking_url and pushed.provider_order_id == provider_order_id:
+            result.tracking_url = pushed.tracking_url
+
     before = row.state
     record(db, row, result)
     db.commit()

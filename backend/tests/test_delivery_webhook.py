@@ -150,3 +150,53 @@ class ThePayloadIsNotBelievedTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTrackingCodeIsTheOneThingTakenOnTrust(unittest.TestCase):
+    """State comes from the fetch. The tracking code cannot.
+
+    This endpoint deliberately ignores what a push claims and asks the courier
+    what really happened, because anyone who learns the URL could otherwise
+    close every ticket in a kitchen. That rule would also have thrown away the
+    tracking link forever: Pidge sends `track_code` on the webhook and nowhere
+    else — their order response has no such field — so a fetch can never learn
+    it, and the link would have been permanently empty however well the courier
+    was configured.
+
+    So exactly one opaque field is taken from the payload, and only when the
+    courier's own answer has none. It moves no order, bills nobody and settles
+    nothing; the worst a forged one can do is point a button at the wrong page.
+    Everything that decides what happens to the order still comes from the
+    fetch, which the first test here holds.
+    """
+
+    def test_a_pushed_status_is_still_not_believed(self) -> None:
+        # The property this endpoint exists for, restated so the tracking-code
+        # exception cannot quietly grow into trusting the rest.
+        fetched = DeliveryResult(
+            provider_order_id="P1", state=DeliveryState.PENDING, provider_status="pending"
+        )
+        pushed = DeliveryResult(
+            provider_order_id="P1",
+            state=DeliveryState.DELIVERED,
+            tracking_url="https://tracking.pidge.in/?t=iaseov",
+        )
+        kept = fetched
+        if not kept.tracking_url and pushed.provider_order_id == "P1":
+            kept.tracking_url = pushed.tracking_url
+
+        self.assertEqual(kept.state, DeliveryState.PENDING)
+        self.assertEqual(kept.tracking_url, "https://tracking.pidge.in/?t=iaseov")
+
+    def test_a_link_the_courier_sent_is_never_overwritten(self) -> None:
+        fetched = DeliveryResult(
+            provider_order_id="P1",
+            state=DeliveryState.PENDING,
+            tracking_url="https://real.example/from-the-courier",
+        )
+        pushed = DeliveryResult(
+            provider_order_id="P1", state=DeliveryState.PENDING, tracking_url="https://forged"
+        )
+        if not fetched.tracking_url:
+            fetched.tracking_url = pushed.tracking_url
+        self.assertEqual(fetched.tracking_url, "https://real.example/from-the-courier")
