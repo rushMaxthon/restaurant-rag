@@ -53,17 +53,30 @@ logger = logging.getLogger(__name__)
 _CACHE_VERSION = 1
 
 
-def _fingerprint(query: AddressQuery) -> str:
-    """A short stable id for an address, for both cache layers.
+def _fingerprint(query: AddressQuery, provider: str) -> str:
+    """A short stable id for an address AS ANSWERED BY ONE PROVIDER.
 
     A hash rather than the text itself because the text can be 300 characters
     and is the key of an indexed column. SHA-256 truncated to 32 hex
     characters: a collision needs roughly 2^64 distinct addresses, and the
     consequence of one would be a wrong delivery quote for a single address,
     not a security failure.
+
+    **The provider is part of the identity, and leaving it out was a bug that
+    would have wasted a paid key entirely.** Caching a miss is right — an
+    address that did not resolve will not resolve on the next page load — but
+    that is only true of the geocoder that was asked. OpenStreetMap cannot find
+    "Shivalik Plaza, Ahmedabad" and Google returns its rooftop. With one shared
+    key, every address tried before a Google key was configured would have
+    stayed permanently unfound, and the thing bought to fix them would never
+    have been asked.
+
+    Old rows simply become unreachable rather than wrong, and age out on their
+    own.
     """
 
-    return hashlib.sha256(query.cache_key().encode("utf-8")).hexdigest()[:32]
+    identity = f"{provider}|{query.cache_key()}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
 
 
 def _redis_key(fingerprint: str) -> str:
@@ -101,7 +114,9 @@ def locate(db: Session, query: AddressQuery) -> GeocodedPoint | None:
 
     if query.is_empty:
         return None
-    fingerprint = _fingerprint(query)
+    provider = geocoder()
+    provider_name = getattr(provider, "name", "")
+    fingerprint = _fingerprint(query, provider_name)
 
     cached = cache_get_json(_redis_key(fingerprint))
     if isinstance(cached, dict):
@@ -126,7 +141,6 @@ def locate(db: Session, query: AddressQuery) -> GeocodedPoint | None:
             row.latitude, row.longitude, row.confidence, row.provider, row.matched
         )
 
-    provider = geocoder()
     settings = get_settings()
     try:
         point = provider.geocode(query, timeout=settings.geocoding_timeout_seconds)
@@ -140,7 +154,7 @@ def locate(db: Session, query: AddressQuery) -> GeocodedPoint | None:
         logger.exception("Geocoding raised; treating the address as unlocatable")
         return None
 
-    _store(db, fingerprint, query, point, provider_name=getattr(provider, "name", ""))
+    _store(db, fingerprint, query, point, provider_name=provider_name)
     return point
 
 

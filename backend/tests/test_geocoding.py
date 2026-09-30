@@ -481,6 +481,28 @@ class WhatIsRemembered(unittest.TestCase):
                     )
         store.assert_called_once()
 
+    def test_the_cache_is_scoped_to_the_provider_that_answered(self) -> None:
+        """Otherwise a paid key is bought and never asked.
+
+        Caching a miss is right — an address that did not resolve will not
+        resolve on the next page load — but that is only true of the GEOCODER
+        that was asked. OpenStreetMap cannot find "Shivalik Plaza, Ahmedabad"
+        and Google returns its rooftop. With one shared key, every address
+        tried before a Google key was configured would have stayed permanently
+        unfound, and the thing bought to fix them would never have been called.
+        """
+
+        query = AddressQuery(line1="Shivalik Plaza", city="Ahmedabad")
+        self.assertNotEqual(
+            geocode_service._fingerprint(query, "nominatim"),
+            geocode_service._fingerprint(query, "google"),
+        )
+        # Same provider, same address, same entry — or the cache does nothing.
+        self.assertEqual(
+            geocode_service._fingerprint(query, "google"),
+            geocode_service._fingerprint(query, "google"),
+        )
+
     def test_a_cached_miss_asks_nobody(self) -> None:
         provider = mock.Mock()
         provider.name = "x"

@@ -1427,11 +1427,16 @@ function Checkout() {
                       ? deliveryQuote.isFetching
                         ? "Working it out…"
                         : "Once you add your address"
-                      : // "Free" is a promise, and it must only ever be made
+                      : // "Free" belongs to the delivery row ALONE, and only
                         // when somebody actually decided delivery is free —
                         // never because a lookup failed and the flat fee
-                        // happened to be zero.
-                        Number(value) === 0 && !feeIsAGuess
+                        // happened to be zero. An empty cart made the subtotal
+                        // and the tax rows both announce "Free", which is not
+                        // a thing either of them can be.
+                        Number(value) === 0 &&
+                          !feeIsAGuess &&
+                          String(label) !== "Subtotal" &&
+                          String(label) !== "Tax"
                         ? "Free"
                         : money(Number(value))}
                   </dd>
