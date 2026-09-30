@@ -25,6 +25,7 @@ import {
 
 function fields(over: Partial<AddressFields> = {}): AddressFields {
   return {
+    house: over.house ?? "",
     line1: over.line1 ?? "1600 Pennsylvania Avenue NW",
     line2: over.line2 ?? "",
     landmark: over.landmark ?? "",
@@ -165,6 +166,17 @@ describe("composeDeliveryAddress", () => {
     );
   });
 
+  it("puts the house number first, where the rider reads it", () => {
+    // The flat number is the first thing somebody standing at the gate needs
+    // and the last thing a geocoder wants, which is why it is a field of its
+    // own and why it leads here.
+    expect(
+      composeDeliveryAddress(
+        fields({ house: "A-31, 3rd floor", line1: "Rang Darshan Society", city: "Surat" }),
+      ),
+    ).toBe("A-31, 3rd floor, Rang Darshan Society, Surat, DC 20500");
+  });
+
   it("leaves out the parts that were not given", () => {
     expect(composeDeliveryAddress(fields())).toBe(
       "1600 Pennsylvania Avenue NW, Washington, DC 20500",
@@ -195,6 +207,7 @@ describe("addressFromSaved", () => {
 
   it("fills every field the saved address has", () => {
     expect(addressFromSaved(saved)).toEqual({
+      house: "",
       line1: "1600 Pennsylvania Avenue NW",
       line2: "Apt 4B",
       landmark: "",
@@ -221,6 +234,7 @@ describe("looseAddressFields", () => {
    */
   it("reads the comma-separated shape the app has always written", () => {
     expect(looseAddressFields("100 Main St, Springfield, IL, 62704")).toEqual({
+      house: "",
       line1: "100 Main St",
       line2: "",
       landmark: "",
@@ -243,6 +257,7 @@ describe("looseAddressFields", () => {
     // Better than spreading a wrong guess across five fields the customer then
     // has to find and undo.
     expect(looseAddressFields("behind the blue gate near the temple")).toEqual({
+      house: "",
       line1: "behind the blue gate near the temple",
       line2: "",
       landmark: "",
@@ -262,6 +277,7 @@ describe("looseAddressFields", () => {
 
   it("has nothing to say about nothing", () => {
     expect(looseAddressFields(null)).toEqual({
+      house: "",
       line1: "",
       line2: "",
       landmark: "",
@@ -282,6 +298,7 @@ describe("isSameAddress", () => {
     postal_code: "20500",
   };
   const typed = {
+    house: "",
     line1: "1600 Pennsylvania Avenue NW",
     line2: "Apt 4B",
     landmark: "",
@@ -289,6 +306,19 @@ describe("isSameAddress", () => {
     state: "DC",
     zip: "20500",
   };
+
+  it("matches an address saved with its house number in the line", () => {
+    // A saved address is ONE line, so the flat number was written into it when
+    // it was stored. Comparing only `line1` would miss the match and the picker
+    // would fill up with a second copy of the same home every time somebody
+    // ordered to it.
+    expect(
+      isSameAddress(
+        { ...typed, house: "Apt 4B", line1: "1600 Pennsylvania Avenue NW", line2: "" },
+        { ...saved, address_line_1: "Apt 4B, 1600 Pennsylvania Avenue NW", address_line_2: "" },
+      ),
+    ).toBe(true);
+  });
 
   it("knows an address it already has", () => {
     expect(isSameAddress(typed, saved)).toBe(true);

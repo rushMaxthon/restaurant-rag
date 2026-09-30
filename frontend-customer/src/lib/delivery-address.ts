@@ -16,6 +16,21 @@
 const NATIONAL_DIGITS = 10;
 
 export type AddressFields = {
+  /**
+   * Flat, house or block number — the part no map knows.
+   *
+   * Separate from `line1` because the autocomplete OVERWRITES `line1` with the
+   * building it matched, and a customer who typed "A-31, Rang Darshan Society"
+   * and then picked that society from the list watched their flat number
+   * disappear. The map provider knows where the building is; only the customer
+   * knows which door inside it.
+   *
+   * It is also the half a geocoder cannot use: a house number in an unmapped
+   * society resolves to nothing, while the society alone resolves cleanly. So
+   * the split is not cosmetic — one part is for the courier's coordinate and
+   * the other is for the rider's eyes.
+   */
+  house: string;
   line1: string;
   line2: string;
   landmark: string;
@@ -139,7 +154,11 @@ export function validateAddress(
   const state = fields.state.trim();
   const zip = fields.zip.trim();
 
-  if (!line1) problems.line1 = "Enter your street address.";
+  // Not required. A rider wants it and most addresses need it, but insisting
+  // would block the customer whose building has no unit numbers at all — and a
+  // form that refuses a real address is worse than one that delivers to the
+  // gate. It is asked for first and prominently instead.
+  if (!line1) problems.line1 = "Enter your street or area.";
   else if (line1.length < 4) problems.line1 = "That looks too short to find.";
 
   if (!city) problems.city = "Enter your city.";
@@ -159,7 +178,9 @@ export function validateAddress(
  * left out rather than leaving empty commas behind.
  */
 export function composeDeliveryAddress(fields: AddressFields): string {
-  const head = [fields.line1, fields.line2, fields.landmark, fields.city]
+  // The house number leads, because it is the first thing a rider standing at
+  // the gate needs and the last thing a geocoder wants.
+  const head = [fields.house, fields.line1, fields.line2, fields.landmark, fields.city]
     .map((part) => part.trim())
     .filter(Boolean);
   const tail = [fields.state.trim(), fields.zip.trim()].filter(Boolean).join(" ");
@@ -186,6 +207,10 @@ export type SavedAddressFields = {
 
 export function addressFromSaved(saved: SavedAddressFields): AddressFields {
   return {
+    // Saved addresses hold one line, so everything lands in `line1` and the
+    // house box starts empty. Nothing is lost: it was written into that line
+    // when the address was saved.
+    house: "",
     line1: saved.address_line_1 ?? "",
     line2: saved.address_line_2 ?? "",
     landmark: saved.landmark ?? "",
@@ -196,6 +221,7 @@ export function addressFromSaved(saved: SavedAddressFields): AddressFields {
 }
 
 const EMPTY_ADDRESS: AddressFields = {
+  house: "",
   line1: "",
   line2: "",
   landmark: "",
@@ -238,6 +264,10 @@ export function looseAddressFields(value: string | null | undefined): AddressFie
   const city = parts[parts.length - 3]!;
   const [line1, ...middle] = parts.slice(0, parts.length - 3);
   return {
+    // A stored line is not split further. The house number was written into it
+    // when the address was saved and is left where the rider will read it,
+    // rather than guessed back out by looking for something number-shaped.
+    house: "",
     line1: line1 ?? "",
     line2: middle.join(", "),
     landmark: "",
@@ -258,7 +288,15 @@ export function isSameAddress(fields: AddressFields, saved: SavedAddressFields):
   const same = (a: string | null | undefined, b: string | null | undefined) =>
     (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
   return (
-    same(fields.line1, saved.address_line_1) &&
+    // Compared against the composed line, because that is how it was stored:
+    // the house number was written into `address_line_1` when it was saved.
+    same(
+      [fields.house, fields.line1]
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .join(", "),
+      saved.address_line_1,
+    ) &&
     same(fields.line2, saved.address_line_2) &&
     same(fields.landmark, saved.landmark) &&
     same(fields.city, saved.city) &&

@@ -189,6 +189,7 @@ function Checkout() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState<AddressFields>({
+    house: "",
     line1: "",
     line2: "",
     landmark: "",
@@ -349,6 +350,10 @@ function Checkout() {
     s.orderLocation?.id,
     addressIsQuotable
       ? {
+          // `house` is left out on purpose. A house number inside a society the
+          // map has never heard of resolves to nothing, while the society
+          // alone resolves cleanly — so the flat number goes to the rider and
+          // never to the geocoder.
           delivery_address: [address.line1, address.line2, address.landmark]
             .map((part) => part.trim())
             .filter(Boolean)
@@ -466,6 +471,10 @@ function Checkout() {
   const applyPickedAddress = (picked: PickedAddress) => {
     setAddress((current) => ({
       ...current,
+      // `house` is deliberately absent. The provider knows where the building
+      // is; only the customer knows which door inside it, and overwriting the
+      // flat number with the building's name is exactly what this field exists
+      // to stop.
       line1: picked.line1 || picked.formatted || current.line1,
       line2: picked.line2 || current.line2,
       city: picked.city || current.city,
@@ -755,7 +764,12 @@ function Checkout() {
       if (isDelivery && saveAddress && !addressId && !alreadyKnown) {
         api
           .createSavedAddress({
-            address_line_1: address.line1.trim(),
+            // The house number is written into the stored line, because a
+            // saved address is one line and the rider needs it first.
+            address_line_1: [address.house, address.line1]
+              .map((part) => part.trim())
+              .filter(Boolean)
+              .join(", "),
             address_line_2: address.line2.trim() || null,
             landmark: address.landmark.trim() || null,
             city: address.city.trim(),
@@ -941,11 +955,24 @@ function Checkout() {
               </div>
               {isDelivery && (
                 <>
+                  <AddressField
+                    autoComplete="address-line1"
+                    className="sm:col-span-2"
+                    hint="Optional"
+                    icon={<MapPin className="size-4" />}
+                    id="house"
+                    label="Flat, house or block number"
+                    onBlur={() => setTouched((t) => ({ ...t, house: true }))}
+                    onChange={(next) => editAddress("house", next)}
+                    placeholder="A-31, 3rd floor"
+                    problem={undefined}
+                    value={address.house}
+                  />
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="line1">
                       Address line 1
                       <span className="ml-1.5 text-xs font-medium text-muted">
-                        Start typing and pick your address
+                        Start typing and pick your building
                       </span>
                     </Label>
                     <AddressAutocomplete
@@ -957,7 +984,7 @@ function Checkout() {
                       onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
                       onPick={applyPickedAddress}
                       onTextChange={(next) => editAddress("line1", next)}
-                      placeholder="Street address"
+                      placeholder="Society, building or street"
                       value={address.line1}
                     />
                     {show("line1") && addressProblems.line1 && (
