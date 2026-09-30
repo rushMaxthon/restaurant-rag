@@ -217,7 +217,15 @@ def for_address(
         query = AddressQuery(freeform=query)
 
     if db is not None and not query.is_empty:
-        point = locate(db, query)
+        from app.services.geocoding.branches import locate_delivery_address
+
+        # The same cascade a branch gets, because a customer's address has the
+        # same shape: "A-31, Rangdarshan Soc, Near Dhanmora, Katargam" names a
+        # society no map knows, with a real neighbourhood and a real PIN code
+        # attached. Asking only the whole address left real customers with no
+        # delivery quote at all — which is how this was found.
+        found = locate_delivery_address(db, query)
+        point = found.point if found is not None else None
         if point is not None:
             if not point.is_precise:
                 logger.info(

@@ -521,9 +521,87 @@ class LocatingTheEndsOfATrip(unittest.TestCase):
             seen.append(query)
             return None
 
-        with mock.patch.object(self.seam, "locate", side_effect=fake_locate):
+        with mock.patch("app.services.geocoding.branches.locate", side_effect=fake_locate):
             self.seam.for_address("102 Demo Street, Ahmedabad", mock.MagicMock())
         self.assertEqual(seen[0].freeform, "102 Demo Street, Ahmedabad")
+
+    def test_a_customer_address_gets_the_same_cascade_a_branch_does(self) -> None:
+        # The bug a real customer hit: "A-31, Rangdarshan Soc, Near Dhanmora,
+        # Katargam" resolves to nothing as a whole address, so the delivery fee
+        # showed as "Free". The neighbourhood and the PIN code beside it both
+        # resolve, and asking them turns that into a real ₹54.08 quote.
+        asked: list[str] = []
+
+        def fake_locate(db, query):
+            asked.append(query.as_text())
+            return None
+
+        with mock.patch("app.services.geocoding.branches.locate", side_effect=fake_locate):
+            self.seam.for_address(
+                AddressQuery(
+                    line1="A-31, Rangdarshan Soc, Near Dhanmora, Katargam",
+                    city="Surat",
+                    state="Gujarat",
+                    postal_code="395004",
+                ),
+                mock.MagicMock(),
+            )
+        # The whole address, then the neighbourhood, then the postcode.
+        self.assertEqual(len(asked), 3)
+        self.assertIn("Katargam, Surat", asked[1])
+        self.assertIn("395004", asked[2])
+
+    def test_the_cascade_keeps_the_best_answer_not_the_first(self) -> None:
+        # Measured: "Katargam, Surat" answers with a TALUKA, too coarse to
+        # price from, while the PIN code beside it answers with a far smaller
+        # area. Stopping at the first answer took the worse one and left the
+        # customer with no quote.
+        answers = {
+            "locality": GeocodedPoint(
+                latitude=21.2, longitude=72.8, confidence=GeocodeConfidence.REGION
+            ),
+            "postcode": GeocodedPoint(
+                latitude=21.3, longitude=72.9, confidence=GeocodeConfidence.POSTCODE
+            ),
+        }
+
+        def fake_locate(db, query):
+            text = query.as_text()
+            if "395004" in text:
+                return answers["postcode"]
+            if text.startswith("Katargam"):
+                return answers["locality"]
+            return None
+
+        with mock.patch("app.services.geocoding.branches.locate", side_effect=fake_locate):
+            point = self.seam.for_address(
+                AddressQuery(
+                    line1="A-31, Rangdarshan Soc, Katargam",
+                    city="Surat",
+                    state="Gujarat",
+                    postal_code="395004",
+                ),
+                mock.MagicMock(),
+            )
+        self.assertEqual(point.confidence, "POSTCODE")
+        self.assertTrue(point.usable)
+
+    def test_a_precise_answer_stops_the_cascade(self) -> None:
+        # Nothing further down can beat a door, and the lookups cost money.
+        calls: list[str] = []
+
+        def fake_locate(db, query):
+            calls.append(query.as_text())
+            return GeocodedPoint(
+                latitude=1.0, longitude=2.0, confidence=GeocodeConfidence.ROOFTOP
+            )
+
+        with mock.patch("app.services.geocoding.branches.locate", side_effect=fake_locate):
+            self.seam.for_address(
+                AddressQuery(line1="12 MG Road, Navrangpura", city="Ahmedabad"),
+                mock.MagicMock(),
+            )
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

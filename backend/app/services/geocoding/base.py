@@ -64,6 +64,29 @@ class GeocodeConfidence(StrEnum):
 
         return self in {GeocodeConfidence.ROOFTOP, GeocodeConfidence.STREET}
 
+    @property
+    def rank(self) -> int:
+        """How good this answer is, for choosing between several.
+
+        A cascade that asks progressively less specific questions gets several
+        answers and has to keep one. Ordering them needs more than
+        `is_precise`, because the interesting choice is between two imprecise
+        results: a neighbourhood and a postcode are about equally useful, and a
+        district is worse than both.
+
+        Measured case: "Katargam, Surat" resolves to a TALUKA (`REGION`) while
+        the PIN code beside it, 395004, resolves to a `POSTCODE` covering a far
+        smaller area. Taking the first answer took the worse one.
+        """
+
+        return {
+            GeocodeConfidence.ROOFTOP: 4,
+            GeocodeConfidence.STREET: 3,
+            GeocodeConfidence.LOCALITY: 2,
+            GeocodeConfidence.POSTCODE: 2,
+            GeocodeConfidence.REGION: 1,
+        }[self]
+
 
 @dataclass(slots=True)
 class GeocodedPoint:

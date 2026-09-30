@@ -118,22 +118,88 @@ def locate_branch(db: Session, location) -> BranchLocation | None:
     if postcode:
         attempts.append(("postcode", AddressQuery(postal_code=postcode, city=city, state=state)))
 
+    found = _best_of(db, attempts)
+    if found is None:
+        logger.info("Nothing could locate branch %s", getattr(location, "id", "?"))
+        return None
+    logger.info(
+        "Located branch %s via its %s: %s (%s)",
+        getattr(location, "id", "?"),
+        found.matched_on,
+        found.point.matched[:70],
+        found.point.confidence,
+    )
+    return found
+
+
+def _best_of(db: Session, attempts: list[tuple[str, AddressQuery]]) -> BranchLocation | None:
+    """Run the cascade and keep the BEST answer, not the first.
+
+    Stopping at the first answer was wrong, and measurably so. A customer in
+    Katargam, Surat: the neighbourhood question resolves — to "Katargam Taluka",
+    a district centroid too coarse to price from — so the cascade stopped there
+    and the delivery could not be quoted at all. The PIN code sitting in the
+    next field resolves to an area a fraction of the size.
+
+    So every question is asked unless one of them lands precisely, and the most
+    precise answer wins. Ties go to the earlier attempt, which is the more
+    specific question.
+
+    Asking all four costs nothing after the first time: every lookup is cached
+    durably, per address, forever.
+    """
+
+    best: BranchLocation | None = None
     for matched_on, query in attempts:
         if query.is_empty:
             continue
         point = locate(db, query)
-        if point is not None:
-            logger.info(
-                "Located branch %s via its %s: %s (%s)",
-                getattr(location, "id", "?"),
-                matched_on,
-                point.matched[:70],
-                point.confidence,
-            )
-            return BranchLocation(point=point, matched_on=matched_on)
-
-    logger.info("Nothing could locate branch %s", getattr(location, "id", "?"))
-    return None
+        if point is None:
+            continue
+        if best is None or point.confidence.rank > best.point.confidence.rank:
+            best = BranchLocation(point=point, matched_on=matched_on)
+        if point.is_precise:
+            # A door or a street. Nothing further down the cascade can beat it,
+            # and there is no reason to spend the lookups.
+            break
+    return best
 
 
-__all__ = ["BranchLocation", "locate_branch"]
+def locate_delivery_address(
+    db: Session,
+    query: AddressQuery,
+) -> BranchLocation | None:
+    """The same cascade, for where the food is GOING.
+
+    A customer's address has exactly the shape a branch's does — "A-31,
+    Rangdarshan Soc, Near Dhanmora, Katargam" names a society no map knows,
+    with a real neighbourhood and a real PIN code attached — so it deserves the
+    same treatment. Asking only the whole address left real customers with no
+    delivery quote at all.
+
+    Three questions here rather than four, because a customer has no branch
+    name: the whole address, the last place-naming fragment of line 1, then the
+    postcode.
+    """
+
+    city = (query.city or "").strip()
+    state = (query.state or "").strip()
+    postcode = (query.postal_code or "").strip()
+
+    attempts: list[tuple[str, AddressQuery]] = [("address", query)]
+
+    locality = _locality_from(query.line1 or query.freeform or "")
+    if locality:
+        attempts.append(("locality", AddressQuery(line1=locality, city=city, state=state)))
+    if postcode:
+        attempts.append(("postcode", AddressQuery(postal_code=postcode, city=city, state=state)))
+    elif city:
+        # No postcode to fall back on, so the city itself is the last question.
+        # Coarse, and `Coordinates.usable` decides whether it is coarse enough
+        # to refuse — that judgement does not belong here.
+        attempts.append(("city", AddressQuery(line1=city, state=state)))
+
+    return _best_of(db, attempts)
+
+
+__all__ = ["BranchLocation", "locate_branch", "locate_delivery_address"]

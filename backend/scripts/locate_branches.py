@@ -50,7 +50,7 @@ def main() -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="re-look-up branches that already have coordinates",
+        help="re-look-up branches that already have coordinates from a lookup",
     )
     args = parser.parse_args()
 
@@ -65,8 +65,14 @@ def main() -> int:
         ).all()
         for branch in branches:
             label = f"{branch.restaurant.name} · {branch.branch_name}"
-            if not args.all and branch.latitude is not None and branch.longitude is not None:
-                print(f"  [have]  {label}")
+            located_already = branch.latitude is not None and branch.longitude is not None
+            # A pair with no confidence was typed in by a person, who pointed at
+            # their own front door. `--all` re-runs LOOKUPS; it must never
+            # overwrite that, or one bulk run silently undoes every correction
+            # anybody has made.
+            by_hand = located_already and not (branch.geocode_confidence or "").strip()
+            if located_already and (by_hand or not args.all):
+                print(f"  [{'hand' if by_hand else 'have'}]  {label}")
                 continue
 
             found = locate_branch(db, branch)
