@@ -432,6 +432,24 @@ export type OrderValidationResponse = {
   item_count: number;
 };
 
+/**
+ * What the courier is doing with an order.
+ *
+ * The customer may read this for their OWN order — the endpoint is behind the
+ * same reader as the order itself — which is what lets the tracking page show
+ * a rider rather than just a status word.
+ */
+export type OrderDelivery = {
+  state: "PENDING" | "ASSIGNED" | "PICKED_UP" | "IN_TRANSIT" | "DELIVERED" | "CANCELLED" | "FAILED";
+  /** The courier's own word for it, unmapped. Shown only in the admin. */
+  provider_status: string;
+  rider_name: string;
+  rider_mobile: string;
+  /** The courier's live map for this delivery. Empty until they send one. */
+  tracking_url: string;
+  distance_metres: number | null;
+};
+
 /** One row of the breakdown behind the collapsed charges line. */
 export type ChargeLine = {
   key: string;
@@ -829,6 +847,9 @@ export const api = {
       body: payload,
       auth: true,
     }),
+
+  getOrderDelivery: (orderId: string) =>
+    request<OrderDelivery | null>(`/orders/${orderId}/delivery`, { auth: true }),
 
   quoteDelivery: (payload: {
     restaurant_location_id: string;

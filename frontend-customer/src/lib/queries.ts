@@ -15,6 +15,7 @@ export const queryKeys = {
   order: (id: string) => ["order", id] as const,
   combos: ["generated-combos"] as const,
   offers: ["personalized-offers"] as const,
+  orderDelivery: (orderId: string) => ["order-delivery", orderId] as const,
   deliveryQuote: (locationId: string, address: string) =>
     ["delivery-quote", locationId, address] as const,
 };
@@ -166,6 +167,31 @@ export function useOrder(orderId: string | undefined, enabled: boolean) {
     queryKey: queryKeys.order(orderId ?? ""),
     queryFn: () => api.getOrder(orderId as string),
     enabled: Boolean(orderId) && enabled,
+  });
+}
+
+/**
+ * Where the rider is, for the customer's own order.
+ *
+ * Polled while the food is still moving and stopped once it is not, the same
+ * rule the admin panel follows: a finished delivery cannot change, and polling
+ * it forever would be a request per completed order for as long as the page
+ * stayed open.
+ *
+ * A failure is silent. Somebody watching their dinner should see the order
+ * status they already had rather than an error about a courier.
+ */
+export function useOrderDelivery(orderId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.orderDelivery(orderId ?? ""),
+    queryFn: () => api.getOrderDelivery(orderId as string),
+    enabled: Boolean(orderId) && enabled,
+    retry: false,
+    refetchInterval: (query) => {
+      const row = query.state.data;
+      if (!row) return 30_000;
+      return ["DELIVERED", "CANCELLED", "FAILED"].includes(row.state) ? false : 15_000;
+    },
   });
 }
 

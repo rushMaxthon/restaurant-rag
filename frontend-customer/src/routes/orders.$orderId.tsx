@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
-import { useOrder, usePaymentReconciliation } from "@/lib/queries";
+import { useOrder, useOrderDelivery, usePaymentReconciliation } from "@/lib/queries";
 import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
@@ -90,6 +90,15 @@ function OrderDetail() {
   const { orderId } = Route.useParams();
   const isAuthenticated = useRequireAuth();
   const orderQuery = useOrder(orderId, isAuthenticated);
+  // Only asked for once the order exists and is a delivery that has not ended.
+  // A pickup order has no courier in its story, and a finished one has nothing
+  // left to watch.
+  const deliveryQuery = useOrderDelivery(
+    orderId,
+    isAuthenticated &&
+      orderQuery.data?.fulfillment_type === "DELIVERY" &&
+      !["DELIVERED", "CANCELLED", "PAYMENT_PENDING"].includes(orderQuery.data?.status ?? ""),
+  );
 
   // Stripe has taken the money by the time the customer lands here, but the
   // order only moves once the webhook is verified. Locally that never arrives
@@ -143,6 +152,10 @@ function OrderDetail() {
   // future, and `expectedBy` is silent once its own estimate has passed.
   const dueBy = cancelled || o.status === "DELIVERED" ? null : expectedBy(o);
   const stepIndex = STEPS.findIndex((s) => s.key === o.status);
+  // A courier row exists from the moment one is booked, but it holds no rider
+  // until one accepts. Showing the card before then would head a box "Your
+  // rider" over an empty space.
+  const rider = deliveryQuery.data?.rider_name ? deliveryQuery.data : null;
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
   const discount = Number(o.discount_amount ?? 0);
@@ -238,6 +251,53 @@ function OrderDetail() {
                 })}
               </ol>
             </>
+          )}
+
+          {/*
+           * Who is bringing it, and a link to watch them.
+           *
+           * The customer could already see a status word — "out for delivery"
+           * — and nothing about the person carrying their dinner. The rider's
+           * name and a number to ring is the thing people actually want at
+           * that moment, and the courier's own tracking page is the only
+           * place the rider's position exists: their API exposes no
+           * coordinates, so this links out rather than drawing a map it
+           * cannot fill.
+           *
+           * Renders nothing until a rider is assigned. An empty card headed
+           * "Your rider" over no rider is worse than no card.
+           */}
+          {isDelivery && rider && (
+            <div className="mt-7 rounded-xl bg-surface-alt p-4">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
+                Your rider
+              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold leading-snug">{rider.rider_name}</p>
+                  {rider.rider_mobile && (
+                    <a
+                      className="text-sm font-semibold text-primary"
+                      href={`tel:${rider.rider_mobile}`}
+                    >
+                      {rider.rider_mobile}
+                    </a>
+                  )}
+                </div>
+                {rider.tracking_url && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={rider.tracking_url} rel="noreferrer" target="_blank">
+                      Track on the map
+                    </a>
+                  </Button>
+                )}
+              </div>
+              {rider.distance_metres != null && (
+                <p className="mt-2 text-sm text-muted">
+                  {(rider.distance_metres / 1000).toFixed(1)} km from the restaurant to you.
+                </p>
+              )}
+            </div>
           )}
 
           {isDelivery && o.delivery_address && (
