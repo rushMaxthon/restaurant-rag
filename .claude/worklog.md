@@ -26,6 +26,60 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 (end of day) — Google key live; address autocomplete working end to end
+
+**Goal:** finish the Google Maps setup in the user's Cloud console and make the
+address dropdown real.
+
+**Changed:**
+- `services/geocoding/google.py` — Places rewritten against
+  `places.googleapis.com/v1`. Field mask, key in a header, no type filter.
+  `address_parts_v1` re-flattens the new envelope.
+- `services/geocoding/service.py` — the cache fingerprint now includes the
+  PROVIDER.
+- `services/profile.py` — saved addresses are located when saved, and their
+  coordinates are exposed.
+- `schemas/order.py`, `api/orders.py` — `fallback_reason` on the quote.
+- `routes/checkout.tsx` — acts on the reason; "Free" is scoped to the delivery
+  row.
+
+**In the console** (project `foodie-dev-8f448`): Places API (New) and Geocoding
+API were already enabled. Created the key `restaurant-rag backend`, restricted
+to those two APIs only (33 others unchecked). Application restrictions left as
+None so a changing dev IP still works — **must be set to the server IP before
+production**. Free trial: ₹28,663 credit, 90 days.
+
+**Verified:** live. Branches relocated with Google went 9 precise → 22 of 25 (14
+ROOFTOP, 8 STREET, 2 LOCALITY, 1 hand-set). Saved addresses upgraded, three from
+LOCALITY to ROOFTOP. In the browser on the real checkout, typing "Rangdarshan
+Soc Katargam" offered the customer's actual society; picking it filled the form
+and moved delivery from ₹54.08 at 3.4 km to ₹50.00 at 1.5 km. `unittest
+discover` → 2,466 OK. Customer app builds and lints clean.
+
+**Open:**
+- **Application restrictions on the key** before production.
+- The 2 remaining LOCALITY branches would be better pasted by hand.
+- `alembic merge` against `marketing` still owed for 0069/0070/0071.
+
+**Learned:**
+- **The legacy Places API cannot be enabled on a project created after 1 March
+  2025.** It does not appear in the console. Code written against
+  `maps.googleapis.com/maps/api/place/*` fails with a 403 that reads exactly
+  like a rejected key. This project still had it, so it would have worked here
+  and broken on the first real deployment. Geocoding is unaffected.
+- **A cache key must include whatever produced the value.** Keying only on the
+  address meant a Google key could be bought, configured, and never asked for
+  any address OpenStreetMap had already failed on. The bug was invisible: every
+  lookup would have "worked", from cache, and returned nothing.
+- **The new Places API bills by field mask.** Asking for `*` is a standing
+  charge, so the masks are the shortest that answer the question.
+- **Restricting autocomplete to street addresses was wrong for India.** A great
+  many addresses here are a society, a complex or a mall, which Google classes
+  as establishments. The legacy call had that filter and it discarded exactly
+  the results that matter.
+- Zero rendering as "Free" leaked onto the subtotal and tax rows. A display rule
+  written for one row will find the others.
+
 ## 2026-09-30 (later still) — All 25 branches located, with their precision recorded
 
 **Goal:** set lat/long for every branch in Supabase, and make it manageable from
