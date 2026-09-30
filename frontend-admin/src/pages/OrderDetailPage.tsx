@@ -458,6 +458,120 @@ export function OrderDetailPage({
         )}
       </section>
 
+      {order.special_instructions ? (
+        <section className="admin-surface order-detail__card order-detail__notes">
+          <header className="order-detail__card-header">
+            <span className="order-detail__card-icon">
+              <StickyNote size={17} strokeWidth={2.1} />
+            </span>
+            <div>
+              <h2>Order notes</h2>
+              <p>Special instructions from the customer.</p>
+            </div>
+          </header>
+          <blockquote>{order.special_instructions}</blockquote>
+        </section>
+      ) : null}
+
+      <section className="admin-surface order-detail__card">
+        <header className="order-detail__card-header">
+          <span className="order-detail__card-icon">
+            <ClipboardList size={17} strokeWidth={2.1} />
+          </span>
+          <div>
+            <h2>Ordered items</h2>
+            <p>
+              {order.items.length} line {order.items.length === 1 ? "item" : "items"},{" "}
+              {totalItemCount} {totalItemCount === 1 ? "unit" : "units"} in total.
+            </p>
+          </div>
+        </header>
+        <div className="table-scroll">
+          <table className="admin-table order-detail__items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th className="admin-table__cell--right">Qty</th>
+                <th className="admin-table__cell--right">Unit price</th>
+                <th className="admin-table__cell--right">Line total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.items.map((item) => {
+                const customizations = describeItemCustomizations(item, money.format);
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="order-detail__item-name">
+                        <strong>{item.item_name_snapshot}</strong>
+                        {item.size_name_snapshot ? (
+                          <span className="order-detail__item-size">
+                            Size: {item.size_name_snapshot}
+                          </span>
+                        ) : null}
+                        {customizations.length > 0 ? (
+                          <ul className="order-detail__item-options">
+                            {customizations.map((entry, index) => (
+                              <li key={`${item.id}-option-${index}`}>{entry}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="admin-table__cell--right">{item.quantity}</td>
+                    <td className="admin-table__cell--right">
+                      {money.format(item.unit_price, order.restaurant_id)}
+                      {toNumber(item.customization_total_price) > 0 ? (
+                        <span className="order-detail__item-subprice">
+                          incl. {money.format(item.customization_total_price, order.restaurant_id)}{" "}
+                          add-ons
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="admin-table__cell--right">
+                      <strong>{money.format(item.total_price, order.restaurant_id)}</strong>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="order-detail__totals">
+          <div className="order-detail__totals-row">
+            <span>Subtotal</span>
+            <strong>{money.format(order.subtotal, order.restaurant_id)}</strong>
+          </div>
+          {customizationTotals > 0 ? (
+            <div className="order-detail__totals-row order-detail__totals-row--muted">
+              <span>Includes customizations</span>
+              <strong>{money.format(customizationTotals, order.restaurant_id)}</strong>
+            </div>
+          ) : null}
+          <div className="order-detail__totals-row">
+            <span>Delivery fee</span>
+            <strong>{money.format(order.delivery_fee, order.restaurant_id)}</strong>
+          </div>
+          <div className="order-detail__totals-row">
+            <span>Taxes</span>
+            <strong>{money.format(order.tax_amount, order.restaurant_id)}</strong>
+          </div>
+          {discount > 0 ? (
+            <div className="order-detail__totals-row order-detail__totals-row--discount">
+              <span>Discount</span>
+              <strong>-{money.format(order.discount_amount, order.restaurant_id)}</strong>
+            </div>
+          ) : null}
+          <div className="order-detail__totals-row order-detail__totals-row--grand">
+            <span>
+              <ReceiptText size={15} strokeWidth={2.1} /> Total ({order.currency})
+            </span>
+            <strong>{money.format(order.total_amount, order.restaurant_id)}</strong>
+          </div>
+        </div>
+      </section>
+
       <div className="order-detail__grid">
         <section className="admin-surface order-detail__card">
           <header className="order-detail__card-header">
@@ -622,120 +736,6 @@ export function OrderDetailPage({
           </div>
         </section>
       </div>
-
-      {order.special_instructions ? (
-        <section className="admin-surface order-detail__card order-detail__notes">
-          <header className="order-detail__card-header">
-            <span className="order-detail__card-icon">
-              <StickyNote size={17} strokeWidth={2.1} />
-            </span>
-            <div>
-              <h2>Order notes</h2>
-              <p>Special instructions from the customer.</p>
-            </div>
-          </header>
-          <blockquote>{order.special_instructions}</blockquote>
-        </section>
-      ) : null}
-
-      <section className="admin-surface order-detail__card">
-        <header className="order-detail__card-header">
-          <span className="order-detail__card-icon">
-            <ClipboardList size={17} strokeWidth={2.1} />
-          </span>
-          <div>
-            <h2>Ordered items</h2>
-            <p>
-              {order.items.length} line {order.items.length === 1 ? "item" : "items"},{" "}
-              {totalItemCount} {totalItemCount === 1 ? "unit" : "units"} in total.
-            </p>
-          </div>
-        </header>
-        <div className="table-scroll">
-          <table className="admin-table order-detail__items-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th className="admin-table__cell--right">Qty</th>
-                <th className="admin-table__cell--right">Unit price</th>
-                <th className="admin-table__cell--right">Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((item) => {
-                const customizations = describeItemCustomizations(item, money.format);
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <div className="order-detail__item-name">
-                        <strong>{item.item_name_snapshot}</strong>
-                        {item.size_name_snapshot ? (
-                          <span className="order-detail__item-size">
-                            Size: {item.size_name_snapshot}
-                          </span>
-                        ) : null}
-                        {customizations.length > 0 ? (
-                          <ul className="order-detail__item-options">
-                            {customizations.map((entry, index) => (
-                              <li key={`${item.id}-option-${index}`}>{entry}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="admin-table__cell--right">{item.quantity}</td>
-                    <td className="admin-table__cell--right">
-                      {money.format(item.unit_price, order.restaurant_id)}
-                      {toNumber(item.customization_total_price) > 0 ? (
-                        <span className="order-detail__item-subprice">
-                          incl. {money.format(item.customization_total_price, order.restaurant_id)}{" "}
-                          add-ons
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="admin-table__cell--right">
-                      <strong>{money.format(item.total_price, order.restaurant_id)}</strong>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="order-detail__totals">
-          <div className="order-detail__totals-row">
-            <span>Subtotal</span>
-            <strong>{money.format(order.subtotal, order.restaurant_id)}</strong>
-          </div>
-          {customizationTotals > 0 ? (
-            <div className="order-detail__totals-row order-detail__totals-row--muted">
-              <span>Includes customizations</span>
-              <strong>{money.format(customizationTotals, order.restaurant_id)}</strong>
-            </div>
-          ) : null}
-          <div className="order-detail__totals-row">
-            <span>Delivery fee</span>
-            <strong>{money.format(order.delivery_fee, order.restaurant_id)}</strong>
-          </div>
-          <div className="order-detail__totals-row">
-            <span>Taxes</span>
-            <strong>{money.format(order.tax_amount, order.restaurant_id)}</strong>
-          </div>
-          {discount > 0 ? (
-            <div className="order-detail__totals-row order-detail__totals-row--discount">
-              <span>Discount</span>
-              <strong>-{money.format(order.discount_amount, order.restaurant_id)}</strong>
-            </div>
-          ) : null}
-          <div className="order-detail__totals-row order-detail__totals-row--grand">
-            <span>
-              <ReceiptText size={15} strokeWidth={2.1} /> Total ({order.currency})
-            </span>
-            <strong>{money.format(order.total_amount, order.restaurant_id)}</strong>
-          </div>
-        </div>
-      </section>
 
       <details className="admin-surface order-detail__collapsible">
         <summary>

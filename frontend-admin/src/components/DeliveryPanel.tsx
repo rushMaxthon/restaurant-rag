@@ -101,8 +101,12 @@ export function DeliveryPanel({ token, orderId }: DeliveryPanelProps) {
           <Bike size={17} strokeWidth={2.1} />
         </span>
         <div>
-          <h2>Delivery</h2>
-          <p>What the courier is doing with this order.</p>
+          {/* "Courier", not "Delivery". The card beside this one is
+              "Fulfillment & delivery" and holds the address and the ETA, and
+              two cards both called delivery is the page asking the reader to
+              work out which is which. */}
+          <h2>Courier</h2>
+          <p>Who is carrying this order, and where they are.</p>
         </div>
       </header>
 

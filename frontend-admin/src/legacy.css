@@ -3739,24 +3739,50 @@ select:focus-visible {
 
 .order-detail__facts {
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
+/*
+ * A row, not a box.
+ *
+ * Every field on this page used to be a bordered, padded card of its own —
+ * about twenty-five of them across seven sections, each holding one short
+ * value. The page was mostly furniture: a border, a radius and a shouted
+ * uppercase label wrapped around the word "Hitesh".
+ *
+ * A label beside its value, separated by a hairline, says the same thing in a
+ * third of the height and reads as a list of facts rather than a wall of
+ * containers. The section card around them is the only box that earns itself.
+ */
 .order-detail__fact {
   display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: var(--radius-4);
-  border: 1px solid var(--border);
-  background: var(--card);
+  grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px 18px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+}
+
+.order-detail__fact:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .order-detail__fact > span {
-  font-size: var(--fs-caption);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--hint);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  /* Not uppercase. Twenty-five shouted labels is the page shouting. */
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+}
+
+.order-detail__fact > strong,
+.order-detail__fact > em {
+  grid-column: 2;
 }
 
 .order-detail__fact > em {
@@ -3764,6 +3790,19 @@ select:focus-visible {
   font-size: var(--fs-label);
   color: var(--muted);
   line-height: 1.5;
+}
+
+/* One column on a narrow screen: a 8.5rem label column beside a long address
+   leaves the value squeezed into nothing. */
+@media (max-width: 720px) {
+  .order-detail__fact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order-detail__fact > strong,
+  .order-detail__fact > em {
+    grid-column: 1;
+  }
 }
 
 .order-detail__fact-inline {
