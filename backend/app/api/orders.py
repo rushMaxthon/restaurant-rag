@@ -147,14 +147,34 @@ def quote_delivery(
     if db.is_modified(location):
         db.commit()
 
+    # Which end failed, when one did. A checkout that only knows "the flat fee
+    # applies" cannot tell a customer whether to fix their address or whether
+    # there is nothing they can do — and the difference is the whole of whether
+    # the page is useful. Reported before the courier is asked, because a
+    # coordinate problem is not the courier's fault.
+    unusable = (
+        "branch_unknown"
+        if not pickup.usable
+        else "address_unknown"
+        if not drop.usable
+        else ""
+    )
+
     quote = quote_for(location, query, db=db, points=(pickup, drop))
     if quote is None or not usable_in(quote, currency):
-        # No courier, or one pricing in a currency this order is not charged
-        # in — which has not answered the question. Either way the branch fee
-        # stands, and `source` says so rather than a rupee figure appearing
-        # beside a dollar subtotal.
+        # No courier, a coordinate we could not trust, or one pricing in a
+        # currency this order is not charged in — which has not answered the
+        # question. Either way the branch fee stands, and the reason travels so
+        # the page does not announce free delivery over a failed lookup.
         return DeliveryQuoteResponse(
-            delivery_fee=branch_fee, currency=currency, source="branch", **located
+            delivery_fee=branch_fee,
+            currency=currency,
+            source="branch",
+            fallback_reason=(
+                unusable
+                or ("currency_mismatch" if quote is not None else "no_courier")
+            ),
+            **located,
         )
 
     fee = fee_from(quote)
@@ -166,6 +186,7 @@ def quote_delivery(
             currency=currency,
             source="branch",
             serviceable=quote.serviceable,
+            fallback_reason="unserviceable",
             **located,
         )
 

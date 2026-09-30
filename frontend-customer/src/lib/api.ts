@@ -446,6 +446,17 @@ export type DeliveryQuote = {
   delivery_fee: Money;
   currency: string;
   source: "courier" | "branch";
+  /**
+   * Why it is the branch's flat fee, when it is. Empty when a courier priced
+   * it. The field that stops the page printing "Free" over a failed lookup.
+   */
+  fallback_reason:
+    | ""
+    | "no_courier"
+    | "address_unknown"
+    | "branch_unknown"
+    | "unserviceable"
+    | "currency_mismatch";
   serviceable: boolean;
   distance_metres: number | null;
   assign_seconds: number | null;

@@ -22,6 +22,8 @@ from app.schemas.profile import (
     UserProfileUpdateRequest,
 )
 from app.services.favorites import get_user_favorite_ids
+from app.services.geocoding.base import AddressQuery
+from app.services.geocoding.branches import locate_delivery_address
 from app.services.orders import _order_base_query, _serialize_order
 from app.services.recommendations import get_user_preferences_response
 
@@ -109,6 +111,9 @@ def _serialize_saved_address(address: UserSavedAddress) -> SavedAddressResponse:
         phone_number=address.phone_number,
         is_default=address.is_default,
         formatted_address=_format_address(address),
+        latitude=address.latitude,
+        longitude=address.longitude,
+        geocode_confidence=address.geocode_confidence or "",
         created_at=address.created_at,
         updated_at=address.updated_at,
     )
@@ -165,6 +170,49 @@ def list_user_saved_addresses(db: Session, user: User) -> list[SavedAddressRespo
     ]
 
 
+def locate_saved_address(db: Session, address: UserSavedAddress) -> None:
+    """Find this address once, when it is saved, and keep the point.
+
+    The permanent half of delivery pricing. An address a customer saves is used
+    by every order they ever place to it, so locating it belongs HERE — once,
+    off the critical path — rather than on each checkout.
+
+    Three things follow from doing it at save time:
+
+    * **A repeat order costs no lookup at all.** The coordinate is on the row.
+    * **A customer who picked from the autocomplete keeps that point.** The
+      coordinates already on the address came from the map provider's own record
+      of that building, and are better than anything re-geocoding the text could
+      produce, so they are never overwritten.
+    * **A failure is invisible.** Every error is swallowed: an address that
+      cannot be located is still a perfectly good address to save, and a
+      geocoder having a bad minute must not stop somebody adding where they
+      live.
+    """
+
+    if address.latitude is not None and address.longitude is not None:
+        return
+    try:
+        found = locate_delivery_address(
+            db,
+            AddressQuery(
+                line1=address.address_line_1 or "",
+                line2=address.address_line_2 or "",
+                city=address.city or "",
+                state=address.state or "",
+                postal_code=address.postal_code or "",
+            ),
+        )
+    except Exception:  # noqa: BLE001 - saving an address must never fail for this
+        logger.exception("Could not locate a saved address; it is saved without a point")
+        return
+    if found is None:
+        return
+    address.latitude = found.point.latitude
+    address.longitude = found.point.longitude
+    address.geocode_confidence = found.point.confidence.value
+
+
 def create_user_saved_address(
     db: Session,
     user: User,
@@ -184,6 +232,7 @@ def create_user_saved_address(
         is_default=payload.is_default or not existing_addresses,
     )
     db.add(next_address)
+    locate_saved_address(db, next_address)
     try:
         db.flush()
     except SQLAlchemyError as exc:
@@ -231,6 +280,24 @@ def update_user_saved_address(
         address.postal_code = payload.postal_code.strip()
     if payload.phone_number is not None:
         address.phone_number = payload.phone_number.strip() or None
+
+    # The stored point described the OLD text. Cleared and looked up again, so
+    # a corrected flat number does not keep pricing deliveries to the address
+    # it used to be.
+    if any(
+        value is not None
+        for value in (
+            payload.address_line_1,
+            payload.address_line_2,
+            payload.city,
+            payload.state,
+            payload.postal_code,
+        )
+    ):
+        address.latitude = None
+        address.longitude = None
+        address.geocode_confidence = ""
+        locate_saved_address(db, address)
 
     db.add(address)
     db.flush()

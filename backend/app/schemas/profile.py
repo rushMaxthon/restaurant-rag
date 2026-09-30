@@ -53,6 +53,14 @@ class SavedAddressResponse(BaseModel):
     phone_number: str | None = None
     is_default: bool
     formatted_address: str
+    #: Where this address is, found once when it was saved. Present means every
+    #: future order to it is priced with no lookup at all.
+    latitude: float | None = None
+    longitude: float | None = None
+    #: How precise that point is. EMPTY WITH COORDINATES means the customer
+    #: picked the address from the autocomplete, so it is the map provider's own
+    #: record of that building — the best source there is.
+    geocode_confidence: str = ""
     created_at: datetime
     updated_at: datetime
 

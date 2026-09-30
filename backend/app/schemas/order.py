@@ -225,6 +225,23 @@ class DeliveryQuoteResponse(BaseModel):
     currency: str
     #: "courier" when a courier priced this trip, "branch" for the flat fee.
     source: str
+    #: WHY it is the branch's flat fee, when it is. The field that stops a
+    #: checkout printing "Free" because a lookup quietly failed — which is
+    #: exactly what happened to a real order: the branch was located, the
+    #: customer's address was not, the fee fell back to a flat ₹0.00 and the
+    #: page announced free delivery.
+    #:
+    #: * `""` — a courier priced it.
+    #: * `"no_courier"` — none configured, or quoting is off. The flat fee is
+    #:   the restaurant's own policy and is correct.
+    #: * `"address_unknown"` — the customer's address could not be placed on a
+    #:   map. Fixable by them: correct it, or pick it from the suggestions.
+    #: * `"branch_unknown"` — the RESTAURANT has no usable coordinates. Nothing
+    #:   the customer can do; the operator has to locate the branch.
+    #: * `"unserviceable"` — the courier will not drive there.
+    #: * `"currency_mismatch"` — the courier quoted a currency this order is not
+    #:   charged in, so the quote was discarded rather than converted.
+    fallback_reason: str = ""
     #: False when the courier will not serve the address at all. The fee then
     #: falls back to the branch's, because refusing an order on a courier's
     #: say-so is the restaurant's decision to make, not this endpoint's.

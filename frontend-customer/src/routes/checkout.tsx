@@ -419,6 +419,14 @@ function Checkout() {
   const delivery =
     deliveryKnown && deliveryQuote.data ? Number(deliveryQuote.data.delivery_fee) : 0;
   const quotedByCourier = deliveryKnown && deliveryQuote.data?.source === "courier";
+  // Why the courier's price is missing, when it is. Not every fallback is a
+  // problem: a restaurant with no courier charges its own flat fee on purpose,
+  // and that is a real price. A fallback because nobody could find the address
+  // is not a price at all, and printing it — as "Free", when the flat fee is
+  // zero — is how a real order came to promise free delivery it had never
+  // worked out.
+  const fallback = deliveryKnown ? (deliveryQuote.data?.fallback_reason ?? "") : "";
+  const feeIsAGuess = fallback === "address_unknown" || fallback === "branch_unknown";
   // A courier that will not drive to this address at all. The fee falls back
   // to the branch's, so the total stays honest, but saying nothing would let
   // somebody pay for a delivery no rider is going to accept.
@@ -1419,7 +1427,11 @@ function Checkout() {
                       ? deliveryQuote.isFetching
                         ? "Working it out…"
                         : "Once you add your address"
-                      : Number(value) === 0
+                      : // "Free" is a promise, and it must only ever be made
+                        // when somebody actually decided delivery is free —
+                        // never because a lookup failed and the flat fee
+                        // happened to be zero.
+                        Number(value) === 0 && !feeIsAGuess
                         ? "Free"
                         : money(Number(value))}
                   </dd>
@@ -1435,6 +1447,18 @@ function Checkout() {
                 ? `, about ${(deliveryQuote.data.distance_metres / 1000).toFixed(1)} km away`
                 : ""}
               .
+            </p>
+          ) : null}
+          {fallback === "address_unknown" ? (
+            <p className="inline-error mt-2 text-xs">
+              We could not find that address on a map, so this is the restaurant&rsquo;s standard
+              delivery charge rather than a price for your trip. Check the street and{" "}
+              {postalName.toLowerCase()}, or pick your address from the suggestions as you type.
+            </p>
+          ) : fallback === "branch_unknown" ? (
+            <p className="mt-2 text-xs text-muted">
+              This restaurant has not pinned its branch on a map yet, so this is their standard
+              delivery charge rather than a price for your trip.
             </p>
           ) : null}
           {unserviceable ? (
