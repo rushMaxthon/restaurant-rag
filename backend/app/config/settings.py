@@ -806,6 +806,15 @@ class Settings(BaseSettings):
     # connection; this secret only keeps casual noise out, and it travels in a
     # header that ends up in logs and proxies like any other.
     delivery_webhook_secret: str = ""
+    #: Where a customer watches the rider, built from the code Pidge sends.
+    #:
+    #: They do not send a URL. Their webhook carries a short `track_code` —
+    #: "iaseov" — and this is the address it goes into. A setting rather than a
+    #: constant because it is THEIR domain: if they move it, a deployment should
+    #: follow with an environment variable rather than a release.
+    #:
+    #: `{code}` is the only placeholder.
+    pidge_tracking_url: str = "https://tracking.pidge.in/?t={code}"
 
     # --- delivery quotes ----------------------------------------------------
     #

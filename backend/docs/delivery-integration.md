@@ -226,6 +226,32 @@ distance formula of our own. The only figures that reach a customer are the
 branch's own fee or the courier's own quote — the stand-in is in the
 COORDINATES, never in the price.
 
+## The tracking link is a code, not a URL
+
+Confirmed by Pidge directly. Their webhook carries a short code:
+
+```
+track_code: "iaseov"
+```
+
+and the page is that code dropped into an address they publish:
+
+```
+https://tracking.pidge.in/?t={code}
+```
+
+`PIDGE_TRACKING_URL` holds the template, because the domain is theirs and a move
+should be an environment variable rather than a release.
+
+⚠️ **This reader used to look for a `tracking_url` field**, which Pidge has never
+sent, so the link was always empty — and an empty link looks exactly like a
+rider who has not been assigned yet. Nobody could have told the difference from
+the screen. A literal URL still wins if one ever appears, because a link they
+sent beats one we assembled.
+
+The same link is shown to both sides: "Follow the rider" in the admin's Courier
+card, "Track on the map" on the customer's order page.
+
 ## Where an address becomes a point
 
 A courier prices a trip between two COORDINATES, and until this existed the app
@@ -435,6 +461,7 @@ PIDGE_USERNAME=…
 PIDGE_PASSWORD=…
 PIDGE_BRAND_CODE=…            # aggregator accounts only; leave empty otherwise
 DELIVERY_WEBHOOK_SECRET=…     # optional
+PIDGE_TRACKING_URL=https://tracking.pidge.in/?t={code}
 ```
 
 Point Pidge's webhook at `POST /api/delivery/webhook`.

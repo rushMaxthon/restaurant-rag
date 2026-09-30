@@ -309,3 +309,62 @@ class FailingUsefullyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTrackingLink(unittest.TestCase):
+    """Pidge sends a CODE, not a URL, and this reader wanted a URL.
+
+    Confirmed by them directly: the webhook carries `track_code: "iaseov"` and
+    the page is that code dropped into an address they publish,
+    `https://tracking.pidge.in/?t={code}`.
+
+    The old reader looked for a `tracking_url` field, which is not something
+    they have ever sent, so the link was always empty — and an empty link is
+    indistinguishable from a rider who has not been assigned yet. Nobody could
+    have told the difference from the screen.
+    """
+
+    def test_a_code_becomes_the_link_a_customer_opens(self) -> None:
+        from app.services.delivery.pidge_provider import _tracking_url
+
+        self.assertEqual(
+            _tracking_url({}, {"track_code": "iaseov"}),
+            "https://tracking.pidge.in/?t=iaseov",
+        )
+
+    def test_the_code_is_read_wherever_it_arrives(self) -> None:
+        # Their webhook shape is not guaranteed to keep it under `fulfillment`.
+        from app.services.delivery.pidge_provider import _tracking_url
+
+        self.assertIn("abc123", _tracking_url({"track_code": "abc123"}, {}))
+
+    def test_a_url_they_actually_sent_wins(self) -> None:
+        # A link from them beats one we assembled, if they ever send one.
+        from app.services.delivery.pidge_provider import _tracking_url
+
+        self.assertEqual(
+            _tracking_url({}, {"tracking_url": "https://x.example/1", "track_code": "iaseov"}),
+            "https://x.example/1",
+        )
+
+    def test_no_code_means_no_link_rather_than_a_broken_one(self) -> None:
+        from app.services.delivery.pidge_provider import _tracking_url
+
+        self.assertEqual(_tracking_url({}, {}), "")
+
+    def test_a_webhook_carrying_a_code_produces_a_usable_link(self) -> None:
+        provider = PidgeProvider(base_url="https://x", username="u", password="p")
+        result = provider.parse_webhook(
+            {
+                "data": {
+                    "id": "1790",
+                    "track_code": "iaseov",
+                    "fulfillment": {
+                        "status": "OUT_FOR_DELIVERY",
+                        "rider": {"name": "Ramesh Kumar", "mobile": "9876500011"},
+                    },
+                }
+            }
+        )
+        self.assertEqual(result.tracking_url, "https://tracking.pidge.in/?t=iaseov")
+        self.assertEqual(result.rider_name, "Ramesh Kumar")

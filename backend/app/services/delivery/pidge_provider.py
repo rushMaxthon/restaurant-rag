@@ -415,7 +415,7 @@ class PidgeProvider:
             reference=str(data.get("reference_id") or ""),
             rider_name=str(rider.get("name") or ""),
             rider_mobile=str(rider.get("mobile") or ""),
-            tracking_url=str(fulfillment.get("tracking_url") or data.get("tracking_url") or ""),
+            tracking_url=_tracking_url(data, fulfillment),
             distance_metres=_float(data.get("pickup_drop_distance")),
             picked_up_at=_moment(fulfillment.get("picked_up_at")),
             delivered_at=_moment(fulfillment.get("delivered_at")),
@@ -444,6 +444,34 @@ def _seconds(value: Any) -> int | None:
         return int(float(value))
     except (TypeError, ValueError):
         return None
+
+
+def _tracking_url(data: dict[str, Any], fulfillment: dict[str, Any]) -> str:
+    """Where a customer watches the rider.
+
+    Pidge does not send a URL. Their webhook carries a short code — `track_code`,
+    something like "iaseov" — and the page is that code dropped into an address
+    they publish. This used to look for a `tracking_url` field, which is not
+    something they have ever sent, so the tracking link was always empty and
+    nobody could tell whether that was a missing rider or a missing field.
+
+    A literal URL still wins if one ever appears, because a URL they sent beats
+    one we assembled.
+    """
+
+    for source in (fulfillment, data):
+        literal = str(source.get("tracking_url") or "").strip()
+        if literal:
+            return literal
+
+    for source in (fulfillment, data):
+        code = str(source.get("track_code") or "").strip()
+        if code:
+            template = get_settings().pidge_tracking_url
+            # Formatted by hand rather than with `.format`, so a stray brace in
+            # a misconfigured template cannot raise inside a webhook.
+            return template.replace("{code}", code)
+    return ""
 
 
 def _float(value: Any) -> float | None:
