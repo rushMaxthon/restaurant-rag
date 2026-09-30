@@ -16,7 +16,9 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { OrderStepper } from '@components/OrderStepper';
 import { SkeletonBlock } from '@components/SkeletonBlock';
 import { useAppActions, useSession } from '@hooks/useAppStore';
+import { useOrdersChanged, useRealtimeStatus } from '@hooks/useRealtime';
 import { api, formatCurrency, formatDateTime } from '@services/api';
+import { ORDER_FALLBACK_POLL_MS } from '@services/realtime';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import type { Order } from '@/types/app';
@@ -140,33 +142,72 @@ export function OrderDetailScreen(): React.JSX.Element {
     }
   }, []);
 
-  const loadOrder = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  const loadOrder = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
+      // Silent for a push or a fallback poll: the order stays on screen while
+      // it refreshes, and a failed background refresh does not replace a
+      // perfectly good order with an error.
+      const silent = options?.silent === true;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
 
-    try {
-      const response = await api.getOrder(token, orderId);
-      setOrder(response);
-    } catch (nextError) {
-      const message =
-        nextError instanceof Error
-          ? nextError.message
-          : 'Unable to load this order right now.';
-      setError(message);
-      pushToast('Order unavailable', message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId, pushToast, token]);
+      try {
+        const response = await api.getOrder(token, orderId);
+        setOrder(response);
+        setError(null);
+      } catch (nextError) {
+        if (silent) {
+          return;
+        }
+        const message =
+          nextError instanceof Error
+            ? nextError.message
+            : 'Unable to load this order right now.';
+        setError(message);
+        pushToast('Order unavailable', message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [orderId, pushToast, token],
+  );
 
   useEffect(() => {
     void loadOrder();
   }, [loadOrder]);
+
+  // This order moved, or the socket reconnected and anything may have.
+  useOrdersChanged(orderIds => {
+    if (orderIds === null || orderIds.includes(orderId)) {
+      void loadOrder({ silent: true });
+    }
+  });
+
+  // The fallback for when no push can arrive (socket down, realtime off):
+  // a slow poll, only while the order can still change.
+  const realtime = useRealtimeStatus();
+  const orderStatus = order?.status;
+  const orderIsActive =
+    orderStatus !== undefined &&
+    orderStatus !== 'DELIVERED' &&
+    orderStatus !== 'CANCELLED';
+  useEffect(() => {
+    if (realtime === 'live' || !orderIsActive) {
+      return;
+    }
+    const timer = setInterval(
+      () => void loadOrder({ silent: true }),
+      ORDER_FALLBACK_POLL_MS,
+    );
+    return () => clearInterval(timer);
+  }, [realtime, orderIsActive, loadOrder]);
 
   const shortId = useMemo(
     () => `#${orderId.replaceAll('-', '').slice(-8).toUpperCase()}`,

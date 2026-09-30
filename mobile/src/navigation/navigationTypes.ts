@@ -74,6 +74,13 @@ export type RootStackParamList = {
   Payment:
     | {
         instructions?: string;
+        /**
+         * A code the customer saw in one of the restaurant's social posts.
+         * Typed on the cart screen beside the kitchen instructions and
+         * carried here because this is where the order is actually created.
+         * It buys nothing — it is how a public post gets credited.
+         */
+        promoCode?: string;
         validatedAt?: string;
         /**
          * An existing unpaid card order to settle. Set when the customer

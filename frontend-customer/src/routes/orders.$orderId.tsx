@@ -16,6 +16,8 @@ import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, useOrderDelivery, usePaymentReconciliation } from "@/lib/queries";
+import { ORDER_FALLBACK_POLL_MS } from "@/lib/realtime";
+import { useRealtimeStatus } from "@/lib/realtime-context";
 import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 
@@ -89,7 +91,13 @@ function OrderDetail() {
   const money = useMoney();
   const { orderId } = Route.useParams();
   const isAuthenticated = useRequireAuth();
-  const orderQuery = useOrder(orderId, isAuthenticated);
+  // Pushed while the socket is live; polled slowly only while it is not.
+  const realtime = useRealtimeStatus();
+  const orderQuery = useOrder(
+    orderId,
+    isAuthenticated,
+    realtime === "live" ? false : ORDER_FALLBACK_POLL_MS,
+  );
   // Only asked for once the order exists and is a delivery that has not ended.
   // A pickup order has no courier in its story, and a finished one has nothing
   // left to watch.

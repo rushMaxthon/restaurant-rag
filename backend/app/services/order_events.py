@@ -32,6 +32,7 @@ from app.models.menu_availability_event import MenuItemAvailabilityEvent
 from app.models.menu_item import MenuItem
 from app.models.order import Order
 from app.models.user import User
+from app.services.realtime.outbox import queue_order_updated
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,11 @@ def actor_for_user(user: User | None) -> OrderEventActor:
         return OrderEventActor.OWNER
     if user.role == UserRole.CUSTOMER:
         return OrderEventActor.CUSTOMER
+    # Before this branch existed a cook's advance was logged as SYSTEM, which
+    # reads as "the platform did this by itself" — the opposite of what this
+    # table is for.
+    if user.role == UserRole.KITCHEN:
+        return OrderEventActor.KITCHEN
     return OrderEventActor.SYSTEM
 
 
@@ -94,6 +100,21 @@ def record_order_status_event(
             getattr(order, "id", None),
             to_status,
         )
+
+    # Every transition on the platform passes through here — created, advanced,
+    # paid, reaped, abandoned — so this one line is what makes all of them
+    # live. Queued, not sent: the push goes out from `after_commit`, so a
+    # rolled-back order announces nothing. Never raises (see `outbox`).
+    queue_order_updated(
+        db,
+        order_id=order.id,
+        restaurant_id=order.restaurant_id,
+        restaurant_location_id=order.restaurant_location_id,
+        customer_id=getattr(order, "customer_id", None),
+        to_status=to_status,
+        from_status=from_status,
+        occurred_at=occurred_at,
+    )
 
 
 def mark_order_cancelled(

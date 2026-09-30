@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import polishCss from "../polish.css?url";
 import { reportError } from "../lib/error-reporting";
 import { BangkokStoreProvider } from "@/lib/bangkok-store";
+import { RealtimeProvider } from "@/lib/realtime-provider";
 import { AuthProvider } from "@/lib/auth";
 import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
@@ -125,11 +126,15 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BangkokStoreProvider>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-        </BangkokStoreProvider>
+        {/* Inside AuthProvider for the token, and around everything else so
+            any screen can read whether pushes are arriving. */}
+        <RealtimeProvider>
+          <BangkokStoreProvider>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </BangkokStoreProvider>
+        </RealtimeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -5,6 +5,7 @@ import { AppStoreProvider } from './src/store/AppStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { AppThemeProvider } from './src/theme';
 import { PushNotificationBootstrap } from './src/components/notifications/PushNotificationBootstrap';
+import { RealtimeBootstrap } from './src/components/realtime/RealtimeBootstrap';
 import { StripeBootstrap } from './src/components/payments/StripeBootstrap';
 
 function App(): React.JSX.Element {
@@ -15,6 +16,7 @@ function App(): React.JSX.Element {
           <AppThemeProvider>
             <StripeBootstrap>
               <PushNotificationBootstrap />
+              <RealtimeBootstrap />
               <AppNavigator />
             </StripeBootstrap>
           </AppThemeProvider>

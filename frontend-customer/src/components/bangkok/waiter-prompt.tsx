@@ -7,7 +7,7 @@ import { VegMark } from "@/components/bangkok/veg-mark";
 import { api } from "@/lib/api";
 
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { readChatSession, storeChatSession } from "@/lib/chat-session";
+import { mintChatSessionId, readChatSession, storeChatSession } from "@/lib/chat-session";
 import { useMenuItem } from "@/lib/queries";
 import {
   cartLinesForRequest,
@@ -47,7 +47,7 @@ export function WaiterPrompt({ placement }: { placement: "home" | "cart" | "chat
     if (typeof window === "undefined") return null;
     const existing = readChatSession();
     if (existing) return existing;
-    const minted = crypto.randomUUID();
+    const minted = mintChatSessionId();
     storeChatSession(minted);
     return minted;
   }, []);

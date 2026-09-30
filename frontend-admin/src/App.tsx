@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ToastViewport } from "./components/ToastViewport";
 import { useAdminStore } from "./hooks/useAdminStore";
+import { useRealtimeConnection } from "./hooks/useRealtime";
 import { AdminLayout } from "./layouts/AdminLayout";
 import { LoginPage } from "./pages/LoginPage";
 import {
@@ -20,12 +21,17 @@ function usePathname() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // `pathname` stays PATH-ONLY even when a caller passes a query string: every
+  // route below is matched with a regex anchored on `$`, so storing
+  // "/x/edit?from=y" here would match nothing and render a blank page. The
+  // query still goes into the URL, where `window.location.search` can read it.
   const navigate = (nextPath: string) => {
-    if (pathname === nextPath) {
+    const [nextPathname = ""] = nextPath.split("?");
+    if (window.location.pathname + window.location.search === nextPath) {
       return;
     }
     window.history.pushState({}, "", nextPath);
-    setPathname(nextPath);
+    setPathname(nextPathname);
   };
 
   return { pathname, navigate };
@@ -52,6 +58,23 @@ function App() {
     dismissToast,
     pushToast,
   } = useAdminStore();
+
+  // `logout` and `pushToast` are rebuilt whenever the store changes (a toast
+  // is enough), and the socket is keyed on its sign-out callback — so read
+  // them through a ref, or every toast would reconnect the socket.
+  const sessionEnd = useRef({ logout, navigate, pushToast });
+  useEffect(() => {
+    sessionEnd.current = { logout, navigate, pushToast };
+  }, [logout, navigate, pushToast]);
+  const endRevokedSession = useCallback(() => {
+    const { logout: end, navigate: go, pushToast: toast } = sessionEnd.current;
+    toast("Signed out", "Your session was ended. Please sign in again.", "info");
+    end();
+    go("/login");
+  }, []);
+  // One socket for the whole panel while signed in; pages hear about order
+  // changes through `useOrdersChanged` and refetch over REST.
+  useRealtimeConnection(isAuthenticated ? token : null, endRevokedSession);
 
   useEffect(() => {
     if (!isAuthenticated || !user || !role) {

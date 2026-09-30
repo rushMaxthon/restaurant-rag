@@ -21,7 +21,38 @@ let currentBackendAuthToken: string | null = null;
 type NotificationDataPayload = {
   notification_type?: string;
   order_id?: string;
+  // Present on marketing sends only. `dispatch.py` puts the campaign id on
+  // every message so the device can report back what the customer did with it.
+  campaign_id?: string;
+  deep_link?: string;
 };
+
+/** A marketing push, as opposed to an order update. */
+function isMarketing(payload: NotificationDataPayload | undefined): boolean {
+  return Boolean(payload?.campaign_id) && payload?.notification_type === 'marketing';
+}
+
+/**
+ * Report an open or a tap, without ever getting in the customer's way.
+ *
+ * Fire-and-forget on purpose: the person has just tapped a notification and is
+ * waiting for a screen. An engagement statistic must never delay that, and a
+ * failure to record one must never surface as an error — the backend counts
+ * distinct people, so a lost report is a slightly low number, not a wrong one.
+ */
+function reportEngagement(
+  payload: NotificationDataPayload | undefined,
+  event: 'OPENED' | 'CLICKED',
+): void {
+  if (!isMarketing(payload) || !currentBackendAuthToken) {
+    return;
+  }
+  void api.reportCampaignEngagement(
+    currentBackendAuthToken,
+    payload!.campaign_id!,
+    event,
+  );
+}
 
 function buildInstallationId() {
   return `push-${Platform.OS}-${Date.now()}-${Math.random()
@@ -117,6 +148,14 @@ function handleNotificationDataPayload(
 ): void {
   if (!payload) {
     return;
+  }
+
+  // Opening it is the open. A deep link that actually goes somewhere is also
+  // a click — the two are one gesture on a lock screen, and counting a tap
+  // that had nowhere to go as a click would overstate the copy's pull.
+  reportEngagement(payload, 'OPENED');
+  if (payload.deep_link) {
+    reportEngagement(payload, 'CLICKED');
   }
 
   if (payload.notification_type === 'order_placed' && payload.order_id) {

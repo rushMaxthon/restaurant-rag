@@ -22,9 +22,11 @@ import {
   BarChart3,
   BellRing,
   Bot,
+  ChefHat,
   Layers3,
   LayoutDashboard,
   type LucideIcon,
+  Megaphone,
   Palette,
   ReceiptText,
   Settings,
@@ -45,7 +47,12 @@ import { BrandingPage } from "./pages/BrandingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
 import { LocationDetailPage } from "./pages/LocationDetailPage";
+import { KitchenStaffPage } from "./pages/KitchenStaffPage";
 import { LocationsPage } from "./pages/LocationsPage";
+import { CampaignDetailPage } from "./pages/CampaignDetailPage";
+import { CampaignEditorPage } from "./pages/CampaignEditorPage";
+import { ChannelsPage } from "./pages/ChannelsPage";
+import { MarketingPage } from "./pages/MarketingPage";
 import { MenuItemEditorPage } from "./pages/MenuItemEditorPage";
 import { MenuItemsPage } from "./pages/MenuItemsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -421,6 +428,24 @@ export const ROUTES: RouteDef[] = [
     ),
   },
   {
+    // Beside Orders on purpose: these accounts exist to work the order queue,
+    // and an owner looking for "who can open the kitchen screen" looks where
+    // the orders are. Both staff roles, with the backend scoping the list —
+    // an ADMIN chooses a restaurant, an OWNER is pinned to their own.
+    id: "kitchen-staff",
+    pattern: "/kitchen-staff",
+    roles: BOTH,
+    nav: { section: "Manage", label: "Kitchen Staff", icon: ChefHat },
+    render: (ctx) => (
+      <KitchenStaffPage
+        onToast={ctx.pushToast}
+        restaurantId={ctx.restaurantId}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
+  },
+  {
     id: "menu-items",
     pattern: "/menu-items",
     roles: BOTH,
@@ -447,6 +472,71 @@ export const ROUTES: RouteDef[] = [
         restaurantId={ctx.restaurantId}
         role={ctx.role}
         token={ctx.token}
+      />
+    ),
+  },
+  {
+    id: "marketing",
+    pattern: "/marketing",
+    roles: BOTH,
+    nav: { section: "Manage", label: "Marketing", icon: Megaphone },
+    render: (ctx) => <MarketingPage onNavigate={ctx.navigate} onToast={ctx.pushToast} />,
+  },
+  {
+    // Before the `:campaignId` patterns for the same reason "new" is: this
+    // is a fixed path under /marketing/campaigns' sibling namespace, and a
+    // greedy pattern above it would read "channels" as a campaign id.
+    id: "marketing-channels",
+    pattern: "/marketing/channels",
+    roles: BOTH,
+    activeNavPath: "/marketing",
+    render: (ctx) => <ChannelsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} />,
+  },
+  {
+    // Listed before the `:campaignId` patterns, which would otherwise read
+    // "new" as the id of a campaign that does not exist. A null id is what
+    // tells the builder to start a fresh draft rather than load one.
+    id: "campaign-editor-create",
+    pattern: "/marketing/campaigns/new",
+    roles: BOTH,
+    activeNavPath: "/marketing",
+    render: (ctx) => (
+      <CampaignEditorPage
+        campaignId={null}
+        key="new"
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
+      />
+    ),
+  },
+  {
+    id: "campaign-editor-edit",
+    pattern: "/marketing/campaigns/:campaignId/edit",
+    roles: BOTH,
+    activeNavPath: "/marketing",
+    render: (ctx, params) => (
+      <CampaignEditorPage
+        campaignId={params.campaignId}
+        key={params.campaignId}
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
+      />
+    ),
+  },
+  {
+    // The campaign report. Scoped by the same rule as the Hub itself: both
+    // staff roles, with the backend scoping the data to the caller's own
+    // restaurant.
+    id: "campaign-detail",
+    pattern: "/marketing/campaigns/:campaignId",
+    roles: BOTH,
+    activeNavPath: "/marketing",
+    render: (ctx, params) => (
+      <CampaignDetailPage
+        campaignId={params.campaignId}
+        key={params.campaignId}
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
       />
     ),
   },

@@ -12,6 +12,24 @@
  */
 const SESSION_KEY = "bangkok-bowl-chat-session";
 
+/**
+ * A fresh session id, in the UUID form `/suggestions` validates.
+ *
+ * Not `crypto.randomUUID()` alone: browsers only expose it in a secure context
+ * (HTTPS or localhost), so opening the dev server by LAN address — the way a
+ * phone reaches it — left it undefined, and the waiter prompt that calls this
+ * on every page threw and took the whole route down to the error boundary.
+ * `getRandomValues` has no such restriction and is all a v4 UUID needs.
+ */
+export function mintChatSessionId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40; // version 4
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function readChatSession(): string | null {
   if (typeof window === "undefined") return null;
   try {

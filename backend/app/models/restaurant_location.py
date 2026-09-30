@@ -24,6 +24,13 @@ class RestaurantLocation(TimestampMixin, Base):
     __tablename__ = "restaurant_locations"
     __table_args__ = (
         UniqueConstraint("restaurant_id", "branch_name", name="uq_restaurant_locations_restaurant_id_branch_name"),
+        # `id` is already the primary key, so this forbids nothing new. It
+        # exists because Postgres will only point a foreign key at a column
+        # pair that carries a unique constraint of its own, and
+        # `users.staff_restaurant_location_id` is tied to
+        # `users.staff_restaurant_id` through exactly this pair — so a cook
+        # cannot be pinned to a branch of somebody else's restaurant.
+        UniqueConstraint("id", "restaurant_id", name="uq_restaurant_locations_id_restaurant_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -9,6 +9,7 @@ import {
   Store,
   UtensilsCrossed,
 } from "lucide-react";
+import { useOrdersChanged } from "../hooks/useRealtime";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -313,8 +314,12 @@ export function DashboardPage({
   // The explicit "Refresh" button. Unlike the mount effect below, this always
   // hits the network — a user-requested refresh is one of the cases the cache
   // is deliberately NOT allowed to shortcut.
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
+  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
+    // Silent for a realtime push: the numbers update in place rather than the
+    // whole dashboard dropping to a skeleton each time an order moves.
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       if (isAdmin) {
         const [
@@ -398,6 +403,12 @@ export function DashboardPage({
       setLoading(false);
     }
   }, [isAdmin, onToast, restaurantId, token, dashboardKey]);
+
+  // Order counts, revenue and the recent list all derive from orders, so a
+  // push refreshes the dashboard the same way the Refresh button does.
+  useOrdersChanged(() => {
+    void loadDashboard({ silent: true });
+  });
 
   // Mount effect: unlike `loadDashboard`, this respects the cache. It only
   // hits the network when nothing has been fetched yet for this exact

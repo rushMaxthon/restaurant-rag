@@ -53,8 +53,11 @@ class Settings(BaseSettings):
     # (the customer web app), and the fallback identity scope.
     default_app_client_key: str = "marketplace"
 
+    # 5173 customer web, 5174 the admin/owner panel, 5175 the kitchen board.
+    # Each dev server pins its own port (`strictPort`) so this list stays true
+    # rather than drifting the first time one of them is already in use.
     backend_cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081"
+        default="http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:8080,http://localhost:8081"
     )
 
     # A phone or a second laptop on the same wifi reaches the dev servers by this
@@ -420,6 +423,123 @@ class Settings(BaseSettings):
     # off by default and nothing ever executes without an explicit approval
     # call. The discount ceilings are the same ones the AI offer generator uses.
     enable_ai_manager_actions: bool = False
+
+    # --- Marketing Hub dispatch ---------------------------------------------
+    #
+    # A campaign send is the one thing in this product that reaches a customer's
+    # lock screen unprompted, and it cannot be recalled. So the switch that
+    # makes it real is separate from the feature: the Hub builds, schedules and
+    # reports whether or not this is on, and only this decides whether Firebase
+    # is actually called.
+    #
+    # Off by default for the same reason every AI flag is — a deployment that
+    # has not deliberately turned sending on must not discover it by pressing a
+    # button. With it off, dispatch runs end to end against the real audience
+    # and records exactly what it would have delivered (`sent_count` and the
+    # recipient rows are real), marks the campaign SENT, and calls no external
+    # service. That is a dry run an owner can inspect, not a silent no-op.
+    enable_marketing_dispatch: bool = False
+
+    # --- Realtime (Socket.IO) -----------------------------------------------
+    #
+    # Pushes "this order changed" to the kitchen board, the admin panel and the
+    # customer's own order screens. A push is only ever a HINT: every client
+    # reacts by refetching over REST, so the socket can never show anybody a row
+    # the REST scope would not — and a client that misses a push (asleep,
+    # reconnecting, Redis down) is corrected by its next refetch or poll.
+    #
+    # Off by default, like every other flag that changes what a client sees
+    # unprompted. With it off the endpoint still answers, and refuses every
+    # connection with "realtime_disabled" — the clients recognise that reason,
+    # stop retrying, and carry on polling exactly as they did before.
+    enable_realtime: bool = False
+    # Every API process subscribes to this Redis channel; it is how an event
+    # emitted by one gunicorn worker — or by a Celery worker, which is where the
+    # unpaid-order reaper and the WhatsApp agent change orders — reaches a
+    # socket held by another. Measured: 4 clients split across 2 workers all
+    # received an emit made from a third, unrelated process.
+    realtime_redis_channel: str = "realtime:socketio"
+    # Engine.IO heartbeat. Under nginx's 75s read timeout on the socket route so
+    # an idle board is never cut off as a stalled upstream; the ping IS the
+    # traffic that keeps it open.
+    realtime_ping_interval_seconds: int = 25
+    realtime_ping_timeout_seconds: int = 20
+    # How often each API process re-checks the accounts behind its open sockets
+    # (token expiry, `token_version`, `is_active`). Revocation is normally
+    # immediate — the routes that bump `token_version` announce it — so this is
+    # the backstop for an announcement lost to a Redis blip, and the only thing
+    # that notices a token simply expiring while its socket is open.
+    realtime_session_sweep_seconds: int = 60
+
+    # How many device tokens go to Firebase in one multicast. 500 is the API's
+    # own per-message ceiling; it is named here because the dispatcher reports
+    # progress per batch and the batch size is therefore the granularity the
+    # owner sees a SENDING campaign move in.
+    marketing_dispatch_batch_size: int = 500
+
+    # How long any one call to a channel provider may take. Deliberately short.
+    # A dispatch holds a Celery worker for the length of the send, and a
+    # gateway that has stopped answering must fail that recipient and let the
+    # other nine hundred through rather than stalling the whole campaign
+    # behind one socket. Measured against Meta's Graph API, which answers a
+    # template send in well under a second when it is healthy at all.
+    marketing_provider_timeout_seconds: float = 15.0
+
+    # What one message costs on the channels that charge by the message, in
+    # the restaurant's own currency. Named here rather than read from the
+    # gateway because no gateway exposes a price list, and an owner deciding
+    # whether to send 4,000 texts needs the number before the send, not on
+    # the invoice after it. The reach estimate multiplies these by the
+    # recipients *and by the parts*, so a long text is costed as the two
+    # messages the operator will actually bill.
+    # The shared secret an SMS gateway presents when it posts an inbound
+    # message back to us. There is no signature standard across Indian
+    # aggregators the way Meta and Stripe have one, so this is a token the
+    # operator is configured with and sends as `X-Marketing-Token` or `?token=`.
+    # Empty means the endpoint refuses everything, which is the right default:
+    # an unauthenticated inbound route could opt any customer out by guessing
+    # their phone number.
+    marketing_sms_inbound_secret: str = ""
+
+    marketing_sms_cost_per_message: float = 0.85
+    marketing_whatsapp_cost_per_message: float = 0.85
+
+    # Hard ceilings on what one campaign, and one restaurant in one calendar
+    # month, may spend on messages the platform bills through. Enforced, not
+    # advisory: the reach estimate raises a blocking notice and the dispatcher
+    # re-checks the same notice at send time, so a draft that was under the
+    # cap on Tuesday and over it by Friday is refused on Friday.
+    #
+    # They exist because the failure is silent and expensive. An owner widens
+    # a segment from "lapsed regulars" to "everyone", the recipient count goes
+    # from 400 to 9,000, and the only thing that changed on screen is a
+    # number they were not looking at. Push and the social channels cost
+    # nothing and are unaffected by either cap.
+    #
+    # Zero disables a cap. Left non-zero by default on purpose: a deployment
+    # that has not thought about this should be protected, not exposed.
+    # Marketing messages one customer may receive in a rolling week, across
+    # every campaign from one restaurant and across every channel — three
+    # pushes and three texts is six messages to the person receiving them.
+    # A setting rather than a constant because the right number is a
+    # judgement about a market and a menu, not about this codebase: a daily
+    # lunch deal and a monthly newsletter are both legitimate and want very
+    # different answers.
+    marketing_frequency_cap_per_week: int = 2
+
+    marketing_campaign_spend_cap: float = 5000.0
+    marketing_monthly_spend_cap: float = 25000.0
+
+    # How long after a social post goes up its numbers keep being refreshed.
+    # Meta's insights lag publication by minutes and keep moving for days;
+    # past this the post is no longer news and the polling is pure cost.
+    marketing_social_insight_days: int = 7
+
+    # How often beat looks for scheduled campaigns that have come due. A
+    # campaign scheduled for 09:00 goes out within this window of it, which is
+    # why quiet hours are re-checked at fire time rather than trusted from when
+    # the owner scheduled it.
+    marketing_scheduler_interval_minutes: int = 5
 
     # --- Phase 8B: the AI analyst -------------------------------------------
     #

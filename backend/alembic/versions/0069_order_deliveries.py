@@ -1,7 +1,7 @@
 """what a courier is doing with one order
 
 Revision ID: 0069_order_deliveries
-Revises: 0068_payment_transaction_payment_id
+Revises: 0071_kitchen_staff
 Create Date: 2026-09-29 00:00:00.000000
 
 A courier's story and a restaurant's story are not the same story, and the
@@ -31,7 +31,15 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "0069_order_deliveries"
-down_revision = "0068_payment_transaction_payment_id"
+# Written on V2 against 0068, which the marketing chain had already continued
+# from (0068 -> 0063_marketing_consent -> ... -> 0071_kitchen_staff), so the
+# merge left two heads and `alembic upgrade head` refuses to choose. Re-pointed
+# onto the end of that chain rather than renumbered, for the same reason
+# 0063/0064 were: the revision id is what a database gets stamped with, and
+# renaming one that has been deployed anywhere reproduces the unresolvable-
+# stamp failure. Supabase already has this table (see the guard below), so
+# there it is a no-op that only moves the stamp from 0071 to here.
+down_revision = "0071_kitchen_staff"
 branch_labels = None
 depends_on = None
 
@@ -89,6 +97,10 @@ def upgrade() -> None:
         "order_deliveries",
         ["provider", "provider_order_id"],
     )
+    # On the fresh path too, not only the guarded one above: RLS applied by
+    # hand is exactly how the pre-0070 tables came to be open on a new
+    # environment. Deny-by-default; the API connects as the owner and bypasses it.
+    op.execute("ALTER TABLE public.order_deliveries ENABLE ROW LEVEL SECURITY")
 
 
 def downgrade() -> None:

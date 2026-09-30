@@ -110,6 +110,10 @@ export function CartScreen(): React.JSX.Element {
     updateCartQuantity,
   } = useAppActions();
   const [instructions, setInstructions] = useState('');
+  // Optional and never validated here: an unrecognised code is not something
+  // to stop a customer for. It buys nothing, so a typo costs them nothing —
+  // it only means one post goes uncredited.
+  const [promoCode, setPromoCode] = useState('');
   const [orderDetailsExpanded, setOrderDetailsExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [upsellSuggestions, setUpsellSuggestions] = useState<
@@ -1615,7 +1619,7 @@ export function CartScreen(): React.JSX.Element {
               <View style={styles.formAccordionCopy}>
                 <Text style={styles.formTitle}>Order details</Text>
                 <Text style={styles.formSubtitle}>
-                  Add kitchen or rider instructions
+                  Instructions, and a promo code if you have one
                 </Text>
               </View>
               <Animated.View
@@ -1635,6 +1639,15 @@ export function CartScreen(): React.JSX.Element {
                   placeholderTextColor={theme.colors.hint}
                   style={[styles.input, styles.notesInput]}
                   value={instructions}
+                />
+                <TextInput
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  onChangeText={next => setPromoCode(next.toUpperCase())}
+                  placeholder="Promo code from a post (optional)"
+                  placeholderTextColor={theme.colors.hint}
+                  style={styles.input}
+                  value={promoCode}
                 />
               </View>
             ) : null}

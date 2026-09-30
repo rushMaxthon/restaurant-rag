@@ -14,6 +14,7 @@ import {
   Truck,
   UtensilsCrossed,
 } from "lucide-react";
+import { useOrdersChanged } from "../hooks/useRealtime";
 import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "../components/common/Checkbox";
 import { DataToolbar } from "../components/DataToolbar";
@@ -363,6 +364,16 @@ export function LocationDetailPage({
   const [isSavingSlot, setIsSavingSlot] = useState(false);
   const [deletingSlotId, setDeletingSlotId] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
+
+  // The branch's Orders tab follows pushes; see RestaurantDetailPage.
+  useOrdersChanged(() => {
+    api
+      .getOrders(token, restaurantId, locationId)
+      .then(setOrders)
+      .catch(() => {
+        // The tab keeps its last good list; the next push or visit retries.
+      });
+  });
   const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(
     () => new Set(),
   );
