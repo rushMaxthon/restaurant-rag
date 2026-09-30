@@ -26,6 +26,78 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 — A real geocoder, so a real address gets a real price
+
+**Goal:** replace the stand-in coordinates with a real geocoder, keep the price
+coming from the courier's API, and install something like Google Places so an
+address arrives with its coordinates.
+
+**Changed:**
+- `services/geocoding/` — NEW package. `base.py` (AddressQuery,
+  GeocodedPoint, GeocodeConfidence, protocol), `google.py` (geocoding +
+  Places autocomplete + details), `nominatim.py` (no-key fallback, throttled),
+  `registry.py` (Google when keyed, OSM otherwise), `service.py` (three cache
+  layers).
+- `models/geocode_cache.py` + `0070_geocoding` — the cache table, and
+  lat/lng/confidence on `user_saved_addresses`.
+- `services/delivery/geocoding.py` — rewritten. Row, then geocoder, then
+  stand-in; write-back onto the branch on a precise hit.
+- `services/delivery/quoting.py` — `points_for`, and db/known_drop threaded
+  through so both ends are located once.
+- `api/addresses.py` — NEW. `/suggest` and `/resolve`.
+- `api/orders.py` + `schemas/order.py` — the quote takes structured parts, a
+  saved address id, and picked coordinates; answers with `located_by` and
+  `matched_address`.
+- `scripts/locate_branches.py` — NEW. Locates every branch, names the failures.
+- `frontend-customer/src/components/AddressAutocomplete.tsx` — NEW dropdown.
+- `frontend-admin` LocationDetailPage — latitude/longitude fields.
+
+**Verified:** `unittest discover -s tests` → 2,450 OK. Both web apps build and
+lint clean. Live against the running server and the Pidge sandbox: a structured
+Ahmedabad address geocoded to 8,959 m and priced ₹109.59; picked coordinates in
+Surat priced ₹2,706.70 at 268 km; `/suggest` correctly answered
+`available: false` with no Google key. On local Postgres, the SAME customer
+address went from 9.0 km / ₹109.59 with no branch coordinates to 1.6 km / ₹50.00
+with them pasted in, `exact_location` flipping to true — ₹59.59 on one order,
+which is the cost of an unlocated branch. Supabase has the columns, the table
+and RLS.
+
+**Open:**
+- **A Google Maps key is needed for the India deployment.** Not optional; see
+  Learned. Without it there is no checkout dropdown and OSM cannot find Indian
+  society or mall addresses.
+- **0 of 25 branches have coordinates.** Run `scripts/locate_branches.py`, then
+  paste the rest in the admin.
+- `0069`/`0070` are still forked against `marketing`'s chain; an `alembic merge`
+  is still owed. Both revisions are written to tolerate the objects existing.
+- Pidge aggregator (type 6) account still blocks per-tenant brand mapping.
+
+**Learned:**
+- **OpenStreetMap is measurably not enough for India.** Not a guess — Nominatim
+  returns 0 results for "Shivalik Plaza, Ahmedabad", "Iscon Cross Road, S G
+  Highway" and "Singanpor, Surat", and all 18 seeded branches came back not
+  found. Indian addresses are written from societies, malls and crossroads,
+  which is the half of the map OSM is thinnest on.
+- **Nominatim structured search silently returns nothing.** Passing `street=`
+  requires an exact OSM street match with no fallback: "Kankaria Lake,
+  Ahmedabad" returns the lake as freeform and nothing as structured — a 200 with
+  an empty list, which reads exactly like "no such address". Google is the
+  opposite way round. That is why each provider builds its own request.
+- **A geocoder never says no**, and that is the whole design constraint. It
+  answers a city centroid for a fake street with no complaint, so a graded
+  confidence is mandatory and `exact` must mean "precise enough to charge for",
+  never "something answered".
+- **Caching a miss is right; caching a failure is not.** A misconfigured
+  provider cached misses for every address tried during it, and those addresses
+  kept failing after the bug was fixed. Cost about twenty minutes of chasing a
+  fix that was already in place. Only a real "no match" is stored now.
+- **Proxying the autocomplete beat installing a client package.** The usual
+  build puts a browser key in the bundle; proxying keeps the key server-side,
+  manages the per-session billing token in one place, and stores resolved
+  coordinates on the saved address so a repeat order costs zero provider calls.
+- The `rules-of-hooks` trap bit a third time in `checkout.tsx`. It is now worth
+  assuming any new hook there starts in the wrong place.
+
 ## 2026-09-29 — The courier prices the delivery, and the checkout prints that
 
 **Goal:** add a delivery fee to checkout driven by the delivery API and the
