@@ -13,7 +13,7 @@ import { unlock } from '../lib/sound'
  * the only one guaranteed to happen before the first ticket arrives.
  */
 export function SignIn() {
-  const { signIn } = useAuth()
+  const { signIn, expired } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +54,13 @@ export function SignIn() {
           <p className="kds-alert" role="alert">
             <AlertTriangle size={14} />
             <span>{error}</span>
+          </p>
+        ) : expired ? (
+          // Otherwise the board simply vanishes mid-service, which reads as a
+          // crash rather than as a login that ran out.
+          <p className="kds-alert" role="status">
+            <AlertTriangle size={14} />
+            <span>Your session ended — sign in again to reopen the board.</span>
           </p>
         ) : null}
 

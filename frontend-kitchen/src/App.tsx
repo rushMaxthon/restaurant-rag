@@ -1,13 +1,14 @@
-import { ChefHat, LogOut, Search, Volume2, VolumeX } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChefHat, History as HistoryIcon, LogOut, Search, Volume2, VolumeX } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { api, type KitchenOrder } from './lib/api'
 import { useAuth } from './lib/auth-context'
 import { BOARD_COLUMNS, formatWait } from './lib/board'
 import { boardMetrics, type BoardFilter } from './lib/metrics'
-import { setEnabled } from './lib/sound'
+import { isAudioReady, setEnabled, subscribeAudioReady, unlockOnAnyGesture } from './lib/sound'
 import { Board, type BoardColumn } from './components/Board'
+import { History } from './components/History'
 import { SignIn } from './components/SignIn'
 import { useBoard, type BoardScope } from './lib/queries'
 import { pollIntervalFor, type RealtimeStatus } from './lib/realtime'
@@ -48,6 +49,18 @@ export function App() {
       // A board that cannot remember the setting still honours it this session.
     }
   }, [soundOn])
+
+  // Sign-in is not the only way onto this board — a saved session skips it —
+  // so any tap anywhere has to be able to unlock audio, not just that button.
+  useEffect(() => unlockOnAnyGesture(), [])
+  const audioReady = useSyncExternalStore(subscribeAudioReady, isAudioReady)
+  // Switched on but still blocked by the browser: the one state in which the
+  // speaker icon alone would be lying.
+  const soundBlocked = soundOn && !audioReady
+
+  // Over the board, never instead of it — see `History` for why.
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const closeHistory = useCallback(() => setHistoryOpen(false), [])
 
   const [branchId, setBranchId] = useState<string | null>(() => {
     try {
@@ -162,6 +175,7 @@ export function App() {
           onSignOut={signOut}
           onToggleSound={() => setSoundOn((on) => !on)}
           restaurantName={null}
+          soundBlocked={soundBlocked}
           soundOn={soundOn}
           stale={false}
         />
@@ -194,10 +208,12 @@ export function App() {
         // The branch's own open flag, from `/restaurants/{id}`. Not a mode set
         // here: this app has nothing to set it with.
         isOpen={currentBranch?.is_open}
+        onOpenHistory={() => setHistoryOpen(true)}
         onSignOut={signOut}
         onToggleSound={() => setSoundOn((on) => !on)}
         restaurantName={restaurantQuery.data?.name ?? null}
         realtime={realtime}
+        soundBlocked={soundBlocked}
         soundOn={soundOn}
         stale={boardFailed}
       />
@@ -278,6 +294,20 @@ export function App() {
         scope={scope}
         search={search}
       />
+
+      {historyOpen ? (
+        <History
+          // A branch switch starts the history over — page 3 of one branch is
+          // not a page of another.
+          key={`${scope.restaurantId ?? 'any'}:${scope.locationId ?? 'all'}`}
+          onClose={closeHistory}
+          pollIntervalMs={pollIntervalFor(realtime ?? 'offline')}
+          scope={scope}
+          // Only when the board spans branches; a pinned cook's history is
+          // one branch and saying so on every row would be noise.
+          showBranch={scope.locationId === null}
+        />
+      ) : null}
     </div>
   )
 }
@@ -307,7 +337,9 @@ function Header({
   realtime,
   stale,
   soundOn,
+  soundBlocked,
   onToggleSound,
+  onOpenHistory,
   onSignOut,
 }: {
   restaurantName: string | null
@@ -317,7 +349,11 @@ function Header({
   realtime?: RealtimeStatus | null
   stale: boolean
   soundOn: boolean
+  /** Sound is switched on, but the browser has not been tapped since loading. */
+  soundBlocked: boolean
   onToggleSound: () => void
+  /** Absent where there is no board to have a history of (an admin with no restaurant). */
+  onOpenHistory?: () => void
   onSignOut: () => void
 }) {
   return (
@@ -361,6 +397,26 @@ function Header({
             {isOpen ? 'OPEN' : 'CLOSED'}
           </span>
         )}
+
+        {/* Tapping it is itself the gesture that unlocks audio (so is any
+            other tap); it disappears the moment the browser allows sound. */}
+        {onOpenHistory ? (
+          <button
+            aria-label="Completed orders"
+            className="kds-historybtn"
+            onClick={onOpenHistory}
+            type="button"
+          >
+            <HistoryIcon size={14} />
+            <span className="kds-historybtn__label">Completed</span>
+          </button>
+        ) : null}
+
+        {soundBlocked ? (
+          <button className="kds-soundhint" type="button">
+            <VolumeX size={13} /> Tap to enable sound
+          </button>
+        ) : null}
 
         <button
           aria-label={soundOn ? 'Mute new order sound' : 'Unmute new order sound'}

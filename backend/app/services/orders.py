@@ -25,6 +25,7 @@ from app.models.enums import (
 from app.models.menu_item import MenuItem
 from app.models.order import Order
 from app.models.order_item import OrderItem
+from app.models.order_status_event import OrderStatusEvent
 from app.models.personalized_offer import GeneratedOffer, PersonalizedOffer
 from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
@@ -698,11 +699,46 @@ def run_order_placed_side_effects(db: Session, *, customer: User, order_id: uuid
         pass
 
 
+# The instant an order reached DELIVERED. Correlated on `Order.id`, so it can
+# sit in a WHERE or an ORDER BY of any query over `orders`.
+#
+# From the event log rather than an `orders` column because there is no such
+# column: `updated_at` is the nearest thing, and a refund or payment write
+# after delivery moves it. MAX, because the flow is linear and a second
+# DELIVERED event should not exist — but if one ever did, the latest is the
+# one that finished it.
+_completed_at = (
+    select(sa.func.max(OrderStatusEvent.occurred_at))
+    .where(
+        OrderStatusEvent.order_id == Order.id,
+        OrderStatusEvent.to_status == OrderStatus.DELIVERED,
+    )
+    .correlate(Order)
+    .scalar_subquery()
+)
+
 ORDER_SORT_COLUMNS = {
     "placed_at": Order.placed_at,
     "total_amount": Order.total_amount,
     "status": Order.status,
+    "completed_at": _completed_at,
 }
+
+
+def _completion_times(db: Session, order_ids: list[uuid.UUID]) -> dict[uuid.UUID, datetime]:
+    """When each of these orders was delivered, in one query for the page."""
+
+    if not order_ids:
+        return {}
+    rows = db.execute(
+        select(OrderStatusEvent.order_id, sa.func.max(OrderStatusEvent.occurred_at))
+        .where(
+            OrderStatusEvent.order_id.in_(order_ids),
+            OrderStatusEvent.to_status == OrderStatus.DELIVERED,
+        )
+        .group_by(OrderStatusEvent.order_id)
+    ).all()
+    return {order_id: occurred_at for order_id, occurred_at in rows}
 
 
 def list_orders(
@@ -716,6 +752,7 @@ def list_orders(
     search: str | None = None,
     status_filter: OrderStatus | None = None,
     due_from: datetime | None = None,
+    completed_from: datetime | None = None,
     sort: str | None = None,
     limit: int | None = None,
     offset: int = 0,
@@ -763,6 +800,19 @@ def list_orders(
             sa.func.coalesce(Order.scheduled_at, Order.placed_at) >= due_from
         )
 
+    # The kitchen's order history: delivered since this instant. Measured on
+    # WHEN IT WAS DELIVERED, not when it was due or placed — the cook asking
+    # "did #3F2A go out?" at 00:30 means the order placed at 23:50 and handed
+    # over at 00:20, which a `due_from` window for today would hide. Like the
+    # window above, it narrows inside the scope already applied and never
+    # widens it. An order delivered before event tracking has no DELIVERED
+    # row and so never matches, which is the honest answer to "when".
+    if completed_from is not None:
+        query = query.where(
+            Order.status == OrderStatus.DELIVERED,
+            _completed_at >= completed_from,
+        )
+
     if search:
         normalized = f"%{search.strip()}%"
         query = query.join(Order.customer).join(Order.restaurant).where(
@@ -790,7 +840,15 @@ def list_orders(
         query = query.limit(limit).offset(max(offset, 0))
 
     orders = db.scalars(query).all()
-    return [_serialize_order(order) for order in orders], total
+    responses = [_serialize_order(order) for order in orders]
+    # One extra query per page, and only when the page holds delivered orders —
+    # which the live board never asks for, so it pays nothing.
+    completed = _completion_times(
+        db, [order.id for order in orders if order.status == OrderStatus.DELIVERED]
+    )
+    for response in responses:
+        response.completed_at = completed.get(response.id)
+    return responses, total
 
 
 def get_order_for_user(

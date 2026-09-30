@@ -48,6 +48,7 @@ from app.models.enums import (
     UserRole,
 )
 from app.models.order import Order
+from app.models.order_status_event import OrderStatusEvent
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
@@ -1054,6 +1055,155 @@ class LiveWindowTests(KitchenFixture, unittest.TestCase):
         returned = {row["id"] for row in self._board(cook).json()}
         self.assertIn(str(fresh.id), returned)
         self.assertIn(str(stale.id), returned)
+
+
+class CompletedHistoryTests(LiveWindowTests):
+    """`completed_from`: the kitchen board's order history.
+
+    Measured on when an order was DELIVERED, read from `order_status_events`,
+    because that is the question a cook is asking — "did #3F2A go out?" — and
+    neither `due_from` nor `updated_at` answers it. The cross-midnight test is
+    the one that fails if this is ever "simplified" to a due-time window.
+
+    Subclasses `LiveWindowTests` for its fixtures, and so re-runs those tests
+    too; they are fast and it keeps the helpers in one place.
+    """
+
+    def _delivered(self, placed_at, delivered_at, *, restaurant_id=None, location_id=None) -> Order:
+        order = self._order_at(placed_at)
+        if restaurant_id is not None:
+            order.restaurant_id = restaurant_id
+            order.restaurant_location_id = location_id
+        order.status = OrderStatus.DELIVERED
+        self.session.add(
+            OrderStatusEvent(
+                id=uuid.uuid4(),
+                order_id=order.id,
+                restaurant_id=order.restaurant_id,
+                restaurant_location_id=order.restaurant_location_id,
+                from_status=OrderStatus.OUT_FOR_DELIVERY,
+                to_status=OrderStatus.DELIVERED,
+                actor=OrderEventActor.KITCHEN,
+                occurred_at=delivered_at,
+            )
+        )
+        self.session.commit()
+        return order
+
+    def _history(self, cook, **params):
+        query = {"order_status": "DELIVERED", **params}
+        response = self._client_as(cook.id).get("/api/orders", params=query)
+        self.assertEqual(response.status_code, 200, response.text)
+        return response
+
+    def test_only_orders_delivered_since_the_instant(self) -> None:
+        now = datetime.now(UTC)
+        today = self._delivered(now - timedelta(hours=2), now - timedelta(hours=1))
+        yesterday = self._delivered(now - timedelta(days=1, hours=2), now - timedelta(days=1))
+        still_cooking = self._order_at(now - timedelta(minutes=10))
+        cook = self._cook_on_a()
+
+        returned = {
+            row["id"]
+            for row in self._history(
+                cook, completed_from=(now - timedelta(hours=6)).isoformat()
+            ).json()
+        }
+        self.assertEqual(returned, {str(today.id)})
+        self.assertNotIn(str(yesterday.id), returned)
+        self.assertNotIn(str(still_cooking.id), returned)
+
+    def test_an_order_placed_before_midnight_counts_on_the_day_it_went_out(self) -> None:
+        """The reason the filter is on the DELIVERED event, not on due time."""
+
+        midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        late_night = self._delivered(
+            midnight - timedelta(minutes=10), midnight + timedelta(minutes=20)
+        )
+        cook = self._cook_on_a()
+
+        returned = {
+            row["id"] for row in self._history(cook, completed_from=midnight.isoformat()).json()
+        }
+        self.assertIn(str(late_night.id), returned)
+
+    def test_newest_completed_first_with_the_completion_time(self) -> None:
+        now = datetime.now(UTC)
+        first = self._delivered(now - timedelta(hours=3), now - timedelta(hours=2))
+        # Placed LATER but delivered EARLIER: sorting by placed_at would get
+        # this pair backwards.
+        second = self._delivered(now - timedelta(hours=2, minutes=30), now - timedelta(hours=2, minutes=30))
+        third = self._delivered(now - timedelta(hours=1), now - timedelta(minutes=5))
+        cook = self._cook_on_a()
+
+        rows = self._history(
+            cook,
+            completed_from=(now - timedelta(hours=6)).isoformat(),
+            sort="completed_at:desc",
+        ).json()
+        self.assertEqual([row["id"] for row in rows], [str(third.id), str(first.id), str(second.id)])
+        self.assertIsNotNone(rows[0]["completed_at"])
+        self.assertEqual(
+            datetime.fromisoformat(rows[0]["completed_at"]),
+            now - timedelta(minutes=5),
+        )
+
+    def test_the_total_and_the_page_describe_the_history(self) -> None:
+        now = datetime.now(UTC)
+        for minutes in range(5):
+            self._delivered(now - timedelta(hours=1), now - timedelta(minutes=minutes + 1))
+        cook = self._cook_on_a()
+
+        response = self._history(
+            cook,
+            completed_from=(now - timedelta(hours=6)).isoformat(),
+            sort="completed_at:desc",
+            limit=2,
+            offset=2,
+        )
+        self.assertEqual(len(response.json()), 2)
+        self.assertEqual(response.headers["X-Total-Count"], "5")
+
+    def test_history_does_not_widen_the_branch_scope(self) -> None:
+        now = datetime.now(UTC)
+        mine = self._delivered(now - timedelta(hours=1), now - timedelta(minutes=30))
+        theirs = self._delivered(
+            now - timedelta(hours=1),
+            now - timedelta(minutes=30),
+            restaurant_id=self.restaurant_b_id,
+            location_id=self.location_b_id,
+        )
+        cook = self._cook_on_a()
+
+        returned = {
+            row["id"]
+            for row in self._history(
+                cook, completed_from=(now - timedelta(hours=6)).isoformat()
+            ).json()
+        }
+        self.assertIn(str(mine.id), returned)
+        self.assertNotIn(str(theirs.id), returned)
+
+    def test_search_finds_an_older_completed_order_by_its_code(self) -> None:
+        """Search is not bounded to today: yesterday's receipt must be findable."""
+
+        now = datetime.now(UTC)
+        old = self._delivered(now - timedelta(days=3, hours=1), now - timedelta(days=3))
+        self._delivered(now - timedelta(hours=1), now - timedelta(minutes=30))
+        cook = self._cook_on_a()
+
+        rows = self._history(cook, search=str(old.id)[:8].upper()).json()
+        self.assertEqual([row["id"] for row in rows], [str(old.id)])
+        self.assertIsNotNone(rows[0]["completed_at"])
+
+    def test_a_non_delivered_order_carries_no_completion_time(self) -> None:
+        now = datetime.now(UTC)
+        self._order_at(now - timedelta(minutes=5))
+        cook = self._cook_on_a()
+
+        rows = self._board(cook).json()
+        self.assertTrue(rows)
+        self.assertTrue(all(row["completed_at"] is None for row in rows))
 
 
 class DeactivationEndsSessionsTests(KitchenFixture, unittest.TestCase):

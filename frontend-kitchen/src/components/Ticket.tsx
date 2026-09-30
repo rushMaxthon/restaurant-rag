@@ -3,14 +3,17 @@ import { AlertTriangle, Bike, CalendarClock, Loader2, Store } from 'lucide-react
 import type { KitchenOrder } from '../lib/api'
 import {
   advanceLabel,
+  clockTime,
   formatWait,
-  lineDetail,
   nextStatus,
   orderCode,
+  payKind,
+  payLabel,
   urgencyOf,
   waitingMinutes,
 } from '../lib/board'
 import { priorityLabel } from '../lib/metrics'
+import { OrderItems } from './OrderItems'
 
 /**
  * One order, as a kitchen reads it.
@@ -92,23 +95,7 @@ export function Ticket({
         ) : null}
       </div>
 
-      <ul className="kds-items">
-        {order.items.map((line) => {
-          const mods = lineDetail(line)
-          return (
-            <li className="kds-item" key={line.id}>
-              <span className="kds-item__qty">{line.quantity}×</span>
-              <div className="kds-item__body">
-                <p className="kds-item__name">{line.item_name_snapshot}</p>
-                {mods ? <p className="kds-item__mods">{mods}</p> : null}
-                {line.special_instructions ? (
-                  <p className="kds-item__note">“{line.special_instructions}”</p>
-                ) : null}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+      <OrderItems items={order.items} />
 
       {order.special_instructions ? (
         <p className="kds-note">
@@ -144,37 +131,4 @@ export function Ticket({
       {error ? <p className="kds-ticket__error">{error}</p> : null}
     </article>
   )
-}
-
-function clockTime(iso: string | null): string {
-  if (!iso) return ''
-  const at = new Date(iso)
-  if (Number.isNaN(at.getTime())) return ''
-  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(at)
-}
-
-/**
- * The only payment fact a kitchen acts on: whether cash is owed at handover.
- *
- * Everything else is the office's problem, so PAID is stated once and quietly
- * rather than being the loudest thing in the footer.
- */
-function payLabel(status: string): string {
-  switch (status.toUpperCase()) {
-    case 'COD':
-      return 'Collect cash'
-    case 'PAID':
-      return 'Paid'
-    case 'REFUNDED':
-      return 'Refunded'
-    default:
-      return 'Unpaid'
-  }
-}
-
-function payKind(status: string): string {
-  const upper = status.toUpperCase()
-  if (upper === 'COD') return 'COD'
-  if (upper === 'PAID' || upper === 'REFUNDED') return 'PAID'
-  return 'UNPAID'
 }

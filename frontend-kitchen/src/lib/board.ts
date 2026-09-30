@@ -7,7 +7,7 @@
  * tickets are new since the last poll, and when one is late.
  */
 
-import type { KitchenOrder, OrderStatus } from './api'
+import type { KitchenOrder, OrderLine, OrderStatus } from './api'
 
 /**
  * The linear flow, mirroring `ORDER_STATUS_FLOW` in
@@ -213,21 +213,93 @@ export function orderCode(order: Pick<KitchenOrder, 'id'>): string {
   return `#${order.id.slice(0, 8).toUpperCase()}`
 }
 
+/** A time of day in the tablet's locale, or '' for a missing or unreadable one. */
+export function clockTime(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(at)
+}
+
 /**
- * The one line under a dish that says how it differs from the menu default.
+ * The only payment fact a kitchen acts on: whether cash is owed at handover.
  *
- * Half-and-half is spelled out rather than flattened: "Pepperoni (left)" is
- * the difference between a correct pizza and a remake.
+ * Everything else is the office's problem, so PAID is stated once and quietly
+ * rather than being the loudest thing in the footer.
  */
-export function lineDetail(line: {
-  selected_size_name?: string | null
-  selected_options?: { option_name: string; portion?: string | null }[] | null
-}): string | null {
-  const parts: string[] = []
-  if (line.selected_size_name) parts.push(line.selected_size_name)
-  for (const option of line.selected_options ?? []) {
-    const portion = option.portion && option.portion !== 'WHOLE' ? option.portion.toLowerCase() : null
-    parts.push(portion ? `${option.option_name} (${portion})` : option.option_name)
+export function payLabel(status: string): string {
+  switch (status.toUpperCase()) {
+    case 'COD':
+      return 'Collect cash'
+    case 'PAID':
+      return 'Paid'
+    case 'REFUNDED':
+      return 'Refunded'
+    default:
+      return 'Unpaid'
   }
-  return parts.length ? parts.join(' · ') : null
+}
+
+export function payKind(status: string): string {
+  const upper = status.toUpperCase()
+  if (upper === 'COD') return 'COD'
+  if (upper === 'PAID' || upper === 'REFUNDED') return 'PAID'
+  return 'UNPAID'
+}
+
+export type Half = 'LEFT' | 'RIGHT'
+
+/** One line under a dish: a label (group title or "Size"), maybe a half, and what goes there. */
+export type ModifierRow = {
+  label: string | null
+  half: Half | null
+  text: string
+}
+
+/**
+ * How a dish differs from the menu default, one row per group.
+ *
+ * Grouped by the owner's own group title because that is how a cook reads a
+ * build — "Crust: Thin", "Toppings: Olives · Extra cheese ×2" — rather than a
+ * flat run of option names where "Thin" could be anything.
+ *
+ * Half-and-half gets a row PER HALF. A group is split or the same all over
+ * (see `menu_item_customizations.py`), so a split group renders as a Left row
+ * and a Right row; "Pepperoni (left)" buried mid-sentence is how the wrong
+ * side gets topped. Should a row ever carry both whole and half options
+ * anyway, all three rows are printed: the rule is enforced at checkout, and
+ * this screen's job is to show what was ordered, never to drop part of it.
+ *
+ * Nothing is dropped for a missing key either — old snapshots predate
+ * `portion` and `group_title` — so an unlabelled option still prints.
+ */
+export function lineModifiers(line: Pick<OrderLine, 'size_name_snapshot' | 'selected_options_snapshot'>): ModifierRow[] {
+  const rows: ModifierRow[] = []
+  const size = line.size_name_snapshot?.trim()
+  if (size) rows.push({ label: 'Size', half: null, text: size })
+
+  // Insertion-ordered, so groups print in the order the customer built them.
+  const groups = new Map<string, { title: string | null; whole: string[]; LEFT: string[]; RIGHT: string[] }>()
+  for (const option of line.selected_options_snapshot ?? []) {
+    const title = option.group_title?.trim() || null
+    const key = option.group_id || title || ''
+    let group = groups.get(key)
+    if (!group) {
+      group = { title, whole: [], LEFT: [], RIGHT: [] }
+      groups.set(key, group)
+    }
+    const count = option.quantity && option.quantity > 1 ? ` ×${option.quantity}` : ''
+    const name = `${option.option_name?.trim() || 'Option'}${count}`
+    const portion = option.portion?.toUpperCase()
+    if (portion === 'LEFT' || portion === 'RIGHT') group[portion].push(name)
+    else group.whole.push(name)
+  }
+
+  for (const group of groups.values()) {
+    if (group.whole.length) rows.push({ label: group.title, half: null, text: group.whole.join(' · ') })
+    for (const half of ['LEFT', 'RIGHT'] as const) {
+      if (group[half].length) rows.push({ label: group.title, half, text: group[half].join(' · ') })
+    }
+  }
+  return rows
 }

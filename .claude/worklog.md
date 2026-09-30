@@ -26,6 +26,74 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 — Kitchen board: silent chime after reload, stuck board on 401
+
+**Goal:** review the kitchen workflow, then fix the two bugs found: (1) no
+new-order chime after a reload, (2) board stuck on "Not updating" when the
+token is rejected. Workflow otherwise unchanged.
+
+**Changed:**
+- `frontend-kitchen/src/lib/sound.ts` — `unlockOnAnyGesture`, `isAudioReady`,
+  `subscribeAudioReady`; sign-in was the only unlock and a saved session skips it.
+- `App.tsx` + `index.css` — installs the gesture unlock; "Tap to enable sound"
+  pill in the header while sound is on but still blocked.
+- `lib/api.ts` — `onSessionExpired`; a 401 now notifies, and only when the
+  rejected token is still the stored one (a late 401 cannot sign out a newer login).
+- `lib/auth.tsx`, `auth-context.ts`, `components/SignIn.tsx` — provider drops
+  the session on expiry; sign-in shows "Your session ended".
+- New `lib/api.test.ts`, `lib/sound.test.ts`.
+
+**Verified:** in `frontend-kitchen`: `npm run test` 65/65 (5 files),
+`npm run lint` clean, `npm run build` OK. Not exercised in a real browser.
+
+**Also fixed, same session — tickets never showed size or modifiers.** The
+kitchen read `selected_size_name` / `selected_options` / per-line
+`special_instructions`; `OrderItemResponse` sends `size_name_snapshot` /
+`selected_options_snapshot` and has no per-line note. The tests used the same
+wrong names, so they passed. `lineDetail` → `lineModifiers` in `board.ts`: one
+row per group (group title as label), a separate Left ½ / Right ½ row per half,
+`×N` for option quantity, nothing dropped for missing keys in old snapshots.
+`Ticket.tsx` + `.kds-item__group` / `.kds-half` in `index.css`. Tests 71/71,
+lint clean, build OK. Not checked against a live order.
+
+**Also built, same session — kitchen order history.** Header button
+"Completed" opens an overlay (board stays mounted, so it keeps polling and
+chiming). Today's completed orders by default, search by order # across ALL
+dates, 20 per page, read-only detail sharing `OrderItems` with the ticket.
+- backend: `GET /orders?completed_from=` (DELIVERED since an instant, from
+  `order_status_events`, not due time — an order placed 23:50 and delivered
+  00:20 counts today), sort key `completed_at`, and `completed_at` on
+  DELIVERED rows (one batched query per page). No migration. Scope unchanged:
+  still `resolve_order_board_scope`.
+- kitchen: `components/History.tsx`, `components/OrderItems.tsx` (extracted
+  from Ticket), `lib/history.ts`, `useOrderHistory` keyed under `['orders']`
+  so existing invalidation refreshes it; `clockTime`/`payLabel`/`payKind`
+  moved from Ticket.tsx to board.ts.
+- Verified: `CompletedHistoryTests` (7 new) + file 53/53; full backend
+  discover 2594 run, 24 failures all `test_ordering_agent_order_details`
+  (known); compileall OK; kitchen test 84/84, lint clean, build OK.
+  Not exercised in a browser or against Supabase.
+
+**Browser pass, same session.** Playwright (from `frontend-customer/node_modules`)
+against a throwaway local stack — never Supabase: backend on :8010 with
+`DATABASE_URL` → `restaurant_rag_manual` (created, migrated, seeded, fixtures,
+dropped after), Redis db 8/9, kitchen on :5185 via `VITE_API_BASE_URL`. The
+user's :8000/:5173-5175 were left running and untouched. 45/45 checks + 2 live
+checks, with realtime off and on. Found and fixed three issues:
+- open History never refreshed for an order completed on ANOTHER tablet with
+  realtime off → `useOrderHistory` now polls at the board's rate;
+- the "Completed" button ran the header 54px past a 390px phone → icon only
+  at ≤680px;
+- the "Tap to enable sound" pill (earlier fix) ran it 141px past after a
+  reload → floats at the bottom on phones; ≤380px hides the "Kitchen" word.
+Kitchen test 84/84, lint clean, build OK after the fixes.
+
+**Open:** from the same review, not started — future scheduled orders land in
+"New" immediately (`due_from` is only a lower bound); no way for a kitchen to
+refuse an order (product decision); no undo on an accidental advance; no
+wake lock; no repeat alert for an un-accepted ticket. The realtime `auth`
+refusal still calls plain `signOut`, so it shows no "session ended" notice.
+
 ## 2026-09-24 — Realtime order updates over Socket.IO
 
 **Goal:** Socket.IO across backend, kitchen, admin, customer web and mobile.

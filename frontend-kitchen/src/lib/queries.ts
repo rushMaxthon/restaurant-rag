@@ -10,10 +10,17 @@
  * only ever comes from here.
  */
 
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api, type KitchenOrder, type OrderStatus } from './api'
 import { BOARD_COLUMNS, hiddenCount, inServiceOrder, liveWindowStart } from './board'
+import { HISTORY_PAGE_SIZE, localDayKey, startOfToday } from './history'
 import { POLL_INTERVAL_MS } from './realtime'
 
 export type BoardScope = { restaurantId: string | null; locationId: string | null }
@@ -88,5 +95,62 @@ export function useAdvanceOrder(scope: BoardScope) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
     },
+  })
+}
+
+/**
+ * One page of finished orders, for the history view.
+ *
+ * Keyed under `['orders', ...]` on purpose: the board's advance mutation and
+ * the socket both invalidate that prefix, so an order a cook marks Delivered
+ * appears in an open history straight away.
+ *
+ * It also polls at the board's own rate. That was left out at first on the
+ * reasoning above, and a browser pass showed the hole: with realtime off —
+ * the default — an order completed on ANOTHER tablet reaches this one only
+ * by poll, and an open history had none, so it stayed stale until reopened.
+ *
+ * With a search it looks through ALL history, not just today's: the question
+ * behind a search is usually "this customer's receipt from yesterday", and a
+ * search that could only find today's orders would say "no such order" about
+ * one that exists. Without one it is today's, from local midnight.
+ */
+export function useOrderHistory(
+  scope: BoardScope,
+  {
+    search,
+    page,
+    enabled,
+    pollIntervalMs = POLL_INTERVAL_MS,
+  }: { search: string | null; page: number; enabled: boolean; pollIntervalMs?: number },
+) {
+  const day = localDayKey()
+  return useQuery({
+    queryKey: [
+      'orders',
+      'history',
+      scope.restaurantId ?? 'any',
+      scope.locationId ?? 'any',
+      search ?? '',
+      search ? 'all' : day,
+      page,
+    ],
+    queryFn: () =>
+      api.completedOrders({
+        scope,
+        completedFrom: search ? undefined : startOfToday(),
+        search: search ?? undefined,
+        limit: HISTORY_PAGE_SIZE,
+        offset: page * HISTORY_PAGE_SIZE,
+      }),
+    enabled,
+    refetchInterval: pollIntervalMs,
+    // Same reason as the board: a wall tablet is never the focused window.
+    refetchIntervalInBackground: true,
+    // The previous page stays on screen while the next loads, rather than the
+    // list collapsing to a spinner on every arrow press.
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    retry: 1,
   })
 }

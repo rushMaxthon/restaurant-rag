@@ -81,6 +81,9 @@ def get_orders(
     # unset by every existing caller, so the owner and admin lists are
     # untouched: they want history, which is a different question.
     due_from: datetime | None = Query(default=None),
+    # The kitchen's history: orders DELIVERED at or after this instant, from
+    # the status-event log. See `list_orders` for why it is not `due_from`.
+    completed_from: datetime | None = Query(default=None),
     sort: str | None = Query(default=None, max_length=40),
     limit: int | None = Query(default=None, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -113,6 +116,7 @@ def get_orders(
         search=search,
         status_filter=order_status,
         due_from=due_from,
+        completed_from=completed_from,
         sort=sort,
         limit=limit,
         offset=offset,

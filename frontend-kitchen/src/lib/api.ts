@@ -42,6 +42,35 @@ export type KitchenSession = {
   restaurantLocationId: string | null
 }
 
+/**
+ * One chosen option, exactly as `ResolvedCustomizationOption.to_snapshot()`
+ * writes it at checkout.
+ *
+ * Every field is optional because this is a JSON column frozen per order:
+ * rows written before `portion` or `group_title` existed still come back, and
+ * a ticket that drops an option because a key is missing is worse than one
+ * that prints it plainly.
+ */
+export type SelectedOptionSnapshot = {
+  group_id?: string | null
+  group_title?: string | null
+  option_id?: string | null
+  option_name?: string | null
+  /** How many of this option — "Extra cheese ×2". */
+  quantity?: number | null
+  /** WHOLE, or LEFT / RIGHT for a group the owner marked `supports_halves`. */
+  portion?: string | null
+}
+
+/**
+ * Mirrors `OrderItemResponse`.
+ *
+ * The size and options used to be read as `selected_size_name` and
+ * `selected_options` — names the API has never sent — so every ticket printed
+ * the bare dish: "1× Pizza" for "Large · Pepperoni (left) · Mushroom (right)".
+ * There is no per-line note either; the only free text is the order's own
+ * `special_instructions`.
+ */
 export type OrderLine = {
   id: string
   menu_item_id: string
@@ -49,9 +78,8 @@ export type OrderLine = {
   quantity: number
   unit_price: string
   total_price: string
-  selected_size_name?: string | null
-  selected_options?: { option_name: string; portion?: string | null }[] | null
-  special_instructions?: string | null
+  size_name_snapshot?: string | null
+  selected_options_snapshot?: SelectedOptionSnapshot[] | null
 }
 
 export type KitchenOrder = {
@@ -73,6 +101,11 @@ export type KitchenOrder = {
   restaurant_location: { id: string; branch_name: string } | null
   customer: { full_name: string; phone_number: string | null } | null
   items: OrderLine[]
+  /**
+   * When it was delivered, from the status-event log. Set on DELIVERED rows
+   * only, and null for one delivered before event tracking began.
+   */
+  completed_at?: string | null
 }
 
 export type RestaurantLocationSummary = { id: string; branch_name: string; is_open: boolean }
@@ -132,6 +165,30 @@ export function clearSession() {
   } catch {
     // Nothing to do; the in-memory state is cleared by the caller either way.
   }
+}
+
+/**
+ * Who to tell when the server stops accepting this screen's token.
+ *
+ * Clearing localStorage alone was not enough: `AuthProvider` reads the session
+ * once, at mount, so a 401 wiped the stored copy while React kept the old one
+ * and went on rendering the board — every request failing, the header saying
+ * "Not updating", and no way back to sign-in short of a reload. That is what
+ * an expired token or a cook deactivated by their owner (which bumps
+ * `token_version`) looked like on the wall. The socket's `auth` refusal covered
+ * it only with `enable_realtime` on, and that defaults off.
+ */
+const sessionExpiredListeners = new Set<() => void>()
+
+export function onSessionExpired(listener: () => void): () => void {
+  sessionExpiredListeners.add(listener)
+  return () => {
+    sessionExpiredListeners.delete(listener)
+  }
+}
+
+function notifySessionExpired() {
+  for (const listener of sessionExpiredListeners) listener()
 }
 
 function messageFrom(payload: unknown, fallback: string): string {
@@ -209,7 +266,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    if (response.status === 401 && sentToken) clearSession()
+    // Only when the rejected token is still the stored one: a slow request
+    // from a previous login must not sign out the account that replaced it.
+    if (response.status === 401 && sentToken && sentToken === getToken()) {
+      clearSession()
+      notifySessionExpired()
+    }
     throw new ApiError(messageFrom(payload, `Request failed (${response.status}).`), response.status)
   }
   return payload as T
@@ -309,6 +371,41 @@ export const api = {
         // puts it back. This is about which end the limit cuts, not about what
         // a cook sees; the reasoning is on that function.
         sort: 'placed_at:desc',
+      },
+    }),
+
+  /**
+   * Finished orders, most recently completed first — the history view.
+   *
+   * Scoped exactly like the board: the same `restaurant_id` and
+   * `restaurant_location_id`, run through the same `resolve_order_board_scope`
+   * on the server, so a pinned cook's history is their branch's and nothing
+   * else. `completedFrom` bounds it by when an order was DELIVERED (not when
+   * it was due); leave it out to search all history.
+   */
+  completedOrders: ({
+    scope,
+    completedFrom,
+    search,
+    limit,
+    offset,
+  }: {
+    scope: { restaurantId?: string | null; locationId?: string | null }
+    completedFrom?: string
+    search?: string
+    limit: number
+    offset: number
+  }) =>
+    requestPage<KitchenOrder>('/orders', {
+      query: {
+        order_status: 'DELIVERED',
+        restaurant_id: scope.restaurantId ?? undefined,
+        restaurant_location_id: scope.locationId ?? undefined,
+        completed_from: completedFrom,
+        search,
+        sort: 'completed_at:desc',
+        limit,
+        offset,
       },
     }),
 

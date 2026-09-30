@@ -361,6 +361,14 @@ includes `KITCHEN` even though no route in the panel admits that role.
 `actor_for_user` falls through to SYSTEM and every advance a cook makes reads
 as something the platform did by itself.
 
+**Order history is by DELIVERED time, from the event log.** The board's
+"Completed" overlay reads `GET /orders?order_status=DELIVERED&completed_from=`
+sorted `completed_at:desc`; both come from `order_status_events`, because
+`orders` has no completion column and `updated_at` moves on a later refund.
+Today by default, search spans all dates. It is an overlay on purpose — the
+board stays mounted so a cook looking something up still hears the next
+ticket.
+
 Client side: four queries, one per column, `refetchIntervalInBackground` on
 because a wall-mounted board is never focused. A Socket.IO push (see "Realtime"
 below) invalidates them the moment an order moves; the poll is the safety net —

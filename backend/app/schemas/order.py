@@ -247,3 +247,8 @@ class OrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemResponse]
+    # When the order reached DELIVERED, read from `order_status_events` — not
+    # `updated_at`, which a later refund or payment write would move. Filled by
+    # `list_orders` for DELIVERED rows only; null for every other status, and
+    # for delivered orders older than event tracking, which have no such row.
+    completed_at: datetime | None = None

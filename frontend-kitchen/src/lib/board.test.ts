@@ -16,7 +16,7 @@ import {
   idsOf,
   inServiceOrder,
   liveWindowStart,
-  lineDetail,
+  lineModifiers,
   newlyArrived,
   nextStatus,
   orderCode,
@@ -154,21 +154,120 @@ describe('reading a ticket', () => {
     expect(orderCode(order({ id: 'abcdef12-3456-7890-abcd-ef1234567890' }))).toBe('#ABCDEF12')
   })
 
-  it('names the half a topping goes on', () => {
-    // "Pepperoni" alone is the difference between a correct pizza and a remake.
+  // Every fixture below uses the keys `OrderItemResponse` actually sends. The
+  // previous ones used `selected_size_name` / `selected_options`, which the API
+  // has never sent — so these tests passed while every real ticket printed the
+  // bare dish name with no size and no options at all.
+  //
+  // This is the shape `ResolvedCustomizationOption.to_snapshot()` writes.
+  const snapshot = (overrides: Record<string, unknown>) => ({
+    group_id: 'g-toppings',
+    group_title: 'Toppings',
+    selection_type: 'MULTI',
+    option_id: 'o1',
+    option_name: 'Olives',
+    extra_price: '1.00',
+    quantity: 1,
+    is_countable: true,
+    portion: 'WHOLE',
+    ...overrides,
+  })
+
+  it('reads the size and options from the fields the API sends', () => {
     expect(
-      lineDetail({
-        selected_size_name: 'Large',
-        selected_options: [
-          { option_name: 'Pepperoni', portion: 'LEFT' },
-          { option_name: 'Olives', portion: 'WHOLE' },
+      lineModifiers({
+        size_name_snapshot: 'Large',
+        selected_options_snapshot: [
+          snapshot({ group_id: 'g-crust', group_title: 'Crust', option_name: 'Thin' }),
+          snapshot({ option_name: 'Olives' }),
         ],
       }),
-    ).toBe('Large · Pepperoni (left) · Olives')
+    ).toEqual([
+      { label: 'Size', half: null, text: 'Large' },
+      { label: 'Crust', half: null, text: 'Thin' },
+      { label: 'Toppings', half: null, text: 'Olives' },
+    ])
+  })
+
+  it('gives each half of a split group its own row', () => {
+    // "Pepperoni" alone is the difference between a correct pizza and a remake,
+    // and so is putting it on the wrong side.
+    expect(
+      lineModifiers({
+        size_name_snapshot: null,
+        selected_options_snapshot: [
+          snapshot({ option_name: 'Pepperoni', portion: 'LEFT' }),
+          snapshot({ option_name: 'Mushroom', portion: 'RIGHT' }),
+          snapshot({ option_name: 'Jalapeño', portion: 'LEFT' }),
+        ],
+      }),
+    ).toEqual([
+      { label: 'Toppings', half: 'LEFT', text: 'Pepperoni · Jalapeño' },
+      { label: 'Toppings', half: 'RIGHT', text: 'Mushroom' },
+    ])
+  })
+
+  it('prints how many of an option, but not "×1"', () => {
+    expect(
+      lineModifiers({
+        selected_options_snapshot: [
+          snapshot({ option_name: 'Extra cheese', quantity: 2 }),
+          snapshot({ option_name: 'Basil', quantity: 1 }),
+        ],
+      }),
+    ).toEqual([{ label: 'Toppings', half: null, text: 'Extra cheese ×2 · Basil' }])
+  })
+
+  it('carries a quantity onto a half as well', () => {
+    expect(
+      lineModifiers({
+        selected_options_snapshot: [snapshot({ option_name: 'Pepperoni', quantity: 3, portion: 'RIGHT' })],
+      }),
+    ).toEqual([{ label: 'Toppings', half: 'RIGHT', text: 'Pepperoni ×3' }])
+  })
+
+  it('keeps groups in the order the customer built them', () => {
+    const rows = lineModifiers({
+      selected_options_snapshot: [
+        snapshot({ group_id: 'g-sauce', group_title: 'Sauce', option_name: 'Garlic' }),
+        snapshot({ option_name: 'Olives' }),
+        snapshot({ group_id: 'g-sauce', group_title: 'Sauce', option_name: 'Chilli' }),
+      ],
+    })
+    expect(rows.map((row) => `${row.label}: ${row.text}`)).toEqual([
+      'Sauce: Garlic · Chilli',
+      'Toppings: Olives',
+    ])
+  })
+
+  it('never drops an option, even from a group that breaks the split rule', () => {
+    // Checkout refuses whole + halves in one group; if a row ever carries both,
+    // the ticket shows all of it rather than guessing which part to trust.
+    expect(
+      lineModifiers({
+        selected_options_snapshot: [
+          snapshot({ option_name: 'Olives', portion: 'WHOLE' }),
+          snapshot({ option_name: 'Pepperoni', portion: 'LEFT' }),
+        ],
+      }),
+    ).toEqual([
+      { label: 'Toppings', half: null, text: 'Olives' },
+      { label: 'Toppings', half: 'LEFT', text: 'Pepperoni' },
+    ])
+  })
+
+  it('still prints options from old snapshots missing newer keys', () => {
+    // Rows written before `portion` and `group_title` existed come back too.
+    expect(
+      lineModifiers({
+        selected_options_snapshot: [{ option_name: 'No onion' }, { option_name: 'Extra sauce' }],
+      }),
+    ).toEqual([{ label: null, half: null, text: 'No onion · Extra sauce' }])
   })
 
   it('says nothing when a dish is exactly as listed', () => {
-    expect(lineDetail({ selected_size_name: null, selected_options: [] })).toBeNull()
+    expect(lineModifiers({ size_name_snapshot: null, selected_options_snapshot: [] })).toEqual([])
+    expect(lineModifiers({})).toEqual([])
   })
 })
 

@@ -13,6 +13,8 @@ import type { KitchenSession } from './api'
 
 export type AuthValue = {
   session: KitchenSession | null
+  /** The server ended the last session (401), as opposed to nobody signing in yet. */
+  expired: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => void
 }
