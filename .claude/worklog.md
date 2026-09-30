@@ -26,6 +26,59 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-09-30 (later still) — All 25 branches located, with their precision recorded
+
+**Goal:** set lat/long for every branch in Supabase, and make it manageable from
+the admin.
+
+**Changed:**
+- `services/geocoding/branches.py` — NEW. The four-question cascade.
+- `0071_branch_geocode_confidence` + model — `geocode_confidence` on
+  `restaurant_locations`. Applied to local and Supabase.
+- `services/delivery/geocoding.py` — `Coordinates.usable`, and `for_branch`
+  reads the stored confidence.
+- `services/delivery/quoting.py` — refuses by `usable`, not by source.
+- `scripts/locate_branches.py` — uses the cascade, stores vague points too.
+- `api/restaurants.py`, `schemas/restaurant.py` — the locate endpoint uses the
+  cascade and reports `matched_on`; the confidence is on the response and the
+  update.
+- `frontend-admin` — coordinates on the create form, and a plain-words line on
+  the branch page saying what the stored confidence means.
+
+**Verified:** `locate_branches.py --write` against Supabase: 25 of 25 located, 9
+precise, 14 neighbourhood, 2 district, 0 missing. Live quotes from the Surat
+branch: 3.3 km → ₹52.89, 5.4 km → ₹74.44, both real courier prices, both flagged
+imprecise. `unittest discover` → 2,458 OK. Both web apps build; admin lint
+unchanged at its pre-existing 60.
+
+**Open:**
+- **9 of 25 are only neighbourhood-placed and 2 are unusable.** They work, but a
+  pasted pair would be better. The admin now says which is which.
+- **Verify the precise-looking ones.** "Dragon Wok CG Road" resolved to New C.G.
+  Road in Chandkheda — the wrong part of Ahmedabad — and came back STREET. A
+  confident wrong match is the dangerous kind.
+- Google key for India, and the `alembic merge` against `marketing`, both still
+  owed.
+
+**Learned:**
+- **The useful part of an Indian address is the last fragment.** "Shop 12, Maple
+  Trade Center, Bopal" fails whole and succeeds as "Bopal". Branch names carry
+  it too — every Radhe Dhokla branch IS its neighbourhood. Asking progressively
+  less specific questions took 0 of 25 located to 25 of 25.
+- **Two tiers were not enough.** I had refused only stand-ins. A REGION match is
+  a real coordinate for the wrong scale of thing — a taluka centroid can be ten
+  kilometres out, which is wrong by more than the fee — while a LOCALITY match
+  is right to within a kilometre or two and is the only point most branches
+  have. Refusing both would have thrown away 14 branches; accepting both would
+  have mis-priced 2.
+- **Empty confidence has to mean "set by hand", not "unknown".** Every existing
+  row's coordinates were typed by a person, and a person who pointed at their
+  own door beats any geocoder. Reading empty as "assume the worst" would have
+  demoted the best data in the table.
+- **Store the provenance next to the value.** `latitude`/`longitude` existed for
+  years saying nothing about where they came from. That was harmless until a
+  courier started charging customers based on them.
+
 ## 2026-09-30 (later) — The pickup point was the half going wrong
 
 **Goal:** remove "Delivery fee — Free" from the cart, show the fee only after an
