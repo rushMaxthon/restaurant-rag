@@ -468,6 +468,21 @@ class RestaurantLocationUpdate(BaseModel):
 
 
 class RestaurantLocationGeneralSettingsUpdate(BaseModel):
+    """What the branch's settings form may change.
+
+    `extra="forbid"`, and that is the important line. Pydantic's default is to
+    DROP a field it does not recognise, so this endpoint answered 200 and saved
+    nothing when the form learned to send the charge rates before this schema
+    learned to accept them — the admin showed "saved", reloaded, and displayed
+    the old values, with nothing in any log.
+
+    A settings endpoint that quietly ignores half of what it was sent is worse
+    than one that refuses: the refusal is a 422 somebody fixes in a minute,
+    while the silence is a bug reported as "it does not save".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     delivery_enabled: bool | None = None
     pickup_enabled: bool | None = None
     google_pay_enabled: bool | None = None
@@ -475,6 +490,12 @@ class RestaurantLocationGeneralSettingsUpdate(BaseModel):
     card_payment_enabled: bool | None = None
     cash_on_delivery_enabled: bool | None = None
     delivery_fee: Decimal | None = Field(default=None, ge=0)
+    # What a customer pays on top of the food. See services/order_charges.py
+    # for which of these is taxed and which is not.
+    packaging_fee: Decimal | None = Field(default=None, ge=0)
+    platform_fee: Decimal | None = Field(default=None, ge=0)
+    tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)

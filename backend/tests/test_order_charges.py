@@ -168,5 +168,56 @@ class Rounding(unittest.TestCase):
         self.assertEqual(charges.delivery_tax, Decimal("0.75"))
 
 
+class TheSettingsFormCanActuallySaveThese(unittest.TestCase):
+    """The branch settings endpoint must accept every rate the form sends.
+
+    Reported as "I change the value, it says saved, and the old one comes
+    back". The form had learned to send the four charge rates; the schema
+    behind `PATCH .../general-settings` had not, and Pydantic's default is to
+    DROP a field it does not recognise. So the endpoint answered 200, saved
+    nothing, and the page re-rendered the stale values it had just been given
+    back — with nothing in any log.
+
+    Two guards. The first asserts each field is accepted. The second is the one
+    that matters: the schema now forbids extras, so the next time a form learns
+    a field before the schema does, it is a 422 somebody fixes in a minute
+    rather than a silence reported as "it does not save".
+    """
+
+    def test_every_charge_rate_is_accepted(self) -> None:
+        from app.schemas.restaurant import RestaurantLocationGeneralSettingsUpdate
+
+        payload = RestaurantLocationGeneralSettingsUpdate(
+            packaging_fee=Decimal("30"),
+            platform_fee=Decimal("17.98"),
+            tax_percent=Decimal("5"),
+            delivery_tax_percent=Decimal("18"),
+        )
+        # `exclude_unset` is what the endpoint writes with, so a field missing
+        # here never reaches the row.
+        written = payload.model_dump(exclude_unset=True)
+        self.assertEqual(
+            set(written),
+            {"packaging_fee", "platform_fee", "tax_percent", "delivery_tax_percent"},
+        )
+
+    def test_an_unknown_field_is_refused_rather_than_dropped(self) -> None:
+        import pydantic
+
+        from app.schemas.restaurant import RestaurantLocationGeneralSettingsUpdate
+
+        with self.assertRaises(pydantic.ValidationError):
+            RestaurantLocationGeneralSettingsUpdate(some_field_nobody_added=1)
+
+    def test_a_rate_above_a_hundred_percent_is_refused(self) -> None:
+        # A typo here charges every customer of this branch.
+        import pydantic
+
+        from app.schemas.restaurant import RestaurantLocationGeneralSettingsUpdate
+
+        with self.assertRaises(pydantic.ValidationError):
+            RestaurantLocationGeneralSettingsUpdate(tax_percent=Decimal("500"))
+
+
 if __name__ == "__main__":
     unittest.main()
