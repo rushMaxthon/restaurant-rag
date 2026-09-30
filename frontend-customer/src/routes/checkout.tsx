@@ -16,6 +16,7 @@ import {
   User,
 } from "lucide-react";
 import { AddressAutocomplete, type PickedAddress } from "@/components/AddressAutocomplete";
+import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -377,6 +378,10 @@ function Checkout() {
           // server's best reading of the text.
           latitude: pickedPoint?.latitude,
           longitude: pickedPoint?.longitude,
+          // The cart's food total, so the SERVER works out the tax and the
+          // charges rather than this page doing its own arithmetic and
+          // eventually disagreeing with what is charged.
+          subtotal: s.subtotal,
         }
       : null,
   );
@@ -462,11 +467,19 @@ function Checkout() {
   const unserviceable = Boolean(
     deliveryKnown && deliveryQuote.data && !deliveryQuote.data.serviceable,
   );
-  const tax = s.subtotal * 0.05;
+  // The bill, as the server worked it out — the same code that charges the
+  // customer. The 5% this page used to multiply by is gone: it was a guess
+  // that happened to match the old hardcoded rate, and it would have quietly
+  // lied the moment a restaurant set its own.
+  const charges = deliveryKnown ? (deliveryQuote.data?.charges ?? null) : null;
+  const tax = charges ? Number(charges.total) : s.subtotal * 0.05;
   // Delivery is in the total only once it is known. A total that quietly counts
   // an unknown fee as zero is a number the customer will be asked to pay more
   // than.
-  const total = s.subtotal + delivery + tax;
+  const total =
+    deliveryKnown && deliveryQuote.data?.total_amount != null
+      ? Number(deliveryQuote.data.total_amount)
+      : s.subtotal + delivery + tax;
   const phoneProblem = validatePhone(phone);
   const nameProblem = fullName.trim() ? null : "Enter the name for this order.";
   const contactReady = !phoneProblem && !nameProblem && Object.keys(addressProblems).length === 0;
@@ -1471,7 +1484,6 @@ function Checkout() {
             {[
               ["Subtotal", s.subtotal],
               [isDelivery ? "Delivery fee" : "Pickup", delivery],
-              ["Tax", tax],
             ].map(([label, value]) => {
               // The delivery row says what it does not yet know, rather than
               // printing a zero that reads as a promise of free delivery.
@@ -1500,6 +1512,10 @@ function Checkout() {
                 </div>
               );
             })}
+            {/* One row that opens into the parts. Falls back to a plain,
+                unexpandable line when the server sent no breakdown, which is
+                what an old order or an unpriced cart looks like. */}
+            <ChargesBreakdown charges={charges} money={money} />
           </dl>
 
           {isDelivery && quotedByCourier ? (

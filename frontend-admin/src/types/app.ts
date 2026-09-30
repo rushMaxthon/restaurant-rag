@@ -457,6 +457,11 @@ export interface RestaurantLocation {
    * trustworthy source there is, not the least.
    */
   geocode_confidence?: string;
+  /** What a customer pays on top of the food. See services/order_charges.py. */
+  packaging_fee?: number | string;
+  platform_fee?: number | string;
+  tax_percent?: number | string;
+  delivery_tax_percent?: number | string;
   longitude: number | string | null;
   phone_number: string | null;
   delivery_fee: number | string;

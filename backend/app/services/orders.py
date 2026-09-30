@@ -30,9 +30,12 @@ from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
+from app.services import order_charges
 from app.services.delivery.quoting import delivery_fee_for
 from app.models.user import User
 from app.schemas.order import (
+    ChargeLineResponse,
+    OrderChargesResponse,
     OrderCreateRequest,
     OrderCustomerSummary,
     OrderItemResponse,
@@ -99,6 +102,9 @@ class PreparedOrderDraft:
     total_amount: Decimal
     order_items: list[OrderItem]
     applied_offer: object | None
+    #: The itemised bill behind `tax_amount`, for the summary a customer can
+    #: open and for the columns the order stores.
+    charges: "order_charges.OrderCharges | None" = None
 
 
 def _quantize(value: Decimal) -> Decimal:
@@ -143,6 +149,45 @@ def _order_base_query() -> Select[tuple[Order]]:
         )
         .order_by(Order.placed_at.desc(), Order.created_at.desc())
     )
+
+
+def _stored_charges(order: Order) -> OrderChargesResponse | None:
+    """The breakdown as THIS order recorded it, not as the branch prices today.
+
+    Rebuilt from the order's own columns so a receipt reads the same a year
+    later. Orders placed before those columns existed have zeroes in them, and
+    fall back to a single unexplained tax row rather than a modal claiming the
+    packaging was free.
+    """
+
+    parts = [
+        ("packaging", "Restaurant packaging", order.packaging_fee, ""),
+        (
+            "platform_fee",
+            "Platform fee",
+            order.platform_fee,
+            "Inclusive of tax. This is what it costs to run the service.",
+        ),
+        (
+            "food_tax",
+            "Restaurant GST",
+            order.food_tax_amount,
+            "Set by the government on restaurant food.",
+        ),
+        ("delivery_tax", "GST on delivery fee", order.delivery_tax_amount, ""),
+    ]
+    lines = [
+        ChargeLineResponse(key=key, label=label, amount=amount, note=note)
+        for key, label, amount, note in parts
+        if amount and amount > 0
+    ]
+    if not lines:
+        if not order.tax_amount:
+            return None
+        # Placed before the bill was itemised. One honest row beats four
+        # invented ones.
+        lines = [ChargeLineResponse(key="tax", label="Taxes", amount=order.tax_amount)]
+    return OrderChargesResponse(total=order.tax_amount, lines=lines)
 
 
 def _serialize_order(order: Order) -> OrderResponse:
@@ -194,6 +239,7 @@ def _serialize_order(order: Order) -> OrderResponse:
         discount_amount=order.discount_amount,
         total_amount=order.total_amount,
         currency=order.currency,
+        charges=_stored_charges(order),
         special_instructions=order.special_instructions,
         delivery_address=order.delivery_address,
         contact_name=order.contact_name,
@@ -466,7 +512,6 @@ def _prepare_order_draft(
         )
         if quoted is not None:
             delivery_fee = _quantize(quoted)
-    tax_amount = _quantize(subtotal * Decimal("0.05"))
     discount_amount = Decimal("0.00")
     applied_offer = None
     if payload.generated_offer_id is not None:
@@ -492,7 +537,17 @@ def _prepare_order_draft(
             subtotal=subtotal,
             delivery_fee=delivery_fee,
         )
-    total_amount = _quantize(subtotal + delivery_fee + tax_amount - discount_amount)
+    # One place works out the whole bill, from the branch's own rates. It has to
+    # run AFTER the discount, because food tax applies to what the customer
+    # actually pays: taxing before the discount overcharges them.
+    charges = order_charges.for_location(
+        restaurant_location,
+        subtotal=subtotal,
+        delivery_fee=delivery_fee,
+        discount_amount=discount_amount,
+    )
+    tax_amount = charges.tax_amount
+    total_amount = charges.total_amount
 
     return PreparedOrderDraft(
         restaurant=restaurant,
@@ -505,6 +560,25 @@ def _prepare_order_draft(
         total_amount=total_amount,
         order_items=order_items,
         applied_offer=applied_offer,
+        charges=charges,
+    )
+
+
+def charges_response(charges: "order_charges.OrderCharges | None") -> OrderChargesResponse | None:
+    """The itemised bill, for a client that wants to show it.
+
+    None when nothing was worked out, which a client renders as no expandable
+    line at all rather than as an empty modal.
+    """
+
+    if charges is None:
+        return None
+    return OrderChargesResponse(
+        total=charges.tax_amount,
+        lines=[
+            ChargeLineResponse(key=line.key, label=line.label, amount=line.amount, note=line.note)
+            for line in charges.lines
+        ],
     )
 
 
@@ -537,6 +611,7 @@ def validate_order_draft(
         # number, and a global setting meant a Surat kitchen quoted dollars.
         currency=normalize_stored_currency(draft.restaurant.currency),
         item_count=sum(item.quantity for item in draft.order_items),
+        charges=charges_response(draft.charges),
     )
 
 
@@ -602,6 +677,14 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         subtotal=draft.subtotal,
         delivery_fee=draft.delivery_fee,
         tax_amount=draft.tax_amount,
+        # The parts of that figure, stamped rather than derived later. A bill
+        # has to keep saying the same thing a year on, and reading today's rates
+        # off the branch to re-render a past receipt would restate it every time
+        # the restaurant changed a number.
+        packaging_fee=draft.charges.packaging_fee if draft.charges else Decimal("0.00"),
+        platform_fee=draft.charges.platform_fee if draft.charges else Decimal("0.00"),
+        food_tax_amount=draft.charges.food_tax if draft.charges else draft.tax_amount,
+        delivery_tax_amount=draft.charges.delivery_tax if draft.charges else Decimal("0.00"),
         discount_amount=draft.discount_amount,
         total_amount=draft.total_amount,
         # Stamped from the restaurant so the order and the charge can never

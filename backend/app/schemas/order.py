@@ -156,6 +156,32 @@ class OrderCreateRequest(BaseModel):
     )
 
 
+class ChargeLineResponse(BaseModel):
+    """One row of the breakdown behind the collapsed charges line.
+
+    `note` is not decoration. A platform fee with no explanation reads as a
+    made-up number, and a tax row that does not say the rate is the
+    government's invites a complaint aimed at the wrong party.
+    """
+
+    key: str
+    label: str
+    amount: Decimal
+    note: str = ""
+
+
+class OrderChargesResponse(BaseModel):
+    """What sits behind "Taxes and charges" when a customer opens it.
+
+    One line on the summary, because four extra rows on a checkout read as
+    nickel-and-diming. A breakdown behind it, because a total nobody can take
+    apart is a total nobody trusts.
+    """
+
+    total: Decimal
+    lines: list[ChargeLineResponse] = Field(default_factory=list)
+
+
 class OrderValidationResponse(BaseModel):
     valid: bool = True
     restaurant_id: uuid.UUID
@@ -165,11 +191,14 @@ class OrderValidationResponse(BaseModel):
     scheduled_at: datetime
     subtotal: Decimal
     delivery_fee: Decimal
+    #: Everything that is neither the food nor the delivery, collapsed into one
+    #: figure. `charges` is the same number taken apart.
     tax_amount: Decimal
     discount_amount: Decimal
     total_amount: Decimal
     currency: str
     item_count: int
+    charges: OrderChargesResponse | None = None
 
 
 class DeliveryQuoteRequest(BaseModel):
@@ -196,6 +225,17 @@ class DeliveryQuoteRequest(BaseModel):
     #: A saved address the customer chose. Its stored coordinates are used
     #: directly, so a repeat order is priced with no geocoder call at all.
     saved_address_id: uuid.UUID | None = None
+    #: The cart's food total, so the reply can price the WHOLE bill rather than
+    #: just the delivery.
+    #:
+    #: The client could add up the tax itself from rates on the branch, and that
+    #: is exactly the arrangement to avoid: two implementations of the same
+    #: arithmetic drift, and when they disagree the customer is right to believe
+    #: the screen while the server charges something else. One rule, on the
+    #: server, asked live.
+    subtotal: Decimal | None = Field(default=None, ge=0)
+    #: Any offer already applied, because food tax follows the discount.
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     #: The coordinates of a place the customer PICKED from the autocomplete.
     #:
     #: The whole reason a dropdown beats a text box. These come from the map
@@ -274,6 +314,12 @@ class DeliveryQuoteResponse(BaseModel):
     #: what the customer typed, which is the failure that otherwise looks
     #: exactly like success.
     matched_address: str = ""
+    #: The rest of the bill, when a subtotal was sent: everything that is
+    #: neither the food nor the delivery, with the parts behind it.
+    charges: "OrderChargesResponse | None" = None
+    #: What the customer will actually pay, worked out by the same code that
+    #: charges them. Null when no subtotal was sent.
+    total_amount: Decimal | None = None
 
 
 class OrderStatusUpdateRequest(BaseModel):
@@ -320,6 +366,9 @@ class OrderResponse(BaseModel):
     discount_amount: Decimal
     total_amount: Decimal
     currency: str
+    #: The itemised bill, rebuilt from what this order STORED rather than from
+    #: today's rates, so a receipt reads the same a year later.
+    charges: OrderChargesResponse | None = None
     special_instructions: str | None
     delivery_address: str
     contact_name: str | None = None

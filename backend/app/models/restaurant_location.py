@@ -58,6 +58,33 @@ class RestaurantLocation(TimestampMixin, Base):
         default=Decimal("0.00"),
         server_default="0.00",
     )
+    # --- what a customer is charged on top of the food -------------------
+    #
+    # Every default is what was charged before these existed: 5% on food and
+    # nothing else. Switching the feature on changes no restaurant's prices
+    # until somebody edits them.
+    #
+    #: The restaurant's charge for boxes and bags. Flat, because it is what the
+    #: restaurant says it costs rather than something to be derived.
+    packaging_fee: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+    #: What the platform takes per order. Inclusive of its own tax, so nothing
+    #: downstream taxes it again.
+    platform_fee: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+    #: Percent on the food, applied AFTER discount — a customer who paid less is
+    #: taxed on less.
+    tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("5.00"), server_default="5.00"
+    )
+    #: Percent on the delivery fee, at its own rate. In India that is 18% where
+    #: food is 5%, and folding them together matches no invoice.
+    delivery_tax_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+
     minimum_order_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,

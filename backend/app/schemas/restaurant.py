@@ -373,6 +373,15 @@ class RestaurantLocationBase(BaseModel):
     geocode_confidence: str = Field(default="", max_length=16)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     delivery_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
+    #: The restaurant's charge for boxes and bags.
+    packaging_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
+    #: What the platform takes per order, inclusive of its own tax.
+    platform_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
+    #: Percent on the food, after discount. Capped at 100 because a rate above
+    #: it is a typo, and a typo here charges every customer of this branch.
+    tax_percent: Decimal = Field(default=Decimal("5.00"), ge=0, le=100)
+    #: Percent on the delivery fee, at its own rate.
+    delivery_tax_percent: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     estimated_delivery_time: int = Field(default=30, ge=1, le=240)
     estimated_pickup_time: int = Field(default=20, ge=1, le=240)
@@ -419,6 +428,10 @@ class RestaurantLocationUpdate(BaseModel):
     geocode_confidence: str | None = Field(default=None, max_length=16)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     delivery_fee: Decimal | None = Field(default=None, ge=0)
+    packaging_fee: Decimal | None = Field(default=None, ge=0)
+    platform_fee: Decimal | None = Field(default=None, ge=0)
+    tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)

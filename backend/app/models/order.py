@@ -100,11 +100,28 @@ class Order(TimestampMixin, Base):
         default=Decimal("0.00"),
         server_default="0.00",
     )
+    #: Everything that is neither the food nor the delivery, collapsed. The
+    #: four columns below are its parts, not additions to it.
     tax_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
         default=Decimal("0.00"),
         server_default="0.00",
+    )
+    # Stamped per order rather than read back off the branch, because a bill has
+    # to keep saying the same thing a year later. A restaurant that raises its
+    # packaging charge must not silently restate every receipt it ever issued.
+    packaging_fee: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+    platform_fee: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+    food_tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
+    )
+    delivery_tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
     )
     discount_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),

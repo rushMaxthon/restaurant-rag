@@ -432,6 +432,22 @@ export type OrderValidationResponse = {
   item_count: number;
 };
 
+/** One row of the breakdown behind the collapsed charges line. */
+export type ChargeLine = {
+  key: string;
+  label: string;
+  amount: Money;
+  /** What this row is, in a sentence. Never empty for a fee somebody could
+   *  mistake for a tax. */
+  note: string;
+};
+
+/** Everything that is neither the food nor the delivery, and its parts. */
+export type OrderCharges = {
+  total: Money;
+  lines: ChargeLine[];
+};
+
 /**
  * What delivery costs on this trip, as the server worked it out.
  *
@@ -477,6 +493,13 @@ export type DeliveryQuote = {
   located_by: string;
   /** The address as the geocoder understood it, when it disagrees. */
   matched_address: string;
+  /**
+   * The rest of the bill, when a subtotal was sent. Computed by the SAME code
+   * that charges the customer, so the screen and the charge cannot drift.
+   */
+  charges: OrderCharges | null;
+  /** What the customer will actually pay. Null when no subtotal was sent. */
+  total_amount: Money | null;
 };
 
 /** One row of the address dropdown, as the map provider formatted it. */
@@ -818,6 +841,9 @@ export const api = {
     /** From a picked place. Beats anything the server could geocode. */
     latitude?: number | undefined;
     longitude?: number | undefined;
+    /** The cart total, so the reply prices the whole bill, not just delivery. */
+    subtotal?: number | undefined;
+    discount_amount?: number | undefined;
   }) =>
     request<DeliveryQuote>("/orders/delivery-quote", {
       method: "POST",

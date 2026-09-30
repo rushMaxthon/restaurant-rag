@@ -223,6 +223,8 @@ export function useDeliveryQuote(
     saved_address_id?: string | undefined;
     latitude?: number | undefined;
     longitude?: number | undefined;
+    subtotal?: number | undefined;
+    discount_amount?: number | undefined;
   } | null,
 ) {
   const ready = Boolean(locationId) && Boolean(address?.delivery_address.trim());

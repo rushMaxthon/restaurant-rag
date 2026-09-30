@@ -94,6 +94,13 @@ type LocationGeneralSettingsForm = {
   cash_on_delivery_enabled: boolean;
   future_order_enabled: boolean;
   delivery_fee: string;
+  // What a customer pays on top of the food. Strings like every other box
+  // here: a half-typed "5." is not a number, and a numeric state would fight
+  // the person typing it.
+  packaging_fee: string;
+  platform_fee: string;
+  tax_percent: string;
+  delivery_tax_percent: string;
   minimum_order_amount: string;
   estimated_delivery_time: string;
   estimated_pickup_time: string;
@@ -175,6 +182,12 @@ function formatSlotTimeLabel(value: string): string {
  * as thousands of kilometres away and unserviceable, which looks like a broken
  * integration rather than a typo in one field.
  */
+/** A typed money or percent box, as a number. Blank and nonsense both mean 0. */
+function amountOrZero(value: string): number {
+  const parsed = Number((value || "").trim());
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
 function coordinateOrNull(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -210,6 +223,10 @@ function toGeneralSettingsForm(location: RestaurantLocation): LocationGeneralSet
     cash_on_delivery_enabled: location.cash_on_delivery_enabled,
     future_order_enabled: location.future_order_enabled,
     delivery_fee: String(location.delivery_fee),
+    packaging_fee: String(location.packaging_fee ?? 0),
+    platform_fee: String(location.platform_fee ?? 0),
+    tax_percent: String(location.tax_percent ?? 5),
+    delivery_tax_percent: String(location.delivery_tax_percent ?? 0),
     minimum_order_amount: String(location.minimum_order_amount),
     estimated_delivery_time: String(location.estimated_delivery_time),
     estimated_pickup_time: String(location.estimated_pickup_time),
@@ -573,6 +590,10 @@ export function LocationDetailPage({
           cash_on_delivery_enabled: generalSettingsForm.cash_on_delivery_enabled,
           future_order_enabled: generalSettingsForm.future_order_enabled,
           delivery_fee: Number(generalSettingsForm.delivery_fee),
+          packaging_fee: amountOrZero(generalSettingsForm.packaging_fee),
+          platform_fee: amountOrZero(generalSettingsForm.platform_fee),
+          tax_percent: amountOrZero(generalSettingsForm.tax_percent),
+          delivery_tax_percent: amountOrZero(generalSettingsForm.delivery_tax_percent),
           minimum_order_amount: Number(generalSettingsForm.minimum_order_amount),
           estimated_delivery_time: Number(generalSettingsForm.estimated_delivery_time),
           estimated_pickup_time: Number(generalSettingsForm.estimated_pickup_time),
@@ -1552,6 +1573,73 @@ export function LocationDetailPage({
               Customers can pay by card (Stripe) or cash on delivery. Google Pay
               and Razorpay are not supported yet — their saved values are shown
               for reference only and are ignored at checkout.
+            </p>
+            <label className="field">
+              <span>Packaging fee</span>
+              <input
+                min="0"
+                step="0.01"
+                type="number"
+                value={generalSettingsForm.packaging_fee}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, packaging_fee: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Platform fee</span>
+              <input
+                min="0"
+                step="0.01"
+                type="number"
+                value={generalSettingsForm.platform_fee}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, platform_fee: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Tax on food (%)</span>
+              <input
+                max="100"
+                min="0"
+                step="0.01"
+                type="number"
+                value={generalSettingsForm.tax_percent}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, tax_percent: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Tax on delivery (%)</span>
+              <input
+                max="100"
+                min="0"
+                step="0.01"
+                type="number"
+                value={generalSettingsForm.delivery_tax_percent}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, delivery_tax_percent: event.target.value } : current,
+                  )
+                }
+              />
+            </label>
+            <p className="hint-text" style={{ gridColumn: "1 / -1" }}>
+              These four are what a customer pays on top of the food, and they
+              appear on the bill as one &ldquo;Taxes &amp; charges&rdquo; line
+              that opens to show the parts. Tax on food is applied{" "}
+              <strong>after</strong> any discount, so a customer who paid less is
+              taxed on less. The platform fee is treated as tax-inclusive and is
+              never taxed again. Leave them at 0 and 5% to charge exactly what
+              this branch charged before.
             </p>
             <label className="field">
               <span>Delivery fee</span>

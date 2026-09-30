@@ -39,7 +39,9 @@ from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
 from app.services.delivery.quoting import fee_from, points_for, quote_for, usable_in
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
+from app.services import order_charges
 from app.services.orders import (
+    charges_response,
     create_order,
     normalize_stored_currency,
     get_order_for_user,
@@ -71,6 +73,29 @@ def validate_order(
 ) -> OrderValidationResponse:
     ensure_restaurant_writable(app_scope, payload.restaurant_id)
     return validate_order_draft(db, current_user, payload)
+
+
+def _priced(location, payload: DeliveryQuoteRequest, delivery_fee) -> dict:
+    """The rest of the bill, when the client sent a subtotal.
+
+    The SAME function that charges the customer works this out, which is the
+    whole point: a client adding up its own tax from rates on the branch would
+    eventually disagree with what is charged, and the customer would be right to
+    believe the screen.
+
+    Empty when no subtotal was sent, so a caller that only wants a delivery fee
+    still gets one.
+    """
+
+    if payload.subtotal is None:
+        return {}
+    charges = order_charges.for_location(
+        location,
+        subtotal=payload.subtotal,
+        delivery_fee=delivery_fee,
+        discount_amount=payload.discount_amount,
+    )
+    return {"charges": charges_response(charges), "total_amount": charges.total_amount}
 
 
 @router.post("/delivery-quote", response_model=DeliveryQuoteResponse)
@@ -174,6 +199,7 @@ def quote_delivery(
                 unusable
                 or ("currency_mismatch" if quote is not None else "no_courier")
             ),
+            **_priced(location, payload, branch_fee),
             **located,
         )
 
@@ -187,6 +213,7 @@ def quote_delivery(
             source="branch",
             serviceable=quote.serviceable,
             fallback_reason="unserviceable",
+            **_priced(location, payload, branch_fee),
             **located,
         )
 
@@ -198,6 +225,7 @@ def quote_delivery(
         distance_metres=quote.distance_metres,
         assign_seconds=quote.assign_seconds,
         travel_seconds=quote.travel_seconds,
+        **_priced(location, payload, fee),
         **located,
     )
 
