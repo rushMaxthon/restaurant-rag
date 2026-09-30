@@ -119,12 +119,17 @@ class GoogleGeocoder:
         *,
         api_key: str,
         base_url: str = "https://maps.googleapis.com/maps/api",
+        #: Places lives on its own host now, and geocoding does not. Kept as a
+        #: separate setting rather than derived from the other, because they are
+        #: separately versioned services that happen to share a key.
+        places_url: str = "https://places.googleapis.com/v1",
         timeout_seconds: float = 5.0,
         country_codes: str = "",
         language: str = "en",
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        self._places_url = places_url.rstrip("/")
         self._timeout = timeout_seconds
         # `components=country:in|ca` on geocoding, `components=country:in` on
         # autocomplete. Both narrow the search to where a deployment actually
@@ -201,6 +206,71 @@ class GoogleGeocoder:
 
     # --- places -----------------------------------------------------------
 
+    def _places_call(
+        self,
+        method: str,
+        path: str,
+        *,
+        field_mask: str,
+        timeout: float | None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """One call to the NEW Places API.
+
+        `places.googleapis.com/v1`, not `maps.googleapis.com/maps/api/place`.
+
+        The legacy Places API went legacy on 1 March 2025 and **cannot be
+        enabled on a Cloud project created after that date** — it does not
+        appear in the console at all. Code written against it therefore fails
+        on every new deployment with a 403, which reads exactly like a bad key
+        and sends whoever is debugging it to check the wrong thing. Geocoding
+        is unaffected and stays on the old host.
+
+        Two differences shape this:
+
+        * **The field mask is mandatory and IS the billing model.** You are
+          charged for the fields you ask for, so the masks below are the
+          shortest that answer the question. `*` is both refused on some
+          endpoints and an expensive habit.
+        * **The key travels in a header**, which is better anyway: query
+          strings end up in access logs and proxies.
+        """
+
+        try:
+            response = httpx.request(
+                method,
+                f"{self._places_url}{path}",
+                headers={
+                    "X-Goog-Api-Key": self._api_key,
+                    "X-Goog-FieldMask": field_mask,
+                    "Content-Type": "application/json",
+                },
+                timeout=timeout or self._timeout,
+                **kwargs,
+            )
+        except httpx.HTTPError as error:
+            raise GeocodingError(f"Could not reach Google Places: {error}") from error
+
+        if response.status_code >= 400:
+            # Their own reason, surfaced. "Places API (New) has not been used in
+            # project ... before or it is disabled" is the sentence somebody
+            # needs to read, and without it a 403 is indistinguishable from a
+            # rejected key.
+            try:
+                detail = str((response.json() or {}).get("error", {}).get("message", ""))[:200]
+            except ValueError:
+                detail = response.text[:200]
+            raise GeocodingError(
+                f"Google Places refused {path}: {response.status_code} {detail}",
+                # 403 is a key, billing or not-enabled problem and fails
+                # identically forever.
+                retryable=response.status_code >= 500,
+            )
+        try:
+            return response.json() or {}
+        except ValueError as error:
+            raise GeocodingError(f"Google Places sent a non-JSON reply: {error}") from error
+
     def suggest(
         self,
         text: str,
@@ -212,48 +282,70 @@ class GoogleGeocoder:
     ) -> list[dict[str, str]]:
         """Address suggestions for what somebody has typed so far.
 
-        Returns `place_id` plus the two-part label Google formats for a list —
-        "12, MG Road" and "Navrangpura, Ahmedabad" — because a single joined
+        Returns `place_id` plus the two-part label the API formats for a list —
+        "12, MG Road" above "Navrangpura, Ahmedabad" — because a single joined
         string reads badly in a dropdown and every client would split it again.
 
         `latitude`/`longitude` bias results toward the restaurant's own city.
-        Without a bias, three characters of an Indian street name return
-        matches from four states, and the customer scrolls past their own
-        neighbourhood.
+        Without a bias, three characters of an Indian street name return matches
+        from four states and the customer scrolls past their own neighbourhood.
+
+        **No type filter, deliberately.** Restricting to street addresses would
+        drop exactly the results that matter here: a great many Indian addresses
+        are a society, a complex or a mall, which the API classes as
+        establishments rather than addresses. That restriction is what the
+        legacy version of this method had, and it was wrong for this market.
         """
 
         if not text.strip():
             return []
-        params: dict[str, Any] = {
-            "input": text.strip(),
-            "sessiontoken": session_token,
-            "language": self._language,
-            # Addresses, not petrol stations. `geocode` would also return
-            # cities, which are not somewhere a rider can deliver to.
-            "types": "address",
-        }
+        body: dict[str, Any] = {"input": text.strip(), "languageCode": self._language}
+        if session_token:
+            body["sessionToken"] = session_token
         if self._countries:
-            params["components"] = "|".join(f"country:{c}" for c in self._countries)
+            # Five is their limit, and more than this platform deploys into.
+            body["includedRegionCodes"] = self._countries[:5]
         if latitude is not None and longitude is not None:
-            # 30 km, which covers a city and its suburbs without excluding the
-            # customer who lives one town over.
-            params["location"] = f"{latitude},{longitude}"
-            params["radius"] = 30000
+            # 30 km covers a city and its suburbs without excluding the customer
+            # who lives one town over.
+            body["locationBias"] = {
+                "circle": {
+                    "center": {"latitude": latitude, "longitude": longitude},
+                    "radius": 30000.0,
+                }
+            }
 
-        body = self._get("/place/autocomplete/json", params, timeout)
+        payload = self._places_call(
+            "POST",
+            "/places:autocomplete",
+            field_mask=(
+                "suggestions.placePrediction.placeId,"
+                "suggestions.placePrediction.text,"
+                "suggestions.placePrediction.structuredFormat"
+            ),
+            timeout=timeout,
+            json=body,
+        )
+
         out: list[dict[str, str]] = []
-        for entry in body.get("predictions") or []:
-            place_id = str(entry.get("place_id") or "")
+        for entry in payload.get("suggestions") or []:
+            prediction = entry.get("placePrediction") if isinstance(entry, dict) else None
+            if not isinstance(prediction, dict):
+                # A query prediction rather than a place — a search term, not
+                # somewhere a rider can deliver to. Skipped rather than shown.
+                continue
+            place_id = str(prediction.get("placeId") or "")
             if not place_id:
                 continue
-            formatting = entry.get("structured_formatting")
-            formatting = formatting if isinstance(formatting, dict) else {}
+            structured = prediction.get("structuredFormat")
+            structured = structured if isinstance(structured, dict) else {}
+            description = _text_of(prediction.get("text"))
             out.append(
                 {
                     "place_id": place_id,
-                    "primary": str(formatting.get("main_text") or entry.get("description") or ""),
-                    "secondary": str(formatting.get("secondary_text") or ""),
-                    "description": str(entry.get("description") or ""),
+                    "primary": _text_of(structured.get("mainText")) or description,
+                    "secondary": _text_of(structured.get("secondaryText")),
+                    "description": description,
                 }
             )
         return out
@@ -265,32 +357,61 @@ class GoogleGeocoder:
 
         This is the accurate path and the reason Places is worth having. The
         point is Google's own record of that address, not an interpretation of
-        a string somebody typed — so `confidence` is ROOFTOP because the
-        customer chose a building, and the structured parts come back filled
-        in rather than parsed out of a blob.
+        a string somebody typed — so the confidence is ROOFTOP because the
+        customer chose a building, and the structured parts come back filled in
+        rather than parsed out of a blob.
+
+        The session token belongs here too. It is what makes the whole typing
+        run plus this lookup one billable session rather than one charge per
+        keystroke.
         """
 
-        if not place_id.strip():
+        place_id = place_id.strip()
+        if not place_id:
             return None
-        body = self._get(
-            "/place/details/json",
-            {
-                "place_id": place_id.strip(),
-                "sessiontoken": session_token,
-                "language": self._language,
-                # Asked for explicitly: Places bills by the fields requested,
-                # and the default set is the expensive one.
-                "fields": "formatted_address,geometry/location,address_component,name",
-            },
-            timeout,
+        # The id may arrive bare or already as "places/ChIJ...".
+        resource = place_id if place_id.startswith("places/") else f"places/{place_id}"
+
+        payload = self._places_call(
+            "GET",
+            f"/{resource}",
+            field_mask="id,formattedAddress,location,addressComponents,displayName",
+            timeout=timeout,
+            params={"sessionToken": session_token} if session_token else None,
         )
-        result = body.get("result")
-        if not isinstance(result, dict):
+        location = payload.get("location")
+        location = location if isinstance(location, dict) else {}
+        try:
+            latitude = float(location["latitude"])
+            longitude = float(location["longitude"])
+        except (KeyError, TypeError, ValueError):
+            logger.warning("Google Places returned a place with no coordinates: %r", payload)
             return None
-        point = self._point({**result, "types": ["premise"]})
-        if point is None:
-            return None
-        return point, address_parts(result)
+
+        point = GeocodedPoint(
+            latitude=latitude,
+            longitude=longitude,
+            # The customer chose this building from a list. There is no more
+            # precise statement available, and the new API offers no
+            # `location_type` to second-guess it with.
+            confidence=GeocodeConfidence.ROOFTOP,
+            matched=str(payload.get("formattedAddress") or ""),
+            provider=self.name,
+            raw=payload,
+        )
+        return point, address_parts_v1(payload)
+
+
+def _text_of(value: Any) -> str:
+    """A `{text, languageCode}` block, flattened.
+
+    The new API wraps every display string this way and half of them are
+    optional, so this is the one place that has to know.
+    """
+
+    if isinstance(value, dict):
+        return str(value.get("text") or "")
+    return str(value or "")
 
 
 #: Which Google component type fills which of our address boxes. Longest-lived
@@ -344,4 +465,35 @@ def address_parts(result: dict[str, Any]) -> dict[str, str]:
     }
 
 
-__all__ = ["PROVIDER_NAME", "GoogleGeocoder", "address_parts", "confidence_for"]
+def address_parts_v1(place: dict[str, Any]) -> dict[str, str]:
+    """The same flattening, for the new API's component shape.
+
+    `longText` rather than `long_name`, and the building's own name under
+    `displayName` rather than `name`. The mapping table above is reused
+    unchanged, because their component TYPES did not change between versions —
+    only the envelope around them.
+    """
+
+    return address_parts(
+        {
+            "formatted_address": place.get("formattedAddress") or "",
+            "name": _text_of(place.get("displayName")),
+            "address_components": [
+                {
+                    "long_name": component.get("longText") or "",
+                    "types": component.get("types") or [],
+                }
+                for component in place.get("addressComponents") or []
+                if isinstance(component, dict)
+            ],
+        }
+    )
+
+
+__all__ = [
+    "PROVIDER_NAME",
+    "GoogleGeocoder",
+    "address_parts",
+    "address_parts_v1",
+    "confidence_for",
+]

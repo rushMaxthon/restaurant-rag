@@ -259,10 +259,16 @@ class ReadingGoogle(unittest.TestCase):
         )
         self.assertEqual(parts["line1"], "Shivalik Plaza")
 
-    def test_autocomplete_carries_a_session_token(self) -> None:
-        # Providers bill autocomplete per SESSION when the keystrokes and the
-        # details call share a token, and per REQUEST when they do not.
-        # Dropping it turns one charge into one per character typed.
+    def test_autocomplete_uses_the_new_places_api(self) -> None:
+        """The legacy endpoints cannot be enabled at all on a new project.
+
+        Places went legacy on 1 March 2025 and does not appear in the Cloud
+        console for any project created after it, so legacy calls fail on every
+        new deployment with a 403 that reads exactly like a bad key. Geocoding
+        is unaffected and stays on the old host, which is why only this half
+        moved.
+        """
+
         seen: dict[str, object] = {}
 
         class Reply:
@@ -270,15 +276,131 @@ class ReadingGoogle(unittest.TestCase):
 
             @staticmethod
             def json():
-                return {"status": "OK", "predictions": []}
+                return {"suggestions": []}
 
-        def fake_get(url, params=None, timeout=None):
-            seen.update(params or {})
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            seen["method"] = method
+            seen["url"] = url
+            seen["headers"] = headers or {}
+            seen["json"] = kwargs.get("json") or {}
             return Reply()
 
-        with mock.patch.object(google_module.httpx, "get", side_effect=fake_get):
+        with mock.patch.object(google_module.httpx, "request", side_effect=fake_request):
             self.provider.suggest("12 MG", session_token="tok-1")
-        self.assertEqual(seen.get("sessiontoken"), "tok-1")
+
+        self.assertEqual(seen["method"], "POST")
+        self.assertIn("places.googleapis.com/v1/places:autocomplete", seen["url"])
+        # The key travels in a header now, not a query string — which is better
+        # anyway, because query strings end up in access logs and proxies.
+        self.assertEqual(seen["headers"].get("X-Goog-Api-Key"), "k")
+        # The field mask is mandatory AND is the billing model: you pay for the
+        # fields you ask for, so asking for everything is a standing charge.
+        self.assertIn("X-Goog-FieldMask", seen["headers"])
+        self.assertNotIn("*", seen["headers"]["X-Goog-FieldMask"])
+
+    def test_autocomplete_carries_a_session_token(self) -> None:
+        # Billed per SESSION when the keystrokes and the details call share a
+        # token, and per REQUEST when they do not. Dropping it turns one charge
+        # into one per character typed.
+        seen: dict[str, object] = {}
+
+        class Reply:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"suggestions": []}
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            seen.update(kwargs.get("json") or {})
+            return Reply()
+
+        with mock.patch.object(google_module.httpx, "request", side_effect=fake_request):
+            self.provider.suggest("12 MG", session_token="tok-1")
+        self.assertEqual(seen.get("sessionToken"), "tok-1")
+
+    def test_autocomplete_does_not_filter_out_establishments(self) -> None:
+        # The legacy version restricted results to street addresses, and that
+        # was wrong for this market: a great many Indian addresses are a
+        # society, a complex or a mall, which the API classes as establishments.
+        seen: dict[str, object] = {}
+
+        class Reply:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"suggestions": []}
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            seen.update(kwargs.get("json") or {})
+            return Reply()
+
+        with mock.patch.object(google_module.httpx, "request", side_effect=fake_request):
+            self.provider.suggest("Shivalik Plaza", session_token="t")
+        self.assertNotIn("includedPrimaryTypes", seen)
+
+    def test_a_picked_place_is_read_from_the_new_shape(self) -> None:
+        # `location.latitude`, `addressComponents[].longText` and
+        # `displayName.text` — a different envelope around the same component
+        # types.
+        class Reply:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "id": "ChIJ123",
+                    "formattedAddress": "Shivalik Plaza, Ahmedabad, Gujarat 380009, India",
+                    "location": {"latitude": 23.0261, "longitude": 72.5567},
+                    "displayName": {"text": "Shivalik Plaza", "languageCode": "en"},
+                    "addressComponents": [
+                        {"longText": "Navrangpura", "types": ["sublocality_level_1"]},
+                        {"longText": "Ahmedabad", "types": ["locality"]},
+                        {"longText": "Gujarat", "types": ["administrative_area_level_1"]},
+                        {"longText": "380009", "types": ["postal_code"]},
+                    ],
+                }
+
+        with mock.patch.object(google_module.httpx, "request", return_value=Reply()):
+            resolved = self.provider.resolve("ChIJ123", session_token="t")
+
+        self.assertIsNotNone(resolved)
+        point, parts = resolved
+        self.assertEqual((point.latitude, point.longitude), (23.0261, 72.5567))
+        # The customer chose this building from a list. There is no more precise
+        # statement available, and the new API offers no location_type to
+        # second-guess it with.
+        self.assertTrue(point.is_precise)
+        # A named complex with no street number: the name IS the address, which
+        # is how a great many Indian addresses identify themselves.
+        self.assertEqual(parts["line1"], "Shivalik Plaza")
+        self.assertEqual(parts["city"], "Ahmedabad")
+        self.assertEqual(parts["postal_code"], "380009")
+
+    def test_a_places_api_not_enabled_error_is_not_retried(self) -> None:
+        # The 403 somebody will actually hit: the key is fine and the API was
+        # never switched on. Their message says so, and surfacing it is the
+        # difference between a five-second fix and an afternoon.
+        class Reply:
+            status_code = 403
+            text = ""
+
+            @staticmethod
+            def json():
+                return {
+                    "error": {
+                        "code": 403,
+                        "message": "Places API (New) has not been used in project 1 before",
+                        "status": "PERMISSION_DENIED",
+                    }
+                }
+
+        with mock.patch.object(google_module.httpx, "request", return_value=Reply()):
+            with self.assertRaises(GeocodingError) as caught:
+                self.provider.suggest("anything", session_token="t")
+        self.assertFalse(caught.exception.retryable)
+        self.assertIn("has not been used in project", str(caught.exception))
 
 
 class WhichGeocoderAnswers(unittest.TestCase):

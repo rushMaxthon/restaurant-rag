@@ -405,6 +405,7 @@ ENABLE_DELIVERY_DISPATCH=true
 ENABLE_DELIVERY_QUOTES=true   # a separate decision: pricing is not dispatching
 DELIVERY_QUOTE_BASIS=max      # max | mid | min — which end of the band is charged
 GOOGLE_MAPS_API_KEY=…         # accuracy + the checkout dropdown. Required for India.
+                              # Enable Geocoding API and PLACES API (NEW).
 GEOCODING_COUNTRY_CODES=in,ca # narrows every lookup to where you deliver
 PIDGE_BASE_URL=https://store.dev.pidge.in
 PIDGE_USERNAME=…
