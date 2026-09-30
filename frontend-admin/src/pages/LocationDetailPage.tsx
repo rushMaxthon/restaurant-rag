@@ -529,6 +529,11 @@ export function LocationDetailPage({
         phone_number: settingsForm.phone_number.trim() || null,
         latitude: coordinateOrNull(settingsForm.latitude),
         longitude: coordinateOrNull(settingsForm.longitude),
+        // Cleared whenever the pair is saved from this form. Empty means "a
+        // person put this here", which is exactly what just happened, and
+        // leaving a stale LOCALITY behind would keep a hand-placed door being
+        // treated as a neighbourhood guess.
+        geocode_confidence: '',
         opening_time: settingsForm.opening_time || null,
         closing_time: settingsForm.closing_time || null,
       });
@@ -1163,10 +1168,41 @@ export function LocationDetailPage({
                 </p>
               )}
               <p className="hint-text" style={{ marginTop: 8 }}>
-                The courier prices every delivery as the distance between this
-                point and the customer&rsquo;s. It takes coordinates only, so a
-                branch that is not located here has <strong>no trip to price</strong>{' '}
-                and every delivery falls back to the flat fee above.
+                {location.latitude == null || location.longitude == null ? (
+                  <>
+                    <strong>This branch is not located.</strong> The courier
+                    prices every delivery as the distance between this point and
+                    the customer&rsquo;s, and it takes coordinates only &mdash;
+                    so there is no trip to price, and every delivery falls back
+                    to the flat fee above.
+                  </>
+                ) : !location.geocode_confidence ? (
+                  <>
+                    <strong>Set by hand.</strong> Trusted above any lookup,
+                    because somebody pointed at the door.
+                  </>
+                ) : location.geocode_confidence === 'ROOFTOP' ||
+                  location.geocode_confidence === 'STREET' ? (
+                  <>
+                    Found by a lookup as <strong>{location.geocode_confidence}</strong>,
+                    which is precise enough to price deliveries from. Worth
+                    checking once against a map.
+                  </>
+                ) : location.geocode_confidence === 'REGION' ? (
+                  <>
+                    <strong>Only placed to a district.</strong> That can be ten
+                    kilometres out, so it is <strong>not used</strong> and
+                    deliveries fall back to the flat fee. Paste the exact pair
+                    from a map.
+                  </>
+                ) : (
+                  <>
+                    Placed to the <strong>neighbourhood</strong>, not the door.
+                    Deliveries are priced from it &mdash; right to within a
+                    kilometre or two &mdash; but never treated as exact. Paste
+                    the exact pair to improve it.
+                  </>
+                )}
               </p>
             </div>
             <label className="field">

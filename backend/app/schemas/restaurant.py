@@ -367,6 +367,10 @@ class RestaurantLocationBase(BaseModel):
     postal_code: str = Field(min_length=3, max_length=20)
     latitude: Decimal | None = Field(default=None)
     longitude: Decimal | None = Field(default=None)
+    #: How much the pair above is worth. EMPTY means a person typed them in,
+    #: which is trusted above any lookup — they pointed at their own door.
+    #: Otherwise a `GeocodeConfidence`, written only by a lookup.
+    geocode_confidence: str = Field(default="", max_length=16)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     delivery_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -410,6 +414,9 @@ class RestaurantLocationUpdate(BaseModel):
     postal_code: str | None = Field(default=None, min_length=3, max_length=20)
     latitude: Decimal | None = None
     longitude: Decimal | None = None
+    #: Sent as "" by the admin form whenever the pair is saved by hand, which
+    #: is how a hand-placed door stops being treated as a lookup's guess.
+    geocode_confidence: str | None = Field(default=None, max_length=16)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     delivery_fee: Decimal | None = Field(default=None, ge=0)
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
@@ -628,3 +635,8 @@ class BranchLocationLookup(BaseModel):
     #: lookup that quietly landed in a different part of the city.
     matched: str = ""
     provider: str = ""
+    #: Which question found it: "address", "locality", "branch name" or
+    #: "postcode". A branch found by its postcode and one found by its address
+    #: deserve very different amounts of trust, and the coordinate alone does
+    #: not show the difference.
+    matched_on: str = ""

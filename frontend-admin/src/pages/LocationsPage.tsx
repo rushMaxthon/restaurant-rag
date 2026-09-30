@@ -53,6 +53,12 @@ type LocationFormState = {
   city: string;
   state: string;
   postal_code: string;
+  // Text, not numbers: a half-typed "23." is not a number, and a numeric state
+  // would fight the person typing it. Converted once on submit, where anything
+  // unparseable becomes null rather than 0 — a branch at 0,0 is in the
+  // Atlantic and would price every delivery as unserviceable.
+  latitude: string;
+  longitude: string;
   phone_number: string;
   delivery_fee: string;
   minimum_order_amount: string;
@@ -70,6 +76,8 @@ const emptyLocationForm: LocationFormState = {
   city: "",
   state: "",
   postal_code: "",
+  latitude: "",
+  longitude: "",
   phone_number: "",
   delivery_fee: "0",
   minimum_order_amount: "0",
@@ -87,6 +95,14 @@ function toTimeInputValue(value: string | null | undefined): string {
   return value.slice(0, 5);
 }
 
+/** A typed coordinate, or null. Empty and unparseable both mean "not located". */
+function coordinateOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function toLocationForm(location?: RestaurantLocation | null): LocationFormState {
   return {
     branch_name: location?.branch_name ?? "",
@@ -95,6 +111,8 @@ function toLocationForm(location?: RestaurantLocation | null): LocationFormState
     city: location?.city ?? "",
     state: location?.state ?? "",
     postal_code: location?.postal_code ?? "",
+    latitude: location?.latitude == null ? "" : String(location.latitude),
+    longitude: location?.longitude == null ? "" : String(location.longitude),
     phone_number: location?.phone_number ?? "",
     delivery_fee: String(location?.delivery_fee ?? 0),
     minimum_order_amount: String(location?.minimum_order_amount ?? 0),
@@ -423,6 +441,8 @@ export function LocationsPage({
       city: locationForm.city.trim(),
       state: locationForm.state.trim(),
       postal_code: locationForm.postal_code.trim(),
+      latitude: coordinateOrNull(locationForm.latitude),
+      longitude: coordinateOrNull(locationForm.longitude),
       phone_number: locationForm.phone_number.trim() || null,
       delivery_fee: Number(locationForm.delivery_fee),
       minimum_order_amount: Number(locationForm.minimum_order_amount),
@@ -763,6 +783,42 @@ export function LocationsPage({
                   }
                 />
               </label>
+              <label className="field">
+                <span>Latitude</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="23.039500"
+                  value={locationForm.latitude}
+                  onChange={(event) =>
+                    setLocationForm((current) => ({
+                      ...current,
+                      latitude: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Longitude</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="72.506600"
+                  value={locationForm.longitude}
+                  onChange={(event) =>
+                    setLocationForm((current) => ({
+                      ...current,
+                      longitude: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <p className="hint-text" style={{ gridColumn: "1 / -1" }}>
+                Optional here. The courier prices every delivery as the distance
+                from this point, so it is worth setting &mdash; right-click the
+                branch&rsquo;s door in Google Maps and the first item on the menu
+                is the pair. Left blank, the address above is looked up instead,
+                and the branch page has a button to do that and show you what it
+                found.
+              </p>
               <label className="field">
                 <span>Postal code</span>
                 <input

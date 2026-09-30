@@ -309,30 +309,61 @@ geocoder that only reached a suburb still answered about the real address, so
 the distance is roughly right and the price is worth showing. A stand-in is a
 constant with no relationship to the order.
 
-Three ways a branch gets its coordinates, in the order to try them:
+#### Three ways a branch gets located
 
-| | How | When it works |
+| | How | Stored confidence |
 |---|---|---|
-| 1 | **Paste from a map.** Latitude and longitude fields on the branch form; right-clicking a spot in Google Maps copies the pair. | Always. |
-| 2 | **"Find from the address above"** on the same form, or `scripts/locate_branches.py` in bulk. | When a geocoder knows the address. |
-| 3 | Automatically, on the first quote, written back onto the row. | Only on a precise match. |
+| 1 | **Paste from a map.** Latitude and longitude fields on the branch form and the create form. Right-clicking a door in Google Maps copies the pair. | **empty**, meaning a person put it there |
+| 2 | **"Find from the address above"** on the branch page, or `scripts/locate_branches.py --write` in bulk. | whatever the lookup said |
+| 3 | Automatically on the first quote, written back onto the row. | only on a precise match |
 
-Option 2 answers and does **not** save, and shows what the geocoder thought the
-address was. A geocoder never refuses, so reading `matched` back is the only
-thing that catches a lookup that landed confidently in the wrong suburb.
+`restaurant_locations.geocode_confidence` records which. **Empty means SET BY
+HAND and is the most trusted value, not the least** — somebody pointed at their
+own front door, which beats any geocoder. Saving the pair from the admin form
+clears it for exactly that reason.
 
-For the record, option 2 fails on the pilot tenant's own address —
-"Radhe Shyam Society, Singanpor" returns nothing from OpenStreetMap — which is
-why option 1 is listed first and why it exists at all.
+Option 2 answers and does **not** save. A geocoder never refuses, so reading
+`matched` back is the only thing that catches a lookup that landed confidently
+in the wrong suburb — and it does happen: "Dragon Wok CG Road" resolves to
+`New C.G. Road, Chandkheda`, which is a different part of Ahmedabad entirely,
+and comes back marked STREET.
 
-Once a branch is located the numbers are sane. Measured from a located Surat
-branch:
+#### Asking progressively less
+
+A branch address here names a building no map has heard of, with a real
+neighbourhood on the end: "Shop 12, Maple Trade Center, **Bopal**". So
+`services/geocoding/branches.py` asks four questions and stops at the first
+answer — the full address, the last fragment of line 1, the branch's own name
+(they are named after where they are), then the postcode.
+
+That turned **0 of 25** branches located into **25 of 25**:
+
+| Confidence | Branches | Used for pricing |
+|---|---|---|
+| ROOFTOP / STREET | 9 | yes, and trusted |
+| LOCALITY | 14 | yes, flagged imprecise |
+| REGION | 2 | **no** |
+
+#### Three tiers, not two
+
+`Coordinates.usable` is the rule, and the middle tier is the point of it:
+
+- **Exact** — a door, or a hand-typed pair. Priced and trusted.
+- **Usable but not exact** — a neighbourhood. Priced, flagged. Right to within a
+  kilometre or two, which is a real answer for a delivery fee. Refusing it would
+  throw away the only point 14 of 25 branches have.
+- **Neither** — a stand-in, or a district centroid. Not priced at all. A REGION
+  match is a real coordinate for the wrong scale of thing: "somewhere in this
+  taluka" can be ten kilometres out, and a fee built on it is wrong by more than
+  the fee.
+
+Measured from the Surat branch as located today (LOCALITY, via its postcode):
 
 | Drop | Distance | Fee |
 |---|---|---|
-| Ring Road | 0.5 km | ₹50.00 |
-| Athwalines | 6.3 km | ₹83.50 |
-| Varachha Road | 6.3 km | ₹82.89 |
+| Ring Road | 3.3 km | ₹52.89 |
+| Athwalines | 5.4 km | ₹74.44 |
+| Adajan | — | flat fee: nothing usable resolved |
 
 ### Nothing is looked up twice
 

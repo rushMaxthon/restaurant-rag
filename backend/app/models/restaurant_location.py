@@ -41,6 +41,16 @@ class RestaurantLocation(TimestampMixin, Base):
     postal_code: Mapped[str] = mapped_column(String(20), nullable=False)
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    # How much the pair above is worth. A courier prices every delivery as the
+    # distance from this point, so "an owner pointed at their own door" and
+    # "derived from a PIN code that spans kilometres" must not look alike.
+    #
+    # EMPTY MEANS SET BY HAND, not unknown. Only a lookup writes a confidence,
+    # and a person who typed the coordinates in is the most trustworthy source
+    # there is — better than any geocoder.
+    geocode_confidence: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="", server_default=""
+    )
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     delivery_fee: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),

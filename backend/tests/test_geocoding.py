@@ -418,6 +418,9 @@ class LocatingTheEndsOfATrip(unittest.TestCase):
         branch.id = "b1"
         branch.latitude = None
         branch.longitude = None
+        # Explicit, because a MagicMock attribute is truthy and would be read
+        # as a confidence string nobody recognises.
+        branch.geocode_confidence = ""
         branch.address_line_1 = "Shivalik Plaza"
         branch.address_line_2 = ""
         branch.city = "Ahmedabad"
@@ -429,11 +432,18 @@ class LocatingTheEndsOfATrip(unittest.TestCase):
 
     def test_a_stored_coordinate_calls_nobody(self) -> None:
         # The layer that matters for cost: a branch located once is free
-        # forever, and so is a saved address the customer picked.
+        # forever, and so is a saved address the customer picked. An empty
+        # confidence means a person typed it, which is trusted above any
+        # lookup.
         point = self.seam.for_branch(self._branch(latitude=23.05, longitude=72.51), None)
         self.assertEqual((point.latitude, point.longitude), (23.05, 72.51))
         self.assertTrue(point.exact)
         self.assertEqual(point.source, "row")
+
+    def _found(self, point):
+        from app.services.geocoding.branches import BranchLocation
+
+        return BranchLocation(point=point, matched_on="address")
 
     def test_a_precise_lookup_is_written_back_onto_the_branch(self) -> None:
         branch = self._branch()
@@ -444,12 +454,16 @@ class LocatingTheEndsOfATrip(unittest.TestCase):
             matched="Shivalik Plaza",
             provider="google",
         )
-        with mock.patch.object(self.seam, "locate", return_value=located):
+        with mock.patch(
+            "app.services.geocoding.branches.locate_branch", return_value=self._found(located)
+        ):
             point = self.seam.for_branch(branch, mock.MagicMock())
         self.assertTrue(point.exact)
-        # Written back so the next order reads it for free.
+        # Written back so the next order reads it for free, WITH how precise it
+        # is — the pair alone cannot say whether it is a door or a suburb.
         self.assertEqual(branch.latitude, 23.04)
         self.assertEqual(branch.longitude, 72.50)
+        self.assertEqual(branch.geocode_confidence, "STREET")
 
     def test_a_vague_lookup_is_used_but_never_stored_or_trusted(self) -> None:
         # A city centroid still gives a more honest distance than a hardcoded
@@ -463,16 +477,24 @@ class LocatingTheEndsOfATrip(unittest.TestCase):
             matched="Ahmedabad",
             provider="nominatim",
         )
-        with mock.patch.object(self.seam, "locate", return_value=located):
+        with mock.patch(
+            "app.services.geocoding.branches.locate_branch", return_value=self._found(located)
+        ):
             point = self.seam.for_branch(branch, mock.MagicMock())
         self.assertFalse(point.exact)
         self.assertIsNone(branch.latitude)
+        # Still usable: a neighbourhood point prices a delivery to within a
+        # kilometre or two, which is a real answer.
+        self.assertTrue(point.usable)
 
     def test_nothing_found_falls_back_to_the_stand_in_and_says_so(self) -> None:
-        with mock.patch.object(self.seam, "locate", return_value=None):
+        with mock.patch("app.services.geocoding.branches.locate_branch", return_value=None):
             point = self.seam.for_branch(self._branch(), mock.MagicMock())
         self.assertFalse(point.exact)
         self.assertEqual(point.source, "stand-in")
+        # And never priced from: a stand-in is a constant with no relationship
+        # to the order.
+        self.assertFalse(point.usable)
 
     def test_a_picked_place_short_circuits_everything(self) -> None:
         # The customer chose a building from a list. Re-geocoding the text

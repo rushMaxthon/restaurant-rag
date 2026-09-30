@@ -144,12 +144,14 @@ def quote_for(
     # form of it — so there is no way to ask them to work the pickup out for
     # themselves. Without a real pickup point the only honest fee is the
     # branch's own.
-    if pickup.source == "stand-in" or drop.source == "stand-in":
+    if pickup.usable is False or drop.usable is False:
         logger.warning(
-            "Not quoting: pickup=%s drop=%s. A stand-in coordinate prices the "
-            "wrong journey; charging the branch fee instead.",
+            "Not quoting: pickup=%s/%s drop=%s/%s. A point this coarse prices "
+            "the wrong journey; charging the branch fee instead.",
             pickup.source,
+            pickup.confidence or "-",
             drop.source,
+            drop.confidence or "-",
         )
         return None
 

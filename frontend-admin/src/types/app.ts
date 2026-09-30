@@ -451,6 +451,12 @@ export interface RestaurantLocation {
   state: string;
   postal_code: string;
   latitude: number | string | null;
+  /**
+   * How much the coordinates are worth: ROOFTOP, STREET, POSTCODE, LOCALITY,
+   * REGION, or EMPTY meaning a person typed them in — which is the most
+   * trustworthy source there is, not the least.
+   */
+  geocode_confidence?: string;
   longitude: number | string | null;
   phone_number: string | null;
   delivery_fee: number | string;

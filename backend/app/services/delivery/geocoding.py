@@ -71,6 +71,34 @@ class Coordinates:
     #: What the geocoder thought it found, when one was asked. The only way to
     #: notice that a flat number resolved to the middle of a state.
     matched: str = ""
+    #: The `GeocodeConfidence` behind the point, when there is one.
+    confidence: str = ""
+
+    @property
+    def usable(self) -> bool:
+        """Whether a courier may be asked to price a trip from this point.
+
+        Three tiers, not two, and the middle one is the useful part:
+
+        * **Exact** — a door. Priced, and trusted.
+        * **Usable but not exact** — a neighbourhood. Priced, flagged. It is
+          right to within a kilometre or two, which is a real answer for a
+          delivery fee, and refusing it would throw away the only point most
+          branches have.
+        * **Neither** — a stand-in, or a district or state centroid. Not
+          priced at all.
+
+        A stand-in is a constant with no relationship to the order. A REGION
+        match is a real coordinate for the wrong scale of thing: "somewhere in
+        this taluka" can be ten kilometres from the branch, and a delivery fee
+        built on it is wrong by more than the fee itself.
+        """
+
+        if self.source == "stand-in":
+            return False
+        if self.confidence == GeocodeConfidence.REGION.value:
+            return False
+        return True
 
 
 def for_branch(location: RestaurantLocation, db: Session | None = None) -> Coordinates:
@@ -83,26 +111,38 @@ def for_branch(location: RestaurantLocation, db: Session | None = None) -> Coord
     """
 
     if location.latitude is not None and location.longitude is not None:
+        # An EMPTY confidence means a person typed these in, which is the most
+        # trustworthy source available — better than any geocoder, because they
+        # pointed at their own front door. A stored confidence is whatever the
+        # provider actually said, and a locality-level one is a real coordinate
+        # that is not the door.
+        stored = (getattr(location, "geocode_confidence", "") or "").strip()
+        trusted = True
+        if stored:
+            try:
+                trusted = GeocodeConfidence(stored).is_precise
+            except ValueError:
+                trusted = False
         return Coordinates(
-            float(location.latitude), float(location.longitude), exact=True, source="row"
+            float(location.latitude),
+            float(location.longitude),
+            exact=trusted,
+            source="row",
+            confidence=stored,
         )
 
     if db is not None:
-        query = AddressQuery(
-            line1=location.address_line_1 or "",
-            line2=location.address_line_2 or "",
-            city=location.city or "",
-            state=getattr(location, "state", "") or "",
-            postal_code=location.postal_code or "",
-            country=getattr(location, "country", "") or "",
-        )
-        point = locate(db, query)
+        from app.services.geocoding.branches import locate_branch
+
+        found = locate_branch(db, location)
+        point = found.point if found is not None else None
         if point is not None and point.is_precise:
             # Written back rather than looked up again on every order. The
             # caller commits; a failure to commit costs one repeat lookup and
             # nothing else, which is why this does not commit itself.
             location.latitude = point.latitude
             location.longitude = point.longitude
+            location.geocode_confidence = point.confidence.value
             logger.info(
                 "Located branch %s at %.5f,%.5f via %s (%s)",
                 location.id,
@@ -117,6 +157,7 @@ def for_branch(location: RestaurantLocation, db: Session | None = None) -> Coord
                 exact=True,
                 source="geocoder",
                 matched=point.matched,
+                confidence=point.confidence.value,
             )
         if point is not None:
             # A real coordinate, too coarse to price from. Used anyway, because
@@ -134,6 +175,7 @@ def for_branch(location: RestaurantLocation, db: Session | None = None) -> Coord
                 exact=False,
                 source="geocoder",
                 matched=point.matched,
+                confidence=point.confidence.value,
             )
 
     logger.info("Branch %s could not be located; using the stand-in pickup point", location.id)
@@ -161,7 +203,11 @@ def for_address(
         except ValueError:
             precise = False
         return Coordinates(
-            float(latitude), float(longitude), exact=precise, source="row"
+            float(latitude),
+            float(longitude),
+            exact=precise,
+            source="row",
+            confidence=confidence,
         )
 
     if isinstance(query, str):
@@ -185,6 +231,7 @@ def for_address(
                 exact=point.is_precise,
                 source="geocoder",
                 matched=point.matched,
+                confidence=point.confidence.value,
             )
 
     logger.info("No coordinates for this address; using the stand-in drop point")

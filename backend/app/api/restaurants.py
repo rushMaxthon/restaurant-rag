@@ -12,8 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AppScopeDep, ensure_restaurant_readable
-from app.services.geocoding.base import AddressQuery
-from app.services.geocoding.service import locate as locate_address
+from app.services.geocoding.branches import locate_branch
 from app.config.database import get_db
 from app.models.enums import OrderFulfillmentType, UserRole
 from app.models.location_fulfillment_slot import LocationFulfillmentSlot
@@ -656,29 +655,21 @@ def locate_restaurant_location(
         include_inactive=True,
     )
 
-    point = locate_address(
-        db,
-        AddressQuery(
-            line1=location.address_line_1 or "",
-            line2=location.address_line_2 or "",
-            city=location.city or "",
-            state=location.state or "",
-            postal_code=location.postal_code or "",
-        ),
-    )
-    # The lookup is cached durably, so committing here means a second press of
-    # the button costs nothing.
+    found = locate_branch(db, location)
+    # Every lookup is cached durably, so a second press of the button costs
+    # nothing even though the cascade may have asked four questions.
     db.commit()
-    if point is None:
+    if found is None:
         return BranchLocationLookup(found=False)
     return BranchLocationLookup(
         found=True,
-        latitude=point.latitude,
-        longitude=point.longitude,
-        confidence=point.confidence.value,
-        precise=point.is_precise,
-        matched=point.matched,
-        provider=point.provider,
+        latitude=found.point.latitude,
+        longitude=found.point.longitude,
+        confidence=found.point.confidence.value,
+        precise=found.point.is_precise,
+        matched=found.point.matched,
+        provider=found.point.provider,
+        matched_on=found.matched_on,
     )
 
 

@@ -4,12 +4,17 @@ A branch address is written once and then used by every order that branch ever
 takes, so it is worth locating properly, once, rather than on a customer's
 critical path. Run this after onboarding a restaurant.
 
-What it does NOT do is pretend. A geocoder always answers something — ask it for
-a street that does not exist and it hands back a city centroid with no
-complaint — so this only stores a point precise enough to price a delivery from,
-and it lists the rest for a person to fix by hand. That list is the useful
-output: a branch nobody can locate is a branch whose deliveries are being priced
-from a stand-in, and the only thing worse than knowing that is not knowing it.
+It asks progressively less specific questions until one is answered — the full
+address, then the neighbourhood, then the branch name, then the postcode — and
+stores whatever comes back TOGETHER WITH how precise it is. See
+`services/geocoding/branches.py` for why: a branch address here names a building
+no map has heard of, with a real neighbourhood on the end of it.
+
+What it does NOT do is pretend. A geocoder always answers something, so a
+locality-level hit is stored as a locality-level hit and nothing later mistakes
+it for the door. That is still worth having: a neighbourhood point is right to
+within a kilometre or two, where an unlocated branch is priced from a stand-in
+in another city, or not priced at all.
 
     ./.venv/Scripts/python.exe scripts/locate_branches.py           # report only
     ./.venv/Scripts/python.exe scripts/locate_branches.py --write   # store them
@@ -31,9 +36,8 @@ from sqlalchemy import select
 
 from app.config.database import SessionLocal
 from app.models.restaurant_location import RestaurantLocation
-from app.services.geocoding.base import AddressQuery
+from app.services.geocoding.branches import locate_branch
 from app.services.geocoding.registry import geocoder
-from app.services.geocoding.service import locate
 
 logging.disable(logging.INFO)
 
@@ -65,51 +69,63 @@ def main() -> int:
                 print(f"  [have]  {label}")
                 continue
 
-            point = locate(
-                db,
-                AddressQuery(
-                    line1=branch.address_line_1 or "",
-                    line2=branch.address_line_2 or "",
-                    city=branch.city or "",
-                    state=branch.state or "",
-                    postal_code=branch.postal_code or "",
-                ),
-            )
-            if point is None:
+            found = locate_branch(db, branch)
+            if found is None:
                 print(f"  [MISS]  {label}")
                 print(f"          {branch.address_line_1}, {branch.city}")
                 missing.append(label)
                 continue
-            if not point.is_precise:
-                print(f"  [vague] {label}  ({point.confidence.value})")
-                print(f"          matched: {point.matched[:76]}")
-                imprecise.append((label, point.confidence.value))
-                continue
 
-            print(f"  [ok]    {label}  {point.latitude:.5f},{point.longitude:.5f}")
-            located.append(label)
+            point = found.point
+            mark = "ok" if point.is_precise else "vague"
+            print(
+                f"  [{mark:<5}] {label}  {point.latitude:.5f},{point.longitude:.5f}"
+                f"  {point.confidence.value} via {found.matched_on}"
+            )
+            print(f"          matched: {point.matched[:76]}")
+            (located if point.is_precise else imprecise).append(
+                label if point.is_precise else (label, f"{point.confidence.value} via {found.matched_on}")
+            )
+            # Stored either way, with the confidence that came back.
+            #
+            # A neighbourhood-level point is worth keeping: it puts the branch
+            # within a kilometre or two, which is the difference between a
+            # delivery quote that is roughly right and one computed from a
+            # stand-in in another city. What it is NOT is the door, and the
+            # confidence beside it is what stops anything treating it as one.
             if args.write:
                 branch.latitude = point.latitude
                 branch.longitude = point.longitude
+                branch.geocode_confidence = point.confidence.value
 
         if args.write:
             db.commit()
 
     print(
-        f"\n{len(located)} located, {len(imprecise)} too vague to trust, "
+        f"\n{len(located)} precise, {len(imprecise)} only roughly placed, "
         f"{len(missing)} not found."
     )
-    if args.write and located:
-        print(f"Stored {len(located)}.")
-    elif located:
+    if args.write:
+        print(f"Stored {len(located) + len(imprecise)}, each with its own confidence.")
+    elif located or imprecise:
         print("Nothing was stored. Re-run with --write.")
 
-    if imprecise or missing:
+    if imprecise:
         print(
-            "\nFix these by hand: open the branch in the admin and paste the\n"
-            "latitude and longitude from a map. Right-click the exact spot in\n"
-            "Google Maps and the first item on the menu is the pair, ready to\n"
-            "copy. Until then their deliveries are priced from a stand-in point."
+            "\nThe roughly-placed ones ARE stored and usable: a neighbourhood point\n"
+            "gives a distance right to within a kilometre or two, which is the\n"
+            "difference between a quote that is roughly right and one computed\n"
+            "from a stand-in in another city. They are not the door, so they are\n"
+            "never treated as exact. To make one exact, open the branch in the\n"
+            "admin and paste the pair from a map — right-click the door in Google\n"
+            "Maps and the first item on the menu is the coordinates. A pasted pair\n"
+            "is stored with NO confidence, which means \"a person put this here\"\n"
+            "and is trusted above any geocoder."
+        )
+    if missing:
+        print(
+            "\nThe not-found ones have no point at all. Their deliveries fall back\n"
+            "to the branch's flat fee until somebody pastes a pair in."
         )
     return 0
 

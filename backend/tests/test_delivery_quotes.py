@@ -186,6 +186,68 @@ class AStandInIsNotATrip(unittest.TestCase):
                 result = quoting.quote_for(_Branch(), "somewhere", points=points)
         return result, provider
 
+    def test_a_region_level_point_asks_no_courier(self) -> None:
+        # Three tiers, not two. A neighbourhood is priced from; a taluka or
+        # state centroid is not, because "somewhere in this district" can be
+        # ten kilometres from the branch and a fee built on it is wrong by
+        # more than the fee itself. Two of the 25 seeded branches resolved
+        # this coarsely, which is why the tier exists.
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote()
+        points = (
+            Coordinates(23.0, 72.5, exact=False, source="geocoder", confidence="REGION"),
+            Coordinates(21.1, 72.8, exact=True, source="row"),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                self.assertIsNone(quoting.quote_for(_Branch(), "x", points=points))
+        provider.quote.assert_not_called()
+
+    def test_a_locality_point_is_priced_from(self) -> None:
+        # The middle tier, and the one most branches have. Right to within a
+        # kilometre or two, which is a real answer for a delivery fee —
+        # refusing it would throw away the only point 14 of 25 branches have.
+        from app.services.delivery.geocoding import Coordinates
+
+        provider = mock.Mock()
+        provider.name = "pidge"
+        provider.quote.return_value = _quote()
+        points = (
+            Coordinates(23.0, 72.5, exact=False, source="geocoder", confidence="LOCALITY"),
+            Coordinates(23.1, 72.6, exact=False, source="geocoder", confidence="LOCALITY"),
+        )
+        with mock.patch.dict(os.environ, {"ENABLE_DELIVERY_QUOTES": "true"}):
+            get_settings.cache_clear()
+            with mock.patch.object(quoting, "delivery_provider", return_value=provider):
+                self.assertIsNotNone(quoting.quote_for(_Branch(), "x", points=points))
+
+    def test_a_hand_typed_branch_point_is_trusted(self) -> None:
+        # An empty confidence with coordinates present means a person put them
+        # there, pointing at their own front door. That beats any geocoder and
+        # must not be read as "unknown, assume the worst".
+        from app.services.delivery.geocoding import Coordinates, for_branch
+
+        branch = _Branch()
+        branch.latitude, branch.longitude = 23.05, 72.51
+        branch.geocode_confidence = ""
+        point = for_branch(branch, None)
+        self.assertTrue(point.exact)
+        self.assertTrue(Coordinates.usable.fget(point))
+
+    def test_a_stored_locality_branch_point_is_not_called_exact(self) -> None:
+        from app.services.delivery.geocoding import for_branch
+
+        branch = _Branch()
+        branch.latitude, branch.longitude = 23.05, 72.51
+        branch.geocode_confidence = "LOCALITY"
+        point = for_branch(branch, None)
+        self.assertFalse(point.exact)
+        self.assertTrue(point.usable)
+
     def test_a_stand_in_pickup_asks_no_courier(self) -> None:
         result, provider = self._quote_with("stand-in", "geocoder")
         self.assertIsNone(result)
