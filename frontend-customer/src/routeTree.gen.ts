@@ -10,15 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as CartRouteImport } from './routes/cart'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as ConciergeRouteImport } from './routes/concierge'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MenuRouteImport } from './routes/menu'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PreferencesRouteImport } from './routes/preferences'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as RefundsRouteImport } from './routes/refunds'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as MenuIndexRouteImport } from './routes/menu.index'
 import { Route as MenuItemIdRouteImport } from './routes/menu.$itemId'
 import { Route as OrdersIndexRouteImport } from './routes/orders.index'
@@ -27,6 +32,11 @@ import { Route as OrdersOrderIdRouteImport } from './routes/orders.$orderId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CartRoute = CartRouteImport.update({
@@ -42,6 +52,11 @@ const CheckoutRoute = CheckoutRouteImport.update({
 const ConciergeRoute = ConciergeRouteImport.update({
   id: '/concierge',
   path: '/concierge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -64,14 +79,29 @@ const PreferencesRoute = PreferencesRouteImport.update({
   path: '/preferences',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RefundsRoute = RefundsRouteImport.update({
+  id: '/refunds',
+  path: '/refunds',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MenuIndexRoute = MenuIndexRouteImport.update({
@@ -97,15 +127,20 @@ const OrdersOrderIdRoute = OrdersOrderIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/concierge': typeof ConciergeRoute
+  '/contact': typeof ContactRoute
   '/login': typeof LoginRoute
   '/menu': typeof MenuRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/preferences': typeof PreferencesRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
+  '/refunds': typeof RefundsRoute
   '/register': typeof RegisterRoute
+  '/terms': typeof TermsRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/menu/': typeof MenuIndexRoute
@@ -113,13 +148,18 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/concierge': typeof ConciergeRoute
+  '/contact': typeof ContactRoute
   '/login': typeof LoginRoute
   '/preferences': typeof PreferencesRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
+  '/refunds': typeof RefundsRoute
   '/register': typeof RegisterRoute
+  '/terms': typeof TermsRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/menu': typeof MenuIndexRoute
@@ -128,15 +168,20 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/concierge': typeof ConciergeRoute
+  '/contact': typeof ContactRoute
   '/login': typeof LoginRoute
   '/menu': typeof MenuRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/preferences': typeof PreferencesRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
+  '/refunds': typeof RefundsRoute
   '/register': typeof RegisterRoute
+  '/terms': typeof TermsRoute
   '/menu/$itemId': typeof MenuItemIdRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
   '/menu/': typeof MenuIndexRoute
@@ -146,15 +191,20 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/cart'
     | '/checkout'
     | '/concierge'
+    | '/contact'
     | '/login'
     | '/menu'
     | '/orders'
     | '/preferences'
+    | '/privacy'
     | '/profile'
+    | '/refunds'
     | '/register'
+    | '/terms'
     | '/menu/$itemId'
     | '/orders/$orderId'
     | '/menu/'
@@ -162,13 +212,18 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/cart'
     | '/checkout'
     | '/concierge'
+    | '/contact'
     | '/login'
     | '/preferences'
+    | '/privacy'
     | '/profile'
+    | '/refunds'
     | '/register'
+    | '/terms'
     | '/menu/$itemId'
     | '/orders/$orderId'
     | '/menu'
@@ -176,15 +231,20 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/cart'
     | '/checkout'
     | '/concierge'
+    | '/contact'
     | '/login'
     | '/menu'
     | '/orders'
     | '/preferences'
+    | '/privacy'
     | '/profile'
+    | '/refunds'
     | '/register'
+    | '/terms'
     | '/menu/$itemId'
     | '/orders/$orderId'
     | '/menu/'
@@ -193,15 +253,20 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   CartRoute: typeof CartRoute
   CheckoutRoute: typeof CheckoutRoute
   ConciergeRoute: typeof ConciergeRoute
+  ContactRoute: typeof ContactRoute
   LoginRoute: typeof LoginRoute
   MenuRoute: typeof MenuRouteWithChildren
   OrdersRoute: typeof OrdersRouteWithChildren
   PreferencesRoute: typeof PreferencesRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProfileRoute: typeof ProfileRoute
+  RefundsRoute: typeof RefundsRoute
   RegisterRoute: typeof RegisterRoute
+  TermsRoute: typeof TermsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -211,6 +276,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cart': {
@@ -232,6 +304,13 @@ declare module '@tanstack/react-router' {
       path: '/concierge'
       fullPath: '/concierge'
       preLoaderRoute: typeof ConciergeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -262,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PreferencesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -269,11 +355,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/refunds': {
+      id: '/refunds'
+      path: '/refunds'
+      fullPath: '/refunds'
+      preLoaderRoute: typeof RefundsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
       id: '/register'
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/menu/': {
@@ -334,15 +434,20 @@ const OrdersRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   CartRoute: CartRoute,
   CheckoutRoute: CheckoutRoute,
   ConciergeRoute: ConciergeRoute,
+  ContactRoute: ContactRoute,
   LoginRoute: LoginRoute,
   MenuRoute: MenuRouteWithChildren,
   OrdersRoute: OrdersRouteWithChildren,
   PreferencesRoute: PreferencesRoute,
+  PrivacyRoute: PrivacyRoute,
   ProfileRoute: ProfileRoute,
+  RefundsRoute: RefundsRoute,
   RegisterRoute: RegisterRoute,
+  TermsRoute: TermsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

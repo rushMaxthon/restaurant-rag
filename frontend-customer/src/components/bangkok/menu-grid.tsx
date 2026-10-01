@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Leaf, Search, SlidersHorizontal, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -8,8 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { deriveCategories, type MenuItem } from "@/lib/bangkok-data";
-import { matchesQuery } from "@/lib/menu-search";
+import type { MenuItem } from "@/lib/bangkok-data";
+import { activeSection, buildSections, countItems } from "@/lib/menu-sections";
 import { sortsFor } from "@/lib/menu-sorts";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItems } from "@/lib/queries";
@@ -56,13 +56,42 @@ export function DishSkeleton() {
   );
 }
 
+/**
+ * The whole menu, in the kitchen's own sections, with a rail that jumps.
+ *
+ * **This used to show one category at a time.** The rail of chips was a
+ * filter: pick "Starters" and the twenty other sections vanished. It is a
+ * reasonable control and it made a bad menu — the only way to see what a
+ * kitchen does was to click through twenty-one chips in turn, and the shape of
+ * the menu, which is half of what a menu communicates, was never visible at
+ * all. No food site anybody uses works that way, and no paper menu ever has.
+ *
+ * So the sections are all rendered, in order, and the rail became navigation:
+ * a chip scrolls to its heading and the highlight follows the scroll back. The
+ * two controls that genuinely subtract — search and veg-only — still subtract,
+ * because "which dishes qualify" is a different question from "where do I want
+ * to look".
+ *
+ * Three details that are easy to get wrong and are deliberate here:
+ *
+ * **The chosen section stays in the URL.** It is a jump target rather than a
+ * filter now, but /menu?category=Sweets must still land on the sweets — that
+ * is what the home page's section links are, and what somebody shares.
+ *
+ * **The highlight is driven by an observer, not by the click.** Clicking a chip
+ * scrolls; what is highlighted is whatever section is actually on screen when
+ * the scrolling stops. Tracking the click instead would leave the rail
+ * confidently pointing at a section the customer scrolled away from.
+ *
+ * **The rail does not write to the URL as you scroll.** It would mean a history
+ * entry, or at least a URL rewrite, per section passed.
+ */
 export function MenuGrid({
   category,
   onCategoryChange,
-  limit,
 }: {
   /**
-   * The section being shown, owned by the route so it can live in the URL.
+   * The section to jump to, owned by the route so it can live in the URL.
    *
    * It was local state, which meant a menu of 21 sections could not be linked
    * to, shared, or returned to with the back button — and the home page had
@@ -70,39 +99,30 @@ export function MenuGrid({
    */
   category: string;
   onCategoryChange: (next: string) => void;
-  limit?: number;
 }) {
   const [query, setQuery] = useState("");
   const [vegOnly, setVegOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
+  /** Which section the rail is pointing at — see the note above. */
+  const [active, setActive] = useState<string | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
 
   const { restaurantId, branchId, isRestaurantLoading, isRestaurantError } = useBangkokStore();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
-  // `?? []` alone builds a fresh array on every render, so both memos below
+  // `?? []` alone builds a fresh array on every render, so every memo below
   // would recompute every time and the memoisation would buy nothing.
   const items = useMemo(() => menuQuery.data ?? [], [menuQuery.data]);
-  const categories = useMemo(() => deriveCategories(items), [items]);
   // "Top rated" was offered whatever the data held, and not one dish on this
   // menu has a rating — so choosing it compared 0 against 0 for every pair and
   // reordered nothing. A control that promises an ordering the data cannot
   // provide is worse than one fewer control.
   const sorts = useMemo(() => sortsFor(SORTS, items), [items]);
 
-  const shown = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (
-      items
-        .filter((item) => category === "All" || item.category === category)
-        .filter((item) => !vegOnly || item.is_veg)
-        // In `lib/menu-search.ts` rather than inline: this predicate crashed the
-        // whole grid on a null description, and nothing could test it while it
-        // lived inside a useMemo inside a component that needs a store, a query
-        // client and a router to render.
-        .filter((item) => matchesQuery(item, needle))
-        .sort((a, b) => compare(sort, a, b))
-        .slice(0, limit)
-    );
-  }, [items, category, query, vegOnly, sort, limit]);
+  const sections = useMemo(
+    () => buildSections(items, { query, vegOnly, compare: (a, b) => compare(sort, a, b) }),
+    [items, query, vegOnly, sort],
+  );
+  const total = countItems(sections);
 
   const loading = isRestaurantLoading || menuQuery.isLoading;
   // A request that never happened is not an empty menu. When /app-config fails
@@ -110,12 +130,96 @@ export function MenuGrid({
   // screen used to say "Nothing matches that" — telling the customer something
   // false about the restaurant instead of that we could not reach it.
   const failed = isRestaurantError || menuQuery.isError;
-  const filtered = category !== "All" || vegOnly || query.trim().length > 0;
+  const filtered = vegOnly || query.trim().length > 0;
+
+  /**
+   * Land on the section the address asked for.
+   *
+   * Keyed on the category and on whether the sections have arrived, so it runs
+   * once per deep link rather than on every render. `instant` on the first run
+   * for a reason: a smooth scroll from the top of a long menu takes about a
+   * second, during which the page is visibly travelling past dishes the
+   * customer did not ask to see.
+   */
+  const landed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!category || category === "All" || sections.length === 0) return;
+    if (landed.current === category) return;
+    const target = sections.find((section) => section.category === category);
+    if (!target) return;
+    landed.current = category;
+    document.getElementById(target.slug)?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [category, sections]);
+
+  /**
+   * Which section is on screen, for the rail.
+   *
+   * Measured on scroll rather than watched with an IntersectionObserver, for
+   * two reasons set out in full on `activeSection`: an observer sampling frames
+   * jumps straight over a section heading on any normal flick, and it delivers
+   * nothing at all while the tab is in the background, which makes it
+   * unverifiable. This reads nineteen rects inside one animation frame.
+   *
+   * `CHROME` is the header plus the rail — the line below which the page is
+   * actually visible. A section counts as current once its top has passed it.
+   */
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const CHROME = 136;
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const tops = sections.map((section) => {
+        const node = document.getElementById(section.slug);
+        return node ? node.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+      });
+      setActive(activeSection(sections, tops, CHROME));
+    };
+
+    const onScroll = () => {
+      // Coalesced to one measurement per frame. A wheel fires far faster than
+      // the page repaints, and reading a rect per event is how a scroll
+      // handler becomes the reason a page stutters.
+      if (frame === 0) frame = requestAnimationFrame(measure);
+    };
+
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [sections]);
+
+  /**
+   * Keep the highlighted chip in view inside the rail.
+   *
+   * The rail scrolls horizontally and a long menu's chips run well past the
+   * right edge, so without this the highlight is frequently off-screen and the
+   * rail looks like it is doing nothing. `nearest` rather than `center` so it
+   * only moves when it has to.
+   */
+  useEffect(() => {
+    if (!active || !railRef.current) return;
+    const chip = railRef.current.querySelector<HTMLElement>(`[data-slug="${active}"]`);
+    chip?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [active]);
 
   function reset() {
     onCategoryChange("All");
     setVegOnly(false);
     setQuery("");
+  }
+
+  function jumpTo(section: { category: string; slug: string }) {
+    // The URL first, so the address reflects where the page is about to be and
+    // a reload or a share lands in the same place.
+    onCategoryChange(section.category);
+    landed.current = section.category;
+    document.getElementById(section.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -175,23 +279,35 @@ export function MenuGrid({
         </div>
       </div>
 
-      <div className="category-rail mt-4 flex gap-2 overflow-x-auto pb-2">
-        {categories.map((c) => (
-          <button
-            key={c}
-            onClick={() => onCategoryChange(c)}
-            className={c === category ? "category-pill active" : "category-pill"}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
+      {/* Sticky, because its job is to be reachable from the middle of a long
+          menu — a rail that scrolls away with the page is a table of contents
+          you have to go back to the top to use. Below the site header, hence
+          the offset in the stylesheet rather than top-0 here. */}
+      {!loading && !failed && sections.length > 1 && (
+        <div className="section-rail" ref={railRef}>
+          <nav className="section-rail__track" aria-label="Menu sections">
+            {sections.map((section) => (
+              <button
+                key={section.slug}
+                type="button"
+                data-slug={section.slug}
+                onClick={() => jumpTo(section)}
+                aria-current={section.slug === active ? "true" : undefined}
+                className={section.slug === active ? "category-pill active" : "category-pill"}
+              >
+                {section.category}
+                <span className="category-pill__count">{section.items.length}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      )}
 
       {!loading && !failed && (
-        <div className="mb-5 mt-3 flex flex-wrap items-center gap-3">
-          <p className="result-count text-sm font-semibold text-muted" key={shown.length}>
-            {shown.length} {shown.length === 1 ? "dish" : "dishes"}
-            {category !== "All" && ` in ${category}`}
+        <div className="mb-5 mt-4 flex flex-wrap items-center gap-3">
+          <p className="result-count text-sm font-semibold text-muted" key={total}>
+            {total} {total === 1 ? "dish" : "dishes"}
+            {sections.length > 1 && ` across ${sections.length} sections`}
           </p>
           {filtered && (
             <button type="button" onClick={reset} className="clear-filters text-sm">
@@ -203,7 +319,7 @@ export function MenuGrid({
 
       {loading && (
         <div className="menu-grid mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {Array.from({ length: limit ?? 8 }).map((_, i) => (
+          {Array.from({ length: 8 }).map((_, i) => (
             <DishSkeleton key={i} />
           ))}
         </div>
@@ -218,21 +334,38 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && !failed && shown.length > 0 && (
-        <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {shown.map((item, i) => (
-            <div
-              className="rise-in"
-              style={{ "--i": Math.min(i, 11) } as React.CSSProperties}
-              key={item.id}
-            >
-              <DishCard item={item} />
-            </div>
+      {!loading && !failed && sections.length > 0 && (
+        <div className="menu-sections">
+          {sections.map((section) => (
+            <section className="menu-section" key={section.slug}>
+              {/* The id is on the heading, not the section, so an anchor lands
+                  with the heading at the top of the viewport rather than with
+                  the section's top padding filling it. */}
+              <h2 className="menu-section__head" id={section.slug}>
+                <span className="font-display menu-section__name">{section.category}</span>
+                <span className="menu-section__count">
+                  {section.items.length} {section.items.length === 1 ? "dish" : "dishes"}
+                </span>
+              </h2>
+              <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {section.items.map((item, i) => (
+                  <div
+                    className="rise-in"
+                    // Capped at 11 so a section of eighty dishes does not
+                    // stagger the last one in four seconds late.
+                    style={{ "--i": Math.min(i, 11) } as React.CSSProperties}
+                    key={item.id}
+                  >
+                    <DishCard item={item} />
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
 
-      {!loading && !failed && shown.length === 0 && (
+      {!loading && !failed && sections.length === 0 && (
         <div className="state-panel elevated-panel px-6 py-20 text-center">
           <h3 className="font-display text-2xl font-extrabold">Nothing matches that</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">

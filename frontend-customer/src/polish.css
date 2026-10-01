@@ -2169,3 +2169,521 @@ html[data-splash="seen"] .splash {
     display: none;
   }
 }
+
+/* ===========================================================================
+   The footer, and the pages of prose it leads to
+   ---------------------------------------------------------------------------
+   A single-restaurant site that ends at the last dish reads as a form rather
+   than as a business, which is why this exists at all. Two rules shape it:
+
+   It sits ABOVE the fixed mobile nav bar, which overlays the bottom of the
+   viewport on phones. Without the padding below, the last row of footer links
+   would be permanently under the nav and unreachable — the exact bug the
+   `.app-main` rule earlier in this file already solves for page content.
+
+   Its colour is `--surface-alt`, not `--surface`. The footer needs to read as
+   a different plane from the cards above it, and `--surface-alt` is the one
+   token already measured against `--muted` for that job in both themes.
+   =========================================================================== */
+.site-footer {
+  margin-top: var(--space-16);
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+  /* The nav bar is `lg:hidden`, so the allowance is only needed below that
+     breakpoint — but it is harmless above it, and one rule is easier to keep
+     right than two that have to agree with a Tailwind breakpoint. */
+  padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+}
+.site-footer__inner {
+  display: grid;
+  gap: var(--space-10);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-4) var(--space-8);
+}
+@media (min-width: 640px) {
+  .site-footer__inner {
+    padding-inline: var(--space-6);
+  }
+}
+@media (min-width: 900px) {
+  .site-footer__inner {
+    /* The brand column takes the room it needs for a sentence; the three link
+       columns share what is left. */
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr);
+    gap: var(--space-16);
+    padding-inline: var(--space-10);
+  }
+}
+.site-footer__id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--text);
+}
+.site-footer__name {
+  font-size: var(--fs-title-sm);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+}
+.site-footer__blurb {
+  margin: var(--space-3) 0 0;
+  max-width: 38ch;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: var(--leading-relaxed);
+}
+.site-footer__contact {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.site-footer__contact li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  color: var(--text);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-snug);
+}
+.site-footer__contact svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--primary);
+}
+.site-footer__contact a {
+  color: var(--text);
+  text-decoration: none;
+  /* Given a hairline because this is a `tel:` link, and on a phone that line
+     is the only clue it is a link rather than printed text. */
+  border-bottom: 1px solid var(--border);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.site-footer__contact a:hover {
+  border-bottom-color: var(--primary);
+}
+.site-footer__branch {
+  display: block;
+  font-weight: 700;
+}
+.site-footer__nav {
+  display: grid;
+  /* Three columns on a phone would give each about 100px and wrap every
+     label. Two is the honest fit, and the third sits under them. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-6);
+}
+@media (min-width: 560px) {
+  .site-footer__nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.site-footer__col h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+.site-footer__col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.site-footer__col a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--fs-caption);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.site-footer__col a:hover {
+  color: var(--primary-text);
+}
+.site-footer__spark {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+.site-footer__base {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  justify-content: space-between;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+}
+@media (min-width: 640px) {
+  .site-footer__base {
+    padding-inline: var(--space-6);
+  }
+}
+@media (min-width: 900px) {
+  .site-footer__base {
+    padding-inline: var(--space-10);
+  }
+}
+.site-footer__base p {
+  margin: 0;
+}
+
+/* --- Pages of prose ------------------------------------------------------ */
+/* Capped at a readable measure. The storefront's content width is set for a
+   grid of dish cards, and a terms page at that width is 140 characters a line
+   — technically legible and read by nobody. */
+.info-page {
+  max-width: 72ch;
+  /* Centred, not left-aligned. At the storefront's full width a 72ch column
+     pinned to the left edge leaves two thirds of a desktop screen empty beside
+     it, which reads as a page that failed to load its sidebar. */
+  margin-inline: auto;
+}
+.info-page__title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+@media (min-width: 640px) {
+  .info-page__title {
+    font-size: var(--fs-display);
+  }
+}
+.info-page__intro {
+  margin-top: var(--space-4);
+  color: var(--text);
+  font-size: var(--fs-body-lg);
+  line-height: var(--leading-relaxed);
+}
+.info-page__intro p {
+  margin: 0;
+}
+.info-page__updated {
+  margin: var(--space-5) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  font-weight: 700;
+}
+.info-page__body {
+  margin-top: var(--space-10);
+  display: grid;
+  gap: var(--space-10);
+}
+.info-section h2 {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display-stack);
+  font-size: var(--fs-title-sm);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  /* Clears the sticky header when an anchor lands here. Without it, the
+     heading you asked for sits behind the header and the first thing you see
+     is the paragraph under it. */
+  scroll-margin-top: 84px;
+}
+.info-section h2 a {
+  color: var(--text);
+  text-decoration: none;
+}
+.info-section h2 a:hover {
+  color: var(--primary-text);
+}
+.info-section p {
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+  line-height: var(--leading-relaxed);
+}
+.info-section p:last-child {
+  margin-bottom: 0;
+}
+.info-section p a,
+.info-list a {
+  color: var(--primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A plain list, NOT a grid. Making it `display: grid` for the gap blockifies
+   every `li`, and a blockified list item loses its marker — so the list
+   rendered as a stack of unbulleted paragraphs and the "one of these" shape
+   of it disappeared. The gap is worth less than the bullets. */
+.info-list {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-5);
+  color: var(--text);
+  line-height: var(--leading-relaxed);
+}
+.info-list li {
+  margin-bottom: var(--space-3);
+}
+.info-list li:last-child {
+  margin-bottom: 0;
+}
+.info-list li::marker {
+  color: var(--primary);
+}
+/* A paragraph that qualifies the one above it — the "but note" case. Set apart
+   by a rule rather than a tinted box, which at this size reads as a warning
+   when it is only a caveat.
+
+   Deliberately NOT a grid. It was one, two columns with the icon in the first,
+   and a grid places each ELEMENT child in its own cell while bare text becomes
+   a single anonymous one — so a note written as icon + sentence + link put the
+   link in the icon's column on a second row, stranded at the far left under
+   nothing. A note is a paragraph; the icon belongs in the text flow. */
+.info-note {
+  margin-top: var(--space-5);
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--primary-soft);
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+.info-note svg {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 0.45rem;
+  /* Sits on the first line's baseline-ish rather than hanging below it. */
+  vertical-align: -3px;
+  color: var(--primary);
+}
+.info-branches,
+.info-contact {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+.info-branches li,
+.info-contact li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+.info-branches > li > svg,
+.info-contact > li > svg {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.info-branches p,
+.info-contact p {
+  margin: 0;
+}
+.info-branches__name,
+.info-contact__label {
+  font-weight: 800;
+}
+.info-contact__label {
+  margin-bottom: 2px;
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--muted);
+}
+.info-branches__where {
+  margin-top: 2px;
+  color: var(--muted);
+}
+.info-branches__how,
+.info-contact__sub {
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+}
+.info-hours {
+  display: grid;
+  gap: var(--space-6);
+  margin: var(--space-5) 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+}
+@media (min-width: 560px) {
+  .info-hours {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.info-cards {
+  display: grid;
+  gap: var(--space-4);
+}
+@media (min-width: 640px) {
+  .info-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.info-card {
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+.info-card > svg {
+  width: 22px;
+  height: 22px;
+  color: var(--primary);
+}
+.info-card h3 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--fs-label);
+  font-weight: 800;
+}
+.info-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-relaxed);
+}
+
+/* ===========================================================================
+   The menu as sections, with a rail that jumps
+   ---------------------------------------------------------------------------
+   The grid used to show one category at a time and the chips were a filter.
+   Now every section is on the page and the chips are navigation — see the
+   comment at the top of `components/bangkok/menu-grid.tsx` for why.
+
+   That makes the rail a table of contents, and a table of contents that
+   scrolls away with the page is useless from the middle of a long menu. So it
+   sticks, directly under the site header.
+   =========================================================================== */
+.section-rail {
+  position: sticky;
+  /* The header is `min-h-16`: 64px. One pixel of overlap rather than a gap,
+     because a 1px seam of page showing between two sticky bars reads as a
+     rendering fault while you scroll. */
+  top: 63px;
+  z-index: 30;
+  margin-top: var(--space-4);
+  /* Full-bleed past the page padding, so the first and last chip can sit at
+     the screen edge instead of in a gutter — the rail then reads as a bar
+     rather than as a boxed control. */
+  margin-inline: calc(var(--space-4) * -1);
+  padding-inline: var(--space-4);
+  padding-block: var(--space-3);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+@media (min-width: 640px) {
+  .section-rail {
+    margin-inline: calc(var(--space-6) * -1);
+    padding-inline: var(--space-6);
+  }
+}
+@media (min-width: 1024px) {
+  .section-rail {
+    margin-inline: calc(var(--space-10) * -1);
+    padding-inline: var(--space-10);
+  }
+}
+.section-rail__track {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  /* The scrollbar is hidden rather than styled: this is a row of chips with
+     an obvious overflow affordance of its own — a half-visible chip at the
+     edge — and a horizontal bar under it on a trackpad machine adds 12px of
+     chrome to a sticky bar that has to stay shallow. */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--space-4);
+}
+.section-rail__track::-webkit-scrollbar {
+  display: none;
+}
+/* The count rides inside the chip rather than beside it, so a chip is one tap
+   target. Swiggy's menu does the same thing and for the same reason: "Sweets
+   48" tells you whether it is worth the jump before you make it. */
+.category-pill__count {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0 0.38rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 1px;
+}
+/* On the active chip the plate is the brand colour, so the badge has to flip.
+   The obvious move — a translucent wash of `--on-primary` with `--on-primary`
+   text on it — was tried and is unreadable: 22% white over the brand orange
+   lands at about 2:1 against white text, on 11px numerals. This inverts
+   instead: the badge becomes the surface, and the number takes
+   `--primary-text`, which is the brand's AA-contrast tier and is measured to
+   read on exactly that surface in both themes. */
+.category-pill.active .category-pill__count {
+  background: var(--surface);
+  color: var(--primary-text);
+}
+
+.menu-sections {
+  display: grid;
+  gap: var(--space-12);
+}
+/* The heading is the scroll anchor, and it is sticky itself — so while you are
+   inside a long section you can still see which one you are in. It sits below
+   the rail, which is below the header; three stacked bars is one too many, so
+   this one is a single line and deliberately quiet. */
+.menu-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  /* Clears the header and the rail together. Without it, jumping to a section
+     lands with its heading tucked behind the rail and the page looking like it
+     scrolled one row too far. */
+  scroll-margin-top: 132px;
+}
+.menu-section__name {
+  font-size: var(--fs-title-sm);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  color: var(--text);
+}
+@media (min-width: 640px) {
+  .menu-section__name {
+    font-size: var(--fs-title);
+  }
+}
+.menu-section__count {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--fs-tiny);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  font-variant-numeric: tabular-nums;
+}
