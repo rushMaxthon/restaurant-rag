@@ -384,6 +384,10 @@ class AttributionPersistenceTests(unittest.TestCase):
             personalized_offer_id=offer.id,
             items=[OrderCreateItem(menu_item_id=menu_item.id, quantity=1)],
             delivery_address="1 Test Street",
+            # A delivery needs a number a rider can ring, and `create_order`
+            # refuses one without. Not incidental to this test — an order that
+            # could not be delivered has nothing to attribute.
+            contact_phone="+919812000111",
             # Card, so the order is PAYMENT_PENDING and the placed-order side
             # effects (notifications, combo rebuilds) stay out of this test.
             payment_method=PaymentMethod.CARD,
@@ -442,6 +446,9 @@ class AttributionPersistenceTests(unittest.TestCase):
             restaurant_location_id=location.id,
             items=[OrderCreateItem(menu_item_id=menu_item.id, quantity=1)],
             delivery_address="1 Test Street",
+            # See the note on the payload above: a delivery order is refused
+            # without a contactable number.
+            contact_phone="+919812000111",
             payment_method=PaymentMethod.CARD,
         )
         customer = self.session.get(User, self.customer_id)

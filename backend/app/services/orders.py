@@ -647,6 +647,31 @@ def _offer_attribution(
     }
 
 
+def _contact_phone_for(customer: User, payload: OrderCreateRequest) -> str:
+    """The number a rider rings, or an explanation of why there is not one.
+
+    A courier will not accept a delivery without one. Pidge refuses the whole
+    order with `"trips[0].receiver_detail.mobile" is not allowed to be empty`,
+    and it refuses it at DISPATCH — which happens when the kitchen accepts,
+    long after the customer has gone. The food gets made, no rider is ever
+    booked, and the first anyone knows is a warning in a worker log.
+
+    So it is settled here, where it can still be answered, rather than there.
+
+    The web checkout and the WhatsApp agent both collect a number already.
+    The mobile app does not send one at all, which is how this was found: a
+    delivery order placed without it is accepted, cooked and then undeliverable.
+    Falling back to the number already on the account covers that without
+    making anybody retype what we know, and only a customer who has neither is
+    refused.
+    """
+
+    typed = (payload.contact_phone or "").strip()
+    if typed:
+        return typed
+    return (customer.phone_number or "").strip()
+
+
 def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> OrderResponse:
     draft = _prepare_order_draft(
         db,
@@ -654,6 +679,19 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         payload,
         require_payment_validation=True,
     )
+
+    # A delivery needs somebody a rider can ring, and this is the last moment
+    # the customer is here to supply one. Checked for DELIVERY only: a pickup
+    # order is collected in person and a courier is never asked about it.
+    contact_phone = _contact_phone_for(customer, payload)
+    if payload.fulfillment_type == OrderFulfillmentType.DELIVERY and not contact_phone:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "A phone number is needed for delivery so the rider can reach "
+                "you. Add one to your profile or enter it at checkout."
+            ),
+        )
 
     order_id = uuid.uuid4()
     is_cod = payload.payment_method == PaymentMethod.COD
@@ -696,9 +734,10 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         special_instructions=payload.special_instructions,
         delivery_address=payload.delivery_address,
         # Who to ring about this delivery. Asked for at checkout since the
-        # beginning and thrown away until 0058.
-        contact_name=payload.contact_name,
-        contact_phone=payload.contact_phone,
+        # beginning and thrown away until 0058; enforced here since a courier
+        # refused an order for the want of it. See `_contact_phone_for`.
+        contact_name=payload.contact_name or customer.full_name or None,
+        contact_phone=contact_phone,
         # Recorded, never priced on. A code that granted a discount here
         # would be a discount the server never validated, typed by the
         # customer — the offer system exists for that and this is only the

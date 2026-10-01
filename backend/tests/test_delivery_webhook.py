@@ -1,10 +1,16 @@
 """The webhook does not believe what it is told.
 
-Pidge signs nothing. There is no signature header, no shared secret and no
-verification of any kind in their documentation — I looked. An endpoint that
-moves an order to DELIVERED on the strength of an unauthenticated POST is an
-endpoint where anyone who learns the URL can close every ticket in a kitchen
-and strand the food on the road.
+Pidge signs nothing. There is no signature header and no verification of any
+kind in their documentation — I looked. An endpoint that moves an order to
+DELIVERED on the strength of an unauthenticated POST is an endpoint where
+anyone who learns the URL can close every ticket in a kitchen and strand the
+food on the road.
+
+`delivery_webhook_secret` exists as defence in depth and is OPTIONAL, which is
+why these tests neutralise it in `setUp`. They were written when it was always
+empty, and the first developer to set one in their `.env` turned eight of them
+red — the suite was quietly asserting against a local config file rather than
+against the behaviour it names. The secret has its own tests below.
 
 So the push is a *nudge*, never news. The only thing read out of the payload
 is which delivery it concerns; the state is then fetched from the courier over
@@ -61,6 +67,15 @@ class ThePayloadIsNotBelievedTests(unittest.IsolatedAsyncioTestCase):
         )
         self.db = mock.Mock()
         self.db.scalar.return_value = self.row
+        # These tests are about whether the PAYLOAD is believed, so the secret
+        # is taken out of the question. `api/delivery.py` reads it from a
+        # module-level `settings`, captured at import — so it is patched there
+        # rather than set in the environment, which would be too late.
+        patcher = mock.patch.object(
+            endpoint.settings, "delivery_webhook_secret", ""
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def a_request(self, body):
         request = mock.Mock()
@@ -150,6 +165,59 @@ class ThePayloadIsNotBelievedTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheSharedSecretIsDefenceInDepth(unittest.IsolatedAsyncioTestCase):
+    """The header, and what it is and is not for.
+
+    It is not the thing that makes the endpoint safe — the fetch is. A courier
+    that cannot send custom headers still works, because the secret is only
+    consulted when one is configured, and that is deliberate: a webhook that
+    refuses everything the day somebody sets a secret Pidge cannot send is
+    worse than one that keeps verifying by fetch.
+
+    What it does buy is quiet. Without it, anything that finds the URL costs
+    one outbound API call per POST.
+    """
+
+    def setUp(self) -> None:
+        self.db = mock.Mock()
+        self.db.scalar.return_value = None
+
+    def a_request(self, body=None):
+        request = mock.Mock()
+
+        async def json():
+            return body if body is not None else {}
+
+        request.json = json
+        return request
+
+    async def test_a_wrong_secret_is_refused_before_anything_is_read(self) -> None:
+        with mock.patch.object(endpoint.settings, "delivery_webhook_secret", "right"):
+            result = await endpoint.receive(self.a_request(), self.db, secret="wrong")
+        self.assertNotEqual(result, endpoint.ACCEPTED)
+        self.assertEqual(getattr(result, "status_code", None), 403)
+        # Nothing was looked up: a caller that fails the check learns nothing
+        # about which delivery ids exist.
+        self.db.scalar.assert_not_called()
+
+    async def test_no_secret_at_all_is_refused_when_one_is_configured(self) -> None:
+        with mock.patch.object(endpoint.settings, "delivery_webhook_secret", "right"):
+            result = await endpoint.receive(self.a_request(), self.db, secret=None)
+        self.assertEqual(getattr(result, "status_code", None), 403)
+
+    async def test_the_right_secret_is_let_through(self) -> None:
+        with mock.patch.object(endpoint.settings, "delivery_webhook_secret", "right"):
+            result = await endpoint.receive(self.a_request(), self.db, secret="right")
+        self.assertEqual(result, endpoint.ACCEPTED)
+
+    async def test_an_unconfigured_secret_checks_nothing(self) -> None:
+        # The default, and the state Pidge is pointed at today. A courier that
+        # cannot send a header must still be able to deliver a push.
+        with mock.patch.object(endpoint.settings, "delivery_webhook_secret", ""):
+            result = await endpoint.receive(self.a_request(), self.db, secret=None)
+        self.assertEqual(result, endpoint.ACCEPTED)
 
 
 class TheTrackingCodeIsTheOneThingTakenOnTrust(unittest.TestCase):

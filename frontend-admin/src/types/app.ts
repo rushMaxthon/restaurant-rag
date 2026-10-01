@@ -876,6 +876,16 @@ export interface Order {
     email: string;
     phone_number: string | null;
   };
+  /**
+   * Who to ring about THIS delivery, as given at checkout.
+   *
+   * Not the same as `customer.phone_number`, which is whatever is on the
+   * account and is frequently null — a customer can order without ever
+   * setting one. These are the fields the courier is sent and the ones a
+   * rider actually calls, so they are what a restaurant needs on screen.
+   */
+  contact_name: string | null;
+  contact_phone: string | null;
   status: OrderStatus;
   payment_status: PaymentStatus;
   payment_method: PaymentMethod;

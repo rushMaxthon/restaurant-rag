@@ -391,6 +391,11 @@ export function OrderDetailPage({
   const isSettled =
     order.payment_status === "PAID" || order.payment_status === "COD";
   const nextStatus = isSettled ? nextStatusMap[order.status] : undefined;
+  // The checkout number first, the account's only as a fallback. See the note
+  // on the Phone row below for why the order of those two matters.
+  const contactPhone = order.contact_phone?.trim() || order.customer.phone_number;
+  const contactName = order.contact_name?.trim() || order.customer.full_name;
+
   const nextStep = nextStepFor(order.status, order.fulfillment_type === "DELIVERY");
   const discount = toNumber(order.discount_amount);
   const customizationTotals = order.items.reduce(
@@ -684,7 +689,7 @@ export function OrderDetailPage({
           <div className="order-detail__facts">
             <div className="order-detail__fact">
               <span>Name</span>
-              <strong>{order.customer.full_name}</strong>
+              <strong>{contactName}</strong>
             </div>
             <div className="order-detail__fact">
               <span>Email</span>
@@ -695,14 +700,21 @@ export function OrderDetailPage({
                 </a>
               </strong>
             </div>
+            {/* The number given FOR THIS ORDER first, and the account's only
+                as a fallback.
+
+                It read `customer.phone_number` alone, which is whatever is on
+                the account and is routinely null — a customer can order
+                without ever setting one. So a delivery with a perfectly good
+                checkout number showed "Not provided" to the restaurant, while
+                the courier had been sent that very number and a rider was
+                about to ring it. */}
             <div className="order-detail__fact">
               <span>Phone</span>
               <strong className="order-detail__fact-inline">
                 <Phone size={14} strokeWidth={2.1} />
-                {order.customer.phone_number ? (
-                  <a href={`tel:${order.customer.phone_number}`}>
-                    {order.customer.phone_number}
-                  </a>
+                {contactPhone ? (
+                  <a href={`tel:${contactPhone}`}>{contactPhone}</a>
                 ) : (
                   "Not provided"
                 )}
