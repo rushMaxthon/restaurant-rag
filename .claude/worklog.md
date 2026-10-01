@@ -26,6 +26,67 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 — The e2e suite could not sign in, and had not been able to for a while
+
+**Goal:** seed the customer the Playwright suite needs and fix the 15 specs
+failing on it.
+
+**Root cause:** `customer1@example.com` belongs to the MARKETPLACE app client.
+Once storefronts started resolving by host, `localhost` became Bhagwati
+Bakery's address, and a marketplace account cannot sign in there however
+correct its password is — `docs/per-app-identity.md`, enforced by the partial
+unique index on `(app_client_id, lower(email))`. The specs that never sign in
+kept passing, so the summary line looked merely patchy rather than broken.
+
+**Changed:**
+- Created `bhagwati_bakery@example.com` through the real `POST /auth/register`,
+  matching the name `seed.py`'s `ensure_tenant_customer` would give it. The
+  full `seed.py` was NOT run — it would rewrite menus and restaurants on the
+  live Supabase database.
+- `e2e/helpers.ts`: one `customerCredentials` / `customerToken` /
+  `customerAuth` / `staffToken` set, replacing six per-spec copies of the login
+  with the address written into each. The customer email is DERIVED from the
+  app key the host resolves to, so pointing the suite at another tenant signs
+  in as that tenant's customer instead of needing an edit.
+- The six specs now use them.
+- `fillField` accepts a RegExp, and the checkout address field is matched as
+  `/^Address line 1/`.
+- `checkout-prefill` establishes its own address precondition instead of
+  skipping when there is none.
+
+**Verified:** backend 2822 OK. Full `npx playwright test`, both projects:
+**57 passed, 12 skipped, 0 failed** (27.9 min), against the running backend and
+the live Supabase data. Was 15 failed before. Every skip is a pre-existing
+guard — the phone-only specs on the desktop project, and the data guards that
+stand down when the seeded menu has no splittable group.
+
+**Learned — three non-obvious backend rules, all verified against the running
+server, none guessable from the error text:**
+- A **customer** login REQUIRES `X-Forwarded-Host`; without it the lookup hits
+  the wrong tenant and answers "Invalid email or phone number or password".
+- A **staff** login is REFUSED if you send it — `app_client_id` is NULL on a
+  staff row, so the header names a client they are not in. Exactly the mirror
+  image, and the same error message.
+- The header is needed on **every authenticated customer call**, not just the
+  login: "Token was issued for a different app".
+
+**Also learned:** a guard that treats "selector not found" as "not applicable"
+converts a broken selector into silent lost coverage. `fillCheckoutContact`
+returned early when it could not find the address field, with a comment saying
+pickup orders have no address — so once that field became an autocomplete and
+its label grew a hint, every checkout spec quietly stopped filling in an
+address and carried on.
+
+**Open — a live data-loss bug, found while fixing the above, NOT fixed:**
+`PATCH /profile/me` (`services/profile.py:405`) assigns `default_address` and
+`phone_number` unconditionally, so a field absent from the payload is written
+as NULL. `api.updateProfile` sends only `full_name` and `phone_number`. **A
+customer who renames themselves on the account page loses their saved default
+address.** It is the whole-object-write failure mode `CLAUDE.md` warns about,
+and `resolve_storefront` is the house pattern for the fix: only change the keys
+present in the payload. Needs a decision on whether a client should be able to
+clear a field explicitly (`null` vs absent) before the shape is chosen.
+
 ## 2026-10-02 — Brand surfaces: Ask AI off, a footer, five pages, and the menu as sections
 
 **Goal:** make the storefront read as a brand site rather than an ordering

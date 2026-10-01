@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { staffToken } from "./helpers";
 
 /**
  * An owner saving a dish must not break the carts already holding it.
@@ -49,10 +50,7 @@ async function save(
   item: Record<string, never>,
   edit: (body: Record<string, never>) => void,
 ) {
-  const auth = await request.post(`${API}/auth/login`, {
-    data: { email: "admin@example.com", password: "password123" },
-  });
-  const { access_token } = await auth.json();
+  const access_token = await staffToken(request);
 
   const group = (g: Record<string, never>) => ({
     title: g.title,

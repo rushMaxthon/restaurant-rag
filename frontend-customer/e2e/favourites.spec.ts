@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { resetApp, signIn } from "./helpers";
+import { API_BASE, customerAuth, resetApp, signIn } from "./helpers";
 
 /**
  * Saving a dish, and what saving it is FOR.
@@ -9,19 +9,11 @@ import { resetApp, signIn } from "./helpers";
  * turns up where someone hungry will meet it, with a way to order it.
  */
 
-const API = "http://127.0.0.1:8000/api";
-
-async function token(request: APIRequestContext): Promise<string> {
-  const auth = await request.post(`${API}/auth/login`, {
-    data: { email: "customer1@example.com", password: "password123" },
-  });
-  return (await auth.json()).access_token;
-}
+const API = API_BASE;
 
 /** Start from nothing saved, so the strip's absence means something. */
 async function clearFavourites(request: APIRequestContext) {
-  const bearer = await token(request);
-  const headers = { Authorization: `Bearer ${bearer}` };
+  const headers = await customerAuth(request);
   const ids = await (await request.get(`${API}/favorites/ids`, { headers })).json();
   for (const id of ids as string[]) {
     await request.delete(`${API}/favorites/${id}`, { headers });
@@ -47,15 +39,13 @@ test.describe("saving a dish", () => {
     await expect(heart).toHaveAttribute("data-on", "true");
 
     // And the server agrees, which the screen alone cannot tell us.
-    const bearer = await token(request);
+    const headers = await customerAuth(request);
     await expect
       .poll(
         async () =>
           (
             await (
-              await request.get(`${API}/favorites/ids`, {
-                headers: { Authorization: `Bearer ${bearer}` },
-              })
+              await request.get(`${API}/favorites/ids`, { headers })
             ).json()
           ).length,
         { timeout: 15_000 },
@@ -80,15 +70,13 @@ test.describe("saving a dish", () => {
     await heart.click();
     await expect(heart).toHaveAttribute("data-on", "false");
 
-    const bearer = await token(request);
+    const headers = await customerAuth(request);
     await expect
       .poll(
         async () =>
           (
             await (
-              await request.get(`${API}/favorites/ids`, {
-                headers: { Authorization: `Bearer ${bearer}` },
-              })
+              await request.get(`${API}/favorites/ids`, { headers })
             ).json()
           ).length,
         { timeout: 15_000 },
@@ -186,15 +174,13 @@ test.describe("the list of what you saved", () => {
     await page.locator(".line--saved .rail__danger").first().click();
     await expect(page.locator(".line--saved")).toHaveCount(0);
 
-    const bearer = await token(request);
+    const headers = await customerAuth(request);
     await expect
       .poll(
         async () =>
           (
             await (
-              await request.get(`${API}/favorites/ids`, {
-                headers: { Authorization: `Bearer ${bearer}` },
-              })
+              await request.get(`${API}/favorites/ids`, { headers })
             ).json()
           ).length,
         { timeout: 15_000 },

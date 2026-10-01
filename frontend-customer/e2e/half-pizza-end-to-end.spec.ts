@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { clickFixed, fillCheckoutContact, resetApp, signIn } from "./helpers";
+import { clickFixed, customerAuth, fillCheckoutContact, resetApp, signIn } from "./helpers";
 
 /**
  * A half-and-half pizza, from the dish page to what the server stored.
@@ -110,12 +110,9 @@ test("a split pizza reaches the server as a split pizza", async ({ page, request
 
   // The stored order: the halves survived, and the server's own total agrees
   // with the number the customer was shown.
-  const auth = await request.post(`${API}/auth/login`, {
-    data: { email: "customer1@example.com", password: "password123" },
-  });
-  const { access_token } = await auth.json();
+  const headers = await customerAuth(request);
   const orders = await (
-    await request.get(`${API}/orders`, { headers: { Authorization: `Bearer ${access_token}` } })
+    await request.get(`${API}/orders`, { headers })
   ).json();
   const latest = (Array.isArray(orders) ? orders : (orders.items ?? []))[0];
   expect(latest).toBeTruthy();

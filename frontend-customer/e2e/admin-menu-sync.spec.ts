@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { resetApp } from "./helpers";
+import { resetApp, staffToken } from "./helpers";
 
 const API = "http://127.0.0.1:8000/api";
 const ITEM = "07e52a7c-2d32-4414-87cf-f62c0bf9c6ff";
@@ -16,10 +16,7 @@ async function readToppingsMax(request: APIRequestContext): Promise<number> {
 
 /** Set the Toppings cap through the admin API, the way the dashboard does. */
 async function setToppingsMax(request: APIRequestContext, max: number) {
-  const auth = await request.post(`${API}/auth/login`, {
-    data: { email: "admin@example.com", password: "password123" },
-  });
-  const { access_token } = await auth.json();
+  const access_token = await staffToken(request);
   const item = await (await request.get(`${API}/menu-items/${ITEM}`)).json();
   const group = (g: Record<string, never>) => ({
     title: g.title,

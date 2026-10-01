@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fillCart, resetApp, signIn } from "./helpers";
+import { ADDRESS_LINE_1, API_BASE, customerAuth, fillCart, resetApp, signIn } from "./helpers";
 
 /**
  * What the account already knows, filled in for the customer.
@@ -19,13 +19,38 @@ type Account = {
   default_address: string | null;
 };
 
-async function accountDetails(request: import("@playwright/test").APIRequestContext) {
-  const auth = await request.post("http://127.0.0.1:8000/api/auth/login", {
-    data: { email: "customer1@example.com", password: "password123" },
+/**
+ * Put an address on the account if it has not got one.
+ *
+ * `full_name` is REQUIRED by `UserProfileUpdateRequest`, so it is sent back
+ * unchanged — this is a PATCH that behaves like a PUT, which is the same
+ * reason the address goes missing in the first place.
+ */
+async function ensureAddressOnFile(request: import("@playwright/test").APIRequestContext) {
+  const headers = await customerAuth(request);
+  const body = await (await request.get(`${API_BASE}/profile/me`, { headers })).json();
+  const user = body.user as Account;
+  if (user.default_address || (body.saved_addresses ?? []).length > 0) return;
+
+  const response = await request.patch(`${API_BASE}/profile/me`, {
+    headers,
+    data: {
+      full_name: user.full_name,
+      phone_number: user.phone_number,
+      default_address: "1 Test Street, Surat, Gujarat 395004",
+    },
   });
-  const { access_token } = await auth.json();
-  const profile = await request.get("http://127.0.0.1:8000/api/profile/me", {
-    headers: { Authorization: `Bearer ${access_token}` },
+  if (!response.ok()) {
+    throw new Error(
+      `Could not put an address on the test account: ${response.status()} ` +
+        `${await response.text()}`,
+    );
+  }
+}
+
+async function accountDetails(request: import("@playwright/test").APIRequestContext) {
+  const profile = await request.get(`${API_BASE}/profile/me`, {
+    headers: await customerAuth(request),
   });
   const body = await profile.json();
   const saved = (body.saved_addresses ?? []) as {
@@ -94,18 +119,21 @@ test.describe("checkout knows who is ordering", () => {
   });
 
   test("an address on file is offered rather than retyped", async ({ page, request }) => {
-    const { user, saved } = await accountDetails(request);
-    test.skip(
-      !user.default_address && saved.length === 0,
-      "This account has no address on file; there is nothing to fill in.",
-    );
+    // The precondition is ESTABLISHED, not hoped for. This used to
+    // `test.skip()` when the account had no address — and the account reliably
+    // had none by the time it ran, because the name-change test above sends
+    // `PATCH /profile/me` with only a name and `default_address` defaults to
+    // null on that schema, so a name edit blanks the address. The test
+    // therefore skipped itself on most runs and reported green, which is
+    // indistinguishable from passing in the summary line.
+    await ensureAddressOnFile(request);
 
     await resetApp(page);
     await fillCart(page, 1);
     await signIn(page, "/checkout");
 
     // Delivery is the default fulfillment, so the address fields are showing.
-    const line1 = page.getByLabel("Address line 1", { exact: true });
+    const line1 = page.getByLabel(ADDRESS_LINE_1);
     await expect(line1).not.toHaveValue("");
 
     // Whatever we put there, the customer can replace.

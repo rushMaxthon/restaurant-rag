@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { resetApp, signIn } from "./helpers";
+import { API_BASE, customerAuth, resetApp, signIn } from "./helpers";
 
 /**
  * The account screen: who you are, where we deliver, what you ordered.
@@ -10,15 +10,11 @@ import { resetApp, signIn } from "./helpers";
  * that places orders changes what the account holds.
  */
 
-const API = "http://127.0.0.1:8000/api";
+const API = API_BASE;
 
 async function account(request: APIRequestContext) {
-  const auth = await request.post(`${API}/auth/login`, {
-    data: { email: "customer1@example.com", password: "password123" },
-  });
-  const { access_token } = await auth.json();
   const profile = await request.get(`${API}/profile/me`, {
-    headers: { Authorization: `Bearer ${access_token}` },
+    headers: await customerAuth(request),
   });
   return profile.json();
 }

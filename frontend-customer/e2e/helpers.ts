@@ -1,6 +1,127 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
-export const CUSTOMER = { email: "customer1@example.com", password: "password123" };
+/**
+ * Signing in, from a test, against a backend that serves many restaurants.
+ *
+ * Six specs each carried their own copy of this, with the address written into
+ * it, and all six broke the day storefronts started resolving by host. That is
+ * the reason it lives here now: an account identifier repeated in seven places
+ * is an account identifier that will be wrong in seven places.
+ *
+ * **Two rules, and they are opposites.** A CUSTOMER belongs to one app client
+ * — `docs/per-app-identity.md`, enforced by a partial unique index on
+ * `(app_client_id, lower(email))` — and the backend picks that client from
+ * `X-Forwarded-Host`. So a customer login without the header is refused: it is
+ * looked up against the wrong tenant. STAFF have `app_client_id` NULL and
+ * belong to no tenant, so a staff login WITH the header is refused for the
+ * mirror-image reason — the header names a client the account is not in.
+ * Verified both directions against the running backend; neither is guessable
+ * from the error, which is "Invalid email or phone number or password" for all
+ * four combinations.
+ *
+ * A browser cannot set that header on its own requests, which is why the
+ * storefront's SSR layer sets it and why a test has to.
+ */
+export const API_BASE = process.env["E2E_API_BASE"] ?? "http://127.0.0.1:8000/api";
+
+/** The address the storefront is served on — which is what selects a tenant. */
+const STOREFRONT_HOST = process.env["E2E_HOST"] ?? "localhost";
+
+/** On every customer-scoped call. Never on a staff one. */
+export const TENANT_HEADER = { "X-Forwarded-Host": STOREFRONT_HOST };
+
+export type Credentials = { email: string; password: string };
+
+/** Platform staff, who belong to no tenant. */
+export const ADMIN: Credentials = { email: "admin@example.com", password: "password123" };
+
+let resolvedCustomer: Credentials | null = null;
+
+/**
+ * The customer this tenant's storefront can sign in as.
+ *
+ * **Derived, not hardcoded.** It used to be `customer1@example.com`, which
+ * belongs to the MARKETPLACE client and therefore cannot sign in at
+ * `localhost` however correct its password is — fifteen specs failed on the
+ * login screen, and the ones that never sign in kept passing, so nothing said
+ * so. Replacing one hardcoded address with another would repeat that in
+ * miniature, so this applies the same rule `seed.py`'s `ensure_tenant_customer`
+ * uses to CREATE the account: `{app_key}@example.com`, where the app key is
+ * whatever this host actually resolves to. Point the suite at another tenant
+ * and it signs in as that tenant's customer.
+ */
+export async function customerCredentials(request: APIRequestContext): Promise<Credentials> {
+  if (resolvedCustomer) return resolvedCustomer;
+
+  const password = process.env["E2E_CUSTOMER_PASSWORD"] ?? "password123";
+  const override = process.env["E2E_CUSTOMER_EMAIL"];
+  if (override) {
+    resolvedCustomer = { email: override, password };
+    return resolvedCustomer;
+  }
+
+  const response = await request.get(`${API_BASE}/app-config`, { headers: TENANT_HEADER });
+  if (!response.ok()) {
+    throw new Error(
+      `Could not resolve the tenant on "${STOREFRONT_HOST}": ${API_BASE}/app-config ` +
+        `answered ${response.status()}. Is the backend running, and is there an ` +
+        `app_client_domains row for this host? (seed.py: ensure_development_host)`,
+    );
+  }
+  const { app_key: appKey } = (await response.json()) as { app_key?: string };
+  if (!appKey) throw new Error(`/app-config returned no app_key for "${STOREFRONT_HOST}"`);
+
+  resolvedCustomer = { email: `${appKey}@example.com`, password };
+  return resolvedCustomer;
+}
+
+async function login(
+  request: APIRequestContext,
+  credentials: Credentials,
+  headers: Record<string, string>,
+): Promise<string> {
+  const response = await request.post(`${API_BASE}/auth/login`, {
+    data: { email: credentials.email, password: credentials.password },
+    headers,
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `Could not sign in as ${credentials.email} (${response.status()}). ` +
+        `Customer accounts are per tenant and are created by seed.py's ` +
+        `ensure_tenant_customer; set E2E_CUSTOMER_EMAIL and E2E_CUSTOMER_PASSWORD ` +
+        `to override.`,
+    );
+  }
+  return (await response.json()).access_token as string;
+}
+
+/** A bearer token for the same customer the browser signs in as. */
+export async function customerToken(request: APIRequestContext): Promise<string> {
+  return login(request, await customerCredentials(request), TENANT_HEADER);
+}
+
+/**
+ * Everything an authenticated customer call needs, in one object.
+ *
+ * The tenant header is on EVERY request, not just the login. A customer token
+ * carries the app client it was issued for, and the backend checks it against
+ * the one the host resolves to — so the same token that signs in fine is
+ * refused on the next call with "Token was issued for a different app" if the
+ * header is dropped. Returning the pair together is what stops a spec from
+ * remembering one and forgetting the other, which is how this read as a
+ * mysterious `undefined.full_name` rather than as an auth failure.
+ */
+export async function customerAuth(request: APIRequestContext): Promise<Record<string, string>> {
+  return { Authorization: `Bearer ${await customerToken(request)}`, ...TENANT_HEADER };
+}
+
+/** A bearer token for platform staff. No tenant header — see above. */
+export async function staffToken(
+  request: APIRequestContext,
+  credentials: Credentials = ADMIN,
+): Promise<string> {
+  return login(request, credentials, {});
+}
 
 /** Stripe's universally-accepted test card. Never a real number. */
 export const TEST_CARD = { number: "4242424242424242", expiry: "1230", cvc: "123" };
@@ -73,7 +194,18 @@ export async function resetAppFirstVisit(page: Page): Promise<void> {
  */
 export async function fillField(
   page: Page,
-  label: string,
+  /**
+   * A string is matched EXACTLY; a regular expression is matched as written.
+   *
+   * Exact is the right default — "Address line 1" would otherwise also match
+   * "Address line 2" under a substring rule. But a label is allowed to carry a
+   * hint inside it, and the accessible name then includes that hint: the
+   * checkout's address field reads "Address line 1Start typing and pick your
+   * building", so the exact string stopped matching the moment it became an
+   * autocomplete. A regex anchored at the start survives the hint being
+   * reworded.
+   */
+  label: string | RegExp,
   value: string,
   /**
    * What the field should read once React has it, when that differs from what
@@ -83,7 +215,10 @@ export async function fillField(
    */
   expected = value,
 ): Promise<void> {
-  const field = page.getByLabel(label, { exact: true });
+  const field =
+    typeof label === "string"
+      ? page.getByLabel(label, { exact: true })
+      : page.getByLabel(label);
   await field.waitFor({ state: "visible" });
 
   // `fill` sets the value in one shot, which a controlled React input can drop
@@ -148,14 +283,39 @@ export async function signIn(page: Page, redirectTo?: string): Promise<void> {
   await page.goto(redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : "/login");
   // Let hydration finish before typing; see fillField for why it matters.
   await page.waitForLoadState("networkidle");
-  await fillField(page, "Email", CUSTOMER.email);
+  const customer = await customerCredentials(page.request);
+  await fillField(page, "Email", customer.email);
   // Exact, because the reveal toggle's aria-label is "Show password" and
   // getByLabel matches aria-label too — a substring match hits both and fails
   // strict mode.
-  await fillField(page, "Password", CUSTOMER.password);
+  await fillField(page, "Password", customer.password);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+  try {
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+  } catch {
+    // Without this, a missing account surfaces as "expected not to have URL
+    // /login" thirty seconds later, which says nothing about what to do. It is
+    // the single most likely reason this suite fails on a fresh checkout.
+    const refusal = await page
+      .locator(".inline-error, [role='alert']")
+      .first()
+      .innerText()
+      .catch(() => "");
+    throw new Error(
+      `Could not sign in as ${customer.email}.` +
+        (refusal ? ` The form said: ${refusal.trim()}` : "") +
+        `
+
+That account is created by seed.py's ensure_tenant_customer, one per ` +
+        `tenant, because customer identity is scoped to the app client serving ` +
+        `this host. Create it, or set E2E_CUSTOMER_EMAIL and ` +
+        `E2E_CUSTOMER_PASSWORD to an account that exists on this tenant.`,
+    );
+  }
 }
+
+/** Matches the label whether or not it carries a hint after the words. */
+export const ADDRESS_LINE_1 = /^Address line 1/;
 
 /**
  * Fill the checkout contact block: name, phone and the structured address.
@@ -170,10 +330,17 @@ export async function fillCheckoutContact(page: Page): Promise<void> {
   await fillField(page, "Phone number", "4155550132", "(415) 555-0132");
 
   // Delivery only; a pickup order has nowhere to deliver to.
-  const line1 = page.getByLabel("Address line 1", { exact: true });
+  //
+  // The regex is load-bearing. This was an exact match on "Address line 1",
+  // which stopped matching when the field became an autocomplete and its label
+  // grew a hint — and because the miss is handled by returning early, every
+  // checkout test quietly stopped filling in an address and carried on as
+  // though it were a pickup order. A guard that treats "not found" as "not
+  // applicable" turns a broken selector into a silent gap in coverage.
+  const line1 = page.getByLabel(ADDRESS_LINE_1);
   if (!(await line1.isVisible().catch(() => false))) return;
 
-  await fillField(page, "Address line 1", "1600 Pennsylvania Avenue NW");
+  await fillField(page, ADDRESS_LINE_1, "1600 Pennsylvania Avenue NW");
   await fillField(page, "City", "Washington");
   await fillField(page, "State", "DC");
   await fillField(page, "ZIP code", "20500");
