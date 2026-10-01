@@ -128,16 +128,26 @@
    drawn heavy and wide at its single weight, so tightening it turns a heading
    into a solid block, and asking for 700 of a 400-only face makes the browser
    synthesise a bold that smears. `lib/fonts.ts` sets both per face, where it
-   already knows which family it resolved. */
-.font-display {
-  font-family: var(--font-display-stack);
-  font-weight: var(--display-weight, 700);
-  line-height: var(--leading-tight);
-  letter-spacing: var(--display-tracking, var(--tracking-tight));
-  font-optical-sizing: auto;
-  /* Lining figures that share one width, so a price or a count in a heading
-     does not jitter as it changes. */
-  font-variant-numeric: lining-nums tabular-nums;
+   already knows which family it resolved.
+
+   DECLARED IN `@layer components`, and that is not cosmetic. Unlayered CSS
+   beats every Tailwind utility, so left unlayered this rule would silently
+   win against the weight and leading the call sites ask for — the hero's
+   `leading-[.98]` and seventeen files' worth of `font-extrabold` would all
+   stop working, with nothing to show for it but headings that look slightly
+   wrong. In a layer these are defaults a utility can still override, which is
+   what a base style should be. */
+@layer components {
+  .font-display {
+    font-family: var(--font-display-stack);
+    font-weight: var(--display-weight, 700);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--display-tracking, var(--tracking-tight));
+    font-optical-sizing: auto;
+    /* Lining figures that share one width, so a price or a count in a heading
+       does not jitter as it changes. */
+    font-variant-numeric: lining-nums tabular-nums;
+  }
 }
 .page-pad {
   padding-inline: clamp(1rem, 3vw, 3rem);
@@ -178,12 +188,39 @@
   font-size: 0.78rem;
   font-weight: 700;
 }
+/* The scrim that makes hero type readable over somebody else's photograph.
+   -----------------------------------------------------------------------
+   This was ONE left-to-right gradient, and the copy sits bottom-left — so the
+   only part of the frame being darkened was not the part the words occupy.
+   Over Bhagwati Bakery's actual hero, a tray of golden pastries lit from
+   above, the restaurant's own name was close to invisible.
+
+   The fix is the standard editorial one, and it is two layers because they do
+   two different jobs:
+
+   - a BOTTOM scrim, which is the one that matters. Opaque where the text is,
+     gone by two-thirds up, so the photograph is still a photograph.
+   - a LEFT scrim, which only does anything on a wide screen where the copy
+     column ends long before the frame does.
+
+   Black rather than `--overlay`. A hero photograph is the same photograph in
+   both themes, and the type on it is always white, so a scrim that lightens in
+   light mode would take the legibility away in exactly the mode most people
+   use. The one thing on this page that should not follow the theme.
+
+   The stops are placed, not eased: a plain `to top, black, transparent` puts
+   its half-way point in the middle of the frame and dims the food. These hold
+   full strength through the text and then fall away quickly. */
 .hero-overlay {
-  background: linear-gradient(
-    90deg,
-    var(--overlay),
-    color-mix(in srgb, var(--overlay) 50%, transparent)
-  );
+  background:
+    linear-gradient(
+      to top,
+      rgb(0 0 0 / 0.82) 0%,
+      rgb(0 0 0 / 0.68) 18%,
+      rgb(0 0 0 / 0.3) 46%,
+      transparent 72%
+    ),
+    linear-gradient(to right, rgb(0 0 0 / 0.5) 0%, rgb(0 0 0 / 0.12) 55%, transparent 80%);
 }
 /*
  * What stands in for a hero photograph when a restaurant has not uploaded one.

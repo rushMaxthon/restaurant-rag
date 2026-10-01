@@ -130,6 +130,26 @@ describe("the shared files are actually loaded", () => {
   });
 });
 
+describe("the display class does not out-rank the call sites", () => {
+  it("is declared in a layer, so utilities still win", () => {
+    // Unlayered CSS beats EVERY Tailwind utility. Left unlayered, this rule's
+    // font-weight and line-height silently override the `font-extrabold` and
+    // `leading-[.98]` that seventeen files ask for — the hero's deliberate
+    // .98 leading included — with nothing to show for it but headings that
+    // look slightly wrong and no obvious cause.
+    const at = STYLES.indexOf(".font-display {");
+    expect(at).toBeGreaterThan(-1);
+    const before = STYLES.slice(0, at);
+    const lastLayerOpen = before.lastIndexOf("@layer components");
+    expect(lastLayerOpen, "`.font-display` must sit inside @layer components").toBeGreaterThan(-1);
+    // And the layer must not have closed again before the rule.
+    const between = before.slice(lastLayerOpen);
+    const opens = (between.match(/\{/g) ?? []).length;
+    const closes = (between.match(/\}/g) ?? []).length;
+    expect(opens).toBeGreaterThan(closes);
+  });
+});
+
 describe("the typeface is not bundled for every tenant", () => {
   it("imports no font package in the stylesheet", () => {
     // A restaurant picks one of five faces. An @import here ships that one to

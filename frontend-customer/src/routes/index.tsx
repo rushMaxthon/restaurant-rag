@@ -118,8 +118,17 @@ function Home() {
     <div className="pb-20 lg:pb-0">
       <StorefrontHero className={heroHeight}>
         <div className="hero-overlay absolute inset-0" />
+        {/* `text-white`, not `text-primary-foreground`.
+            `--on-primary` means "the ink that reads ON the brand colour", and
+            this copy is not on the brand colour — it is on a photograph behind
+            a black scrim. In dark mode that token correctly resolves to near
+            black ink (the lifted brand fill wants dark text), which is then
+            invisible on the scrim: the restaurant's own name disappeared off
+            its own hero for everyone browsing in dark mode. A photograph is
+            the same photograph in both themes, so its type does not follow
+            them. */}
         <div
-          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-12 pt-28 text-primary-foreground sm:pb-16`}
+          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-12 pt-28 text-white sm:pb-16`}
         >
           <div className="mb-5 flex flex-wrap gap-2">
             {/* Nothing is claimed until it is known: no branch count before the
@@ -133,9 +142,10 @@ function Home() {
             )}
             {branch && (
               <span
-                className={`hero-chip text-primary-foreground ${
-                  openNow.available ? "bg-success" : "bg-muted"
-                }`}
+                // Same reasoning as the copy above: the chip sits on `--success`
+                // or `--muted`, neither of which is the brand, so the brand's
+                // ink token was never the right one for it either.
+                className={`hero-chip text-white ${openNow.available ? "bg-success" : "bg-muted"}`}
               >
                 {openNow.available ? "Open now" : "Closed right now"}
               </span>
