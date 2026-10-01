@@ -88,15 +88,16 @@ deploy — see Open.
 - Firebase service-account JSON must be uploaded as a Render **secret file** on
   all three services; it cannot be declared in a blueprint. Push is dead until
   then.
-- Production branch on all three Vercel projects is `main`, not `V2`. Either set
-  it per project, or merge V2 into main. Render already deploys V2.
+- ~~Production branch~~ **DONE later the same day.** All three now track `V2`
+  (Vercel → Settings → Environments → Production → Branch Tracking; it is no
+  longer on the Git settings page, and the MCP cannot set it). It was stored as
+  the literal string `main`, NOT as null-follows-repo-default — so changing the
+  GitHub default branch would not have fixed it. Verified by pushing `382918d`
+  and watching all three auto-create `target: "production"`.
+- ~~No baked-in production API URL in kitchen/customer~~ **DONE in `382918d`.**
 - The local backend/worker/beat on the Windows box were **stopped** to free
   pooler slots. Restart with the commands in CLAUDE.md when working locally —
   and expect them to compete with Render for the same 15 connections.
-- `frontend-kitchen` and `frontend-customer` have no baked-in production API
-  URL, only the `?? localhost` fallback. They rely entirely on
-  `VITE_API_BASE_URL` being set on Vercel, which is the exact failure mode
-  `frontend-admin`'s own comment argues against.
 
 **Learned:**
 - **A Render `dockerCommand` is not a shell line.** Render consumes an `sh -c `
