@@ -26,6 +26,53 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-01 — The brand fill, and one ladder per scale
+
+**Goal:** "change the primary button to #cf4300 too and do all the required
+changes too we need to give premium look."
+
+**The button.** White on #ff5200 was 3.25:1. `--primary-strong` (#cf4300) is
+the fill wherever something is read ON the brand; #ff5200 keeps every job
+where nothing is — the sidebar's active bar, chart strokes, focus rings, a
+badge dot, all of which only need 3:1 and get 3.25. Dark mode inverts the
+move: the bright fill stays and the INK goes dark (#1a0f06, 6.62:1), because a
+darkened fill on a black page measures 3.97:1 against it and looks muddy.
+
+Scoped to `frontend-admin/src/index.css`, NOT the shared token file —
+**`--primary` is rewritten at runtime per tenant by the storefront**
+(`frontend-customer/src/lib/theme.ts`), so its contrast cannot be reasoned
+about statically and its `--on-primary` must not be touched from here.
+
+**The premium part was drift, and it was measurable.** Every scale existed and
+almost nothing used it: 88 radius declarations across 32 literals, 38 shadows
+across 26, 120 font sizes across 39, nine durations for one kind of
+transition, and 125 transitions on `ease` while `--ease-out` sat unused with
+three consumers. The fourteen different brand glows were the worst of it —
+same idea, no two alike, which is exactly what the eye catches when two
+buttons share a screen.
+
+**Changed:** `index.css` (`--primary-strong`, dark `--on-primary`,
+`--brand-fill-grad`, `--brand-mark-grad`, `--shadow-xs`,
+`--shadow-brand-sm/md/lg`, `--inset-hairline`, `--inset-sheen`);
+`legacy.css` (67 radii, 35 shadows, 115 type sizes, 121 durations and 125
+easings onto tokens); `scripts/audit-pages.js` (new).
+
+**Verified:** 19 page-visits across both themes — **0 theme leaks, 0 contrast
+failures**. 218 admin tests, 323 customer, both build, admin lint 64.
+
+**Open:**
+- Text on a gradient is the one thing the audit will not score; it now says so
+  rather than reporting the page behind the element. The two gradient buttons
+  were measured by hand (5.8:1 / 4.7:1 light, 6.6:1 / 5.2:1 dark). Anything
+  new on a gradient needs the same treatment.
+- Three literal shadows remain on purpose: `.st-switch__thumb`, `.ph--dark`
+  (the preview renders a TENANT's theme, not ours) and `.hub-art__disc`.
+- `--fs-display` (28px) and `--radius-8` (28px) each have one consumer now.
+  Not a problem, just thin.
+- The snapping moved real values: 15px->14px at 13 sites, 17px->16px at 8,
+  and radii by 1-2px at 31. Walked and screenshotted, but a fresh pair of eyes
+  on the dense pages would not hurt.
+
 ## 2026-10-01 — Every admin page, audited and fixed
 
 **Goal:** "check all page and we need to improve all pages so plan like that
