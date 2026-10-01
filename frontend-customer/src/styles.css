@@ -1,17 +1,25 @@
-/* Self-hosted, and the reason this line exists: `--font-sans` has named
-   Manrope since the app was written, but no font file, package or
-   stylesheet link ever shipped with it — every visitor has been reading
-   the system fallback. Imported as CSS rather than from a route module
-   because this app injects stylesheets as URL assets, and a JS-side
-   import would never reach the document. */
-@import "@fontsource-variable/plus-jakarta-sans";
+/* No @import for a typeface here any more, and that is the point.
+   ---------------------------------------------------------------
+   This file used to pull Plus Jakarta Sans in unconditionally, which fixed the
+   original bug — `--font-sans` named Manrope while no font file ever shipped,
+   so every visitor read the system fallback — by replacing it with a smaller
+   one: ONE face for every restaurant, including the ones that chose a
+   different one in the branding panel.
+
+   A tenant's face is now resolved during SSR from the request host and emitted
+   as a <link> by the root route, so exactly the chosen family is downloaded.
+   See `src/lib/fonts.ts`. Bundling it here instead would mean shipping all
+   five to use one.
+
+   `--font-stack` and `--font-display` still come from
+   frontend-shared/tokens.css; the root route only repoints them. */
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --font-sans: var(--font-stack);
-  --font-display: var(--font-stack);
+  --font-display: var(--font-display-stack);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -82,8 +90,40 @@
     min-height: 44px;
   }
 }
+/* The display voice.
+   ------------------
+   Used 49 times across 17 files, and for the whole life of the app it set a
+   family identical to the body one — so every heading marked as display looked
+   exactly like the paragraph under it and the hierarchy existed only in the
+   markup.
+
+   Family alone was never going to be enough either, because most tenants pick
+   a text face and get the same family in both roles by design. So the class
+   carries the three things that actually make large type read as display:
+
+   - tighter tracking, because letterspacing that is right at 14px is loose at
+     32px and reads as a logo rather than a heading;
+   - tighter leading, for the same reason in the other axis — a 28px title at
+     body leading reads as two separate lines;
+   - more weight, which is the part a reader actually notices first.
+
+   `font-optical-sizing` matters for the variable faces: Inter and Manrope both
+   carry optical size axes, and letting the browser use them is free. */
+   The weight and tracking come from tokens rather than being fixed here,
+   because a display SERIF needs the opposite correction: DM Serif Display is
+   drawn heavy and wide at its single weight, so tightening it turns a heading
+   into a solid block, and asking for 700 of a 400-only face makes the browser
+   synthesise a bold that smears. `lib/fonts.ts` sets both per face, where it
+   already knows which family it resolved. */
 .font-display {
-  font-family: var(--font-display);
+  font-family: var(--font-display-stack);
+  font-weight: var(--display-weight, 700);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  font-optical-sizing: auto;
+  /* Lining figures that share one width, so a price or a count in a heading
+     does not jitter as it changes. */
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .page-pad {
   padding-inline: clamp(1rem, 3vw, 3rem);

@@ -229,13 +229,19 @@
      The body face is self-hosted through @fontsource-variable; the rest of the
      stack is what shows while it loads.
 
-     `--font-display` is a SEPARATE face for headings, defaulting to the body
-     stack so nothing changes until a storefront resolves a real one. The
+     `--font-display-stack` is a SEPARATE face for headings, defaulting to the
+     body stack so nothing changes until a storefront resolves a real one. The
      storefront rewrites both per tenant — a restaurant picks its typeface the
-     same way it picks its colour. */
+     same way it picks its colour.
+
+     Named `-stack` rather than `--font-display` because Tailwind v4 claims
+     `--font-display` as a theme key: it is what generates the `font-display`
+     utility. Declaring both means `--font-display: var(--font-display)`, which
+     is a circular reference that resolves to nothing and silently drops every
+     heading back to the browser default. */
   --font-stack: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "Segoe UI",
     system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-stack);
+  --font-display-stack: var(--font-stack);
 }
 
 .dark {

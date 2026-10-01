@@ -30,6 +30,15 @@ export type StorefrontConfig = StorefrontCopy & {
    * storefront painting an empty band first.
    */
   cover_image_url: string | null;
+  /**
+   * The id of the typeface this restaurant chose, from the backend allowlist.
+   *
+   * On the root loader rather than fetched after hydration because a font is
+   * the one branding decision that must be settled before the first paint:
+   * resolved later, every visitor sees the page re-set itself in a different
+   * family. `lib/fonts.ts` turns this into the stylesheet to load.
+   */
+  font_family: string | null;
 };
 
 export type StorefrontCopy = {
@@ -77,7 +86,7 @@ export type AppConfigPayload = {
   display_name?: string;
   storefront?: Partial<StorefrontCopy>;
   currency?: CurrencyFormat;
-  branding?: { cover_image_url?: string | null };
+  branding?: { cover_image_url?: string | null; font_family?: string | null };
 };
 
 /**
@@ -101,6 +110,9 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     // falls back to this restaurant's brand colour rather than another
     // restaurant's food.
     cover_image_url: payload.branding?.cover_image_url?.trim() || null,
+    // Blank and absent both mean "unset", which `resolveFonts` reads as the
+    // platform default rather than as a family called "".
+    font_family: payload.branding?.font_family?.trim() || null,
   };
 }
 

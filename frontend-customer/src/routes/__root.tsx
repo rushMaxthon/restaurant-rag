@@ -17,6 +17,7 @@ import { RealtimeProvider } from "@/lib/realtime-provider";
 import { AuthProvider } from "@/lib/auth";
 import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
+import { fontTokenCss, resolveFonts } from "@/lib/fonts";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 import { Button } from "@/components/ui/button";
 
@@ -85,21 +86,31 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   // Bowl's literals, which meant six restaurants shared one restaurant's
   // name in every browser tab, link preview and search result.
   loader: () => getStorefrontCopy(),
-  head: ({ loaderData }) => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      ...storefrontMeta(loaderData ?? UNKNOWN_STOREFRONT),
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-      { rel: "stylesheet", href: polishCss },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    // Resolved HERE rather than after hydration because a typeface is the one
+    // branding decision that has to be settled before the first paint. Fetched
+    // on the client, every visitor would watch the page re-set itself in a
+    // different family a beat after it appeared.
+    const fonts = resolveFonts(loaderData?.font_family);
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        ...storefrontMeta(loaderData ?? UNKNOWN_STOREFRONT),
+      ],
+      links: [
+        // The chosen face first, and preconnected, because it is the only
+        // render-blocking asset here that the reader actually sees arrive.
+        ...fonts.hrefs.map((href) => ({ rel: "stylesheet", href })),
+        { rel: "stylesheet", href: appCss },
+        { rel: "stylesheet", href: polishCss },
+        { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      ],
+      // After the stylesheets, so it wins over the token file's defaults
+      // without needing !important or a higher specificity.
+      styles: [{ children: fontTokenCss(fonts) }],
+    };
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
