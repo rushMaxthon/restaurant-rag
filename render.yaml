@@ -144,11 +144,29 @@ services:
           type: keyvalue
           name: restaurant-rag-cache-sg
           property: connectionString
-      # Sized for a 512MB starter instance. The pool is per worker, so the API
-      # holds at most 2 x (3 + 2) = 10 connections. See the arithmetic comment
-      # on the env group.
+      # ONE worker, because two do not fit in 512MB. This was 2 — the number
+      # the Dockerfile's own comment picked as the safe one, noting that 4
+      # "OOM on a 512MB Render instance". Two turned out to be over the line as
+      # well. The first hour of real use produced this, five times in
+      # forty-five minutes:
+      #
+      #   Instance failed: 7z5gx — Ran out of memory (used over 512MB)
+      #   Instance failed: sj7lk — Ran out of memory (used over 512MB)
+      #   Instance failed: 2bcz4 — Ran out of memory (used over 512MB)
+      #
+      # Each kill was followed by "Service recovered" and then another kill,
+      # and in between the API answered 502 — which reaches a browser as a
+      # CORS error, because a response that never arrives carries no
+      # Access-Control-Allow-Origin header. That is a confusing symptom for a
+      # memory problem, and it is worth knowing it points here.
+      #
+      # One worker costs concurrency, but very little of it in this
+      # configuration: DB_POOL_SIZE is 1, so a second worker bought a second
+      # concurrent database request and not much else. Raise them together,
+      # after raising the Supabase pooler and the instance size — in that
+      # order, because the memory ceiling binds first.
       - key: GUNICORN_WORKERS
-        value: "2"
+        value: "1"
       # Must exceed AI_MANAGER_CHAT_ANSWER_TIMEOUT_SECONDS (60 in the group), or
       # gunicorn kills the worker mid-answer and the owner sees a dropped
       # connection instead of the deterministic fallback.
