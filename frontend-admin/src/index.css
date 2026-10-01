@@ -98,14 +98,6 @@
   --on-neutral-soft: #6a3fd0;
   --neutral-soft: #f0edfd;
 
-  /* The loading placeholder, as a pair: the block and the sheen that sweeps
-     across it. Both are needed as tokens because a skeleton is a filled
-     rectangle the size of the content it stands in for — the one thing on a
-     dark page that cannot be papered over — and because the two must differ
-     or the shimmer stops moving. */
-  --skeleton: #eaedf3;
-  --skeleton-sheen: #f5f7fa;
-
   /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
   --field-bg: var(--surface);
   --field-bg-active: #ffffff;
@@ -134,79 +126,20 @@
   --chart-3: #2b66e4;
   --chart-4: #8a5cf6;
   --chart-5: #14b8a6;
-  --shadow-xl: 0 18px 44px rgba(22, 30, 51, 0.09);
-  --shadow-lg: 0 12px 32px rgba(22, 30, 51, 0.07);
-  --shadow-md: 0 8px 24px rgba(23, 30, 51, 0.06);
-  --shadow-sm: 0 4px 14px rgba(22, 30, 51, 0.05);
-  /* The resting tier, below `sm`. Thirteen declarations were already drawing
-     it as a 1px hairline shadow — buttons, segmented options, the suggestion
-     card — in four slightly different greys, because the ladder started one
-     step too high for the densest controls in the panel. */
-  --shadow-xs: 0 1px 2px rgba(22, 30, 51, 0.08);
+  /* --- Also adopted from the shared file -----------------------------------
+     The shadow ladder (`--shadow-xs` … `--shadow-xl`), the brand-glow ladder,
+     the inset pair, the skeleton pair, the type scale (`--fs-*`), the radius
+     scale (`--radius-1` … `--radius-pill`), `--shadow-ring`, the control
+     heights and `--primary-strong` were all built here and have been PROMOTED
+     into `frontend-shared/tokens.css` unchanged. They are deliberately absent
+     from this block now.
 
-  /* The brand glow, as a ladder rather than as fourteen guesses.
-
-     Every raised brand surface had its own: `0 8px 18px / .28`,
-     `0 6px 16px / .08`, `0 12px 26px / .12`, `0 14px 34px / .3`,
-     `0 8px 20px / .26`, `0 18px 30px / .25`. Same idea, no two alike — which
-     is precisely the thing that reads as assembled rather than designed,
-     because the eye compares two buttons on one screen and finds them lit by
-     different lights.
-
-     Three steps, built from `--primary` so they follow the theme and a tenant
-     rebrand: `sm` for a resting button, `md` for a hover, `lg` for the one
-     element on a screen that is meant to float. */
-  --shadow-brand-sm: 0 6px 16px color-mix(in srgb, var(--primary) 20%, transparent);
-  --shadow-brand-md: 0 10px 24px color-mix(in srgb, var(--primary) 26%, transparent);
-  --shadow-brand-lg: 0 14px 34px color-mix(in srgb, var(--primary) 30%, transparent);
-
-  /* A 1px outline drawn as a shadow, where a real border would change the
-     box. Separate from `--border` because it has to read on a swatch of any
-     colour, including white. */
-  --inset-hairline: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
-  /* The top highlight on a raised control. A white sheen is a light-mode
-     idea; on a dark surface it is a grey line across the top edge, so dark
-     mode turns it off rather than inheriting it. */
-  --inset-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-  /* Type scale. Replaces 56 ad-hoc font sizes, eleven of which sat inside a
-     2.7px band - too close to read as hierarchy, close enough to leave labels
-     on different baselines from panel to panel. Every value below maps to the
-     nearest step, so nothing moves by more than 1.6px and most by under 0.5px. */
-  --fs-micro: 0.625rem;      /* 10px - uppercase eyebrow labels */
-  --fs-tiny: 0.6875rem;      /* 11px - badges, table headers */
-  --fs-caption: 0.75rem;     /* 12px - helper and meta text */
-  --fs-label: 0.8125rem;     /* 13px - form labels, dense table cells */
-  --fs-body: 0.875rem;       /* 14px - default body */
-  --fs-body-lg: 1rem;        /* 16px - emphasised body */
-  --fs-title-sm: 1.125rem;   /* 18px - card titles */
-  --fs-title: 1.25rem;       /* 20px - panel headings */
-  --fs-display-sm: 1.5rem;   /* 24px - section headings */
-  --fs-display: 1.75rem;     /* 28px - page titles */
-
-  /* Radius scale. Replaces 17 literal values. The four legacy aliases below
-     keep their original sizes so existing var(--radius-*) usages are untouched. */
-  --radius-1: 8px;
-  --radius-2: 10px;
-  --radius-3: 12px;
-  --radius-4: 14px;
-  --radius-5: 16px;
-  --radius-6: 20px;
-  --radius-7: 24px;
-  --radius-8: 28px;
-  --radius-pill: 999px;
-
-  /* One focus ring, instead of the three alpha variants that had grown.
-     At 10% alpha it was there in the stylesheet and not on the screen — a
-     focused field looked the same as an unfocused one from a foot away. The
-     storefront's ring is 22% of the brand and derives from `--primary`, so a
-     tenant's accent carries into its own focus marker. */
-  --shadow-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
-
-  /* Control height. Buttons sat at 34px and inputs at 36px, so any toolbar
-     putting a button beside a search field was 2px out of alignment. One token
-     drives both - change it here and every control follows. */
-  --control-h: 40px;
-  --control-h-sm: 32px;   /* icon buttons and the compact AI-page variants */
+     They moved rather than being copied because the storefront had none of
+     them — one shadow, no type scale, no spacing — and re-deriving a
+     contrast-measured ladder beside an existing one is how two products stop
+     looking like one. Every value is byte-identical, so nothing in this panel
+     moves; `adminStyles.test.ts` resolves `var(--x)` across all four
+     stylesheets, which is what makes the promotion safe. */
 
   /* Legacy aliases - unchanged values, so nothing that already uses them moves. */
   --radius-xl: var(--radius-6);
@@ -244,8 +177,11 @@
      status badge. Non-text contrast asks 3:1 of those and #ff5200 gives 3.25.
 
      Two steps of one hue rather than two oranges: the deeper one is where the
-     product speaks, the brighter one is where it points. */
-  --primary-strong: #cf4300;
+     product speaks, the brighter one is where it points.
+
+     `--primary-strong` itself now lives in the shared file, because the
+     storefront's primary button has exactly the same problem and the same
+     answer. */
   /* The avatar / brand square, in three places. Built from the pair so the
      two letters inside it are read at the same ratio as a primary button,
      and so there is one gradient rather than three copies of two literals. */
@@ -308,13 +244,9 @@
   --on-success-soft: var(--success);
   --on-warning-soft: var(--warning);
   --on-blue-soft: var(--blue);
-  /* On a dark page the answer is the other way round. Darkening the fill to
-     #cf4300 would leave it at 3.97:1 against the page — a muddy button on a
-     black ground — so the bright fill stays and the INK goes dark instead:
-     6.62:1, and the button reads as the brightest thing on the screen, which
-     is what a primary action should be. */
-  --primary-strong: var(--primary);
-  --on-primary: #1a0f06;
+  /* `--primary-strong` and `--on-primary` invert on a dark ground — the bright
+     fill stays and the ink goes dark. Both now come from the shared file,
+     which carries that reasoning in full. */
   /* Lighter end last, so the dark ink reads at 6.6:1 across the whole button
      — the mix runs toward the brand rather than away from it here. */
   --brand-fill-grad: linear-gradient(
@@ -329,9 +261,6 @@
   --muted-soft: #23262d;
   --on-neutral-soft: #b79cff;
   --neutral-soft: #231d3a;
-
-  --skeleton: #23262d;
-  --skeleton-sheen: #2e323b;
 
   --field-bg: var(--surface-alt);
   --field-bg-active: var(--surface-alt);
@@ -358,22 +287,7 @@
   --chart-4: #a78bfa;
   --chart-5: #2dd4bf;
 
-  /* A shadow tinted near-black cannot be seen on a dark ground. These go
-     fully black and heavier so a panel still lifts off the page. */
-  --shadow-xl: 0 18px 44px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.42);
-  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.36);
-  --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.3);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.28);
-
-  /* The brand glow carries further on a dark ground before it is noticed, so
-     each step is a little stronger; `color-mix` keeps them tied to whatever
-     `--primary` is. */
-  --shadow-brand-sm: 0 6px 18px color-mix(in srgb, var(--primary) 26%, transparent);
-  --shadow-brand-md: 0 10px 26px color-mix(in srgb, var(--primary) 32%, transparent);
-  --shadow-brand-lg: 0 14px 36px color-mix(in srgb, var(--primary) 38%, transparent);
-
-  --inset-hairline: inset 0 0 0 1px rgb(255 255 255 / 0.12);
-  /* Off. See the note in the light block: this is a white highlight. */
-  --inset-sheen: none;
+  /* The dark shadow ladder, the dark brand glow, the inset pair and the
+     skeleton pair all moved to the shared file with their light-mode
+     counterparts. Promoting only half a token is how a dark mode breaks. */
 }

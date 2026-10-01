@@ -63,24 +63,179 @@
   --warning-text: #9d6900;
   --danger-text: var(--danger);
 
+  /* The brand as a FILLED SURFACE THAT CARRIES A LABEL.
+
+     `--primary` is a fill nobody reads: a chart stroke, a focus ring, the dot
+     in a badge, the active bar in a nav. Non-text contrast asks 3:1 and
+     #ff5200 gives 3.25.
+
+     A primary BUTTON is the other thing entirely. White on #ff5200 measures
+     3.25:1, which is under AA for a 13px label — and that is the most-clicked
+     control in either app. The colour cannot lighten (the text is already
+     white) and the text cannot darken (it would stop reading as a brand
+     button), so the fill moves: the same hue walked down until white clears
+     4.71:1, while staying 4.52:1 against the page so the button still reads as
+     a raised object rather than dissolving into it.
+
+     Two steps of one hue: the deeper one is where the product speaks, the
+     brighter one is where it points.
+
+     Per tenant this is RECOMPUTED, not inherited — see `applyBrandColor` in
+     frontend-customer/src/lib/theme.ts. A literal here would leave a teal
+     restaurant with orange buttons. */
+  --primary-strong: #cf4300;
+
   --radius: 0.5rem;
   --overlay: rgb(20 23 31 / 0.55);
+
+  /* ---- Shape -------------------------------------------------------------
+     Eight steps, because "rounded" is a relationship between a corner and the
+     box it belongs to: a 28px radius on a 32px chip is a circle and on a modal
+     is barely visible. Promoted from the operator panel, where it replaced 17
+     literal values and is now named 269 times. */
+  --radius-1: 8px;
+  --radius-2: 10px;
+  --radius-3: 12px;
+  --radius-4: 14px;
+  --radius-5: 16px;
+  --radius-6: 20px;
+  --radius-7: 24px;
+  --radius-8: 28px;
+  --radius-pill: 999px;
+
+  /* ---- Depth -------------------------------------------------------------
+     A ladder, not a value. Elevation only means anything as a comparison — a
+     hover has to be visibly above a rest, and a modal visibly above both — so
+     a single shadow token forces every surface to be equally raised, which
+     reads as flat no matter how large the blur.
+
+     `--shadow` below is the original single token, kept because the storefront
+     names it throughout; it sits at the `lg` tier. */
+  --shadow-xs: 0 1px 2px rgba(22, 30, 51, 0.08);
+  --shadow-sm: 0 4px 14px rgba(22, 30, 51, 0.05);
+  --shadow-md: 0 8px 24px rgba(23, 30, 51, 0.06);
+  --shadow-lg: 0 12px 32px rgba(22, 30, 51, 0.07);
+  --shadow-xl: 0 18px 44px rgba(22, 30, 51, 0.09);
   --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
 
-  /* One easing and two durations for the whole product. A page where every
-     transition has its own timing reads as several pages. */
+  /* The brand glow, built from `--primary` with `color-mix` so it follows a
+     tenant's colour instead of being fourteen hand-picked oranges. `sm` is a
+     resting brand button, `md` its hover, `lg` the one element on a screen
+     that is meant to float. */
+  --shadow-brand-sm: 0 6px 16px color-mix(in srgb, var(--primary) 20%, transparent);
+  --shadow-brand-md: 0 10px 24px color-mix(in srgb, var(--primary) 26%, transparent);
+  --shadow-brand-lg: 0 14px 34px color-mix(in srgb, var(--primary) 30%, transparent);
+
+  /* One focus ring for the product, derived from the brand so a tenant's
+     accent carries into its own focus marker. */
+  --shadow-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+
+  /* A 1px outline drawn as a shadow, where a real border would change the box.
+     Separate from `--border` because it has to read on a swatch of any colour,
+     including white. The sheen is a light-mode idea — on a dark surface it is
+     a grey line across the top edge — so dark turns it off. */
+  --inset-hairline: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+  --inset-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+
+  /* The loading placeholder, as a pair: the block and the sheen that sweeps
+     across it. Both are tokens because a skeleton is a filled rectangle the
+     size of the content it stands in for — the one thing on a dark page that
+     cannot be papered over — and because the two must differ or the shimmer
+     stops moving. */
+  --skeleton: #eaedf3;
+  --skeleton-sheen: #f5f7fa;
+
+  /* ---- Rhythm ------------------------------------------------------------
+     A 4px base. Neither app had one: the panel used ad-hoc pixels and the
+     storefront raw `clamp()`, which is why two cards on one screen could sit
+     on different grids and nothing in the stylesheet said they should not. */
+  --space-1: 0.25rem;   /* 4px  */
+  --space-2: 0.5rem;    /* 8px  */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-20: 5rem;     /* 80px */
+
+  /* ---- Type --------------------------------------------------------------
+     Promoted from the operator panel, where it replaced 56 ad-hoc sizes —
+     eleven of which sat inside a 2.7px band, too close to read as hierarchy
+     and close enough to leave labels on different baselines from panel to
+     panel. Named 517 times there.
+
+     The two display steps above `--fs-display` are new, for a storefront hero:
+     the panel never needed anything larger than a page title. */
+  --fs-micro: 0.625rem;      /* 10px - uppercase eyebrow labels */
+  --fs-tiny: 0.6875rem;      /* 11px - badges, table headers */
+  --fs-caption: 0.75rem;     /* 12px - helper and meta text */
+  --fs-label: 0.8125rem;     /* 13px - form labels, dense table cells */
+  --fs-body: 0.875rem;       /* 14px - default body */
+  --fs-body-lg: 1rem;        /* 16px - emphasised body */
+  --fs-title-sm: 1.125rem;   /* 18px - card titles */
+  --fs-title: 1.25rem;       /* 20px - panel headings */
+  --fs-display-sm: 1.5rem;   /* 24px - section headings */
+  --fs-display: 1.75rem;     /* 28px - page titles */
+  --fs-display-lg: 2.25rem;  /* 36px - storefront section heroes */
+  --fs-display-xl: clamp(2.5rem, 1.6rem + 4vw, 4rem); /* the one hero per page */
+
+  /* Line height belongs to the step, not to the element. A 28px title at 1.5
+     looks like two separate lines of text; 12px helper copy at 1.15 is
+     unreadable. Bigger type gets tighter leading, which is the whole rule. */
+  --leading-tight: 1.15;     /* display */
+  --leading-snug: 1.3;       /* titles */
+  --leading-normal: 1.5;     /* body */
+  --leading-relaxed: 1.65;   /* long-form paragraphs */
+
+  /* Large type set at 0 tracking reads loose; uppercase micro-labels set at 0
+     read as a word with the letters touching. Both are corrections, not
+     style. */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.08em;
+
+  /* One height for every control, so a button beside a search field is not 2px
+     out of alignment — which it was, at 34px against 36px. */
+  --control-h: 40px;
+  --control-h-sm: 32px;
+
+  /* ---- Motion ------------------------------------------------------------
+     One easing family and a small set of durations for the whole product. A
+     page where every transition has its own timing reads as several pages.
+
+     `--ease-out` is the default and does almost everything. `--ease-spring`
+     overshoots slightly and is ONLY for things the user did on purpose — a
+     press, an add-to-cart — because an overshoot on something that merely
+     appeared reads as a glitch. `--ease-in-out` is for a thing that both
+     leaves and arrives, like a route change. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-fast: 0.16s;
   --dur: 0.24s;
+  --dur-slow: 0.42s;
+  /* The gap between one card in a list and the next. 40ms is the window where
+     a list reads as arriving together but in order; past ~70ms it reads as
+     items queueing, which makes a fast page feel slow. */
+  --stagger: 40ms;
 
   --scrollbar-thumb: #c9cdd4;
   --scrollbar-thumb-hover: #a2a8b3;
 
   /* Named once so neither app has to spell the fallback chain out again.
-     Plus Jakarta Sans is self-hosted through @fontsource-variable; the rest
-     of the stack is what shows while it loads. */
+     The body face is self-hosted through @fontsource-variable; the rest of the
+     stack is what shows while it loads.
+
+     `--font-display` is a SEPARATE face for headings, defaulting to the body
+     stack so nothing changes until a storefront resolves a real one. The
+     storefront rewrites both per tenant — a restaurant picks its typeface the
+     same way it picks its colour. */
   --font-stack: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "Segoe UI",
     system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-stack);
 }
 
 .dark {
@@ -112,11 +267,37 @@
   --warning-text: #f5b63f;
   --danger-text: var(--danger);
 
+  /* On a dark page the brand answer inverts. Darkening the fill to #cf4300
+     would leave it at 3.97:1 against the ground — a muddy button on black — so
+     the bright fill stays and the INK goes dark instead: 6.62:1, and the
+     button reads as the brightest thing on the screen, which is what a primary
+     action should be. */
+  --primary-strong: var(--primary);
+  --on-primary: #1a0f06;
+
   /* A drop shadow tinted near-black is invisible on a dark ground, so it
      goes heavier and fully black instead of being dropped — panels still
      need to sit above the page. */
   --overlay: rgb(0 0 0 / 0.62);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.28);
+  --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-xl: 0 18px 44px rgb(0 0 0 / 0.5);
   --shadow: 0 12px 34px rgb(0 0 0 / 0.4);
+
+  /* The glow carries further on a dark ground before it is noticed, so each
+     step is a little stronger; `color-mix` keeps them tied to `--primary`. */
+  --shadow-brand-sm: 0 6px 18px color-mix(in srgb, var(--primary) 26%, transparent);
+  --shadow-brand-md: 0 10px 26px color-mix(in srgb, var(--primary) 32%, transparent);
+  --shadow-brand-lg: 0 14px 36px color-mix(in srgb, var(--primary) 38%, transparent);
+
+  --inset-hairline: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  /* Off. See the note in the light block: this is a white highlight. */
+  --inset-sheen: none;
+
+  --skeleton: #23262d;
+  --skeleton-sheen: #2e323b;
 
   --scrollbar-thumb: #3e434d;
   --scrollbar-thumb-hover: #565c68;
