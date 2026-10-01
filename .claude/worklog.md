@@ -26,6 +26,55 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-01 — Every admin page, audited and fixed
+
+**Goal:** "check all page and we need to improve all pages so plan like that
+and implement it."
+
+**Method, and the reason it is worth recording:** a script injected into the
+running panel that reads the RENDERED document — real computed contrast of
+every run of text against the background it actually sits on, surfaces painted
+the wrong side of the theme, controls under 28px. Walked all 23 routes twice,
+light and dark, before and after. Eyeballing 46 screenshots would not have
+found any of this; nearly every defect below is invisible until measured.
+
+**The numbers:** 76 distinct contrast failures before, 8-13 on every page.
+After: the brand button, and nothing else. Theme leaks: 16 on the dashboard
+alone before, 0 across every page after except the order timeline's
+deliberately green marker.
+
+**Changed:**
+- `frontend-shared/tokens.css` — `--primary-text` / `--success-text` /
+  `--warning-text` / `--danger-text`, both themes. The fills stay the fills.
+- `frontend-shared/components.css` — `.eyebrow` onto `--primary-text`.
+- `index.css` — `--hint` 2.87:1 -> 4.52:1; the `--on-*-soft` palette, measured
+  against each `--*-soft`; `--muted-soft` / `--neutral-soft` for dark.
+- `legacy.css` — 53 rules onto `--on-*-soft`; badge tones doubled for
+  specificity; `.usr-role--kitchen` given a tone; 4 phantom tokens resolved;
+  `.eyebrow`'s six dead declarations removed; `.dark .mkt` and `.dark .mkt-hub`
+  palettes; 3 hub washes tokenised; 8 frosted panels onto `color-mix`; one
+  page-title size; three undersized controls.
+- `AIManagerPage.tsx` + `.visually-hidden` — an `<h1>` for screen readers only.
+- `adminStyles.test.ts` — four new guards.
+
+**Verified:** admin 218 tests / customer 323 / both build / admin lint 64
+(unchanged). Re-measured in the browser across 23 pages light, 20 dark.
+
+**Open:**
+- **White on `--primary` is 3.25:1** on the filled primary button, 2.84:1 in
+  dark. Left alone on purpose: it is the brand and it matches the storefront.
+  #cf4300 would clear AA and is one line, but it is the user's call.
+- The audit script lives in the session scratchpad, not the repo. It is worth
+  keeping — it found every defect in this entry — but it needs a home and a
+  way to run that is not "paste it into the console".
+- `.mkt-actions` reports as a dark background in light mode; that is the
+  audit's own rgb parser failing on `color-mix(in srgb ...)`, not a defect.
+- Inline text links (breadcrumbs, the marketing back link, sort headers) are
+  13-21px tall. WCAG exempts inline links, so they were left; the sort header
+  at 13px is still fiddly and is a real design question.
+- `--fs-display` (28px) now has no consumer. Page titles sit at
+  `--fs-display-sm`; the step up is one edit if anybody wants it.
+
 ## 2026-10-01 — Admin shell: is the layout good, and the four things wrong with it
 
 **Goal:** "is that layout good? if yes then improve it otherwise recreate it" —
