@@ -33,6 +33,7 @@ from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
 from app.services import order_charges
 from app.services.delivery.quoting import delivery_fee_for
+from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
 from app.schemas.order import (
     ChargeLineResponse,
@@ -501,6 +502,42 @@ def _prepare_order_draft(
         # wins — and `delivery_fee_for` returns None for every way it can
         # fail, which is what keeps a switched-off, unconfigured or unhappy
         # courier from changing what anybody is charged.
+        # The coordinates of the place the customer PICKED, when they picked
+        # one. Passing them means this order is priced against the same point
+        # the quote they were shown was priced against — rather than against a
+        # fresh geocode of the typed line, which resolves to a locality and can
+        # produce a different number for the same address.
+        known_drop: tuple[float, float, str] | None = None
+        if payload.latitude is not None and payload.longitude is not None:
+            known_drop = (
+                payload.latitude,
+                payload.longitude,
+                GeocodeConfidence.ROOFTOP.value,
+            )
+        elif require_payment_validation:
+            # No coordinate means the address was typed and never resolved to a
+            # building. Pricing it would mean quoting from the middle of a
+            # neighbourhood and sending a rider to the same place.
+            #
+            # Only enforced where a client can actually offer the picker. The
+            # WhatsApp agent and the mobile app collect an address as text and
+            # have no dropdown to pick from, and `require_payment_validation`
+            # is already how this function distinguishes "a checkout the
+            # customer is standing in front of" from those paths.
+            logger.warning(
+                "Refusing delivery order for location %s: the address carries "
+                "no coordinates, so it was typed rather than chosen",
+                restaurant_location.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Please choose your address from the suggestions so we can "
+                    "work out the delivery charge and send the rider to the "
+                    "right building."
+                ),
+            )
+
         delivery_fee = _safe_decimal(restaurant_location.delivery_fee)
         quoted = delivery_fee_for(
             restaurant_location,
@@ -510,6 +547,7 @@ def _prepare_order_draft(
             # cache, writes new lookups to it, and lets a branch's coordinates
             # be stored back on its row the first time it is located.
             db=db,
+            known_drop=known_drop,
         )
         if quoted is not None:
             delivery_fee = _quantize(quoted)

@@ -765,6 +765,13 @@ function Checkout() {
         ? { schedule_type: "SCHEDULED" as const, scheduled_at: chosenSlot.toISOString() }
         : {}),
       delivery_address: deliveryAddress,
+      // The building they chose, not the line they typed. Sent on the quote
+      // since the autocomplete was built and never on the order, so the two
+      // were priced from different points — the quote from the picked
+      // rooftop, the order from a fresh geocode of the text that resolves to
+      // a locality. The server now refuses a delivery order without them.
+      latitude: pickedPoint?.latitude,
+      longitude: pickedPoint?.longitude,
       // Collected since the beginning and thrown away until migration 0058:
       // the form demanded a name and phone, said they were how the rider would
       // reach you, and sent neither.

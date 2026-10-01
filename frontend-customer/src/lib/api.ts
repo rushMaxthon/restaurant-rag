@@ -468,6 +468,12 @@ export type OrderCreateRequest = {
   fulfillment_type: "DELIVERY" | "PICKUP";
   items: OrderCreateItem[];
   delivery_address: string;
+  // From the place the customer picked in the autocomplete. The quote request
+  // has carried these all along; this one did not, so the price shown came
+  // from the chosen building and the price charged came from re-geocoding the
+  // typed line — which resolves to a neighbourhood and is free to differ.
+  latitude?: number | undefined;
+  longitude?: number | undefined;
   contact_name?: string;
   contact_phone?: string;
   special_instructions?: string | null;

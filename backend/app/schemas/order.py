@@ -81,6 +81,29 @@ class OrderCreateRequest(BaseModel):
     scheduled_at: datetime | None = None
     items: list[OrderCreateItem] = Field(min_length=1, max_length=50)
     delivery_address: str = Field(min_length=5, max_length=2000)
+    #: Where the customer's address actually is, from the place they picked.
+    #:
+    #: `DeliveryQuoteRequest` has carried these since the autocomplete was
+    #: built, and argues there that accepting them is "strictly better than
+    #: geocoding the text underneath — which would be a second paid call to get
+    #: a worse answer". This request did NOT carry them, and the storefront was
+    #: sending them anyway: pydantic dropped them silently.
+    #:
+    #: So the quote the customer was shown came from the building they chose,
+    #: and the order was then priced by re-geocoding the typed line, which
+    #: resolves to a neighbourhood. The live log is full of the consequence —
+    #: `Address only resolved to LOCALITY (Jahangir Pura, Surat, Gujarat,
+    #: India); pricing from it but not trusting it` — and the two figures are
+    #: free to disagree. A customer seeing one delivery charge and being
+    #: charged another is the exact failure the half-and-half rules are written
+    #: in three places to avoid.
+    #:
+    #: Range-checked because they arrive from a client, for the same reason as
+    #: on the quote: a client cannot invent a FEE with these, since the courier
+    #: still prices the trip, and a wrong coordinate yields a wrong distance
+    #: rather than a chosen number.
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     # Who to ring about this delivery. Optional so the mobile client, which
     # does not send them yet, keeps working; the web checkout requires them.
     contact_name: str | None = Field(default=None, max_length=255)
