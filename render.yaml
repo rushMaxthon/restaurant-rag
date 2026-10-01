@@ -338,16 +338,40 @@ envVarGroups:
       # --- database pool --------------------------------------------------
       #
       # The pool is PER PROCESS, so the deployment's total demand is
-      #   (gunicorn workers + celery children + beat) x (POOL_SIZE + OVERFLOW)
-      # At these values: (2 + 2 + 1) x 5 = 25, against a 100-connection limit
-      # with ~3 reserved. The headroom absorbs a deploy, where the old and new
-      # instances are both connected for a moment.
+      #   (gunicorn workers + celery processes + beat) x (POOL_SIZE + OVERFLOW)
       #
-      # Raise a worker count or concurrency and redo this sum first.
+      # The ceiling is 15, and it is NOT Postgres `max_connections`. This
+      # deployment talks to Supabase through its SESSION POOLER, which caps
+      # the number of client connections per project:
+      #
+      #   FATAL: (EMAXCONNSESSION) max clients reached in session mode
+      #          - max clients are limited to pool_size: 15
+      #
+      # That is what these values were wrong against. They used to be 3 + 2,
+      # sized by a comment reasoning about "100 connections on every Render
+      # Postgres plan under 8GB" — correct arithmetic for the managed database
+      # in the commented-out `databases:` block at the top of this file, which
+      # is deliberately NOT provisioned. (2 + 2 + 1) x 5 = 25 against a limit
+      # of 15, so the first deploy that brought all three services up at once
+      # failed in the API's pre-deploy with the error above, before alembic
+      # could open a single connection.
+      #
+      # At 1 + 0 the steady demand is about six connections — two gunicorn
+      # workers, the celery parent and its two children, and beat — which
+      # leaves room for the moment during a deploy when the old and new
+      # instances are both connected, and for a psql session looking at what
+      # went wrong.
+      #
+      # The cost is real and worth stating: one connection per process means
+      # requests inside a worker queue for it rather than running side by
+      # side, bounded by DB_POOL_TIMEOUT below. The fix is to raise the
+      # POOLER's own pool size (Supabase dashboard → Database → Connection
+      # pooling), and then raise these together with it. Redo the sum above
+      # before changing a worker count, a concurrency or either value here.
       - key: DB_POOL_SIZE
-        value: "3"
+        value: "1"
       - key: DB_MAX_OVERFLOW
-        value: "2"
+        value: "0"
       # Below any idle timeout the managed server enforces, so a connection is
       # never handed out after the server has already dropped it.
       - key: DB_POOL_RECYCLE
