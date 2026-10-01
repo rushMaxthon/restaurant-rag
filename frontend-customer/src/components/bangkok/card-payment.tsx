@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { AlertCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMoney } from "@/lib/storefront";
+import { stripeAppearance } from "@/lib/stripe-appearance";
 
 /**
  * Stripe's Payment Element, mounted against an intent the backend created.
@@ -128,8 +130,16 @@ export function CardPayment({
   onCancel,
   onPaid,
 }: CardPaymentProps) {
+  // The Element renders in an iframe Stripe serves, so our stylesheet never
+  // reaches it and it has to be told the theme. Recomputed when the theme
+  // changes: `react-stripe-js` forwards an `appearance` change to
+  // `elements.update()`, so it restyles in place rather than remounting and
+  // losing a half-typed card.
+  const { dark } = useBangkokStore();
+  const appearance = useMemo(() => stripeAppearance(dark), [dark]);
+
   return (
-    <Elements stripe={stripeFor(publishableKey)} options={{ clientSecret }}>
+    <Elements stripe={stripeFor(publishableKey)} options={{ clientSecret, appearance }}>
       <PayForm amount={amount} returnUrl={returnUrl} onCancel={onCancel} onPaid={onPaid} />
     </Elements>
   );
