@@ -32,6 +32,7 @@ import Reanimated, {
 import { FulfillmentSelectionSheet } from '@components/FulfillmentSelectionSheet';
 import { getRestaurantScopedOffers } from '@components/offers/offerScope';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
+import { useDeliveryQuote } from '@hooks/useDeliveryQuote';
 import {
   useAppActions,
   useBusinessTimeZone,
@@ -652,29 +653,69 @@ export function CartScreen(): React.JSX.Element {
     offerPaletteLoading,
     personalizedOfferDiscount,
   ]);
-  const deliveryFee = useMemo(
-    () =>
-      cart.items.length > 0 && cart.fulfillmentType === 'DELIVERY'
-        ? toNumber(
-            restaurantLocation?.delivery_fee ?? restaurant?.delivery_fee ?? 0,
-          )
-        : 0,
-    [
-      cart.fulfillmentType,
-      cart.items.length,
-      restaurant?.delivery_fee,
-      restaurantLocation?.delivery_fee,
-    ],
-  );
-  const taxAmount = useMemo(() => subtotal * 0.05, [subtotal]);
-  const total = useMemo(
-    () => subtotal + deliveryFee + taxAmount - personalizedOfferDiscount,
-    [deliveryFee, personalizedOfferDiscount, subtotal, taxAmount],
-  );
   const deliveryAddress = useMemo(
     () => selectedLocation?.address ?? user?.default_address ?? '',
     [selectedLocation?.address, user?.default_address],
   );
+
+  /*
+   * THE BILL COMES FROM THE SERVER. Every figure below used to be worked out
+   * here: the delivery fee was `restaurantLocation.delivery_fee`, the branch's
+   * flat rate, and the tax was `subtotal * 0.05` — a rate written into this
+   * screen that ignored the four the operator actually configures (food tax,
+   * delivery tax, packaging, platform fee).
+   *
+   * Measured against a real branch, a 140.00 cart came out of this screen at
+   * 147.00 with "Free delivery" and was charged 229.23. The customer saw one
+   * number and paid another, and the screen was the one that was wrong.
+   *
+   * `useDeliveryQuote` asks `POST /orders/delivery-quote`, which runs the same
+   * code that charges. The coordinates go with it when the customer picked the
+   * address off a map, because a point the map provider already holds beats
+   * geocoding the text underneath.
+   */
+  const quoting = cart.items.length > 0 && cart.fulfillmentType === 'DELIVERY';
+  const {
+    quote: deliveryQuote,
+    loading: quoteLoading,
+    error: quoteError,
+  } = useDeliveryQuote(
+    token,
+    {
+      restaurantLocationId: cart.restaurantLocationId,
+      deliveryAddress,
+      city: selectedLocation?.city ?? '',
+      latitude: selectedLocation?.latitude ?? null,
+      longitude: selectedLocation?.longitude ?? null,
+      subtotal,
+      discountAmount: personalizedOfferDiscount,
+    },
+    quoting,
+  );
+
+  /** Null until the server has answered. NEVER a local fallback. */
+  const deliveryFee = useMemo(
+    () => (deliveryQuote ? toNumber(deliveryQuote.delivery_fee) : null),
+    [deliveryQuote],
+  );
+  const charges = deliveryQuote?.charges ?? null;
+  const taxAmount = useMemo(
+    () => (charges ? toNumber(charges.total) : null),
+    [charges],
+  );
+  /*
+   * Pickup has no trip to price, so there is nothing to ask and the quote
+   * endpoint is never called — but the rest of the bill still has to come from
+   * somewhere. Until this screen can ask for charges without a delivery
+   * address, pickup shows the food total alone and the rest is added at
+   * checkout; printing a tax this screen invented is what got us here.
+   */
+  const total = useMemo(() => {
+    if (deliveryQuote?.total_amount != null) {
+      return toNumber(deliveryQuote.total_amount);
+    }
+    return subtotal - personalizedOfferDiscount;
+  }, [deliveryQuote, personalizedOfferDiscount, subtotal]);
   const pickupAddress = useMemo(() => {
     if (!restaurant) {
       return cart.restaurantName
@@ -707,12 +748,18 @@ export function CartScreen(): React.JSX.Element {
     () => Math.min(Math.max(screenWidth * 0.7, 220), 276),
     [screenWidth],
   );
+  /* What the order would cost without the offer. Only meaningful once the
+     server has priced it; before that there is no honest "you saved" figure
+     to show, so there is none. */
   const preDiscountTotal = useMemo(
-    () => subtotal + deliveryFee + taxAmount,
+    () =>
+      deliveryFee != null && taxAmount != null
+        ? subtotal + deliveryFee + taxAmount
+        : null,
     [deliveryFee, subtotal, taxAmount],
   );
   const savingsAmount = useMemo(
-    () => Math.max(preDiscountTotal - total, 0),
+    () => (preDiscountTotal == null ? 0 : Math.max(preDiscountTotal - total, 0)),
     [preDiscountTotal, total],
   );
   const locationDisplayName =
@@ -1655,8 +1702,12 @@ export function CartScreen(): React.JSX.Element {
 
           <CartSummaryCard
             activePersonalizedOffer={activePersonalizedOffer}
+            charges={charges}
             deliveryFee={deliveryFee}
+            deliveryQuote={deliveryQuote}
             isMonetaryPersonalizedOffer={isMonetaryPersonalizedOffer}
+            quoteError={quoteError}
+            quoteLoading={quoteLoading}
             taxAmount={taxAmount}
             fulfillmentChipLabel={fulfillmentChipLabel}
             personalizedOfferRowValue={personalizedOfferRowValue}

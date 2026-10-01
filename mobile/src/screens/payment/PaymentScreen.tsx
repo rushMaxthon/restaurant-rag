@@ -31,6 +31,8 @@ import {
   useSession,
 } from '@hooks/useAppStore';
 import { useAppForegroundEffect } from '@hooks/useAppForegroundEffect';
+import { useDeliveryQuote } from '@hooks/useDeliveryQuote';
+import { pendingAmountLabel } from '@utils/deliveryQuote';
 import { api, formatCurrency, toNumber, type ApiError } from '@services/api';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type {
@@ -206,20 +208,15 @@ export function PaymentScreen(): React.JSX.Element {
       ),
     [cart.items],
   );
-  const deliveryFee = useMemo(
-    () =>
-      cart.fulfillmentType === 'DELIVERY'
-        ? toNumber(
-            restaurantLocation?.delivery_fee ?? restaurant?.delivery_fee ?? 0,
-          )
-        : 0,
-    [
-      cart.fulfillmentType,
-      restaurant?.delivery_fee,
-      restaurantLocation?.delivery_fee,
-    ],
+  /* See the note in `CartScreen`: this screen does not price the order. It
+     asked the branch for a flat `delivery_fee` and added `subtotal * 0.05`,
+     and the amount it then put on the Pay button was not the amount charged.
+     Of the two screens this one mattered more — it is the number the customer
+     authorises. */
+  const deliveryAddressForQuote = useMemo(
+    () => selectedLocation?.address ?? user?.default_address ?? '',
+    [selectedLocation?.address, user?.default_address],
   );
-  const taxAmount = useMemo(() => subtotal * 0.05, [subtotal]);
   const activePersonalizedOffer = useMemo(
     () =>
       selectedPersonalizedOffer &&
@@ -238,9 +235,36 @@ export function PaymentScreen(): React.JSX.Element {
         : 0,
     [activeOfferPreview],
   );
+  const {
+    quote: deliveryQuote,
+    loading: quoteLoading,
+    error: quoteError,
+  } = useDeliveryQuote(
+    token,
+    {
+      restaurantLocationId: cart.restaurantLocationId,
+      deliveryAddress: deliveryAddressForQuote,
+      city: selectedLocation?.city ?? '',
+      latitude: selectedLocation?.latitude ?? null,
+      longitude: selectedLocation?.longitude ?? null,
+      subtotal,
+      discountAmount: personalizedOfferDiscount,
+    },
+    cart.fulfillmentType === 'DELIVERY' && cart.items.length > 0,
+  );
+  /* No fee or charges breakdown is kept here: this screen says "Your cart
+     already has the full order review" and shows one amount. The quote is
+     still fetched, because that amount is the one the customer authorises and
+     it has to be the server's. */
+  /* Null until the server has priced it. The Pay button reads this, and a
+     button that says an amount nobody computed is the failure this replaced —
+     so when it is null the button says so instead of showing a number. */
   const total = useMemo(
-    () => subtotal + deliveryFee + taxAmount - personalizedOfferDiscount,
-    [deliveryFee, personalizedOfferDiscount, subtotal, taxAmount],
+    () =>
+      deliveryQuote?.total_amount != null
+        ? toNumber(deliveryQuote.total_amount)
+        : null,
+    [deliveryQuote],
   );
   const deliveryAddress = useMemo(
     () => selectedLocation?.address ?? user?.default_address ?? '',
@@ -358,6 +382,9 @@ export function PaymentScreen(): React.JSX.Element {
     activeOfferPreview?.eligible,
     activePersonalizedOffer,
   ]);
+  /** What stands in for the amount while there is not one. */
+  const payableLabel = pendingAmountLabel(quoteLoading, quoteError);
+
   const canSubmit = useMemo(
     () =>
       !processing &&
@@ -365,6 +392,11 @@ export function PaymentScreen(): React.JSX.Element {
       enabledPaymentMethods.length > 0 &&
       Boolean(selectedPaymentMethod) &&
       activeFulfillmentAvailable &&
+      // A delivery order cannot be authorised until the server has said what
+      // it costs. Letting it through would put a customer on a Pay button
+      // showing a figure this app made up — which is the whole reason the
+      // local arithmetic was taken out.
+      (!requiresDeliveryAddress || total != null) &&
       (!requiresDeliveryAddress || Boolean(deliveryAddress.trim())),
     [
       activeFulfillmentAvailable,
@@ -373,6 +405,7 @@ export function PaymentScreen(): React.JSX.Element {
       processing,
       requiresDeliveryAddress,
       restaurantLocation,
+      total,
       selectedPaymentMethod,
     ],
   );
@@ -1016,7 +1049,7 @@ export function PaymentScreen(): React.JSX.Element {
             <View style={styles.summaryAmountRow}>
               <Text style={styles.summaryAmountLabel}>Amount to pay</Text>
               <Text style={styles.summaryAmountValue}>
-                {formatCurrency(total)}
+                {total == null ? payableLabel : formatCurrency(total)}
               </Text>
             </View>
 
@@ -1159,7 +1192,9 @@ export function PaymentScreen(): React.JSX.Element {
           <View style={styles.footerRow}>
             <View style={styles.footerCopy}>
               <Text style={styles.footerLabel}>To pay</Text>
-              <Text style={styles.footerAmount}>{formatCurrency(total)}</Text>
+              <Text style={styles.footerAmount}>
+                {total == null ? payableLabel : formatCurrency(total)}
+              </Text>
             </View>
             <Pressable
               disabled={!canSubmit || loading}

@@ -597,6 +597,60 @@ export interface Order {
   items: OrderItem[];
 }
 
+/**
+ * One row of the bill a customer can open, as the SERVER worked it out.
+ *
+ * `note` is the sentence under the row and is not decoration: a platform fee
+ * with no explanation reads as a made-up number, and a tax line that does not
+ * say the rate is the government's sends the complaint to the wrong party.
+ */
+export interface OrderChargeLine {
+  key: string;
+  label: string;
+  amount: DecimalValue;
+  note: string;
+}
+
+/** Everything that is neither the food nor the delivery, and its parts. */
+export interface OrderCharges {
+  total: DecimalValue;
+  lines: OrderChargeLine[];
+}
+
+/**
+ * What delivery costs, asked before the order exists.
+ *
+ * Every figure here comes from the server, computed by the same code that
+ * charges the customer. Nothing in this app may add any of it up again: this
+ * app used to, with `delivery_fee` read off the branch and tax as a flat
+ * `subtotal * 0.05`, and on a real branch that came out ~36% under what the
+ * customer was actually charged — while announcing delivery as free.
+ */
+export interface DeliveryQuote {
+  delivery_fee: DecimalValue;
+  currency: string;
+  /** "courier" when a courier priced this trip, "branch" for the flat fee. */
+  source: string;
+  /**
+   * WHY it is the flat fee, when it is. `""` means a courier priced it;
+   * `"address_unknown"` is the customer's to fix, `"branch_unknown"` is the
+   * operator's, and `"no_courier"` means the flat rate is correct policy.
+   */
+  fallback_reason: string;
+  serviceable: boolean;
+  distance_metres: number | null;
+  assign_seconds: number | null;
+  /** The drive only. NEVER show this as an ETA — it excludes the cooking. */
+  travel_seconds: number | null;
+  exact_location: boolean;
+  located_by: string;
+  matched_address: string;
+  /** Null when no subtotal was sent. */
+  charges: OrderCharges | null;
+  /** What the customer will actually pay. Null when no subtotal was sent. */
+  total_amount: DecimalValue | null;
+}
+
 export interface OrderValidationResult {
   valid: boolean;
   restaurant_id: string;

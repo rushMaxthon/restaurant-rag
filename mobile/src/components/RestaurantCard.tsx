@@ -98,10 +98,23 @@ function RestaurantCardComponent({
               size={compact ? 12 : 14}
               color={theme.colors.primary}
             />
+            {/*
+              "Free delivery" is a promise, and this is the wrong place to make
+              it. `restaurant.delivery_fee` is the branch's FLAT rate — the
+              figure used only when no courier will price the trip — and on a
+              branch that leaves it at 0 because it quotes per address, this
+              card announced free delivery for an order the courier charged 50
+              for. The real fee depends on where the customer is, which this
+              card does not know and should not guess at.
+
+              So it states the flat fee when the restaurant has set one, as a
+              policy they chose, and otherwise says the fee depends on the
+              address instead of inventing a nicer answer.
+            */}
             <Text style={compact ? styles.feeTextCompact : styles.feeText}>
               {toNumber(restaurant.delivery_fee) > 0
                 ? `${formatCurrency(restaurant.delivery_fee)} delivery`
-                : 'Free delivery'}
+                : 'Delivery by address'}
             </Text>
           </View>
         </View>

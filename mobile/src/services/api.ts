@@ -14,6 +14,7 @@ import type {
   ChatSuggestionItem,
   ComboUpsellSuggestion,
   DecimalValue,
+  DeliveryQuote,
   DietPreference,
   FavoriteItem,
   GeneratedCombo,
@@ -1289,6 +1290,62 @@ export const api = {
       const response = await client.get<PaymentStatusResponse>(
         `/orders/${encodeURIComponent(orderId)}/payment-status`,
         { headers: withToken(token) },
+      );
+      return response.data;
+    } catch (error) {
+      return mapError(error);
+    }
+  },
+  /**
+   * What delivery costs, and the rest of the bill with it.
+   *
+   * **Nothing in this app prices an order.** It used to: the cart read
+   * `delivery_fee` off the branch and added `subtotal * 0.05` for tax, which
+   * on a branch configured with packaging, a platform fee and an 18% delivery
+   * rate came out at 147 against the 229.23 the server charged — and showed
+   * "Free delivery" while the courier wanted 50. Two implementations of one
+   * piece of arithmetic drift, and when they disagree the customer is right to
+   * believe the screen.
+   *
+   * So this asks, every time, and the reply carries the fee, the itemised
+   * charges and the total. Deliberately NOT the whole cart: somebody typing
+   * their address wants the delivery fee before they have finished choosing
+   * food, and making them assemble a valid order first to learn the price is
+   * the wrong way round.
+   *
+   * Errors are not swallowed. A checkout with no number to print would invent
+   * one, which is the thing this whole path exists to avoid — the caller shows
+   * "worked out at checkout" rather than a guess.
+   */
+  async quoteDelivery(
+    token: string,
+    payload: {
+      restaurant_location_id: string;
+      delivery_address?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+      /** A saved address the customer picked; its stored coordinates are used
+       *  directly, so a repeat order is priced with no geocoder call at all. */
+      saved_address_id?: string | null;
+      /** Coordinates of a place PICKED from an autocomplete. Strictly better
+       *  than geocoding the text underneath, which is a second paid call for a
+       *  worse answer. A client cannot invent a FEE with these — the courier
+       *  still prices the trip. */
+      latitude?: number | null;
+      longitude?: number | null;
+      subtotal?: DecimalValue | null;
+      discount_amount?: DecimalValue;
+    },
+  ): Promise<DeliveryQuote> {
+    try {
+      const response = await client.post<DeliveryQuote>(
+        '/orders/delivery-quote',
+        payload,
+        {
+          headers: withToken(token),
+        },
       );
       return response.data;
     } catch (error) {
