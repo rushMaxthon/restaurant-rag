@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { api, type Suggestion } from "@/lib/api";
 
 /** What a picked place resolved to, for the form to fill itself in from. */
@@ -96,6 +97,22 @@ export function AddressAutocomplete({
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
   const [resolving, setResolving] = useState(false);
+  /**
+   * A lookup is in flight.
+   *
+   * There was no state for this, and the box said nothing at all while it
+   * waited: you typed, and for as long as the round trip took, the field sat
+   * there looking like a plain text input that had ignored you. On a laptop
+   * talking to a local backend that gap is 50ms and invisible. Against a
+   * deployment it was measured at 2-3 seconds, and the only honest reading of
+   * a control that does nothing for three seconds is that it is broken — so
+   * people typed the whole address and never saw the list.
+   *
+   * Distinct from `resolving`, which covers the call AFTER a place is picked.
+   * Two different waits, two different sentences, because "we are searching"
+   * and "we are fetching the one you chose" are different news.
+   */
+  const [searching, setSearching] = useState(false);
   // Null until the first reply. Distinguishes "no provider configured" from
   // "nothing matched yet", which look identical in an empty list and mean
   // opposite things to the person reading the screen.
@@ -122,12 +139,16 @@ export function AddressAutocomplete({
     if (text.length < 3 || available === false) {
       setSuggestions([]);
       setOpen(false);
+      setSearching(false);
       return;
     }
     const mine = ++asked.current;
     // 250ms: long enough that a normal typing run is one request rather than
     // one per letter, short enough that the list does not feel late.
     const timer = setTimeout(async () => {
+      // Set when the request actually starts, not when typing starts, so the
+      // indicator does not flicker once per keystroke through the debounce.
+      setSearching(true);
       try {
         const reply = await api.suggestAddresses({
           text,
@@ -146,6 +167,12 @@ export function AddressAutocomplete({
           setSuggestions([]);
           setOpen(false);
         }
+      } finally {
+        // Only the newest request may clear the indicator. A slow reply for
+        // "12 M" landing after "12 MG Road" has gone out would otherwise stop
+        // the spinner while a lookup is still running — the same reason the
+        // list itself is guarded by `asked`.
+        if (mine === asked.current) setSearching(false);
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -229,8 +256,28 @@ export function AddressAutocomplete({
           type="text"
           value={value}
         />
+        {/*
+         * Inside the field, not under it. A hint below the box is not where
+         * anyone is looking while they type, and the whole point of this is to
+         * be seen without moving your eyes off what you are writing.
+         */}
+        {(searching || resolving) && (
+          <Spinner aria-hidden="true" className="ml-2 shrink-0 text-muted" />
+        )}
       </div>
 
+      {/*
+       * Announced to screen readers as well as drawn, because a spinner is
+       * invisible to anyone not looking at it. `polite` so it waits for a gap
+       * rather than interrupting the characters being typed.
+       */}
+      <p aria-live="polite" className="sr-only">
+        {searching ? "Searching for addresses" : resolving ? "Loading the address you chose" : ""}
+      </p>
+
+      {searching && !resolving && (
+        <p className="mt-1 text-xs text-muted">Searching addresses…</p>
+      )}
       {resolving && <p className="mt-1 text-xs text-muted">Looking up that address…</p>}
 
       {open && suggestions.length > 0 && (
