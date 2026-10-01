@@ -22,6 +22,15 @@ from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 
+#: Where a machine is somebody's laptop rather than a deployment.
+#:
+#: Two guards ask this same question and must not drift apart: the registry
+#: refuses to build the REHEARSAL courier anywhere else, and `service` refuses
+#: to book a REAL rider from here. Named rather than inferred from `debug`,
+#: which is on in plenty of deployments that are not a laptop.
+LOCAL_ENVIRONMENTS = frozenset({"development", "local", "test"})
+
+
 class DeliveryState(StrEnum):
     """Where a delivery is, in terms this app can act on.
 

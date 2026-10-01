@@ -19,16 +19,12 @@ import logging
 import threading
 
 from app.config import get_settings
-from app.services.delivery.base import DeliveryProvider
+from app.services.delivery.base import LOCAL_ENVIRONMENTS, DeliveryProvider
 from app.services.delivery.pidge_provider import PROVIDER_NAME, PidgeProvider
 from app.services.delivery.rehearsal_provider import RehearsalProvider
 
 logger = logging.getLogger(__name__)
 
-#: Where a simulated courier is allowed to exist. Named rather than inferred
-#: from `debug`, which is on in plenty of deployments that are not somebody's
-#: laptop.
-_LOCAL_ENVIRONMENTS = frozenset({"development", "local", "test"})
 
 _lock = threading.Lock()
 _provider: DeliveryProvider | None = None
@@ -70,7 +66,7 @@ def delivery_provider() -> DeliveryProvider | None:
         # when nobody is, so the flag alone is not enough of a guard — it is
         # one `.env` line away from being wrong.
         if settings.enable_delivery_rehearsal:
-            if settings.environment.strip().lower() in _LOCAL_ENVIRONMENTS:
+            if settings.environment.strip().lower() in LOCAL_ENVIRONMENTS:
                 logger.warning(
                     "Using the REHEARSAL courier: deliveries are simulated and "
                     "no rider is real. environment=%s",

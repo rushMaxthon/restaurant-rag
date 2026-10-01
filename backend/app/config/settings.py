@@ -845,6 +845,24 @@ class Settings(BaseSettings):
     # is only a flag is one `.env` away from a customer being told a rider is
     # coming when nobody is.
     enable_delivery_rehearsal: bool = False
+    # The one way to book a REAL rider from a development machine.
+    #
+    # A laptop dispatches through exactly the same task, provider and
+    # credentials as production — so the day a live Pidge password is pasted
+    # into a local `.env` to try a quote, every order the kitchen accepts
+    # sends a human to a real address. `enable_delivery_dispatch` is the wrong
+    # thing to be relying on there: it is a rollout dial that gets switched on
+    # early and left on.
+    #
+    # So `service.live_dispatch_blocked_reason` refuses to dispatch when the
+    # environment is local AND the courier host is not a sandbox, whatever the
+    # dispatch flag says. Quoting is untouched — it costs nothing and books
+    # nobody, which is why those are two flags.
+    #
+    # This is the override, for the one occasion somebody genuinely wants a
+    # real delivery from their desk. Named at length on purpose: it should be
+    # impossible to switch on while believing it does something else.
+    allow_live_dispatch_from_local: bool = False
     # What the rehearsal courier charges: a base plus a per-km rate. Not an
     # attempt to model Pidge's pricing — numbers that move with distance, so a
     # demo can show two addresses costing different amounts.

@@ -29,6 +29,7 @@ from app.models.enums import OrderFulfillmentType, OrderStatus
 from app.models.order import Order
 from app.models.order_delivery import OrderDelivery
 from app.services.delivery.base import (
+    LOCAL_ENVIRONMENTS,
     DeliveryAddress,
     DeliveryItem,
     DeliveryProviderError,
@@ -149,6 +150,54 @@ def _coord(value: object) -> float | None:
         return None
 
 
+#: Hosts a booking may be sent to from somebody's laptop.
+#:
+#: Matched on the hostname rather than the whole URL so a path or a port does
+#: not defeat it, and by substring because every courier names its sandbox
+#: differently — Pidge uses `store.dev.pidge.in`.
+_SANDBOX_HOST_MARKERS = ("dev.", "sandbox", "staging", "localhost", "127.0.0.1", ".test")
+
+
+def _is_sandbox_host(base_url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = (urlparse(base_url).hostname or base_url).strip().lower()
+    return any(marker in host for marker in _SANDBOX_HOST_MARKERS)
+
+
+def live_dispatch_blocked_reason() -> str:
+    """Why a real rider must not be booked from here, or "" if one may be.
+
+    A development machine books real riders through exactly the same code path
+    as production — same task, same provider, same credentials if somebody
+    pastes live ones into a local `.env` to try a quote. The failure is not
+    hypothetical and it is not recoverable: a human being is sent to a real
+    address, and "it was a test order" is not something the rider can be told
+    afterwards.
+
+    So pointing a local environment at a courier's PRODUCTION host is refused,
+    whatever `enable_delivery_dispatch` says. Quoting against that host stays
+    allowed — it costs nothing and books nobody, which is the entire reason
+    the quote and dispatch flags are separate.
+
+    `allow_live_dispatch_from_local` is the way out, for the one occasion
+    somebody genuinely wants a real delivery from their desk. It is named so
+    that turning it on cannot be mistaken for anything else.
+    """
+
+    settings = get_settings()
+    if settings.allow_live_dispatch_from_local:
+        return ""
+    if settings.environment.strip().lower() not in LOCAL_ENVIRONMENTS:
+        return ""
+    if _is_sandbox_host(settings.pidge_base_url):
+        return ""
+    return (
+        f"environment={settings.environment} is local and "
+        f"{settings.pidge_base_url} is not a sandbox host"
+    )
+
+
 def should_dispatch(order: Order) -> bool:
     """Whether this order is one a courier should be asked about at all.
 
@@ -159,9 +208,24 @@ def should_dispatch(order: Order) -> bool:
     dispatch ungated for anything reaching the task directly: a retry, a
     replay, a console call. Booking a rider costs real money, so the guard
     belongs on the function that decides to book one.
+
+    The live-host interlock is here for the same reason, and is deliberately
+    NOT a flag somebody can flip by accident: `enable_delivery_dispatch` is a
+    rollout dial that gets turned on early and left on, so it is the wrong
+    thing to be relying on the day a live credential lands in a local `.env`.
     """
 
-    if not get_settings().enable_delivery_dispatch:
+    settings = get_settings()
+    if not settings.enable_delivery_dispatch:
+        return False
+    blocked = live_dispatch_blocked_reason()
+    if blocked:
+        logger.error(
+            "Refusing to book a real rider for order %s: %s. "
+            "Quoting still works. Set allow_live_dispatch_from_local to override.",
+            order.id,
+            blocked,
+        )
         return False
     if order.fulfillment_type != OrderFulfillmentType.DELIVERY:
         return False
