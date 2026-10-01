@@ -26,6 +26,106 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-01 — First live deployment: Render backend + three Vercel front ends
+
+**Goal:** put the backend on Render and the web apps on Vercel, against the
+existing Supabase project, so the whole thing can be exercised at real URLs.
+
+**Changed:**
+- `backend/app/scripts/start_celery.py` (new) — waits for the schema, then
+  `os.execvp`s into celery. Replaces the `sh -c "... && exec celery ..."`
+  dockerCommand, which Render cannot run (see Learned).
+- `render.yaml` — both celery `dockerCommand`s rewritten; `DB_POOL_SIZE` 3 -> 1
+  and `DB_MAX_OVERFLOW` 2 -> 0 with the real ceiling documented.
+- `frontend-admin/src/config/api.ts`, `mobile/src/config/api.ts` —
+  `PROD_API_BASE_URL` pointed at a Render service that no longer exists.
+- `backend/tests/test_start_celery.py` (new, 9) and
+  `backend/tests/test_render_connection_budget.py` (new, 3).
+- Supabase `app_client_domains` — three rows mapping the storefront's Vercel
+  hostnames to `bhagwati_bakery` (the tenant `localhost` already resolved to,
+  so the existing test orders carry over).
+- Render env group — `BACKEND_CORS_ORIGINS`, `FRONTEND_BASE_URL`,
+  `PUBLIC_BASE_URL` set in the dashboard (they are `sync: false` in the
+  blueprint, so they live there by design).
+
+**Live:**
+- api `https://restaurant-rag-api-oj8p.onrender.com` (+ worker, beat, Key Value)
+- storefront `https://restaurant-rag-storefront.vercel.app`
+- admin `https://restaurant-rag-black.vercel.app`
+- kitchen `https://restaurant-rag-kitchen.vercel.app`
+
+All three Vercel projects are in the **rushmaxthon** Vercel account, deployed
+from branch **V2** by explicit API call. Their *production branch* is still the
+repo default (`main`), so a push to V2 produces a preview, not a production
+deploy — see Open.
+
+**Verified:**
+- `python -m unittest tests.test_start_celery tests.test_render_connection_budget` — 12 tests, OK.
+- `python -m compileall app` — clean. `npm run build` in frontend-admin and
+  frontend-customer — clean. `tsc --noEmit` in mobile — exit 0.
+- `/health` 200; `/api/restaurants` 200 with real Supabase rows; `/docs` 200.
+- Alembic ran in the pre-deploy: `0071_kitchen_staff -> 0069_order_deliveries ->
+  0070_geocoding -> 0071_branch_geocode_confidence -> 0072_order_charges`.
+- Storefront SSR renders the right tenant (`Bhagwati` present in server HTML);
+  `/api/app-config` with `X-Forwarded-Host` resolves to `bhagwati_bakery`.
+- CORS per origin: the three Vercel hosts are echoed back,
+  `https://evil.example` is refused.
+- The live admin bundle contains `restaurant-rag-api-oj8p` and no longer
+  mentions `-xjfx`.
+
+**Open:**
+- **Nobody can place an order yet.** `available_payment_methods` returns empty
+  without Stripe keys, because `ENABLE_CASH_ON_DELIVERY` defaults false and is
+  not in the blueprint. `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` are the
+  blocker; `STRIPE_WEBHOOK_SECRET` cannot exist until the endpoint is
+  registered against the live hostname.
+- Still unset on Render: `GEMINI_API_KEY`, `OLLAMA_API_KEY` (AI paths fall back
+  to templates), `PIDGE_USERNAME`/`PIDGE_PASSWORD` (no real delivery quotes),
+  `GOOGLE_MAPS_API_KEY` (geocoding falls back to Nominatim),
+  `WHATSAPP_*`. `DELIVERY_WEBHOOK_SECRET` left empty deliberately — Pidge's
+  webhook config has no custom-header field, so a value would 403 every genuine
+  push while the endpoint already verifies by fetching.
+- Firebase service-account JSON must be uploaded as a Render **secret file** on
+  all three services; it cannot be declared in a blueprint. Push is dead until
+  then.
+- Production branch on all three Vercel projects is `main`, not `V2`. Either set
+  it per project, or merge V2 into main. Render already deploys V2.
+- The local backend/worker/beat on the Windows box were **stopped** to free
+  pooler slots. Restart with the commands in CLAUDE.md when working locally —
+  and expect them to compete with Render for the same 15 connections.
+- `frontend-kitchen` and `frontend-customer` have no baked-in production API
+  URL, only the `?? localhost` fallback. They rely entirely on
+  `VITE_API_BASE_URL` being set on Vercel, which is the exact failure mode
+  `frontend-admin`'s own comment argues against.
+
+**Learned:**
+- **A Render `dockerCommand` is not a shell line.** Render consumes an `sh -c `
+  prefix itself and passes the remainder to its own shell *with the quotes
+  still in it*, so `sh -c "a && b"` arrives as one enormous word and dies with
+  the whole command reported as `not found`. Give it one program, no quotes, no
+  operators. Compose is unaffected, so this only shows up in production.
+- **Supabase's session pooler caps clients at 15**, and that is the real
+  ceiling — not Postgres `max_connections`. The blueprint's pool arithmetic was
+  reasoning about "100 connections on a Render Postgres plan", for a database
+  this deployment deliberately does not provision. It survived the first deploy
+  only because the services came up one at a time; changing a shared env var
+  redeploys all three at once, which made it reproducible.
+- `pg_stat_activity` cannot show pooler client occupancy — Supavisor keeps
+  exactly `pool_size` server connections open regardless, all `idle`. The
+  laptop's own services were holding most of the budget.
+- An unregistered host is a deliberate 404 (`resolve_app_client_by_host`), so a
+  new deployment hostname needs an `app_client_domains` row *before* it will
+  render anything. Rows need `is_active` AND `is_verified`.
+- Vercel assigns the short `<project>.vercel.app` alias only when the first
+  production deployment succeeds, so it appears after the longer ones and needs
+  its own domain row.
+- `gunicorn` logs `Worker (pid:N) was sent SIGTERM!` at ERROR level during every
+  ordinary zero-downtime deploy. Not a fault.
+- The GitHub repo is owned by the user `rushMaxthon`, not an org, so a GitHub
+  App installed on another personal account can never see it — collaborator
+  access does not change that. The Vercel work had to happen in the rushmaxthon
+  account.
+
 ## 2026-10-01 — Mobile stops pricing orders (the last static amount)
 
 **Goal:** "let's do with the delivery part so let's finish it asap."
