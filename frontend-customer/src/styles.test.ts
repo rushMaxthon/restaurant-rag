@@ -150,6 +150,51 @@ describe("the display class does not out-rank the call sites", () => {
   });
 });
 
+describe("the brand's ink is only used on the brand's colour", () => {
+  /**
+   * `--on-primary` answers one question: what reads ON `--primary`. It is
+   * derived from the TENANT's colour and it INVERTS between themes — white on
+   * the light fill, near-black on the lifted dark one.
+   *
+   * So using it anywhere else is a bug that only shows up in one theme, for
+   * some tenants. All four hero headlines carried it while sitting on a
+   * photograph, and were rendering near-black on a black scrim for every
+   * visitor in dark mode. Nobody had looked in dark mode.
+   */
+  const ROUTES = ["index", "concierge", "login", "register"] as const;
+
+  it("is not used on hero copy, which sits on a photograph", () => {
+    for (const route of ROUTES) {
+      const source = read(`./routes/${route}.tsx`).replace(/\/\*[\s\S]*?\*\//g, "");
+      const heroLines = source
+        .split("\n")
+        .filter((line) => line.includes("hero-copy"));
+      for (const line of heroLines) {
+        expect(line, `${route}.tsx hero`).not.toContain("text-primary-foreground");
+      }
+    }
+  });
+
+  it("is not what a destructive surface uses", () => {
+    // A delete button is not a brand surface. Borrowing the brand's ink meant
+    // a tenant with a pale brand got dark text on a red button.
+    expect(STYLES).toContain("--color-destructive-foreground: var(--on-danger)");
+  });
+
+  it("has a danger counterpart defined in both themes", () => {
+    // Split on the SELECTOR, not the string `.dark` — which also appears in
+    // the file's header comment explaining why dark mode is a class.
+    const at = SHARED_TOKENS.indexOf("\n.dark {");
+    expect(at, "`.dark {` block not found").toBeGreaterThan(-1);
+    const light = SHARED_TOKENS.slice(0, at);
+    const dark = SHARED_TOKENS.slice(at);
+    // Both halves, because a token defined in only one is how a dark mode
+    // ends up with a light-mode value nobody notices until a screenshot.
+    expect(light, "light").toContain("--on-danger:");
+    expect(dark, "dark").toContain("--on-danger:");
+  });
+});
+
 describe("the typeface is not bundled for every tenant", () => {
   it("imports no font package in the stylesheet", () => {
     // A restaurant picks one of five faces. An @import here ships that one to

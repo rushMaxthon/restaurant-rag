@@ -63,6 +63,15 @@
   --warning-text: #9d6900;
   --danger-text: var(--danger);
 
+  /* The ink that reads on a DANGER fill.
+     Separate from `--on-primary`, which the storefront's destructive button
+     was borrowing. They are different questions: `--on-primary` is computed
+     from the TENANT's brand colour, so a restaurant whose brand is pale gets
+     dark ink — and that ink then landed on a red delete button, which has
+     nothing to do with their brand and is not pale. It happened to read for
+     the default orange and would have failed silently for somebody else. */
+  --on-danger: #ffffff;
+
   /* The brand as a FILLED SURFACE THAT CARRIES A LABEL.
 
      `--primary` is a fill nobody reads: a chart stroke, a focus ring, the dot
@@ -272,6 +281,10 @@
   --success-text: var(--success);
   --warning-text: #f5b63f;
   --danger-text: var(--danger);
+
+  /* `--danger` here is a LIGHT red (#f87171) so it reads on a dark page, which
+     flips which ink works on it. Same inversion as the brand fill above. */
+  --on-danger: #14171f;
 
   /* On a dark page the brand answer inverts. Darkening the fill to #cf4300
      would leave it at 3.97:1 against the ground — a muddy button on black — so

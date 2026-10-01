@@ -68,7 +68,7 @@ function LoginPage() {
     <div className="grid lg:grid-cols-2">
       <StorefrontHero className="hidden lg:block lg:min-h-[calc(100svh-4rem)]">
         <div className="hero-overlay absolute inset-0" />
-        <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28 text-primary-foreground">
+        <div className="hero-copy page-pad relative flex h-full min-h-[calc(100svh-4rem)] max-w-xl flex-col justify-end pb-16 pt-28">
           <Sparkles className="mb-4 size-10" />
           <p className="eyebrow eyebrow--inherit">{copy.name}</p>
           <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">

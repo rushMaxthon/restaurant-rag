@@ -275,6 +275,26 @@ textarea.flex:focus-visible {
 /* --- Hero ------------------------------------------------------------------
    Copy rises in once on load, one line after another. The image stays put:
    a slow zoom on a photo this large reads as a screensaver. */
+/* Hero copy is white because it is on a photograph, and a photograph is the
+   same photograph in both themes.
+   -------------------------------------------------------------------------
+   All four heroes — home, concierge, login, register — set
+   `text-primary-foreground` on this container. `--on-primary` means "the ink
+   that reads ON the brand colour", and none of this text is on the brand
+   colour: it is on an image behind a black scrim. In dark mode that token
+   correctly resolves to near-black, because the lifted brand fill wants dark
+   ink — so every hero headline in the app was near-black on a black scrim for
+   anyone browsing in dark mode.
+
+   Set here rather than at the four call sites because the class already means
+   "copy sitting on a hero image". A fifth hero now cannot get it wrong.
+
+   Children that deliberately sit on their own ground — the white location
+   chip — still override this by declaring their own colour, which a utility
+   does and inheritance does not. */
+.hero-copy {
+  color: #fff;
+}
 .hero-copy > * {
   animation: rise-in 0.55s var(--ease-out) both;
 }

@@ -632,7 +632,7 @@ function ConciergePage() {
         <>
           <StorefrontHero className="min-h-[38svh]">
             <div className="hero-overlay absolute inset-0" />
-            <div className="hero-copy page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24 text-primary-foreground">
+            <div className="hero-copy page-pad relative flex min-h-[38svh] max-w-3xl flex-col justify-end pb-10 pt-24">
               <Sparkles className="mb-4 size-10" />
               <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">
                 Ask the food concierge
