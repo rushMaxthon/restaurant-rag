@@ -273,13 +273,21 @@ button {
   text-transform: uppercase;
 }
 
+/* `.eyebrow` IS NOT DEFINED HERE. It lives in `frontend-shared/components.css`,
+   which `index.css` imports UNLAYERED — and unlayered CSS beats every layer,
+   including this one. So of the seven declarations this rule used to carry,
+   six were dead: the colour, the size, the weight, the tracking, the case and
+   `margin-bottom` all lost to the shared file, silently, and editing them here
+   changed nothing on screen. That cost a debugging round on this very class —
+   the stylesheet said one colour and the browser computed another.
+
+   What is left is the only thing the shared rule does not set, which is the
+   other three margins. If you came here to change how an eyebrow looks, the
+   file you want is the shared one. */
 .eyebrow {
-  margin: 0;
-  color: var(--primary);
-  font-size: var(--fs-caption);
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  margin-top: 0;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .admin-sidebar__links {
@@ -603,7 +611,7 @@ button {
   gap: 6px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.98);
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
   box-shadow: var(--shadow-md);
 }
 
@@ -619,7 +627,7 @@ button {
 
 .combo-status-menu__item:hover {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .generated-combos-visibility-copy {
@@ -774,7 +782,12 @@ button {
 }
 
 .dashboard-admin-hero__window select {
-  min-height: 22px;
+  /* Stretched to its wrapper rather than left at 22px. The label around it is
+     34px and looks like the control, so the 12px of padding above and below
+     the select read as part of the button and did nothing when clicked —
+     a target a third smaller than it appears. */
+  align-self: stretch;
+  min-height: var(--control-h-sm);
   padding: 0;
   border: 0;
   background: transparent;
@@ -845,7 +858,7 @@ button {
 }
 
 .dashboard-admin-metric small {
-  color: var(--success);
+  color: var(--success-text);
   font-weight: 700;
   line-height: 1.35;
   font-size: var(--fs-caption);
@@ -991,7 +1004,7 @@ button {
   padding: 10px 12px;
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.98);
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
   box-shadow: var(--shadow-xl);
   transform: translate(12px, -50%);
   pointer-events: none;
@@ -1076,7 +1089,7 @@ button {
   padding: 10px 12px;
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.98);
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
   box-shadow: var(--shadow-xl);
   transform: translate(-50%, 0);
   pointer-events: none;
@@ -1140,10 +1153,13 @@ button {
   gap: 2px;
 }
 
+/* `--on-muted-soft` rather than `--hint`, because a health row tints itself
+   green or amber by state and the quiet grey only clears AA against the plain
+   card. Measured at 4.27:1 on `--success-soft`. */
 .dashboard-admin-list__row span,
 .dashboard-admin-health__row span,
 .dashboard-admin-list__meta span {
-  color: var(--hint);
+  color: var(--on-muted-soft);
   font-size: var(--fs-tiny);
 }
 
@@ -1480,7 +1496,7 @@ select:focus-visible {
   padding: 0 12px;
   border-radius: var(--radius-3);
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-subtle) 100%);
   color: var(--muted);
   font-weight: 700;
   text-align: left;
@@ -1524,7 +1540,7 @@ select:focus-visible {
 
 .ui-checkbox--checked {
   border-color: rgba(255, 82, 0, 0.3);
-  background: linear-gradient(180deg, #fff8f3 0%, #fff2e8 100%);
+  background: var(--primary-soft);
   color: var(--text);
   box-shadow: 0 6px 16px rgba(255, 82, 0, 0.08);
 }
@@ -1543,7 +1559,11 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-1);
-  border: 1px solid rgba(190, 199, 214, 0.96);
+  /* Heavier than a `--border` hairline on purpose — an unchecked box is
+     nothing but its outline, so it has to be visible rather than merely
+     present. Mixed from `--muted` so it carries that weight in either theme;
+     the literal it replaces was a light slate that vanished on a dark card. */
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--border));
   background: var(--surface);
   color: transparent;
   transition:
@@ -1623,7 +1643,7 @@ select:focus-visible {
 .branch-picker__count {
   font-size: var(--fs-caption);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--on-primary-soft);
   background: var(--accent-soft);
   border-radius: var(--radius-pill);
   padding: 5px 11px;
@@ -1675,7 +1695,7 @@ select:focus-visible {
 
 .branch-card--selected .branch-card__icon {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .branch-card__copy {
@@ -1814,7 +1834,7 @@ select:focus-visible {
   padding: 14px 16px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .menu-size-list__cell {
@@ -1859,13 +1879,13 @@ select:focus-visible {
 .menu-size-status-chip--active {
   border-color: rgba(32, 168, 110, 0.2);
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 .menu-size-status-chip--inactive {
   border-color: rgba(213, 59, 67, 0.16);
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
 }
 
 .menu-size-editor {
@@ -2019,7 +2039,7 @@ select:focus-visible {
   padding: 14px 16px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
 .menu-option-panel {
@@ -2092,7 +2112,7 @@ select:focus-visible {
 .secondary-button--ghost {
   gap: 8px;
   border-color: var(--border);
-  background: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--muted);
 }
 
@@ -2196,7 +2216,7 @@ select:focus-visible {
 .table-scroll {
   overflow-x: auto;
   border-radius: var(--radius-3);
-  border: 1px solid #edf1f6;
+  border: 1px solid var(--border);
   background: var(--surface);
 }
 
@@ -2211,7 +2231,7 @@ select:focus-visible {
 .admin-table td {
   min-height: 42px;
   padding: 10px 12px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
 }
@@ -2476,18 +2496,18 @@ select:focus-visible {
 
 .table-icon-button:hover {
   border-color: rgba(255, 82, 0, 0.2);
-  color: var(--primary);
+  color: var(--on-primary-soft);
   background: var(--primary-soft);
 }
 
 .table-icon-button--danger:hover {
-  color: var(--danger);
+  color: var(--on-danger-soft);
   border-color: rgba(213, 59, 67, 0.18);
   background: var(--danger-soft);
 }
 
 .table-icon-button--success:hover {
-  color: var(--success);
+  color: var(--on-success-soft);
   border-color: rgba(32, 168, 110, 0.16);
   background: var(--success-soft);
 }
@@ -2706,58 +2726,79 @@ select:focus-visible {
 /* Tones. Text colours are darkened from the raw brand tokens: `--warning`
    (#f2a100) on `--warning-soft` (#fff4d8) is amber on cream and fails
    contrast at this size. The border is the same hue at low alpha, which
-   gives the badge an edge without the weight of a solid outline. */
-.status-pill--success,
-.generated-combos-visibility-badge--live,
-.st-role-pill--owner,
-.usr-role--owner {
+   gives the badge an edge without the weight of a solid outline.
+
+   **Every selector below names its block class twice, and has to.** These
+   badges live in table cells, and `.admin-table__cell-content span` sets
+   `color: var(--hint)` at (0,1,1) — a class plus an element — while a lone
+   `.status-pill--success` is (0,1,0). The modifier lost, so inside a table
+   EVERY badge in the panel rendered in the same grey at about 2.6:1 against
+   its own tinted background: order statuses, roles, combo visibility, offer
+   states. Outside a table they were correctly toned, which is why a tone
+   looked fine on a detail page and wrong in the list that linked to it.
+   Doubling the class takes each rule to (0,2,0) without reaching for
+   `!important` or restructuring the table. */
+.status-pill.status-pill--success,
+.generated-combos-visibility-badge.generated-combos-visibility-badge--live,
+.st-role-pill.st-role-pill--owner,
+.usr-role.usr-role--owner {
   background: var(--success-soft);
-  color: #15805a;
+  color: var(--on-success-soft);
   border-color: rgba(32, 168, 110, 0.22);
 }
 
-.status-pill--warning,
-.generated-combos-visibility-badge--draft {
+.status-pill.status-pill--warning,
+.generated-combos-visibility-badge.generated-combos-visibility-badge--draft {
   background: var(--warning-soft);
-  color: #8a6100;
+  color: var(--on-warning-soft);
   border-color: rgba(242, 161, 0, 0.28);
 }
 
-.status-pill--info,
-.usr-role--customer {
+.status-pill.status-pill--info,
+.usr-role.usr-role--customer {
   background: var(--blue-soft);
-  color: #2357c4;
+  color: var(--on-blue-soft);
   border-color: rgba(43, 102, 228, 0.2);
 }
 
-.status-pill--primary,
-.st-role-pill--admin,
-.usr-role--admin {
+.status-pill.status-pill--primary,
+.st-role-pill.st-role-pill--admin,
+.usr-role.usr-role--admin {
   background: var(--primary-soft);
-  color: #d94800;
+  color: var(--on-primary-soft);
   border-color: rgba(255, 82, 0, 0.22);
 }
 
-.status-pill--danger {
+.status-pill.status-pill--danger {
   background: var(--danger-soft);
-  color: #c22e37;
+  color: var(--on-danger-soft);
   border-color: rgba(213, 59, 67, 0.2);
 }
 
 /* Reserved for states that are genuinely dormant - archived, closed,
    expired. A live order must never land here; see `.status-pill--neutral`. */
-.status-pill--muted,
-.generated-combos-visibility-badge--archived {
-  background: #eef0f5;
-  color: #5c6377;
+.status-pill.status-pill--muted,
+.generated-combos-visibility-badge.generated-combos-visibility-badge--archived {
+  background: var(--muted-soft);
+  color: var(--on-muted-soft);
   border-color: rgba(109, 116, 137, 0.18);
 }
 
 /* Live but not yet acted on - PLACED. Previously `muted`, which made a brand
-   new order look identical to an archived one. */
-.status-pill--neutral {
-  background: #f0edfd;
-  color: #6a3fd0;
+   new order look identical to an archived one.
+
+   `.usr-role--kitchen` shares it. KITCHEN arrived with the kitchen board and
+   `ROLE_META` in `AdminUsersPage` was made exhaustive for it, as it has to be
+   or the page throws — but nothing made the stylesheet exhaustive, and a
+   TypeScript record cannot know that. So the one role added since these tones
+   were written had no tone, and a kitchen account's badge rendered as plain
+   grey text on no background. Violet rather than a fourth re-use of green or
+   blue: a cook is staff, but they are not an owner and not an admin, and the
+   badge should say so at a glance. */
+.status-pill.status-pill--neutral,
+.usr-role.usr-role--kitchen {
+  background: var(--neutral-soft);
+  color: var(--on-neutral-soft);
   border-color: rgba(138, 92, 246, 0.22);
 }
 
@@ -2834,7 +2875,7 @@ select:focus-visible {
 
 .modal-card__header {
   padding: 22px 24px 18px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, rgba(255, 122, 40, 0.08), transparent 28%),
     linear-gradient(180deg, #ffffff 0%, #fffaf6 100%);
@@ -3014,7 +3055,7 @@ select:focus-visible {
   /* The selected pill keeps the brand tint and takes it from the token, so
      dark mode gets the deep version rather than a cream gradient. */
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .slot-mode-tabs {
@@ -3022,7 +3063,7 @@ select:focus-visible {
   align-items: flex-end;
   gap: 18px;
   padding-inline: 4px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid var(--border);
 }
 
 .slot-mode-tabs__item {
@@ -3049,7 +3090,7 @@ select:focus-visible {
 }
 
 .slot-mode-tabs__item--active {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .slot-mode-tabs__item--active::after {
@@ -3063,7 +3104,7 @@ select:focus-visible {
   align-items: end;
   padding: 16px;
   border-radius: var(--radius-5);
-  border: 1px solid #edf1f6;
+  border: 1px solid var(--border);
   background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
@@ -3158,7 +3199,7 @@ select:focus-visible {
 .table-container + .pagination {
   margin-top: -4px;
   padding-top: 12px;
-  border-top: 1px solid #e8edf3;
+  border-top: 1px solid var(--border);
 }
 
 .pagination__summary,
@@ -3239,7 +3280,7 @@ select:focus-visible {
 .pagination__page--active {
   border-color: var(--border-strong);
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 /* The box, the halo and the wash now come from the shared `.empty-state`.
@@ -3313,7 +3354,7 @@ select:focus-visible {
 
 .toggle-pill--on {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .login-shell {
@@ -3364,7 +3405,7 @@ select:focus-visible {
 
 .toast--success { border-left-color: var(--success); }
 
-.toast--success strong { color: var(--success); }
+.toast--success strong { color: var(--success-text); }
 
 .toast--error { border-left-color: var(--danger); }
 
@@ -3760,11 +3801,20 @@ select:focus-visible {
   gap: 12px;
 }
 
+/* On the scale, like every other page title.
+   This was `clamp(1.7rem, 2.2vw, 2.4rem)` — 38px at a desktop width against
+   the 24px every other page uses, and one of five different page-title sizes
+   measured across the panel. A page is not more important because its title
+   is bigger; it just stops looking like the same product. `--fs-display-sm`
+   is the token the other nineteen already resolve to, so moving these three
+   onto it means the size is decided in one place and the step up to
+   `--fs-display` is one edit if it is ever wanted. */
 .order-detail__title-row h1 {
   margin: 0;
-  font-size: clamp(1.7rem, 2.2vw, 2.4rem);
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-size: var(--fs-display-sm);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
 .order-detail__hero-meta {
@@ -3857,7 +3907,7 @@ select:focus-visible {
   flex-shrink: 0;
   border-radius: var(--radius-3);
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .order-detail__grid {
@@ -3944,7 +3994,7 @@ select:focus-visible {
 
 .order-detail__fact-inline svg {
   flex-shrink: 0;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .order-detail__fact a {
@@ -3953,7 +4003,7 @@ select:focus-visible {
 }
 
 .order-detail__fact a:hover {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .order-detail__pill-row {
@@ -3971,7 +4021,7 @@ select:focus-visible {
   padding: 16px 18px;
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
-  background: var(--surface-2, rgba(148, 163, 184, 0.08));
+  background: var(--surface-alt);
 }
 
 .order-detail__status-notice strong {
@@ -4076,9 +4126,13 @@ select:focus-visible {
   letter-spacing: -0.01em;
 }
 
+/* `--on-*-soft`, not `--*-text`: a timeline step washes its whole row in the
+   matching tint, so everything inside sits on the wash rather than on the
+   card, and the colour has to be the one measured against that. The muted
+   grey on the green wash was the same mistake in a quieter key — 4.38:1. */
 .order-timeline__copy span {
   font-size: var(--fs-caption);
-  color: var(--muted);
+  color: var(--on-muted-soft);
   line-height: 1.45;
 }
 
@@ -4086,11 +4140,11 @@ select:focus-visible {
   font-style: normal;
   font-size: var(--fs-caption);
   font-weight: 700;
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .order-timeline__step--done .order-timeline__copy em {
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 /* Notes */
@@ -4176,7 +4230,7 @@ select:focus-visible {
 
 .order-detail__totals-row--discount span,
 .order-detail__totals-row--discount strong {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .order-detail__totals-row--grand {
@@ -4321,6 +4375,7 @@ select:focus-visible {
   --rpt-ink: var(--text);
   --rpt-ink-2: var(--muted);
   --rpt-accent: var(--accent);
+  --rpt-accent-text: var(--accent-text);
   --rpt-accent-soft: var(--accent-soft);
   --rpt-accent-track: var(--accent-track);
   --rpt-grid-line: var(--divider);
@@ -4418,7 +4473,7 @@ select:focus-visible {
 }
 
 .rpt-btn--ghost:hover {
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
   border-color: transparent;
   background: var(--rpt-accent-soft);
 }
@@ -4468,6 +4523,12 @@ select:focus-visible {
 .rpt-seg__btn {
   border: 0;
   background: transparent;
+  /* 28px measured, which is under the 32px `--control-h-sm` the rest of the
+     panel's compact controls use. A segmented option is a real control an
+     operator clicks to change what a whole page shows, not a label. */
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-sm);
   padding: 5px 12px;
   border-radius: var(--radius-1);
   font-size: var(--fs-caption);
@@ -4479,7 +4540,7 @@ select:focus-visible {
 
 .rpt-seg__btn--active {
   background: var(--rpt-surface);
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -4496,7 +4557,7 @@ select:focus-visible {
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--rpt-accent-soft);
-  color: var(--rpt-accent);
+  color: var(--on-primary-soft);
   font-size: var(--fs-caption);
   font-weight: 700;
   white-space: nowrap;
@@ -4591,7 +4652,7 @@ select:focus-visible {
 
 .rpt-stat--accent .rpt-stat__icon {
   background: var(--rpt-accent-soft);
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
 }
 
 .rpt-stat__value {
@@ -4642,7 +4703,7 @@ select:focus-visible {
 
 .rpt-tabs__btn--active {
   background: var(--rpt-surface);
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -4993,7 +5054,7 @@ select:focus-visible {
   flex-shrink: 0;
   border-radius: var(--radius-1);
   background: var(--rpt-accent-soft);
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
 }
 
 .rpt-highlight__copy {
@@ -5137,7 +5198,7 @@ select:focus-visible {
   flex-shrink: 0;
   border-radius: var(--radius-1);
   background: var(--rpt-surface);
-  color: var(--rpt-accent);
+  color: var(--rpt-accent-text);
   border: 1px solid var(--rpt-border);
 }
 
@@ -5299,7 +5360,7 @@ select:focus-visible {
   flex-shrink: 0;
   border-radius: var(--radius-2);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .ntf-form {
@@ -5333,7 +5394,7 @@ select:focus-visible {
   border-radius: var(--radius-1);
   background: var(--card);
   border: 1px solid var(--border);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .ntf-scope__copy {
@@ -5360,7 +5421,7 @@ select:focus-visible {
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
   font-size: var(--fs-caption);
   font-weight: 700;
   white-space: nowrap;
@@ -5393,7 +5454,7 @@ select:focus-visible {
 }
 
 .ntf-sendbar__meta svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .ntf-result-grid {
@@ -5430,7 +5491,7 @@ select:focus-visible {
 }
 
 .ntf-result--success strong {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .ntf-result--danger {
@@ -5479,7 +5540,7 @@ select:focus-visible {
   padding: 3px 9px;
   border-radius: var(--radius-pill);
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--on-success-soft);
   font-size: var(--fs-tiny);
   font-weight: 700;
   white-space: nowrap;
@@ -5487,7 +5548,7 @@ select:focus-visible {
 
 .ntf-history__badge--warning {
   background: var(--warning-soft);
-  color: #b57c00;
+  color: var(--on-warning-soft);
 }
 
 .ntf-history__meta {
@@ -5515,7 +5576,7 @@ select:focus-visible {
   padding: 7px 10px;
   border-radius: var(--radius-1);
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
   font-size: var(--fs-caption);
   font-weight: 600;
   line-height: 1.45;
@@ -5629,7 +5690,7 @@ select:focus-visible {
   border-radius: var(--radius-sm);
   border: 1px solid rgba(242, 161, 0, 0.35);
   background: var(--warning-soft);
-  color: #8a6100;
+  color: var(--on-warning-soft);
   font-size: var(--fs-caption);
   font-weight: 600;
   line-height: 1.45;
@@ -5637,7 +5698,7 @@ select:focus-visible {
 
 .maintenance-banner svg {
   flex-shrink: 0;
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 /* ---------------------------------- */
@@ -5827,7 +5888,7 @@ select:focus-visible {
 }
 
 .set-item__copy strong {
-  font-size: var(--fs-body-sm);
+  font-size: var(--fs-label);
   font-weight: 650;
   color: var(--text);
 }
@@ -5853,10 +5914,15 @@ select:focus-visible {
   background: var(--surface-subtle);
 }
 
+/* Same as `.rpt-seg__btn`: a segmented option the operator clicks, measured
+   at 25px against the panel's 32px compact control height. */
 .set-choice__option {
   border: none;
   background: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-sm);
   padding: 5px 12px;
   border-radius: var(--radius-pill);
   font: inherit;
@@ -5890,14 +5956,14 @@ select:focus-visible {
   height: 44px;
   flex-shrink: 0;
   border-radius: var(--radius-pill);
-  font-size: var(--fs-body-sm);
+  font-size: var(--fs-label);
   font-weight: 750;
   letter-spacing: 0.02em;
 }
 
 .st-avatar--admin {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .st-avatar--owner {
@@ -6022,7 +6088,7 @@ select:focus-visible {
 }
 
 .ai-stat__value--good {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .ai-stat__value--bad {
@@ -6108,12 +6174,12 @@ select:focus-visible {
 
 .ai-trace__outcome--success {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 .ai-trace__outcome--failure {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
 }
 
 .ai-trace__time--fast {
@@ -6123,12 +6189,12 @@ select:focus-visible {
 
 .ai-trace__time--ok {
   background: var(--blue-soft);
-  color: var(--blue);
+  color: var(--on-blue-soft);
 }
 
 .ai-trace__time--slow {
   background: var(--warning-soft);
-  color: #b57c00;
+  color: var(--on-warning-soft);
 }
 
 .ai-trace__convo {
@@ -6163,8 +6229,9 @@ select:focus-visible {
   color: var(--hint);
 }
 
+/* The bubble is washed in `--accent-soft`, so the label sits on the wash. */
 .ai-trace__bubble--assistant .ai-trace__bubble-label {
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .ai-trace__bubble p {
@@ -6201,7 +6268,7 @@ select:focus-visible {
 }
 
 .ai-trace__stage svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .ai-trace__arrow {
@@ -6292,7 +6359,7 @@ select:focus-visible {
 
 .usr-stat--active .usr-stat__icon {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .usr-stat__copy {
@@ -6357,7 +6424,7 @@ select:focus-visible {
   padding: 1px 7px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
   font-size: var(--fs-micro);
   font-weight: 800;
   text-transform: uppercase;
@@ -6409,7 +6476,7 @@ select:focus-visible {
 }
 
 .breadcrumbs__link:hover {
-  color: var(--accent);
+  color: var(--on-primary-soft);
   background: var(--accent-soft);
 }
 
@@ -6449,7 +6516,7 @@ select:focus-visible {
 
 .admin-table__sort:hover,
 .admin-table__sort--active {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .admin-table__sort-arrow {
@@ -6469,6 +6536,32 @@ select:focus-visible {
 }
 
 /* A11y + login redesign */
+
+/* Readable by a screen reader, absent to everyone else.
+
+   Needed because one screen in the panel deliberately has no visible page
+   title: the AI Manager is a conversation and carries its scope on a slim
+   bar instead of a header, which is the right call for the design and leaves
+   the document with no `<h1>` at all. Somebody navigating by headings lands
+   there and has nothing telling them where they are. This is the smallest
+   thing that fixes that without arguing with the design.
+
+   `clip-path` as well as `clip` because `clip` is deprecated and ignored by
+   newer engines; the pair is what survives both. Not `display: none` and not
+   `visibility: hidden`, either of which takes it out of the accessibility
+   tree too and leaves nothing to read. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
 
 .skip-link {
   position: absolute;
@@ -6555,7 +6648,7 @@ summary:focus-visible,
   border-radius: var(--radius-sm);
   border: 1px solid rgba(213, 59, 67, 0.3);
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
   font-size: var(--fs-label);
   font-weight: 600;
   line-height: 1.5;
@@ -6593,7 +6686,7 @@ summary:focus-visible,
 }
 
 .lg-input__toggle:hover {
-  color: var(--accent);
+  color: var(--on-primary-soft);
   background: var(--accent-soft);
 }
 
@@ -6926,7 +7019,7 @@ summary:focus-visible,
 
 .ai-rail__item.is-active {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .ai-rail__item svg { flex: none; margin-top: 3px; }
@@ -7029,7 +7122,7 @@ summary:focus-visible,
   justify-content: center;
   border-radius: var(--radius-pill);
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
   margin-top: 1px;
 }
 
@@ -7110,7 +7203,7 @@ summary:focus-visible,
   justify-content: center;
   border-radius: var(--radius-lg);
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 .ai-welcome h1 {
@@ -7320,7 +7413,7 @@ summary:focus-visible,
 
 .ai-sev--stopped {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
   border: 1px solid rgba(213, 59, 67, 0.22);
 }
 
@@ -7333,7 +7426,7 @@ summary:focus-visible,
   transition: color 150ms ease;
 }
 
-.ai-fold:hover { color: var(--primary); }
+.ai-fold:hover { color: var(--primary-text); }
 
 .ai-fold:focus-visible { outline: none; box-shadow: var(--shadow-ring); border-radius: var(--radius-1); }
 
@@ -7439,7 +7532,7 @@ summary:focus-visible,
   box-shadow: var(--shadow-md);
 }
 
-.ai-ask__spark { color: var(--primary); flex: none; }
+.ai-ask__spark { color: var(--primary-text); flex: none; }
 
 .ai-ask__bar input {
   flex: 1;
@@ -7628,13 +7721,13 @@ summary:focus-visible,
 .ai-chip--source-llm,
 .ai-chip--skill {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
   text-transform: capitalize;
 }
 
 .ai-chip--action {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 /* --- KPI tiles ----------------------------------------------------------- */
@@ -7703,7 +7796,7 @@ summary:focus-visible,
   color: var(--hint);
 }
 
-.ai-tile__delta--up { color: var(--success); }
+.ai-tile__delta--up { color: var(--success-text); }
 
 .ai-tile__delta--down { color: var(--danger); }
 
@@ -7974,12 +8067,12 @@ summary:focus-visible,
 
 .ai-sev--medium {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .ai-sev--low {
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--on-primary-soft);
 }
 
 /* Actions stay out of the way until the row is engaged with. */
@@ -8162,7 +8255,7 @@ summary:focus-visible,
 
 .ai-answer__list--numbered li::marker {
   font-weight: 650;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .ai-answer__item-lead {
@@ -8255,7 +8348,10 @@ summary:focus-visible,
   padding: 0.32rem 0.72rem;
   font-size: var(--fs-caption);
   font-weight: 600;
-  color: var(--text-muted, #6b7280);
+  /* `--text-muted` is not a token in this app and never has been, so this
+     always resolved to the literal — the LIGHT muted grey, which then
+     stayed that colour on a dark page. The fallback is what hid it. */
+  color: var(--muted);
   cursor: pointer;
   /* A comfortable target on touch, where these are most likely to be tapped. */
   min-height: 2rem;
@@ -8297,7 +8393,7 @@ summary:focus-visible,
   cursor: pointer;
   font-size: var(--fs-label);
   font-weight: 600;
-  color: var(--text-muted, #6b7280);
+  color: var(--muted);
   padding: 0.25rem 0;
 }
 
@@ -8348,7 +8444,7 @@ summary:focus-visible,
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 .ai-sug__icon--combo {
@@ -8366,7 +8462,7 @@ summary:focus-visible,
 }
 
 .ai-sug__title strong {
-  font-size: var(--fs-body-sm);
+  font-size: var(--fs-label);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -8397,7 +8493,7 @@ summary:focus-visible,
 .ai-sug__state--active {
   background: var(--success-soft);
   border-color: transparent;
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 /* Both are one click from being live, so both read as actionable. Only the
@@ -8406,7 +8502,7 @@ summary:focus-visible,
 .ai-sug__state--activatable {
   background: var(--accent-soft);
   border-color: transparent;
-  color: var(--accent);
+  color: var(--on-primary-soft);
 }
 
 /* The commercial terms, which is what gets scanned first. */
@@ -8421,7 +8517,7 @@ summary:focus-visible,
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
   font-size: var(--fs-caption);
   font-weight: 700;
 }
@@ -8447,7 +8543,7 @@ summary:focus-visible,
 .ai-sug__save {
   font-size: var(--fs-caption);
   font-weight: 650;
-  color: var(--success);
+  color: var(--success-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -8496,7 +8592,7 @@ summary:focus-visible,
   margin: 0;
   font-size: var(--fs-caption);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .ai-sug__evidence {
@@ -8600,7 +8696,7 @@ summary:focus-visible,
   gap: 6px;
   font-size: var(--fs-caption);
   font-weight: 650;
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .ai-sug__error {
@@ -8811,7 +8907,7 @@ summary:focus-visible,
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--on-primary-soft);
   font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -8851,7 +8947,7 @@ summary:focus-visible,
 }
 
 .bp__live-copy { display: grid; gap: 1px; min-width: 0; }
-.bp__live-copy b { font-size: var(--fs-body-sm); font-weight: 700; color: var(--text); }
+.bp__live-copy b { font-size: var(--fs-label); font-weight: 700; color: var(--text); }
 .bp__live-copy i {
   font-size: var(--fs-caption);
   font-style: normal;
@@ -9799,7 +9895,7 @@ summary:focus-visible,
 
 .pref-row__fact--signal {
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .pref-row__fact--muted {
@@ -9863,13 +9959,13 @@ summary:focus-visible,
 }
 
 .pref-tag--own {
-  color: var(--accent);
+  color: var(--on-primary-soft);
   background: var(--accent-soft);
   border-color: transparent;
 }
 
 .pref-tag--off {
-  color: #8a6100;
+  color: var(--on-warning-soft);
   background: var(--warning-soft);
   border-color: transparent;
 }
@@ -10018,7 +10114,7 @@ summary:focus-visible,
 }
 
 .pref-toggle--on .pref-toggle__mark {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .pref-toggle__copy {
@@ -10106,7 +10202,7 @@ summary:focus-visible,
 }
 
 .pref-editor__option-remove:hover:not(:disabled) {
-  color: var(--danger) !important;
+  color: var(--on-danger-soft) !important;
   background: var(--danger-soft) !important;
 }
 
@@ -10138,7 +10234,10 @@ summary:focus-visible,
   border-radius: 999px;
   background: rgba(255, 82, 0, 0.12);
   padding: 2px 8px;
-  color: var(--brand-strong, #ff5200);
+  /* Same shape as the `--text-muted` note above: `--brand-strong` is not a
+     token here either, so this was always the literal. On a 12% orange
+     wash it wants the value measured for that wash. */
+  color: var(--on-primary-soft);
   font-size: var(--fs-caption);
   font-weight: 700;
   white-space: nowrap;
@@ -10174,7 +10273,8 @@ summary:focus-visible,
   --mkt-ink-2: #262a45;
   --mkt-line: rgba(22, 30, 60, 0.08);
   --mkt-line-soft: rgba(22, 30, 60, 0.05);
-  --mkt-accent: #ff5200;
+  --mkt-accent: var(--primary);
+  --mkt-accent-text: var(--primary-text);
   --mkt-accent-2: #ff8a3d;
   --mkt-accent-wash: linear-gradient(135deg, #fff4ec 0%, #fff9f5 100%);
   --mkt-accent-grad: linear-gradient(135deg, #ff5200 0%, #ff8a3d 100%);
@@ -10194,7 +10294,7 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
   font-size: var(--fs-micro);
   font-weight: 800;
   text-transform: uppercase;
@@ -10204,9 +10304,10 @@ summary:focus-visible,
 .mkt-h1 {
   margin: 0;
   color: var(--mkt-ink);
-  font-size: clamp(1.6rem, 2.4vw, 2rem);
+  /* See the note on `.order-detail__title-row h1`: one page-title size. */
+  font-size: var(--fs-display-sm);
   font-weight: 800;
-  line-height: 1.12;
+  line-height: 1.2;
   letter-spacing: -0.03em;
 }
 
@@ -10362,7 +10463,7 @@ summary:focus-visible,
 
 .mkt-btn--ghost:not(:disabled):hover {
   border-color: rgba(255, 82, 0, 0.36);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 /* On the dark hero, a plain white button is the ghost. */
@@ -10468,7 +10569,7 @@ summary:focus-visible,
   height: 38px;
   border-radius: var(--mkt-radius-xs);
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-metric__label {
@@ -10509,12 +10610,12 @@ summary:focus-visible,
 
 .mkt-delta--up {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 .mkt-delta--down {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
 }
 
 .mkt-delta--flat {
@@ -10608,7 +10709,7 @@ summary:focus-visible,
 .mkt-steps__item--done .mkt-steps__marker {
   border-color: var(--mkt-accent);
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-steps__label {
@@ -10704,7 +10805,7 @@ summary:focus-visible,
   padding: 18px var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   box-shadow: var(--mkt-shadow-2);
 }
@@ -10988,7 +11089,7 @@ summary:focus-visible,
 
 .mkt-chip:hover {
   border-color: var(--mkt-accent);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 /* ------------------------------------------------------ phone preview -- */
@@ -11066,7 +11167,7 @@ summary:focus-visible,
   gap: 5px;
   padding: 13px 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.93);
+  background: color-mix(in srgb, var(--surface) 93%, transparent);
   backdrop-filter: blur(8px);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
   animation: mkt-notify 0.34s ease-out;
@@ -11146,7 +11247,7 @@ summary:focus-visible,
 
 .mkt-preview__step:not(:disabled):hover {
   border-color: var(--mkt-accent);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-preview__step:disabled {
@@ -11225,7 +11326,7 @@ summary:focus-visible,
 
 .mkt-reach__item:not(.mkt-reach__item--off) .mkt-reach__icon {
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-reach__copy {
@@ -11321,7 +11422,7 @@ summary:focus-visible,
 .mkt-notice--block {
   border-color: rgba(213, 59, 67, 0.22);
   background: var(--danger-soft);
-  color: #8e2027;
+  color: var(--on-danger-soft);
 }
 
 .mkt-notice--block .mkt-notice__icon {
@@ -11332,7 +11433,7 @@ summary:focus-visible,
 .mkt-notice--warn {
   border-color: rgba(242, 161, 0, 0.26);
   background: var(--warning-soft);
-  color: #7a5200;
+  color: var(--on-warning-soft);
 }
 
 .mkt-notice--warn .mkt-notice__icon {
@@ -11343,7 +11444,7 @@ summary:focus-visible,
 .mkt-notice--info {
   border-color: rgba(43, 102, 228, 0.18);
   background: var(--blue-soft);
-  color: #1f4694;
+  color: var(--on-blue-soft);
 }
 
 .mkt-notice--info .mkt-notice__icon {
@@ -11386,7 +11487,7 @@ summary:focus-visible,
   height: 42px;
   border-radius: var(--mkt-radius-xs);
   background: var(--surface);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
   box-shadow: var(--mkt-shadow-1);
 }
 
@@ -11527,7 +11628,7 @@ summary:focus-visible,
 }
 
 .mkt-funnel__row--goal .mkt-funnel__value strong {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .mkt-funnel__value {
@@ -11588,7 +11689,7 @@ summary:focus-visible,
 }
 
 .mkt-money__total dd {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .mkt-setup {
@@ -11655,7 +11756,7 @@ summary:focus-visible,
   height: 30px;
   border-radius: 9px;
   background: var(--warning-soft);
-  color: #b57a00;
+  color: var(--on-warning-soft);
 }
 
 .mkt-failures strong {
@@ -11777,7 +11878,7 @@ summary:focus-visible,
   height: 44px;
   border-radius: var(--mkt-radius-xs);
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
   flex-shrink: 0;
 }
 
@@ -11869,17 +11970,17 @@ summary:focus-visible,
 
 .mkt-status--scheduled {
   background: var(--blue-soft);
-  color: var(--blue);
+  color: var(--on-blue-soft);
 }
 
 .mkt-status--sending {
   background: var(--warning-soft);
-  color: #b57a00;
+  color: var(--on-warning-soft);
 }
 
 .mkt-status--sent {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--on-success-soft);
 }
 
 .mkt-status--cancelled {
@@ -11889,7 +11990,7 @@ summary:focus-visible,
 
 .mkt-status--failed {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
 }
 
 .mkt-empty {
@@ -11911,7 +12012,7 @@ summary:focus-visible,
   height: 60px;
   border-radius: 18px;
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-empty strong {
@@ -11994,7 +12095,7 @@ summary:focus-visible,
 }
 
 .mkt-back:hover {
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-icon-btn {
@@ -12020,7 +12121,7 @@ summary:focus-visible,
 .mkt-icon-btn--danger:hover {
   border-color: rgba(213, 59, 67, 0.2);
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--on-danger-soft);
 }
 
 .mkt-chart {
@@ -12148,6 +12249,7 @@ summary:focus-visible,
      to a variable declared in `:root`, so the Hub follows a theme change
      instead of having to be re-edited alongside one. */
   --hub-brand: var(--primary);
+  --hub-brand-text: var(--primary-text);
   --hub-brand-deep: var(--accent);
   --hub-brand-wash: var(--primary-soft);
   --hub-ink: var(--text);
@@ -12168,6 +12270,20 @@ summary:focus-visible,
   --hub-danger: var(--danger);
   --hub-danger-wash: var(--danger-soft);
 
+  /* The three decorative washes, as tokens rather than inline literals.
+     They were written straight into `.hub-banner`, `.hub-promo` and
+     `.hub-art__disc` as warm near-whites, which on a dark page painted the
+     banner, the promo card and the illustration as three bright slabs — the
+     most prominent thing on the Marketing screen. This block already promised
+     "one block to re-skin"; these were the three values that had escaped it. */
+  --hub-banner-bg:
+    radial-gradient(90% 120% at 100% 0%, #ffe4d4 0%, transparent 60%),
+    linear-gradient(135deg, #fff4ed 0%, #fffaf7 62%);
+  --hub-promo-bg:
+    radial-gradient(80% 90% at 100% 100%, #ffe6d6 0%, transparent 62%),
+    linear-gradient(140deg, #fff5ef 0%, #fffcfa 70%);
+  --hub-disc-bg: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffe8db 55%, #ffd9c4 100%);
+
   --hub-radius: 18px;
   --hub-radius-sm: 12px;
   --hub-shadow: 0 1px 2px rgba(22, 30, 51, 0.04), 0 8px 24px rgba(22, 30, 51, 0.05);
@@ -12175,6 +12291,49 @@ summary:focus-visible,
   display: grid;
   gap: 16px;
   color: var(--hub-ink);
+}
+
+/* Dark mode, in one block each, which is what a namespaced token system is
+   for. Both `.mkt` and `.mkt-hub` declare their own palette so the whole
+   surface can be re-skinned from one place — and then half the values were
+   written as light literals, so the re-skin they were built for could not
+   actually be performed. `--mkt-ink` is #14162b, a near-black used as the
+   TEXT colour of every heading in the campaign builder: on a dark card that
+   is ink on ink.
+
+   Only the literals are restated. Everything that already resolved to a
+   `:root` variable follows the theme on its own and is deliberately absent
+   here, so this block stays the list of things that were hard-coded rather
+   than a second copy of the palette. */
+.dark .mkt {
+  --mkt-ink: var(--text);
+  --mkt-ink-2: var(--muted);
+  --mkt-line: rgb(255 255 255 / 0.1);
+  --mkt-line-soft: rgb(255 255 255 / 0.06);
+  --mkt-accent: var(--primary);
+  --mkt-accent-wash: linear-gradient(135deg, #2a1d16 0%, #1d1917 100%);
+
+  --mkt-shadow-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px rgb(0 0 0 / 0.3);
+  --mkt-shadow-2: 0 2px 6px rgb(0 0 0 / 0.36), 0 18px 44px rgb(0 0 0 / 0.46);
+}
+
+.dark .mkt-hub {
+  --hub-line-soft: rgb(255 255 255 / 0.07);
+  /* The light value is darkened for a pale wash; on a dark one the tuned
+     warning token is already the readable choice. */
+  --hub-amber: var(--warning);
+  --hub-purple-wash: #241d3a;
+  --hub-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+
+  /* The same three washes, built from the surface rather than from white, so
+     the banner still reads as a lifted panel instead of a light box. */
+  --hub-banner-bg:
+    radial-gradient(90% 120% at 100% 0%, rgb(255 107 38 / 0.16) 0%, transparent 60%),
+    linear-gradient(135deg, #241a15 0%, var(--surface) 62%);
+  --hub-promo-bg:
+    radial-gradient(80% 90% at 100% 100%, rgb(255 107 38 / 0.14) 0%, transparent 62%),
+    linear-gradient(140deg, #221a16 0%, var(--surface) 70%);
+  --hub-disc-bg: radial-gradient(circle at 34% 30%, #3a2a20 0%, #2a1d16 55%, #231a14 100%);
 }
 
 .mkt-hub section {
@@ -12224,7 +12383,7 @@ summary:focus-visible,
   height: 36px;
   border-radius: 11px;
   background: var(--hub-brand-wash);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
   flex-shrink: 0;
 }
 
@@ -12261,7 +12420,7 @@ summary:focus-visible,
 }
 
 .hub-table tbody tr:hover .hub-chevron {
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-panel__head {
@@ -12326,7 +12485,7 @@ summary:focus-visible,
 
 .hub-btn--ghost:hover {
   border-color: var(--hub-brand);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-btn--block {
@@ -12342,7 +12501,7 @@ summary:focus-visible,
   padding: 0;
   border: none;
   background: none;
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
   font: inherit;
   font-size: 0.8125rem;
   font-weight: 700;
@@ -12371,9 +12530,7 @@ summary:focus-visible,
   padding: 34px 36px;
   border: 1px solid rgba(255, 82, 0, 0.16);
   border-radius: var(--hub-radius);
-  background:
-    radial-gradient(90% 120% at 100% 0%, #ffe4d4 0%, transparent 60%),
-    linear-gradient(135deg, #fff4ed 0%, #fffaf7 62%);
+  background: var(--hub-banner-bg);
   overflow: hidden;
 }
 
@@ -12387,16 +12544,17 @@ summary:focus-visible,
 .hub-banner__title {
   margin: 14px 0 12px;
   color: var(--hub-ink);
-  font-size: clamp(1.5rem, 2.6vw, 1.95rem);
+  /* See the note on `.order-detail__title-row h1`: one page-title size. */
+  font-size: var(--fs-display-sm);
   font-weight: 800;
   line-height: 1.2;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
 }
 
 /* The second line carries the promise, so it carries the colour. */
 .hub-banner__title em {
   display: block;
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
   font-style: normal;
 }
 
@@ -12421,7 +12579,7 @@ summary:focus-visible,
   position: absolute;
   inset: 16px 10px 12px 18px;
   border-radius: 50%;
-  background: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffe8db 55%, #ffd9c4 100%);
+  background: var(--hub-disc-bg);
   box-shadow: inset 0 -6px 18px rgba(255, 82, 0, 0.14);
 }
 
@@ -12430,7 +12588,7 @@ summary:focus-visible,
   top: 50%;
   left: 50%;
   transform: translate(-52%, -50%) rotate(-12deg);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-art__badge {
@@ -12655,7 +12813,7 @@ summary:focus-visible,
 
 .hub-pager__btn:not(:disabled):hover {
   border-color: var(--hub-brand);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-pager__btn:disabled {
@@ -12790,7 +12948,7 @@ summary:focus-visible,
 }
 
 .hub-channel svg {
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-money {
@@ -12811,7 +12969,7 @@ summary:focus-visible,
 
 .hub-status--sent {
   background: var(--hub-brand-wash);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-status--sending {
@@ -12859,7 +13017,7 @@ summary:focus-visible,
 .hub-icon-btn:hover {
   border-color: var(--hub-line);
   background: var(--surface);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-icon-btn--danger:hover {
@@ -12930,9 +13088,7 @@ summary:focus-visible,
   padding: 22px;
   border: 1px solid rgba(255, 82, 0, 0.16);
   border-radius: var(--hub-radius);
-  background:
-    radial-gradient(80% 90% at 100% 100%, #ffe6d6 0%, transparent 62%),
-    linear-gradient(140deg, #fff5ef 0%, #fffcfa 70%);
+  background: var(--hub-promo-bg);
   overflow: hidden;
 }
 
@@ -12983,7 +13139,7 @@ summary:focus-visible,
   height: 54px;
   border-radius: 16px;
   background: var(--hub-brand-wash);
-  color: var(--hub-brand);
+  color: var(--hub-brand-text);
 }
 
 .hub-state strong {
@@ -13010,9 +13166,13 @@ summary:focus-visible,
   gap: 8px;
   height: 46px;
   padding: 0 6px 0 14px;
-  border: 1px solid var(--hub-line, rgba(15, 23, 42, 0.1));
+  /* The real tokens, not the Hub's local aliases. This control sits in the
+     page header, OUTSIDE `.mkt-hub`, so `--hub-surface` and `--hub-line` do
+     not resolve here and both fell through to their fallbacks — a literal
+     white pill on a dark page. */
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--hub-surface, #fff);
+  background: var(--card);
   color: var(--hub-muted);
   font-size: var(--fs-caption);
   font-weight: 700;
@@ -13229,7 +13389,7 @@ summary:focus-visible,
 
 .mkt-channel-badge:hover {
   border-color: var(--mkt-accent);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 /* ------------------------------------------------- per-channel previews -- */
@@ -13481,7 +13641,7 @@ summary:focus-visible,
 .mkt-chip--on {
   border-color: var(--mkt-accent);
   background: var(--mkt-accent-wash);
-  color: var(--mkt-accent);
+  color: var(--mkt-accent-text);
 }
 
 .mkt-field__hint--warn {
@@ -13745,7 +13905,7 @@ summary:focus-visible,
 }
 
 .tenant-subject svg {
-  color: var(--primary);
+  color: var(--primary-text);
   flex-shrink: 0;
 }
 
@@ -14025,7 +14185,7 @@ summary:focus-visible,
 .workspace__flag {
   font-style: normal;
   font-weight: 700;
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .workspace__empty {
@@ -14045,7 +14205,7 @@ summary:focus-visible,
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.18);
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: var(--fs-caption);
   font-weight: 700;
   cursor: pointer;
@@ -14078,7 +14238,7 @@ summary:focus-visible,
 
 .mixed-currency svg {
   margin-top: 1px;
-  color: var(--warning);
+  color: var(--warning-text);
   flex-shrink: 0;
 }
 
@@ -14181,7 +14341,7 @@ summary:focus-visible,
 }
 
 .capability__reset:hover:not(:disabled) {
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 @media (max-width: 640px) {
@@ -14483,7 +14643,7 @@ summary:focus-visible,
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--primary);
+  color: var(--primary-text);
 }
 
 .order-detail__next h2 {

@@ -46,6 +46,23 @@
   --success: #16a34a;
   --danger: #dc2626;
 
+  /* The same colours, as TEXT.
+
+     `--primary` and `--success` are fills: a button, a chart line, a focus
+     ring, a dot. Nothing is trying to READ those, so WCAG asks 3:1 of them
+     and both clear it. Set as small text on the page they come to about
+     3.1:1, which is under the 4.5:1 a 12px label needs — and that is exactly
+     where they are used, on eyebrows, active tab labels and sort headers.
+
+     Lightening the background is not an option and the fills cannot move, so
+     the text use gets its own token: the same hue walked down until it reads.
+     `--danger` is already at 4.6:1 and is named here anyway, so a call site
+     does not have to know which of the four is the exception. */
+  --primary-text: #cf4300;
+  --success-text: #12853d;
+  --warning-text: #9d6900;
+  --danger-text: var(--danger);
+
   --radius: 0.5rem;
   --overlay: rgb(20 23 31 / 0.55);
   --shadow: 0 12px 34px rgb(20 23 31 / 0.12);
@@ -86,6 +103,14 @@
 
   --success: #4ade80;
   --danger: #f87171;
+
+  /* All four clear AA against `--surface` here on their own — 6.1:1 for the
+     primary, 9.9:1 for success — so the darkened light-mode values would only
+     make them muddier. They alias back to the fills. */
+  --primary-text: var(--primary);
+  --success-text: var(--success);
+  --warning-text: #f5b63f;
+  --danger-text: var(--danger);
 
   /* A drop shadow tinted near-black is invisible on a dark ground, so it
      goes heavier and fully black instead of being dropped — panels still

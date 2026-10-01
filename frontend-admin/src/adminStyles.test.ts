@@ -15,8 +15,17 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const legacyCss = readFileSync(`${here}legacy.css`, "utf8");
-const indexHtml = readFileSync(`${here}../index.html`, "utf8");
+
+/**
+ * Line endings normalised, because these assertions match multi-line selector
+ * groups as text and the working tree is on Windows — where git hands back
+ * CRLF and a pattern written with `\n` silently matches nothing. A guard that
+ * cannot fail is worse than no guard.
+ */
+const read = (path: string) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+
+const legacyCss = read(`${here}legacy.css`);
+const indexHtml = read(`${here}../index.html`);
 
 /**
  * Specificity as the cascade counts it, for the shapes that appear here:
@@ -101,7 +110,7 @@ describe("the chosen theme is applied before the first paint", () => {
    * back to repainting on every load.
    */
   it("reads the same storage key the panel writes", () => {
-    const theme = readFileSync(`${here}services/theme.ts`, "utf8");
+    const theme = read(`${here}services/theme.ts`);
     const key = theme.match(/const STORAGE_KEY = "([^"]+)"/)?.[1];
     expect(key).toBeTruthy();
     expect(indexHtml).toContain(`localStorage.getItem("${key}")`);
@@ -119,5 +128,122 @@ describe("the chosen theme is applied before the first paint", () => {
 
   it("falls back the same way the panel does when nothing was chosen", () => {
     expect(indexHtml).toContain("(prefers-color-scheme: dark)");
+  });
+});
+
+describe("every token a stylesheet names is a token something defines", () => {
+  /**
+   * Two of these were live when this was written, and both were invisible for
+   * the same reason: `var(--text-muted, #6b7280)` and
+   * `var(--brand-strong, #ff5200)` name tokens that do not exist in this app,
+   * so they silently resolved to their fallback — a LIGHT grey and a brand
+   * orange, hard-coded, on every page including the dark ones. A fallback is
+   * what made the typo survive; without one the declaration would simply have
+   * had no effect and somebody would have noticed.
+   *
+   * The phone preview in `BrandingPanel` is the deliberate exception. It sets
+   * `--p`, `--ink` and friends as inline styles from the tenant's palette, so
+   * they are genuinely defined — just not in a stylesheet.
+   */
+  const SET_FROM_JS = new Set([
+    // frontend-admin/src/components/BrandingPanel.tsx, the phone preview.
+    "--p", "--on-p", "--ink", "--ink-2", "--w", "--soft", "--line", "--hero",
+    "--raised", "--alt", "--divider", "--tab", "--white", "--bg", "--surface",
+    "--text", "--muted", "--border", "--radius",
+  ]);
+
+  it("defines every custom property the admin stylesheets reference", () => {
+    const sources = [
+      legacyCss,
+      read(`${here}index.css`),
+      read(`${here}../../frontend-shared/tokens.css`),
+      read(`${here}../../frontend-shared/components.css`),
+    ];
+    const defined = new Set<string>();
+    for (const css of sources) {
+      for (const m of css.matchAll(/(--[\w-]+)\s*:/g)) defined.add(m[1]);
+    }
+
+    const missing = new Set<string>();
+    for (const m of legacyCss.matchAll(/var\(\s*(--[\w-]+)/g)) {
+      if (!defined.has(m[1]) && !SET_FROM_JS.has(m[1])) missing.add(m[1]);
+    }
+
+    expect([...missing].sort()).toEqual([]);
+  });
+});
+
+describe("a badge keeps its own colour inside a table", () => {
+  /**
+   * `.admin-table__cell-content span` sets `color: var(--hint)` at (0,1,1).
+   * Every badge tone was a bare modifier at (0,1,0) and lost to it, so inside
+   * a table — which is where most of them live — order statuses, roles, combo
+   * visibility and offer states all rendered in the same grey at about 2.6:1
+   * on their own tinted background. Outside a table they were correct, which
+   * is why a tone looked right on a detail page and wrong in the list that
+   * linked to it.
+   *
+   * The fix is to name the block class twice. The test is that they stay
+   * named twice.
+   */
+  it("gives every tone enough specificity to beat the cell rule", () => {
+    const badges =
+      "status-pill|usr-role|st-role-pill|generated-combos-visibility-badge";
+    const rule = new RegExp(
+      String.raw`((?:^\.(?:${badges})[^{]*?))\{([^}]*)\}`,
+      "gms",
+    );
+    const bare: string[] = [];
+    for (const m of legacyCss.matchAll(rule)) {
+      // Only the rules that paint a tone are in the contest; a modifier that
+      // sets padding or a cursor has nothing to lose.
+      if (!/(?<![a-z-])color:/.test(m[2])) continue;
+      for (const sel of m[1].split(",")) {
+        const cleaned = sel.trim();
+        if (!cleaned.includes("--")) continue;
+        // A modifier on its own is (0,1,0); the block plus modifier is (0,2,0).
+        if (cleaned.split(".").length < 3) bare.push(cleaned);
+      }
+    }
+    expect(bare).toEqual([]);
+  });
+
+  it("has a tone for every role the Users page can render", () => {
+    // `ROLE_META` is exhaustive over `UserRole` or the page throws. The
+    // stylesheet is not type-checked against anything, so KITCHEN arrived with
+    // the kitchen board and had no tone at all for weeks.
+    const page = read(`${here}pages/AdminUsersPage.tsx`);
+    const block = page.slice(page.indexOf("const ROLE_META"));
+    const roles = [...block.slice(0, block.indexOf("};")).matchAll(/^\s{2}([A-Z]+):/gm)].map(
+      (m) => m[1].toLowerCase(),
+    );
+    expect(roles.length).toBeGreaterThan(3);
+    for (const role of roles) {
+      expect(legacyCss).toContain(`.usr-role.usr-role--${role}`);
+    }
+  });
+});
+
+describe("one page-title size", () => {
+  /**
+   * Five were measured across the panel: 24px on nineteen screens, 38.4px on
+   * the order detail, 31.2px on the Marketing hub, 32px on the campaign
+   * builder, and none at all on the AI Manager. A page is not more important
+   * because its title is bigger; it just stops looking like the same product.
+   */
+  it("sizes every page title from the type scale", () => {
+    const titles = [
+      ".order-detail__title-row h1",
+      ".mkt-h1",
+      ".hub-banner__title",
+      // Declared in a group with `.login-card h1`, and the group that sets
+      // the SIZE is not the group that sets the margin — so this one is found
+      // by the declaration rather than by the selector.
+      ".page-intro h1,\n.login-card h1",
+    ];
+    for (const sel of titles) {
+      const block = blockFor(legacyCss, `${sel} {`);
+      expect(block, sel).toContain("var(--fs-display-sm)");
+    }
   });
 });

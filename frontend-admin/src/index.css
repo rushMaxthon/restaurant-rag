@@ -78,7 +78,26 @@
   /* The alternating band in a long table. Subtle enough to group rows
      without turning the page into stripes. */
   --row-tint: rgb(250 251 253 / 0.42);
-  /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
+  /* The badge palette, foreground per tone.
+
+     Separate from the shared `--*-text` tokens because a badge is read on its
+     own tinted background, not on the page: #12853d clears 4.5:1 on white and
+     only manages 4.46:1 on `--success-soft`, which is the only backdrop it
+     ever actually has. Each value below is its tone walked down until it
+     reaches 4.5:1 against its own `--*-soft`, so the number that matters is
+     the one that was measured. Backgrounds come from the existing `--*-soft`
+     tokens, which already carry dark values; `muted` and `neutral` had none
+     and get theirs here. */
+  --on-success-soft: #11803b;
+  --on-warning-soft: #996600;
+  --on-blue-soft: #2a65e4;
+  --on-primary-soft: #c74100;
+  --on-danger-soft: #d62323;
+  --on-muted-soft: #5c6377;
+  --muted-soft: #eef0f5;
+  --on-neutral-soft: #6a3fd0;
+  --neutral-soft: #f0edfd;
+
   /* The loading placeholder, as a pair: the block and the sheen that sweeps
      across it. Both are needed as tokens because a skeleton is a filled
      rectangle the size of the content it stands in for — the one thing on a
@@ -87,10 +106,21 @@
   --skeleton: #eaedf3;
   --skeleton-sheen: #f5f7fa;
 
+  /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
   --field-bg: var(--surface);
   --field-bg-active: #ffffff;
   --border-strong: rgba(255, 82, 0, 0.18);
-  --hint: #8e95a8;
+  /* Measured, not picked. #8e95a8 came out at 2.87:1 against the page and
+     2.99:1 against a card — under AA at every size — and it is the colour of
+     117 declarations: every page subtitle, every caption under a stat, every
+     secondary line in a table row. It was the single most-read colour in the
+     panel and the least readable. #6b738b is the same hue and saturation
+     walked down until it reaches 4.52:1 on the page, which is the harder of
+     the two backdrops. It stays visibly lighter than `--text` and keeps its
+     blue cast against the neutral `--muted`, so the two greys are still two
+     greys. Dark mode was already compliant (#8b919c is 5.44:1 on a card) and
+     is untouched. */
+  --hint: #6b738b;
   --sidebar: #15172a;
   --sidebar-2: #1d2036;
   --success-soft: #e9f7ef;
@@ -168,6 +198,11 @@
      Kept as names rather than replaced at every call site: the call sites are
      right, they were just pointed at the wrong value. */
   --accent: var(--primary);
+  /* The readable half of the pair, for the same reason `--primary-text`
+     exists: `--accent` is a fill. If `--accent` ever stops being an alias and
+     becomes a per-tenant colour, this has to follow it rather than stay
+     pinned to the platform orange. */
+  --accent-text: var(--primary-text);
   --accent-soft: var(--primary-soft);
   --accent-track: color-mix(in srgb, var(--primary) 18%, var(--surface));
 }
@@ -197,6 +232,21 @@
   --card-muted: var(--surface-alt);
   /* Lighter than the surface by a hair, not by 42% of white. */
   --row-tint: rgb(255 255 255 / 0.03);
+
+  /* On a dark badge the brand colours are the readable ones — 8.88:1 for
+     success on `--success-soft`, 5.23:1 for the primary — so the darkened
+     light-mode values would only sink into the background. `muted` and
+     `neutral` had no dark values at all, which meant a violet-on-white badge
+     sitting in a dark table. */
+  --on-success-soft: var(--success);
+  --on-warning-soft: var(--warning);
+  --on-blue-soft: var(--blue);
+  --on-primary-soft: var(--primary);
+  --on-danger-soft: var(--danger);
+  --on-muted-soft: #aab2c4;
+  --muted-soft: #23262d;
+  --on-neutral-soft: #b79cff;
+  --neutral-soft: #231d3a;
 
   --skeleton: #23262d;
   --skeleton-sheen: #2e323b;

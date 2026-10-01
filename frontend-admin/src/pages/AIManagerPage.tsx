@@ -266,6 +266,12 @@ export function AIManagerPage() {
     // panels above the chat - it is the assistant's opening messages, so the
     // whole screen is one thread from the briefing down to whatever you ask.
     <div className="page ai-page">
+      {/* The one page in the panel with no visible title, on purpose — see the
+          bar below. That leaves the document with no `<h1>`, so somebody
+          navigating by headings arrives with nothing saying where they are.
+          This is the title for them and nobody else. */}
+      <h1 className="visually-hidden">AI Manager</h1>
+
       {/* Everything the conversation is scoped to, on one slim line. A chat
           screen should not carry a page header; it should carry its context. */}
       <header className="ai-bar">

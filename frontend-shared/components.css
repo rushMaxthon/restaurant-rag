@@ -46,7 +46,10 @@
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--primary);
+  /* `--primary-text`, not `--primary`: this is 12px uppercase and the fill
+     colour only reaches 3.1:1 on the page. It is the most-repeated label in
+     the admin — one above the title of nearly every screen. */
+  color: var(--primary-text);
 }
 .eyebrow--inherit {
   color: inherit;
