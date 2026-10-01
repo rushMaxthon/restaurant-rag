@@ -26,6 +26,48 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-01 — Admin shell: is the layout good, and the four things wrong with it
+
+**Goal:** "is that layout good? if yes then improve it otherwise recreate it" —
+with nothing working allowed to break.
+
+**Verdict: keep it.** A fixed sidebar of grouped routes, a content column each
+page titles itself, the storefront's tokens and typeface. The shape is right;
+rebuilding it would risk forty working pages to arrive back where it started.
+What was wrong was four defects that nothing reports — no error, no warning, no
+page that looks obviously broken — all four found by measuring the rendered
+document, none findable by reading the source.
+
+**Changed:**
+- `legacy.css` — sidebar rhythm (34px rows, tighter group spacing, 38px profile
+  badge) so all sixteen nav entries fit; visible scrollbar for when they do not;
+  42px rows restored inside the <=1024px drawer.
+- `legacy.css` — `.admin-table .admin-table__cell--right`, qualified so it
+  outranks `.admin-table td`, plus tabular figures.
+- `legacy.css` / `index.css` — dashboard chart wash, 17 hairlines and the
+  skeleton shimmer moved onto tokens; new `--skeleton` / `--skeleton-sheen`.
+- `index.html` / `services/theme.ts` — pre-paint theme bootstrap.
+- `src/adminStyles.test.ts` (new) — guards the two that can silently return.
+
+**Verified:** `npm run test` 214 passed (209 + 5 new), `npm run build` clean,
+`npm run lint` 64 problems (unchanged). Browser: both themes across dashboard,
+orders, restaurants, offers, reports, settings. A contrast sweep of the
+dashboard reports 0 light-on-dark elements where it reported 16. Nav measured
+at 669px needed against 669px available at 1920x1080.
+
+**Open:**
+- The nav fits at 1080p with zero slack. A seventeenth entry, or a 768px-tall
+  laptop, puts it back into scroll — that is why the scrollbar was made
+  visible rather than treating the fit as the fix. If the nav grows again the
+  real answer is collapsible groups, not more tightening.
+- `PLATFORM` and `INTELLIGENCE` are one-item groups: three group labels for
+  four entries, ~17% of the nav height spent on headings. Worth revisiting as
+  information architecture, not as spacing.
+- The mobile drawer rules were verified through the CSSOM, not visually — the
+  browser window here is maximised and `resize_window` does not take.
+- Dark mode was swept on the dashboard only. The other pages were walked and
+  look right, but nothing has measured them.
+
 ## 2026-09-30 — Merged origin/V2 (Pidge delivery) into marketing
 
 **Goal:** merge V2 into `marketing`, keeping both sides, and verify.
