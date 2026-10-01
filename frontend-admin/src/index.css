@@ -138,6 +138,36 @@
   --shadow-lg: 0 12px 32px rgba(22, 30, 51, 0.07);
   --shadow-md: 0 8px 24px rgba(23, 30, 51, 0.06);
   --shadow-sm: 0 4px 14px rgba(22, 30, 51, 0.05);
+  /* The resting tier, below `sm`. Thirteen declarations were already drawing
+     it as a 1px hairline shadow — buttons, segmented options, the suggestion
+     card — in four slightly different greys, because the ladder started one
+     step too high for the densest controls in the panel. */
+  --shadow-xs: 0 1px 2px rgba(22, 30, 51, 0.08);
+
+  /* The brand glow, as a ladder rather than as fourteen guesses.
+
+     Every raised brand surface had its own: `0 8px 18px / .28`,
+     `0 6px 16px / .08`, `0 12px 26px / .12`, `0 14px 34px / .3`,
+     `0 8px 20px / .26`, `0 18px 30px / .25`. Same idea, no two alike — which
+     is precisely the thing that reads as assembled rather than designed,
+     because the eye compares two buttons on one screen and finds them lit by
+     different lights.
+
+     Three steps, built from `--primary` so they follow the theme and a tenant
+     rebrand: `sm` for a resting button, `md` for a hover, `lg` for the one
+     element on a screen that is meant to float. */
+  --shadow-brand-sm: 0 6px 16px color-mix(in srgb, var(--primary) 20%, transparent);
+  --shadow-brand-md: 0 10px 24px color-mix(in srgb, var(--primary) 26%, transparent);
+  --shadow-brand-lg: 0 14px 34px color-mix(in srgb, var(--primary) 30%, transparent);
+
+  /* A 1px outline drawn as a shadow, where a real border would change the
+     box. Separate from `--border` because it has to read on a swatch of any
+     colour, including white. */
+  --inset-hairline: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+  /* The top highlight on a raised control. A white sheen is a light-mode
+     idea; on a dark surface it is a grey line across the top edge, so dark
+     mode turns it off rather than inheriting it. */
+  --inset-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.75);
   /* Type scale. Replaces 56 ad-hoc font sizes, eleven of which sat inside a
      2.7px band - too close to read as hierarchy, close enough to leave labels
      on different baselines from panel to panel. Every value below maps to the
@@ -197,6 +227,43 @@
 
      Kept as names rather than replaced at every call site: the call sites are
      right, they were just pointed at the wrong value. */
+  /* The brand, as a FILLED surface that carries a label.
+
+     `--primary` is #ff5200, and white on it measures 3.25:1 — under AA for
+     the 13px label on every primary button in the panel. That is the single
+     most-clicked control in the product, and the one place the brand and
+     legibility actually collide: the colour cannot be lightened (the text is
+     already white) and the text cannot be darkened (it would stop reading as
+     a brand button).
+
+     So the fill moves instead, to the same hue walked down until white clears
+     4.71:1 — and it stays 4.52:1 against the page, so the button still reads
+     as a raised object rather than dissolving into it. #ff5200 is unchanged
+     and still does every job where nothing has to be read ON it: the 3px
+     active bar in the sidebar, chart strokes, focus rings, the dot in a
+     status badge. Non-text contrast asks 3:1 of those and #ff5200 gives 3.25.
+
+     Two steps of one hue rather than two oranges: the deeper one is where the
+     product speaks, the brighter one is where it points. */
+  --primary-strong: #cf4300;
+  /* The avatar / brand square, in three places. Built from the pair so the
+     two letters inside it are read at the same ratio as a primary button,
+     and so there is one gradient rather than three copies of two literals. */
+  --brand-mark-grad: linear-gradient(135deg, var(--primary-strong), var(--primary));
+  /* The filled gradient button.
+
+     It used to run `--primary-strong -> --primary`, which left the right-hand
+     end at #ff5200 — so the label passed at one end of the button and failed
+     at the other, which is worse than failing outright because it looks fine
+     in a screenshot of the left half. Both stops are now at or below
+     `--primary-strong`: 5.8:1 at the dark end, 4.7:1 at the light one, and
+     the button still has depth rather than being a flat block of colour. */
+  --brand-fill-grad: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary-strong) 88%, #000) 0%,
+    var(--primary-strong) 100%
+  );
+
   --accent: var(--primary);
   /* The readable half of the pair, for the same reason `--primary-text`
      exists: `--accent` is a fill. If `--accent` ever stops being an alias and
@@ -241,6 +308,21 @@
   --on-success-soft: var(--success);
   --on-warning-soft: var(--warning);
   --on-blue-soft: var(--blue);
+  /* On a dark page the answer is the other way round. Darkening the fill to
+     #cf4300 would leave it at 3.97:1 against the page — a muddy button on a
+     black ground — so the bright fill stays and the INK goes dark instead:
+     6.62:1, and the button reads as the brightest thing on the screen, which
+     is what a primary action should be. */
+  --primary-strong: var(--primary);
+  --on-primary: #1a0f06;
+  /* Lighter end last, so the dark ink reads at 6.6:1 across the whole button
+     — the mix runs toward the brand rather than away from it here. */
+  --brand-fill-grad: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 88%, #000) 0%,
+    var(--primary) 100%
+  );
+
   --on-primary-soft: var(--primary);
   --on-danger-soft: var(--danger);
   --on-muted-soft: #aab2c4;
@@ -282,4 +364,16 @@
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.42);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 0.36);
   --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.3);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.28);
+
+  /* The brand glow carries further on a dark ground before it is noticed, so
+     each step is a little stronger; `color-mix` keeps them tied to whatever
+     `--primary` is. */
+  --shadow-brand-sm: 0 6px 18px color-mix(in srgb, var(--primary) 26%, transparent);
+  --shadow-brand-md: 0 10px 26px color-mix(in srgb, var(--primary) 32%, transparent);
+  --shadow-brand-lg: 0 14px 36px color-mix(in srgb, var(--primary) 38%, transparent);
+
+  --inset-hairline: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  /* Off. See the note in the light block: this is a white highlight. */
+  --inset-sheen: none;
 }
