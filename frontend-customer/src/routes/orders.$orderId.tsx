@@ -164,6 +164,9 @@ function OrderDetail() {
   // until one accepts. Showing the card before then would head a box "Your
   // rider" over an empty space.
   const rider = deliveryQuery.data?.rider_name ? deliveryQuery.data : null;
+  // The courier row itself, which carries a tracking link from the moment the
+  // trip is booked — long before `rider` is set. See the card above it.
+  const tracking = deliveryQuery.data ?? null;
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
   const discount = Number(o.discount_amount ?? 0);
@@ -259,6 +262,40 @@ function OrderDetail() {
                 })}
               </ol>
             </>
+          )}
+
+          {/*
+           * Before anyone is assigned: the wait, and the link to watch it.
+           *
+           * The courier gives us a tracking page the moment the trip is
+           * booked, but a rider the moment one accepts — and Pidge quotes
+           * ELEVEN MINUTES between those two. The card below is headed "Your
+           * rider" and so rightly waits for one; the effect was that for
+           * eleven minutes a customer had a working tracking link and was
+           * shown nothing at all.
+           *
+           * So the link comes out as soon as it exists, under a heading that
+           * claims no rider. The distance is the restaurant's own figure and
+           * is true before anybody is carrying anything.
+           */}
+          {isDelivery && !rider && tracking?.tracking_url && (
+            <div className="mt-7 rounded-xl bg-surface-alt p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
+                    Finding you a rider
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    We&apos;ll show their name and number as soon as one picks it up.
+                  </p>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <a href={tracking.tracking_url} rel="noreferrer" target="_blank">
+                    Track on the map
+                  </a>
+                </Button>
+              </div>
+            </div>
           )}
 
           {/*
