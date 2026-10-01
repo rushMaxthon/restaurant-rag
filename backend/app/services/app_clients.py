@@ -892,12 +892,16 @@ def build_app_config_response(
     branding.setdefault(BRANDING_PRIMARY_COLOR_KEY, DEFAULT_BRAND_PRIMARY_COLOR)
 
     storefront: dict[str, str] = {}
+    # Empty unless this client fronts a restaurant. The marketplace spans many
+    # of them, so it has no single address to give.
+    contact: dict[str, str] = {}
     # The marketplace spans restaurants that may charge in different money, so
     # it gets the platform default rather than one tenant's answer.
     currency = currency_for(get_settings().payment_currency)
     restaurant = app_client.restaurant
     if restaurant is not None:
         from app.services.app_branding import COVER_IMAGE_URL_KEY
+        from app.services.restaurant_contact import read_contact
         from app.services.restaurant_storefront import read_storefront
         from app.services.restaurant_theme import read_theme
 
@@ -919,6 +923,9 @@ def build_app_config_response(
         # Every key filled in, derived from this restaurant's own name,
         # cuisine and city where nobody has written anything.
         storefront = read_storefront(restaurant)
+        # Only the parts really filled in — a half-onboarded tenant sends none
+        # rather than sending "Pending restaurant setup" to its own footer.
+        contact = read_contact(restaurant)
         currency = currency_for(restaurant.currency)
 
     return AppConfigResponse(
@@ -937,6 +944,7 @@ def build_app_config_response(
         business_timezone=get_settings().business_timezone,
         phone_country_code=get_settings().default_phone_country_code,
         storefront=storefront,
+        contact=contact,
         capabilities=capabilities or {},
         currency=CurrencyResponse(
             code=currency.code,

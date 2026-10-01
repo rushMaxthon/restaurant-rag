@@ -81,3 +81,15 @@ class AppConfigResponse(BaseModel):
     #
     # Empty for the marketplace, which is not a restaurant and has no grants.
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    # Where this kitchen actually is, and the number to call it on.
+    #
+    # Sent with the copy rather than fetched per page because the footer that
+    # reads it is on EVERY page, and because a search engine reading a
+    # restaurant's address wants it in the first response, not after a second
+    # round trip. The columns have always existed; nothing exposed them, so the
+    # storefront had no honest way to say where the food comes from.
+    #
+    # Keys the owner has not filled in are OMITTED, never sent as the
+    # onboarding placeholder — see `services/restaurant_contact.py`. Empty for
+    # the marketplace, and for a tenant created five minutes ago.
+    contact: dict[str, str] = Field(default_factory=dict)

@@ -420,6 +420,16 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
             # back to when the app client has none — the restaurant edit form
             # writes here, the branding screen writes to the client.
             cover_image_url=None,
+            # The address and phone number now ride on the same response, for
+            # the footer and the contact page. Real values rather than the
+            # onboarding placeholders, because a placeholder is returned as an
+            # absence — see `test_restaurant_contact`.
+            address_line_1="12 Satellite Road",
+            address_line_2=None,
+            state="Gujarat",
+            postal_code="380015",
+            country="India",
+            phone_number="+919876543210",
         )
         client = SimpleNamespace(
             id=uuid.uuid4(), key="bangkok_bowl", display_name="Bangkok Bowl",
@@ -436,6 +446,12 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         # rather than from whichever tenant was hardcoded in the web app.
         self.assertEqual(built.storefront["hero_headline"], "Bangkok Bowl")
         self.assertIn("Thai", built.storefront["meta_title"])
+        # And so does where the kitchen is, assembled once on the server so the
+        # footer, the contact page and the structured data cannot disagree.
+        self.assertEqual(
+            built.contact["address"], "12 Satellite Road, Ahmedabad, Gujarat 380015"
+        )
+        self.assertEqual(built.contact["phone"], "+919876543210")
 
     def test_the_restaurants_cover_reaches_the_storefront(self) -> None:
         """Two fields share the name `cover_image_url`.
@@ -451,6 +467,9 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         restaurant = SimpleNamespace(
             theme={}, storefront={}, currency="INR", name="Radhe Dhokla",
             cuisine_type="Gujarati", city="Surat", description="",
+            address_line_1="Radhe Shyam Society", address_line_2=None,
+            state="Gujarat", postal_code="395004", country="India",
+            phone_number="+919825322860",
             cover_image_url="https://cdn.test/radhe/hero.jpg",
         )
         client = SimpleNamespace(
@@ -475,6 +494,9 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
         restaurant = SimpleNamespace(
             theme={}, storefront={}, currency="INR", name="Radhe Dhokla",
             cuisine_type="Gujarati", city="Surat", description="",
+            address_line_1="Radhe Shyam Society", address_line_2=None,
+            state="Gujarat", postal_code="395004", country="India",
+            phone_number="+919825322860",
             cover_image_url="https://cdn.test/radhe/hero.jpg",
         )
         client = SimpleNamespace(
