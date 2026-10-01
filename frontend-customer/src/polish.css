@@ -4,14 +4,12 @@
    token so light and dark both hold, and the global reduced-motion block in
    styles.css already collapses every animation and transition declared here.
 
-   One easing and two durations, so a hover on a chip and a card lifting feel
-   like the same hand. The ease-out curve lands quickly and settles without
-   bounce, which is what "fast but smooth" reads as. */
-:root {
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 0.16s;
-  --dur: 0.24s;
-}
+   The motion vocabulary — `--ease-out`, `--ease-spring`, `--dur-fast`,
+   `--dur`, `--dur-slow`, `--stagger` — used to be re-declared here as well as
+   in `frontend-shared/tokens.css`. Two declarations of the same three names
+   agreed only by luck, and the next person to retune a curve would have
+   retuned one of them. It comes from the shared file now, like everything
+   else. */
 
 /* --- Page entry ------------------------------------------------------------
    Route components mount as the direct child of <main>, so a fade on that
@@ -1952,6 +1950,21 @@ html {
    replacing it, so the tile is never empty and never changes size while the
    image decodes — and a photo that fails to load simply reveals the drawing
    underneath instead of leaving a hole. */
+/* The photograph resolving over its motif.
+   ---------------------------------------
+   A plain opacity fade is honest but flat: the picture appears, fully sharp,
+   out of nothing. Coming off a slight scale with the blur lifting reads as the
+   image FOCUSING — which is both nicer to watch and, more usefully, a thing
+   the eye forgives taking 400ms. A fade that takes 400ms just looks slow.
+
+   The motif underneath is doing the job a dominant-colour placeholder usually
+   does, and doing it better: it is already the dish's own category drawn on
+   the brand's own tint, so the tile is never empty, never the wrong colour and
+   never changes size when the photo lands.
+
+   `will-change` is deliberately absent — there can be 136 of these on one menu
+   and promoting every one to its own layer costs more memory on a mid-range
+   phone than the animation saves. */
 .dish-motif__photo {
   position: absolute;
   inset: 0;
@@ -1960,16 +1973,28 @@ html {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity var(--dur) var(--ease-out);
+  transform: scale(1.04);
+  filter: blur(10px);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out),
+    filter var(--dur-slow) var(--ease-out);
 }
 
 .dish-motif__photo[data-loaded="true"] {
   opacity: 1;
+  transform: none;
+  filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dish-motif__photo {
     transition: none;
+    /* The end state has to be stated, not just the journey removed: a photo
+       left at opacity 0 with its animation stripped is an invisible photo. */
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
   .dish-motif__focal {
     animation: none;

@@ -53,6 +53,19 @@
    needs that the panel does not — the phone tab bar's height, the placeholder
    tints — stays here. */
 @import "../../frontend-shared/tokens.css";
+/* The shared class vocabulary — `.lift`, `.rise-in`, `.img-reveal`,
+   `.count-pop` and the rest.
+   -------------------------------------------------------------------------
+   These were WRITTEN here and lifted into the shared file for the operator's
+   panel to use, and then this app never imported them back: it kept its own
+   copies of `.elevated-panel`, `.empty-state`, `.skeleton` and `.field-wrap`,
+   which is how the two started drifting in the first place.
+
+   Imported BEFORE this file's own rules on purpose. Anything declared below
+   still wins, so adoption is per class and reviewable — a local copy is
+   deleted deliberately, one at a time, rather than every shared name taking
+   over the moment the import lands. */
+@import "../../frontend-shared/components.css";
 
 :root {
   /* The phone tab bar's height. Pinned controls above it need a number to
@@ -108,7 +121,8 @@
    - more weight, which is the part a reader actually notices first.
 
    `font-optical-sizing` matters for the variable faces: Inter and Manrope both
-   carry optical size axes, and letting the browser use them is free. */
+   carry optical size axes, and letting the browser use them is free.
+
    The weight and tracking come from tokens rather than being fixed here,
    because a display SERIF needs the opposite correction: DM Serif Display is
    drawn heavy and wide at its single weight, so tightening it turns a heading
@@ -961,23 +975,33 @@ html {
   border-color: var(--primary);
 }
 
+/* The dish card's hover is now the shared `.lift` behaviour, built from the
+   shadow ladder.
+
+   What was here: three hardcoded `0.18s ease` transitions, a two-layer shadow
+   written as literals, and a whole `.dark .dish-card:hover` rule that existed
+   ONLY because those literals were tinted near-black and vanished on a dark
+   ground. The ladder carries its own dark values, so the override is gone
+   rather than rewritten — which is the actual argument for having a ladder.
+
+   `.lift` also adds a pressed state the card never had: a card that moves up
+   on hover and does nothing when clicked feels like it ignored the click. */
 .dish-card {
+  box-shadow: var(--shadow-sm);
   transition:
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
+    box-shadow var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
 }
 .dish-card:hover {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-  box-shadow:
-    0 2px 4px rgb(20 23 31 / 0.05),
-    0 14px 30px -16px rgb(20 23 31 / 0.28);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px) translateZ(0);
 }
-.dark .dish-card:hover {
-  box-shadow:
-    0 2px 4px rgb(0 0 0 / 0.3),
-    0 14px 30px -16px rgb(0 0 0 / 0.7);
+.dish-card:active {
+  box-shadow: var(--shadow-xs);
+  transform: translateY(0) scale(0.995);
+  transition-duration: var(--dur-fast);
 }
 
 /* --- Order tracking --------------------------------------------------------
@@ -1295,7 +1319,13 @@ html {
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  background: color-mix(in srgb, var(--background) 92%, transparent);
+  /* `--bg`, not `--background`. This named a token that does not exist, so the
+     whole declaration was invalid and dropped — the gate that exists to stop
+     somebody browsing a branch they have not chosen was rendering with no
+     backdrop at all, just a blur over a fully visible menu. Nothing warns
+     about this: an unresolvable `var()` invalidates its declaration silently,
+     which is why `styles.test.ts` now checks every one of them. */
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(6px);
   overflow-y: auto;
 }
@@ -1325,7 +1355,7 @@ html {
   padding: 0.875rem 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius, 0.75rem);
-  background: var(--background);
+  background: var(--bg);
   text-align: left;
   transition:
     border-color 0.15s ease,
@@ -1335,7 +1365,7 @@ html {
 .branch-gate__option:hover,
 .branch-gate__option:focus-visible {
   border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+  background: color-mix(in srgb, var(--primary) 8%, var(--bg));
 }
 
 .branch-gate__option.is-suggested {

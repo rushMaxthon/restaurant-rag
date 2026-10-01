@@ -256,8 +256,91 @@ button:not(:disabled):active {
   }
 }
 .rise-in {
-  animation: rise-in 0.42s var(--ease-out) both;
-  animation-delay: calc(var(--i, 0) * 55ms);
+  animation: rise-in var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* --- Elevation, as a behaviour ---------------------------------------------
+   `.lift` is the hover every card in both products was writing for itself, in
+   its own shadow and its own timing — which is the thing that reads as
+   assembled rather than designed, because the eye compares two cards on one
+   screen and finds them lit by different lights.
+
+   Built from the ladder, so dark mode needs no restatement: `--shadow-sm` and
+   `--shadow-lg` already carry their own dark values. That is the whole payoff
+   of promoting the ladder — the old hand-rolled hover shadows each needed a
+   `.dark` override beside them.
+
+   `translateZ(0)` is not a hack here: it promotes the card to its own layer so
+   the shadow and transform animate on the compositor, which is the difference
+   between a lift that feels instant and one that stutters behind a long list
+   on a mid-range Android. */
+.lift {
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+.lift:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px) translateZ(0);
+}
+/* The same object, pressed. Lands BELOW its resting state rather than above
+   it, because a press is a thing going down. */
+.lift:active {
+  box-shadow: var(--shadow-xs);
+  transform: translateY(0) scale(0.995);
+  transition-duration: var(--dur-fast);
+}
+/* A card that is also a link gets the brand in its edge on hover — the one
+   place a tenant's colour should appear without being asked for. */
+.lift-brand:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+
+/* --- Images arriving -------------------------------------------------------
+   A photograph is the largest thing on a storefront and the slowest. Dropped
+   in at full opacity the moment it decodes, it reads as a jolt; faded in from
+   nothing, the card looks broken until it arrives.
+
+   So the frame carries a tint of the brand while it waits (the storefront's
+   `--placeholder-*`), and the photo resolves over it — a slight scale and a
+   blur coming off together, which reads as the image focusing rather than
+   appearing. `data-loaded` is set by the element's own onLoad, so a cached
+   image that is already complete never animates at all. */
+.img-reveal {
+  opacity: 0;
+  transform: scale(1.04);
+  filter: blur(12px);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out),
+    filter var(--dur-slow) var(--ease-out);
+}
+.img-reveal[data-loaded="true"] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* --- Numbers that changed --------------------------------------------------
+   A cart badge going 2 → 3 with no motion is a number that was always 3. The
+   spring is the only place an overshoot belongs: the reader did this on
+   purpose and the bounce is the acknowledgement. */
+@keyframes count-pop {
+  from {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.count-pop {
+  animation: count-pop var(--dur) var(--ease-spring);
 }
 
 /* Money lines up in a column or it is not a column. */
@@ -266,17 +349,39 @@ button:not(:disabled):active {
   font-variant-numeric: tabular-nums;
 }
 
-/* Somebody who has asked their system to stop moving things means it. */
+/* Somebody who has asked their system to stop moving things means it.
+   ------------------------------------------------------------------
+   Every animated thing above is listed here rather than relying on a blanket
+   `* { animation: none }`, because the end STATE still has to be right: a
+   `.rise-in` row with its animation removed and nothing else would stay at
+   opacity 0 and the list would be blank. Each entry below says what the
+   finished position is, not just that there is no journey to it.
+
+   The lifts keep their shadows and lose only the movement — elevation is
+   information, and a card that never changes on hover is a card you cannot
+   tell is interactive. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton:after,
-  .rise-in {
+  .rise-in,
+  .count-pop {
     animation: none;
   }
   .rise-in {
     opacity: 1;
     transform: none;
   }
-  button:not(:disabled):active {
+  button:not(:disabled):active,
+  .lift:hover,
+  .lift:active {
     transform: none;
+  }
+  .lift,
+  .img-reveal {
+    transition: none;
+  }
+  .img-reveal {
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
 }
