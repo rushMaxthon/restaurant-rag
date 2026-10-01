@@ -8,8 +8,33 @@
  * `resolve_order_board_scope` on the backend is the rule.
  */
 
+/** `vite dev` / `vitest`. The backend on the developer's own machine. */
+const DEV_API_BASE_URL = 'http://localhost:8000/api'
+
+/**
+ * `vite build`. The Render web service.
+ *
+ * This used to be absent, and the fallback below was `localhost` for every
+ * build — so a deployment with `VITE_API_BASE_URL` missing or misspelled
+ * shipped a board that talks to nobody, while building and deploying
+ * perfectly green. `frontend-admin/src/config/api.ts` has carried this
+ * argument for a while; the kitchen board and the storefront had not adopted
+ * it, which is the kind of gap that only shows up on a wall-mounted tablet in
+ * a kitchen during service.
+ *
+ * Render mints a new random suffix each time the API service is recreated, so
+ * re-check this value when that happens.
+ */
+const PROD_API_BASE_URL = 'https://restaurant-rag-api-oj8p.onrender.com/api'
+
+/**
+ * `VITE_API_BASE_URL` still wins when set — a preview build against a staging
+ * backend, or a tablet pointed at a LAN dev server, both need it. Vite inlines
+ * it at BUILD time, so changing it requires a rebuild.
+ */
 export const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000/api'
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.PROD ? PROD_API_BASE_URL : DEV_API_BASE_URL)
 
 const TOKEN_KEY = 'kitchen-token'
 const SESSION_KEY = 'kitchen-session'

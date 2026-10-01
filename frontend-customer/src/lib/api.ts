@@ -9,8 +9,34 @@ import type {
 import type { GuestPreferences } from "@/lib/guest-preferences";
 import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 
+/** `vite dev` / `vitest`. The backend on the developer's own machine. */
+const DEV_API_BASE_URL = "http://localhost:8000/api";
+
+/**
+ * `vite build`. The Render web service.
+ *
+ * This used to be absent, and the fallback was `localhost` for every build —
+ * so a deployment with `VITE_API_BASE_URL` missing or misspelled shipped a
+ * storefront that talks to nobody, while building and deploying perfectly
+ * green. It bites harder here than in the other apps because this one renders
+ * on the server: the SSR bundle reads the same constant, so the failure is a
+ * blank page from the server rather than a broken request in a console
+ * somebody might notice.
+ *
+ * Render mints a new random suffix each time the API service is recreated, so
+ * re-check this value when that happens.
+ */
+const PROD_API_BASE_URL = "https://restaurant-rag-api-oj8p.onrender.com/api";
+
+/**
+ * `VITE_API_BASE_URL` still wins when set — a preview build against a staging
+ * backend, or a phone pointed at a LAN dev server, both need it. Vite inlines
+ * it at BUILD time, into the client AND the server bundle, so changing it
+ * requires a rebuild.
+ */
 export const API_BASE_URL =
-  (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000/api";
+  (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ??
+  (import.meta.env.PROD ? PROD_API_BASE_URL : DEV_API_BASE_URL);
 
 /**
  * Which restaurant this storefront is.
