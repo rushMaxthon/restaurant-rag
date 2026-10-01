@@ -829,6 +829,28 @@ class Settings(BaseSettings):
     # every order has charged until now — so this changes nothing until it is
     # switched on.
     enable_delivery_quotes: bool = False
+    # A courier that always says yes, so the delivery flow can be SHOWN.
+    #
+    # Pidge's sandbox accepts a booking and then stops: the order sits at
+    # `pending` forever and no rider is ever assigned, which makes the rider
+    # card, the tracking link and the live status panel unreachable without a
+    # live contract. With this on, `services/delivery/rehearsal_provider.py`
+    # walks a delivery along the happy path on a clock and the real
+    # `refresh_deliveries_task` reads it back, so every screen downstream
+    # works exactly as it would against a courier.
+    #
+    # It invents riders, so it must never be reachable in production. Off by
+    # default, and `registry.delivery_provider` additionally refuses to build
+    # it unless `environment` is a local one — two guards, because one that
+    # is only a flag is one `.env` away from a customer being told a rider is
+    # coming when nobody is.
+    enable_delivery_rehearsal: bool = False
+    # What the rehearsal courier charges: a base plus a per-km rate. Not an
+    # attempt to model Pidge's pricing — numbers that move with distance, so a
+    # demo can show two addresses costing different amounts.
+    delivery_rehearsal_base_fee: float = 25.0
+    delivery_rehearsal_per_km_fee: float = 12.0
+    delivery_rehearsal_currency: str = "INR"
     # What the customer is charged out of the range a courier quotes. Pidge
     # answers with a min and a max because no rider has been found yet and the
     # price moves with demand; somebody has to choose a single number to print.

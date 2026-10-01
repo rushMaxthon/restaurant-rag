@@ -21,8 +21,14 @@ import threading
 from app.config import get_settings
 from app.services.delivery.base import DeliveryProvider
 from app.services.delivery.pidge_provider import PROVIDER_NAME, PidgeProvider
+from app.services.delivery.rehearsal_provider import RehearsalProvider
 
 logger = logging.getLogger(__name__)
+
+#: Where a simulated courier is allowed to exist. Named rather than inferred
+#: from `debug`, which is on in plenty of deployments that are not somebody's
+#: laptop.
+_LOCAL_ENVIRONMENTS = frozenset({"development", "local", "test"})
 
 _lock = threading.Lock()
 _provider: DeliveryProvider | None = None
@@ -57,6 +63,27 @@ def delivery_provider() -> DeliveryProvider | None:
             logger.info("No delivery flag is on; no courier will be called")
             _provider = None
             return None
+        # The rehearsal courier, checked BEFORE Pidge so a local demo does not
+        # also need credentials. Two conditions, not one: the flag, and an
+        # environment that is unmistakably local. A provider that invents
+        # riders reaching production would tell a customer somebody is coming
+        # when nobody is, so the flag alone is not enough of a guard — it is
+        # one `.env` line away from being wrong.
+        if settings.enable_delivery_rehearsal:
+            if settings.environment.strip().lower() in _LOCAL_ENVIRONMENTS:
+                logger.warning(
+                    "Using the REHEARSAL courier: deliveries are simulated and "
+                    "no rider is real. environment=%s",
+                    settings.environment,
+                )
+                _provider = RehearsalProvider()
+                return _provider
+            logger.error(
+                "enable_delivery_rehearsal is on in environment=%s and has been "
+                "IGNORED. It invents riders and is for local demos only.",
+                settings.environment,
+            )
+
         candidate = PidgeProvider(
             base_url=settings.pidge_base_url,
             username=settings.pidge_username,
