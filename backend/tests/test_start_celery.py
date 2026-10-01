@@ -82,10 +82,20 @@ class TheBlueprintCommandsSurviveRenderSplittingThem(unittest.TestCase):
         self.commands = docker_commands()
 
     def test_both_celery_services_declare_one(self) -> None:
-        # If this fails the rest of the class is vacuously green, which is the
-        # usual way a guard test quietly stops guarding anything.
-        self.assertIn("restaurant-rag-worker", self.commands)
-        self.assertIn("restaurant-rag-beat", self.commands)
+        # Identified by what they RUN rather than by what they are called. The
+        # names carried a `-sg` suffix the day the deployment moved region,
+        # because a Render service's region is immutable and moving means
+        # creating new services beside the old ones. A test keyed on the name
+        # would have failed for a reason that has nothing to do with what it
+        # is guarding.
+        #
+        # This assertion still matters: if neither service declares a command,
+        # the rest of the class is vacuously green, which is the usual way a
+        # guard test quietly stops guarding anything.
+        celery = [name for name, cmd in self.commands.items() if "celery" in cmd]
+        self.assertEqual(len(celery), 2, self.commands)
+        self.assertTrue(any("worker" in cmd for cmd in self.commands.values()))
+        self.assertTrue(any(" beat" in cmd for cmd in self.commands.values()))
 
     def test_no_command_carries_a_quote(self) -> None:
         for service, command in self.commands.items():
@@ -105,13 +115,13 @@ class TheBlueprintCommandsSurviveRenderSplittingThem(unittest.TestCase):
         # Not cosmetic: this module is what makes the wait happen at all now
         # that `&&` is gone. A command that calls `celery` directly would start
         # against whatever schema happened to be there.
-        for service in ("restaurant-rag-worker", "restaurant-rag-beat"):
+        for service, command in self.commands.items():
+            if "celery" not in command:
+                continue
             with self.subTest(service=service):
                 self.assertTrue(
-                    self.commands[service].startswith(
-                        "python -m app.scripts.start_celery"
-                    ),
-                    self.commands[service],
+                    command.startswith("python -m app.scripts.start_celery"),
+                    command,
                 )
 
 

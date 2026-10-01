@@ -83,7 +83,7 @@ services:
   # maxmemoryPolicy MUST stay noeviction. Any `allkeys-*` policy lets Redis drop
   # a queued task to make room for a cache entry, so an order confirmation would
   # vanish silently instead of being delivered late.
-  - name: restaurant-rag-cache
+  - name: restaurant-rag-cache-sg
     type: keyvalue
     plan: starter
     region: singapore
@@ -91,7 +91,7 @@ services:
     ipAllowList: []   # internal-only
 
   # ------------------------------------------------------------------- api --
-  - name: restaurant-rag-api
+  - name: restaurant-rag-api-sg
     type: web
     runtime: docker
     plan: starter
@@ -132,17 +132,17 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       # Sized for a 512MB starter instance. The pool is per worker, so the API
       # holds at most 2 x (3 + 2) = 10 connections. See the arithmetic comment
@@ -175,7 +175,7 @@ services:
   #
   # Split it the moment analytics volume grows: copy this block, give each copy
   # its own --queues, and re-check the connection arithmetic in the env group.
-  - name: restaurant-rag-worker
+  - name: restaurant-rag-worker-sg
     type: worker
     runtime: docker
     plan: starter
@@ -233,17 +233,17 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
 
   # ------------------------------------------------------------------ beat --
@@ -258,7 +258,7 @@ services:
   # resets last-run state and a task whose window is open may fire once more
   # than it would have. Every scheduled task here is idempotent, so that is
   # acceptable; a Render disk would fix it at the cost of zero-downtime deploys.
-  - name: restaurant-rag-beat
+  - name: restaurant-rag-beat-sg
     type: worker
     runtime: docker
     plan: starter
@@ -302,17 +302,17 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_BROKER_URL
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromService:
           type: keyvalue
-          name: restaurant-rag-cache
+          name: restaurant-rag-cache-sg
           property: connectionString
 
 # ---------------------------------------------------------------------------
