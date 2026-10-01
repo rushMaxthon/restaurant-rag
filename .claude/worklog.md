@@ -26,6 +26,66 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 — Brand surfaces: Ask AI off, a footer, five pages, and the menu as sections
+
+**Goal:** make the storefront read as a brand site rather than an ordering
+form — turn Ask AI off for Bhagwati Bakery, add the missing footer, the legal
+and info pages, and rethink the menu.
+
+**Changed:**
+- `restaurant_capabilities`: a row disabling `ask_ai` for Bhagwati Bakery, with
+  a note. No code change — the capability system already existed and this is
+  what it is for. `/app-config` now answers `capabilities: {"ask_ai": false}`
+  and every entry point hides itself.
+- `backend/app/services/restaurant_contact.py` (new) + `contact` on
+  `AppConfigResponse`: the restaurant's real address and phone, which have been
+  columns all along with nothing exposing them.
+- `frontend-customer`: `site-footer.tsx`, `info-page.tsx`, and five routes —
+  `/about`, `/contact`, `/terms`, `/privacy`, `/refunds`.
+- `frontend-customer`: `lib/menu-sections.ts` + `menu-grid.tsx` — the menu is
+  every section in the kitchen's order, and the rail jumps instead of filtering.
+- `e2e/mobile-layout.spec.ts`: the five pages at phone width, and the footer
+  clearing the fixed nav.
+
+**Verified:** backend `unittest discover -s tests` → **2822 OK**.
+`frontend-customer` vitest → **390 OK**; `npm run build` clean.
+`frontend-admin` vitest → **218 OK**. Playwright `-g "footer"` passes.
+Walked the menu, the footer and all five pages in the browser, light and dark,
+against the live local backend and Bhagwati Bakery's real 187-dish menu.
+
+**Open:**
+- **The legal pages need a review with the operator and their advisers before
+  launch.** They are accurate about the software and deliberately silent on the
+  registered entity, governing law, retention period, legal basis and grievance
+  officer. Each page's docblock names its own gaps.
+- The "Last updated 1 October 2026" date on all five is a literal in each
+  route. Whoever edits the copy has to edit it.
+- 15 Playwright specs fail, all on `signIn`: `customer1@example.com` /
+  `password123` does not exist on the `localhost` host's app client. Per-app
+  identity — the seeded account belongs to `marketplace`. **Pre-existing**, and
+  it means the signed-in half of the e2e suite has not run for a while. A
+  customer seeded against this tenant would unblock it.
+- Still outstanding from the UI plan: skeleton consolidation, dish detail and
+  cart passes, checkout split, admin polish, kitchen light touch, and
+  `CLAUDE.md`'s stale typography section.
+
+**Learned:**
+- **A background Chrome tab cannot verify an IntersectionObserver or a rAF.**
+  `document.hidden` stays true even while CDP captures screenshots, so neither
+  delivers — and `window.scrollTo` does not move the page either, though
+  `computer scroll` does. Two rounds were spent on probes that were measuring
+  the environment rather than the code. A rule that can be expressed as a pure
+  function of measurements is worth more than one that needs a live frame.
+- **`display: grid` on a `<ul>` removes the bullets.** Blockifying a list item
+  drops its marker, so a list reached for the `gap` renders as a stack of
+  unbulleted paragraphs.
+- **A grid gives each ELEMENT child a cell; bare text gets one anonymous cell
+  between them.** Icon + sentence + link in a two-column grid puts the link
+  under the icon.
+- Measuring anything near the footer of the menu page is unreliable: it is
+  29,000px of lazily-loaded photographs, so scrolling down loads images above
+  and moves the thing being measured.
+
 ## 2026-10-01 — First live deployment: Render backend + three Vercel front ends
 
 **Goal:** put the backend on Render and the web apps on Vercel, against the
