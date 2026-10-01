@@ -15,19 +15,32 @@
 # Apply with:  render blueprint launch   (or connect the repo in the dashboard)
 # ---------------------------------------------------------------------------
 
-databases:
-  - name: restaurant-rag-db
-    databaseName: restaurant_rag
-    user: restaurant_rag
-    # Every Render Postgres plan below 8GB caps connections at 100, ~3 of them
-    # reserved. DB_POOL_SIZE + DB_MAX_OVERFLOW in the env group is sized against
-    # that number — raise them together or not at all.
-    plan: basic-256mb
-    # 16 matches what the migration chain was verified against locally
-    # (PostgreSQL 16.13 + pgvector 0.8.2, full 0001..0047 upgrade from empty).
-    postgresMajorVersion: "16"
-    region: oregon
-    ipAllowList: []   # internal-only: no public client needs this database
+# NO Render Postgres is provisioned: this deployment points DATABASE_URL at
+# the existing Supabase project, which already holds the restaurants, their
+# branches and the order history, so it is testable the day it comes up.
+#
+# The block below is kept, commented, rather than deleted — it is the shape to
+# restore if this deployment ever wants a database of its own, and it records
+# the two decisions that were measured: `basic-256mb` because every Render plan
+# under 8GB caps connections at 100 (which DB_POOL_SIZE is sized against), and
+# PG16 because that is the version the full migration chain was verified on.
+#
+# Restoring it means putting `fromDatabase` back on the three DATABASE_URL
+# entries below, then running `alembic upgrade head` and a seed.
+
+# databases:
+#   - name: restaurant-rag-db
+#     databaseName: restaurant_rag
+#     user: restaurant_rag
+#     # Every Render Postgres plan below 8GB caps connections at 100, ~3 of them
+#     # reserved. DB_POOL_SIZE + DB_MAX_OVERFLOW in the env group is sized against
+#     # that number — raise them together or not at all.
+#     plan: basic-256mb
+#     # 16 matches what the migration chain was verified against locally
+#     # (PostgreSQL 16.13 + pgvector 0.8.2, full 0001..0047 upgrade from empty).
+#     postgresMajorVersion: "16"
+#     region: oregon
+#     ipAllowList: []   # internal-only: no public client needs this database
 
 services:
   # ----------------------------------------------------------------- cache --
@@ -72,10 +85,20 @@ services:
         - render.yaml
     envVars:
       - fromGroup: restaurant-rag-backend
+      # Supabase, not the Render database below.
+      #
+      # The data is already there — the restaurants, their branches, menus and
+      # order history — so the deployment is testable on the day it comes up
+      # rather than after a migrate and a seed.
+      #
+      # Two things this costs, both deliberate and both worth knowing. A laptop
+      # and this deployment then share one database, so a test order placed
+      # either side appears on both. And the host MUST be the session pooler
+      # (`aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`): the
+      # direct host is IPv6-only, and the transaction pooler on 6543 breaks
+      # psycopg's prepared statements, which fails Alembic DDL.
       - key: DATABASE_URL
-        fromDatabase:
-          name: restaurant-rag-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -156,10 +179,20 @@ services:
         - render.yaml
     envVars:
       - fromGroup: restaurant-rag-backend
+      # Supabase, not the Render database below.
+      #
+      # The data is already there — the restaurants, their branches, menus and
+      # order history — so the deployment is testable on the day it comes up
+      # rather than after a migrate and a seed.
+      #
+      # Two things this costs, both deliberate and both worth knowing. A laptop
+      # and this deployment then share one database, so a test order placed
+      # either side appears on both. And the host MUST be the session pooler
+      # (`aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`): the
+      # direct host is IPv6-only, and the transaction pooler on 6543 breaks
+      # psycopg's prepared statements, which fails Alembic DDL.
       - key: DATABASE_URL
-        fromDatabase:
-          name: restaurant-rag-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -214,10 +247,20 @@ services:
         - render.yaml
     envVars:
       - fromGroup: restaurant-rag-backend
+      # Supabase, not the Render database below.
+      #
+      # The data is already there — the restaurants, their branches, menus and
+      # order history — so the deployment is testable on the day it comes up
+      # rather than after a migrate and a seed.
+      #
+      # Two things this costs, both deliberate and both worth knowing. A laptop
+      # and this deployment then share one database, so a test order placed
+      # either side appears on both. And the host MUST be the session pooler
+      # (`aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`): the
+      # direct host is IPv6-only, and the transaction pooler on 6543 breaks
+      # psycopg's prepared statements, which fails Alembic DDL.
       - key: DATABASE_URL
-        fromDatabase:
-          name: restaurant-rag-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -402,6 +445,84 @@ envVarGroups:
         value: inr
       - key: PAYMENT_INTENT_TTL_MINUTES
         value: "30"
+
+
+      # --- geocoding -------------------------------------------------------
+      #
+      # An address becomes a pair of coordinates before a courier can price the
+      # trip to it. Without a key the backend falls back to Nominatim, whose
+      # usage policy forbids this volume and which answers Indian addresses
+      # badly — the fallback is for a developer's laptop, not for customers.
+      #
+      # RESTRICT THE KEY to this service's IPs before it serves anybody. An
+      # unrestricted key in a deployed environment is billable by whoever
+      # finds it.
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+
+      # --- courier ---------------------------------------------------------
+      #
+      # Two flags, deliberately separate, and the separation is the whole
+      # point: QUOTES lets a checkout show a real delivery fee, and costs
+      # nothing. DISPATCH books an actual rider who turns up at an actual
+      # address and is paid. Quotes on, dispatch OFF until somebody decides
+      # otherwise in the dashboard.
+      #
+      # PIDGE_BRAND_* are absent on purpose. This account is a VENDOR (the
+      # `_4_` in the username); an order carrying a brand block is refused
+      # outright with "Brand is allowed only for aggregator(6)".
+      - key: ENABLE_DELIVERY_QUOTES
+        value: "true"
+      - key: ENABLE_DELIVERY_DISPATCH
+        value: "false"
+      # The laptop interlock. On a deployed environment this must stay false:
+      # it exists so a DEVELOPMENT machine cannot book a real rider, and
+      # `live_dispatch_blocked_reason` already leaves a real deployment alone.
+      - key: ALLOW_LIVE_DISPATCH_FROM_LOCAL
+        value: "false"
+      # A courier that invents riders. Never outside a laptop — the registry
+      # refuses to build it unless ENVIRONMENT is development/local/test, and
+      # this is belt and braces.
+      - key: ENABLE_DELIVERY_REHEARSAL
+        value: "false"
+      - key: PIDGE_BASE_URL
+        sync: false
+      - key: PIDGE_USERNAME
+        sync: false
+      - key: PIDGE_PASSWORD
+        sync: false
+      # Defence in depth on the webhook, not the guarantee — every push is
+      # confirmed by fetching the order from Pidge regardless. Set it to
+      # something long and random, and give Pidge the same value if their
+      # dashboard can send a custom header.
+      - key: DELIVERY_WEBHOOK_SECRET
+        sync: false
+
+      # --- WhatsApp --------------------------------------------------------
+      #
+      # Off until a channel is configured for this deployment. Switching it on
+      # without the credentials below means every inbound message is accepted
+      # and silently dropped.
+      - key: WHATSAPP_ENABLED
+        value: "false"
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+
+      # --- public addresses ------------------------------------------------
+      #
+      # Where a customer is sent back to after paying on a phone, and where
+      # links in notifications point. Both are the deployed hostnames, not
+      # localhost — Stripe returning a customer to a laptop is the failure
+      # these exist to prevent. Set once the API and the storefront have their
+      # Render/Vercel hostnames.
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
 
       # --- Firebase / push -------------------------------------------------
       #
