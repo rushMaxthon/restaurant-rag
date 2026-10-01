@@ -100,6 +100,22 @@
   textarea {
     letter-spacing: 0;
   }
+  /* The 44px touch-target floor.
+     -----------------------------
+     Worth knowing what this does and does not do: `min-height` has NO EFFECT
+     on a non-replaced inline element, and an `<a>` is `display: inline` by
+     default. So this applies to buttons, selects, and any anchor a utility has
+     already made `inline-flex`, `block` or `grid` — which is every anchor that
+     is styled as a control — and silently does nothing for a plain text link.
+     Measured at 390px: `.dish-title` computes `min-height: 44px` and a height
+     of 24px, exactly as the spec says it should.
+
+     That is the right outcome rather than a gap to close. Forcing 44px onto
+     every inline anchor would space out links inside a paragraph as if they
+     were buttons. A text link gets its tappable area from the row or card it
+     sits in — `.dish-title` is inside a `.dish-card` that is itself a link —
+     and the place to check that is the rendered page, which is what
+     `e2e/mobile-layout.spec.ts` is for. */
   button,
   a,
   select {
@@ -626,10 +642,10 @@
   font-size: 0.875rem;
   font-weight: 700;
   color: var(--muted);
-  transition: color 0.16s;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 .back-link svg {
-  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .back-link:hover {
   color: var(--text);
@@ -714,7 +730,7 @@
   border-radius: 999px;
   background: var(--primary);
   box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--primary) 70%, transparent);
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--dur) var(--ease-out);
 }
 .segmented[data-active="PICKUP"] .segmented-thumb {
   transform: translateX(calc(100% + 0.25rem));
@@ -730,7 +746,7 @@
   font-size: 0.9rem;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color var(--dur) var(--ease-out);
 }
 .segmented-option[data-selected="true"] {
   color: var(--on-primary);
@@ -790,6 +806,12 @@
     var(--primary),
     color-mix(in srgb, var(--primary) 60%, #ffb067)
   );
+  /* Deliberately longer than `--dur-slow`, and the only two timings in this
+     file that are not tokens. A progress bar is not a UI transition: the
+     duration IS the message — a bar that fills in 240ms reads as a jump and
+     tells the customer nothing about how far along they are. Left as literals
+     so the next person retuning `--dur` does not accidentally make these
+     snap. */
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -827,7 +849,7 @@
   transform: translateY(-50%);
   pointer-events: none;
   color: var(--muted);
-  transition: color 0.18s ease;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 .field-wrap:focus-within > svg {
   color: var(--primary);
@@ -893,7 +915,7 @@ html {
      so it reads as a floating pill rather than a full-width bar. */
     border: 2px solid transparent;
     background-clip: padding-box;
-    transition: background-color 0.18s ease;
+    transition: background-color var(--dur-fast) var(--ease-out);
   }
   ::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
@@ -1063,6 +1085,7 @@ html {
   left: 0;
   border-radius: 999px;
   background: var(--success);
+  /* As above: the duration is the message, not a transition. */
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .track-steps {

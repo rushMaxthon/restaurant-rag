@@ -891,7 +891,7 @@ textarea.flex:focus-visible {
   background: var(--surface);
   padding: 0 0.75rem;
   cursor: pointer;
-  transition: border-color 0.16s;
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
 .date-field:focus-within {
   border-color: var(--primary);
@@ -942,7 +942,7 @@ textarea.flex:focus-visible {
    as a latin-only subset, so a geometric character like U+25BE is not in the
    font and falls back per platform — it rendered as a stray dot on Windows. */
 .hours-disclosure > summary svg {
-  transition: transform 0.16s;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .hours-disclosure[open] > summary svg {
   transform: rotate(180deg);
@@ -1125,7 +1125,7 @@ html {
 .choice-card__chevron {
   margin-left: auto;
   color: var(--muted);
-  transition: transform 0.18s ease;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .choice-card[data-folded="true"] .choice-card__chevron {
   transform: rotate(-90deg);
@@ -1791,7 +1791,7 @@ html {
   font-weight: 800;
   color: var(--primary);
   cursor: pointer;
-  transition: background 0.16s;
+  transition: background var(--dur-fast) var(--ease-out);
 }
 .usual__add:hover {
   background: color-mix(in srgb, var(--primary) 22%, transparent);
