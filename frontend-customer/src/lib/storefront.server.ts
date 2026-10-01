@@ -52,6 +52,9 @@ const UNKNOWN_CONFIG: StorefrontConfig = {
   // default rather than pin an arbitrary restaurant's typeface on every
   // storefront that failed to resolve.
   font_family: null,
+  // No address, because a storefront that could not reach its API does not
+  // know which restaurant it is — the same reason the copy above is nameless.
+  contact: {},
 };
 
 const TTL_MS = 30_000;

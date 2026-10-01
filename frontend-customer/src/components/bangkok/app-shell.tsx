@@ -14,6 +14,7 @@ import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { useStorefrontCopy } from "@/lib/storefront";
 import { BranchGate } from "@/components/bangkok/branch-gate";
+import { SiteFooter } from "./site-footer";
 import { useAuth } from "@/lib/auth";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const store = useBangkokStore();
@@ -105,6 +106,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <BranchPicker className="w-full" />
       </div>
       <main className="app-main">{children}</main>
+      {/* Inside the shell rather than per route, so there is no page that can
+          forget it — including the 404 and the error boundary, which are
+          exactly the pages where somebody needs a way to reach a human. */}
+      <SiteFooter />
       <nav
         className={`mobile-nav-bar fixed inset-x-0 bottom-0 z-40 grid ${
           // Four columns with three links left a dead column, so the icons sat

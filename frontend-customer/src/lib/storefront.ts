@@ -39,6 +39,38 @@ export type StorefrontConfig = StorefrontCopy & {
    * family. `lib/fonts.ts` turns this into the stylesheet to load.
    */
   font_family: string | null;
+  /**
+   * Where this kitchen is and how to reach it, with the unfilled parts absent.
+   *
+   * On the root loader rather than fetched per page because the footer that
+   * reads it is on every page, and because a search engine reading a
+   * restaurant's address wants it in the first HTML response.
+   *
+   * An empty object is a correct and common answer — onboarding collects a
+   * name and an owner, not an address — so every surface reading this renders
+   * nothing rather than rendering a placeholder.
+   */
+  contact: StorefrontContact;
+};
+
+/**
+ * The subset of `restaurants`' address columns the backend judged real.
+ *
+ * Every field is optional for one reason: the backend OMITS a key it has not
+ * really got, instead of sending the onboarding placeholder. So `undefined`
+ * here means "nobody has filled this in", and there is no value to check
+ * against — which is what keeps "Pending restaurant setup" off a live footer.
+ */
+export type StorefrontContact = {
+  /** Street, city, state and postal code as one line, assembled server-side. */
+  address?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  phone?: string;
 };
 
 export type StorefrontCopy = {
@@ -87,6 +119,7 @@ export type AppConfigPayload = {
   storefront?: Partial<StorefrontCopy>;
   currency?: CurrencyFormat;
   branding?: { cover_image_url?: string | null; font_family?: string | null };
+  contact?: StorefrontContact;
 };
 
 /**
@@ -113,7 +146,21 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     // Blank and absent both mean "unset", which `resolveFonts` reads as the
     // platform default rather than as a family called "".
     font_family: payload.branding?.font_family?.trim() || null,
+    // Taken as given rather than defaulted: the backend already decided which
+    // keys are real, and inventing one here would put it back.
+    contact: payload.contact ?? {},
   };
+}
+
+/**
+ * This restaurant's address and phone number, from anywhere in the tree.
+ *
+ * A read of the root loader, like `useStorefrontCover` — these strings were in
+ * the HTML before it was sent, so the footer on every page costs nothing.
+ */
+export function useStorefrontContact(): StorefrontContact {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return data?.contact ?? {};
 }
 
 /** The meta tags a storefront's copy produces, shared by every route. */

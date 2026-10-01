@@ -135,6 +135,46 @@ import {
     }
   });
 
+  test("the footer and the pages it leads to fit the phone", async ({ page }) => {
+    await resetApp(page);
+
+    // The footer sits above a FIXED bottom nav bar. Without the padding that
+    // clears it, the last row of links is permanently underneath the nav —
+    // visible in a screenshot, and untappable on a real phone, which is the
+    // failure mode a layout check alone would miss.
+    //
+    // Measured on /terms rather than /menu, and that is not arbitrary: the menu
+    // is a 29,000px page of lazily-loaded photographs, so scrolling to the
+    // footer loads images ABOVE it and pushes it further down than where it was
+    // measured. The first version of this test failed on exactly that, 280px
+    // out, which is a real hazard but not the one being tested here.
+    await page.goto("/terms");
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const legal = page.getByRole("link", { name: "Cancellations & refunds" });
+    await legal.scrollIntoViewIfNeeded();
+    await expect(legal).toBeVisible();
+    const box = await legal.boundingBox();
+    const navTop = await page.evaluate(() => {
+      const nav = document.querySelector(".mobile-nav-bar");
+      return nav ? nav.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+    });
+    expect(box, "the footer's legal link has a box").not.toBeNull();
+    expect(
+      box!.y + box!.height,
+      "the last footer link must clear the fixed bottom nav",
+    ).toBeLessThanOrEqual(navTop);
+
+    // The five pages the footer leads to. They are long prose at a capped
+    // measure, which is the shape most likely to push a wide element — a
+    // branch card, an hours grid — past the viewport.
+    for (const path of ["/about", "/contact", "/terms", "/privacy", "/refunds"]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+      await assertFits(page, path);
+    }
+  });
+
   test("the dish detail page is laid out at the device width", async ({ page }) => {
     await resetApp(page);
     await page.goto("/menu");
