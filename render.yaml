@@ -13,6 +13,36 @@
 # this topology, which is why EMBEDDING_PROVIDER is pinned to `gemini` below.
 #
 # Apply with:  render blueprint launch   (or connect the repo in the dashboard)
+#
+# ---------------------------------------------------------------------------
+# REGION: singapore, and it is a measurement rather than a preference.
+#
+# This deployment sits between two fixed points it does not control: the
+# customers, who are in Surat, and the database, which is Supabase in
+# ap-south-1 (Mumbai). Render has no Indian region, so the question is only
+# which of its regions is least far from both. Singapore is ~60ms from Mumbai
+# and ~60ms from western India; Oregon, where this first launched, is ~220ms
+# from Mumbai and ~250ms from the customer.
+#
+# That is not a rounding error, because the API crosses it repeatedly. Measured
+# against the Oregon deployment:
+#
+#   GET /health          (no database)   0.32 - 0.78 s
+#   GET /api/restaurants (one query)     1.28 - 1.79 s
+#
+# ~0.95s for a single logical query, which is several network round trips once
+# SQLAlchemy's BEGIN/SELECT/COMMIT are counted. The address autocomplete pays
+# it twice per keystroke batch — once to authenticate the customer, once to
+# load the branch it biases toward — and took 2-3 seconds per lookup, which
+# reads as broken rather than slow.
+#
+# A region cannot be changed on an existing Render service, so moving means
+# recreating them and taking a new hostname. Everything that names that
+# hostname has to move with it: VITE_API_BASE_URL on the three Vercel
+# projects, PROD_API_BASE_URL in frontend-admin and mobile, PUBLIC_BASE_URL
+# and BACKEND_CORS_ORIGINS in the env group below, and the Stripe webhook
+# endpoint. Done on 2026-10-01, before the Stripe webhook existed and before
+# there were customers, which is the cheapest this ever gets.
 # ---------------------------------------------------------------------------
 
 # NO Render Postgres is provisioned: this deployment points DATABASE_URL at
@@ -39,7 +69,7 @@
 #     # 16 matches what the migration chain was verified against locally
 #     # (PostgreSQL 16.13 + pgvector 0.8.2, full 0001..0047 upgrade from empty).
 #     postgresMajorVersion: "16"
-#     region: oregon
+#     region: singapore
 #     ipAllowList: []   # internal-only: no public client needs this database
 
 services:
@@ -56,7 +86,7 @@ services:
   - name: restaurant-rag-cache
     type: keyvalue
     plan: starter
-    region: oregon
+    region: singapore
     maxmemoryPolicy: noeviction
     ipAllowList: []   # internal-only
 
@@ -65,7 +95,7 @@ services:
     type: web
     runtime: docker
     plan: starter
-    region: oregon
+    region: singapore
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     # No dockerCommand: the image CMD already binds 0.0.0.0:${PORT:-8000} and
@@ -149,7 +179,7 @@ services:
     type: worker
     runtime: docker
     plan: starter
-    region: oregon
+    region: singapore
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     # The time limits are the ANALYTICS ones (compose gives that queue
@@ -232,7 +262,7 @@ services:
     type: worker
     runtime: docker
     plan: starter
-    region: oregon
+    region: singapore
     numInstances: 1
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
