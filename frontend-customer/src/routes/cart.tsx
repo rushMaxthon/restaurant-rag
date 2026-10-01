@@ -11,10 +11,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
+import { useCartCharges } from "@/lib/queries";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
@@ -58,8 +60,21 @@ function CartPage() {
   //
   // So the total here is the part that IS known, and the line beneath it says
   // what is still to come. An honest partial total beats a confident wrong one.
-  const tax = s.subtotal * 0.05;
-  const total = s.subtotal + tax;
+  // The rest of the bill, from the server, for the same reason the delivery
+  // fee is not shown here: this page must not invent a number.
+  //
+  // It used to read `s.subtotal * 0.05` — a rate written into this screen,
+  // directly beneath a comment explaining that an honest partial total beats a
+  // confident wrong one. On a branch that charges packaging and a platform fee
+  // that 5% came out at 5.00 where the server says 28.23.
+  //
+  // Packaging, the platform fee and the tax on the food are all knowable
+  // without an address. Only the delivery fee and the tax on it are not, which
+  // is exactly what the line under the total still says is to come.
+  const chargesQuery = useCartCharges(s.orderLocation?.id, s.subtotal);
+  const charges = chargesQuery.data?.charges ?? null;
+  const tax = charges ? Number(charges.total) : null;
+  const total = s.subtotal + (tax ?? 0);
 
   // Both of these are real fields on the location — no invented delivery promises.
   const minimumOrder = Number(s.orderLocation?.minimum_order_amount ?? 0);
@@ -279,15 +294,21 @@ function CartPage() {
           )}
 
           <dl className="mt-6 space-y-2.5 text-sm">
-            {[
-              ["Subtotal", s.subtotal],
-              ["Tax", tax],
-            ].map(([label, value]) => (
-              <div className="sum-row" key={String(label)}>
-                <dt>{label}</dt>
-                <dd>{money(Number(value))}</dd>
+            <div className="sum-row">
+              <dt>Subtotal</dt>
+              <dd>{money(s.subtotal)}</dd>
+            </div>
+            {/* The same openable line as the checkout and the order page. A
+                figure somebody cannot take apart is one they assume the worst
+                about, and this is the first screen it appears on. */}
+            {charges ? (
+              <ChargesBreakdown charges={charges} money={money} />
+            ) : (
+              <div className="sum-row">
+                <dt>Taxes and charges</dt>
+                <dd>{chargesQuery.isPending ? "Working it out…" : "At checkout"}</dd>
               </div>
-            ))}
+            )}
           </dl>
 
           <div className="sum-total">

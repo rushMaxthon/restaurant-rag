@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -389,10 +390,12 @@ function OrderDetail() {
               <dt>{isDelivery ? "Delivery fee" : "Pickup"}</dt>
               <dd>{Number(o.delivery_fee) === 0 ? "Free" : money(o.delivery_fee)}</dd>
             </div>
-            <div className="sum-row">
-              <dt>Tax</dt>
-              <dd>{money(o.tax_amount)}</dd>
-            </div>
+            {/* The same openable line the checkout shows, for the same reason
+                — except this is the screen somebody actually revisits when
+                they wonder what they paid. A single "Tax 39.23" on a 140
+                order, with no way to take it apart, is the figure people
+                assume the worst about. */}
+            <ChargesBreakdown charges={o.charges} money={money} />
             {discount > 0 && (
               <div className="sum-row" data-tone="success">
                 <dt>Discount</dt>

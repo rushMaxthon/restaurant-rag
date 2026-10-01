@@ -288,6 +288,49 @@ export function useDeliveryQuote(
   });
 }
 
+/**
+ * What a bill carries besides the food, before an address exists.
+ *
+ * The cart has never seen an address — that form is on the next screen — so it
+ * cannot know the delivery fee or the tax on it. It CAN know the rest:
+ * packaging, the platform fee and the tax on the food are all properties of
+ * the branch and the subtotal, and the server works them out from the same
+ * code that charges.
+ *
+ * Which matters because the cart was computing `subtotal * 0.05` instead. On
+ * a branch with packaging and a platform fee that came out at 5.00 against the
+ * 28.23 the server returns for the same basket — the page beside a comment
+ * explaining that an honest partial total beats a confident wrong one.
+ *
+ * Deliberately a separate hook from `useDeliveryQuote`, which requires an
+ * address and is tuned for the checkout. Asking that one with an empty address
+ * would get `fallback_reason: "address_unknown"` back, which is true but is
+ * not a thing the cart should have to reason about.
+ */
+export function useCartCharges(
+  locationId: string | null | undefined,
+  subtotal: number,
+  discountAmount = 0,
+) {
+  return useQuery({
+    queryKey: queryKeys.deliveryQuote(locationId ?? "", `cart:${subtotal}:${discountAmount}`),
+    queryFn: () =>
+      api.quoteDelivery({
+        restaurant_location_id: locationId as string,
+        delivery_address: "",
+        city: "",
+        state: "",
+        postal_code: "",
+        subtotal,
+        discount_amount: discountAmount,
+      }),
+    enabled: Boolean(locationId) && subtotal > 0,
+    placeholderData: (previous) => previous,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
 export function useValidateOrder() {
   return useMutation({ mutationFn: (payload: OrderCreateRequest) => api.validateOrder(payload) });
 }

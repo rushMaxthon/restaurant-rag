@@ -842,6 +842,21 @@ export interface OrderItem {
   updated_at: string;
 }
 
+/** One row of the breakdown behind the collapsed charges figure. */
+export interface OrderChargeLine {
+  key: string;
+  label: string;
+  amount: number | string;
+  /** What this row is, in a sentence. Shown to a customer, not to staff. */
+  note: string;
+}
+
+/** Everything that is neither the food nor the delivery, and its parts. */
+export interface OrderCharges {
+  total: number | string;
+  lines: OrderChargeLine[];
+}
+
 export interface Order {
   id: string;
   customer_id: string;
@@ -886,6 +901,15 @@ export interface Order {
    */
   contact_name: string | null;
   contact_phone: string | null;
+  /**
+   * What `tax_amount` is made of, line by line, as the server computed it.
+   *
+   * The panel showed a single "Taxes" figure — 39.23 on a 140.00 order — with
+   * nothing behind it. A restaurant reconciling a day's orders cannot tell
+   * their own packaging charge from the platform's fee from the government's
+   * GST, and those three go to three different places.
+   */
+  charges: OrderCharges | null;
   status: OrderStatus;
   payment_status: PaymentStatus;
   payment_method: PaymentMethod;

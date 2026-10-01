@@ -129,6 +129,22 @@ export type Restaurant = {
   is_open: boolean;
   locations?: RestaurantLocation[];
 };
+/** One row of the breakdown behind the collapsed charges line. */
+export type ChargeLine = {
+  key: string;
+  label: string;
+  amount: Money;
+  /** What this row is, in a sentence. Never empty for a fee somebody could
+   *  mistake for a tax. */
+  note: string;
+};
+
+/** Everything that is neither the food nor the delivery, and its parts. */
+export type OrderCharges = {
+  total: Money;
+  lines: ChargeLine[];
+};
+
 export type Order = {
   id: string;
   status: string;
@@ -144,6 +160,16 @@ export type Order = {
   subtotal: Money;
   delivery_fee: Money;
   tax_amount: Money;
+  /**
+   * What `tax_amount` is actually made of, line by line.
+   *
+   * Third time in this file: the API has always sent it and nothing here
+   * declared it, so every screen but the checkout showed a single "Tax"
+   * figure that could not be opened. On a 140.00 order that figure is 39.23,
+   * and a customer with no way to take it apart is a customer who assumes the
+   * worst about it.
+   */
+  charges: OrderCharges | null;
   discount_amount: Money;
   total_amount: Money;
   placed_at: string;

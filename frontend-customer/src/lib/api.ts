@@ -1,4 +1,11 @@
-import type { Restaurant, RestaurantLocation, MenuItem, Order, Money } from "@/lib/bangkok-data";
+import type {
+  Restaurant,
+  RestaurantLocation,
+  MenuItem,
+  Order,
+  Money,
+  OrderCharges,
+} from "@/lib/bangkok-data";
 import type { GuestPreferences } from "@/lib/guest-preferences";
 import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
 
@@ -486,21 +493,11 @@ export type OrderDelivery = {
   distance_metres: number | null;
 };
 
-/** One row of the breakdown behind the collapsed charges line. */
-export type ChargeLine = {
-  key: string;
-  label: string;
-  amount: Money;
-  /** What this row is, in a sentence. Never empty for a fee somebody could
-   *  mistake for a tax. */
-  note: string;
-};
-
-/** Everything that is neither the food nor the delivery, and its parts. */
-export type OrderCharges = {
-  total: Money;
-  lines: ChargeLine[];
-};
+// `ChargeLine` and `OrderCharges` now live in `bangkok-data`, because the
+// Order type there needs them and this module already imports from it —
+// declaring them here meant the dependency had to run both ways. Re-exported
+// so existing importers are unaffected.
+export type { ChargeLine, OrderCharges } from "@/lib/bangkok-data";
 
 /**
  * What delivery costs on this trip, as the server worked it out.

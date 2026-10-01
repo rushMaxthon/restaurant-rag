@@ -657,9 +657,24 @@ export function OrderDetailPage({
             <strong>{money.format(order.delivery_fee, order.restaurant_id)}</strong>
           </div>
           <div className="order-detail__totals-row">
-            <span>Taxes</span>
+            <span>Taxes and charges</span>
             <strong>{money.format(order.tax_amount, order.restaurant_id)}</strong>
           </div>
+          {/* Opened, not hidden behind a click.
+              The customer gets this as a modal because they are reading one
+              bill once; a restaurant is reconciling a day of them, and the
+              three parts go to three different places — their own packaging
+              charge, the platform's fee, and the government's GST. A single
+              figure is the one thing that cannot be reconciled. */}
+          {order.charges?.lines.map((line) => (
+            <div
+              className="order-detail__totals-row order-detail__totals-row--muted"
+              key={line.key}
+            >
+              <span>{line.label}</span>
+              <strong>{money.format(line.amount, order.restaurant_id)}</strong>
+            </div>
+          ))}
           {discount > 0 ? (
             <div className="order-detail__totals-row order-detail__totals-row--discount">
               <span>Discount</span>
