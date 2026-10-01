@@ -8,6 +8,7 @@ import {
   Clock,
   CreditCard,
   MapPin,
+  Phone,
   Store,
   XCircle,
 } from "lucide-react";
@@ -232,6 +233,79 @@ function OrderDetail() {
             </div>
           ) : (
             <>
+              {/*
+               * The live part of the order, ABOVE the history of it.
+               *
+               * On a phone the timeline is five rows of roughly sixty pixels,
+               * three of which say "Done" — so the one thing somebody opens
+               * this page to find, when their food is already on a bike, was
+               * below the fold behind a list of things that had already
+               * happened. It now comes first, and the timeline reads as the
+               * context it is.
+               *
+               * The buttons are the other half. The rider's number was an
+               * 18px text link: that is the control you reach for when your
+               * food is lost, one-handed, probably outdoors. Both actions are
+               * now full-height buttons sharing a row, which is also why they
+               * are side by side rather than stacked — two taps of equal
+               * weight, neither buried.
+               */}
+              {isDelivery && rider && (
+                <div className="mb-7 rounded-xl bg-surface-alt p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
+                    Your rider
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold leading-snug">{rider.rider_name}</p>
+                  {rider.distance_metres != null && (
+                    <p className="mt-0.5 text-sm text-muted">
+                      {(rider.distance_metres / 1000).toFixed(1)} km from the restaurant to you.
+                    </p>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    {rider.rider_mobile && (
+                      <Button asChild className="h-11 flex-1" variant="outline">
+                        <a href={`tel:${rider.rider_mobile}`}>
+                          <Phone className="size-4" />
+                          Call
+                        </a>
+                      </Button>
+                    )}
+                    {rider.tracking_url && (
+                      <Button asChild className="h-11 flex-1">
+                        <a href={rider.tracking_url} rel="noreferrer" target="_blank">
+                          <MapPin className="size-4" />
+                          Track
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/*
+               * The same slot before anyone is assigned. The courier hands
+               * over a tracking page the moment the trip is booked and a rider
+               * only when one accepts — Pidge quotes eleven minutes between
+               * the two, and showing nothing for eleven minutes is how a
+               * customer decides the order is stuck.
+               */}
+              {isDelivery && !rider && tracking?.tracking_url && (
+                <div className="mb-7 rounded-xl bg-surface-alt p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
+                    Finding you a rider
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    We&apos;ll show their name and number as soon as one picks it up.
+                  </p>
+                  <Button asChild className="mt-3 h-11 w-full" variant="outline">
+                    <a href={tracking.tracking_url} rel="noreferrer" target="_blank">
+                      <MapPin className="size-4" />
+                      Track on the map
+                    </a>
+                  </Button>
+                </div>
+              )}
+
               <div className="track-bar mb-7">
                 <div className="track-fill" style={{ width: `${progress}%` }} />
               </div>
@@ -262,87 +336,6 @@ function OrderDetail() {
                 })}
               </ol>
             </>
-          )}
-
-          {/*
-           * Before anyone is assigned: the wait, and the link to watch it.
-           *
-           * The courier gives us a tracking page the moment the trip is
-           * booked, but a rider the moment one accepts — and Pidge quotes
-           * ELEVEN MINUTES between those two. The card below is headed "Your
-           * rider" and so rightly waits for one; the effect was that for
-           * eleven minutes a customer had a working tracking link and was
-           * shown nothing at all.
-           *
-           * So the link comes out as soon as it exists, under a heading that
-           * claims no rider. The distance is the restaurant's own figure and
-           * is true before anybody is carrying anything.
-           */}
-          {isDelivery && !rider && tracking?.tracking_url && (
-            <div className="mt-7 rounded-xl bg-surface-alt p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
-                    Finding you a rider
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    We&apos;ll show their name and number as soon as one picks it up.
-                  </p>
-                </div>
-                <Button asChild size="sm" variant="outline">
-                  <a href={tracking.tracking_url} rel="noreferrer" target="_blank">
-                    Track on the map
-                  </a>
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/*
-           * Who is bringing it, and a link to watch them.
-           *
-           * The customer could already see a status word — "out for delivery"
-           * — and nothing about the person carrying their dinner. The rider's
-           * name and a number to ring is the thing people actually want at
-           * that moment, and the courier's own tracking page is the only
-           * place the rider's position exists: their API exposes no
-           * coordinates, so this links out rather than drawing a map it
-           * cannot fill.
-           *
-           * Renders nothing until a rider is assigned. An empty card headed
-           * "Your rider" over no rider is worse than no card.
-           */}
-          {isDelivery && rider && (
-            <div className="mt-7 rounded-xl bg-surface-alt p-4">
-              <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
-                Your rider
-              </p>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold leading-snug">{rider.rider_name}</p>
-                  {rider.rider_mobile && (
-                    <a
-                      className="text-sm font-semibold text-primary"
-                      href={`tel:${rider.rider_mobile}`}
-                    >
-                      {rider.rider_mobile}
-                    </a>
-                  )}
-                </div>
-                {rider.tracking_url && (
-                  <Button asChild size="sm" variant="outline">
-                    <a href={rider.tracking_url} rel="noreferrer" target="_blank">
-                      Track on the map
-                    </a>
-                  </Button>
-                )}
-              </div>
-              {rider.distance_metres != null && (
-                <p className="mt-2 text-sm text-muted">
-                  {(rider.distance_metres / 1000).toFixed(1)} km from the restaurant to you.
-                </p>
-              )}
-            </div>
           )}
 
           {isDelivery && o.delivery_address && (
