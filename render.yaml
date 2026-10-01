@@ -164,14 +164,21 @@ services:
     # background job came to select restaurants.theme before the column existed.
     # They deliberately do not migrate themselves: two or three processes racing
     # the same alembic_version row is the failure the API's pre-deploy avoids.
+    # ONE program, no quotes and no `&&`, and that is load-bearing rather than
+    # a style choice. Render consumes an `sh -c ` prefix itself and passes the
+    # rest to its own shell with the double quotes still in it, so a quoted
+    # command arrives as a single word and dies with the whole line reported as
+    # `not found`. `start_celery` does the wait and the exec in Python so this
+    # line survives being split on whitespace by something that does not
+    # understand quoting. See that module before rewriting this.
     dockerCommand: >-
-      sh -c "python -m app.scripts.wait_for_schema &&
-      exec celery -A app.config.celery:celery_app worker
+      python -m app.scripts.start_celery
+      -A app.config.celery:celery_app worker
       --loglevel=info
       --queues=default,analytics,embeddings,notifications
       --concurrency=2
       --soft-time-limit=3600
-      --time-limit=3900"
+      --time-limit=3900
     autoDeployTrigger: commit
     buildFilter:
       paths:
@@ -235,11 +242,12 @@ services:
     # background job came to select restaurants.theme before the column existed.
     # They deliberately do not migrate themselves: two or three processes racing
     # the same alembic_version row is the failure the API's pre-deploy avoids.
+    # No quotes and no `&&` — same reason as the worker above.
     dockerCommand: >-
-      sh -c "python -m app.scripts.wait_for_schema &&
-      exec celery -A app.config.celery:celery_app beat
+      python -m app.scripts.start_celery
+      -A app.config.celery:celery_app beat
       --loglevel=info
-      --schedule=/var/run/celery/celerybeat-schedule"
+      --schedule=/var/run/celery/celerybeat-schedule
     autoDeployTrigger: commit
     buildFilter:
       paths:
