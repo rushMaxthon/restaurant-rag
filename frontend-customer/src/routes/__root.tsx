@@ -18,6 +18,7 @@ import { AuthProvider } from "@/lib/auth";
 import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
 import { fontTokenCss, resolveFonts } from "@/lib/fonts";
+import { SPLASH_PREPAINT, SplashScreen } from "@/components/bangkok/splash-screen";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 import { Button } from "@/components/ui/button";
 
@@ -118,12 +119,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const storefront = Route.useLoaderData() as typeof UNKNOWN_STOREFRONT | undefined;
   return (
     <html lang="en">
       <head>
+        {/* Before anything renders, so a second page in the same visit never
+            flashes the splash. React cannot run early enough to prevent that,
+            which is the same reason the operator panel inlines its theme
+            script. */}
+        <script dangerouslySetInnerHTML={{ __html: SPLASH_PREPAINT }} />
         <HeadContent />
       </head>
       <body>
+        {/* Over the page, not instead of it: the menu, the copy and the meta
+            tags are all in this same response whether the overlay renders or
+            not, so a crawler reads the storefront either way. */}
+        <SplashScreen name={(storefront ?? UNKNOWN_STOREFRONT).name} />
         {children}
         <Scripts />
       </body>

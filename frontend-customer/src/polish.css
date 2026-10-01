@@ -2075,3 +2075,97 @@ html {
   text-align: center;
   color: var(--muted);
 }
+
+/* --- First arrival ---------------------------------------------------------
+   The restaurant's name, held for a moment, then out of the way.
+
+   The timing is the whole design. 1100ms total: the mark and name settle over
+   the first ~450ms, hold briefly, and the overlay is gone by 1.1s — which is
+   roughly how long the menu takes to arrive behind it from a backend on
+   another continent. Long enough to read a name, short enough that nobody who
+   came to order dinner notices they waited.
+
+   Driven entirely by a CSS animation with `forwards`, and that is deliberate:
+   there is no JavaScript that has to run for this to leave. A timer waiting on
+   a query can hang when the query hangs, and a splash screen that outlives its
+   data is the worst version of this idea — the one where a customer stares at
+   a logo because the backend is down. Here the overlay leaves on time even if
+   the bundle never loads at all.
+
+   `visibility` rather than `display` on the way out, so the fade can run; and
+   `pointer-events: none` from the start of the fade so it cannot swallow a tap
+   from somebody faster than the animation. */
+@keyframes splash-out {
+  0%,
+  62% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@keyframes splash-mark-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-4);
+  background: var(--bg);
+  animation: splash-out 1.1s var(--ease-out) forwards;
+  pointer-events: none;
+}
+.splash__mark {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  /* The brand as a filled surface carrying a label — the one token that is
+     measured for exactly this. */
+  background: var(--primary-strong);
+  color: var(--on-primary);
+  font-family: var(--font-display-stack);
+  font-size: var(--fs-title);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  box-shadow: var(--shadow-brand-md);
+  animation: splash-mark-in var(--dur-slow) var(--ease-spring) both;
+}
+.splash__name {
+  margin: 0;
+  font-family: var(--font-display-stack);
+  font-size: var(--fs-title-sm);
+  font-weight: var(--display-weight, 700);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  color: var(--text);
+  animation: splash-mark-in var(--dur-slow) var(--ease-out) both;
+  animation-delay: 90ms;
+}
+
+/* A repeat view inside the same visit. Set before the first paint by the
+   inline script, so there is no flash to remove. */
+html[data-splash="seen"] .splash {
+  display: none;
+}
+
+/* Not a shorter animation — none at all. Somebody who has asked their system
+   to stop moving things has not asked for a faster version of the thing. */
+@media (prefers-reduced-motion: reduce) {
+  .splash {
+    display: none;
+  }
+}
