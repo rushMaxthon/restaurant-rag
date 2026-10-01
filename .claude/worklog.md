@@ -26,6 +26,57 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-01 — Mobile stops pricing orders (the last static amount)
+
+**Goal:** "let's do with the delivery part so let's finish it asap."
+
+**What was actually left.** The admin and the web storefront have been asking
+the server for delivery since the work started. The React Native app never
+learned: `CartScreen` and `PaymentScreen` each read the branch's FLAT
+`delivery_fee` and added `subtotal * 0.05`, a rate written into the screen.
+
+Measured live against Bhagwati Bakery Main Branch: the app showed **147.00
+with "Free delivery"**; the server charged **229.23**. An **82.23 gap** on a
+140 order. The branch's flat fee is 0.00 *because* it quotes per address — so
+the single value the app trusted was the one that meant "ask somebody else".
+This was the original instruction ("don't use static amount... we will get the
+delivery price from the API response") still unmet in one of the three clients.
+
+**No backend change was needed.** `POST /orders/delivery-quote` already
+returns the fee, the itemised charges and the total from the same code that
+charges. It was only mobile that wasn't asking.
+
+**Changed:** `utils/deliveryQuote.ts` (new, the pure rules) +
+`hooks/useDeliveryQuote.ts` (new, timing and state only); `types/app.ts`
+(`DeliveryQuote`, `OrderCharges`); `services/api.ts` (`quoteDelivery`);
+`CartScreen`, `CartSummaryCard`, `PaymentScreen`, `RestaurantCard`.
+
+Three invariants, each a way to get it wrong again: never a fallback number
+(the types make `deliveryFee`/`taxAmount` nullable so the compiler finds every
+screen that assumed otherwise); a stale fee is worse than no fee, so the quote
+clears the instant anything affecting the price moves and late replies are
+dropped by generation; and the Pay button is not submittable until the server
+has priced the order.
+
+**Verified:** 26 new tests (175 mobile total), `tsc --noEmit` clean, lint
+unchanged at its pre-existing 148. Test figures are that branch's real ones
+from the server's reply, so local arithmetic has to disagree with a live
+response to pass.
+
+**Open — and these are the rest of "the delivery part":**
+- **Mobile has no address form.** It quotes from the saved location only, so a
+  customer entering a NEW address still cannot be priced before checkout. This
+  is the next piece, and it is the bigger half.
+- Needs you: strip Routes API from the Google key; set an application
+  restriction (server IP) before production; hand Pidge the webhook URL and
+  ask about the cancel endpoint, rider coordinates and the aggregator account.
+- Pidge sandbox never assigns a rider, so the tracking path is still unproven
+  against a real one.
+- Two branches are still only neighbourhood-placed.
+- `__tests__/App.test.tsx` fails on a native module here and did before this
+  change (`npm install --ignore-scripts` is required on Windows — the
+  postinstall runs `pod install`).
+
 ## 2026-10-01 — The brand fill, and one ladder per scale
 
 **Goal:** "change the primary button to #cf4300 too and do all the required
