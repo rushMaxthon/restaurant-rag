@@ -5,6 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Restaurant RAG · Admin</title>
+    <!--
+      The theme, before anything is painted.
+
+      `src/services/theme.ts` is the owner of this decision and the only thing
+      that WRITES the preference; this is a read of it that has to happen
+      earlier than React can run. Applying the class from an effect means the
+      first paint is always the default — so an operator who chose dark got a
+      white flash on every navigation, and on a machine whose OS is dark the
+      flash goes the other way, because a document that has not yet declared
+      `color-scheme` gets the browser's own guess.
+
+      Deliberately inline and deliberately before the stylesheet: a module
+      script is deferred, and a separate file is a request. It is duplication
+      of exactly two strings — the storage key and the class — which is the
+      price of having the answer before the first frame.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("admin.theme");
+          var dark =
+            saved === "dark" ||
+            (saved !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+          // What makes the browser's own furniture follow: scrollbars, form
+          // controls, and the gap between pages that is painted before any of
+          // our CSS applies.
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (error) {
+          // Unreadable storage is not a reason to fail to render a panel.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

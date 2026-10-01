@@ -79,6 +79,14 @@
      without turning the page into stripes. */
   --row-tint: rgb(250 251 253 / 0.42);
   /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
+  /* The loading placeholder, as a pair: the block and the sheen that sweeps
+     across it. Both are needed as tokens because a skeleton is a filled
+     rectangle the size of the content it stands in for — the one thing on a
+     dark page that cannot be papered over — and because the two must differ
+     or the shimmer stops moving. */
+  --skeleton: #eaedf3;
+  --skeleton-sheen: #f5f7fa;
+
   --field-bg: var(--surface);
   --field-bg-active: #ffffff;
   --border-strong: rgba(255, 82, 0, 0.18);
@@ -189,6 +197,9 @@
   --card-muted: var(--surface-alt);
   /* Lighter than the surface by a hair, not by 42% of white. */
   --row-tint: rgb(255 255 255 / 0.03);
+
+  --skeleton: #23262d;
+  --skeleton-sheen: #2e323b;
 
   --field-bg: var(--surface-alt);
   --field-bg-active: var(--surface-alt);

@@ -15,6 +15,12 @@
  * and wants the panel bright can have that.
  */
 
+/**
+ * Also hard-coded in `index.html`, which reads it in an inline script before
+ * the first paint — React cannot run early enough to avoid a flash of the
+ * wrong theme. If this key or the fallback rule below changes, that script
+ * changes with it; the two must agree or the panel repaints on every load.
+ */
 const STORAGE_KEY = "admin.theme";
 
 export type Theme = "light" | "dark";

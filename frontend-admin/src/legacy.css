@@ -101,7 +101,11 @@ button {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100dvh;
-  gap: 18px;
+  /* 16px rather than 18px, and the rhythm inside `__sections` is tightened to
+     match. Measured on this checkout at 1920x1080: the nav wanted 776px and
+     had 661px, so `Notifications` and `Settings` sat below a scroll with
+     nothing on screen saying so. See the note on `__sections`. */
+  gap: 14px;
   padding: 18px 14px;
   background:
     radial-gradient(circle at top left, rgba(255, 82, 0, 0.18), transparent 18%),
@@ -159,8 +163,11 @@ button {
 }
 
 .admin-sidebar__profile-badge {
-  width: 44px;
-  height: 44px;
+  /* 38px, matching the brand mark above it rather than sitting 6px larger
+     than it for no reason, and giving the nav back the last 10px it needed to
+     fit at 1080p. */
+  width: 38px;
+  height: 38px;
   border-radius: var(--radius-5);
   font-weight: 800;
 }
@@ -205,10 +212,33 @@ button {
   color: #fff;
 }
 
+/* Sixteen entries in five groups, and they have to fit.
+   Measured at 1920x1080 before this change: 776px of nav in 661px of space.
+   An admin landing on the dashboard saw the list end at `AI Logs`, with
+   `Notifications` and `Settings` below a scroll — and because Windows draws
+   its overlay scrollbar only while you scroll, and the thumb was white at 12%
+   opacity over a near-black gradient, there was nothing on screen suggesting
+   there was more. Two entries of the sixteen were effectively unreachable
+   unless you happened to flick the wheel over the sidebar.
+
+   The budget, item by item: 16 links at 38px plus 11 inter-link gaps, 5 group
+   labels at 12px each with a 6px gap under them, and 4 gaps of 14px between
+   groups. Those were the five numbers to move, and the tightening below takes
+   the nav to 675px against 675px of space at 1080p.
+
+   That is a fit, not a margin, and it stops being one on a shorter screen —
+   a 768px-tall laptop is ~150px short however this is spaced, and a
+   seventeenth entry puts 1080p back over. So the scrollbar below is made
+   genuinely visible rather than left at the opacity that hid the problem:
+   when the list does scroll, that now has to be apparent. */
 .admin-sidebar__sections {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+  /* Firefox has no ::-webkit-scrollbar; these two are how it gets the same
+     treatment, and `thin` is the narrowest it offers. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
 }
 
 .admin-sidebar__sections::-webkit-scrollbar {
@@ -217,16 +247,20 @@ button {
 
 .admin-sidebar__sections::-webkit-scrollbar-thumb {
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.admin-sidebar__sections:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .admin-sidebar__section {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .admin-sidebar__section + .admin-sidebar__section {
-  margin-top: 14px;
+  margin-top: 8px;
 }
 
 .admin-sidebar__section-label {
@@ -250,7 +284,7 @@ button {
 
 .admin-sidebar__links {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .admin-sidebar__link {
@@ -258,7 +292,10 @@ button {
   justify-content: flex-start;
   gap: 10px;
   width: 100%;
-  min-height: 38px;
+  /* 34px, down from 38px. Still above the 32px that a row of text plus a 17px
+     icon needs to stay comfortably clickable, and 4px x 16 entries is the
+     single biggest saving available in the nav. */
+  min-height: 34px;
   padding: 0 10px;
   border-radius: var(--radius-2);
   color: rgba(255, 255, 255, 0.72);
@@ -729,7 +766,7 @@ button {
   min-width: auto;
   padding: 0 12px;
   border-radius: var(--radius-3);
-  border: 1px solid rgba(229, 234, 243, 0.96);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
   font-size: var(--fs-caption);
@@ -766,7 +803,7 @@ button {
   gap: 8px;
   padding: 12px 14px;
   border-radius: var(--radius-4);
-  border: 1px solid rgba(229, 234, 243, 0.94);
+  border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
@@ -843,7 +880,7 @@ button {
   gap: 10px;
   padding: 14px;
   border-radius: var(--radius-4);
-  border: 1px solid rgba(229, 234, 243, 0.94);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
@@ -865,9 +902,14 @@ button {
   overflow: hidden;
   padding: 6px 6px 0 0;
   border-radius: var(--radius-5);
+  /* Tokens, not white. This was two white gradients, which on a white card
+     were invisible and on a dark one painted a 994x208 pale slab across the
+     first panel of the first screen anybody sees. `--card-muted` is the same
+     near-white in light mode and follows the surface in dark, so the plot
+     area is defined either way. */
   background:
-    radial-gradient(circle at top center, rgba(255, 255, 255, 0.78), transparent 55%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 253, 0.66));
+    radial-gradient(circle at top center, var(--card-muted), transparent 55%),
+    linear-gradient(180deg, var(--card-muted), transparent);
 }
 
 .dashboard-admin-area-chart svg {
@@ -916,13 +958,13 @@ button {
 }
 
 .dashboard-admin-area-chart__grid-line {
-  stroke: rgba(203, 213, 225, 0.72);
+  stroke: var(--border);
   stroke-width: 1;
   stroke-dasharray: 2 4;
 }
 
 .dashboard-admin-area-chart__grid-tick {
-  stroke: rgba(226, 232, 240, 0.7);
+  stroke: var(--border);
   stroke-width: 1;
   stroke-dasharray: 2 6;
 }
@@ -948,7 +990,7 @@ button {
   min-width: 128px;
   padding: 10px 12px;
   border-radius: var(--radius-4);
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: var(--shadow-xl);
   transform: translate(12px, -50%);
@@ -1033,7 +1075,7 @@ button {
   min-width: 124px;
   padding: 10px 12px;
   border-radius: var(--radius-4);
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: var(--shadow-xl);
   transform: translate(-50%, 0);
@@ -1085,7 +1127,10 @@ button {
   gap: 10px;
   padding: 10px 12px;
   border-radius: var(--radius-2);
-  border: 1px solid rgba(229, 234, 243, 0.96);
+  /* `--border` rather than the near-white literal that was here: on a dark
+     ground a 96%-opaque #e5eaf3 hairline reads as a lit outline around every
+     row. */
+  border: 1px solid var(--border);
   background: var(--surface);
 }
 
@@ -1113,18 +1158,21 @@ button {
   align-items: center;
   padding: 0 10px;
   border-radius: var(--radius-1);
-  background: #f4f5f8;
+  background: var(--card-muted);
   color: var(--muted);
   font-size: var(--fs-caption);
 }
 
+/* The soft tokens already carry the dark values: a pale green wash that reads
+   as "fine" on white reads as a glowing panel on black, so `.dark` darkens
+   them rather than each page re-deciding. */
 .dashboard-admin-health__row--success {
-  background: #effdf3;
+  background: var(--success-soft);
   border-color: rgba(52, 211, 106, 0.28);
 }
 
 .dashboard-admin-health__row--warning {
-  background: #fff8e8;
+  background: var(--warning-soft);
   border-color: rgba(245, 158, 11, 0.3);
 }
 
@@ -1144,7 +1192,7 @@ button {
   display: grid;
   place-items: center;
   border-radius: var(--radius-pill);
-  border: 2px solid rgba(207, 213, 224, 0.9);
+  border: 2px solid var(--border);
   color: rgba(164, 171, 186, 1);
 }
 
@@ -1431,7 +1479,7 @@ select:focus-visible {
   max-width: 100%;
   padding: 0 12px;
   border-radius: var(--radius-3);
-  border: 1px solid rgba(216, 223, 236, 0.96);
+  border: 1px solid var(--border);
   background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   color: var(--muted);
   font-weight: 700;
@@ -1765,7 +1813,7 @@ select:focus-visible {
   gap: 12px;
   padding: 14px 16px;
   border-radius: var(--radius-5);
-  border: 1px solid rgba(225, 231, 240, 0.96);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -1798,7 +1846,7 @@ select:focus-visible {
   min-height: 34px;
   padding: 6px 12px;
   border-radius: var(--radius-pill);
-  border: 1px solid rgba(226, 232, 241, 0.96);
+  border: 1px solid var(--border);
   font-size: var(--fs-caption);
   font-weight: 700;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
@@ -1970,7 +2018,7 @@ select:focus-visible {
   gap: 12px;
   padding: 14px 16px;
   border-radius: var(--radius-5);
-  border: 1px solid rgba(225, 231, 240, 0.96);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -2043,7 +2091,7 @@ select:focus-visible {
 
 .secondary-button--ghost {
   gap: 8px;
-  border-color: rgba(226, 232, 241, 0.96);
+  border-color: var(--border);
   background: rgba(255, 255, 255, 0.8);
   color: var(--muted);
 }
@@ -2141,7 +2189,7 @@ select:focus-visible {
   padding: 14px;
   border-radius: var(--radius-5);
   background: var(--surface);
-  border: 1px solid rgba(227, 232, 240, 0.92);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
@@ -2233,10 +2281,33 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
-.admin-table__cell--right,
-.admin-table__actions-head,
-.admin-table__actions-cell {
+/* Qualified with `.admin-table` for one reason: specificity.
+   `.admin-table th, .admin-table td` above sets `text-align: left` at
+   (0,1,1) — a class plus an element — and this modifier was a bare class at
+   (0,1,0), so it lost on every row no matter where it sat in the file. Every
+   column that asked for `align: "right"` has been rendering left-aligned
+   since the prop was added — 23 of them, including every money column on
+   Orders, Menu items, Reports and both detail pages.
+
+   It went unnoticed because the one column anybody would have checked looks
+   correct for an unrelated reason: `.admin-table__actions-cell .table-actions`
+   below pulls itself over with `margin-left: auto`. The dead rule and the
+   working column sat three lines apart.
+
+   Tabular figures come with the alignment, because a right-aligned column in
+   a data table is a number by definition. With proportional digits the
+   decimal points of 229.23 and 1,124.00 land in different places down the
+   column, which is the whole reason for right-aligning them. The storefront
+   has had `.money { font-variant-numeric: tabular-nums }` since it was built;
+   this is the same decision in the panel. */
+.admin-table .admin-table__cell--right,
+.admin-table .admin-table__actions-head,
+.admin-table .admin-table__actions-cell {
   text-align: right;
+}
+
+.admin-table .admin-table__cell--right {
+  font-variant-numeric: tabular-nums;
 }
 
 .admin-table__actions-head,
@@ -2473,11 +2544,20 @@ select:focus-visible {
 .table-skeleton,
 .rpt-skeleton,
 .rpt-chart-skeleton span {
+  /* Tokens rather than the two greys this used to name. A skeleton IS a
+     filled block the size of the content it stands in for, so a hard-coded
+     light grey is the one thing on a dark page that cannot be overlooked:
+     every table mid-load became a wall of white bars, and the Reports chart
+     placeholder four white slabs the height of the panel.
+
+     `--card-muted` and `--surface-subtle` are the two already-paired surface
+     tints, which keeps the shimmer the same pale grey it has always been in
+     light mode and makes it a shade of the card in dark. */
   background: linear-gradient(
     90deg,
-    rgba(234, 237, 243, 0.9) 25%,
-    rgba(244, 246, 250, 1) 50%,
-    rgba(234, 237, 243, 0.9) 75%
+    var(--skeleton) 25%,
+    var(--skeleton-sheen) 50%,
+    var(--skeleton) 75%
   );
   background-size: 200% 100%;
   animation: tableSkeletonPulse 1.25s linear infinite;
@@ -2744,7 +2824,7 @@ select:focus-visible {
   width: 36px;
   height: 36px;
   flex: 0 0 auto;
-  border: 1px solid rgba(220, 226, 237, 0.96);
+  border: 1px solid var(--border);
   border-radius: var(--radius-3);
   background: var(--surface);
   color: var(--text);
@@ -2792,7 +2872,7 @@ select:focus-visible {
   gap: 10px;
   margin-top: 8px;
   padding-top: 14px;
-  border-top: 1px solid rgba(232, 236, 244, 0.98);
+  border-top: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, #ffffff 32%);
   backdrop-filter: blur(10px);
 }
@@ -3199,7 +3279,7 @@ select:focus-visible {
   text-align: left;
   padding: 18px 20px;
   border-radius: var(--radius-6);
-  border: 1px solid rgba(224, 230, 240, 0.98);
+  border: 1px solid var(--border);
   background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
@@ -3337,6 +3417,18 @@ select:focus-visible {
 
 .admin-sidebar--open {
     transform: translateX(0);
+  }
+
+/* The desktop nav is tightened to 34px rows because sixteen entries have to
+   share one screen with a header and a profile block. A drawer has the whole
+   phone to itself and nothing competing for the space, and 34px is under a
+   comfortable touch target — so here the rows get their height back. */
+.admin-sidebar__link {
+    min-height: 42px;
+  }
+
+.admin-sidebar__links {
+    gap: 2px;
   }
 
 .admin-sidebar__close {
