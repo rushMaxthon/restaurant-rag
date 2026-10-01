@@ -659,7 +659,7 @@ button {
   padding: 14px 16px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
 
 .combo-detail-item__meta {
@@ -730,7 +730,7 @@ button {
   padding: 0 12px;
   border-radius: var(--radius-3);
   border: 1px solid rgba(229, 234, 243, 0.96);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font-size: var(--fs-caption);
   box-shadow: var(--shadow-sm);
@@ -767,7 +767,7 @@ button {
   padding: 12px 14px;
   border-radius: var(--radius-4);
   border: 1px solid rgba(229, 234, 243, 0.94);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1086,7 +1086,7 @@ button {
   padding: 10px 12px;
   border-radius: var(--radius-2);
   border: 1px solid rgba(229, 234, 243, 0.96);
-  background: #fff;
+  background: var(--surface);
 }
 
 .dashboard-admin-list__row > div:first-child,
@@ -1219,7 +1219,7 @@ button {
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
 
 .insight-row > div:first-child {
@@ -1470,7 +1470,7 @@ select:focus-visible {
 }
 
 .ui-checkbox--ghost {
-  background: #fff;
+  background: var(--surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
@@ -1496,7 +1496,7 @@ select:focus-visible {
   justify-content: center;
   border-radius: var(--radius-1);
   border: 1px solid rgba(190, 199, 214, 0.96);
-  background: #fff;
+  background: var(--surface);
   color: transparent;
   transition:
     border-color 180ms ease,
@@ -1676,7 +1676,7 @@ select:focus-visible {
   flex-shrink: 0;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-1);
-  background: #fff;
+  background: var(--surface);
   color: transparent;
   transition: 150ms ease;
 }
@@ -2140,7 +2140,7 @@ select:focus-visible {
   gap: 12px;
   padding: 14px;
   border-radius: var(--radius-5);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid rgba(227, 232, 240, 0.92);
   box-shadow: var(--shadow-sm);
 }
@@ -2149,7 +2149,7 @@ select:focus-visible {
   overflow-x: auto;
   border-radius: var(--radius-3);
   border: 1px solid #edf1f6;
-  background: #fff;
+  background: var(--surface);
 }
 
 .admin-table {
@@ -2189,7 +2189,10 @@ select:focus-visible {
 }
 
 .admin-table__row:nth-child(even) {
-  background: rgba(250, 251, 253, 0.42);
+  /* A token rather than a near-white wash. At 42% opacity this read as a
+     barely-there tint on a white table and as a glaring band on a dark one,
+     which washed out the secondary line in every other row. */
+  background: var(--row-tint);
 }
 
 .admin-table__row:hover {
@@ -2395,7 +2398,7 @@ select:focus-visible {
   padding: 0;
   border-radius: var(--radius-2);
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   transition: 180ms ease;
 }
@@ -2441,7 +2444,7 @@ select:focus-visible {
   padding: 8px;
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--shadow-md);
 }
 
@@ -2743,7 +2746,7 @@ select:focus-visible {
   flex: 0 0 auto;
   border: 1px solid rgba(220, 226, 237, 0.96);
   border-radius: var(--radius-3);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-md);
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
@@ -2809,7 +2812,7 @@ select:focus-visible {
   gap: 6px;
   padding: 14px 16px;
   border-radius: var(--radius-5);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 
@@ -2918,14 +2921,19 @@ select:focus-visible {
   font-size: var(--fs-label);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.82);
+  /* A token, not a white wash. At 82% white this was a bright pill on a dark
+     page carrying muted grey text — the one thing on this screen that still
+     looked like it belonged to a light theme. */
+  background: var(--card-muted);
   color: var(--muted);
   box-shadow: var(--shadow-sm);
 }
 
 .segmented-tabs__item--active {
   border-color: rgba(255, 82, 0, 0.24);
-  background: linear-gradient(135deg, #fff1e7, #ffffff);
+  /* The selected pill keeps the brand tint and takes it from the token, so
+     dark mode gets the deep version rather than a cream gradient. */
+  background: var(--primary-soft);
   color: var(--primary);
 }
 
@@ -5825,7 +5833,7 @@ select:focus-visible {
   width: 18px;
   height: 18px;
   border-radius: var(--radius-pill);
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.24);
   transition: transform 0.18s ease;
 }
@@ -10135,7 +10143,7 @@ summary:focus-visible,
   padding: var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--mkt-shadow-1);
 }
 
@@ -10255,7 +10263,7 @@ summary:focus-visible,
 
 .mkt-btn--ghost {
   border-color: var(--mkt-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   box-shadow: var(--mkt-shadow-1);
 }
@@ -10349,7 +10357,7 @@ summary:focus-visible,
   padding: 22px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--mkt-shadow-1);
 }
 
@@ -10487,7 +10495,7 @@ summary:focus-visible,
   height: 42px;
   border: 2px solid var(--mkt-line);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   color: var(--hint);
   font-size: var(--fs-label);
   font-weight: 800;
@@ -10559,7 +10567,7 @@ summary:focus-visible,
   padding: var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--mkt-shadow-1);
 }
 
@@ -10646,7 +10654,7 @@ summary:focus-visible,
   padding: 18px;
   border: 1.5px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   font: inherit;
   text-align: left;
@@ -10825,7 +10833,7 @@ summary:focus-visible,
   padding: 13px 15px;
   border: 1.5px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   font: inherit;
   font-size: var(--fs-body);
@@ -10874,7 +10882,7 @@ summary:focus-visible,
   padding: 0 13px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-caption);
@@ -11038,7 +11046,7 @@ summary:focus-visible,
   height: 30px;
   border: 1px solid var(--mkt-line);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   cursor: pointer;
   transition: border-color 0.16s ease, color 0.16s ease;
@@ -11104,7 +11112,7 @@ summary:focus-visible,
   padding: 13px 14px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
-  background: #fff;
+  background: var(--surface);
 }
 
 .mkt-reach__item--off {
@@ -11285,7 +11293,7 @@ summary:focus-visible,
   width: 42px;
   height: 42px;
   border-radius: var(--mkt-radius-xs);
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-accent);
   box-shadow: var(--mkt-shadow-1);
 }
@@ -11357,7 +11365,7 @@ summary:focus-visible,
   padding: 16px 22px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--mkt-shadow-1);
   color: var(--muted);
   font-size: var(--fs-caption);
@@ -11461,7 +11469,7 @@ summary:focus-visible,
   padding: 16px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
-  background: #fff;
+  background: var(--surface);
 }
 
 .mkt-money dt {
@@ -11542,7 +11550,7 @@ summary:focus-visible,
   padding: 14px 16px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
-  background: #fff;
+  background: var(--surface);
   font-size: var(--fs-label);
   font-weight: 600;
 }
@@ -11593,7 +11601,7 @@ summary:focus-visible,
   padding: 0 15px 0 40px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: var(--fs-body);
 }
@@ -11634,7 +11642,7 @@ summary:focus-visible,
 }
 
 .mkt-tab--active {
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   box-shadow: var(--mkt-shadow-1);
 }
@@ -11655,7 +11663,7 @@ summary:focus-visible,
   padding: 18px 20px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   transition:
     border-color 0.16s ease,
@@ -12220,7 +12228,7 @@ summary:focus-visible,
 
 .hub-btn--ghost {
   border-color: var(--hub-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--hub-ink);
 }
 
@@ -12341,7 +12349,7 @@ summary:focus-visible,
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 4px 12px rgba(22, 30, 51, 0.14);
 }
 
@@ -12382,7 +12390,7 @@ summary:focus-visible,
   padding: 18px;
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--hub-shadow);
   font: inherit;
   text-align: left;
@@ -12435,7 +12443,7 @@ summary:focus-visible,
   padding: 20px;
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--hub-shadow);
 }
 
@@ -12504,7 +12512,7 @@ summary:focus-visible,
   padding: 18px 22px;
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--hub-shadow);
 }
 
@@ -12547,7 +12555,7 @@ summary:focus-visible,
   height: 28px;
   border: 1px solid var(--hub-line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: var(--hub-muted);
   cursor: pointer;
   transition: border-color 0.16s ease, color 0.16s ease;
@@ -12570,7 +12578,7 @@ summary:focus-visible,
   padding: 0 12px;
   border: 1px solid var(--hub-line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   color: var(--hub-ink);
   font: inherit;
   font-size: 0.75rem;
@@ -12758,7 +12766,7 @@ summary:focus-visible,
 
 .hub-icon-btn:hover {
   border-color: var(--hub-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--hub-brand);
 }
 
@@ -12967,7 +12975,7 @@ summary:focus-visible,
 .mkt-hub .mkt-demo {
   height: 44px;
   border-color: var(--hub-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--hub-hint);
 }
 
@@ -13119,7 +13127,7 @@ summary:focus-visible,
   padding: 8px 14px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   font: inherit;
   font-size: var(--fs-caption);
@@ -13166,7 +13174,7 @@ summary:focus-visible,
   gap: 5px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   color: var(--mkt-ink);
   font-size: 12px;
   line-height: 1.45;
@@ -13180,7 +13188,7 @@ summary:focus-visible,
 
 .mkt-bubble--whatsapp {
   border-bottom-left-radius: 4px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .mkt-bubble--sms {
@@ -13232,7 +13240,7 @@ summary:focus-visible,
   max-width: 300px;
   border: 1px solid var(--mkt-line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -13290,7 +13298,7 @@ summary:focus-visible,
   max-width: 300px;
   border: 1px solid var(--mkt-line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -13448,7 +13456,7 @@ summary:focus-visible,
   padding: 22px 24px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
-  background: #fff;
+  background: var(--surface);
 }
 
 .mkt-verdict__lead {
@@ -13513,7 +13521,7 @@ summary:focus-visible,
   padding: 16px 18px;
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
-  background: #fff;
+  background: var(--surface);
 }
 
 .mkt-conn + .mkt-conn {

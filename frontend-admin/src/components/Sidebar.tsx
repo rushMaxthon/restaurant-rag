@@ -1,4 +1,7 @@
-import { ChevronLeft, LogOut } from "lucide-react";
+import { ChevronLeft, LogOut, Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { applyTheme, storedTheme, type Theme } from "../services/theme";
 import { useAdminStore } from "../hooks/useAdminStore";
 import { TenantSwitcher } from "./TenantSwitcher";
 import { activeNavPathFor, navFor } from "../routes";
@@ -38,6 +41,44 @@ function getInitials(name: string): string {
   const first = parts[0][0] ?? "";
   const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
   return `${first}${last}`.toUpperCase();
+}
+
+/**
+ * Light or dark, beside the sign-out button where the other personal controls
+ * live. The storefront puts its own in the header for the same reason: it
+ * belongs to the person, not to the page they happen to be on.
+ */
+function ThemeToggle() {
+  // Read once, lazily, as the initial value rather than in an effect that then
+  // calls setState — which is a second render for something known before the
+  // first. Safe here because this panel is a client-only Vite app: there is no
+  // server render for `localStorage` to disagree with.
+  const [theme, setTheme] = useState<Theme>(storedTheme);
+
+  // Applying is a side effect on the document and belongs in one, and doing it
+  // on every change covers the first paint and each toggle with one rule
+  // rather than two.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const flip = () => setTheme((was) => (was === "dark" ? "light" : "dark"));
+
+  return (
+    <button
+      aria-label={theme === "dark" ? "Use light mode" : "Use dark mode"}
+      className="admin-sidebar__signout"
+      onClick={flip}
+      title={theme === "dark" ? "Use light mode" : "Use dark mode"}
+      type="button"
+    >
+      {theme === "dark" ? (
+        <Sun size={16} strokeWidth={2.1} />
+      ) : (
+        <Moon size={16} strokeWidth={2.1} />
+      )}
+    </button>
+  );
 }
 
 export function Sidebar({
@@ -171,6 +212,7 @@ export function Sidebar({
                 </span>
               </>
             ) : null}
+            <ThemeToggle />
             <button
               aria-label="Sign out"
               className="admin-sidebar__signout"

@@ -75,6 +75,9 @@
   --surface-solid: #ffffff;
   --surface-subtle: #f8faff;
   --card-muted: #f8f9fd;
+  /* The alternating band in a long table. Subtle enough to group rows
+     without turning the page into stripes. */
+  --row-tint: rgb(250 251 253 / 0.42);
   /* Was `#fcfdff`, a tint only this app had. A field is a surface. */
   --field-bg: var(--surface);
   --field-bg-active: #ffffff;
@@ -159,4 +162,63 @@
   --accent: var(--primary);
   --accent-soft: var(--primary-soft);
   --accent-track: color-mix(in srgb, var(--primary) 18%, var(--surface));
+}
+
+/* The panel's OWN tokens in dark mode.
+   --------------------------------------
+
+   The shared file already carries a `.dark` block, so every name both products
+   use — surface, text, border, primary — switched the moment the toggle landed.
+   The names only this panel has did not, and that was the whole of what looked
+   broken: `--card` stayed `#ffffff` while `--text` went near-white, so the
+   dashboard's metric cards were white text on a white card. Nothing was wrong
+   with the markup and no literal colour was to blame.
+
+   Derived from the shared dark palette rather than invented beside it, so the
+   two cannot drift: a card is the shared surface, a subtle ground is the shared
+   alt, a field is the surface it sits on.
+
+   The sidebar is the one thing that barely moves. It is already near-black in
+   light mode — the single most recognisable part of this panel — and inverting
+   it would make the product less like itself, not more. It goes a shade deeper
+   so it still separates from a dark page behind it. */
+.dark {
+  --card: var(--surface);
+  --surface-solid: var(--surface);
+  --surface-subtle: var(--surface-alt);
+  --card-muted: var(--surface-alt);
+  /* Lighter than the surface by a hair, not by 42% of white. */
+  --row-tint: rgb(255 255 255 / 0.03);
+
+  --field-bg: var(--surface-alt);
+  --field-bg-active: var(--surface-alt);
+  --border-strong: rgb(255 107 38 / 0.32);
+  --hint: #8b919c;
+
+  --sidebar: #0d0e12;
+  --sidebar-2: #15171d;
+
+  /* The tinted states keep their hue and lose their brightness: a pale green
+     wash that reads as "fine" on white reads as a glowing panel on black. */
+  --success-soft: #16281f;
+  --warning: #f5b63f;
+  --warning-soft: #2e2413;
+  --blue: #6b9bff;
+  --blue-soft: #16203a;
+  --danger-soft: #2e1a1c;
+
+  /* Chart colours lift the way the primary does, for the same reason: a
+     mid-tone line disappears against a dark plot. */
+  --chart-1: #ff8a4c;
+  --chart-2: #4ade80;
+  --chart-3: #6b9bff;
+  --chart-4: #a78bfa;
+  --chart-5: #2dd4bf;
+
+  /* A shadow tinted near-black cannot be seen on a dark ground. These go
+     fully black and heavier so a panel still lifts off the page. */
+  --shadow-xl: 0 18px 44px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-sm: 0 4px 14px rgb(0 0 0 / 0.3);
 }
