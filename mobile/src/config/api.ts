@@ -24,8 +24,17 @@
  */
 const DEV_API_BASE_URL = 'http://192.168.29.236:8000/api';
 
-/** Release build (`assembleRelease` / `bundleRelease` / an Xcode Release scheme). */
-const PROD_API_BASE_URL = 'https://restaurant-rag-api-xjfx.onrender.com/api';
+/**
+ * Release build (`assembleRelease` / `bundleRelease` / an Xcode Release scheme).
+ *
+ * Was `restaurant-rag-api-xjfx` until 2026-10-01, when that service was found
+ * to have stopped existing — 404 on every path. It matters more here than on
+ * the web: a web bundle with a dead API is one redeploy away from correct,
+ * while this one is compiled into a binary that has to go back through a
+ * store review. Render mints a new random suffix each time the service is
+ * recreated, so re-check this before any release build.
+ */
+const PROD_API_BASE_URL = 'https://restaurant-rag-api-oj8p.onrender.com/api';
 
 /**
  * `__DEV__` is injected by the React Native bundler: true for a Metro dev

@@ -14,8 +14,17 @@
 /** `vite dev` / `vitest`. The backend running on the developer's own machine. */
 const DEV_API_BASE_URL = 'http://localhost:8000/api';
 
-/** `vite build`. The Render web service. */
-const PROD_API_BASE_URL = 'https://restaurant-rag-api-xjfx.onrender.com/api';
+/**
+ * `vite build`. The Render web service.
+ *
+ * Was `restaurant-rag-api-xjfx` until 2026-10-01, by which time that service
+ * no longer existed — it answered 404 to everything, including `/health`. A
+ * dead hostname here is worse than no default at all, because the paragraph
+ * below is an argument for trusting this constant: a build with no env var
+ * set is supposed to come out pointing somewhere real. Re-check it whenever
+ * the API is recreated, since Render mints a new random suffix each time.
+ */
+const PROD_API_BASE_URL = 'https://restaurant-rag-api-oj8p.onrender.com/api';
 
 /**
  * `import.meta.env.PROD` is set by Vite itself — false under `vite dev`, true
