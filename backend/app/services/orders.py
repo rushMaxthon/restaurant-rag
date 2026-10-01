@@ -513,6 +513,37 @@ def _prepare_order_draft(
         )
         if quoted is not None:
             delivery_fee = _quantize(quoted)
+        elif delivery_fee <= 0:
+            # Neither end of the arrangement produced a price: the courier
+            # quoted nothing AND the branch has no flat fee. The order would
+            # go through charging 0.00 for delivery, which is not a price —
+            # it is the absence of one, and the customer reads it as free
+            # delivery while the restaurant pays the rider out of the food.
+            #
+            # This deliberately does NOT refuse whenever the courier fails.
+            # `quoting.py` argues, correctly, that a customer holding a card
+            # should not be blocked by a courier having a bad minute, and a
+            # branch with a real flat fee still has an honest number to
+            # charge. Only the case with no number anywhere is refused.
+            #
+            # The ambiguity worth knowing about: a flat fee of 0.00 means both
+            # "free delivery" and "nobody has set one", and the column cannot
+            # tell them apart. A branch that genuinely wants free delivery
+            # needs an explicit flag rather than a zero — until that exists,
+            # this reads a zero as unset, because an unpriced delivery is the
+            # far more common and far more expensive of the two mistakes.
+            logger.warning(
+                "Refusing delivery order for location %s: no courier quote and "
+                "no flat delivery fee configured",
+                restaurant_location.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "We could not work out a delivery charge for this address. "
+                    "Please try a different address, or choose pickup."
+                ),
+            )
     discount_amount = Decimal("0.00")
     applied_offer = None
     if payload.generated_offer_id is not None:
