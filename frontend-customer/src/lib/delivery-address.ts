@@ -72,6 +72,31 @@ export function validatePhone(value: string): string | null {
 }
 
 /**
+ * A stored number as the field should show it, given what the chip already says.
+ *
+ * The phone box renders the storefront's country code beside it — "+91", from
+ * the server — and the profile stores numbers in full, "+916353100362". Put
+ * one in the other and checkout greets a returning customer with
+ * **"+91 +916353100362"**, their own number shown back to them wrong, in the
+ * field they are least willing to see a mistake in.
+ *
+ * Only the storefront's OWN code is taken off. A customer whose number is on
+ * another country's code keeps it in full, because there the "+" matters: the
+ * chip would be lying about that number and the digits are the only thing
+ * saying so.
+ */
+export function phoneWithoutCountryCode(value: string, countryCode: string | undefined): string {
+  const raw = value.trim();
+  const code = (countryCode ?? "").trim();
+  if (!raw.startsWith("+") || !code.startsWith("+")) return raw;
+  // Compared on digits, so "+91" matches a stored "+91 63531..." or "+9163531...".
+  const ours = digitsOf(code);
+  const theirs = digitsOf(raw);
+  if (!ours || !theirs.startsWith(ours)) return raw;
+  return theirs.slice(ours.length);
+}
+
+/**
  * Group the digits as they are typed, so a wrong one is visible before submit.
  *
  * Only the default country is grouped. Every other country has its own

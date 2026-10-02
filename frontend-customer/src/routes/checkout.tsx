@@ -1,29 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import {
-  AlertCircle,
-  ArrowLeft,
-  BadgeCheck,
-  CalendarDays,
-  CreditCard,
-  CheckCircle2,
-  Clock,
-  MapPin,
-  Phone,
-  ShieldCheck,
-  Store,
-  TicketPercent,
-  Zap,
-  User,
-} from "lucide-react";
-import { AddressAutocomplete, type PickedAddress } from "@/components/AddressAutocomplete";
-import { ChargesBreakdown } from "@/components/ChargesBreakdown";
+import { AlertCircle, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
+import type { PickedAddress } from "@/components/AddressAutocomplete";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { CardPayment } from "@/components/bangkok/card-payment";
 import { RazorpayPayment } from "@/components/bangkok/razorpay-payment";
-import { DishImage } from "@/components/bangkok/dish-image";
+import { ContactStep } from "@/components/checkout/contact-step";
+import { MobilePayBar, OrderSummary } from "@/components/checkout/order-summary";
+import { PaymentStep } from "@/components/checkout/payment-step";
+import { ScheduleStep } from "@/components/checkout/schedule-step";
+import { StepRail } from "@/components/checkout/step-rail";
 import { orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import {
@@ -31,26 +17,20 @@ import {
   availabilityNow,
   bookableDays,
   bookableTimes,
-  dateInputValue,
   dayChipLabel,
   dayFromDate,
-  dayFromInputValue,
-  dayLabel,
   etaClockTime,
-  formatSlotRange,
-  formatTimeOfDay,
   groupByPartOfDay,
-  isSameDay,
   lastBookableDay,
   nextBookableTime,
   nextOpening,
 } from "@/lib/branch-hours";
-import { chosenLabels } from "@/lib/customization";
 import {
   addressFromSaved,
   composeDeliveryAddress,
   isSameAddress,
   formatPhoneAsTyped,
+  phoneWithoutCountryCode,
   looseAddressFields,
   postalCodeLabel,
   validateAddress,
@@ -77,102 +57,6 @@ export const Route = createFileRoute("/checkout")({
   }),
   component: Checkout,
 });
-
-/** Cart → Checkout → Confirmation, rendered as a rail rather than a text label. */
-function StepRail({ step }: { step: 1 | 2 | 3 }) {
-  const steps = ["Cart", "Checkout", "Confirmation"] as const;
-  return (
-    // Sized to fit three steps on one line at 414px. It wrapped before, and
-    // wrapping put "Confirmation" alone on a second row with the connector
-    // that should have led to it left dangling off the end of the first —
-    // a rail pointing at nothing. The connector now comes BEFORE each step
-    // rather than after, so if it ever does wrap the line leads into the step
-    // it belongs to instead of trailing into empty space.
-    <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs font-bold sm:gap-x-3 sm:text-sm">
-      {steps.map((label, i) => {
-        const index = (i + 1) as 1 | 2 | 3;
-        const done = index < step;
-        const todo = index > step;
-        return (
-          <li className="flex items-center gap-2 sm:gap-3" key={label}>
-            {index > 1 && <span className="h-px w-4 bg-border sm:w-10" aria-hidden="true" />}
-            <span className="flex items-center gap-1.5 sm:gap-2">
-              <span className="step-pill" data-done={done} data-todo={todo}>
-                {done ? <CheckCircle2 className="size-4" /> : index}
-              </span>
-              <span className={todo ? "text-muted" : undefined}>{label}</span>
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/**
- * One labelled, validated address box.
- *
- * Declared at module scope on purpose. Defined inside Checkout it would be a
- * NEW component type on every render, so React would unmount and remount the
- * input on each keystroke — focus lost, and only the first character kept.
- * Everything it needs arrives as props instead.
- */
-function AddressField({
-  id,
-  label,
-  placeholder,
-  autoComplete,
-  hint,
-  className,
-  icon,
-  inputMode,
-  value,
-  problem,
-  onChange,
-  onBlur,
-}: {
-  id: keyof AddressFields;
-  label: string;
-  placeholder: string;
-  autoComplete: string;
-  hint?: string;
-  className?: string;
-  icon?: React.ReactNode;
-  inputMode?: "text" | "numeric" | "tel";
-  value: string;
-  problem?: string | undefined;
-  onChange: (next: string) => void;
-  onBlur: () => void;
-}) {
-  return (
-    <div className={`space-y-1.5 ${className ?? ""}`}>
-      <Label htmlFor={id}>
-        {label}
-        {hint && <span className="ml-1.5 text-xs font-medium text-muted">{hint}</span>}
-      </Label>
-      <div className="field-wrap" data-invalid={Boolean(problem)}>
-        {icon}
-        <Input
-          id={id}
-          value={value}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          {...(inputMode ? { inputMode } : {})}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          aria-invalid={Boolean(problem)}
-          aria-describedby={problem ? `${id}-error` : undefined}
-          className="h-12"
-        />
-      </div>
-      {problem && (
-        <p className="field-error" id={`${id}-error`}>
-          {problem}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function Checkout() {
   // Prices in whatever this restaurant charges in.
@@ -262,7 +146,8 @@ function Checkout() {
     // rider is going to.
     const number = preferred?.phone_number ?? account.phone_number;
     if (number) {
-      setPhone(formatPhoneAsTyped(number));
+      // Stripped of the code the chip beside the field already shows.
+      setPhone(formatPhoneAsTyped(phoneWithoutCountryCode(number, s.phoneCountryCode)));
       setFilledFromAccount(true);
     }
 
@@ -275,7 +160,7 @@ function Checkout() {
       setAddress(looseAddressFields(account.default_address));
       setFilledFromAccount(true);
     }
-  }, [profile.data, savedAddresses]);
+  }, [profile.data, savedAddresses, s.phoneCountryCode]);
 
   /** Put a saved address in the form, replacing whatever is there. */
   const applySavedAddress = (id: string) => {
@@ -284,7 +169,10 @@ function Checkout() {
     setAddress(addressFromSaved(picked));
     setAddressId(id);
     setSaveAddress(false);
-    if (picked.phone_number) setPhone(formatPhoneAsTyped(picked.phone_number));
+    if (picked.phone_number)
+      setPhone(
+        formatPhoneAsTyped(phoneWithoutCountryCode(picked.phone_number, s.phoneCountryCode)),
+      );
     // The new address has not been looked at yet, so nothing about it is
     // "wrong" until the customer has had a chance to read it.
     setTouched((t) => ({ ...t, line1: false, city: false, state: false, zip: false }));
@@ -878,6 +766,10 @@ function Checkout() {
   }
 
   const submitting = validateOrder.isPending || createOrder.isPending || payingCard;
+  // One rule for both Pay buttons, so the panel and the phone bar cannot
+  // disagree about whether the order may be placed yet.
+  const canSubmit =
+    s.cart.length > 0 && !submitting && cardAvailable && !(scheduling && !chosenSlot);
 
   return (
     <form
@@ -919,722 +811,115 @@ function Checkout() {
 
       <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-5">
-          <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-extrabold">
-              Contact &amp; {isDelivery ? "delivery" : "pickup"}
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              We use this to reach you if the rider needs directions.
-            </p>
+          <ContactStep
+            isDelivery={isDelivery}
+            isAuthenticated={isAuthenticated}
+            filledFromAccount={filledFromAccount}
+            savedAddresses={savedAddresses}
+            addressId={addressId}
+            onPickSavedAddress={applySavedAddress}
+            fullName={fullName}
+            onFullNameChange={setFullName}
+            phone={phone}
+            onPhoneChange={(next) => setPhone(formatPhoneAsTyped(next))}
+            phoneCountryCode={s.phoneCountryCode}
+            phoneProblem={phoneProblem}
+            address={address}
+            addressProblems={addressProblems}
+            onEditAddress={editAddress}
+            onPickAddress={applyPickedAddress}
+            onTouch={(field) => setTouched((t) => ({ ...t, [field]: true }))}
+            show={show}
+            branch={branch}
+            postalName={postalName}
+            saveAddress={saveAddress}
+            onSaveAddressChange={setSaveAddress}
+          />
 
-            {/* Said out loud. Fields that fill themselves without a word read
-                as the form having got something wrong, and the customer
-                re-reads all of them looking for it. */}
-            {filledFromAccount && (
-              <p className="prefill-note mt-3">
-                <BadgeCheck className="size-4 shrink-0" />
-                Filled in from your account — change anything that has moved.
-              </p>
-            )}
+          <ScheduleStep
+            isDelivery={isDelivery}
+            mustSchedule={mustSchedule}
+            unavailableReason={availability.reason}
+            wantsLater={wantsLater}
+            onWantsLaterChange={(later) => {
+              setWantsLater(later);
+              if (!later) setChosenSlot(null);
+            }}
+            scheduling={scheduling}
+            eta={eta}
+            etaAt={etaAt}
+            days={days}
+            maxFutureDays={branch?.max_future_days ?? 0}
+            selectedDay={selectedDay}
+            tz={tz}
+            now={now}
+            firstDay={firstDay}
+            lastDay={lastDay}
+            onPickDay={(day) => {
+              setChosenDay(day);
+              setChosenSlot(null);
+            }}
+            todaysWindows={todaysWindows}
+            pickedEmptyDay={pickedEmptyDay}
+            earliest={earliest}
+            chosenSlot={chosenSlot}
+            onPickSlot={setChosenSlot}
+            onPickEarliest={(time) => {
+              setChosenDay(time);
+              setChosenSlot(time);
+            }}
+            slotGroups={slotGroups}
+            branchName={branch?.branch_name}
+          />
 
-            {isDelivery && savedAddresses.length > 1 && (
-              <div className="saved-address-picker mt-4">
-                {savedAddresses.map((entry) => (
-                  <button
-                    type="button"
-                    key={entry.id}
-                    className="saved-address"
-                    data-on={addressId === entry.id}
-                    onClick={() => applySavedAddress(entry.id)}
-                  >
-                    <span className="saved-address__label">
-                      {entry.label === "HOME" ? "Home" : entry.label === "WORK" ? "Work" : "Other"}
-                    </span>
-                    <span className="saved-address__line">{entry.formatted_address}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="full_name">Full name</Label>
-                <div className="field-wrap">
-                  <User className="size-4" />
-                  <Input
-                    id="full_name"
-                    required
-                    autoComplete="name"
-                    placeholder="Your name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="h-12"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="phone">Phone number</Label>
-                <div className="field-wrap" data-invalid={Boolean(show("phone") && phoneProblem)}>
-                  {/* The country code is shown, not typed. A customer entering
-                      a local number should not have to know the deployment's
-                      country, and a free-text "+1" is one more thing to get
-                      wrong. */}
-                  {/* From the server, not from a literal here. This said
-                      "+1" while the server prepended something else, so the
-                      code the customer was shown and the code their number
-                      was stored under could differ with nothing to say so. */}
-                  {s.phoneCountryCode && <span className="country-code">{s.phoneCountryCode}</span>}
-                  <Input
-                    id="phone"
-                    required
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel-national"
-                    placeholder="(555) 000-0000"
-                    value={phone}
-                    onChange={(e) => setPhone(formatPhoneAsTyped(e.target.value))}
-                    onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
-                    aria-invalid={Boolean(show("phone") && phoneProblem)}
-                    aria-describedby={show("phone") && phoneProblem ? "phone-error" : undefined}
-                    className="h-12"
-                  />
-                </div>
-                {show("phone") && phoneProblem && (
-                  <p className="field-error" id="phone-error">
-                    {phoneProblem}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="promo_code">Promo code (optional)</Label>
-                <div className="field-wrap">
-                  <TicketPercent className="size-4" />
-                  <Input
-                    id="promo_code"
-                    autoCapitalize="characters"
-                    placeholder="Seen one on Instagram?"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                    className="h-12"
-                  />
-                </div>
-              </div>
-              {isDelivery && (
-                <>
-                  <AddressField
-                    autoComplete="address-line1"
-                    className="sm:col-span-2"
-                    hint="Optional"
-                    icon={<MapPin className="size-4" />}
-                    id="house"
-                    label="Flat, house or block number"
-                    onBlur={() => setTouched((t) => ({ ...t, house: true }))}
-                    onChange={(next) => editAddress("house", next)}
-                    placeholder="A-31, 3rd floor"
-                    problem={undefined}
-                    value={address.house}
-                  />
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="line1">
-                      Address line 1
-                      <span className="ml-1.5 text-xs font-medium text-muted">
-                        Start typing and pick your building
-                      </span>
-                    </Label>
-                    <AddressAutocomplete
-                      autoComplete="address-line1"
-                      icon={<MapPin className="size-4" />}
-                      inputId="line1"
-                      invalid={Boolean(show("line1") && addressProblems.line1)}
-                      locationId={branch?.id}
-                      onBlur={() => setTouched((t) => ({ ...t, line1: true }))}
-                      onPick={applyPickedAddress}
-                      onTextChange={(next) => editAddress("line1", next)}
-                      placeholder="Society, building or street"
-                      value={address.line1}
-                    />
-                    {show("line1") && addressProblems.line1 && (
-                      <p className="field-error" id="line1-error">
-                        {addressProblems.line1}
-                      </p>
-                    )}
-                  </div>
-                  <AddressField
-                    id="line2"
-                    label="Address line 2"
-                    hint="Optional"
-                    placeholder="Apartment, suite, floor"
-                    autoComplete="address-line2"
-                    className="sm:col-span-2"
-
-                    value={address.line2}
-                    problem={show("line2") ? addressProblems.line2 : undefined}
-                    onChange={(next) => editAddress("line2", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, line2: true }))}
-                  />
-                  <AddressField
-                    id="landmark"
-                    label="Landmark"
-                    hint="Optional"
-                    placeholder="Opposite the park"
-                    autoComplete="off"
-                    className="sm:col-span-2"
-
-                    value={address.landmark}
-                    problem={show("landmark") ? addressProblems.landmark : undefined}
-                    onChange={(next) => editAddress("landmark", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, landmark: true }))}
-                  />
-                  <AddressField
-                    id="city"
-                    label="City"
-                    placeholder="City"
-                    autoComplete="address-level2"
-                    value={address.city}
-                    problem={show("city") ? addressProblems.city : undefined}
-                    onChange={(next) => editAddress("city", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, city: true }))}
-                  />
-                  <AddressField
-                    id="state"
-                    label="State"
-                    placeholder="State"
-                    autoComplete="address-level1"
-
-                    value={address.state}
-                    problem={show("state") ? addressProblems.state : undefined}
-                    onChange={(next) => editAddress("state", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, state: true }))}
-                  />
-                  <AddressField
-                    id="zip"
-                    label={postalName}
-                    placeholder="00000"
-                    autoComplete="postal-code"
-                    inputMode="numeric"
-
-                    value={address.zip}
-                    problem={show("zip") ? addressProblems.zip : undefined}
-                    onChange={(next) => editAddress("zip", next)}
-                    onBlur={() => setTouched((t) => ({ ...t, zip: true }))}
-                  />
-                </>
-              )}
-            </div>
-
-            {/* Offered, not assumed, and only when this is a new address: the
-                prefill is worth nothing to a customer whose first order never
-                left anything behind to prefill FROM. */}
-            {isDelivery && isAuthenticated && !addressId && (
-              <label className="save-address mt-4">
-                <input
-                  type="checkbox"
-                  checked={saveAddress}
-                  onChange={(e) => setSaveAddress(e.target.checked)}
-                />
-                <span>Save this address to my account for next time</span>
-              </label>
-            )}
-
-            {!isDelivery && branch && (
-              <div className="mt-5 flex items-start gap-3 rounded-xl bg-surface-alt p-4">
-                <Store className="mt-0.5 size-5 shrink-0 text-primary" />
-                <div>
-                  <p className="font-bold">{branch.branch_name}</p>
-                  <p className="text-sm text-muted">
-                    {branch.address_line_1}, {branch.city}
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-extrabold">When would you like it?</h2>
-
-            {mustSchedule ? (
-              <div className="closed-notice mt-4" data-tone="soft">
-                <Clock className="mt-0.5 size-5 shrink-0 text-muted" />
-                <div>
-                  <p className="font-bold">
-                    {isDelivery ? "Delivery" : "Pickup"} is closed right now
-                  </p>
-                  <p className="mt-0.5 text-sm text-muted">
-                    {availability.reason ?? "This branch is outside its opening hours."} Pick a time
-                    below and we'll have it ready then.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              // Offered even when the branch is open: ordering dinner from your
-              // desk at 3pm is a normal thing to want, and the backend has
-              // accepted a scheduled time since the beginning.
-              <div className="segmented mt-4" data-active={wantsLater ? "PICKUP" : "DELIVERY"}>
-                <span className="segmented-thumb" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="segmented-option"
-                  data-selected={!wantsLater}
-                  onClick={() => {
-                    setWantsLater(false);
-                    setChosenSlot(null);
-                  }}
-                >
-                  As soon as possible
-                </button>
-                <button
-                  type="button"
-                  className="segmented-option"
-                  data-selected={wantsLater}
-                  onClick={() => setWantsLater(true)}
-                >
-                  Schedule for later
-                </button>
-              </div>
-            )}
-
-            {!scheduling && (
-              <p className="mt-4 flex items-center gap-2 text-sm font-semibold">
-                <Clock className="size-4 shrink-0 text-primary" />
-                {isDelivery ? "Arriving in" : "Ready in"} about {eta}{" "}
-                {typeof eta === "number" ? "min" : ""}
-                {/* See cart.tsx: the duration alone leaves the customer doing
-                    the sum themselves. */}
-                {etaAt && <span className="text-muted">· by {etaAt}</span>}
-              </p>
-            )}
-
-            {scheduling &&
-              (days.length === 0 ? (
-                <div className="closed-notice mt-4">
-                  <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger" />
-                  <div>
-                    <p className="font-bold">No times available</p>
-                    <p className="mt-0.5 text-sm text-muted">
-                      This branch has nothing bookable in the next {branch?.max_future_days ?? 0}{" "}
-                      days. Try {isDelivery ? "pickup" : "delivery"}, or another branch.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="mt-4">
-                    <div className="picker-head">
-                      <p className="picker-label">Day</p>
-                      {/* The chips cover the next few days; the date field
-                          covers the rest of the horizon. Bounded to what the
-                          branch actually accepts, so the picker cannot offer a
-                          date the server will refuse. */}
-                      <label className="date-field">
-                        <CalendarDays className="size-4 shrink-0 text-muted" />
-                        <span className="sr-only">Pick a date</span>
-                        <input
-                          type="date"
-                          value={selectedDay ? dateInputValue(selectedDay, tz) : ""}
-                          min={dateInputValue(firstDay ?? now, tz)}
-                          max={dateInputValue(lastDay, tz)}
-                          onChange={(event) => {
-                            const picked = dayFromInputValue(event.target.value, tz);
-                            if (!picked) return;
-                            setChosenDay(picked);
-                            setChosenSlot(null);
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    {days.length > 1 && (
-                      <div className="day-rail mt-2">
-                        {days.map((day) => (
-                          <button
-                            type="button"
-                            key={day.toDateString()}
-                            // Its own class, not `slot-chip`: a day and a time
-                            // are different choices, and sharing one hook meant
-                            // "pick the first chip" silently picked a day.
-                            className="slot-chip day-chip"
-                            data-on={selectedDay?.toDateString() === day.toDateString()}
-                            onClick={() => {
-                              setChosenDay(day);
-                              setChosenSlot(null);
-                            }}
-                          >
-                            {dayChipLabel(day, now, tz)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="picker-head">
-                      <p className="picker-label">
-                        {selectedDay ? dayChipLabel(selectedDay, now, tz) : "Time"}
-                      </p>
-                      {/* The window the times come from. Without it a short
-                          list reads as "barely any availability" rather than
-                          "this branch closes at 3". */}
-                      {/* The only statement of opening hours on this screen
-                          now, so it carries the clock icon and full weight
-                          rather than reading as a footnote. */}
-                      {todaysWindows.length > 0 && (
-                        <p className="day-hours">
-                          <Clock className="size-3.5 shrink-0" />
-                          Open {todaysWindows.map((w) => formatSlotRange(w)).join(", ")}
-                        </p>
-                      )}
-                    </div>
-
-                    {pickedEmptyDay ? (
-                      <p className="mt-2 text-sm text-muted">
-                        Nothing left on {pickedEmptyDay}. Pick another day above.
-                      </p>
-                    ) : (
-                      <>
-                        {/* The soonest the kitchen can have it, as one tap. It
-                            is what most people scheduling ahead are looking
-                            for, and a wall of chips buried it. */}
-                        {earliest && isSameDay(earliest, selectedDay ?? earliest, tz) && (
-                          <button
-                            type="button"
-                            className="earliest-row mt-3"
-                            data-on={chosenSlot?.getTime() === earliest.getTime()}
-                            onClick={() => {
-                              setChosenDay(earliest);
-                              setChosenSlot(earliest);
-                            }}
-                          >
-                            <Zap className="size-4 shrink-0 text-primary" />
-                            <span className="min-w-0 flex-1 text-left">
-                              <span className="block font-bold">Earliest available</span>
-                              <span className="block text-xs text-muted">
-                                {dayChipLabel(earliest, now, tz)} at {formatTimeOfDay(earliest, tz)}
-                              </span>
-                            </span>
-                          </button>
-                        )}
-
-                        {slotGroups.map((group) => (
-                          <div className="mt-3" key={group.label}>
-                            {/* One heading is noise; three are a map. */}
-                            {slotGroups.length > 1 && (
-                              <p className="slot-group-label">{group.label}</p>
-                            )}
-                            <div className="slot-grid mt-2">
-                              {group.times.map((time) => (
-                                <button
-                                  type="button"
-                                  key={time.toISOString()}
-                                  className="slot-chip"
-                                  data-on={chosenSlot?.toISOString() === time.toISOString()}
-                                  onClick={() => {
-                                    setChosenSlot(time);
-                                  }}
-                                >
-                                  {formatTimeOfDay(time, tz)}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-
-                    {/* No lowercasing and no trailing period: lowercasing turned
-                        "Thu, Sep 17" into "thu, sep 17", and the formatted time
-                        already ends in one ("7:00 p.m.."). */}
-                    {chosenSlot ? (
-                      <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-success">
-                        <CheckCircle2 className="size-4 shrink-0" />
-                        {isDelivery ? "Arriving" : "Ready"} {dayChipLabel(chosenSlot, now, tz)} at{" "}
-                        {formatTimeOfDay(chosenSlot, tz)}
-                      </p>
-                    ) : (
-                      // The Pay button is disabled until a time exists. Saying
-                      // why beats leaving someone to work it out from a greyed
-                      // rectangle at the bottom of the screen.
-                      <p className="mt-4 text-sm text-muted">Pick a time to continue.</p>
-                    )}
-                  </div>
-                </>
-              ))}
-
-            {/* The week's table used to sit here and it said nothing new. The
-                day rail already lists only the days this branch can be booked
-                for, and the line above the times states the selected day's own
-                window — so seven rows repeated that and pushed the Pay button
-                a screen further down on a phone. The cart keeps the full week
-                behind a disclosure, where there is no day picker to read it
-                from. */}
-          </section>
-
-          <section className="elevated-panel p-5 sm:p-6">
-            <h2 className="font-display text-xl font-extrabold">Payment</h2>
-            <p className="mt-1 text-sm text-muted">
-              Paid securely by card before your order reaches the kitchen.
-            </p>
-
-            <div className="mt-4 pay-option" data-on={cardAvailable}>
-              <CreditCard className="size-5 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1">
-                <span className="block font-bold">Pay by card</span>
-                <span className="block text-sm text-muted">
-                  Visa, Mastercard and Amex, handled by Stripe.
-                </span>
-              </span>
-              {cardAvailable && <BadgeCheck className="size-5 shrink-0 text-primary" />}
-            </div>
-
-            {paymentConfigPending && (
-              <p className="mt-3 text-sm text-muted">Checking payment options…</p>
-            )}
-
-            {!paymentConfigPending && !canPay && (
-              <div
-                className="mt-3 flex items-start gap-2 rounded-xl border border-danger bg-danger/10 p-3 text-sm font-semibold text-danger"
-                role="alert"
-              >
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  {sessionExpired ? (
-                    <>
-                      Your sign-in has expired.{" "}
-                      <Link className="underline" to="/login" search={{ redirect: "/checkout" }}>
-                        Sign in again
-                      </Link>{" "}
-                      — your cart is saved and you will come straight back here.
-                    </>
-                  ) : paymentConfigFailed ? (
-                    "We couldn't check the payment options just now. Check your connection and try again."
-                  ) : (
-                    "This restaurant hasn't switched on a way to pay yet, so orders can't be placed. Please try again shortly."
-                  )}
-                </span>
-              </div>
-            )}
-
-            {/* Only where there is a choice. One method is not a list to pick
-                from, and rendering it as one asks the customer to make a
-                decision that does not exist. */}
-            {payableMethods.length > 1 && (
-              <div className="mt-4 grid gap-2" role="radiogroup" aria-label="How to pay">
-                {payableMethods.map((option) => (
-                  <button
-                    aria-checked={method === option}
-                    className="pay-option"
-                    data-selected={method === option}
-                    key={option}
-                    onClick={() => setChosenMethod(option)}
-                    role="radio"
-                    type="button"
-                  >
-                    <span className="font-bold">
-                      {option === "RAZORPAY" ? "UPI, cards and wallets" : "Card"}
-                    </span>
-                    <span className="text-sm text-muted">
-                      {option === "RAZORPAY"
-                        ? "Pay with any UPI app, card, netbanking or wallet"
-                        : "Pay by card"}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <p className="mt-3 flex items-center gap-2 text-sm text-muted">
-              <ShieldCheck className="size-4 shrink-0 text-success" />
-              {method === "RAZORPAY"
-                ? "Your payment details go straight to Razorpay — this app never sees them."
-                : "Your card details go straight to Stripe — this app never sees them."}
-            </p>
-          </section>
+          <PaymentStep
+            cardAvailable={cardAvailable}
+            paymentConfigPending={paymentConfigPending}
+            canPay={canPay}
+            sessionExpired={sessionExpired}
+            paymentConfigFailed={paymentConfigFailed}
+            payableMethods={payableMethods}
+            method={method}
+            onChooseMethod={setChosenMethod}
+          />
         </div>
 
-        <aside className="elevated-panel h-fit p-5 lg:sticky lg:top-24">
-          <h2 className="font-display text-xl font-extrabold">Your order</h2>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
-            <MapPin className="size-3.5 shrink-0 text-primary" />
-            {isDelivery ? "Delivery" : "Pickup"} from {branch?.branch_name ?? "your branch"}
-            {distanceLabel && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="font-semibold text-foreground">{distanceLabel}</span>
-              </>
-            )}
-          </p>
-          {eta != null && eta !== "" && (
-            <p className="mt-1.5 flex items-center gap-1.5 text-sm font-semibold">
-              <Clock className="size-3.5 shrink-0 text-primary" />
-              About {eta} {typeof eta === "number" ? "min" : ""}
-              {etaAt && <span className="text-muted">· by {etaAt}</span>}
-            </p>
-          )}
-
-          <div className="mt-5 space-y-3 border-b border-border pb-5">
-            {s.cart.map((line, i) => (
-              <div
-                className="rise-in flex items-center gap-3"
-                style={{ "--i": i } as React.CSSProperties}
-                key={line.lineId}
-              >
-                <DishImage
-                  src={line.image_url}
-                  name={line.name}
-                  className="size-14 shrink-0 rounded-lg"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{line.name}</p>
-                  {/* The size and the choices, on the last screen before
-                      paying. It showed the dish name alone, so a Large
-                      half-and-half pizza and a Small plain one were the same
-                      two lines of text at different prices. */}
-                  {(line.sizeName || line.addOnNames.length > 0) && (
-                    <p className="text-xs leading-snug text-muted">
-                      {[
-                        line.sizeName,
-                        ...chosenLabels(line.optionIds, line.addOnNames, line.optionPortions),
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </p>
-                  )}
-                  <p className="money text-sm text-muted">
-                    {line.quantity} × {money(line.unitPrice)}
-                  </p>
-                </div>
-                <span className="money shrink-0 font-bold">
-                  {money(line.unitPrice * line.quantity)}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <dl className="mt-5 space-y-2.5 text-sm">
-            {[
-              ["Subtotal", s.subtotal],
-              [isDelivery ? "Delivery fee" : "Pickup", delivery],
-            ].map(([label, value]) => {
-              // The delivery row says what it does not yet know, rather than
-              // printing a zero that reads as a promise of free delivery.
-              const unknown = label === "Delivery fee" && !deliveryKnown;
-              return (
-                <div className="flex justify-between gap-3" key={String(label)}>
-                  <dt className="text-muted">{label}</dt>
-                  <dd className={unknown ? "text-right text-xs text-muted" : "money font-semibold"}>
-                    {unknown
-                      ? deliveryQuote.isFetching
-                        ? "Working it out…"
-                        : "Once you add your address"
-                      : // "Free" belongs to the delivery row ALONE, and only
-                        // when somebody actually decided delivery is free —
-                        // never because a lookup failed and the flat fee
-                        // happened to be zero. An empty cart made the subtotal
-                        // and the tax rows both announce "Free", which is not
-                        // a thing either of them can be.
-                        Number(value) === 0 &&
-                          !feeIsAGuess &&
-                          String(label) !== "Subtotal" &&
-                          String(label) !== "Tax"
-                        ? "Free"
-                        : money(Number(value))}
-                  </dd>
-                </div>
-              );
-            })}
-            {/* One row that opens into the parts. Falls back to a plain,
-                unexpandable line when the server sent no breakdown, which is
-                what an old order or an unpriced cart looks like. */}
-            <ChargesBreakdown charges={charges} money={money} />
-          </dl>
-
-          {isDelivery && quotedByCourier ? (
-            <p className="mt-2 text-xs text-muted">
-              {/* The distance now sits beside the branch it is measured from,
-                  so repeating it here would be the same fact twice. What is
-                  worth saying is that the FEE is for this address rather than a
-                  flat rate. */}
-              Priced for your address, not a flat rate.
-              {deliveryQuote.data?.travel_seconds
-                ? ` About ${Math.max(1, Math.round(deliveryQuote.data.travel_seconds / 60))} min
-                    of riding once your food is ready.`
-                : ""}
-            </p>
-          ) : null}
-          {fallback === "address_unknown" ? (
-            <p className="inline-error mt-2 text-xs">
-              We could not find that address on a map, so this is the restaurant&rsquo;s standard
-              delivery charge rather than a price for your trip. Check the street and{" "}
-              {postalName.toLowerCase()}, or pick your address from the suggestions as you type.
-            </p>
-          ) : fallback === "branch_unknown" ? (
-            <p className="mt-2 text-xs text-muted">
-              This restaurant has not pinned its branch on a map yet, so this is their standard
-              delivery charge rather than a price for your trip.
-            </p>
-          ) : null}
-          {unserviceable ? (
-            <p className="inline-error mt-2 text-xs">
-              No courier covers this address right now. The restaurant may still deliver it
-              themselves, or choose pickup instead.
-            </p>
-          ) : null}
-
-          <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
-            <span className="text-lg font-extrabold">{deliveryKnown ? "Total" : "So far"}</span>
-            <span className="font-display text-3xl font-extrabold">{money(total)}</span>
-          </div>
-          {!deliveryKnown && (
-            <p className="mt-1.5 text-xs text-muted">
-              Delivery is added once you add your address.
-            </p>
-          )}
-
-          <Button
-            className="mt-5 hidden h-12 w-full text-base lg:flex"
-            disabled={!s.cart.length || submitting || !cardAvailable || (scheduling && !chosenSlot)}
-            type="submit"
-          >
-            {submitting
-              ? payingCard
-                ? "Opening payment…"
-                : "Preparing your order…"
-              : deliveryKnown
-                ? `Pay ${money(total)}`
-                : "Add your address to continue"}
-          </Button>
-        </aside>
+        <OrderSummary
+          isDelivery={isDelivery}
+          branchName={branch?.branch_name}
+          distanceLabel={distanceLabel}
+          eta={eta}
+          etaAt={etaAt}
+          cart={s.cart}
+          money={money}
+          subtotal={s.subtotal}
+          delivery={delivery}
+          deliveryKnown={deliveryKnown}
+          deliveryFetching={deliveryQuote.isFetching}
+          feeIsAGuess={feeIsAGuess}
+          charges={charges}
+          quotedByCourier={quotedByCourier}
+          travelSeconds={deliveryQuote.data?.travel_seconds}
+          fallback={fallback}
+          postalName={postalName}
+          unserviceable={unserviceable}
+          total={total}
+          promoCode={promoCode}
+          onPromoCodeChange={setPromoCode}
+          submitting={submitting}
+          payingCard={payingCard}
+          canSubmit={canSubmit}
+        />
       </div>
 
-      {/* Kept for narrow screens, where the summary card scrolls out of reach. */}
-      {/* z-40, matching the bottom nav. At z-30 the checkout content painted
-          over this bar on a phone — Playwright found the day and time chips
-          intercepting clicks meant for "Pay now", which means a real thumb
-          would have hit them too. z-40 was not enough: the content grid wins at
-          equal depth. Above the nav (z-40), below the header (z-50), and the
-          two bars never overlap anyway — this sits at 58px, the nav at 0. */}
-      <div className="above-tab-bar fixed inset-x-0 z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-2xl items-center gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-muted">
-              {s.totalItems} {s.totalItems === 1 ? "item" : "items"}
-            </p>
-            <p className="money font-display text-xl font-extrabold leading-tight">
-              {money(total)}
-            </p>
-            {/* The same honesty as the panel above: on a phone this bar is the
-                only total in view, so it must not read as final while the
-                delivery fee is still unknown. */}
-            {!deliveryKnown && <p className="text-[11px] text-muted">before delivery</p>}
-          </div>
-          <Button
-            className="h-13 flex-1 text-base"
-            disabled={!s.cart.length || submitting || !cardAvailable || (scheduling && !chosenSlot)}
-            type="submit"
-          >
-            {submitting ? "Working…" : "Pay now"}
-          </Button>
-        </div>
-      </div>
+      <MobilePayBar
+        totalItems={s.totalItems}
+        money={money}
+        total={total}
+        deliveryKnown={deliveryKnown}
+        submitting={submitting}
+        canSubmit={canSubmit}
+      />
     </form>
   );
 }

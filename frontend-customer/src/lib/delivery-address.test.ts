@@ -6,6 +6,7 @@ import {
   looseAddressFields,
   postalCodeLabel,
   formatPhoneAsTyped,
+  phoneWithoutCountryCode,
   validateAddress,
   validatePhone,
   type AddressFields,
@@ -334,5 +335,44 @@ describe("isSameAddress", () => {
   it("treats a real change as a different address", () => {
     expect(isSameAddress({ ...typed, line2: "Apt 5C" }, saved)).toBe(false);
     expect(isSameAddress({ ...typed, zip: "20501" }, saved)).toBe(false);
+  });
+});
+
+/**
+ * Checkout showed a returning customer "+91 +916353100362": the chip beside
+ * the field carries the storefront's country code, and the profile stores the
+ * number in full. Their own phone number, shown back to them wrong, in the
+ * field they are least willing to see a mistake in.
+ */
+describe("phoneWithoutCountryCode", () => {
+  it("drops the code the chip already shows", () => {
+    expect(phoneWithoutCountryCode("+916353100362", "+91")).toBe("6353100362");
+  });
+
+  it("copes with the number stored spaced out", () => {
+    expect(phoneWithoutCountryCode("+91 63531 00362", "+91")).toBe("6353100362");
+  });
+
+  it("leaves another country's number in full", () => {
+    // Here the "+" is the point: the chip is wrong about this number, and the
+    // digits are the only thing saying so.
+    expect(phoneWithoutCountryCode("+14155550132", "+91")).toBe("+14155550132");
+  });
+
+  it("leaves a national number alone", () => {
+    expect(phoneWithoutCountryCode("6353100362", "+91")).toBe("6353100362");
+    expect(phoneWithoutCountryCode("(635) 310-0362", "+91")).toBe("(635) 310-0362");
+  });
+
+  it("does nothing when the storefront publishes no code", () => {
+    expect(phoneWithoutCountryCode("+916353100362", undefined)).toBe("+916353100362");
+    expect(phoneWithoutCountryCode("+916353100362", "")).toBe("+916353100362");
+  });
+
+  it("formats to a grouped national number once stripped", () => {
+    // The pair, which is what checkout actually does.
+    expect(formatPhoneAsTyped(phoneWithoutCountryCode("+916353100362", "+91"))).toBe(
+      "(635) 310-0362",
+    );
   });
 });

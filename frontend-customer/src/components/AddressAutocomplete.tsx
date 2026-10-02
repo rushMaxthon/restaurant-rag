@@ -127,12 +127,20 @@ export function AddressAutocomplete({
   // Set while a pick is being applied, so the debounce that the pick's own
   // text change triggers does not immediately reopen the list underneath it.
   const justPicked = useRef(false);
+  // Nothing is looked up until the customer has typed in this box. The effect
+  // below runs on every `value`, and `value` arrives already filled when the
+  // account has a saved address — so checkout opened with the suggestion list
+  // dropped over the fields beneath it, offering five alternatives to an
+  // address nobody had questioned. A prefilled value is an answer, not a
+  // query; only a keystroke makes it one.
+  const typed = useRef(false);
 
   useEffect(() => {
     if (justPicked.current) {
       justPicked.current = false;
       return;
     }
+    if (!typed.current) return;
     const text = value.trim();
     // Under three characters every query matches half a city, and each one is
     // a billable request.
@@ -248,7 +256,10 @@ export function AddressAutocomplete({
             setTimeout(() => setOpen(false), 150);
             onBlur();
           }}
-          onChange={(event) => onTextChange(event.target.value)}
+          onChange={(event) => {
+            typed.current = true;
+            onTextChange(event.target.value);
+          }}
           onFocus={() => setOpen(suggestions.length > 0)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
