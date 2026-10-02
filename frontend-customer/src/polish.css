@@ -3362,19 +3362,31 @@ html {
    anchor of the page rather than as a fourth step. */
 .order-summary {
   position: relative;
-  overflow: hidden;
   padding: var(--space-5);
-}
-.order-summary::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(
+  /* The accent is painted as a background rather than as a clipped
+     pseudo-element, and this panel does NOT clip its overflow.
+
+     It used to: a 3px `::before` sat at `inset: 0 0 auto` and `overflow:
+     hidden` was what kept its square ends off the panel's rounded corners.
+     That clip also cut off the "Taxes and charges" popover, which is
+     absolutely positioned inside this panel — on a real bill the fourth
+     line (GST on the delivery fee) and the total row were simply not on
+     screen, so the three lines a customer COULD see added up to less than
+     the figure they were being charged. A decoration cost the bill its
+     arithmetic.
+
+     A background is clipped by `border-radius` on its own, so the accent
+     still stops at the corner and nothing else is clipped with it. The
+     colour comes from the panel's own `background-color`; only the image
+     is set here. */
+  background-image: linear-gradient(
     90deg,
     var(--primary),
     color-mix(in srgb, var(--primary) 55%, transparent)
   );
+  background-repeat: no-repeat;
+  background-size: 100% 3px;
+  background-position: top left;
 }
 
 /* Where to collect from, on a pickup order. Replaces a run of utilities so
