@@ -15,6 +15,119 @@ import { useBangkokStore } from "@/lib/bangkok-store";
 import { useMenuItems } from "@/lib/queries";
 import { DishCard } from "./dish-card";
 
+/**
+ * How much of the top of the window the sticky chrome covers, and the two
+ * offsets derived from it.
+ *
+ * **One number, in one place, because three things have to agree**: where a
+ * jump leaves a heading, which section the rail calls current, and where the
+ * chrome actually ends. They did not. The landing was left to CSS
+ * (`scroll-margin-top: 132px` on the heading) and the highlight to a constant
+ * in this file (136px) — and a global `scroll-padding-top: 80px` on the root
+ * composes with the first of those, so a jump landed the heading at 217px:
+ * 85px below the rail, and below the line that decides the highlight. The page
+ * went to the right section and the rail named the one before it.
+ *
+ * Measured rather than reasoned: with the rail stuck, its bottom edge sits at
+ * 132px on both a desktop window and a phone.
+ */
+const CHROME = 132;
+/** A jump leaves the heading just clear of the rail. */
+const LANDING = CHROME + 8;
+/**
+ * A section is current once its heading has reached here. Below the landing
+ * point on purpose, so a jump always marks the section it just landed on —
+ * the two being equal would make it a coin toss on a sub-pixel rounding.
+ */
+const ACTIVE_LINE = CHROME + 56;
+
+/**
+ * Put a section's heading just below the chrome, and HOLD it there until the
+ * page stops arguing.
+ *
+ * Four things here were each arrived at by measuring a failure.
+ *
+ * **Scrolled explicitly, not with `scrollIntoView`.** That way the landing
+ * offset and `ACTIVE_LINE` come from one constant, rather than from a
+ * `scroll-margin-top` that silently composes with a global
+ * `scroll-padding-top` — which is how a jump came to land 85px below the rail
+ * while the highlight named the previous section.
+ *
+ * **Never `behavior: "smooth"`.** The browser animates towards an offset
+ * computed when the animation begins, and content arriving above the target
+ * moves it, so the animation ends early. Measured on a 6,000px jump: smooth
+ * stopped 2,281px short; instant landed.
+ *
+ * **Corrected every frame, by the remaining distance.** One scroll is not
+ * enough, because two different things disturb it and they are not the same
+ * problem. The page GROWS — this menu is 187 dishes, 36,000px in a desktop
+ * window and 87,000px on a phone, and it keeps getting taller after it is
+ * interactive as the webfont swaps and re-measures every dish name and images
+ * resolve. And the position is RESET — the router is created with
+ * `scrollRestoration`, and its restore for the incoming location can land
+ * after the jump. Watching only for growth misses the reset, because a reset
+ * changes no heights; watching for a fixed number of frames misses whichever
+ * one is late, and which one is late depends on a cold cache. Both were tried,
+ * and each passed on a warm run and failed on a cold one.
+ *
+ * Comparing the heading against where it should be, every frame, asks the only
+ * question that matters and does not care which disturbance it is answering.
+ *
+ * **It yields to the reader.** The first wheel, touch or key press ends it —
+ * correcting the scroll under somebody who has started reading would be far
+ * worse than landing slightly off.
+ */
+function jumpToSection(slug: string): () => void {
+  let abandoned = false;
+  let frame = 0;
+  let quiet = 0;
+  let passes = 0;
+
+  const stop = () => {
+    if (abandoned) return;
+    abandoned = true;
+    if (frame) cancelAnimationFrame(frame);
+    for (const event of ["wheel", "touchstart", "keydown"] as const) {
+      window.removeEventListener(event, stop);
+    }
+  };
+
+  const step = () => {
+    if (abandoned) return;
+    const node = document.getElementById(slug);
+    if (!node) return stop();
+
+    const remaining = node.getBoundingClientRect().top - LANDING;
+    if (Math.abs(remaining) > 2) {
+      // By the REMAINING distance, so it converges instead of recomputing an
+      // absolute position that keeps going stale.
+      window.scrollBy({ top: remaining, behavior: "instant" });
+      quiet = 0;
+    } else {
+      quiet += 1;
+    }
+
+    passes += 1;
+    // Held for a second and a half after it last had to move, not half a
+    // second. The extra second is for one specific late arrival: open /menu,
+    // then follow a link to /menu?category=X in the same tab, and the router
+    // has a saved scroll entry for that path — it restores it, at zero, a
+    // beat after the jump has already landed and gone quiet. A cold load
+    // straight to the same link never shows it, because there is no saved
+    // entry to restore. Ten seconds remains the hard ceiling, so nothing can
+    // pin a storefront whose images never finish arriving.
+    if (quiet < 90 && passes < 600) frame = requestAnimationFrame(step);
+    else stop();
+  };
+
+  for (const event of ["wheel", "touchstart", "keydown"] as const) {
+    window.addEventListener(event, stop, { passive: true, once: true });
+  }
+  step();
+  return stop;
+}
+
+
 type Sort = "recommended" | "price-asc" | "price-desc" | "rating";
 
 const SORTS: { value: Sort; label: string }[] = [
@@ -142,13 +255,35 @@ export function MenuGrid({
    * customer did not ask to see.
    */
   const landed = useRef<string | null>(null);
+  const cancelJump = useRef<(() => void) | null>(null);
+
+  // Cancelled on unmount ONLY — see below for why it is not the effect's own
+  // cleanup.
+  useEffect(() => () => cancelJump.current?.(), []);
+
   useEffect(() => {
     if (!category || category === "All" || sections.length === 0) return;
     if (landed.current === category) return;
     const target = sections.find((section) => section.category === category);
     if (!target) return;
     landed.current = category;
-    document.getElementById(target.slug)?.scrollIntoView({ behavior: "instant", block: "start" });
+    cancelJump.current?.();
+    // **Held in a ref rather than returned as this effect's cleanup**, and
+    // that distinction is the whole bug it fixes. `sections` is a memo over
+    // the query's data, so it takes a new identity whenever TanStack Query
+    // hands back a new array — a background refetch is enough. React runs the
+    // previous cleanup before re-running the effect, so returning the
+    // canceller meant any such refetch killed the correction mid-flight; and
+    // because `landed.current` was already set, the early return above then
+    // declined to start another. The jump died silently and the page stayed
+    // where it was.
+    //
+    // It presented as a deep link that worked on a warm run and did nothing on
+    // a cold one, which sent two rounds of tuning after the frame budget
+    // instead. The clue that should have been read sooner: clicking a chip,
+    // which calls `jumpToSection` directly and registers no cleanup, never
+    // once failed.
+    cancelJump.current = jumpToSection(target.slug);
   }, [category, sections]);
 
   /**
@@ -160,12 +295,12 @@ export function MenuGrid({
    * nothing at all while the tab is in the background, which makes it
    * unverifiable. This reads nineteen rects inside one animation frame.
    *
-   * `CHROME` is the header plus the rail — the line below which the page is
-   * actually visible. A section counts as current once its top has passed it.
+   * `ACTIVE_LINE` is derived from the measured chrome at the top of this file,
+   * which is also what the jump uses — see the note there for why they have to
+   * come from one number.
    */
   useEffect(() => {
     if (sections.length === 0) return;
-    const CHROME = 136;
     let frame = 0;
 
     const measure = () => {
@@ -174,7 +309,7 @@ export function MenuGrid({
         const node = document.getElementById(section.slug);
         return node ? node.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
       });
-      setActive(activeSection(sections, tops, CHROME));
+      setActive(activeSection(sections, tops, ACTIVE_LINE));
     };
 
     const onScroll = () => {
@@ -219,7 +354,7 @@ export function MenuGrid({
     // a reload or a share lands in the same place.
     onCategoryChange(section.category);
     landed.current = section.category;
-    document.getElementById(section.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    jumpToSection(section.slug);
   }
 
   return (

@@ -30,10 +30,21 @@ function MenuPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   // `replace` so browsing sections does not fill the back button with them:
   // back should leave the menu, not walk every section they tried.
+  //
+  // `resetScroll: false` is what makes the rail work at all. The router is
+  // created with `scrollRestoration: true`, so it owns the scroll position
+  // across navigations — and writing the chosen section into the search params
+  // IS a navigation as far as it is concerned. It would restore the page to
+  // where this "location" was last seen, which is the top, immediately undoing
+  // the jump the click just made. Observed as: the URL updates, the highlight
+  // moves, and the page does not move at all.
+  //
+  // This is not a page change; it is a note about where on the page we are.
   const chooseCategory = (next: string) =>
     navigate({
       search: next && next !== "All" ? { category: next } : {},
       replace: true,
+      resetScroll: false,
     });
   // The header is tighter on a phone, on purpose. This heading, its eyebrow
   // and its subtitle took about 170px above the search box, and the category
