@@ -87,7 +87,7 @@ export function KitchenGallery({
           </Link>
         </div>
 
-        <ul className="gallery__grid reveal-group">
+        <ul className="gallery__grid reveal-group--settle">
           {shown.map((photo, index) => (
             <li
               className="gallery__tile"

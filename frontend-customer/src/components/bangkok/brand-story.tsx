@@ -77,7 +77,7 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
         // on it clears the sticky header; see `.brand-lead` in polish.css.
         <section className="brand-lead" id="story">
           <div className="page-pad section-pad brand-lead__inner">
-            <div className="brand-lead__copy reveal">
+            <div className="brand-lead__copy reveal-left">
               {/* The heading is the OWNER'S, not the restaurant's name. The
                   name was here first and it read as a mistake: for any tenant
                   who has not rewritten `hero_headline` into a slogan — which
@@ -99,7 +99,7 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
                 entirely when this kitchen has uploaded none, which is why the
                 copy column is not sized against it. */}
             {photos.length > 0 && (
-              <div className="brand-lead__art reveal" data-count={Math.min(photos.length, 3)}>
+              <div className="brand-lead__art reveal-right" data-count={Math.min(photos.length, 3)}>
                 {photos.slice(0, 3).map((photo) => (
                   <figure className="brand-lead__shot" key={photo.src}>
                     <img alt={photo.alt} loading="lazy" src={photo.src} />
@@ -158,7 +158,10 @@ export function BrandStandards() {
         <section className="brand-standards">
           <div className="page-pad section-pad brand-standards__inner">
             {statements.map((section, index) => (
-              <article className="brand-standards__card reveal" key={`${section.heading}-${index}`}>
+              <article
+                className="brand-standards__card reveal-left"
+                key={`${section.heading}-${index}`}
+              >
                 <Quote className="brand-standards__mark" aria-hidden="true" />
                 <h2 className="font-display brand-standards__title">{section.heading}</h2>
                 <div className="brand-standards__body">{paragraphs(section)}</div>

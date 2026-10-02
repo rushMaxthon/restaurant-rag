@@ -19,6 +19,7 @@ import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
 import { fontTokenCss, resolveFonts } from "@/lib/fonts";
 import { SPLASH_PREPAINT, SplashScreen } from "@/components/bangkok/splash-screen";
+import { RELOAD_TO_TOP_PREPAINT } from "@/lib/reload-to-top";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 import { Button } from "@/components/ui/button";
 
@@ -137,6 +138,10 @@ function RootShell({ children }: { children: ReactNode }) {
             which is the same reason the operator panel inlines its theme
             script. */}
         <script dangerouslySetInnerHTML={{ __html: SPLASH_PREPAINT }} />
+        {/* Also before anything renders, and for the same reason: it has to
+            get to the router's cached scroll position before the router
+            does. See `reload-to-top.ts`. */}
+        <script dangerouslySetInnerHTML={{ __html: RELOAD_TO_TOP_PREPAINT }} />
         <HeadContent />
       </head>
       <body>
