@@ -325,6 +325,11 @@ class DeliveryQuoteResponse(BaseModel):
     #: * `"branch_unknown"` — the RESTAURANT has no usable coordinates. Nothing
     #:   the customer can do; the operator has to locate the branch.
     #: * `"unserviceable"` — the courier will not drive there.
+    #: * `"courier_unavailable"` — the courier was asked and could not be
+    #:   reached: an outage, a timeout, a refused login. Nothing is wrong with
+    #:   the address, and telling the customer to check it — which this field
+    #:   used to do, because the API could not tell the two apart — sends them
+    #:   to fix something that is not broken.
     #: * `"currency_mismatch"` — the courier quoted a currency this order is not
     #:   charged in, so the quote was discarded rather than converted.
     fallback_reason: str = ""

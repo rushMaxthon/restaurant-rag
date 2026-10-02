@@ -39,8 +39,7 @@ from app.services.auth import (
 )
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
-from app.services.delivery.quoting import fee_from, points_for, quote_for, usable_in
-from app.services.delivery.registry import delivery_provider
+from app.services.delivery.quoting import attempt_quote, fee_from, points_for, usable_in
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services import order_charges
 from app.services.orders import (
@@ -101,7 +100,7 @@ def _priced(location, payload: DeliveryQuoteRequest, delivery_fee) -> dict:
     return {"charges": charges_response(charges), "total_amount": charges.total_amount}
 
 
-def _why_no_quote(quote, unusable: str, drop) -> str:
+def _why_no_quote(attempt, unusable: str, drop) -> str:
     """Which of the several reasons the branch fee is standing.
 
     Worth getting right because the page acts on it: one reason tells the
@@ -109,18 +108,29 @@ def _why_no_quote(quote, unusable: str, drop) -> str:
     can do. Reporting "no courier" for a lookup that landed in the wrong city
     sends them to wait for a problem that is theirs to fix.
 
-    A refused quote with an INEXACT drop is almost always the address. That is
-    how the 1,605 km quote arrived: the coordinates graded as usable, the
-    courier priced the journey honestly, and the distance backstop threw it
-    out — which is a statement about the address, not about the courier.
+    This used to GUESS, because `quote_for` returned a bare `None` for every
+    kind of failure: no quote plus an inexact drop was read as the address
+    being at fault. It is now told. The guess was wrong in the case that
+    matters most — Pidge's sandbox answering 503 while a perfectly real Surat
+    society geocoded to a `sublocality` — and it put the blame on the one
+    person who could do nothing about it.
+
+    A refused quote with an INEXACT drop is still read as the address: that is
+    how the 1,605 km quote arrived, the courier priced the journey honestly and
+    the distance backstop threw it out, which is a statement about the address.
     """
 
     if unusable:
         return unusable
-    if quote is not None:
+    if attempt.quote is not None:
         return "currency_mismatch"
-    if delivery_provider() is None:
+    reason = attempt.reason
+    if reason in {"quotes_disabled", "no_courier", "cannot_quote"}:
         return "no_courier"
+    if reason == "courier_unavailable":
+        return "courier_unavailable"
+    # `out_of_range` falls through: the courier answered, and the answer says
+    # the address is somewhere nobody is driving to.
     return "address_unknown" if not drop.exact else "unserviceable"
 
 
@@ -211,7 +221,8 @@ def quote_delivery(
         else ""
     )
 
-    quote = quote_for(location, query, db=db, points=(pickup, drop))
+    attempt = attempt_quote(location, query, db=db, points=(pickup, drop))
+    quote = attempt.quote
     if quote is None or not usable_in(quote, currency):
         # No courier, a coordinate we could not trust, or one pricing in a
         # currency this order is not charged in — which has not answered the
@@ -221,7 +232,7 @@ def quote_delivery(
             delivery_fee=branch_fee,
             currency=currency,
             source="branch",
-            fallback_reason=_why_no_quote(quote, unusable, drop),
+            fallback_reason=_why_no_quote(attempt, unusable, drop),
             **_priced(location, payload, branch_fee),
             **located,
         )

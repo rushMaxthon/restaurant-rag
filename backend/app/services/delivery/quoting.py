@@ -27,6 +27,7 @@ ordering.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
@@ -111,6 +112,28 @@ def within_reach(location: RestaurantLocation, metres: float | None) -> bool:
     return metres <= limit_km * 1000
 
 
+@dataclass(frozen=True, slots=True)
+class QuoteAttempt:
+    """A quote, or the reason there is not one.
+
+    The reason exists because the checkout shows the customer a sentence about
+    it, and the sentence has to be true. `quote_for` collapses every failure
+    into `None` — which was defended on the grounds that the answer to all of
+    them is the branch's flat fee, and that is right about the FEE and wrong
+    about the PAGE. The API could not tell a courier outage from a bad address,
+    so it guessed from whether the address geocoded precisely, and a customer
+    whose society resolved to a sublocality was told to "check the street and
+    PIN code" while the real cause was the courier's login returning 503. They
+    could have retyped that address all afternoon.
+    """
+
+    quote: DeliveryQuote | None
+    #: `""` when `quote` is set. Otherwise one of `quotes_disabled`,
+    #: `no_courier`, `cannot_quote`, `coarse_point`, `courier_unavailable`,
+    #: `out_of_range` or `declined`.
+    reason: str = ""
+
+
 def quote_for(
     location: RestaurantLocation,
     delivery_address: AddressQuery | str,
@@ -121,9 +144,25 @@ def quote_for(
 ) -> DeliveryQuote | None:
     """Ask the courier what this trip would cost. None if nobody answered.
 
-    None covers every way this can decline to produce a figure, and they are
-    deliberately indistinguishable to the caller: the answer to all of them is
-    the branch's own fee.
+    Kept for callers that only need the figure. One that has to EXPLAIN the
+    figure wants `attempt_quote`, which is this function with the reason still
+    attached.
+    """
+
+    return attempt_quote(
+        location, delivery_address, db=db, known_drop=known_drop, points=points
+    ).quote
+
+
+def attempt_quote(
+    location: RestaurantLocation,
+    delivery_address: AddressQuery | str,
+    *,
+    db: Session | None = None,
+    known_drop: tuple[float, float, str] | None = None,
+    points: tuple[geocoding.Coordinates, geocoding.Coordinates] | None = None,
+) -> QuoteAttempt:
+    """Ask the courier what this trip would cost, and say what happened.
 
     `points` lets a caller that has already located both ends pass them in
     rather than have them looked up again.
@@ -131,16 +170,16 @@ def quote_for(
 
     settings = get_settings()
     if not settings.enable_delivery_quotes:
-        return None
+        return QuoteAttempt(None, "quotes_disabled")
     provider = delivery_provider()
     if provider is None:
-        return None
+        return QuoteAttempt(None, "no_courier")
     quoter = getattr(provider, "quote", None)
     if quoter is None:
         # A courier added later may not price ahead of time. That is a missing
         # feature, not a broken checkout.
         logger.info("Courier %s cannot quote; falling back to the branch fee", provider.name)
-        return None
+        return QuoteAttempt(None, "cannot_quote")
 
     pickup, drop = points or points_for(
         location, delivery_address, db=db, known_drop=known_drop
@@ -173,7 +212,7 @@ def quote_for(
             drop.source,
             drop.confidence or "-",
         )
-        return None
+        return QuoteAttempt(None, "coarse_point")
 
     try:
         quote = quoter(
@@ -185,10 +224,10 @@ def quote_for(
         )
     except DeliveryProviderError as error:
         logger.warning("Courier could not quote this trip: %s", error)
-        return None
+        return QuoteAttempt(None, "courier_unavailable")
     except Exception:  # noqa: BLE001 - a checkout must survive any courier bug
         logger.exception("Quoting the courier raised; charging the branch fee instead")
-        return None
+        return QuoteAttempt(None, "courier_unavailable")
 
     if quote is not None and not within_reach(location, quote.distance_metres):
         # A real price for a journey nobody would make. The courier cannot be
@@ -200,8 +239,10 @@ def quote_for(
             "the address almost certainly resolved to the wrong place.",
             (quote.distance_metres or 0) / 1000,
         )
-        return None
-    return quote
+        return QuoteAttempt(None, "out_of_range")
+    # A courier that answered with nothing has declined the trip, which is a
+    # different thing from one that could not be reached.
+    return QuoteAttempt(quote, "" if quote is not None else "declined")
 
 
 def usable_in(quote: DeliveryQuote, currency: str) -> bool:
@@ -255,6 +296,8 @@ def delivery_fee_for(
 
 
 __all__ = [
+    "QuoteAttempt",
+    "attempt_quote",
     "delivery_fee_for",
     "fee_from",
     "points_for",
