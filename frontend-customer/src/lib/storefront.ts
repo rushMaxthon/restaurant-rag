@@ -172,6 +172,16 @@ export type StorefrontCopy = {
   og_description: string;
   hero_headline: string;
   hero_subcopy: string;
+  /**
+   * The heading over the photographs, and the line in the footer.
+   *
+   * Editable because both are CLAIMS rather than labels: "Made here, every
+   * day" is true of a kitchen that cooks and false of a counter that resells,
+   * and this app cannot tell which restaurant it is serving. They default to
+   * the weakest true version — see `restaurant_storefront.py`.
+   */
+  kitchen_headline: string;
+  promise_note: string;
   concierge_intro: string;
   login_blurb: string;
 };
@@ -195,6 +205,8 @@ export const UNKNOWN_STOREFRONT: StorefrontCopy = {
   hero_subcopy: "Browse the menu and order online.",
   concierge_intro: "Ask me anything about the menu.",
   login_blurb: "Sign in to place your order.",
+  kitchen_headline: "A look at the food",
+  promise_note: "Order online.",
 };
 
 /** The shape `/app-config` answers with, as far as a storefront cares. */

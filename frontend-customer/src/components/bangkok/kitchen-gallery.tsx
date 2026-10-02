@@ -49,7 +49,7 @@ export function KitchenGallery({
             <div>
               <p className="eyebrow">From our kitchen</p>
               <h2 className="font-display gallery__title reveal-wipe">
-                <span>Made here, every day</span>
+                <span>{copy.kitchen_headline}</span>
               </h2>
             </div>
           </div>
@@ -81,7 +81,7 @@ export function KitchenGallery({
           <div>
             <p className="eyebrow">From our kitchen</p>
             <h2 className="font-display gallery__title reveal-wipe">
-              <span>Made here, every day</span>
+              <span>{copy.kitchen_headline}</span>
             </h2>
           </div>
           {/* The one way out of this block, and it goes to the menu — where

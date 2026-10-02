@@ -48,6 +48,23 @@ describe("motifFor", () => {
     expect(motifFor(null, "Hakka Noodles")).toBe("noodles");
   });
 
+  it("draws a fast-food menu as what the food actually looks like", () => {
+    // The next restaurant onboarded is fast food, and the vocabulary was all
+    // Gujarati — every pizza and pasta fell through to the neutral plate.
+    expect(motifFor("Pizzas", "Margherita")).toBe("flatbread");
+    expect(motifFor("Wraps & Rolls", "Paneer Wrap")).toBe("flatbread");
+    expect(motifFor("Pasta", "Alfredo")).toBe("noodles");
+    expect(motifFor("Sandwiches", "Grilled Cheese")).toBe("squares");
+  });
+
+  it("leaves a burger and chips on the plate rather than drawing them wrong", () => {
+    // No drawing in this set depicts them. A wrong shape reads worse than a
+    // neutral one, and the plate is true of every dish ever served.
+    expect(motifFor("Burgers", "Cheese Burger")).toBe("plate");
+    expect(motifFor("Sides", "French Fries")).toBe("plate");
+    expect(motifFor("Shakes", "Oreo Shake")).toBe("plate");
+  });
+
   it("gives anything unrecognised a plate, which is true of every dish", () => {
     expect(motifFor("Chef's Corner", "House Special")).toBe("plate");
     expect(motifFor("", "")).toBe("plate");

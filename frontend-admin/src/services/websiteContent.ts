@@ -110,6 +110,26 @@ export const COPY_GROUPS: { title: string; blurb: string; fields: CopyField[] }[
       },
     ],
   },
+  {
+    title: 'What you claim about the food',
+    blurb:
+      'Both of these say something about how you work, so they are yours to ' +
+      'write rather than ours. They start as the weakest true version.',
+    fields: [
+      {
+        key: 'kitchen_headline',
+        label: 'Over your photographs',
+        hint: 'On the home page, above the pictures of your food.',
+        multiline: false,
+      },
+      {
+        key: 'promise_note',
+        label: 'The line in your footer',
+        hint: 'The last thing on every page.',
+        multiline: false,
+      },
+    ],
+  },
 ];
 
 export const COPY_KEYS: StorefrontCopyKey[] = COPY_GROUPS.flatMap((group) =>

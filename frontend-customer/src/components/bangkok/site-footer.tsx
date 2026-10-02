@@ -138,7 +138,7 @@ export function SiteFooter() {
         {/* Said plainly because it is the honest description of what this site
             is, and because a customer who knows the kitchen cooks to order is
             a customer who is not surprised by the wait. */}
-        <p className="site-footer__made">Every order cooked to order.</p>
+        <p className="site-footer__made">{copy.promise_note}</p>
       </div>
 
       <StructuredData name={copy.name} description={copy.meta_description} />

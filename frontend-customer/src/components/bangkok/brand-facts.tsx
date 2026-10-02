@@ -1,5 +1,6 @@
 import { Award } from "lucide-react";
 
+import { useBangkokStore } from "@/lib/bangkok-store";
 import { useStorefrontBrand, useStorefrontCopy, yearsTrading } from "@/lib/storefront";
 
 /**
@@ -24,7 +25,13 @@ import { useStorefrontBrand, useStorefrontCopy, yearsTrading } from "@/lib/store
  */
 export function BrandHighlights() {
   const { established_year: established, highlights } = useStorefrontBrand();
+  const store = useBangkokStore();
   const years = yearsTrading(established);
+  // The branch's own city, never a literal. This read "years in Surat",
+  // which was true of the one restaurant it was written against and would
+  // have been a false claim about the next one — the exact class of thing
+  // that has to come from a row rather than from the code.
+  const city = (store.orderLocation ?? store.currentLocation)?.city;
 
   // The year earns a tile of its own, ahead of whatever the owner wrote,
   // because "since 1999" is the one fact on this page that a competitor
@@ -35,7 +42,7 @@ export function BrandHighlights() {
           {
             value: String(established),
             label: "Baking since",
-            note: years ? `${years} years in Surat` : undefined,
+            note: years ? `${years} years${city ? ` in ${city}` : ""}` : undefined,
             lead: true,
           },
         ]
