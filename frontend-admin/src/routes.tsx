@@ -24,6 +24,7 @@ import {
   Bot,
   ChefHat,
   Layers3,
+  Globe,
   LayoutDashboard,
   type LucideIcon,
   Megaphone,
@@ -44,6 +45,7 @@ import { AILogsPage } from "./pages/AILogsPage";
 import { AdminRestaurantsPage } from "./pages/AdminRestaurantsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { BrandingPage } from "./pages/BrandingPage";
+import { WebsitePage } from "./pages/WebsitePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
 import { LocationDetailPage } from "./pages/LocationDetailPage";
@@ -382,6 +384,24 @@ export const ROUTES: RouteDef[] = [
           token={ctx.token}
         />
       ),
+  },
+  {
+    id: "website",
+    pattern: "/website",
+    // Both roles: an owner writes their own words, and an administrator
+    // onboarding a restaurant fills them in before handing it over. The
+    // backend answers the same way for each — `_theme_restaurant_for` refuses
+    // a restaurant_id from an owner that is not their own.
+    roles: BOTH,
+    nav: { section: "Manage", label: "Website", icon: Globe },
+    render: (ctx) => (
+      <WebsitePage
+        onToast={ctx.pushToast}
+        restaurantId={ctx.restaurantId}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
   },
   {
     id: "branding",

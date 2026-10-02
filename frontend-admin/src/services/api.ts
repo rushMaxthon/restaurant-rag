@@ -1,4 +1,9 @@
 import type {
+  BrandFaq,
+  BrandSection,
+  RestaurantBrand,
+  RestaurantStorefront,
+  StorefrontCopyKey,
   BranchLocationLookup,
   OrderDelivery,
   AdminAILog,
@@ -1228,6 +1233,42 @@ export const api = {
       `/owner/insights/suggestions/offers/${offerId}/activate${scopeQuery(restaurantId)}`,
       { method: 'POST', token },
     );
+  },
+  getRestaurantStorefront(token: string, restaurantId: string): Promise<RestaurantStorefront> {
+    return request<RestaurantStorefront>(`/restaurants/${restaurantId}/storefront`, { token });
+  },
+  /**
+   * Only the keys you send are changed — the route uses `exclude_unset`, so an
+   * omitted field keeps whatever the owner wrote elsewhere rather than being
+   * cleared. Send a field as "" to deliberately clear it back to the derived
+   * default.
+   */
+  updateRestaurantStorefront(
+    token: string,
+    restaurantId: string,
+    payload: Partial<Record<StorefrontCopyKey, string>>,
+  ): Promise<RestaurantStorefront> {
+    return request<RestaurantStorefront>(`/restaurants/${restaurantId}/storefront`, {
+      method: 'PUT',
+      token,
+      body: payload,
+    });
+  },
+  getRestaurantBrand(token: string, restaurantId: string): Promise<RestaurantBrand> {
+    return request<RestaurantBrand>(`/restaurants/${restaurantId}/brand`, { token });
+  },
+  /** Same rule as the storefront copy: an omitted half is left alone, and an
+   *  empty list clears that half on purpose. */
+  updateRestaurantBrand(
+    token: string,
+    restaurantId: string,
+    payload: { about_sections?: BrandSection[]; faqs?: BrandFaq[] },
+  ): Promise<RestaurantBrand> {
+    return request<RestaurantBrand>(`/restaurants/${restaurantId}/brand`, {
+      method: 'PUT',
+      token,
+      body: payload,
+    });
   },
   getRestaurantTheme(token: string, restaurantId: string): Promise<RestaurantTheme> {
     return request<RestaurantTheme>(`/restaurants/${restaurantId}/theme`, { token });

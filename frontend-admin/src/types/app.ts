@@ -1218,6 +1218,70 @@ export interface RestaurantTheme {
   presets: ThemePreset[];
 }
 
+/**
+ * The eight short strings a restaurant's website is written from.
+ *
+ * Every one has a derived default built from the restaurant's own name,
+ * cuisine and city, so a tenant onboarded five minutes ago reads sensibly
+ * without anybody writing a word. `customized` says which the owner has
+ * actually replaced, so a form can mark the rest as inherited rather than
+ * showing them as if they were typed.
+ */
+export type StorefrontCopyKey =
+  | 'meta_title'
+  | 'meta_description'
+  | 'og_title'
+  | 'og_description'
+  | 'hero_headline'
+  | 'hero_subcopy'
+  | 'concierge_intro'
+  | 'login_blurb';
+
+export interface RestaurantStorefront {
+  restaurant_id: string;
+  restaurant_name: string;
+  /** Every key filled in: what the owner wrote, or the derived default. */
+  storefront: Record<StorefrontCopyKey, string>;
+  /** What each field falls back to when cleared. */
+  defaults: Record<StorefrontCopyKey, string>;
+  /** Per field, so the form can count down rather than refuse on save. */
+  limits: Record<string, number>;
+  /** The keys the owner has actually written. */
+  customized: StorefrontCopyKey[];
+}
+
+/** One headed section of what a restaurant says about itself. */
+export interface BrandSection {
+  heading: string;
+  body: string;
+  bullets?: string[];
+}
+
+/** One question a customer asks before a first order, and its answer. */
+export interface BrandFaq {
+  question: string;
+  answer: string;
+}
+
+/**
+ * The long-form content on a restaurant's own website.
+ *
+ * Unlike the copy above, **nothing here is derived** — empty is the normal
+ * state, and the storefront renders nothing for it. A generated paragraph
+ * about a real business's standards would be a claim nobody there made, and
+ * the same one under every restaurant's name.
+ */
+export interface RestaurantBrand {
+  restaurant_id: string;
+  restaurant_name: string;
+  brand: {
+    about_sections: BrandSection[];
+    faqs: BrandFaq[];
+  };
+  /** Field lengths and collection caps, from the one place that enforces them. */
+  limits: Record<string, number>;
+}
+
 export interface OwnerChatAnswer {
   session_id: string;
   answer: string;
