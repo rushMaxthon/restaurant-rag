@@ -12,7 +12,6 @@ import { BrandHighlights, BrandSpecialities } from "@/components/bangkok/brand-f
 import { HowToOrder } from "@/components/bangkok/how-to-order";
 import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
-import { TrustStrip } from "@/components/bangkok/trust-strip";
 import { VisitUs } from "@/components/bangkok/visit-us";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
@@ -80,9 +79,6 @@ function Home() {
   // The rule spreads them across the menu's sections — see `pickBrandPhotos`,
   // which exists because the first version showed six photographs of cake.
   const photos = useMemo(() => pickBrandPhotos(items, 8), [items]);
-
-  // How much there is to eat, counted from the rows rather than asserted.
-  const sectionCount = useMemo(() => new Set(items.map((item) => item.category)).size, [items]);
 
   // Everything the hero says about this restaurant comes from the branch row
   // the admin filled in. It used to assert "Open now" whether or not it was,
@@ -185,16 +181,6 @@ function Home() {
         </div>
       </StorefrontHero>
 
-      {/* Open or closed, how long, how much there is, where — read off the
-          branch row, with fewer cells for a branch that has published less. */}
-      <TrustStrip
-        branch={branch}
-        fulfillment={store.fulfillment}
-        timeZone={store.timeZone}
-        dishCount={items.length}
-        sectionCount={sectionCount}
-      />
-
       {/* The owner's own words, in a shape that follows what they wrote — and
           in an order this page chooses. Claim (the story) → evidence (the
           figures) → specifics (what they are known for) → proof (their own
@@ -227,7 +213,7 @@ function Home() {
           restaurant without it gets the right half full-width. The right half
           is where to find the kitchen — address, directions and today's hours
           — which is the last thing somebody needs before they decide. */}
-      <section className={askAi ? "grid bg-surface-alt lg:grid-cols-2" : "grid bg-surface-alt"}>
+      <section className={`visit-band grid bg-surface-alt${askAi ? " lg:grid-cols-2" : ""}`}>
         {askAi ? (
           <div className="page-pad section-pad">
             <Sparkles className="mb-5 size-10 text-primary" />

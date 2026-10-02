@@ -47,7 +47,7 @@ export function BrandHighlights() {
 
   return (
     <section className="facts" aria-label="At a glance">
-      <ul className="facts__grid reveal-group" data-count={Math.min(tiles.length, 5)}>
+      <ul className="facts__grid reveal-group--sides" data-count={Math.min(tiles.length, 5)}>
         {tiles.map((tile) => (
           <li className="facts__tile" data-lead={tile.lead || undefined} key={tile.label}>
             <strong className="facts__value">{tile.value}</strong>
@@ -81,8 +81,8 @@ export function BrandSpecialities() {
     <section className="known">
       <div className="page-pad section-pad known__inner">
         <p className="eyebrow reveal">What we are known for</p>
-        <h2 className="font-display known__title reveal">
-          The things people come to {copy.name} for
+        <h2 className="font-display known__title reveal-wipe">
+          <span>The things people come to {copy.name} for</span>
         </h2>
         <ul className="known__grid reveal-group">
           {specialities.map((speciality) => (
