@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,7 +29,9 @@ from app.services.restaurant_brand import (  # noqa: E402
     BODY_LIMIT,
     HEADING_LIMIT,
     MAX_FAQS,
+    MAX_HIGHLIGHTS,
     MAX_SECTIONS,
+    MAX_SPECIALITIES,
     BrandValidationError,
     read_brand,
     resolve_brand,
@@ -58,14 +61,27 @@ class OnlyWhatWasSentChangesTests(unittest.TestCase):
         self.assertNotIn("faqs", resolved)
 
 
+#: What `read_brand` answers for a restaurant that has written nothing. Stated
+#: once so the three tests that assert the whole shape cannot drift apart as
+#: keys are added — and asserted whole on purpose, because a key that stops
+#: being returned is a block that silently disappears from a storefront.
+EMPTY_BRAND = {
+    "about_sections": [],
+    "faqs": [],
+    "established_year": None,
+    "specialities": [],
+    "highlights": [],
+}
+
+
 class NothingIsInventedTests(unittest.TestCase):
     def test_a_restaurant_that_has_written_nothing_has_nothing(self) -> None:
         read = read_brand(SimpleNamespace(brand={}))
-        self.assertEqual(read, {"about_sections": [], "faqs": []})
+        self.assertEqual(read, EMPTY_BRAND)
 
-    def test_both_keys_are_always_present_so_no_client_has_to_decide(self) -> None:
+    def test_every_key_is_always_present_so_no_client_has_to_decide(self) -> None:
         read = read_brand(SimpleNamespace(brand=None))
-        self.assertEqual(sorted(read), ["about_sections", "faqs"])
+        self.assertEqual(sorted(read), sorted(EMPTY_BRAND))
         self.assertIsInstance(read["about_sections"], list)
 
 
@@ -164,8 +180,101 @@ class StoredRowsAreRevalidatedOnTheWayOutTests(unittest.TestCase):
         self.assertEqual(len(read_brand(restaurant)["about_sections"]), MAX_SECTIONS)
 
     def test_rubbish_in_the_column_does_not_reach_a_page(self) -> None:
-        restaurant = SimpleNamespace(brand={"about_sections": ["a string", 7, None], "faqs": 3})
-        self.assertEqual(read_brand(restaurant), {"about_sections": [], "faqs": []})
+        restaurant = SimpleNamespace(
+            brand={
+                "about_sections": ["a string", 7, None],
+                "faqs": 3,
+                "established_year": "not a year",
+                "specialities": "not a list",
+                "highlights": [{"value": "4.6"}, 9],
+            }
+        )
+        self.assertEqual(read_brand(restaurant), EMPTY_BRAND)
+
+
+
+class TheFactsAboveTheFoldTests(unittest.TestCase):
+    """The year founded, what they are known for, and the figures beside it.
+
+    All three were added for a storefront whose home page had the owner's
+    three paragraphs and nothing else to say — and whose business has been
+    trading since 1999, which is the single most persuasive thing about it and
+    was nowhere on their own website.
+    """
+
+    def test_a_year_is_stored_as_a_year_not_as_a_duration(self) -> None:
+        # The listing sites publish "26 Years in Business". That is right on
+        # the day it is typed and wrong every year after.
+        resolved = resolve_brand({"established_year": 1999})
+        self.assertEqual(resolved["established_year"], 1999)
+
+    def test_a_year_arrives_from_a_form_as_a_string(self) -> None:
+        self.assertEqual(resolve_brand({"established_year": " 1999 "})["established_year"], 1999)
+
+    def test_a_year_that_is_not_one_is_refused(self) -> None:
+        for bad in ("nineteen ninety nine", "19 99", 1700, date.today().year + 1):
+            with self.subTest(bad=bad), self.assertRaises(BrandValidationError):
+                resolve_brand({"established_year": bad})
+
+    def test_this_year_is_allowed_because_restaurants_open(self) -> None:
+        this_year = date.today().year
+        self.assertEqual(
+            resolve_brand({"established_year": this_year})["established_year"], this_year
+        )
+
+    def test_clearing_the_year_removes_it(self) -> None:
+        existing = {"established_year": 1999}
+        self.assertNotIn("established_year", resolve_brand({"established_year": None}, existing=existing))
+        self.assertNotIn("established_year", resolve_brand({"established_year": ""}, existing=existing))
+
+    def test_a_year_survives_an_edit_that_does_not_mention_it(self) -> None:
+        existing = {"established_year": 1999}
+        self.assertEqual(resolve_brand({"faqs": []}, existing=existing)["established_year"], 1999)
+
+    def test_specialities_are_trimmed_and_the_empty_ones_dropped(self) -> None:
+        resolved = resolve_brand({"specialities": ["  Khari biscuit ", "", "   ", "Nankhatai"]})
+        self.assertEqual(resolved["specialities"], ["Khari biscuit", "Nankhatai"])
+
+    def test_too_many_specialities_are_refused(self) -> None:
+        with self.assertRaises(BrandValidationError):
+            resolve_brand({"specialities": ["x"] * (MAX_SPECIALITIES + 1)})
+
+    def test_a_highlight_needs_both_a_figure_and_a_caption(self) -> None:
+        # A number with no caption says nothing; a caption with no number is a
+        # tile with a hole in it.
+        resolved = resolve_brand(
+            {
+                "highlights": [
+                    {"value": "4.6", "label": ""},
+                    {"value": "", "label": "Rated"},
+                    {"value": "1999", "label": "Baking since"},
+                ]
+            }
+        )
+        self.assertEqual(resolved["highlights"], [{"value": "1999", "label": "Baking since"}])
+
+    def test_a_borrowed_figure_keeps_its_attribution(self) -> None:
+        # A rating earned on a listing site is a real fact and not this
+        # platform's measurement. Without the note it reads as ours.
+        resolved = resolve_brand(
+            {"highlights": [{"value": "4.6", "label": "Rated", "note": "85 reviews on JustDial"}]}
+        )
+        self.assertEqual(resolved["highlights"][0]["note"], "85 reviews on JustDial")
+
+    def test_too_many_highlights_are_refused(self) -> None:
+        with self.assertRaises(BrandValidationError):
+            resolve_brand({"highlights": [{"value": "1", "label": "a"}] * (MAX_HIGHLIGHTS + 1)})
+
+    def test_a_row_written_before_the_caps_existed_is_cut_on_the_way_out(self) -> None:
+        restaurant = SimpleNamespace(
+            brand={
+                "specialities": ["ok"] * (MAX_SPECIALITIES + 5),
+                "highlights": [{"value": "1", "label": "a"}] * (MAX_HIGHLIGHTS + 3),
+            }
+        )
+        read = read_brand(restaurant)
+        self.assertEqual(len(read["specialities"]), MAX_SPECIALITIES)
+        self.assertEqual(len(read["highlights"]), MAX_HIGHLIGHTS)
 
 
 if __name__ == "__main__":

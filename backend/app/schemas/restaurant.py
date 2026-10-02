@@ -235,6 +235,17 @@ class BrandFaqPayload(BaseModel):
     answer: str = ""
 
 
+class BrandHighlightPayload(BaseModel):
+    """One figure worth putting in a band, and where it came from."""
+
+    value: str = ""
+    label: str = ""
+    #: Attribution, for a figure the restaurant earned somewhere else. A
+    #: rating from a listing site is a real fact and not this platform's
+    #: measurement; shown without a source it reads as ours.
+    note: str = ""
+
+
 class RestaurantBrandUpdate(BaseModel):
     """The long-form content on a restaurant's own website.
 
@@ -249,6 +260,12 @@ class RestaurantBrandUpdate(BaseModel):
 
     about_sections: list[BrandSectionPayload] | None = None
     faqs: list[BrandFaqPayload] | None = None
+    #: The YEAR, never a duration. "26 years in business" is what the listing
+    #: sites publish and it is right for one year only; the clients subtract.
+    #: `model_fields_set` is what distinguishes "clear it" from "leave it".
+    established_year: int | None = None
+    specialities: list[str] | None = None
+    highlights: list[BrandHighlightPayload] | None = None
 
 
 class RestaurantBrandResponse(BaseModel):
@@ -259,7 +276,7 @@ class RestaurantBrandResponse(BaseModel):
     # Always both keys, always lists. Empty is the normal state — nothing here
     # is derived, because a generated paragraph about a real business's
     # standards is a claim nobody there made.
-    brand: dict[str, list[Any]]
+    brand: dict[str, Any]
     # Per field, so a form can count down to the limit rather than refusing on
     # save. Carries the collection caps too.
     limits: dict[str, int]

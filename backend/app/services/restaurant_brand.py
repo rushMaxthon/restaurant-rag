@@ -29,6 +29,7 @@ reports success while losing content is how people stop trusting a form.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 # Sizes are picked from where the text lands, not rounded for neatness.
@@ -43,14 +44,44 @@ ANSWER_LIMIT = 1200
 # Enough for the shape of page this is for — overview, what they are known
 # for, how ordering works, a note on quality — and few enough that the page
 # stays a page rather than becoming a document.
+SPECIALITY_LIMIT = 60
+#: The big word on a highlight tile: "1999", "4.6", "11-25". Short on purpose
+#: — a sentence here is a section, not a tile, and setting one in 44px type
+#: produces a tile that is all text and no number.
+HIGHLIGHT_VALUE_LIMIT = 24
+HIGHLIGHT_LABEL_LIMIT = 60
+#: Where a figure came from, when it came from somewhere else. A rating a
+#: restaurant earned on a listing site is a real fact and not THIS platform's
+#: measurement, so it may be shown and must be attributed. Without somewhere
+#: to put "on JustDial" the honest options are to drop the number or to
+#: imply it is ours, and both are worse.
+HIGHLIGHT_NOTE_LIMIT = 60
+
 MAX_SECTIONS = 8
 MAX_BULLETS = 10
 MAX_FAQS = 12
+MAX_SPECIALITIES = 10
+#: Four across a band. A fifth wraps to a second row of one, which reads as a
+#: tile that failed to load.
+MAX_HIGHLIGHTS = 4
+
+#: Nothing before this is a trading history, it is a typo. Kept loose rather
+#: than clever: there are bakeries older than most software's idea of "old".
+EARLIEST_YEAR = 1800
 
 ABOUT_SECTIONS_KEY = "about_sections"
 FAQS_KEY = "faqs"
+ESTABLISHED_KEY = "established_year"
+SPECIALITIES_KEY = "specialities"
+HIGHLIGHTS_KEY = "highlights"
 
-BRAND_KEYS = (ABOUT_SECTIONS_KEY, FAQS_KEY)
+BRAND_KEYS = (
+    ABOUT_SECTIONS_KEY,
+    FAQS_KEY,
+    ESTABLISHED_KEY,
+    SPECIALITIES_KEY,
+    HIGHLIGHTS_KEY,
+)
 
 
 class BrandValidationError(ValueError):
@@ -130,6 +161,51 @@ def _faq(raw: Any, *, index: int) -> dict[str, str] | None:
     return {"question": question, "answer": answer}
 
 
+def _year(raw: Any) -> int | None:
+    """A founding year, or None to say nothing.
+
+    Stored as the YEAR, never as "26 years in business", which is what the
+    listing sites publish. A duration is a fact with an expiry date on it: it
+    was right the day somebody typed it and silently wrong every year after.
+    The clients do the subtraction at render time.
+    """
+
+    if raw is None or raw == "":
+        return None
+    try:
+        year = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise BrandValidationError("The year founded must be a four-digit year.") from None
+    # The current year, not a constant: a restaurant opening this year is a
+    # real thing, and next year's is not a typo either.
+    latest = date.today().year
+    if year < EARLIEST_YEAR or year > latest:
+        raise BrandValidationError(
+            f"The year founded must be between {EARLIEST_YEAR} and {latest}."
+        )
+    return year
+
+
+def _highlight(raw: Any, *, index: int) -> dict[str, str] | None:
+    """One figure worth putting in a band, or None when it is empty."""
+
+    if not isinstance(raw, dict):
+        raise BrandValidationError(f"Highlight {index} is not filled in correctly.")
+
+    value = _text(raw.get("value"), limit=HIGHLIGHT_VALUE_LIMIT, what="A highlight", required=False)
+    label = _text(raw.get("label"), limit=HIGHLIGHT_LABEL_LIMIT, what="A highlight label", required=False)
+    note = _text(raw.get("note"), limit=HIGHLIGHT_NOTE_LIMIT, what="A highlight note", required=False)
+
+    # Both halves or neither. A number with no caption says nothing, and a
+    # caption with no number is a tile with a hole in it.
+    if not value or not label:
+        return None
+    entry = {"value": value, "label": label}
+    if note:
+        entry["note"] = note
+    return entry
+
+
 def resolve_brand(
     payload: dict[str, Any],
     *,
@@ -146,7 +222,14 @@ def resolve_brand(
     source = existing or {}
     for key in BRAND_KEYS:
         value = source.get(key)
-        if isinstance(value, list) and value:
+        # Carried over whatever its type is. This tested `isinstance(value,
+        # list)`, which was true of everything here until the year founded
+        # arrived — and an int fell through it silently, so editing only the
+        # questions wiped a fact the owner had typed into a different form.
+        if isinstance(value, list):
+            if value:
+                stored[key] = value
+        elif value is not None:
             stored[key] = value
 
     if ABOUT_SECTIONS_KEY in payload:
@@ -167,6 +250,52 @@ def resolve_brand(
         else:
             stored.pop(ABOUT_SECTIONS_KEY, None)
 
+    if ESTABLISHED_KEY in payload:
+        year = _year(payload[ESTABLISHED_KEY])
+        if year is None:
+            stored.pop(ESTABLISHED_KEY, None)
+        else:
+            stored[ESTABLISHED_KEY] = year
+
+    if SPECIALITIES_KEY in payload:
+        raw = payload[SPECIALITIES_KEY]
+        if raw is None:
+            raw = []
+        if not isinstance(raw, list):
+            raise BrandValidationError("Specialities must be a list.")
+        if len(raw) > MAX_SPECIALITIES:
+            raise BrandValidationError(f"You can have at most {MAX_SPECIALITIES} specialities.")
+        items = [
+            text
+            for text in (
+                _text(entry, limit=SPECIALITY_LIMIT, what="A speciality", required=False)
+                for entry in raw
+            )
+            if text
+        ]
+        if items:
+            stored[SPECIALITIES_KEY] = items
+        else:
+            stored.pop(SPECIALITIES_KEY, None)
+
+    if HIGHLIGHTS_KEY in payload:
+        raw = payload[HIGHLIGHTS_KEY]
+        if raw is None:
+            raw = []
+        if not isinstance(raw, list):
+            raise BrandValidationError("Highlights must be a list.")
+        if len(raw) > MAX_HIGHLIGHTS:
+            raise BrandValidationError(f"You can have at most {MAX_HIGHLIGHTS} highlights.")
+        highlights = [
+            entry
+            for entry in (_highlight(item, index=at + 1) for at, item in enumerate(raw))
+            if entry is not None
+        ]
+        if highlights:
+            stored[HIGHLIGHTS_KEY] = highlights
+        else:
+            stored.pop(HIGHLIGHTS_KEY, None)
+
     if FAQS_KEY in payload:
         raw = payload[FAQS_KEY]
         if raw is None:
@@ -186,12 +315,13 @@ def resolve_brand(
     return stored
 
 
-def read_brand(restaurant: Any) -> dict[str, list[Any]]:
-    """This restaurant's brand content, with both keys always present.
+def read_brand(restaurant: Any) -> dict[str, Any]:
+    """This restaurant's brand content, with every key always present.
 
-    Both come back as lists, empty when nothing is written, so no client has to
-    distinguish "absent" from "none" — there is no difference here, and giving
-    clients one to handle would invite two of them handling it differently.
+    The lists come back empty when nothing is written and the year comes back
+    as None, so no client has to distinguish "absent" from "none" — there is
+    no difference here, and giving clients one to handle would invite two of
+    them handling it differently.
 
     Re-validated on the way out rather than trusted: this column is JSONB and
     the rules have changed before. A row written under an older, looser rule
@@ -223,11 +353,53 @@ def read_brand(restaurant: Any) -> dict[str, list[Any]]:
             if faq is not None:
                 faqs.append(faq)
 
-    return {ABOUT_SECTIONS_KEY: sections, FAQS_KEY: faqs}
+    try:
+        year = _year(raw.get(ESTABLISHED_KEY))
+    except BrandValidationError:
+        # Same reasoning as the sections above: a row written under an older
+        # rule must not be able to print "Since 20266" on a storefront.
+        year = None
+
+    specialities: list[str] = []
+    specialities_raw = raw.get(SPECIALITIES_KEY)
+    if isinstance(specialities_raw, list):
+        for item in specialities_raw[:MAX_SPECIALITIES]:
+            try:
+                text = _text(item, limit=SPECIALITY_LIMIT, what="A speciality", required=False)
+            except BrandValidationError:
+                continue
+            if text:
+                specialities.append(text)
+
+    highlights: list[dict[str, str]] = []
+    highlights_raw = raw.get(HIGHLIGHTS_KEY)
+    if isinstance(highlights_raw, list):
+        for at, item in enumerate(highlights_raw[:MAX_HIGHLIGHTS]):
+            try:
+                entry = _highlight(item, index=at + 1)
+            except BrandValidationError:
+                continue
+            if entry is not None:
+                highlights.append(entry)
+
+    return {
+        ABOUT_SECTIONS_KEY: sections,
+        FAQS_KEY: faqs,
+        ESTABLISHED_KEY: year,
+        SPECIALITIES_KEY: specialities,
+        HIGHLIGHTS_KEY: highlights,
+    }
 
 
 BRAND_LIMITS: dict[str, int] = {
     "heading": HEADING_LIMIT,
+    "speciality": SPECIALITY_LIMIT,
+    "highlight_value": HIGHLIGHT_VALUE_LIMIT,
+    "highlight_label": HIGHLIGHT_LABEL_LIMIT,
+    "highlight_note": HIGHLIGHT_NOTE_LIMIT,
+    "max_specialities": MAX_SPECIALITIES,
+    "max_highlights": MAX_HIGHLIGHTS,
+    "earliest_year": EARLIEST_YEAR,
     "body": BODY_LIMIT,
     "bullet": BULLET_LIMIT,
     "question": QUESTION_LIMIT,
@@ -242,7 +414,10 @@ __all__ = [
     "ABOUT_SECTIONS_KEY",
     "BRAND_KEYS",
     "BRAND_LIMITS",
+    "ESTABLISHED_KEY",
     "FAQS_KEY",
+    "HIGHLIGHTS_KEY",
+    "SPECIALITIES_KEY",
     "BrandValidationError",
     "read_brand",
     "resolve_brand",
