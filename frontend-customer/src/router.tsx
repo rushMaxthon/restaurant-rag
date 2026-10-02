@@ -10,22 +10,26 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     /**
-     * Remember a scroll position per ADDRESS, not per path.
+     * The scroll key is deliberately left at TanStack's default.
      *
-     * The default key is the pathname, so `/menu` and `/menu?category=Sweets`
-     * share one saved position. The menu is a single 36,000px page whose
-     * section lives in the search params, and it scrolls itself to that
-     * section on arrival — so sharing a key means the router restores the
-     * position saved for the top of the menu over a jump that has already
-     * landed on the right section. It reproduced as a shared link to a section
-     * working from a cold tab and doing nothing from a tab that had the menu
-     * open a moment earlier.
+     * It was overridden with `(location) => location.href` on the belief that
+     * the default keys by pathname, so `/menu` and `/menu?category=Sweets`
+     * would share one saved position. That belief was wrong. The default is
+     * `location.state.__TSR_key || location.href` — a key per HISTORY ENTRY,
+     * which already tells those two apart.
      *
-     * Keying on the full address also makes back and forward do the more
-     * useful thing: return to the section you were reading rather than to
-     * wherever the menu was last left.
+     * Keying by address instead broke every ordinary navigation, because an
+     * address is not a visit. Clicking "Menu" from a home page scrolled
+     * halfway down restored wherever `/menu` had last been left — on a first
+     * visit, the position inherited from the page before it — and clicking
+     * the logo to go home dropped the reader 2,000px into it. A link should
+     * land at the top; only back and forward should return you to where you
+     * were, and the per-entry key is what distinguishes those two.
+     *
+     * The menu rail does not need this override either: it navigates with
+     * `resetScroll: false` (see `menu.index.tsx`), which stops the router
+     * touching the scroll position at all.
      */
-    getScrollRestorationKey: (location) => location.href,
     defaultPreloadStaleTime: 0,
   });
 

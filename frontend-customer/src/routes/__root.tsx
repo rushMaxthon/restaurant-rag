@@ -121,7 +121,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   const storefront = Route.useLoaderData() as typeof UNKNOWN_STOREFRONT | undefined;
   return (
-    <html lang="en">
+    // `suppressHydrationWarning` because `SPLASH_PREPAINT` runs in the head,
+    // before React, and sets `data-splash="seen"` on this element for a repeat
+    // visit. The server cannot know what is in the visitor's sessionStorage,
+    // so the attribute is on the client and not in the SSR HTML, and React
+    // reports the difference as a hydration mismatch on every second page
+    // view. This is the documented escape for exactly that: a pre-paint script
+    // writing to <html>, the same pattern a theme script uses. It suppresses
+    // the warning for THIS element's attributes only — children are still
+    // checked — and nothing else about the element is written by the server.
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Before anything renders, so a second page in the same visit never
             flashes the splash. React cannot run early enough to prevent that,

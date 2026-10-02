@@ -75,6 +75,14 @@
      offset by, and a bar whose height is only whatever its icons add up to
      cannot give them one. */
   --mobile-nav-h: 58px;
+  /* The chrome above the first block of a page, which a full-screen hero has
+     to subtract to actually fill one screen. Both sit in normal flow above
+     `<main>`: the sticky header is `min-h-16` plus its bottom border, and
+     below `sm` the branch picker gets a row of its own. Measured, and in the
+     same hardcoded-token style as `--mobile-nav-h` above, which has the same
+     contract: change the markup, change these. */
+  --header-h: 65px;
+  --branch-bar-h: 61px;
   --placeholder-a: color-mix(in srgb, var(--primary) 15%, var(--surface));
   --placeholder-b: color-mix(in srgb, var(--primary) 25%, var(--surface));
   --placeholder-c: color-mix(in srgb, var(--success) 16%, var(--surface));
@@ -84,8 +92,30 @@
   * {
     border-color: var(--border);
   }
+  /*
+   * No global `scroll-behavior: smooth`.
+   *
+   * It applies to PROGRAMMATIC scrolls too, which means it was not a nicety —
+   * it was in the path of everything that moves this page. Three things it
+   * broke:
+   *
+   * 1. Arriving on a route. The router resets to the top with
+   *    `window.scrollTo(0, 0)`; smoothed, that became an animation across
+   *    whatever had been scrolled. On the menu — one 36,000px page — a reader
+   *    clicking "Menu" from halfway down the home page watched the new page
+   *    glide upward for two and a half seconds and reported, correctly, that
+   *    it does not start from the top.
+   * 2. The section jump. `jumpToSection` measures the remaining distance and
+   *    corrects it each frame; with the browser animating underneath it, it
+   *    was measuring a moving target and correcting against its own animation.
+   * 3. Anything that wants to be instant could not be, because CSS wins over
+   *    an unspecified `behavior`.
+   *
+   * Smooth is still available where it is actually wanted, by asking for it:
+   * `scrollIntoView({ behavior: "smooth" })` in the rail is unaffected.
+   */
   html {
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
   }
   body {
     margin: 0;
