@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { BranchPicker } from "./branch-picker";
 import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
-import { useStorefrontCopy } from "@/lib/storefront";
+import { useStorefrontCopy, useStorefrontLogo } from "@/lib/storefront";
 import { BranchGate } from "@/components/bangkok/branch-gate";
 import { SiteFooter } from "./site-footer";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +26,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // the first byte rather than after the store has loaded.
   const brandName = useStorefrontCopy().name;
   const initials = brandInitials(brandName);
+  // Their own mark where they have uploaded one; the monogram otherwise.
+  const logo = useStorefrontLogo();
   const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -39,7 +41,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               a Bangkok Bowl literal: "BB", "Bangkok Bowl home", and the name
               itself falling back to "Bangkok Bowl" on every other tenant. */}
           <Link to="/" className="mr-auto flex items-center gap-2" aria-label={`${brandName} home`}>
-            {initials && <span className="brand-mark">{initials}</span>}
+            {logo ? (
+              /* `alt=""` and not the restaurant's name: the name is the very
+                 next node, so a screen reader announcing both says it twice.
+                 The link's own `aria-label` carries it. */
+              <img className="brand-logo" src={logo} alt="" width={42} height={42} />
+            ) : (
+              initials && <span className="brand-mark">{initials}</span>
+            )}
             <span className="brand-name font-display text-xl font-extrabold">{brandName}</span>
           </Link>
           {/* The brand's pages as well as the ordering ones. A header that

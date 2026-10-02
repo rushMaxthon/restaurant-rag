@@ -420,6 +420,7 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
             # back to when the app client has none — the restaurant edit form
             # writes here, the branding screen writes to the client.
             cover_image_url=None,
+            logo_image_url=None,
             # The address and phone number now ride on the same response, for
             # the footer and the contact page. Real values rather than the
             # onboarding placeholders, because a placeholder is returned as an
@@ -471,6 +472,8 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
             state="Gujarat", postal_code="395004", country="India",
             phone_number="+919825322860",
             cover_image_url="https://cdn.test/radhe/hero.jpg",
+            # Same two-fields-one-name story as the cover, one field over.
+            logo_image_url=None,
         )
         client = SimpleNamespace(
             id=uuid.uuid4(), key="radhe_dhokla", display_name="Radhe Dhokla",
@@ -498,6 +501,8 @@ class WhatAStorefrontLooksLikeTests(unittest.TestCase):
             state="Gujarat", postal_code="395004", country="India",
             phone_number="+919825322860",
             cover_image_url="https://cdn.test/radhe/hero.jpg",
+            # Same two-fields-one-name story as the cover, one field over.
+            logo_image_url=None,
         )
         client = SimpleNamespace(
             id=uuid.uuid4(), key="radhe_dhokla", display_name="Radhe Dhokla",

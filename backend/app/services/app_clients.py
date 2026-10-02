@@ -902,7 +902,7 @@ def build_app_config_response(
     currency = currency_for(get_settings().payment_currency)
     restaurant = app_client.restaurant
     if restaurant is not None:
-        from app.services.app_branding import COVER_IMAGE_URL_KEY
+        from app.services.app_branding import COVER_IMAGE_URL_KEY, LOGO_URL_KEY
         from app.services.restaurant_brand import read_brand
         from app.services.restaurant_contact import read_contact
         from app.services.restaurant_storefront import read_storefront
@@ -923,6 +923,13 @@ def build_app_config_response(
         # the same restaurant with different artwork.
         if not branding.get(COVER_IMAGE_URL_KEY) and restaurant.cover_image_url:
             branding[COVER_IMAGE_URL_KEY] = restaurant.cover_image_url
+        # `logo_url` is the same trap one field over, and it was still open:
+        # the restaurant form writes `restaurants.logo_image_url`, the
+        # storefront reads the app client's `logo_url`, and a logo uploaded
+        # against the restaurant reached no page at all. Same precedence for
+        # the same reason — the app client's is the more specific.
+        if not branding.get(LOGO_URL_KEY) and restaurant.logo_image_url:
+            branding[LOGO_URL_KEY] = restaurant.logo_image_url
         # Every key filled in, derived from this restaurant's own name,
         # cuisine and city where nobody has written anything.
         storefront = read_storefront(restaurant)

@@ -30,6 +30,8 @@ export type StorefrontConfig = StorefrontCopy & {
    * storefront painting an empty band first.
    */
   cover_image_url: string | null;
+  /** The restaurant's own mark, when it has uploaded one. */
+  logo_url: string | null;
   /**
    * The id of the typeface this restaurant chose, from the backend allowlist.
    *
@@ -196,7 +198,11 @@ export type AppConfigPayload = {
   display_name?: string;
   storefront?: Partial<StorefrontCopy>;
   currency?: CurrencyFormat;
-  branding?: { cover_image_url?: string | null; font_family?: string | null };
+  branding?: {
+    cover_image_url?: string | null;
+    logo_url?: string | null;
+    font_family?: string | null;
+  };
   contact?: StorefrontContact;
   brand?: Partial<StorefrontBrand>;
 };
@@ -222,6 +228,8 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     // falls back to this restaurant's brand colour rather than another
     // restaurant's food.
     cover_image_url: payload.branding?.cover_image_url?.trim() || null,
+    // Blank and absent both mean "no logo", so the header draws the monogram.
+    logo_url: payload.branding?.logo_url?.trim() || null,
     // Blank and absent both mean "unset", which `resolveFonts` reads as the
     // platform default rather than as a family called "".
     font_family: payload.branding?.font_family?.trim() || null,
@@ -312,6 +320,19 @@ export function useStorefrontCopy(): StorefrontCopy {
 export function useStorefrontCover(): string | null {
   const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
   return data?.cover_image_url ?? null;
+}
+
+/**
+ * This restaurant's logo, or null when it has not uploaded one.
+ *
+ * Read from the root loader like the cover, so the header draws the real mark
+ * in the first HTML response rather than swapping a monogram for it after
+ * hydration. Null is the normal state and has its own answer — the monogram
+ * built from the restaurant's own name — rather than a placeholder image.
+ */
+export function useStorefrontLogo(): string | null {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return data?.logo_url ?? null;
 }
 
 export function useMoney(): (value: Money | number) => string {
