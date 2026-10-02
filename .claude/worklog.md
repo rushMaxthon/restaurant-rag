@@ -26,6 +26,71 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 (4) — The brand page got something to say, and learned to move
+
+**Goal:** the landing page was "too empty and short"; fill it from this
+business's real history (trading since 1999), stop showing the address twice at
+the bottom, and add scroll animation.
+
+**Changed:**
+- `backend/app/services/restaurant_brand.py` — `established_year`,
+  `specialities`, `highlights` (value/label/note) on the existing `brand`
+  JSONB. No migration: the column already exists.
+- Fixed a latent bug the new tests found: `resolve_brand`'s carry-over loop
+  only preserved `isinstance(list)` values, so an int (the year) was wiped by
+  any partial edit.
+- `backend/app/schemas/restaurant.py` — `BrandHighlightPayload` and the three
+  fields on `RestaurantBrandUpdate`.
+- `frontend-admin` — editors for all three, first in the About block;
+  `yearProblem`/`highlightProblem`/`usableHighlights`/`usableSpecialities` in
+  `websiteContent.ts` (+9 tests); `.web-inline*` CSS.
+- `frontend-customer/src/components/bangkok/brand-facts.tsx` (new) —
+  `BrandHighlights`, `BrandSpecialities`.
+- `brand-story.tsx` — split into `BrandStory` / `BrandOffer` /
+  `BrandStandards` so `routes/index.tsx` owns the running order.
+- `site-footer.tsx` — address and branch name removed; the phone stays.
+- `lib/storefront.ts` — the three fields plus `yearsTrading` (+4 tests).
+- `polish.css` — `.facts*`, `.known*`, and the reveal-on-scroll block.
+
+**Verified:** backend `unittest discover` **2866 OK**; customer 425, admin 244,
+kitchen 84; `npm run build` in all three; `npx playwright test mobile-layout`
+6 passed / 6 skipped. Scroll reveal checked by walking the page in 700px steps
+and asserting no revealed element is still transparent once scrolled past, and
+none is faded at the bottom.
+
+**Data written** (via `PUT /restaurants/{id}/brand`, i.e. the owner's own
+route — all of it editable at Admin → Website, and the user should check it):
+- `established_year: 1999`, six specialities, two highlights
+  (`4.6 / Rated by customers / 85 reviews on JustDial`,
+  `11-25 / Bakers and staff / Family-run since 1999`).
+- The first about-section was rewritten as "Baking in Katargam since 1999".
+- Sources: JustDial listing (4.6, 85 reviews, 26 years in business, address)
+  and IndiaMART (established 1999, proprietorship, 11-25 people, khari /
+  nankhatai / ready-to-fry pani puri). **Nothing was invented**, but it is a
+  third party's description of a real business and wants the owner's eye.
+
+**Open:**
+- Pidge sandbox still 503 on `/v1.0/store/channel/vendor/login`;
+  `ENABLE_DELIVERY_REHEARSAL=true` stays until it answers.
+- The menu's photographs are still mostly Google thumbnails; `brand-photos.ts`
+  ranks them last so the home page avoids them, `/menu` cannot.
+- The gallery's lead tile is often a branded supplier packshot
+  (dalthamman, Om) rather than this bakery's own baking.
+
+**Learned:**
+- **Scroll-linked beats scroll-triggered here.** `animation-timeline: view()`
+  needs no JavaScript, so nothing is hidden waiting for hydration — the
+  failure mode is "the page is simply visible". An IntersectionObserver
+  inverts that, and this repo already has the scars (`menu-grid.tsx`: a hidden
+  tab never runs one).
+- A `@supports` guard plus `prefers-reduced-motion: no-preference` is the
+  whole compatibility story; no polyfill, no flash-of-hidden-content.
+- Listing sites publish DURATIONS ("26 Years in Business"). Storing one is
+  storing a fact with an expiry date; store the year.
+- The storefront type scale tops out at 36px (`--fs-display-lg`) because it
+  was built for the operator panel. Brand-page headings need a `clamp()` past
+  it.
+
 ## 2026-10-02 (3) — The home page became a brand page; a courier outage stopped blaming the customer
 
 **Goal:** make `/` a real brand landing page rather than a second menu ("brand
