@@ -12,7 +12,6 @@ import { BrandHighlights, BrandSpecialities } from "@/components/bangkok/brand-f
 import { HowToOrder } from "@/components/bangkok/how-to-order";
 import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
-import { VisitUs } from "@/components/bangkok/visit-us";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { pickBrandPhotos } from "@/lib/brand-photos";
@@ -209,12 +208,14 @@ function Home() {
 
       <BrandFaqs />
 
-      {/* The closing band. The left half is entirely about the concierge, so a
-          restaurant without it gets the right half full-width. The right half
-          is where to find the kitchen — address, directions and today's hours
-          — which is the last thing somebody needs before they decide. */}
-      <section className={`visit-band grid bg-surface-alt${askAi ? " lg:grid-cols-2" : ""}`}>
-        {askAi ? (
+      {/* The closing band is the concierge invitation and nothing else now.
+          It used to carry a second half — the address, directions and today's
+          hours on a brand-coloured plate — which repeated the contact page and
+          the footer below it, so the page ended by saying where the kitchen is
+          for the third time. A restaurant without the concierge gets no band
+          at all rather than an empty one. */}
+      {askAi ? (
+        <section className="visit-band bg-surface-alt">
           <div className="page-pad section-pad">
             <Sparkles className="mb-5 size-10 text-primary" />
             <p className="eyebrow">Not sure what to order?</p>
@@ -231,11 +232,8 @@ function Home() {
               </Link>
             </Button>
           </div>
-        ) : null}
-        <div className="page-pad section-pad bg-primary text-primary-foreground">
-          <VisitUs branch={branch} />
-        </div>
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }

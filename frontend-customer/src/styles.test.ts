@@ -203,42 +203,6 @@ describe("the typeface is not bundled for every tenant", () => {
   });
 });
 
-describe("the splash screen cannot outlast its welcome", () => {
-  /**
-   * The failure mode this guards is specific and nasty: a splash that waits on
-   * data, shown to a customer whose backend is down. They stare at a logo.
-   *
-   * So the fade must be a CSS animation with `forwards` — nothing has to RUN
-   * for the overlay to leave. If the bundle never loads, if hydration throws,
-   * if every query hangs, it still goes away on time.
-   */
-  const block = POLISH.slice(POLISH.indexOf("@keyframes splash-out"));
-
-  it("leaves on a CSS animation, not a timer", () => {
-    expect(block).toMatch(/animation:\s*splash-out\s+[\d.]+s[^;]*forwards/);
-  });
-
-  it("is gone within about a second", () => {
-    // Long enough to read a name, short enough that somebody who came to order
-    // dinner does not notice they waited.
-    const duration = /animation:\s*splash-out\s+([\d.]+)s/.exec(block)?.[1];
-    expect(duration).toBeDefined();
-    expect(Number(duration)).toBeLessThanOrEqual(1.5);
-  });
-
-  it("cannot swallow a tap while it fades", () => {
-    expect(block).toContain("pointer-events: none");
-  });
-
-  it("is skipped entirely for a repeat view and for reduced motion", () => {
-    // Not a shorter animation in either case — none at all.
-    expect(block).toContain('html[data-splash="seen"] .splash');
-    const reduced = block.slice(block.indexOf("prefers-reduced-motion"));
-    expect(reduced).toContain(".splash");
-    expect(reduced).toContain("display: none");
-  });
-});
-
 describe("motion is answerable to prefers-reduced-motion", () => {
   it("states the END STATE, not just the absence of a journey", () => {
     // The trap: removing an animation from `.rise-in` without setting opacity

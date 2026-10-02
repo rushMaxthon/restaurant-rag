@@ -50,6 +50,8 @@ const UNKNOWN_CONFIG: StorefrontConfig = {
   currency: FALLBACK_CURRENCY,
   cover_image_url: null,
   logo_url: null,
+  favicon_url: null,
+  primary_color: null,
   // null, not a face: an unreachable backend must render in the platform
   // default rather than pin an arbitrary restaurant's typeface on every
   // storefront that failed to resolve.

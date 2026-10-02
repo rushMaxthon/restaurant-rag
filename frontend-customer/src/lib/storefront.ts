@@ -32,6 +32,10 @@ export type StorefrontConfig = StorefrontCopy & {
   cover_image_url: string | null;
   /** The restaurant's own mark, when it has uploaded one. */
   logo_url: string | null;
+  /** An icon chosen specifically for the browser tab, when one was. */
+  favicon_url: string | null;
+  /** This restaurant's accent, for a tab icon drawn when they have no logo. */
+  primary_color: string | null;
   /**
    * The id of the typeface this restaurant chose, from the backend allowlist.
    *
@@ -201,6 +205,8 @@ export type AppConfigPayload = {
   branding?: {
     cover_image_url?: string | null;
     logo_url?: string | null;
+    favicon_url?: string | null;
+    primary_color?: string | null;
     font_family?: string | null;
   };
   contact?: StorefrontContact;
@@ -230,6 +236,8 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     cover_image_url: payload.branding?.cover_image_url?.trim() || null,
     // Blank and absent both mean "no logo", so the header draws the monogram.
     logo_url: payload.branding?.logo_url?.trim() || null,
+    favicon_url: payload.branding?.favicon_url?.trim() || null,
+    primary_color: payload.branding?.primary_color?.trim() || null,
     // Blank and absent both mean "unset", which `resolveFonts` reads as the
     // platform default rather than as a family called "".
     font_family: payload.branding?.font_family?.trim() || null,
