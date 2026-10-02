@@ -26,6 +26,83 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 (3) — The home page became a brand page; a courier outage stopped blaming the customer
+
+**Goal:** make `/` a real brand landing page rather than a second menu ("brand
+landing page is showing who is this"), finish the checkout split, and fix three
+things found in a demo run-through: a delivery-fee notice telling the customer
+to correct an address that was fine, the promo code sitting in the middle of the
+address block, and the phone field showing the country code twice.
+
+**Changed:**
+- `frontend-customer/src/routes/index.tsx` — rewritten. Everything shoppable is
+  gone: no dish grid, no category rail, no personalised offer rail, no waiter
+  prompt. Hero → trust strip → the owner's story → gallery → how ordering works
+  → their FAQs → visit us. Every block absent when its rows are empty.
+- `components/bangkok/brand-story.tsx` — rewritten. Sections are now CLASSIFIED
+  by what is in them (prose → lead story, bullets → offer grid, remaining prose
+  → statement) instead of three identical cards, so the page's shape follows
+  what the owner wrote. Lead heading is the owner's section heading, not the
+  restaurant name — the hero already says that in 64px.
+- `components/bangkok/kitchen-gallery.tsx`, `how-to-order.tsx`, `trust-strip.tsx`,
+  `visit-us.tsx` (new).
+- `lib/brand-photos.ts` + test (15) — picks gallery photographs round-robin
+  across menu categories, ranking search-thumbnail and stock-preview hosts last.
+- `backend/app/services/delivery/quoting.py` — `attempt_quote` returns a
+  `QuoteAttempt` carrying WHY there is no quote; `quote_for` unchanged for
+  callers that only want the figure.
+- `backend/app/api/orders.py` — `_why_no_quote` is told rather than guessing;
+  new `courier_unavailable` reason. `app/schemas/order.py` documents it.
+- `components/checkout/order-summary.tsx` — the new courier sentence, and the
+  promo code moved here from the address step.
+- `components/checkout/contact-step.tsx` — promo code removed.
+- `lib/delivery-address.ts` + test — `phoneWithoutCountryCode`.
+- `src/components/AddressAutocomplete.tsx` — only searches after a keystroke.
+- `e2e/helpers.ts` — `PAY_BUTTON` (any currency), `openScheduling`, `clickFixed`
+  scrolls before measuring; five specs moved onto them.
+- `src/polish.css` — the brand page's styles; obsolete `.brand-story__card`
+  rules removed; `.trust-cell small a` clipped.
+
+**Verified:** `npm run test` 421 passed (28 files); `npm run build` clean;
+`npx tsc --noEmit` clean; `npx eslint` clean on the touched files. Backend
+`python -m unittest tests.test_delivery_quotes tests.test_delivery_fee_required
+tests.test_delivery_rehearsal tests.test_delivery_provider` — 80 passed.
+Delivery quote checked live against three Surat addresses: 0.7 km → ₹33.88,
+4.4 km → ₹78.04, 5.5 km → ₹90.76. Landing page screenshotted at 1440px and
+393px, light and dark; overflow probe clean at 393px.
+
+**Open:**
+- **Pidge's sandbox is down**: `POST store.dev.pidge.in/v1.0/store/channel/vendor/login`
+  returns **503 to any credentials, including bogus ones**. Not a config
+  problem. `ENABLE_DELIVERY_REHEARSAL=true` is set in `backend/.env` for the
+  demo, at the user's instruction — **turn it back off once Pidge answers**.
+- Main Branch still has `delivery_fee = 0.00`, so with rehearsal off and Pidge
+  down, delivery is refused at checkout and shows ₹0 before that.
+- 61 of this tenant's 152 dish photographs are `encrypted-tbn0.gstatic.com`
+  hotlinks (Google search thumbnails) and one was a watermarked Adobe Stock
+  preview. `brand-photos.ts` ranks them last, which hides it on the home page
+  and not on `/menu`. Real uploads are the actual fix.
+- The lead story's heading renders the owner's section heading, currently
+  "Overview". Renaming it in Admin → Website is a one-field change and the
+  single biggest copy win on the page.
+
+**Learned:**
+- **A geocoded Indian society is a `sublocality`, and the pipeline is right to
+  grade it `LOCALITY`.** "A-31, Rangdarshan Soc, Katargam" resolves to
+  `types: [political, sublocality, sublocality_level_2]`, `location_type:
+  APPROXIMATE`. That grading was never the bug — `Coordinates.usable` prices
+  from it happily. The bug was downstream: `quote_for` collapsed every failure
+  into `None`, so the API inferred the cause from `drop.exact` and reported
+  `address_unknown` while the real cause was the courier's 503.
+- A background watcher on a service's ROOT path says nothing about whether its
+  API works: `store.dev.pidge.in/` stopped 503-ing while
+  `/v1.0/store/channel/vendor/login` kept returning 503.
+- An inline `<a>` inside a clipped `overflow: hidden` parent still measures its
+  full intrinsic width, so `e2e/mobile-layout.spec.ts` sees it outside the
+  viewport. The ellipsis has to go on the element being measured.
+- `getByText(...).first()` on a responsive header resolves to whichever copy
+  comes first in the DOM, hidden or not. `getByRole` skips hidden elements.
+
 ## 2026-10-02 — Brand content owned by the owner, the menu rail, and per-tenant storage
 
 **Goal:** from a screenshot of a listing-site description — give the storefront

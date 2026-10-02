@@ -88,33 +88,44 @@ disagreement means the customer sees one price and is charged another:
 inserting `backend/` on `sys.path` itself. Many encode a question that was once
 answered *wrong* — read the module docstring before changing an assertion.
 
-**Typography is owned, and self-hosted.** `frontend-customer` ships Inter
-Variable (48KB, latin-only) from `public/fonts/` via `src/styles/fonts.css`,
-imported before `index.css` in `main.tsx` and preloaded from `index.html`. This
-reverses an earlier documented decision to ship no webfont; that decision
-avoided render-blocking but meant nobody chose the result — the UI stack fell
-through to Segoe UI/Avenir Next and the display stack to Palatino Linotype on
-Windows / Iowan Old Style on macOS, differing by platform. `font-display: swap`
-answers the original concern directly. `--font-display` still exists as a
-token rather than being deleted — it now resolves to `--font-ui` — because it
-is still named at 12 sites across `home.css` and `screens.css`.
-`src/styles/fonts.test.ts` guards the chain end to end: every `@font-face`
-file exists in `public/`, `font-display: swap` is present, and `main.tsx`
-actually imports `fonts.css` (a missing import fails silently — the page just
-renders in the fallback stack).
+**Typography is per tenant, and resolved on the server.** The backend offers
+five faces (`app/services/app_branding.py`); the storefront serves whichever
+one the restaurant picked. `src/lib/fonts.ts` maps `branding.font_family` to a
+family and a `@fontsource` import, and `routes/__root.tsx` writes the tokens
+into the document head during SSR — so the first byte already carries the
+tenant's face rather than swapping to it after hydration. `src/lib/fonts.test.ts`
+guards the two rules that fail silently: a display serif must never become the
+body face (DM Serif Display at 13px in a form label), and the default here must
+match `DEFAULT_FONT_ID` in the backend allowlist, or a restaurant that changed
+nothing sees its storefront change.
 
-**Know which file owns which token.** `src/index.css` `:root` owns fonts,
-radii, spacing, and the type scale (`--text-xs` 11px through `--text-3xl`
-31px on a 1.2 ratio, plus `--leading-tight`/`--leading-normal`) — added so
-headings sit on an explicit scale instead of ad hoc sizes.
-`src/theme/applyTheme.ts` owns colours AND shadows, writing them onto the root
-element at runtime — so it OVERRIDES the `--shadow-*` values declared in
-`index.css`.
-Editing shadow values in CSS appears to do nothing. `themeBase.ts` also
-exports `radius` and `spacing` objects; these currently have zero consumers in
-components and are not published to CSS. `src/styles/tokens.test.ts` guards
-this map by asserting every `var(--token)` referenced in the stylesheets
-resolves to a definition from one of these two sources.
+This section used to describe `src/styles/fonts.css`, `public/fonts/` and a
+self-hosted Inter. None of those exist; neither does `src/styles/`,
+`src/index.css`, `src/theme/applyTheme.ts`, `themeBase.ts`, `home.css`,
+`screens.css` or `tokens.test.ts`. They were the app that was REPLACED on
+2026-09-13 and the description outlived it by three weeks.
+
+**Know which file owns which token.** `frontend-shared/tokens.css` is the
+source for both web apps: colour, the type scale (`--fs-micro` through
+`--fs-display-xl`), radii, shadows, spacing (`--space-1`..`--space-20`),
+motion and control heights. `frontend-customer/src/styles.css` holds the
+Tailwind v4 `@theme inline` bridge plus the storefront's own component
+classes; `src/polish.css` is the later layer on top of it. There is no
+PostCSS step and no `tailwind.config` — all configuration is inside
+`styles.css`.
+
+**Colour is written at runtime and beats the stylesheet.** `src/lib/theme.ts`
+(`applyBrandColor`) sets `--primary`, `--primary-soft`, `--on-primary` and the
+`--placeholder-*` tiles on the root element from `/app-config`, so a tenant's
+accent overrides whatever the CSS declares. Editing those values in CSS appears
+to do nothing. Anything built around a warm accent breaks for the Teal, Indigo,
+Forest and Slate presets — warmth has to come from the neutrals, the
+photography and the spacing.
+
+**The type scale tops out low.** `--fs-display-lg` is 36px and `--fs-display`
+is 28px, because the scale was built for the operator panel where that is a
+page title. A storefront section heading set at `--fs-display-sm` reads small;
+the brand page's lead uses a `clamp()` past the top of the scale deliberately.
 
 ---
 
