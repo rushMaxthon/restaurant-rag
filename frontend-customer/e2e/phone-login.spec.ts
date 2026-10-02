@@ -113,15 +113,31 @@ test.describe("signing in with a phone number", () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test("email and password still work, for an account with no phone", async ({ page }) => {
-    // Not every account in this database has a number on it, and
-    // `enable_phone_otp_login` is off by default — so the way in that existed
-    // before this flow has to keep existing.
+  test("there is no password anywhere, and no separate sign-up", async ({ page }) => {
+    // A number is the whole identity. An email form sat behind a link for a
+    // while and had to go: the phone form asked the server whether it could
+    // send a code and quietly switched to email when the answer was no, so a
+    // backend that was restarting left somebody looking at a password box
+    // they had never seen and could not use.
     await resetApp(page);
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /sign in with email instead/i }).click();
-    await expect(page.getByLabel("Email")).toBeVisible();
-    await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+
+    await expect(page.getByLabel("Phone number")).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /sign in with email/i })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /create an account/i })).toHaveCount(0);
+  });
+
+  test("an old link to the sign-up page lands on the form that replaced it", async ({ page }) => {
+    // Kept as a redirect rather than deleted: links to it exist in bookmarks
+    // and in messages sent before the change, and a 404 is a worse answer
+    // than the form that replaced it. The redirect carries the destination
+    // through, so somebody on their way to the checkout still gets there.
+    await resetApp(page);
+    await page.goto("/register?redirect=%2Fcheckout");
+    await expect(page).toHaveURL(/\/login/);
+    expect(new URL(page.url()).searchParams.get("redirect")).toBe("/checkout");
+    await expect(page.getByLabel("Phone number")).toBeVisible();
   });
 });

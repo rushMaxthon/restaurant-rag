@@ -317,46 +317,70 @@ export async function clickFixed(page: Page, locator: Locator): Promise<void> {
 
 /** Sign in through the real form, so the redirect round-trip is exercised. */
 export async function signIn(page: Page, redirectTo?: string): Promise<void> {
+  // Through the real form, because several specs are about what the form does
+  // on the way through — the redirect round-trip, and not looping back to
+  // /login. There is only one form now: a number and a code.
+  const customer = await customerCredentials(page.request);
+
+  // The seeded account's own number, and the code the server will accept,
+  // both asked of the API rather than assumed. `debug_code` is only ever sent
+  // where a fixed code is in use, which is exactly where these run.
+  const account = await page.request.post(`${API_BASE}/auth/login`, {
+    data: { email: customer.email, password: customer.password },
+    headers: TENANT_HEADER,
+  });
+  if (!account.ok()) {
+    throw new Error(
+      `Could not look up the seeded customer ${customer.email} (${account.status()}). ` +
+        `That account is created by seed.py's ensure_tenant_customer, one per tenant, ` +
+        `because customer identity is scoped to the app client serving this host.`,
+    );
+  }
+  const phone: string | null = (await account.json())?.user?.phone_number ?? null;
+  if (!phone) {
+    throw new Error(
+      `The seeded customer ${customer.email} has no phone number, and signing in is ` +
+        `by phone only now. Give that account a number, or set E2E_CUSTOMER_EMAIL to ` +
+        `one that has one.`,
+    );
+  }
+
+  const asked = await page.request.post(`${API_BASE}/auth/otp/request`, {
+    headers: TENANT_HEADER,
+    data: { phone_number: phone },
+    failOnStatusCode: false,
+  });
+  const code: string | null = asked.ok() ? ((await asked.json())?.debug_code ?? null) : null;
+  if (!code) {
+    throw new Error(
+      `This backend will not hand out a sign-in code (${asked.status()}), and the ` +
+        `storefront has no other way in. Set ENABLE_PHONE_OTP_LOGIN=true with a local ` +
+        `ENVIRONMENT — see backend/app/services/otp.py.`,
+    );
+  }
+
   await page.goto(redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : "/login");
   // Let hydration finish before typing; see fillField for why it matters.
   await page.waitForLoadState("networkidle");
+  await fillField(page, "Phone number", phone);
+  await page.getByRole("button", { name: /send code/i }).click();
+  await page.getByLabel("Your code").waitFor({ state: "visible", timeout: 30_000 });
+  await fillField(page, "Your code", code);
+  // "Sign in" for a known number, "Create my account" for one that is new.
+  await page.getByRole("button", { name: /^sign in$|create my account/i }).click();
 
-  // The form opens on phone + one-time code now. These specs sign in with a
-  // seeded email and password on purpose: it works whether or not
-  // `enable_phone_otp_login` is on, and not one of them is about the sign-in
-  // method. The phone flow has its own spec.
-  const toEmail = page.getByRole("button", { name: /sign in with email instead/i });
-  if (await toEmail.count()) await toEmail.click();
-
-  const customer = await customerCredentials(page.request);
-  await fillField(page, "Email", customer.email);
-  // Exact, because the reveal toggle's aria-label is "Show password" and
-  // getByLabel matches aria-label too — a substring match hits both and fails
-  // strict mode.
-  await fillField(page, "Password", customer.password);
-  // Anchored: the footer offers "Sign in with your phone", which a loose
-  // match also hits — and two matches is a strict-mode failure, not a guess.
-  await page.getByRole("button", { name: /^sign in$/i }).click();
   try {
     await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
   } catch {
-    // Without this, a missing account surfaces as "expected not to have URL
-    // /login" thirty seconds later, which says nothing about what to do. It is
-    // the single most likely reason this suite fails on a fresh checkout.
+    // Without this, a refusal surfaces as "expected not to have URL /login"
+    // thirty seconds later, which says nothing about what to do.
     const refusal = await page
       .locator(".inline-error, [role='alert']")
       .first()
       .innerText()
       .catch(() => "");
     throw new Error(
-      `Could not sign in as ${customer.email}.` +
-        (refusal ? ` The form said: ${refusal.trim()}` : "") +
-        `
-
-That account is created by seed.py's ensure_tenant_customer, one per ` +
-        `tenant, because customer identity is scoped to the app client serving ` +
-        `this host. Create it, or set E2E_CUSTOMER_EMAIL and ` +
-        `E2E_CUSTOMER_PASSWORD to an account that exists on this tenant.`,
+      `Could not sign in as ${phone}.` + (refusal ? ` The form said: ${refusal.trim()}` : ""),
     );
   }
 }

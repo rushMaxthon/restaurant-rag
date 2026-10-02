@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, Loader2, Smartphone, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { useAuth } from "@/lib/auth";
-import { PasswordInput } from "@/components/bangkok/password-input";
 import { sanitizeRedirect } from "@/lib/require-auth";
 import { api, ApiError } from "@/lib/api";
 import { useBangkokStore } from "@/lib/bangkok-store";
@@ -41,32 +40,36 @@ export const Route = createFileRoute("/login")({
  * on the way through: there is no separate sign-up, because "do you have an
  * account" is a question the number already answers.
  *
- * **Email and password are still here, one link away.** Not out of caution
- * about the new flow: there are real accounts in this database with no phone
- * number on them, the operator panel signs in through the same backend route,
- * and `enable_phone_otp_login` is off by default — so a deployment that has
- * not turned it on still needs a way in. The phone form asks the server
- * whether it can send a code at all, and falls back by itself when it cannot,
- * rather than offering a form that is going to fail.
+ * **There is no email and password here any more, and no separate sign-up.**
+ * A number is the whole identity: the account is created on the way through,
+ * so there is nothing to register and nothing to reset.
+ *
+ * An email form did sit behind a link for a while, and it had to go for a
+ * reason worth remembering. The phone form asked the server whether it could
+ * send a code and quietly switched to email when the answer was no — so a
+ * backend that was restarting, for one request, left somebody looking at a
+ * password box they had never seen and could not use. A form that changes
+ * what it is asking for because of a transient server state is worse than one
+ * that says it cannot do the thing right now.
+ *
+ * Staff do not sign in here at all; the operator panel has its own form
+ * against the same backend route, which is untouched.
  */
 function LoginPage() {
   // This restaurant's own words, resolved by the root route from the
   // address the page was opened on.
   const copy = useStorefrontCopy();
   const store = useBangkokStore();
-  const { login, signInWithOtp, isAuthenticated } = useAuth();
+  const { signInWithOtp, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { redirect, expired } = Route.useSearch();
 
-  const [mode, setMode] = useState<"phone" | "email">("phone");
   const [step, setStep] = useState<"number" | "code">("number");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [isNewAccount, setIsNewAccount] = useState(false);
   const [debugCode, setDebugCode] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
@@ -100,14 +103,7 @@ function LoginPage() {
       setDebugCode(reply.debug_code);
       setStep("code");
     } catch (err) {
-      // 404 is the server saying this deployment does not do phone sign-in.
-      // Switching the form over is more use than reporting it.
-      if (err instanceof ApiError && err.status === 404) {
-        setMode("email");
-        setError(null);
-      } else {
-        setError(explain(err));
-      }
+      setError(explain(err));
     } finally {
       setSubmitting(false);
     }
@@ -126,20 +122,6 @@ function LoginPage() {
         // a sign-in form.
         full_name: isNewAccount ? fullName.trim() || null : null,
       });
-      navigate({ to: target });
-    } catch (err) {
-      setError(explain(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function signInWithEmail(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await login(email, password);
       navigate({ to: target });
     } catch (err) {
       setError(explain(err));
@@ -187,21 +169,17 @@ function LoginPage() {
       <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
         <div className="mx-auto w-full max-w-md">
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
-            {mode === "phone" && step === "code"
-              ? isNewAccount
-                ? "Almost there"
-                : "Welcome back"
-              : "Welcome back"}
+            {step === "code" && isNewAccount ? "Almost there" : "Welcome back"}
           </h1>
           <p className="auth-sub mt-3 text-lg text-muted">
-            {mode === "phone" && step === "code"
+            {step === "code"
               ? `We sent a code to ${store.phoneCountryCode ?? ""} ${phone}`.trim()
               : copy.login_blurb}
           </p>
 
           <Card className="auth-card elevated-panel mt-8">
             <CardContent className="pt-6">
-              {mode === "phone" && step === "number" && (
+              {step === "number" && (
                 <form className="space-y-4" onSubmit={sendCode}>
                   {notices}
                   <div className="space-y-1.5">
@@ -237,7 +215,7 @@ function LoginPage() {
                 </form>
               )}
 
-              {mode === "phone" && step === "code" && (
+              {step === "code" && (
                 <form className="space-y-4" onSubmit={verifyCode}>
                   {notices}
                   {debugCode && (
@@ -297,76 +275,13 @@ function LoginPage() {
                   </button>
                 </form>
               )}
-
-              {mode === "email" && (
-                <form className="space-y-4" onSubmit={signInWithEmail}>
-                  {notices}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="h-12"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="password">Password</Label>
-                    <PasswordInput
-                      id="password"
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={setPassword}
-                    />
-                  </div>
-                  <Button className="h-12 w-full text-base" type="submit" disabled={submitting}>
-                    {submitting && <Loader2 className="animate-spin" aria-hidden="true" />}
-                    {submitting ? "Signing in…" : "Sign in"}
-                  </Button>
-                </form>
-              )}
             </CardContent>
           </Card>
 
+          {/* No "create an account" link: there is no account to create
+              separately. The first code a number receives makes one. */}
           <p className="auth-foot mt-6 text-center text-muted">
-            {mode === "phone" ? (
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  setMode("email");
-                  setError(null);
-                }}
-              >
-                Sign in with email instead
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="auth-link"
-                  onClick={() => {
-                    setMode("phone");
-                    setStep("number");
-                    setError(null);
-                  }}
-                >
-                  Sign in with your phone
-                </button>
-                {" · "}
-                <Link
-                  to="/register"
-                  search={{ redirect: sanitizeRedirect(redirect) }}
-                  className="auth-link"
-                >
-                  Create an account
-                </Link>
-              </>
-            )}
+            Your number is your account — we will make one if you are new.
           </p>
         </div>
       </div>
