@@ -53,10 +53,21 @@ const ACTIVE_LINE = CHROME + 56;
  * `scroll-padding-top` — which is how a jump came to land 85px below the rail
  * while the highlight named the previous section.
  *
- * **Never `behavior: "smooth"`.** The browser animates towards an offset
- * computed when the animation begins, and content arriving above the target
- * moves it, so the animation ends early. Measured on a 6,000px jump: smooth
- * stopped 2,281px short; instant landed.
+ * **Animated here rather than with `behavior: "smooth"`.** The browser
+ * animates towards an offset computed when the animation BEGINS, and content
+ * arriving above the target moves it, so the animation ends early. Measured
+ * on a 6,000px jump: native smooth stopped 2,281px short.
+ *
+ * So the travel is tweened in this loop, which re-measures the heading every
+ * frame and eases towards wherever it is NOW. That is what makes it both
+ * smooth and correct on a page that is still growing — the target moving
+ * under the animation is the normal case here, not the edge one.
+ *
+ * Two phases, deliberately. The TRAVEL is eased, because it is a journey a
+ * reader follows with their eye. What comes after is CORRECTION — the webfont
+ * swapping and re-measuring every dish name, the router restoring a saved
+ * position — and those are instant, because a correction that animates reads
+ * as the page drifting on its own.
  *
  * **Corrected every frame, by the remaining distance.** One scroll is not
  * enough, because two different things disturb it and they are not the same
@@ -77,11 +88,39 @@ const ACTIVE_LINE = CHROME + 56;
  * correcting the scroll under somebody who has started reading would be far
  * worse than landing slightly off.
  */
+/**
+ * How long the eased travel lasts.
+ *
+ * Distance-aware, because one duration cannot serve both ends of a 36,000px
+ * menu: a flat 520ms made the jump to the next section along feel unhurried
+ * and the jump to the last one feel like a teleport. Scaled by the distance
+ * and clamped at both ends, so a short hop stays brisk and a long one stays
+ * followable — the eye has to see which way the page went, or the landing
+ * reads as a different page rather than a different part of this one.
+ */
+const TRAVEL_MIN_MS = 420;
+const TRAVEL_MAX_MS = 1100;
+const travelFor = (distance: number) =>
+  Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MIN_MS, Math.abs(distance) * 0.07));
+
+/** Decelerating: quick off the mark, settling into the landing. */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
 function jumpToSection(slug: string): () => void {
   let abandoned = false;
   let frame = 0;
   let quiet = 0;
   let passes = 0;
+
+  // Somebody who has asked their system to stop moving things gets the
+  // landing without the journey — not a faster journey.
+  const startedAt = typeof performance !== "undefined" ? performance.now() : 0;
+  const from = typeof window !== "undefined" ? window.scrollY : 0;
+  const first = typeof document !== "undefined" ? document.getElementById(slug) : null;
+  const travelMs =
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : travelFor(first ? first.getBoundingClientRect().top - LANDING : 0);
 
   const stop = () => {
     if (abandoned) return;
@@ -98,9 +137,20 @@ function jumpToSection(slug: string): () => void {
     if (!node) return stop();
 
     const remaining = node.getBoundingClientRect().top - LANDING;
-    if (Math.abs(remaining) > 2) {
-      // By the REMAINING distance, so it converges instead of recomputing an
-      // absolute position that keeps going stale.
+    const elapsed = performance.now() - startedAt;
+
+    if (elapsed < travelMs) {
+      // Still travelling. The destination is re-measured every frame, so a
+      // page growing above the target pulls the whole curve with it instead
+      // of leaving the animation short.
+      const target = window.scrollY + remaining;
+      const eased = easeOut(elapsed / travelMs);
+      window.scrollTo({ top: from + (target - from) * eased, behavior: "instant" });
+      quiet = 0;
+    } else if (Math.abs(remaining) > 2) {
+      // Arrived, and something moved underneath it. By the REMAINING
+      // distance, so it converges instead of recomputing an absolute
+      // position that keeps going stale.
       window.scrollBy({ top: remaining, behavior: "instant" });
       quiet = 0;
     } else {
