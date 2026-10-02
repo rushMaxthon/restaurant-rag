@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { STORAGE_STATE_KEY, clickFixed, fillCart, fillCheckoutContact, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
+import { PAY_BUTTON, STORAGE_STATE_KEY, clickFixed, openScheduling, fillCart, fillCheckoutContact, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
 
 /**
  * What happens AFTER the card is accepted.
@@ -16,14 +16,13 @@ test("a paid order empties the cart and settles without a refresh", async ({ pag
   await signIn(page, "/checkout");
 
   await fillCheckoutContact(page);
-  const later = page.getByRole("button", { name: /schedule for later/i });
-  if (await later.count()) await later.click();
+  await openScheduling(page);
   const times = page.locator(".slot-grid .slot-chip");
   await times.first().waitFor({ state: "visible", timeout: 20_000 });
   await times.first().click();
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await clickFixed(page, page.getByRole("button", { name: /^Pay (\$|now)/ }).first());
+  await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
   await expect(page.getByRole("heading", { name: /pay for your order/i })).toBeVisible({
     timeout: 60_000,
   });

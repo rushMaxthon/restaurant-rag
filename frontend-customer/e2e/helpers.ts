@@ -290,6 +290,11 @@ export async function fillField(
 export async function clickFixed(page: Page, locator: Locator): Promise<void> {
   await locator.waitFor({ state: "visible" });
   await expect(locator).toBeEnabled();
+  // Into view before measuring. A fixed bar is already there; the sticky
+  // desktop summary is not once the page has been scrolled past its column —
+  // which the site footer now makes long enough to do — and measuring a box
+  // at y = -943 then asking what covers it answers "nothing", truthfully.
+  await locator.scrollIntoViewIfNeeded();
 
   const box = await locator.boundingBox();
   if (!box) throw new Error("clickFixed: target has no box");
@@ -377,6 +382,40 @@ export async function choosePickup(page: Page): Promise<void> {
     },
     [STORAGE_STATE],
   );
+}
+
+/**
+ * The submit button, whatever the tenant's currency.
+ *
+ * Desktop submits from the sticky summary, which prices the button — "Pay
+ * $48.91" on a dollar tenant, "Pay ₹157.50" on a rupee one — and below `lg`
+ * the fixed bar carries a plain "Pay now". This matched `$` or `now`, which
+ * was true of the tenant it was written against and of no other: on an
+ * Indian storefront every desktop payment test failed to find a button that
+ * was right there. `\p{Sc}` is any currency symbol.
+ */
+export const PAY_BUTTON = /^Pay (now|\p{Sc})/u;
+
+/**
+ * Switch the checkout to "Schedule for later", once that choice exists.
+ *
+ * Resolves to whether the toggle was offered at all. A closed branch offers
+ * no toggle — scheduling is the only mode — and that is what the caller
+ * usually wants to know next. Every caller used to do this inline as
+ * `if (await later.count()) await later.click()`, which is a race: `count()`
+ * answers immediately, and immediately after sign-in the checkout route is
+ * still rendering nothing while the session hydrates, so the answer was 0,
+ * the click was skipped, and a test about scheduling ran against ASAP.
+ * Waiting for the step's heading first makes the count mean something.
+ */
+export async function openScheduling(page: Page): Promise<boolean> {
+  await expect(page.getByRole("heading", { name: /when would you like it/i })).toBeVisible({
+    timeout: 30_000,
+  });
+  const later = page.getByRole("button", { name: /schedule for later/i });
+  if (!(await later.count())) return false;
+  await later.click();
+  return true;
 }
 
 /** Matches the label whether or not it carries a hint after the words. */
@@ -551,7 +590,7 @@ export async function payWithTestCard(page: Page): Promise<void> {
   // view and given a beat first: the sheet animates in, and a click dispatched
   // while the button is still moving lands on nothing — the form never
   // submits, with no error to show for it.
-  const pay = page.getByRole("button", { name: /^Pay \$/ });
+  const pay = page.getByRole("button", { name: PAY_BUTTON });
   await pay.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   await pay.click();

@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { clickFixed, customerAuth, fillCheckoutContact, resetApp, signIn } from "./helpers";
+import { PAY_BUTTON, clickFixed, customerAuth, openScheduling, fillCheckoutContact, resetApp, signIn } from "./helpers";
 
 /**
  * A half-and-half pizza, from the dish page to what the server stored.
@@ -90,8 +90,7 @@ test("a split pizza reaches the server as a split pizza", async ({ page, request
   // Outside opening hours the branch cannot take an ASAP order and the Pay
   // button waits for a slot ("Pick a time to continue"), so this runs or does
   // not depending on the clock.
-  const later = page.getByRole("button", { name: /schedule for later/i });
-  if (await later.count()) await later.click();
+  await openScheduling(page);
   const times = page.locator(".slot-grid .slot-chip");
   if (await times.count()) {
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
@@ -103,7 +102,7 @@ test("a split pizza reaches the server as a split pizza", async ({ page, request
   // Below lg the pay button lives in a fixed bottom bar; clickFixed explains
   // why a plain click is not enough there.
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await clickFixed(page, page.getByRole("button", { name: /^Pay (\$|now)/ }).first());
+  await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
   await expect(page.getByRole("heading", { name: /pay for your order/i })).toBeVisible({
     timeout: 60_000,
   });

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { clickFixed, fillCart, fillCheckoutContact, fillField, resetApp, signIn } from "./helpers";
+import { PAY_BUTTON, clickFixed, fillCart, openScheduling, fillCheckoutContact, fillField, resetApp, signIn } from "./helpers";
 
 /**
  * A customer whose device is nowhere near the restaurant.
@@ -31,8 +31,7 @@ test.describe("ordering from another timezone", () => {
     await signIn(page, "/checkout");
     await fillCheckoutContact(page);
 
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
 
     const times = page.locator(".slot-grid .slot-chip");
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
@@ -43,7 +42,7 @@ test.describe("ordering from another timezone", () => {
     // old code the order was refused here with "not available for the selected
     // time", after everything above had been filled in.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await clickFixed(page, page.getByRole("button", { name: /^Pay (\$|now)/ }).first());
+    await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
     await expect(page.getByRole("heading", { name: /pay for your order/i })).toBeVisible({
       timeout: 60_000,
     });
@@ -60,8 +59,7 @@ test.describe("ordering from another timezone", () => {
         await resetApp(page);
         await fillCart(page, 3);
         await signIn(page, "/checkout");
-        const later = page.getByRole("button", { name: /schedule for later/i });
-        if (await later.count()) await later.click();
+        await openScheduling(page);
         const chips = page.locator(".slot-grid .slot-chip");
         await chips.first().waitFor({ state: "visible", timeout: 20_000 });
         return await chips.allInnerTexts();

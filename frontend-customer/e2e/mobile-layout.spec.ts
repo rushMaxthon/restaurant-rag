@@ -1,11 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  PAY_BUTTON,
   choosePickup,
   clickFixed,
   fillCart,
   fillCheckoutContact,
   fillField,
   forceBranchClosed,
+  openScheduling,
   resetApp,
   signIn,
 } from "./helpers";
@@ -106,8 +108,7 @@ import {
     await signIn(page, "/checkout");
     await fillField(page, "Full name", "Tester");
 
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
     await page.locator(".slot-grid .slot-chip").first().waitFor({ state: "visible" });
 
     await assertFits(page, "scheduling picker");
@@ -194,14 +195,13 @@ import {
     await signIn(page, "/checkout");
 
     await fillCheckoutContact(page);
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
     const times = page.locator(".slot-grid .slot-chip");
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
     await times.first().click();
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await clickFixed(page, page.getByRole("button", { name: /^Pay (\$|now)/ }).first());
+    await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
 
     await expect(page.getByRole("heading", { name: /pay for your order/i })).toBeVisible({
       timeout: 60_000,

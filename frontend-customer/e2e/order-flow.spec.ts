@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
 import {
+  API_BASE,
+  PAY_BUTTON,
+  TENANT_HEADER,
+  choosePickup,
   clickFixed,
   fillCart,
   fillCheckoutContact,
   fillField,
   forceBranchClosed,
+  openScheduling,
   payWithTestCard,
   resetApp,
   resetAppFirstVisit,
@@ -38,8 +43,14 @@ test.describe("choosing a branch", () => {
     await options.first().click();
 
     // Gone, and the branch it was told about is the one the header now shows.
+    // By role, not by text: the header carries two pickers, one for each
+    // viewport, and `getByText(...).first()` on a phone resolved to the hidden
+    // desktop one and reported it invisible. A role query skips what is
+    // hidden, so it finds whichever picker this viewport actually shows.
     await expect(gate).toHaveCount(0);
-    await expect(page.getByText(branchName.slice(0, 12)).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /choose branch/i }).filter({ hasText: branchName.slice(0, 12) }),
+    ).toBeVisible();
 
     // And it stays gone: a gate that reappears on every visit is a tax.
     await page.reload();
@@ -81,6 +92,13 @@ test.describe("browsing without an account", () => {
   });
 
   test("the concierge answers a guest", async ({ page }) => {
+    // The concierge is a per-restaurant capability, and a tenant that has it
+    // off gets a "Not available here" page with no composer — which is the
+    // correct behaviour, not a failure of the chat. Asked of the server rather
+    // than inferred from the page, so a broken composer still fails here.
+    const config = await (await page.request.get(`${API_BASE}/app-config`, { headers: TENANT_HEADER })).json();
+    test.skip(config?.capabilities?.ask_ai === false, "This restaurant has the concierge switched off.");
+
     await resetApp(page);
     await page.goto("/concierge");
     await expect(page).toHaveURL(/\/concierge/);
@@ -127,6 +145,11 @@ test.describe("the sign-in gate", () => {
 test.describe("placing and paying for an order", () => {
   test("card payment, scheduling for the next open window when closed", async ({ page }) => {
     await resetApp(page);
+    // Collection, deliberately. This test is about paying by card and about
+    // scheduling; whether a DELIVERY order can be placed at all depends on
+    // the courier the machine is configured against — see `choosePickup`.
+    // Delivery pricing has its own coverage.
+    await choosePickup(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");
     await expect(page).toHaveURL(/\/checkout/);
@@ -141,8 +164,7 @@ test.describe("placing and paying for an order", () => {
     // picking a day leaves the order without a time and the Pay button
     // disabled. Scheduling is offered whether or not the branch is open, so
     // when it is open the "Schedule for later" tab has to be opened first.
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
 
     const times = page.locator(".slot-grid .slot-chip");
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
@@ -156,7 +178,7 @@ test.describe("placing and paying for an order", () => {
     // form, two different labels — and below lg the fixed bar needs
     // clickFixed, which explains itself in helpers.ts.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    const placeOrder = page.getByRole("button", { name: /^Pay (\$|now)/ }).first();
+    const placeOrder = page.getByRole("button", { name: PAY_BUTTON }).first();
     await clickFixed(page, placeOrder);
 
     // The order now exists as PAYMENT_PENDING and Stripe's Element is mounted.
@@ -208,19 +230,21 @@ test.describe("choosing when the order arrives", () => {
 
   test("choosing Schedule for later will not quietly place an ASAP order", async ({ page }) => {
     await resetApp(page);
+    // Collection: on a delivery order with no address the desktop button
+    // reads "Add your address to continue" rather than "Pay …", and this
+    // test is about the slot, not the address.
+    await choosePickup(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");
 
-    const later = page.getByRole("button", { name: /schedule for later/i });
     // Only meaningful while the branch is open; closed, scheduling is forced.
-    if (!(await later.count())) {
+    if (!(await openScheduling(page))) {
       test.skip(true, "Branch is shut, so scheduling is already the only mode.");
     }
-    await later.click();
 
     // No time picked yet. The button used to stay live and the payload fell
     // back to ASAP, so someone who asked for later was charged for now.
-    const pay = page.getByRole("button", { name: /^Pay (\$|now)/ }).first();
+    const pay = page.getByRole("button", { name: PAY_BUTTON }).first();
     await expect(pay).toBeDisabled();
     await expect(page.getByText(/pick a time to continue/i)).toBeVisible();
 
@@ -233,8 +257,7 @@ test.describe("choosing when the order arrives", () => {
     await resetApp(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
 
     // The soonest time the kitchen can manage, promoted out of the grid.
     const earliest = page.getByRole("button", { name: /earliest available/i });
@@ -247,8 +270,7 @@ test.describe("choosing when the order arrives", () => {
     await resetApp(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
 
     const times = page.locator(".slot-grid .slot-chip");
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
@@ -274,8 +296,7 @@ test.describe("choosing when the order arrives", () => {
     await fillCart(page, 3);
     await signIn(page, "/checkout");
 
-    const later = page.getByRole("button", { name: /schedule for later/i });
-    if (await later.count()) await later.click();
+    await openScheduling(page);
 
     const date = page.locator('.date-field input[type="date"]');
     await expect(date).toBeVisible();
