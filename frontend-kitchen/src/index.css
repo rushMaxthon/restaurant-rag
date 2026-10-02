@@ -1600,3 +1600,27 @@ input {
     gap: 0;
   }
 }
+
+
+/* --- The branch picker's dropdown ------------------------------------------
+   The list a `<select>` opens is painted by the browser rather than by this
+   page, and it inherits the control's `color` while getting no background
+   from it. On this board that is `--kds-dim` — a light grey — on whatever the
+   browser falls back to, which is white. Every branch name came out nearly
+   invisible against it.
+
+   This screen is permanently dark, so there is no light mode in which it
+   happened to look right. It is also read across a kitchen at distance under
+   time pressure, which is the worst possible place for a control that can
+   only be used by guessing where the rows are.
+
+   Both properties, not just the colour: the plate is the half the browser
+   cannot infer. `--kds-card` rather than `--kds-panel` so the open list reads
+   as sitting above the rail it came from, the same relationship a ticket has
+   to its column.
+   --------------------------------------------------------------------------- */
+option,
+optgroup {
+  background-color: var(--kds-card);
+  color: var(--kds-text);
+}

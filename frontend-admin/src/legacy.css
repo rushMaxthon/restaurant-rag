@@ -14882,3 +14882,32 @@ summary:focus-visible,
     flex-direction: column;
   }
 }
+
+
+/* --- Native select popups, in both themes ----------------------------------
+   The list a `<select>` opens is painted by the browser, not by this page, and
+   it was unreadable in dark mode: every option white text on a white popup,
+   with only the highlighted row legible.
+
+   `color-scheme: dark` is already set — on `:root` by the shared tokens, and
+   as an inline style by `services/theme.ts` and the pre-paint script in
+   `index.html`, which is what makes scrollbars and the inter-page flash
+   follow. It is not enough on its own here. The panel's selects inherit a
+   near-white `color` and have a TRANSPARENT background, so Chrome has an
+   author colour for the text and nothing for the plate behind it, and falls
+   back to its default white. The result is exactly the two author values
+   fighting: #f8fafc on #ffffff.
+
+   So the options say what they are, rather than leaving the browser to infer
+   half of it. Both properties, because setting only the colour is the fix that
+   was already tried once — `.mkt-demo select option` below does precisely
+   that, and it repaired light mode while leaving dark mode as it was.
+
+   Element selectors on purpose: there are selects on a dozen screens here and
+   this is a property of the control, not of any one page.
+   --------------------------------------------------------------------------- */
+option,
+optgroup {
+  background-color: var(--surface);
+  color: var(--text);
+}
