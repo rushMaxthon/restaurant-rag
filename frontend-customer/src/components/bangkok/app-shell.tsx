@@ -42,9 +42,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {initials && <span className="brand-mark">{initials}</span>}
             <span className="brand-name font-display text-xl font-extrabold">{brandName}</span>
           </Link>
+          {/* The brand's pages as well as the ordering ones. A header that
+              offered only Menu and Orders made the site read as an ordering
+              form; About and Contact are what tell a first-time visitor there
+              is a kitchen behind it. Desktop only — the phone's tab bar is
+              three or four thumb-sized stops and these two are one tap away
+              in the footer and the hero. */}
           <nav className="hidden items-center gap-1 lg:flex">
             <Button variant="ghost" className="nav-link" asChild>
               <Link to="/menu">Menu</Link>
+            </Button>
+            <Button variant="ghost" className="nav-link" asChild>
+              <Link to="/about">About</Link>
+            </Button>
+            <Button variant="ghost" className="nav-link" asChild>
+              <Link to="/contact">Contact</Link>
             </Button>
             <Button variant="ghost" className="nav-link" asChild>
               <Link to="/orders">Orders</Link>

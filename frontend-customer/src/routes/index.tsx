@@ -1,29 +1,18 @@
 import { useMemo } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Clock3,
-  Flame,
-  DollarSign,
-  Leaf,
-  MapPin,
-  Soup,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { ArrowRight, BookOpen, MapPin, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DishCard } from "@/components/bangkok/dish-card";
-import { DishSkeleton } from "@/components/bangkok/menu-grid";
-import { OfferCard } from "@/components/bangkok/offer-card";
-import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
-import { StorefrontHero } from "@/components/bangkok/storefront-hero";
 import { BrandFaqs, BrandStory } from "@/components/bangkok/brand-story";
+import { HowToOrder } from "@/components/bangkok/how-to-order";
+import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
+import { StorefrontHero } from "@/components/bangkok/storefront-hero";
+import { TrustStrip } from "@/components/bangkok/trust-strip";
+import { VisitUs } from "@/components/bangkok/visit-us";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
-import { useAuth } from "@/lib/auth";
-import { useMenuItems, usePersonalizedOffers } from "@/lib/queries";
-import { budgetChipAmount } from "@/lib/budget";
-import { useMoney, useRoundedMoney, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
+import { pickBrandPhotos } from "@/lib/brand-photos";
+import { useMenuItems } from "@/lib/queries";
+import { useStorefrontBrand, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
   // The root route already resolves this restaurant's copy from the request
@@ -32,56 +21,57 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const CRAVING_CHIPS = [
-  { label: "Something spicy", query: "Something spicy", icon: Flame },
-  { label: "Comfort food", query: "Comfort food", icon: Soup },
-  { label: "Light and fresh", query: "Something light and fresh", icon: Leaf },
-  { label: "Feed two people", query: "Something to feed two people", icon: Users },
-];
-
+/**
+ * The restaurant's own front page.
+ *
+ * **This page sells the kitchen. The menu page sells the food.** It used to do
+ * both: a hero, a rail of category chips, eight dish cards under "Crowd
+ * favourites", then the owner's words at the bottom where nobody reached them.
+ * That is a storefront for a marketplace listing, not a website for a
+ * business — the dishes were a worse version of `/menu`, which does the same
+ * job with search, sorting, filters and a section rail, and they pushed the
+ * one thing this page can say that no other page can below the fold.
+ *
+ * So everything shoppable is gone from here. In reading order it now answers
+ * the questions a first-time visitor actually asks, in the order they ask
+ * them: who is this (hero) → can I trust them, and are they open (the strip
+ * of facts) → who are they really (their own story, beside their own food) →
+ * what does it look like (the gallery) → how does ordering work (three steps)
+ * → what about X (their own answers) → where are they, and when (the closing
+ * band). One route into the menu from each block, and a permanent one in the
+ * header.
+ *
+ * **Every claim on it comes from this restaurant's own rows**, and a block
+ * whose rows are empty is absent rather than filled in: no story, no gallery,
+ * no questions, no hours — just a shorter page. The alternative is prose
+ * written once by us and shown under every tenant's name, which is the bug
+ * `restaurant_storefront.py` and `restaurant_brand.py` both exist to have
+ * fixed.
+ */
 function Home() {
   // From the root route's loader, which read it off the request host — so the
   // hero is this restaurant's own words in the server-rendered HTML rather
   // than after a client fetch.
   const copy = useStorefrontCopy();
-  const money = useMoney();
-  // A budget is prose, not a price: "Under ₹150", not "Under ₹150.00".
-  const roundedMoney = useRoundedMoney();
+  const brand = useStorefrontBrand();
   const store = useBangkokStore();
   // Nothing invites a customer to a page this restaurant has switched off.
   const askAi = hasCapability(store.capabilities, "ask_ai");
   const { restaurantId, branchId, locations } = store;
-  const { isAuthenticated } = useAuth();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
-  const offersQuery = usePersonalizedOffers(isAuthenticated);
-  const items = menuQuery.data ?? [];
-  // Two different sections wearing one heading. A restaurant that has marked
-  // its bestsellers gets "Crowd favourites", which is then a fact. One that
-  // has not gets the first eight rows the API returned, in no order anybody
-  // chose — for a Surat dhokla shop that was four Chinese rice dishes under
-  // the words "Most loved", which is not a small thing to be wrong about on
-  // the first screen a customer sees. So the label follows the data: the same
-  // eight dishes, honestly introduced, until somebody ticks Best seller in the
-  // admin.
-  const flagged = items.filter((i) => i.is_bestseller);
-  const hasBestsellers = flagged.length > 0;
-  const bestsellers = (hasBestsellers ? flagged : items).slice(0, 8);
-  const offers = offersQuery.data ?? [];
+  // Memoised, not `?? []` inline: the fallback is a new array on every render,
+  // so both derivations below would recompute on every render — and
+  // `pickBrandPhotos` returning a new array each time would hand the gallery
+  // new `src` keys and remount every photograph.
+  const items = useMemo(() => menuQuery.data ?? [], [menuQuery.data]);
 
-  // The restaurant's own sections, with how many dishes are in each, counted
-  // from the rows. Ordered by size, so the kitchen's biggest section leads
-  // rather than whichever happens to sort first alphabetically — which for a
-  // dhokla shop was Biryani.
-  const sections = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [items]);
+  // Eight: three set beside the lead story, five for the mosaic below it.
+  // The rule spreads them across the menu's sections — see `pickBrandPhotos`,
+  // which exists because the first version showed six photographs of cake.
+  const photos = useMemo(() => pickBrandPhotos(items, 8), [items]);
+
+  // How much there is to eat, counted from the rows rather than asserted.
+  const sectionCount = useMemo(() => new Set(items.map((item) => item.category)).size, [items]);
 
   // Everything the hero says about this restaurant comes from the branch row
   // the admin filled in. It used to assert "Open now" whether or not it was,
@@ -91,29 +81,16 @@ function Home() {
   const branch = store.orderLocation ?? store.currentLocation;
   const openNow = availabilityNow(branch, store.fulfillment, new Date(), store.timeZone);
   const city = branch?.city;
-  const heroEta = Number(branch?.estimated_delivery_time);
   const branchCount = locations.length;
+  const hasStory = brand.about_sections.length > 0;
 
   // A restaurant with a photograph of its own food earns the tall hero: the
   // picture IS the content. Without one the hero is a brand wash that says
   // nothing about the food (deliberately — see `StorefrontHero`), and at
-  // 70svh a phone opens on two thirds of a screen of flat orange before any
-  // dish appears. So the box follows what is in it. Radhe Dhokla gets the
-  // tall one back the moment a cover image is uploaded in the admin.
-  const heroHeight = useStorefrontCover() ? "min-h-[70svh]" : "min-h-[46svh] sm:min-h-[56svh]";
-
-  const budget = budgetChipAmount(items.map((i) => Number(i.price)));
-  const cravingChips = budget
-    ? [
-        ...CRAVING_CHIPS.slice(0, 1),
-        {
-          label: `Under ${roundedMoney(budget)}`,
-          query: `Something good under ${roundedMoney(budget)}`,
-          icon: DollarSign,
-        },
-        ...CRAVING_CHIPS.slice(1),
-      ]
-    : CRAVING_CHIPS;
+  // 72svh a phone opens on two thirds of a screen of flat orange before
+  // anything is said. So the box follows what is in it.
+  const hasCover = Boolean(useStorefrontCover());
+  const heroHeight = hasCover ? "min-h-[72svh]" : "min-h-[48svh] sm:min-h-[58svh]";
 
   return (
     <div className="pb-20 lg:pb-0">
@@ -124,7 +101,7 @@ function Home() {
             be `text-primary-foreground`, which is the ink for the BRAND colour
             and resolved to near-black in dark mode. */}
         <div
-          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-12 pt-28 sm:pb-16`}
+          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-16 pt-28 sm:pb-20`}
         >
           <div className="mb-5 flex flex-wrap gap-2">
             {/* Nothing is claimed until it is known: no branch count before the
@@ -138,9 +115,8 @@ function Home() {
             )}
             {branch && (
               <span
-                // Same reasoning as the copy above: the chip sits on `--success`
-                // or `--muted`, neither of which is the brand, so the brand's
-                // ink token was never the right one for it either.
+                // The chip sits on `--success` or `--muted`, neither of which
+                // is the brand, so the brand's ink token was never right here.
                 className={`hero-chip text-white ${openNow.available ? "bg-success" : "bg-muted"}`}
               >
                 {openNow.available ? "Open now" : "Closed right now"}
@@ -154,10 +130,22 @@ function Home() {
           <div className="mt-7 flex flex-wrap gap-3">
             <Button size="lg" asChild>
               <Link to="/menu">
-                Explore the menu <ArrowRight />
+                See the menu <ArrowRight />
               </Link>
             </Button>
-            {askAi ? (
+            {/* An in-page anchor, not a route: the story is directly below, and
+                sending somebody to /about to read what is on the screen they
+                are already on is a page load for nothing. A plain `<a>` with
+                `scroll-margin-top` on the target, so it works before
+                hydration and lands clear of the sticky header. */}
+            {hasStory ? (
+              <Button size="lg" variant="secondary" asChild>
+                <a href="#story">
+                  <BookOpen />
+                  Who we are
+                </a>
+              </Button>
+            ) : askAi ? (
               <Button size="lg" variant="secondary" asChild>
                 <Link to="/concierge">
                   <Sparkles />
@@ -169,150 +157,53 @@ function Home() {
         </div>
       </StorefrontHero>
 
-      <WaiterPrompt placement="home" />
+      {/* Open or closed, how long, how much there is, where — read off the
+          branch row, with fewer cells for a branch that has published less. */}
+      <TrustStrip
+        branch={branch}
+        fulfillment={store.fulfillment}
+        timeZone={store.timeZone}
+        dishCount={items.length}
+        sectionCount={sectionCount}
+      />
 
-      {isAuthenticated && offers.length > 0 && (
-        <section className="page-pad section-pad !pb-0">
-          <div className="mb-6">
-            <p className="eyebrow">Picked for you</p>
-            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
-              Your personalised picks
-            </h2>
-          </div>
-          <div className="offer-rail">
-            {offers.map((offer, i) => (
-              <div
-                className="rise-in flex shrink-0"
-                style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
-                key={offer.id}
-              >
-                <OfferCard offer={offer} />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* The owner's own words, in a shape that follows what they wrote. */}
+      <BrandStory photos={photos} />
 
-      {/* A way in, on the first screen.
+      {/* Their own food, as photography rather than as a shop. The lead story
+          has taken the first three, so the mosaic starts after them and
+          disappears when there are not enough left to fill it. */}
+      <KitchenGallery photos={photos.slice(3)} />
 
-          The home page offered a hero, eight dishes and a link reading "See
-          all" — which for this restaurant is 136 dishes in 21 sections. A
-          customer who wanted dhokla had to open the whole menu and find it.
-          These are the restaurant's OWN sections, in the order its own menu
-          returns them, counted from the rows rather than asserted. */}
-      {sections.length > 1 && (
-        <section className="page-pad section-pad !pb-0">
-          <div className="mb-5">
-            <p className="eyebrow">Browse</p>
-            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
-              What are you after?
-            </h2>
-          </div>
-          <div className="section-rail">
-            {sections.map(({ name, count }) => (
-              <Link className="section-chip" key={name} search={{ category: name }} to="/menu">
-                <span className="section-chip__name">{name}</span>
-                <span className="section-chip__count">{count}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <HowToOrder branch={branch} />
 
-      <section className="page-pad section-pad">
-        <div className="mb-7 flex items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow">{hasBestsellers ? "Most loved" : "Straight from the kitchen"}</p>
-            <h2 className="font-display text-3xl font-extrabold sm:text-4xl">
-              {hasBestsellers ? "Crowd favourites" : "On the menu today"}
-            </h2>
-          </div>
-          <Button variant="outline" asChild>
-            <Link to="/menu">See all</Link>
-          </Button>
-        </div>
-        {menuQuery.isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <DishSkeleton key={i} />
-            ))}
-          </div>
-        ) : (
-          <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {bestsellers.map((item, i) => (
-              <div
-                className="rise-in"
-                style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
-                key={item.id}
-              >
-                <DishCard item={item} />
-              </div>
-            ))}
-            {bestsellers.length === 0 && (
-              <p className="text-muted">Bestsellers will appear here once the menu loads.</p>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* The restaurant's own words, between the menu and the closing band.
-          Below the food on purpose — somebody who arrived hungry should meet
-          dishes first — and above the call to action, because this is what
-          answers "should I order from these people" just before being asked
-          to. Both render nothing at all when the owner has written nothing,
-          and the page closes up around them. */}
-      <BrandStory />
       <BrandFaqs />
 
-      {/* The left half of this band is entirely about the concierge, so a
-          restaurant without it gets the right half full-width rather than an
-          invitation to a page that is not there. */}
+      {/* The closing band. The left half is entirely about the concierge, so a
+          restaurant without it gets the right half full-width. The right half
+          is where to find the kitchen — address, directions and today's hours
+          — which is the last thing somebody needs before they decide. */}
       <section className={askAi ? "grid bg-surface-alt lg:grid-cols-2" : "grid bg-surface-alt"}>
         {askAi ? (
           <div className="page-pad section-pad">
             <Sparkles className="mb-5 size-10 text-primary" />
             <p className="eyebrow">Not sure what to order?</p>
             <h2 className="font-display text-4xl font-extrabold">
-              Not sure what to eat? Tell us your craving.
+              Tell us the craving. We will find it on the menu.
             </h2>
             <p className="mt-4 max-w-xl text-muted">
-              Tap a craving and our AI food concierge points you straight to a dish on the menu.
+              Describe what you are after — spicy, light, enough for four — and the food concierge
+              points you straight at it.
             </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              {cravingChips.map((chip) => (
-                <Link
-                  key={chip.label}
-                  to="/concierge"
-                  search={{ q: chip.query }}
-                  className="craving-chip"
-                >
-                  <chip.icon className="size-4" />
-                  {chip.label}
-                </Link>
-              ))}
-            </div>
-            <Button variant="outline" className="mt-6" asChild>
+            <Button size="lg" className="mt-7" asChild>
               <Link to="/concierge">
-                Or describe your own craving <ArrowRight />
+                Ask the food concierge <ArrowRight />
               </Link>
             </Button>
           </div>
         ) : null}
         <div className="page-pad section-pad bg-primary text-primary-foreground">
-          <Clock3 className="mb-5 size-10" />
-          <p className="eyebrow eyebrow--inherit">Fast &amp; fresh</p>
-          <h2 className="font-display text-4xl font-extrabold">
-            {Number.isFinite(heroEta) && heroEta > 0
-              ? `Cooked to order and at your door in about ${heroEta} minutes.`
-              : "Cooked fresh to order, and on its way the moment it is ready."}
-          </h2>
-          <div className="mt-7 flex flex-wrap gap-3">
-            {locations.map((l) => (
-              <span key={l.id} className="rounded-full border border-primary-foreground px-4 py-2">
-                {l.branch_name}
-              </span>
-            ))}
-          </div>
+          <VisitUs branch={branch} />
         </div>
       </section>
     </div>

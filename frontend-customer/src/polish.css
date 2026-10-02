@@ -2758,69 +2758,497 @@ html[data-splash="seen"] .splash {
    against a minimum rather than a fixed column count: one section fills the
    row, two sit side by side, five wrap sensibly, and none of it needs a count.
    =========================================================================== */
-.brand-story {
+/* ===========================================================================
+   The brand page
+   ---------------------------------------------------------------------------
+   The home page sells the kitchen; `/menu` sells the food. Every block here
+   is the restaurant's own content, and the SHAPE follows what the owner
+   wrote rather than the owner writing to fit a shape — see `brand-story.tsx`.
+   Three identical cards in a row was the first version, and it made a
+   paragraph of history, a list of services and a statement about
+   ingredients read as the same kind of thing.
+   =========================================================================== */
+
+/* --- The lead story, beside the kitchen's own food ----------------------- */
+.brand-lead {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  /* Cleared by the sticky header: the hero's second button is an in-page
+     anchor at this block, and a native jump would otherwise put the eyebrow
+     underneath the bar. 132px is the header's own figure, the same one
+     `menu-grid.tsx` measures its scroll offsets from. */
+  scroll-margin-top: 132px;
+}
+.brand-lead__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--space-8);
+}
+@media (min-width: 900px) {
+  .brand-lead__inner {
+    /* The copy leads. An even split makes the collage argue with the words
+       for the first read, and the words are what this block is for. */
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: var(--space-12);
+    align-items: center;
+  }
+}
+.brand-lead__title {
+  margin: var(--space-2) 0 0;
+  /* Past the top of the shared scale on purpose. `--fs-display-lg` is 36px,
+     which is a page title in the operator panel and a subheading on a brand
+     page — the old home page set its section headings in Tailwind's
+     text-3xl/4xl and this read small beside them. */
+  font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+.brand-lead__body {
+  margin-top: var(--space-5);
+  /* A reading measure. The paragraph an owner writes about their own kitchen
+     is the one piece of prose on the site somebody reads end to end, and at
+     full column width it is 120 characters a line. */
+  max-width: 54ch;
+}
+.brand-lead__body p {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-body-lg);
+  /* The reading treatment, not the label grey: this is the paragraph somebody
+     is actually reading to decide, the same call `.dish-description` makes. */
+  color: color-mix(in srgb, var(--text) 86%, transparent);
+  line-height: var(--leading-relaxed);
+}
+.brand-lead__body p:last-child {
+  margin-bottom: 0;
+}
+.brand-lead__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  min-height: 44px;
+  font-weight: 800;
+  color: var(--primary-text);
+  text-decoration: none;
+}
+.brand-lead__cta svg {
+  width: 18px;
+  height: 18px;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.brand-lead__cta:hover svg {
+  transform: translateX(3px);
+}
+
+/* The collage: one wide photograph over two squares. Deliberately not a
+   carousel — three photographs that are all visible at once say "this is the
+   range" in a way that one photograph with arrows never does. */
+.brand-lead__art {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  /* Capped and pushed right. Unbounded, the collage filled a 570px column and
+     stood 790px tall next to a two-line paragraph, which left the copy
+     floating in the middle of an empty half. */
+  width: 100%;
+  max-width: 520px;
+  justify-self: end;
+}
+.brand-lead__shot {
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-5);
+  background: var(--skeleton);
+  box-shadow: var(--shadow-md);
+}
+.brand-lead__shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.brand-lead__shot:hover img {
+  transform: scale(1.04);
+}
+.brand-lead__shot:first-child {
+  grid-column: 1 / -1;
+}
+.brand-lead__shot:first-child img {
+  aspect-ratio: 16 / 9;
+}
+/* One or two photographs tile on their own terms rather than leaving a hole
+   where the third would have been. */
+.brand-lead__art[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.brand-lead__art[data-count="2"] .brand-lead__shot:first-child {
+  grid-column: auto;
+}
+.brand-lead__art[data-count="2"] .brand-lead__shot:first-child img {
+  aspect-ratio: 4 / 3;
+}
+
+/* --- What they offer: a list, set as a list ------------------------------ */
+.brand-offer {
   border-top: 1px solid var(--border);
   background: var(--surface-alt);
 }
-.brand-story__inner,
-.brand-faqs__inner {
+.brand-offer__inner {
   max-width: 1200px;
   margin: 0 auto;
 }
-.brand-story__title,
-.brand-faqs__title {
-  margin: var(--space-2) 0 0;
-  font-size: var(--fs-display-sm);
+.brand-offer__title {
+  margin: 0;
+  font-size: var(--fs-display);
   font-weight: var(--display-weight, 800);
   letter-spacing: var(--display-tracking, var(--tracking-tight));
   line-height: var(--leading-tight);
 }
 @media (min-width: 768px) {
-  .brand-story__title,
-  .brand-faqs__title {
-    font-size: var(--fs-display);
+  .brand-offer__title {
+    font-size: var(--fs-display-lg);
   }
 }
-.brand-story__grid {
+.brand-offer__body {
+  margin-top: var(--space-4);
+  max-width: 60ch;
+}
+.brand-offer__body p {
+  margin: 0 0 var(--space-3);
+  color: color-mix(in srgb, var(--text) 86%, transparent);
+  line-height: var(--leading-relaxed);
+}
+.brand-offer__grid {
+  list-style: none;
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+.brand-offer__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  line-height: var(--leading-snug);
+  font-weight: 600;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.brand-offer__item:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+.brand-offer__tick {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.brand-offer__tick svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 3;
+}
+
+/* --- A standalone statement --------------------------------------------- */
+.brand-standards {
+  border-top: 1px solid var(--border);
+  /* The brand wash rather than a surface: this is the one block on the page
+     that is a claim about how the food is made, and it reads as deliberate
+     when it carries the restaurant's own colour. `--primary-soft` is derived
+     from `--primary` at runtime, so it is their colour on every tenant. */
+  background: var(--primary-soft);
+}
+.brand-standards__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--space-8);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+.brand-standards__card {
+  max-width: 62ch;
+}
+.brand-standards__mark {
+  width: 34px;
+  height: 34px;
+  color: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.brand-standards__title {
+  margin: var(--space-4) 0 var(--space-3);
+  font-size: var(--fs-display);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+  /* Not `--primary-text`: this sits ON the brand wash, where the text tier
+     of the same hue is close enough to vanish on the pale presets. */
+  color: var(--text);
+}
+.brand-standards__body p {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-body-lg);
+  color: color-mix(in srgb, var(--text) 88%, transparent);
+  line-height: var(--leading-relaxed);
+}
+.brand-standards__body p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- The photographs ----------------------------------------------------- */
+/* Imagery, not a menu: no price, no add button, nothing to buy. See
+   `kitchen-gallery.tsx` for why a brand page needs it at all. */
+.gallery {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.gallery__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.gallery__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+.gallery__title {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+@media (min-width: 768px) {
+  .gallery__title {
+    font-size: var(--fs-display-lg);
+  }
+}
+.gallery__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--fs-caption);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.gallery__cta:hover {
+  color: var(--primary-text);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  transform: translateY(-1px);
+}
+.gallery__cta svg {
+  width: 16px;
+  height: 16px;
+}
+/* The mosaic tiles exactly at five photographs: the lead two wide and two
+   tall, four singles filling the rest of a four-column, two-row grid. A
+   count that does not tile leaves a hole, which is why the component caps
+   it rather than rendering whatever it is handed. */
+.gallery__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.gallery__tile[data-lead] {
+  grid-column: 1 / -1;
+}
+@media (min-width: 900px) {
+  .gallery__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .gallery__tile[data-lead] {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+}
+.gallery__tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-5);
+  background: var(--skeleton);
+  box-shadow: var(--shadow-sm);
+}
+.gallery__tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.gallery__tile[data-lead] img {
+  aspect-ratio: 16 / 10;
+}
+@media (min-width: 900px) {
+  .gallery__tile[data-lead] img {
+    /* Two rows of squares plus the gap between them, so the lead ends flush
+       with the four singles beside it rather than setting the row height. */
+    aspect-ratio: auto;
+  }
+}
+.gallery__tile:hover img {
+  transform: scale(1.05);
+}
+.gallery__label {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  gap: 1px;
+  padding: var(--space-5) var(--space-4) var(--space-3);
+  /* The scrim is what makes a label on a photograph legible whatever the
+     photograph is. White ink, fixed: this sits on an image, not on a
+     surface, so neither theme's text colour applies. */
+  background: linear-gradient(to top, rgb(0 0 0 / 0.78), rgb(0 0 0 / 0.35) 55%, transparent);
+  color: #fff;
+  pointer-events: none;
+}
+.gallery__label strong {
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  line-height: var(--leading-snug);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+.gallery__label small {
+  font-size: var(--fs-tiny);
+  opacity: 0.82;
+  line-height: var(--leading-snug);
+}
+
+/* --- How ordering works -------------------------------------------------- */
+.how {
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+.how__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.how__title {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+@media (min-width: 768px) {
+  .how__title {
+    font-size: var(--fs-display-lg);
+  }
+}
+.how__steps {
+  list-style: none;
+  margin: var(--space-8) 0 0;
+  padding: 0;
   display: grid;
   gap: var(--space-5);
-  margin-top: var(--space-8);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  counter-reset: step;
 }
-.brand-story__card {
+.how__step {
+  position: relative;
   padding: var(--space-6);
+  padding-top: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-5);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
 }
-.brand-story__card h3 {
-  margin: 0 0 var(--space-3);
+.how__n {
+  position: absolute;
+  top: calc(var(--space-6) * -0.5);
+  left: var(--space-6);
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 800;
+  font-size: var(--fs-caption);
+  box-shadow: var(--shadow-brand-sm);
+}
+.how__icon {
+  width: 26px;
+  height: 26px;
+  margin-bottom: var(--space-4);
+  color: var(--primary);
+}
+.how__step h3 {
+  margin: 0 0 var(--space-2);
   font-family: var(--font-display-stack);
   font-size: var(--fs-title-sm);
   font-weight: var(--display-weight, 800);
   letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-snug);
 }
-.brand-story__card p {
-  margin: 0 0 var(--space-3);
-  /* The reading treatment, not the label grey: this is the paragraph somebody
-     is actually reading to decide, the same call `.dish-description` makes. */
-  color: color-mix(in srgb, var(--text) 85%, transparent);
+.how__step p {
+  margin: 0;
+  color: color-mix(in srgb, var(--text) 84%, transparent);
   line-height: var(--leading-relaxed);
 }
-.brand-story__card p:last-child {
-  margin-bottom: 0;
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-lead__shot img,
+  .gallery__tile img,
+  .brand-lead__cta svg {
+    transition: none;
+  }
+  .brand-lead__shot:hover img,
+  .gallery__tile:hover img {
+    transform: none;
+  }
 }
-.brand-story__card ul {
-  margin: var(--space-4) 0 0;
-  padding-left: var(--space-5);
-  display: grid;
-  gap: var(--space-2);
-  color: color-mix(in srgb, var(--text) 85%, transparent);
-  line-height: var(--leading-relaxed);
+
+/* --- The questions, and the statement headings they share ---------------- */
+.brand-faqs__title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-display);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
 }
-.brand-story__card li::marker {
-  color: var(--primary);
+@media (min-width: 768px) {
+  .brand-faqs__title {
+    font-size: var(--fs-display-lg);
+  }
+}
+.brand-faqs__inner {
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 /* --- The questions ------------------------------------------------------- */
@@ -2897,4 +3325,300 @@ html[data-splash="seen"] .splash {
   .brand-faq summary::after {
     transition: none;
   }
+}
+
+
+/* ===========================================================================
+   Checkout: three steps and a summary
+   ---------------------------------------------------------------------------
+   The route was one 1,640-line component with three identical cards in a
+   column, and read as one long form. It is three step components now
+   (`components/checkout/`), and these rules give each step a numeral so the
+   eye has an order to follow — the inside of the "2 Checkout" stop on the
+   rail above, in three parts.
+
+   Every class the end-to-end suite drives (`.slot-chip`, `.day-chip`,
+   `.date-field`, `.inline-error`, `button[type="submit"]`) is untouched; this
+   is the frame around them.
+   =========================================================================== */
+.step-panel {
+  padding: var(--space-5);
+}
+@media (min-width: 640px) {
+  .step-panel {
+    padding: var(--space-6);
+  }
+}
+.step-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+/* The numeral. A plate rather than bare text so the three line up down the
+   page as a column of the same shape, which is what makes them read as a
+   sequence rather than as three unrelated headings. */
+.step-head__n {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-family: var(--font-display-stack);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+}
+.step-head__text {
+  min-width: 0;
+  /* Centres the title on the numeral's plate when there is no blurb; a blurb
+     pushes it up to the plate's top edge, which is also where it should be. */
+  padding-top: 0.3rem;
+}
+.step-head__title {
+  margin: 0;
+  font-size: var(--fs-title-sm);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+.step-head__blurb {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-relaxed);
+}
+
+/* The summary beside the form. Same surface as the steps, with a quiet
+   accent along the top so the one panel that is about money reads as the
+   anchor of the page rather than as a fourth step. */
+.order-summary {
+  position: relative;
+  overflow: hidden;
+  padding: var(--space-5);
+}
+.order-summary::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--primary),
+    color-mix(in srgb, var(--primary) 55%, transparent)
+  );
+}
+
+/* Where to collect from, on a pickup order. Replaces a run of utilities so
+   the block has a name the next edit can find. */
+.pickup-branch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-4);
+  background: var(--surface-alt);
+}
+
+
+/* ===========================================================================
+   The landing page: a strip of facts, and where to find the kitchen
+   ---------------------------------------------------------------------------
+   Both built from the branch row and nothing else. Fewer cells for a branch
+   that has published less; never a placeholder.
+   =========================================================================== */
+.trust-strip {
+  /* Overlaps the hero by a little, so the strip reads as sitting ON the
+     photograph's lower edge rather than as the first row of a new page —
+     the one piece of layering on the whole route, and it is where the eye
+     lands after the headline. */
+  position: relative;
+  z-index: 1;
+  margin-top: calc(var(--space-8) * -1);
+  padding-inline: var(--space-4);
+}
+@media (min-width: 640px) {
+  .trust-strip {
+    padding-inline: var(--space-6);
+  }
+}
+@media (min-width: 1024px) {
+  .trust-strip {
+    padding-inline: var(--space-10);
+  }
+}
+.trust-strip__list {
+  list-style: none;
+  margin: 0 auto;
+  padding: var(--space-2);
+  max-width: 1400px;
+  display: grid;
+  gap: var(--space-2);
+  /* Two across on a phone — four stacked is a column of the same shape as
+     the dish grid under it and the strip stops reading as a strip. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-6);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+@media (min-width: 900px) {
+  .trust-strip__list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+  /* Hairlines between cells at four across; at two across the gap does it. */
+  .trust-cell + .trust-cell {
+    border-left: 1px solid var(--border);
+  }
+}
+.trust-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+}
+.trust-cell > svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.trust-cell[data-tone="open"] > svg {
+  color: var(--success);
+}
+.trust-cell[data-tone="closed"] > svg {
+  color: var(--muted);
+}
+.trust-cell > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.trust-cell strong {
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  line-height: var(--leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trust-cell small {
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  line-height: var(--leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trust-cell small a {
+  /* The ellipsis has to live on the ANCHOR, not only on the `small` around
+     it. Clipping the parent hides the overflow visually while the inline
+     child still measures its full intrinsic width — so a long address
+     reported a box reaching 446px inside a 393px phone, which is what
+     `e2e/mobile-layout.spec.ts` exists to catch. */
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Visit us, in the closing band ------------------------------------- */
+/* Sits on the brand-coloured half of the band, so every colour here is the
+   ink that is measured for that plate and nothing from the page's own set. */
+.visit {
+  display: grid;
+  gap: var(--space-8);
+}
+@media (min-width: 900px) {
+  .visit {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-10);
+  }
+}
+.visit__title {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--fs-display-sm);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+.visit__line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  font-weight: 600;
+  line-height: var(--leading-snug);
+}
+.visit__line > svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+.visit__line a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.visit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.visit__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--on-primary);
+  color: var(--primary-strong);
+  font-weight: 800;
+  font-size: var(--fs-caption);
+  text-decoration: none;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.visit__cta:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.visit__cta svg {
+  width: 16px;
+  height: 16px;
+}
+.visit__cta--quiet {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+/* The hours table inherits the band's ink; its own "today" highlight uses
+   `--primary-soft`, which on a brand plate is a wash of the same colour and
+   disappears. Overridden here with the ink at low alpha instead. */
+.visit__hours .hours-row[data-today="true"] {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.visit__hours .hours-row[data-today="true"] dt,
+.visit__hours .hours-row dt,
+.visit__hours h3,
+.visit__hours h3 svg {
+  color: inherit;
+  opacity: 0.9;
+}
+.visit__hours .text-muted {
+  color: inherit;
+  opacity: 0.7;
 }

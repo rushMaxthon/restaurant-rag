@@ -1,13 +1,16 @@
-import { useStorefrontBrand, useStorefrontCopy } from "@/lib/storefront";
+import { Link } from "@tanstack/react-router";
+import { ArrowRight, Check, Quote } from "lucide-react";
+
+import type { BrandPhoto } from "@/lib/brand-photos";
+import { useStorefrontBrand, type BrandSection } from "@/lib/storefront";
 
 /**
  * What this kitchen says about itself, in its own words.
  *
- * A single-restaurant storefront is that restaurant's website, and a website
- * that opens on a menu and ends at a menu is a form. This is the part a
- * customer reads before a FIRST order — who this is, what they are known for,
- * and the handful of questions everybody asks — which is exactly the moment
- * the decision to trust an unfamiliar kitchen gets made.
+ * A single-restaurant storefront IS that restaurant's website, and the home
+ * page's job is the one question a menu cannot answer: who are these people,
+ * and why order from them rather than from anyone else. The dishes have their
+ * own page; this is what a first-time visitor reads before they get there.
  *
  * **Every word is the restaurant's own, written in the operator panel**
  * (`/website`), stored on `restaurants.brand`, and carried on `/app-config` so
@@ -17,53 +20,144 @@ import { useStorefrontBrand, useStorefrontCopy } from "@/lib/storefront";
  * `restaurant_storefront.py` fills its gaps from the restaurant's name,
  * cuisine and city, because a tenant onboarded five minutes ago still needs a
  * page title. Here a generated paragraph would be a claim about a real
- * business's standards that nobody at that business made — and it would be
- * the same paragraph under every restaurant's name, which is precisely the bug
+ * business's standards that nobody at that business made — and it would be the
+ * same paragraph under every restaurant's name, which is precisely the bug
  * that whole subsystem exists to have fixed. An owner who has written nothing
- * gets nothing: both components below render `null`, and the home page closes
- * up around them as though they were never there.
+ * gets nothing: every block below renders `null`, and the page closes up
+ * around it.
+ *
+ * **The layout follows what was written, rather than the owner writing to fit
+ * a layout.** Three identical cards in a row was the first version, and it
+ * made a paragraph of history, a list of services and a statement about
+ * ingredients look like the same kind of thing — so the page had no shape and
+ * nothing to read first. The sections are now classified by what is IN them:
+ *
+ * - the first prose section becomes the lead story, set beside photographs of
+ *   this kitchen's own food;
+ * - any section carrying bullets becomes a grid of what they offer, because a
+ *   list wants to be read as a list;
+ * - every other prose section becomes a standalone statement.
+ *
+ * That holds for a restaurant with one section and for one with eight, in
+ * whatever order they were written, which is what makes it the same component
+ * for every tenant on the platform.
  */
-export function BrandStory() {
+export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
   const { about_sections: sections } = useStorefrontBrand();
-  const copy = useStorefrontCopy();
 
   if (sections.length === 0) return null;
 
-  return (
-    <section className="brand-story">
-      <div className="page-pad section-pad brand-story__inner">
-        <p className="eyebrow">About us</p>
-        <h2 className="font-display brand-story__title">{copy.name}</h2>
+  // Classified rather than positional: an owner who leads with their list of
+  // services still gets a lead story, and one who writes nothing but prose
+  // gets no empty grid.
+  const prose = sections.filter((section) => !hasBullets(section) && bodyOf(section).length > 0);
+  const listed = sections.filter(hasBullets);
+  const [lead, ...statements] = prose;
 
-        <div className="brand-story__grid">
-          {sections.map((section, index) => (
-            <article className="brand-story__card rise-in" style={{ "--i": Math.min(index, 11) } as React.CSSProperties} key={`${section.heading}-${index}`}>
-              <h3>{section.heading}</h3>
-              {/* Split on blank lines rather than rendered as one block: the
-                  owner's paragraph breaks are stored (`restaurant_brand.py`
-                  keeps them deliberately, unlike the short copy) and throwing
-                  them away here would make three paragraphs one wall. Never
-                  dangerouslySetInnerHTML — this is somebody's typing. */}
-              {section.body
-                .split(/\n{2,}/)
-                .map((paragraph) => paragraph.trim())
-                .filter(Boolean)
-                .map((paragraph, at) => (
-                  <p key={at}>{paragraph}</p>
+  return (
+    <>
+      {lead && (
+        // The anchor the hero's second button points at. `scroll-margin-top`
+        // on it clears the sticky header; see `.brand-lead` in polish.css.
+        <section className="brand-lead" id="story">
+          <div className="page-pad section-pad brand-lead__inner">
+            <div className="brand-lead__copy">
+              {/* The heading is the OWNER'S, not the restaurant's name. The
+                  name was here first and it read as a mistake: for any tenant
+                  who has not rewritten `hero_headline` into a slogan — which
+                  is every tenant on the day they are onboarded — the hero
+                  above says exactly the same words in 64px type. The eyebrow
+                  is a label rather than a claim, so it is ours to write, and
+                  the one line of display type on this block is a line the
+                  owner can change in `/website`. */}
+              <p className="eyebrow">Our story</p>
+              <h2 className="font-display brand-lead__title">{lead.heading}</h2>
+              <div className="brand-lead__body">{paragraphs(lead)}</div>
+              <Link className="brand-lead__cta" to="/menu">
+                See the full menu <ArrowRight aria-hidden="true" />
+              </Link>
+            </div>
+
+            {/* Photographs of their own food, as evidence rather than as a
+                menu: no price, no add button, nothing to buy. Dropped
+                entirely when this kitchen has uploaded none, which is why the
+                copy column is not sized against it. */}
+            {photos.length > 0 && (
+              <div className="brand-lead__art" data-count={Math.min(photos.length, 3)}>
+                {photos.slice(0, 3).map((photo) => (
+                  <figure className="brand-lead__shot" key={photo.src}>
+                    <img alt={photo.alt} loading="lazy" src={photo.src} />
+                  </figure>
                 ))}
-              {section.bullets && section.bullets.length > 0 && (
-                <ul>
-                  {section.bullets.map((bullet, at) => (
-                    <li key={at}>{bullet}</li>
-                  ))}
-                </ul>
-              )}
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {listed.map((section, index) => (
+        <section className="brand-offer" key={`${section.heading}-${index}`}>
+          <div className="page-pad section-pad brand-offer__inner">
+            <h2 className="font-display brand-offer__title">{section.heading}</h2>
+            {bodyOf(section).length > 0 && (
+              <div className="brand-offer__body">{paragraphs(section)}</div>
+            )}
+            <ul className="brand-offer__grid">
+              {(section.bullets ?? []).map((bullet, at) => (
+                <li
+                  className="brand-offer__item rise-in"
+                  key={at}
+                  style={{ "--i": Math.min(at, 11) } as React.CSSProperties}
+                >
+                  {/* One consistent mark, deliberately. Picking an icon per
+                      bullet would mean guessing what the sentence is about,
+                      and a wrong glyph beside somebody's own words is worse
+                      than no glyph. */}
+                  <span className="brand-offer__tick" aria-hidden="true">
+                    <Check />
+                  </span>
+                  <span>{bullet}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ))}
+
+      {statements.length > 0 && (
+        <section className="brand-standards">
+          <div className="page-pad section-pad brand-standards__inner">
+            {statements.map((section, index) => (
+              <article className="brand-standards__card" key={`${section.heading}-${index}`}>
+                <Quote className="brand-standards__mark" aria-hidden="true" />
+                <h2 className="font-display brand-standards__title">{section.heading}</h2>
+                <div className="brand-standards__body">{paragraphs(section)}</div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
   );
+}
+
+const hasBullets = (section: BrandSection) => (section.bullets?.length ?? 0) > 0;
+
+const bodyOf = (section: BrandSection) => (section.body ?? "").trim();
+
+/**
+ * The owner's paragraph breaks, kept.
+ *
+ * `restaurant_brand.py` stores them deliberately, unlike the short copy, and
+ * throwing them away here would turn three paragraphs into one wall. Never
+ * `dangerouslySetInnerHTML`: this is somebody's typing, not markup.
+ */
+function paragraphs(section: BrandSection) {
+  return bodyOf(section)
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph, at) => <p key={at}>{paragraph}</p>);
 }
 
 /**
