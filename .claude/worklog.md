@@ -26,6 +26,63 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 — The profile PATCH, the dish page, and what the e2e suite found next
+
+**Goal:** fix the `PATCH /profile/me` data-loss bug found in the previous
+entry; then, from a screenshot, fix the dish page's empty right column and
+make it survive a long description.
+
+**Changed:**
+- `app/schemas/profile.py` + `app/services/profile.py`: only the keys present
+  in the body change, read from `model_fields_set`. Absent leaves a field
+  alone, explicit null clears it, and `full_name` became optional but still
+  cannot be cleared. `tests/test_profile_update_is_a_patch.py` — 11 tests on a
+  path that had none.
+- `routes/menu.$itemId.tsx` + `polish.css`: the dish's identity moved from the
+  picture column to the decisions column; a one-option size chooser is no
+  longer rendered; the description clamps to four lines with a measured
+  "Read more"; `.dish-actions` is static from `lg` up.
+- `e2e/helpers.ts`, `e2e/customization-limits.spec.ts`,
+  `e2e/mobile-layout.spec.ts`: two more fixtures that named the wrong tenant,
+  and a `choosePickup` seed.
+
+**Verified:** backend `unittest discover` **2833 OK**. Storefront vitest 390
+OK. The profile fix proved against the running server (address-only body
+accepted where it was a 422; name-only edit preserves the address; explicit
+null still clears). Dish page rendered at 1440x900 and Pixel 5, light and
+dark, with a 294-character description and a 57-character name injected over
+the API rather than written to a live row.
+
+**Open — the one that matters commercially:**
+**No delivery order can be placed on the live storefront.** Main Branch has
+`delivery_fee = 0.00` and `service_radius_km = null`, and the courier reports
+the area unserviceable, so `create_order` refuses every delivery order with
+"We could not work out a delivery charge for this address". That is the guard
+added on 2026-10-01 working as designed — a flat fee of 0.00 is read as
+"unset", because the column cannot distinguish it from "free". **Setting a
+flat fee on that branch unblocks it**; it is a pricing decision, so it was
+left alone. Pickup is unaffected.
+
+**Learned:**
+- **Measure the layout before rearranging it.** The dish page's columns had
+  been balanced the other way for a documented reason, and the reason no
+  longer held: 65 of 187 dishes have no options and NOT ONE has an option
+  group, so the tall-right-column case the arrangement guarded against does
+  not occur on this menu at all. The commit says so, because the next person
+  to see 528px of empty space will otherwise re-derive it.
+- **A clamp has to be measured, not counted.** The same 160 characters are
+  three lines in a 460px column and one on a phone held sideways. And the
+  measurement must be skipped while expanded, or it reports "fits", removes
+  the control and strands the reader.
+- **Sticky offsets outlive their reason.** `.dish-actions` cleared the phone's
+  tab bar at every width, including the widths where that bar is
+  `lg:hidden` — invisible until the column grew tall enough to make it stick.
+- **A test that skips itself is not a test that passes**, and the summary line
+  cannot tell them apart. Two more fixtures here were discovering data across
+  all twelve restaurants and driving a single-tenant storefront; one of them
+  was skipping green under load because its discovery requests lost the race
+  for a database connection.
+
 ## 2026-10-02 — The e2e suite could not sign in, and had not been able to for a while
 
 **Goal:** seed the customer the Playwright suite needs and fix the 15 specs
