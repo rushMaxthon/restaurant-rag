@@ -3862,3 +3862,28 @@ html {
     }
   }
 }
+
+/* Printing has no scroll, so a scroll-linked animation has no progress: every
+   revealed block sits at its starting frame and prints blank. Found by taking
+   a full-page screenshot of this page — the hero and the footer came out, and
+   everything between them was white.
+
+   Nothing to animate on paper, so the whole system is switched off rather
+   than fixed up. `!important` because these compete with the keyframes
+   themselves, which is the one place it is the right tool. */
+@media print {
+  .reveal,
+  .reveal-left,
+  .reveal-right,
+  .reveal-settle,
+  .reveal-group > *,
+  .reveal-group--sides > *,
+  .reveal-group--settle > *,
+  .reveal-wipe > span,
+  .parallax-img img {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
