@@ -845,6 +845,21 @@ class Settings(BaseSettings):
     # is only a flag is one `.env` away from a customer being told a rider is
     # coming when nobody is.
     enable_delivery_rehearsal: bool = False
+
+    # Signing in with a phone number and a one-time code, instead of an email
+    # and a password.
+    #
+    # Off by default because there is no SMS sender wired yet, so the only
+    # code this can check is `otp_debug_code` below — a password every account
+    # on the platform shares, written in a config file. `services/otp.py`
+    # additionally refuses to accept it unless `environment` is a local one,
+    # the same two-guard shape as the rehearsal courier above and for a
+    # sharper reason: the failure here is not a customer being told a rider is
+    # coming, it is anybody signing in as anybody.
+    enable_phone_otp_login: bool = False
+    # The code accepted while there is nothing to send a real one with. Only
+    # ever honoured on a local environment; see `services/otp.py`.
+    otp_debug_code: str = "123456"
     # The one way to book a REAL rider from a development machine.
     #
     # A laptop dispatches through exactly the same task, provider and

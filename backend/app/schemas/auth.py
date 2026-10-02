@@ -39,6 +39,44 @@ class UserLogin(BaseModel):
         return self
 
 
+class OtpRequest(BaseModel):
+    """Ask for a code to be sent to a phone number."""
+
+    phone_number: str = Field(min_length=6, max_length=20)
+
+
+class OtpRequestResponse(BaseModel):
+    """What the client needs to draw the second step of the form."""
+
+    #: Always true when the route returns at all; a failure is an error status,
+    #: not `sent: false`. Present so the shape still reads as an answer.
+    sent: bool = True
+    #: Whether this number already belongs to an account on this app. The
+    #: client asks a first-time caller for their name on the next screen, which
+    #: is the only point in this flow where a name can be collected.
+    #:
+    #: It does tell an unauthenticated caller whether a number is registered.
+    #: That is the same thing every food app in this market does — the second
+    #: screen says "create your account" or "welcome back" — and the whole
+    #: route is refused outside a local environment today. Worth revisiting
+    #: with the real sender, together with rate limiting.
+    is_new_account: bool
+    #: The code to type, when the deployment is using the fixed one. Null
+    #: anywhere a real code would have been sent, so this can never become the
+    #: way a production client learns a secret.
+    debug_code: str | None = None
+
+
+class OtpVerify(BaseModel):
+    """Exchange a phone number and a code for a session."""
+
+    phone_number: str = Field(min_length=6, max_length=20)
+    code: str = Field(min_length=4, max_length=8)
+    #: Only read when the number has no account yet; ignored otherwise, so a
+    #: returning customer cannot have their name rewritten by a sign-in form.
+    full_name: str | None = Field(default=None, max_length=255)
+
+
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
