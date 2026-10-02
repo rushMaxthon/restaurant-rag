@@ -187,10 +187,8 @@ import {
   test("the payment sheet fits the phone and its controls are reachable", async ({ page }) => {
     await resetApp(page);
     // Collection, deliberately. This test is about whether Stripe's sheet fits
-    // a phone, and a delivery order cannot currently be placed on this
-    // storefront at all — the branch has no flat delivery fee and the courier
-    // reports the area unserviceable, so the order is refused before any
-    // payment sheet opens. See `choosePickup`.
+    // a phone, and whether a DELIVERY order can be placed depends on which
+    // courier the machine running it is configured against. See `choosePickup`.
     await choosePickup(page);
     await fillCart(page, 3);
     await signIn(page, "/checkout");

@@ -354,12 +354,17 @@ That account is created by seed.py's ensure_tenant_customer, one per ` +
  * steps of a journey the caller is not testing.
  *
  * Used where a test is about something OTHER than delivery — the payment
- * sheet, for instance — so it does not depend on the branch having a delivery
- * price configured. That is not hypothetical: this storefront's branch has
- * `delivery_fee = 0.00` and the courier reports the area unserviceable, so
- * `create_order` refuses every delivery order with "We could not work out a
- * delivery charge for this address". A test of the Stripe sheet should not go
- * red for that, and a test that quietly worked around it would hide it.
+ * sheet, for instance — so it cannot go red for whether a delivery price can
+ * be produced on the machine running it.
+ *
+ * That is not hypothetical, and it is environment-dependent, which is the
+ * point. Whether a delivery order can be placed at all depends on the courier:
+ * with `ENABLE_DELIVERY_REHEARSAL` on, a local machine quotes by distance and
+ * everything works; against Pidge's sandbox this branch's area comes back
+ * unserviceable, and with no flat `delivery_fee` on the branch either,
+ * `create_order` correctly refuses with "We could not work out a delivery
+ * charge for this address". A test of the Stripe sheet should not depend on
+ * which of those a developer happens to have configured.
  */
 export async function choosePickup(page: Page): Promise<void> {
   await page.goto("/");
