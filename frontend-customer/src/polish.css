@@ -1237,13 +1237,29 @@ html {
 }
 
 /* --- The dish page's two columns -------------------------------------------
-   Left: the picture and what the dish is. Right: every decision, and nothing
-   else. They used to be split picture / everything-else, which made one column
-   460px tall and the other three screens, and the gap between them was the
-   first thing anyone saw. */
-.dish-lede {
+   Left: the picture, and only the picture. Right: what the dish is, then every
+   decision about it.
+
+   This has been arranged both ways. It was picture / everything-else, which
+   left one column 460px tall and the other three screens; the identity was
+   then moved left to balance it. On this menu that over-corrected — the left
+   column measures 736-790px against a right column of 208-379px on every
+   dish, because 65 of 187 have no sizes and no option groups and not one has
+   an option group. So the hole moved from one side to the other.
+
+   Identity sits with the decision now, which is where a reader wants it: the
+   name, the description and the price are what you read before choosing, and
+   they were underneath a 525px photograph. The picture is sticky on its own,
+   which answers what the previous arrangement was for — a photograph that
+   stays in view is not empty background. */
+.dish-hero-col {
+  align-self: start;
+}
+.dish-detail {
   display: grid;
   align-content: start;
+  /* Was the gap on the old left column, which held the hero and the identity.
+     It now separates the identity from the panel of decisions under it. */
   gap: 1.25rem;
 }
 .dish-lede__price {
@@ -1269,6 +1285,35 @@ html {
   .dish-description {
     font-size: 1.05rem;
   }
+}
+
+/* Clamped until asked. `description` is an unbounded Text column, and this
+   paragraph now sits ABOVE the order panel — so a long one does not merely
+   look untidy, it pushes "Add to cart" off the screen. Four lines is about
+   what anybody reads before deciding.
+
+   `-webkit-line-clamp` is the unprefixed-in-all-but-name property here: every
+   current engine implements it, and the `display: -webkit-box` trio is still
+   how you ask for it. `line-clamp` alone is not yet safe to rely on. */
+.dish-description[data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.dish-description__more {
+  margin-top: 0.4rem;
+  color: var(--primary-text);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  /* A link in behaviour, so it gets a link's affordance rather than looking
+     like one more button beside "Add to cart". */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.dish-description__more:hover {
+  color: var(--primary);
 }
 
 /* Padding lives here rather than in utility classes so the action block below
@@ -1298,6 +1343,22 @@ html {
   background: var(--surface);
   padding: 0.9rem var(--panel-pad) var(--panel-pad);
   box-shadow: 0 -12px 24px -18px var(--overlay);
+}
+
+/* Pinned on a phone only, and that is the whole reason it is pinned: the
+   offset above clears the tab bar, which is `lg:hidden`. From `lg` up there is
+   no tab bar to clear, and a bar stuck to the bottom of the window inside a
+   column that scrolls normally buys nothing and costs something — it sits on
+   top of the panel's own content, so the size tiles were half-hidden behind
+   it with no indication they were there.
+
+   It never surfaced while the decisions column was too short to make this
+   stick at all. Moving the dish's identity into that column made it tall
+   enough, and a long description did the rest. */
+@media (min-width: 1024px) {
+  .dish-actions {
+    position: static;
+  }
 }
 /* A short fade above the seam, so the card the bar is covering reads as
    continuing underneath rather than as having been sliced through. */

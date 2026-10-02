@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   Check,
@@ -39,6 +39,63 @@ import {
 import { useMenuItem, useMenuItems, useRestaurant } from "@/lib/queries";
 import { pageMeta, useMoney } from "@/lib/storefront";
 import { getStorefrontCopy } from "@/lib/storefront.server";
+
+/**
+ * The dish's own paragraph, clamped until somebody asks for the rest.
+ *
+ * `menu_items.description` is an unbounded `Text` column, and the identity
+ * block now sits above the order panel — so a long one does not just look
+ * untidy, it pushes "Add to cart" off the screen. Four lines is about as much
+ * as anybody reads before deciding, and the rest is one tap away.
+ *
+ * **Measured, not guessed.** A character count is the obvious shortcut and is
+ * wrong: the same 160 characters are three lines in a 460px column and one on
+ * a wide phone held sideways. This compares `scrollHeight` against
+ * `clientHeight`, so the control appears exactly when there is something
+ * hidden and never when the text happens to fit.
+ *
+ * The measurement is skipped while expanded, which is not an optimisation: an
+ * expanded paragraph does not overflow, so measuring then would report "fits",
+ * remove the control, and strand the reader with no way back.
+ */
+function DishDescription({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    if (expanded) return;
+    const node = ref.current;
+    if (!node) return;
+    // A couple of pixels of slack: sub-pixel line heights make these two
+    // differ by a fraction on a scaled display, with nothing clipped.
+    const measure = () => setOverflows(node.scrollHeight - node.clientHeight > 2);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    // The column is fluid, so whether it overflows changes with the window.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+
+  return (
+    <div className="dish-description-block">
+      <p className="dish-description" data-clamped={!expanded} ref={ref}>
+        {text}
+      </p>
+      {overflows && (
+        <button
+          type="button"
+          className="dish-description__more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/menu/$itemId")({
   loader: () => getStorefrontCopy(),
@@ -209,13 +266,25 @@ function DishPage() {
           <ChevronLeft className="size-4" /> Back to menu
         </Link>
 
-        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_440px]">
-          {/* The picture and what the dish IS travel together, and stay put
-              while the choices scroll beside them. Before this the left column
-              held only the image while the right one ran to three screens, so
-              anyone past the first group was choosing toppings alongside a
-              screen and a half of empty background. */}
-          <div className="dish-lede lg:sticky lg:top-24">
+        <div className="mt-5 grid items-start gap-8 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
+          {/* The picture on one side; what the dish is AND every decision about
+              it on the other.
+
+              This was picture-plus-identity on the left and decisions on the
+              right, to stop a long right column running beside an empty left
+              one. The balance has since gone the other way, and measurably:
+              on this restaurant's menu the left column is 736-790px and the
+              right is 208-379px, on every single dish. 65 of 187 dishes have
+              no sizes and no option groups at all, and NOT ONE has an option
+              group — so the tall-right-column case this was arranged for does
+              not occur here, while the hole beside the picture occurs always.
+
+              Identity belongs with the decision anyway: the name, the
+              description and the price are what somebody reads before
+              choosing, and they were below a 525px photograph. The picture
+              stays put on its own now, which answers the original concern — a
+              sticky photograph is not empty background. */}
+          <div className="dish-hero-col lg:sticky lg:top-24">
             <div className="dish-hero relative overflow-hidden rounded-2xl">
               {/* The same gesture in the same place as on the menu card, so it
                   is one thing to learn wherever you meet the dish. */}
@@ -256,6 +325,9 @@ function DishPage() {
               )}
             </div>
 
+          </div>
+
+          <div className="dish-detail">
             <div className="dish-lede__body">
               <div className="flex flex-wrap items-center gap-3">
                 <VegMark veg={item.is_veg} />
@@ -302,7 +374,7 @@ function DishPage() {
                   the reading treatment — a measure it does not run past, a
                   line height that survives three lines, and the page's own
                   text colour rather than the muted grey used for labels. */}
-              {item.description?.trim() && <p className="dish-description">{item.description}</p>}
+              {item.description?.trim() && <DishDescription text={item.description} />}
 
               {/* "From $12" until a size is picked, because that is the only
                   honest single number then. Once one IS picked the guess is
@@ -356,10 +428,16 @@ function DishPage() {
                 )}
               </div>
             </div>
-          </div>
 
-          <aside className="elevated-panel dish-choices">
-            {sizes.length > 0 && (
+            <aside className="elevated-panel dish-choices">
+            {/* More than one, because a chooser with a single option is not a
+                choice. Four of this restaurant's dishes have exactly one size,
+                and each rendered a "Choose a size — Required" card over one
+                tile that was already selected: a decision the customer cannot
+                make, marked as one they must. The size is still applied, and
+                its name is already printed under the price, so nothing is
+                lost by not asking. */}
+            {sizes.length > 1 && (
               <section className="choice-card mt-6">
                 <header className="choice-card__head">
                   <h2 className="choice-card__title">
@@ -691,7 +769,8 @@ function DishPage() {
                 </>
               )}
             </div>
-          </aside>
+            </aside>
+          </div>
         </div>
       </div>
 
