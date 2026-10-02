@@ -3855,6 +3855,101 @@ html[data-splash="seen"] .splash {
   }
 }
 
+/* Sideways entrances need the block they are in to clip, or an element that
+   starts 32px to the right of where it belongs widens the document and the
+   page gains a horizontal scrollbar — which `e2e/mobile-layout.spec.ts`
+   fails on, correctly. `clip` rather than `hidden`: `hidden` would make the
+   section a scroll container, and a scroll container is what `position:
+   sticky` measures itself against. */
+.brand-lead,
+.brand-standards,
+.gallery,
+.known,
+.how,
+.facts,
+.brand-offer,
+.brand-faqs {
+  overflow-x: clip;
+}
+
+@keyframes reveal-from-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-34px, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-from-right {
+  from {
+    opacity: 0;
+    transform: translate3d(34px, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* For photographs. A picture that slides is a picture that looks like it is
+   in the wrong place for a moment; one that settles out of a slight zoom
+   reads as the image arriving rather than the layout moving. */
+@keyframes reveal-settle {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal-left,
+    .reveal-right,
+    .reveal-settle,
+    .reveal-group--settle > * {
+      animation: reveal-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 2% cover 24%;
+    }
+    /* Sideways only where the layout actually HAS sides.
+     *
+     * Below 900px the lead story stacks into one column, so a horizontal
+     * entrance is motion that illustrates nothing — and on a 393px phone an
+     * element starting 34px out is an element whose box is outside the
+     * viewport for the length of the animation. It is clipped, so nothing
+     * scrolls and nothing is unreachable, but `e2e/mobile-layout.spec.ts`
+     * measures boxes rather than scrollbars and is right to: "off screen" is
+     * the thing it is guarding, and a transiently off-screen box is still a
+     * box nobody can tap. A phone gets the rise instead. */
+    .reveal-left,
+    .reveal-right {
+      animation-name: reveal-rise;
+    }
+    @media (min-width: 900px) {
+      .reveal-left {
+        animation-name: reveal-from-left;
+      }
+      .reveal-right {
+        animation-name: reveal-from-right;
+      }
+    }
+    .reveal-settle,
+    .reveal-group--settle > * {
+      animation-name: reveal-settle;
+    }
+    .reveal-group--settle > * {
+      animation-range: entry 4% cover 28%;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
     .reveal,
