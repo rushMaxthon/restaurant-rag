@@ -78,6 +78,23 @@
   /* The alternating band in a long table. Subtle enough to group rows
      without turning the page into stripes. */
   --row-tint: rgb(250 251 253 / 0.42);
+
+  /* Three surfaces that existed only as literals, which is why the panel
+     still had light bands in dark mode: a modal header and a sticky modal
+     footer painted #ffffff, and four different near-white table-row hovers.
+     A literal cannot follow a theme.
+
+     None of them is restated in `.dark`, deliberately. Each is mixed from a
+     token that ALREADY flips — `--surface-solid`, `--surface-alt` — so one
+     declaration is correct in both themes and there is no second copy to
+     fall out of step with this one. They also follow the tenant's accent
+     rather than a fixed warm grey. */
+  --surface-warm: color-mix(in srgb, var(--primary) 5%, var(--surface-solid));
+  --surface-veil: color-mix(in srgb, var(--surface-solid) 80%, transparent);
+  /* Mixed into `--surface-alt` rather than the card, because a hover has to
+     be felt at a glance: 6% of the accent over the page's second surface is
+     a warm band in light and a lift in dark, from the same line. */
+  --row-hover: color-mix(in srgb, var(--primary) 6%, var(--surface-alt));
   /* The badge palette, foreground per tone.
 
      Separate from the shared `--*-text` tokens because a badge is read on its

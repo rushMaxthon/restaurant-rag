@@ -247,3 +247,68 @@ describe("one page-title size", () => {
     }
   });
 });
+
+describe("no surface is painted a light literal", () => {
+  /**
+   * The defect this exists for: in dark mode the Location Editor opened with
+   * a white header band and a white sticky footer around a dark form, and the
+   * heading on it was invisible. The cause was not the modal. It was that
+   * `background` had been written as `#ffffff` in fifteen places across the
+   * panel — the modal's three bands, four table-row hovers, the card gradient
+   * on four more surfaces, and the shimmer that ran through every skeleton.
+   *
+   * A literal cannot follow a theme, and nothing was checking. The `.dark`
+   * block was thorough about the tokens it knew about, so the failure was
+   * never in the palette — it was in the declarations that had never asked
+   * the palette anything.
+   *
+   * Scoped to the properties that paint a surface. `color: #fff` is left
+   * alone on purpose: white ink on a brand fill or on the permanently dark
+   * sidebar is correct in both themes, and flagging it would bury this.
+   */
+  const SURFACE_PROPS =
+    /^(background|background-color|background-image|border|border-top|border-bottom|border-left|border-right|border-color)$/;
+
+  /** Relative luminance, 0 = black, 1 = white. */
+  const luminance = (hex: string) => {
+    let h = hex.slice(1);
+    if (h.length === 3) h = [...h].map((c) => c + c).join("");
+    if (h.length !== 6) return 0;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  };
+
+  it("uses a token, not a hex, for anything that paints a surface", () => {
+    // Comments first: this file explains itself at length and names plenty of
+    // colours it no longer uses.
+    const css = legacyCss.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const offenders: string[] = [];
+    for (const [, prop, rawValue] of css.matchAll(/([-a-z]+)\s*:\s*([^;{}]*);/g)) {
+      if (!SURFACE_PROPS.test(prop)) continue;
+      // A `var(--x, #fff)` fallback never paints anything while the token
+      // exists, and the test above already proves every one of them does.
+      // A `color-mix()` lightens a token that flips, so it flips too.
+      const value = rawValue
+        .replace(/var\([^()]*\)/g, "")
+        .replace(/color-mix\([^()]*\)/g, "");
+      for (const [hex] of value.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
+        if (luminance(hex) > 0.75) offenders.push(`${prop}: ${hex}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("paints the modal's three bands from tokens, which is where this started", () => {
+    for (const band of [
+      /\.modal-card__header\s*\{[^}]*\}/,
+      /\.modal-card__body\s*\{[^}]*\}/,
+      /\.modal-card \.modal-actions\s*\{[^}]*\}/,
+    ]) {
+      const rule = legacyCss.match(band)?.[0] ?? "";
+      expect(rule).not.toBe("");
+      expect(rule).toMatch(/background:[^;]*var\(--surface/);
+    }
+  });
+});
