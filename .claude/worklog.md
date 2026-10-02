@@ -26,6 +26,64 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 — Brand content owned by the owner, the menu rail, and per-tenant storage
+
+**Goal:** from a screenshot of a listing-site description — give the storefront
+real brand content (about sections + FAQ) that comes from the admin panel so it
+is dynamic for every future restaurant; fix the category rail not scrolling;
+and stop every tenant sharing `bangkok-bowl-*` browser storage.
+
+**Changed:**
+- `restaurants.brand` JSONB (migration **0073**, applied to Supabase, which was
+  stamped 0072 with nothing else pending) + `services/restaurant_brand.py` +
+  `GET/PUT /restaurants/{id}/brand` + `brand` on `/app-config`. 21 tests.
+- `frontend-admin`: new **Website** screen (`/website`, both roles) editing the
+  eight storefront copy strings — which had an owner-writable route and no UI
+  since the day they were written — and the brand content. Rules in
+  `services/websiteContent.ts`, 17 tests.
+- `frontend-customer`: `brand-story.tsx` renders both on the home page with
+  `FAQPage` structured data; `lib/tenant-storage.ts` scopes all five
+  localStorage keys by host; the menu rail scroll fixes.
+
+**Verified:** backend **2854 OK**. customer **400**, admin **235**, kitchen
+**84**. Both web builds clean. `menu-rail` e2e stable over three consecutive
+runs. Brand content saved through the real API and seen rendering on the home
+page and loaded back into the admin editor.
+
+**Open:**
+- Delivery is still unplaceable on the live storefront — Main Branch has
+  `delivery_fee = 0.00` and the courier reports the area unserviceable. A flat
+  fee unblocks it; it is a pricing decision.
+- Not asserted in e2e, and recorded in `menu-rail.spec.ts` rather than dropped:
+  a shared link straight to a menu section. Measured working (lands in 1.2s,
+  holds 12s on a cold phone load; green 3/3 run alone) but red about half the
+  time inside the full suite for a reason not pinned down.
+
+**Learned:**
+- **`npx tsc --noEmit -p tsconfig.json` checks NOTHING in `frontend-admin`.**
+  The root config is `"files": []` with project references, so the real gate is
+  `tsc -b` — i.e. `npm run build`, which is what `CLAUDE.md` already says to
+  use. A bare `tsc` reported clean while the page crashed on two prop errors.
+- **`scrollRestoration: true` owns the scroll across navigations**, and writing
+  a search param counts as one. `resetScroll: false` is the escape hatch for a
+  navigation that is a note about the current page rather than a page change.
+- **`behavior: "smooth"` does not arrive on a long lazily-loaded page.** The
+  browser animates towards an offset computed when the animation starts;
+  content resolving above the target moves it. Measured on a 6,000px jump:
+  smooth stopped 2,281px short, instant landed.
+- **`scroll-margin-top` composes with a global `scroll-padding-top`.** Two CSS
+  properties deciding one offset is how a jump landed 85px below the sticky
+  rail while a JS constant 85px higher decided the highlight.
+- **Returning a canceller as an effect's cleanup ties it to the deps.**
+  `sections` takes a new identity on any background refetch, so React cancelled
+  an in-flight scroll correction and the early return declined to restart it —
+  presenting as a deep link that worked warm and failed cold, which sent two
+  rounds of tuning after the wrong thing.
+- **A hidden Chrome tab cannot scroll either**, on top of not firing rAF or
+  IntersectionObserver. `window.scrollTo` is a no-op there while `computer
+  scroll` works, so browser probes of scroll behaviour in this setup need
+  Playwright, not the extension.
+
 ## 2026-10-02 — The profile PATCH, the dish page, and what the e2e suite found next
 
 **Goal:** fix the `PATCH /profile/me` data-loss bug found in the previous
