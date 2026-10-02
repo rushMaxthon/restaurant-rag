@@ -46,6 +46,8 @@ from app.schemas.restaurant import (
     RestaurantPaymentGatewayUpdate,
     RestaurantPaymentSettingsResponse,
     RestaurantDetailResponse,
+    RestaurantBrandResponse,
+    RestaurantBrandUpdate,
     RestaurantStorefrontResponse,
     RestaurantStorefrontUpdate,
     RestaurantLocationCreate,
@@ -83,6 +85,12 @@ from app.services.payments.registry import (
     settles_with_own_account,
 )
 from app.services.secrets import SecretsUnavailable
+from app.services.restaurant_brand import (
+    BRAND_LIMITS,
+    BrandValidationError,
+    read_brand,
+    resolve_brand,
+)
 from app.services.restaurant_storefront import (
     STOREFRONT_KEYS,
     STOREFRONT_LIMITS,
@@ -1244,6 +1252,65 @@ def put_restaurant_capability(
 
     db.commit()
     return _capability_rows(db, restaurant_id=restaurant.id)
+
+
+@router.get("/{restaurant_id}/brand", response_model=RestaurantBrandResponse)
+def get_restaurant_brand(
+    restaurant_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantBrandResponse:
+    """What this restaurant says about itself, at length."""
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    return RestaurantBrandResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        brand=read_brand(restaurant),
+        limits=dict(BRAND_LIMITS),
+    )
+
+
+@router.put("/{restaurant_id}/brand", response_model=RestaurantBrandResponse)
+def put_restaurant_brand(
+    restaurant_id: uuid.UUID,
+    payload: RestaurantBrandUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> RestaurantBrandResponse:
+    """Change what this restaurant says about itself.
+
+    Owner-writable, like the theme and the short copy and for the same reason:
+    this is the restaurant's own words about its own business, and an owner
+    should not need a support ticket to correct them.
+
+    `exclude_unset` is load-bearing here exactly as it is on the storefront
+    route — without it an absent half arrives as None and clears content the
+    owner wrote on the other tab of the same screen.
+    """
+
+    restaurant = _theme_restaurant_for(db, restaurant_id=restaurant_id, user=current_user)
+    try:
+        resolved = resolve_brand(
+            payload.model_dump(exclude_unset=True),
+            existing=restaurant.brand,
+        )
+    except BrandValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from error
+
+    restaurant.brand = resolved
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    return RestaurantBrandResponse(
+        restaurant_id=restaurant.id,
+        restaurant_name=restaurant.name,
+        brand=read_brand(restaurant),
+        limits=dict(BRAND_LIMITS),
+    )
 
 
 @router.get("/{restaurant_id}/storefront", response_model=RestaurantStorefrontResponse)

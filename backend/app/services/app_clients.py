@@ -895,12 +895,15 @@ def build_app_config_response(
     # Empty unless this client fronts a restaurant. The marketplace spans many
     # of them, so it has no single address to give.
     contact: dict[str, str] = {}
+    # Same: only a restaurant has anything to say about itself.
+    brand: dict[str, object] = {}
     # The marketplace spans restaurants that may charge in different money, so
     # it gets the platform default rather than one tenant's answer.
     currency = currency_for(get_settings().payment_currency)
     restaurant = app_client.restaurant
     if restaurant is not None:
         from app.services.app_branding import COVER_IMAGE_URL_KEY
+        from app.services.restaurant_brand import read_brand
         from app.services.restaurant_contact import read_contact
         from app.services.restaurant_storefront import read_storefront
         from app.services.restaurant_theme import read_theme
@@ -926,6 +929,8 @@ def build_app_config_response(
         # Only the parts really filled in — a half-onboarded tenant sends none
         # rather than sending "Pending restaurant setup" to its own footer.
         contact = read_contact(restaurant)
+        # Both keys always, both usually empty — nothing here is derived.
+        brand = read_brand(restaurant)
         currency = currency_for(restaurant.currency)
 
     return AppConfigResponse(
@@ -945,6 +950,7 @@ def build_app_config_response(
         phone_country_code=get_settings().default_phone_country_code,
         storefront=storefront,
         contact=contact,
+        brand=brand,
         capabilities=capabilities or {},
         currency=CurrencyResponse(
             code=currency.code,

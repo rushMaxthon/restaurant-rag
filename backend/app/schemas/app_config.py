@@ -93,3 +93,10 @@ class AppConfigResponse(BaseModel):
     # onboarding placeholder — see `services/restaurant_contact.py`. Empty for
     # the marketplace, and for a tenant created five minutes ago.
     contact: dict[str, str] = Field(default_factory=dict)
+    # What this restaurant says about itself at length: headed sections and
+    # answered questions, both always present and both often empty.
+    #
+    # On this call rather than its own because the home page renders it above
+    # the fold and a search engine reads the FAQ out of the first response —
+    # a second round trip would mean neither arrives in time to matter.
+    brand: dict[str, Any] = Field(default_factory=dict)

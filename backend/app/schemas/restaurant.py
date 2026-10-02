@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -217,6 +218,51 @@ class RestaurantStorefrontUpdate(BaseModel):
     hero_subcopy: str | None = None
     concierge_intro: str | None = None
     login_blurb: str | None = None
+
+
+class BrandSectionPayload(BaseModel):
+    """One headed section of what a restaurant says about itself."""
+
+    heading: str = ""
+    body: str = ""
+    bullets: list[str] = Field(default_factory=list)
+
+
+class BrandFaqPayload(BaseModel):
+    """One question a customer asks before a first order, and its answer."""
+
+    question: str = ""
+    answer: str = ""
+
+
+class RestaurantBrandUpdate(BaseModel):
+    """The long-form content on a restaurant's own website.
+
+    Both halves optional, and only the ones sent are changed — an edit to the
+    FAQ must not blank the about sections. Sending a key as an empty list
+    clears that half, which is a deliberate act and a different one from not
+    mentioning it.
+
+    Length and shape rules belong to `restaurant_brand.py`, so they are the
+    same wherever this is written rather than half here and half there.
+    """
+
+    about_sections: list[BrandSectionPayload] | None = None
+    faqs: list[BrandFaqPayload] | None = None
+
+
+class RestaurantBrandResponse(BaseModel):
+    """What this restaurant says about itself, and the room it has to say it."""
+
+    restaurant_id: uuid.UUID
+    restaurant_name: str
+    # Always both keys, always lists. Empty is the normal state — nothing here
+    # is derived, because a generated paragraph about a real business's
+    # standards is a claim nobody there made.
+    brand: dict[str, list[Any]]
+    # Per field, so a form can count down to the limit rather than refusing on
+    # save. Carries the collection caps too.
+    limits: dict[str, int]
 
 
 class RestaurantStorefrontResponse(BaseModel):

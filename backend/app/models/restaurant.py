@@ -112,6 +112,22 @@ class Restaurant(TimestampMixin, Base):
         default=dict,
         server_default="{}",
     )
+    # What this restaurant says about itself at length: headed sections and a
+    # list of answered questions. Structured, so it does not fit `storefront`
+    # above — and deliberately NOT a key inside it, because
+    # `resolve_storefront` rebuilds that map from an allowlist and would drop
+    # anything it does not recognise the next time an owner edited a page
+    # title. See migration `0073_restaurant_brand`.
+    #
+    # Empty is the normal state and nothing here is ever derived: a
+    # platform-written paragraph about a real restaurant's standards is a
+    # claim nobody there made.
+    brand: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
 
     owner: Mapped["User"] = relationship(back_populates="owned_restaurant", foreign_keys=[owner_id])
     # One app client per restaurant is a product rule, not a DB constraint:
