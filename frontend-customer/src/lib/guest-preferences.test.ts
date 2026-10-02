@@ -5,6 +5,7 @@ import {
   mergeGuestPreferences,
   readGuestPreferences,
 } from "./guest-preferences";
+import { STORAGE, tenantKey } from "./tenant-storage";
 
 /**
  * What a browser is allowed to remember for a visitor with no account.
@@ -37,7 +38,13 @@ function installStorage(): void {
     removeItem: (key: string) => void store.delete(key),
     clear: () => store.clear(),
   };
-  (globalThis as { window?: unknown }).window = { localStorage };
+  // A hostname, because the keys are scoped to the tenant that is being
+  // served — see `lib/tenant-storage.ts`. Without one these assertions would
+  // pass against a fallback key and prove nothing about the real one.
+  (globalThis as { window?: unknown }).window = {
+    localStorage,
+    location: { hostname: "bhagwati-bakery.localhost" },
+  };
 }
 
 describe("guest preferences", () => {
@@ -69,10 +76,10 @@ describe("guest preferences", () => {
   });
 
   it("recovers from a corrupt entry instead of throwing", () => {
-    window.localStorage.setItem("bangkok-bowl-guest-prefs", "{not json");
+    window.localStorage.setItem(tenantKey(STORAGE.guestPrefs), "{not json");
     expect(readGuestPreferences()).toEqual({});
     // And clears it, so the next read is not the same recovery again.
-    expect(window.localStorage.getItem("bangkok-bowl-guest-prefs")).toBeNull();
+    expect(window.localStorage.getItem(tenantKey(STORAGE.guestPrefs))).toBeNull();
   });
 
   it("sends nothing when it knows nothing", () => {

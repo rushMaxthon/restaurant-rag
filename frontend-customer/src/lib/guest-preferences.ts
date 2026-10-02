@@ -1,3 +1,5 @@
+import { STORAGE, readTenant, removeTenant, writeTenant } from "@/lib/tenant-storage";
+
 /**
  * Durable traits for a visitor who has no account yet.
  *
@@ -17,7 +19,7 @@
  * Spec: docs/superpowers/specs/2026-09-14-guest-preferences-design.md
  */
 
-const GUEST_PREFS_KEY = "bangkok-bowl-guest-prefs";
+// Per tenant — see `lib/tenant-storage.ts`.
 
 export type GuestPreferences = {
   diet?: string;
@@ -46,7 +48,7 @@ function sanitize(value: unknown): GuestPreferences {
 export function readGuestPreferences(): GuestPreferences {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(GUEST_PREFS_KEY);
+    const raw = readTenant(STORAGE.guestPrefs);
     return raw ? sanitize(JSON.parse(raw)) : {};
   } catch {
     // Malformed JSON is discarded rather than repaired. Guessing at what a
@@ -67,7 +69,7 @@ export function mergeGuestPreferences(inferred: unknown): GuestPreferences {
 
   const merged = { ...readGuestPreferences(), ...addition };
   try {
-    window.localStorage.setItem(GUEST_PREFS_KEY, JSON.stringify(merged));
+    writeTenant(STORAGE.guestPrefs, JSON.stringify(merged));
   } catch {
     // Nothing remembered across reloads; the merged value still serves this turn.
   }
@@ -76,7 +78,7 @@ export function mergeGuestPreferences(inferred: unknown): GuestPreferences {
 
 export function clearGuestPreferences(): void {
   try {
-    window.localStorage.removeItem(GUEST_PREFS_KEY);
+    removeTenant(STORAGE.guestPrefs);
   } catch {
     // Losing the clear is cosmetic. Throwing during login would not be.
   }

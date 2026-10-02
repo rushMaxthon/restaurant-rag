@@ -39,7 +39,16 @@ function installStorage() {
   const store = new Map<string, string>();
   (globalThis as { window?: unknown }).window = {
     // `request` reads the host to send X-Forwarded-Host.
-    location: { host: "radhe-dhokla.localhost:5173", pathname: "/orders", search: "" },
+    // `hostname` as well as `host`: the first scopes the storage keys (see
+    // `lib/tenant-storage.ts`), the second is what `request` sends as
+    // X-Forwarded-Host. They are the same address written two ways, and a stub
+    // carrying only one of them tests a storefront that cannot exist.
+    location: {
+      host: "radhe-dhokla.localhost:5173",
+      hostname: "radhe-dhokla.localhost",
+      pathname: "/orders",
+      search: "",
+    },
     localStorage: {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => void store.set(key, value),

@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  clickFixed,
-  fillCart,
-  fillCheckoutContact,
-  fillField,
-  payWithTestCard,
-  resetApp,
-  signIn,
-} from "./helpers";
+import { STORAGE_STATE_KEY, clickFixed, fillCart, fillCheckoutContact, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
 
 /**
  * What happens AFTER the card is accepted.
@@ -46,9 +38,14 @@ test("a paid order empties the cart and settles without a refresh", async ({ pag
 
   // And the basket is gone, so the same food cannot be bought twice.
   await expect(page.getByRole("link", { name: /cart with 0 items/i })).toBeVisible();
-  const stored = await page.evaluate(() => {
-    const raw = localStorage.getItem("bangkok-bowl-state");
+  // Read through the same tenant-scoped key the app writes — one deployment
+  // serves every restaurant, so the storefront's keys carry the host that
+  // selected the tenant. A literal `bangkok-bowl-state` here would find
+  // nothing and report a cart length of -1, which the assertion below would
+  // correctly call a failure for entirely the wrong reason.
+  const stored = await page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw).cart as unknown[]).length : -1;
-  });
+  }, STORAGE_STATE_KEY);
   expect(stored, "cart in localStorage after paying").toBe(0);
 });

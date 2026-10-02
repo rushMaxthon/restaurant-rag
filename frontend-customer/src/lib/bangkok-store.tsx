@@ -17,6 +17,7 @@ import { planCartActions } from "@/lib/cart-actions";
 export type OptionPortion = "WHOLE" | "LEFT" | "RIGHT";
 import { useAppConfig, useRestaurant, pickDefaultLocation } from "@/lib/queries";
 import { applyBrandColor } from "@/lib/theme";
+import { STORAGE, readTenant, writeTenant } from "@/lib/tenant-storage";
 
 /** See the note in auth.tsx: layout on the client, no-op effect on the server. */
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -192,7 +193,8 @@ const initial: AppState = {
   fulfillment: "DELIVERY",
   dark: false,
 };
-const STORAGE_KEY = "bangkok-bowl-state";
+// Per tenant — see `lib/tenant-storage.ts`. The cart, the chosen branch and
+// the fulfilment mode all belong to ONE restaurant.
 /**
  * The context, pinned so its identity survives a hot update.
  *
@@ -217,7 +219,7 @@ const AppStore: React.Context<Store | null> =
 function loadInitialState(): AppState {
   if (typeof window === "undefined") return initial;
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
+    const saved = readTenant(STORAGE.state);
     if (saved) return { ...initial, ...(JSON.parse(saved) as Partial<AppState>) };
   } catch {
     // ignore corrupt storage
@@ -258,7 +260,7 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
   // would otherwise write the empty `initial` straight over the saved cart.
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    writeTenant(STORAGE.state, JSON.stringify(state));
   }, [state, hydrated]);
 
   // Pre-select an open branch once the restaurant loads. This is a suggestion
@@ -287,9 +289,9 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
   const clearCart = useCallback(() => {
     setState((s) => ({ ...s, cart: [] }));
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = readTenant(STORAGE.state);
       const saved = raw ? (JSON.parse(raw) as Partial<AppState>) : {};
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...saved, cart: [] }));
+      writeTenant(STORAGE.state, JSON.stringify({ ...saved, cart: [] }));
     } catch {
       // Storage can be unavailable; the effect will catch up if it is not.
     }

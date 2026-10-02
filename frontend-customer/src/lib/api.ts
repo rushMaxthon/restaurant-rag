@@ -8,6 +8,7 @@ import type {
 } from "@/lib/bangkok-data";
 import type { GuestPreferences } from "@/lib/guest-preferences";
 import type { CartLineRequest, SellSuggestion } from "@/lib/suggestions";
+import { STORAGE, readTenant, removeTenant, writeTenant } from "@/lib/tenant-storage";
 
 /** `vite dev` / `vitest`. The backend on the developer's own machine. */
 const DEV_API_BASE_URL = "http://localhost:8000/api";
@@ -67,8 +68,9 @@ function storefrontHost(): string {
   return window.location.host;
 }
 
-const TOKEN_KEY = "bangkok-bowl-token";
-const USER_KEY = "bangkok-bowl-user";
+// Named per tenant now — see `lib/tenant-storage.ts`. One deployment serves
+// every restaurant, and a token stored under a shared key is one tenant's
+// credential sitting in another tenant's storage.
 
 export type AuthUser = {
   id: string;
@@ -625,7 +627,7 @@ export class ApiError extends Error {
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(TOKEN_KEY);
+    return readTenant(STORAGE.token);
   } catch {
     return null;
   }
@@ -635,8 +637,8 @@ export function setSession(token: string, user: AuthUser) {
   // A fresh sign-in is what makes the next expiry worth announcing again.
   alreadyAnnounced = false;
   try {
-    window.localStorage.setItem(TOKEN_KEY, token);
-    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    writeTenant(STORAGE.token, token);
+    writeTenant(STORAGE.user, JSON.stringify(user));
   } catch {
     // ignore storage failures (private mode, etc.)
   }
@@ -645,7 +647,7 @@ export function setSession(token: string, user: AuthUser) {
 export function getStoredUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(USER_KEY);
+    const raw = readTenant(STORAGE.user);
     return raw ? (JSON.parse(raw) as AuthUser) : null;
   } catch {
     return null;
@@ -687,8 +689,8 @@ export function announceSessionExpired() {
 
 export function clearSession() {
   try {
-    window.localStorage.removeItem(TOKEN_KEY);
-    window.localStorage.removeItem(USER_KEY);
+    removeTenant(STORAGE.token);
+    removeTenant(STORAGE.user);
   } catch {
     // ignore
   }

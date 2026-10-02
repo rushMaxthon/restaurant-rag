@@ -146,9 +146,21 @@ export async function staffToken(
 /** Stripe's universally-accepted test card. Never a real number. */
 export const TEST_CARD = { number: "4242424242424242", expiry: "1230", cvc: "123" };
 
-const STORAGE_STATE = "bangkok-bowl-state";
-const STORAGE_TOKEN = "bangkok-bowl-token";
-const STORAGE_USER = "bangkok-bowl-user";
+/**
+ * The storefront's localStorage keys, which are scoped to the tenant.
+ *
+ * They used to be `bangkok-bowl-…` for every restaurant on the platform. They
+ * are now `storefront:<host>:<name>`, because the host is what selects the
+ * tenant — see `src/lib/tenant-storage.ts`. Built the same way here rather
+ * than hardcoded, so pointing the suite at another tenant seeds that tenant's
+ * storage instead of silently seeding nobody's.
+ */
+const storageKey = (name: string) => `storefront:${STOREFRONT_HOST}:${name}`;
+const STORAGE_STATE = storageKey("state");
+/** Exported for the one spec that checks the stored cart directly. */
+export const STORAGE_STATE_KEY = STORAGE_STATE;
+const STORAGE_TOKEN = storageKey("token");
+const STORAGE_USER = storageKey("user");
 
 /**
  * Start from a known state.

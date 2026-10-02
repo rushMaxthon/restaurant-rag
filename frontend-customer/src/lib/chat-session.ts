@@ -1,3 +1,5 @@
+import { STORAGE, readTenant, removeTenant, writeTenant } from "@/lib/tenant-storage";
+
 /**
  * The session this browser is continuing.
  *
@@ -10,7 +12,8 @@
  * purpose: suggestion suppression is keyed by this id, and a prompt dismissed
  * on the home page must not reappear in the chat, or vice versa.
  */
-const SESSION_KEY = "bangkok-bowl-chat-session";
+// Per tenant — see `lib/tenant-storage.ts`. A conversation is about one
+// restaurant's menu and means nothing on another.
 
 /**
  * A fresh session id, in the UUID form `/suggestions` validates.
@@ -33,7 +36,7 @@ export function mintChatSessionId(): string {
 export function readChatSession(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(SESSION_KEY);
+    return readTenant(STORAGE.chatSession);
   } catch {
     return null;
   }
@@ -41,7 +44,7 @@ export function readChatSession(): string | null {
 
 export function storeChatSession(sessionId: string): void {
   try {
-    window.localStorage.setItem(SESSION_KEY, sessionId);
+    writeTenant(STORAGE.chatSession, sessionId);
   } catch {
     // A browser refusing storage costs continuity across reloads, nothing more.
   }
@@ -49,7 +52,7 @@ export function storeChatSession(sessionId: string): void {
 
 export function clearChatSession(): void {
   try {
-    window.localStorage.removeItem(SESSION_KEY);
+    removeTenant(STORAGE.chatSession);
   } catch {
     // Same as above: losing the reset is cosmetic, throwing here would not be.
   }
