@@ -19,6 +19,7 @@
 
 import type {
   BrandFaq,
+  BrandHighlight,
   BrandSection,
   StorefrontCopyKey,
 } from '../types/app';
@@ -198,6 +199,68 @@ export function faqProblem(faq: BrandFaq, limits: Record<string, number>): strin
 
 export const EMPTY_SECTION: BrandSection = { heading: '', body: '', bullets: [] };
 export const EMPTY_FAQ: BrandFaq = { question: '', answer: '' };
+export const EMPTY_HIGHLIGHT: BrandHighlight = { value: '', label: '', note: '' };
+
+/**
+ * The highlights worth saving: both halves filled in.
+ *
+ * A figure with no caption says nothing and a caption with no figure is a
+ * tile with a hole in it, so the storefront drops either. Dropping them here
+ * too means the owner sees the same rule they will see on their own page,
+ * rather than saving a row that silently never appears.
+ */
+export function usableHighlights(highlights: BrandHighlight[]): BrandHighlight[] {
+  return highlights
+    .map((highlight) => ({
+      value: highlight.value.trim(),
+      label: highlight.label.trim(),
+      note: (highlight.note ?? '').trim(),
+    }))
+    .filter((highlight) => highlight.value !== '' && highlight.label !== '');
+}
+
+/** The specialities worth saving, trimmed and with the blanks dropped. */
+export function usableSpecialities(specialities: string[]): string[] {
+  return specialities.map((entry) => entry.trim()).filter((entry) => entry !== '');
+}
+
+/** What is wrong with one highlight, in the owner's words, or null. */
+export function highlightProblem(
+  highlight: BrandHighlight,
+  limits: Record<string, number>,
+): string | null {
+  const value = highlight.value.trim();
+  const label = highlight.label.trim();
+  const note = (highlight.note ?? '').trim();
+  // A half-filled row is a prompt, not an error: the owner is mid-typing.
+  if (value === '' && label === '' && note === '') return null;
+  if (value === '') return 'Add the figure, or clear the row.';
+  if (label === '') return 'Add a caption, or clear the row.';
+  const valueLimit = limits['highlight_value'] ?? 24;
+  const labelLimit = limits['highlight_label'] ?? 60;
+  const noteLimit = limits['highlight_note'] ?? 60;
+  if (value.length > valueLimit) return `Keep the figure under ${valueLimit} characters.`;
+  if (label.length > labelLimit) return `Keep the caption under ${labelLimit} characters.`;
+  if (note.length > noteLimit) return `Keep the source under ${noteLimit} characters.`;
+  return null;
+}
+
+/**
+ * What is wrong with the year founded, or null.
+ *
+ * Mirrors `restaurant_brand.py`, which is the authority — this exists so an
+ * owner is told before they save rather than by a 422 afterwards.
+ */
+export function yearProblem(value: string, limits: Record<string, number>): string | null {
+  const typed = value.trim();
+  if (typed === '') return null;
+  if (!/^\d{4}$/.test(typed)) return 'Use a four-digit year, like 1999.';
+  const year = Number(typed);
+  const earliest = limits['earliest_year'] ?? 1800;
+  const latest = new Date().getFullYear();
+  if (year < earliest || year > latest) return `Use a year between ${earliest} and ${latest}.`;
+  return null;
+}
 
 /** Move a row one place up or down, or return the list unchanged at an end. */
 export function moveRow<T>(rows: T[], from: number, direction: -1 | 1): T[] {
@@ -221,6 +284,23 @@ export const SECTION_PROMPTS = [
   'What we are known for',
   'How ordering works',
   'Our standards',
+];
+
+/**
+ * Specialities worth having, offered as placeholders rather than written in.
+ *
+ * Same rule as the section headings: a placeholder prompts, a default would
+ * publish our words under their name.
+ */
+export const SPECIALITY_PROMPTS = [
+  'The thing people queue for',
+  'What you are known for locally',
+  'A speciality nobody else nearby makes',
+];
+
+export const HIGHLIGHT_PROMPTS: BrandHighlight[] = [
+  { value: '4.6', label: 'Rated by customers', note: '85 reviews on JustDial' },
+  { value: '11-25', label: 'Bakers and staff', note: 'Family-run' },
 ];
 
 export const FAQ_PROMPTS = [

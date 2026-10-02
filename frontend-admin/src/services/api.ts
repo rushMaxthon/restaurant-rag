@@ -1,5 +1,6 @@
 import type {
   BrandFaq,
+  BrandHighlight,
   BrandSection,
   RestaurantBrand,
   RestaurantStorefront,
@@ -1262,7 +1263,13 @@ export const api = {
   updateRestaurantBrand(
     token: string,
     restaurantId: string,
-    payload: { about_sections?: BrandSection[]; faqs?: BrandFaq[] },
+    payload: {
+      about_sections?: BrandSection[];
+      faqs?: BrandFaq[];
+      established_year?: number | null;
+      specialities?: string[];
+      highlights?: BrandHighlight[];
+    },
   ): Promise<RestaurantBrand> {
     return request<RestaurantBrand>(`/restaurants/${restaurantId}/brand`, {
       method: 'PUT',

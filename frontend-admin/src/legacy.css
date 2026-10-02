@@ -14925,6 +14925,52 @@ summary:focus-visible,
 /* Said beside the row rather than only at the save button, because the owner
    needs to know WHICH row, and a form that refuses without pointing is the
    dead end this panel keeps producing. */
+/* A repeating one-line field: the text box and the control that removes it.
+   Used for the specialities and for the figure/caption/source rows, both of
+   which are lists of short strings rather than the headed blocks below. */
+.web-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.web-inline input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Figure, caption, source. The figure is short by nature — "4.6", "1999" —
+   so it does not take the same width as the sentence beside it. */
+.web-inline--trio {
+  flex-wrap: wrap;
+}
+.web-inline--trio input:first-child {
+  flex: 0 0 5.5rem;
+}
+@media (max-width: 720px) {
+  .web-inline--trio input {
+    flex: 1 1 100%;
+  }
+}
+.web-inline__remove {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.web-inline__remove:hover {
+  color: var(--danger-text);
+  border-color: var(--danger);
+}
+
 .web-problem {
   display: flex;
   align-items: center;

@@ -1257,6 +1257,19 @@ export interface BrandSection {
   bullets?: string[];
 }
 
+/**
+ * One figure worth a tile on the storefront, and where it came from.
+ *
+ * `note` is attribution, and it is what makes a borrowed figure printable. A
+ * rating a restaurant earned on a listing site is a real fact and not this
+ * platform's measurement; shown bare it reads as ours.
+ */
+export interface BrandHighlight {
+  value: string;
+  label: string;
+  note?: string;
+}
+
 /** One question a customer asks before a first order, and its answer. */
 export interface BrandFaq {
   question: string;
@@ -1277,6 +1290,14 @@ export interface RestaurantBrand {
   brand: {
     about_sections: BrandSection[];
     faqs: BrandFaq[];
+    /**
+     * The YEAR the restaurant opened, never a duration. "26 years in
+     * business" is what the listing sites publish and it is right for one
+     * year only; the storefront subtracts at render time.
+     */
+    established_year: number | null;
+    specialities: string[];
+    highlights: BrandHighlight[];
   };
   /** Field lengths and collection caps, from the one place that enforces them. */
   limits: Record<string, number>;

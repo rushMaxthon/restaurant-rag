@@ -10,6 +10,10 @@ import {
   sectionProblem,
   usableFaqs,
   usableSections,
+  usableHighlights,
+  usableSpecialities,
+  highlightProblem,
+  yearProblem,
 } from './websiteContent';
 import type { StorefrontCopyKey } from '../types/app';
 
@@ -120,5 +124,78 @@ describe('rows can be reordered', () => {
     const rows = ['a', 'b'];
     moveRow(rows, 0, 1);
     expect(rows).toEqual(['a', 'b']);
+  });
+});
+
+/**
+ * The facts above the fold: the year, the specialities, the figures.
+ *
+ * Added for a storefront whose home page had three paragraphs and nothing a
+ * customer could take in at a glance — while every listing site in Surat led
+ * with the one thing it did not say: trading since 1999.
+ */
+describe('the facts above the fold', () => {
+  const limits = {
+    highlight_value: 24,
+    highlight_label: 60,
+    highlight_note: 60,
+    earliest_year: 1800,
+  };
+
+  it('accepts a four-digit year and nothing else', () => {
+    expect(yearProblem('1999', limits)).toBeNull();
+    expect(yearProblem('  1999  ', limits)).toBeNull();
+    expect(yearProblem('99', limits)).toMatch(/four-digit/);
+    expect(yearProblem('nineteen', limits)).toMatch(/four-digit/);
+  });
+
+  it('says nothing about an empty box, which is the owner clearing it', () => {
+    expect(yearProblem('', limits)).toBeNull();
+    expect(yearProblem('   ', limits)).toBeNull();
+  });
+
+  it('refuses a year that cannot be true', () => {
+    expect(yearProblem('1700', limits)).toMatch(/between/);
+    expect(yearProblem(String(new Date().getFullYear() + 1), limits)).toMatch(/between/);
+  });
+
+  it('allows the current year, because restaurants open', () => {
+    expect(yearProblem(String(new Date().getFullYear()), limits)).toBeNull();
+  });
+
+  it('keeps only the specialities with something in them', () => {
+    expect(usableSpecialities([' Khari ', '', '   ', 'Nankhatai'])).toEqual([
+      'Khari',
+      'Nankhatai',
+    ]);
+  });
+
+  it('keeps only the highlights with both halves', () => {
+    // A figure with no caption says nothing; a caption with no figure is a
+    // tile with a hole in it. The storefront drops both, so the editor does.
+    expect(
+      usableHighlights([
+        { value: '4.6', label: '' },
+        { value: '', label: 'Rated' },
+        { value: ' 4.6 ', label: ' Rated ', note: ' 85 on JustDial ' },
+      ]),
+    ).toEqual([{ value: '4.6', label: 'Rated', note: '85 on JustDial' }]);
+  });
+
+  it('treats a wholly empty row as mid-typing rather than an error', () => {
+    expect(highlightProblem({ value: '', label: '', note: '' }, limits)).toBeNull();
+  });
+
+  it('says which half of a started row is missing', () => {
+    expect(highlightProblem({ value: '4.6', label: '' }, limits)).toMatch(/caption/);
+    expect(highlightProblem({ value: '', label: 'Rated' }, limits)).toMatch(/figure/);
+  });
+
+  it('holds each box to its own limit', () => {
+    expect(highlightProblem({ value: 'x'.repeat(25), label: 'Rated' }, limits)).toMatch(/figure/);
+    expect(highlightProblem({ value: '4.6', label: 'y'.repeat(61) }, limits)).toMatch(/caption/);
+    expect(
+      highlightProblem({ value: '4.6', label: 'Rated', note: 'z'.repeat(61) }, limits),
+    ).toMatch(/source/);
   });
 });

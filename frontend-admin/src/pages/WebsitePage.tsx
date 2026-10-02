@@ -47,10 +47,17 @@ import {
   moveRow,
   sectionProblem,
   usableFaqs,
+  usableHighlights,
   usableSections,
+  usableSpecialities,
+  yearProblem,
+  highlightProblem,
+  EMPTY_HIGHLIGHT,
+  SPECIALITY_PROMPTS,
 } from '../services/websiteContent';
 import type {
   BrandFaq,
+  BrandHighlight,
   BrandSection,
   RestaurantBrand,
   RestaurantStorefront,
@@ -82,6 +89,12 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
   const [copyDraft, setCopyDraft] = useState<Copy | null>(null);
   const [sections, setSections] = useState<BrandSection[]>([]);
   const [faqs, setFaqs] = useState<BrandFaq[]>([]);
+  // Held as a string, not a number: an input the owner is halfway through
+  // clearing is "" and "199", neither of which is a year, and coercing on
+  // every keystroke fights the person typing.
+  const [established, setEstablished] = useState('');
+  const [specialities, setSpecialities] = useState<string[]>([]);
+  const [highlights, setHighlights] = useState<BrandHighlight[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingCopy, setSavingCopy] = useState(false);
@@ -103,6 +116,11 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
         setBrand(brandResponse);
         setSections(brandResponse.brand.about_sections.map((s) => ({ ...s, bullets: s.bullets ?? [] })));
         setFaqs(brandResponse.brand.faqs.map((f) => ({ ...f })));
+        setEstablished(
+          brandResponse.brand.established_year ? String(brandResponse.brand.established_year) : '',
+        );
+        setSpecialities([...brandResponse.brand.specialities]);
+        setHighlights(brandResponse.brand.highlights.map((h) => ({ note: '', ...h })));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -130,7 +148,16 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
 
   const sectionProblems = sections.map((section) => sectionProblem(section, limits));
   const faqProblems = faqs.map((faq) => faqProblem(faq, limits));
-  const brandBlocked = [...sectionProblems, ...faqProblems].some(Boolean);
+  const highlightProblems = highlights.map((highlight) => highlightProblem(highlight, limits));
+  const establishedProblem = yearProblem(established, limits);
+  const brandBlocked = [
+    ...sectionProblems,
+    ...faqProblems,
+    ...highlightProblems,
+    establishedProblem,
+  ].some(Boolean);
+  const maxSpecialities = limits['max_specialities'] ?? 10;
+  const maxHighlights = limits['max_highlights'] ?? 4;
 
   const saveCopy = useCallback(async () => {
     if (!viewedRestaurantId || !copyDirty) return;
@@ -160,10 +187,18 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
         // back matches what the owner can see was worth keeping.
         about_sections: usableSections(sections),
         faqs: usableFaqs(faqs),
+        // An empty box clears the year rather than leaving the old one, which
+        // is the same contract the sections have: sending a key is an edit.
+        established_year: established.trim() === '' ? null : Number(established.trim()),
+        specialities: usableSpecialities(specialities),
+        highlights: usableHighlights(highlights),
       });
       setBrand(saved);
       setSections(saved.brand.about_sections.map((s) => ({ ...s, bullets: s.bullets ?? [] })));
       setFaqs(saved.brand.faqs.map((f) => ({ ...f })));
+      setEstablished(saved.brand.established_year ? String(saved.brand.established_year) : '');
+      setSpecialities([...saved.brand.specialities]);
+      setHighlights(saved.brand.highlights.map((h) => ({ note: '', ...h })));
       onToast('Saved', 'Your about page and questions are updated.', 'success');
     } catch (error: unknown) {
       onToast(
@@ -174,7 +209,7 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
     } finally {
       setSavingBrand(false);
     }
-  }, [faqs, onToast, sections, token, viewedRestaurantId]);
+  }, [established, faqs, highlights, onToast, sections, specialities, token, viewedRestaurantId]);
 
   return (
     <div className="page">
@@ -325,6 +360,162 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
               {savingBrand ? 'Saving…' : 'Save'}
             </button>
           </header>
+
+          <div className="web-group">
+            <h3>The facts above the fold</h3>
+            <p className="web-group__blurb">
+              The first things a new customer reads on your home page. All three are optional, and
+              anything you leave empty simply does not appear.
+            </p>
+
+            <div className="field">
+              <label htmlFor="established">The year you opened</label>
+              <input
+                id="established"
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="1999"
+                value={established}
+                onChange={(event) => setEstablished(event.target.value)}
+                aria-invalid={establishedProblem ? true : undefined}
+              />
+              <div className="web-field__foot">
+                {/* The year, never "26 years in business" — that is right on
+                    the day it is typed and wrong every year after. The site
+                    counts up from this. */}
+                <span className="web-hint">
+                  Shown as &ldquo;Since 1999&rdquo;, with the years counted up for you.
+                </span>
+              </div>
+              {establishedProblem && <p className="web-problem">{establishedProblem}</p>}
+            </div>
+
+            <div className="field">
+              <label>What you are known for</label>
+              <div className="web-field__foot">
+                <span className="web-hint">
+                  A few words each &mdash; what someone nearby would name if you asked them about
+                  you.
+                </span>
+                <span className="web-count">
+                  {specialities.length} / {maxSpecialities}
+                </span>
+              </div>
+              {specialities.map((speciality, index) => (
+                <div className="web-inline" key={`speciality-${index}`}>
+                  <input
+                    type="text"
+                    placeholder={SPECIALITY_PROMPTS[index % SPECIALITY_PROMPTS.length]}
+                    value={speciality}
+                    aria-label={`Speciality ${index + 1}`}
+                    onChange={(event) =>
+                      setSpecialities((rows) =>
+                        rows.map((row, at) => (at === index ? event.target.value : row)),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="web-inline__remove"
+                    aria-label={`Remove speciality ${index + 1}`}
+                    onClick={() => setSpecialities((rows) => rows.filter((_, at) => at !== index))}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {specialities.length < maxSpecialities && (
+                <button
+                  type="button"
+                  className="web-add"
+                  onClick={() => setSpecialities((rows) => [...rows, ''])}
+                >
+                  <Plus size={14} aria-hidden="true" /> Add one
+                </button>
+              )}
+            </div>
+
+            <div className="field">
+              <label>Figures worth showing</label>
+              <div className="web-field__foot">
+                <span className="web-hint">
+                  A figure and a caption. If it came from somewhere else &mdash; a rating on a
+                  listing site &mdash; say where: a number with no source reads as ours.
+                </span>
+                <span className="web-count">
+                  {highlights.length} / {maxHighlights}
+                </span>
+              </div>
+              {highlights.map((highlight, index) => (
+                <div className="web-inline web-inline--trio" key={`highlight-${index}`}>
+                  <input
+                    type="text"
+                    placeholder="4.6"
+                    value={highlight.value}
+                    aria-label={`Figure ${index + 1}`}
+                    onChange={(event) =>
+                      setHighlights((rows) =>
+                        rows.map((row, at) =>
+                          at === index ? { ...row, value: event.target.value } : row,
+                        ),
+                      )
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Rated by customers"
+                    value={highlight.label}
+                    aria-label={`Caption ${index + 1}`}
+                    onChange={(event) =>
+                      setHighlights((rows) =>
+                        rows.map((row, at) =>
+                          at === index ? { ...row, label: event.target.value } : row,
+                        ),
+                      )
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="85 reviews on JustDial"
+                    value={highlight.note ?? ''}
+                    aria-label={`Where figure ${index + 1} came from`}
+                    onChange={(event) =>
+                      setHighlights((rows) =>
+                        rows.map((row, at) =>
+                          at === index ? { ...row, note: event.target.value } : row,
+                        ),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="web-inline__remove"
+                    aria-label={`Remove figure ${index + 1}`}
+                    onClick={() => setHighlights((rows) => rows.filter((_, at) => at !== index))}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {highlightProblems.map((problem, index) =>
+                problem ? (
+                  <p className="web-problem" key={`highlight-problem-${index}`}>
+                    {problem}
+                  </p>
+                ) : null,
+              )}
+              {highlights.length < maxHighlights && (
+                <button
+                  type="button"
+                  className="web-add"
+                  onClick={() => setHighlights((rows) => [...rows, { ...EMPTY_HIGHLIGHT }])}
+                >
+                  <Plus size={14} aria-hidden="true" /> Add one
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="web-group">
             <h3>Sections</h3>
