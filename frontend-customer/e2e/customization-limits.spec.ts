@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { resetApp } from "./helpers";
+import { API_BASE, resetApp, TENANT_HEADER } from "./helpers";
 
 /**
  * The limits an owner sets, as the customer meets them.
@@ -11,16 +11,33 @@ import { resetApp } from "./helpers";
  * arrived at the end.
  *
  * Discovered from the API, not hardcoded: which group is capped is admin data.
+ *
+ * **Discovered from THIS TENANT's API**, which is the part that was wrong.
+ * `/restaurants` without a tenant header answers for the marketplace and
+ * returns all twelve restaurants, so this picked a capped group off whichever
+ * one had it — Bangkok Bowl — and then opened that dish on the storefront
+ * `localhost` serves, which is Bhagwati Bakery. The page correctly answered
+ * "We couldn't find that dish" and the test failed on a locator.
+ *
+ * It was not failing reliably, which is worse: under the full suite some of
+ * the twelve menu requests lose the race for a connection, the search finds
+ * nothing, and the test skips itself green. Scoped to one tenant it either
+ * finds a capped group there or honestly reports that there is none — this
+ * restaurant is a bakery and has no customization groups at all.
  */
 
 type Capped = { itemId: string; title: string; max: number; options: string[] };
 
 async function findCappedGroup(request: APIRequestContext): Promise<Capped | null> {
-  const restaurants = await (await request.get("http://127.0.0.1:8000/api/restaurants")).json();
+  const restaurants = await (
+    await request.get(`${API_BASE}/restaurants`, { headers: TENANT_HEADER })
+  ).json();
   const rows = Array.isArray(restaurants) ? restaurants : (restaurants.items ?? []);
   for (const restaurant of rows) {
     const payload = await (
-      await request.get(`http://127.0.0.1:8000/api/menu-items?restaurant_id=${restaurant.id}`)
+      await request.get(`${API_BASE}/menu-items?restaurant_id=${restaurant.id}`, {
+        headers: TENANT_HEADER,
+      })
     ).json();
     const items = Array.isArray(payload) ? payload : (payload.items ?? []);
     for (const item of items) {

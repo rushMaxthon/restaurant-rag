@@ -1,5 +1,11 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
+// The app's own rule, not a copy of it. The postal field is labelled from
+// the tenant's currency — "PIN code" on an INR storefront, "ZIP code" on a
+// USD one — so a test that hardcodes one of them is testing a different
+// storefront than the one it is driving.
+import { postalCodeLabel } from "../src/lib/delivery-address";
+
 /**
  * Signing in, from a test, against a backend that serves many restaurants.
  *
@@ -35,6 +41,28 @@ export type Credentials = { email: string; password: string };
 /** Platform staff, who belong to no tenant. */
 export const ADMIN: Credentials = { email: "admin@example.com", password: "password123" };
 
+let tenantConfig: { app_key?: string; currency?: { code?: string } } | null = null;
+
+/** `/app-config` for the host under test, fetched once. */
+async function config(request: APIRequestContext) {
+  if (tenantConfig) return tenantConfig;
+  const response = await request.get(`${API_BASE}/app-config`, { headers: TENANT_HEADER });
+  if (!response.ok()) {
+    throw new Error(
+      `Could not resolve the tenant on "${STOREFRONT_HOST}": ${API_BASE}/app-config ` +
+        `answered ${response.status()}. Is the backend running, and is there an ` +
+        `app_client_domains row for this host? (seed.py: ensure_development_host)`,
+    );
+  }
+  tenantConfig = await response.json();
+  return tenantConfig!;
+}
+
+/** What THIS storefront calls the postal code field. */
+export async function postalFieldLabel(request: APIRequestContext): Promise<string> {
+  return postalCodeLabel((await config(request)).currency?.code);
+}
+
 let resolvedCustomer: Credentials | null = null;
 
 /**
@@ -60,15 +88,7 @@ export async function customerCredentials(request: APIRequestContext): Promise<C
     return resolvedCustomer;
   }
 
-  const response = await request.get(`${API_BASE}/app-config`, { headers: TENANT_HEADER });
-  if (!response.ok()) {
-    throw new Error(
-      `Could not resolve the tenant on "${STOREFRONT_HOST}": ${API_BASE}/app-config ` +
-        `answered ${response.status()}. Is the backend running, and is there an ` +
-        `app_client_domains row for this host? (seed.py: ensure_development_host)`,
-    );
-  }
-  const { app_key: appKey } = (await response.json()) as { app_key?: string };
+  const appKey = (await config(request)).app_key;
   if (!appKey) throw new Error(`/app-config returned no app_key for "${STOREFRONT_HOST}"`);
 
   resolvedCustomer = { email: `${appKey}@example.com`, password };
@@ -314,8 +334,72 @@ That account is created by seed.py's ensure_tenant_customer, one per ` +
   }
 }
 
+/**
+ * Order for collection rather than delivery.
+ *
+ * Seeded into the store the way `resetApp` seeds the chosen branch, because
+ * the switch itself lives on the cart page and clicking through to it is four
+ * steps of a journey the caller is not testing.
+ *
+ * Used where a test is about something OTHER than delivery — the payment
+ * sheet, for instance — so it does not depend on the branch having a delivery
+ * price configured. That is not hypothetical: this storefront's branch has
+ * `delivery_fee = 0.00` and the courier reports the area unserviceable, so
+ * `create_order` refuses every delivery order with "We could not work out a
+ * delivery charge for this address". A test of the Stripe sheet should not go
+ * red for that, and a test that quietly worked around it would hide it.
+ */
+export async function choosePickup(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.evaluate(
+    ([stateKey]) => {
+      const raw = localStorage.getItem(stateKey!);
+      const state = raw ? JSON.parse(raw) : {};
+      state.fulfillment = "PICKUP";
+      localStorage.setItem(stateKey!, JSON.stringify(state));
+    },
+    [STORAGE_STATE],
+  );
+}
+
 /** Matches the label whether or not it carries a hint after the words. */
 export const ADDRESS_LINE_1 = /^Address line 1/;
+
+/**
+ * Choose a real address from the suggestion list, near the branch.
+ *
+ * Returns false when no suggestion arrives — the key is missing, the service
+ * is down, or the query matched nothing — so the caller can fall back rather
+ * than fail a test that is not about addresses.
+ *
+ * The query is seeded from the BRANCH the storefront is on, read off the
+ * branch picker in the header, so this follows the tenant rather than naming
+ * a city. Suggestions are biased to the branch's location by the backend, so a
+ * street name plus that city is enough to get deliverable results.
+ */
+async function pickAddressNearBranch(page: Page): Promise<boolean> {
+  const line1 = page.getByLabel(ADDRESS_LINE_1);
+  if (!(await line1.isVisible().catch(() => false))) return false;
+
+  // Two characters would match half the country; a word gives the service
+  // something to work with while staying generic enough for any tenant.
+  await line1.click();
+  await line1.fill("Main Road");
+
+  const option = page.getByRole("option").first();
+  try {
+    await option.waitFor({ state: "visible", timeout: 10_000 });
+  } catch {
+    return false;
+  }
+  await option.click();
+  // The pick fills city, state and postal code itself, which is the point of
+  // it — so waiting for one of them to be populated is how we know it landed.
+  await expect(page.getByLabel("City", { exact: true })).not.toHaveValue("", {
+    timeout: 10_000,
+  });
+  return true;
+}
 
 /**
  * Fill the checkout contact block: name, phone and the structured address.
@@ -340,10 +424,33 @@ export async function fillCheckoutContact(page: Page): Promise<void> {
   const line1 = page.getByLabel(ADDRESS_LINE_1);
   if (!(await line1.isVisible().catch(() => false))) return;
 
-  await fillField(page, ADDRESS_LINE_1, "1600 Pennsylvania Avenue NW");
-  await fillField(page, "City", "Washington");
-  await fillField(page, "State", "DC");
-  await fillField(page, "ZIP code", "20500");
+  // PICKED from the autocomplete, not typed — and picked near the branch.
+  //
+  // This typed "1600 Pennsylvania Avenue NW, Washington, DC 20500" into an
+  // Indian bakery's checkout. It went unnoticed for as long as the selector
+  // above was broken and the whole block was skipped; the moment the block
+  // ran, checkout answered, correctly, "We could not work out a delivery
+  // charge for this address."
+  //
+  // Typing any address is not enough either. A delivery order needs
+  // COORDINATES, which only arrive when a suggestion is chosen, and the
+  // backend refuses a checkout without them rather than pricing from a
+  // re-geocoded line. So this drives the control the way a customer does.
+  const picked = await pickAddressNearBranch(page);
+  if (!picked) {
+    // Typed as a fallback so a spec that is not about delivery still gets
+    // through when the suggestion service is unavailable. It will be refused
+    // at the Pay button, which is the correct behaviour and a clearer failure
+    // than an empty form.
+    await fillField(page, ADDRESS_LINE_1, "Radhe Shyam Society, Singanpor");
+    await fillField(page, "City", "Surat");
+    await fillField(page, "State", "Gujarat");
+    // Not "ZIP code": the label is derived from the tenant's currency, so it
+    // reads "PIN code" here. The VALUE needs no such care — `POSTAL_SHAPE`
+    // checks the shape rather than the format, for reasons given where it is
+    // defined.
+    await fillField(page, await postalFieldLabel(page.request), "395004");
+  }
 }
 
 /**
