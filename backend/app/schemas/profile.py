@@ -81,6 +81,32 @@ class UserProfileSummaryResponse(BaseModel):
 
 
 class UserProfileUpdateRequest(BaseModel):
-    full_name: str = Field(min_length=2, max_length=255)
+    """A PATCH, and now it behaves like one.
+
+    **Every field used to be written unconditionally**, so a field left out of
+    the body was stored as NULL. `api.updateProfile` sends only `full_name` and
+    `phone_number` — so a customer who edited their name on the account screen
+    silently lost their saved delivery address, every time. It was found
+    because a test fixture's address kept disappearing between runs.
+
+    The rule is the one `services/restaurant_storefront.py` already uses for
+    the same reason: **only the keys actually present in the body change.**
+    Pydantic records which those were in `model_fields_set`, which is the only
+    way to tell "not mentioned" from "sent as null" — the two had the same
+    representation here, and conflating them is the bug.
+
+    So: absent leaves a field alone, and an explicit `null` clears it. The
+    account screen already sends `phone_number: null` when the customer empties
+    that box, so it means exactly what it did before; it simply no longer takes
+    the address with it.
+
+    `full_name` is optional because a PATCH should not demand a field you are
+    not changing — but it cannot be CLEARED, because the column is NOT NULL and
+    an account with no name is not a thing this product has. Sending it as null
+    or blank is refused rather than ignored, since a client that asks to erase
+    a name should hear that it did not happen.
+    """
+
+    full_name: str | None = Field(default=None, max_length=255)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     default_address: str | None = Field(default=None, max_length=2000)

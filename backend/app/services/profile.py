@@ -407,24 +407,33 @@ def update_user_profile(
     user: User,
     payload: UserProfileUpdateRequest,
 ) -> UserResponse:
-    full_name = payload.full_name.strip()
-    if len(full_name) < 2:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Full name must be at least 2 characters long",
-        )
+    # Which keys the CLIENT actually sent, as opposed to which have a value.
+    # The two were indistinguishable here, and that was the bug: a field left
+    # out of the body arrived as None and was written as NULL, so the account
+    # screen's name edit — which sends a name and a phone number and nothing
+    # else — erased the customer's saved delivery address on every save.
+    #
+    # See the docstring on `UserProfileUpdateRequest`. Absent leaves a field
+    # alone; an explicit null clears it.
+    submitted = payload.model_fields_set
 
-    user.full_name = full_name
-    user.phone_number = (
-        payload.phone_number.strip() or None
-        if payload.phone_number
-        else None
-    )
-    user.default_address = (
-        payload.default_address.strip() or None
-        if payload.default_address
-        else None
-    )
+    if "full_name" in submitted:
+        full_name = (payload.full_name or "").strip()
+        # Refused rather than ignored. The column is NOT NULL, and a client
+        # asking to erase a name should be told it did not happen instead of
+        # being handed back a success with the old name still on it.
+        if len(full_name) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Full name must be at least 2 characters long",
+            )
+        user.full_name = full_name
+
+    if "phone_number" in submitted:
+        user.phone_number = (payload.phone_number or "").strip() or None
+
+    if "default_address" in submitted:
+        user.default_address = (payload.default_address or "").strip() or None
 
     try:
         db.add(user)
