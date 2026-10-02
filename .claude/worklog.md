@@ -26,6 +26,82 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 (6) — White bands in dark mode, a bill that did not add up, and a third restaurant
+
+**Goal:** the admin's forms were unreadable in dark mode ("this is happend in
+soo many place"); the checkout's taxes popover was cut off and its numbers did
+not sum; onboard Famous Chinese Cuisine from its JustDial listing, through the
+admin rather than through code.
+
+**Changed:**
+- `frontend-admin/src/index.css` — three tokens: `--surface-warm`,
+  `--surface-veil`, `--row-hover`. Each is a `color-mix` over a token that
+  already flips, so there is ONE declaration and no `.dark` copy to drift.
+- `frontend-admin/src/legacy.css` — 16 light literals replaced. The modal's
+  header/body/footer, four row hovers collapsed onto one value, the card
+  gradient on four surfaces, the skeleton shimmer, `.ai-stale`, `.toggle-pill`,
+  the SMS bubble.
+- `frontend-admin/src/adminStyles.test.ts` — two guards (+2 tests, 244 -> 246).
+- `frontend-customer/src/polish.css` — `.order-summary` no longer clips.
+- `frontend-customer/e2e/charges-breakdown.spec.ts` (new, 1 test x 2 projects).
+- **Data only, no code:** Famous Chinese Cuisine onboarded through the admin
+  API — restaurant `3ee1d9dd…`, branch `ba0a9156…`, 21 menu items, brand copy,
+  storefront copy, 28 slots, host `famous-chinese-cuisine.localhost`.
+
+**Verified:**
+- `scripts/audit-pages.js` driven through Playwright over dashboard,
+  restaurants, locations, marketing, users AND the Location Editor, in BOTH
+  themes: 0 leaks, 0 contrast failures in dark; in light the only leak is the
+  modal's own scrim, which is what a scrim is.
+- The hovered row measured in dark mode: `color(srgb 0.189 0.165 0.175)` with
+  `rgb(248,250,252)` text. It was white-on-white.
+- admin 246 tests, `npm run build` clean.
+- `npx playwright test charges-breakdown mobile-layout scroll-lock
+  checkout-prefill` — 17 passed, 7 skipped.
+- The new guard was checked AGAINST the bug: `overflow: hidden` put back, it
+  fails on the clip assertion; removed, it passes.
+- Storefront walked at `famous-chinese-cuisine.localhost:5173` — branch gate,
+  brand page, highlights band, specialities, and all 21 dishes in 4 sections.
+
+**Open:**
+- **Famous Chinese Cuisine has 21 of its 65 listed dishes.** JustDial
+  virtualises the menu list — only ~21 rows exist in the DOM at a time, and
+  clicking a category rewrites rather than appends. "Fried Rice and Noodles
+  (33)" is the bulk of what is missing.
+- **No phone, no logo, no cover photo, no `established_year`** for it. JustDial
+  gates the number behind a login and the listing publishes no founding year.
+  All four are admin fields; the brand page reads fine without them because the
+  monogram and the derived defaults cover it, but they want filling.
+- `.ui-checkbox__label` is 4.35:1 in light mode, under AA. **Pre-existing** —
+  checked by flattening the modal body first and re-measuring; it did not move.
+- The admin console shows intermittent CORS failures on `/api/orders` and
+  `/api/admin/ai-logs` from `localhost:5174` while sibling calls on the same
+  origin succeed. Not investigated.
+
+**Learned:**
+- **`POST /{restaurant}/locations/{location}/locate` LOOKS UP, it does not
+  SAVE.** It answered ROOFTOP with a matched address and the branch still had
+  `latitude: null`. The coordinates need a follow-up `PATCH` on the location.
+- **Creating a branch seeds a full week of 10:30-22:00 slots**, so every real
+  opening time is refused with 409 "overlaps with an existing active slot". The
+  way through is to PATCH the defaults to the first window and POST the second,
+  not to delete them — a branch with no slots is never a safe intermediate.
+- **`POST /restaurants` leaves a second branch behind**: a placeholder "Main
+  Branch" at "Pending restaurant setup", PIN 000000. Deactivate it; the
+  storefront's branch gate shows every active branch, so a demo opens on a
+  choice between the real shop and a stub.
+- A new restaurant is created `is_approved: false` AND `is_open: false`, and
+  the branch has its own `is_open` as well. Three separate switches, two
+  endpoints, and the storefront says "Closed" until all three are set.
+- **A clip is invisible to the DOM.** The taxes panel kept every node and every
+  string while half of it was unreadable, so `toBeVisible()` passed. The test
+  that catches it walks up to the first ancestor with `overflow != visible` and
+  compares rectangles.
+- `overflow: hidden` to keep a decorative pseudo-element inside a rounded
+  corner has a cheaper answer: paint it as a `background-image`, which
+  `border-radius` clips on its own. Same trap as the `view()` timelines on
+  2026-10-02 (5), one layer out.
+
 ## 2026-10-02 (5) — Phone sign-in, the logo that reached nothing, and motion that is actually designed
 
 **Goal:** sign in with a mobile number and a one-time code (fixed `123456` for
