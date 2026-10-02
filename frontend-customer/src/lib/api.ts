@@ -183,6 +183,18 @@ export type AuthResponse = {
   user: AuthUser;
 };
 
+export type OtpRequestResponse = {
+  sent: boolean;
+  /** Whether this number is new here, so the next screen can ask for a name. */
+  is_new_account: boolean;
+  /**
+   * The code to type, when the deployment is using a fixed one instead of
+   * sending a real SMS. Null anywhere a real code went out, so this can never
+   * become the way a production client learns a secret.
+   */
+  debug_code: string | null;
+};
+
 export type AppConfig = {
   app_client_id: string;
   app_key: string;
@@ -824,6 +836,17 @@ export const api = {
 
   login: (email: string, password: string) =>
     request<AuthResponse>("/auth/login", { method: "POST", body: { email, password } }),
+
+  /** Start a phone sign-in. See `services/otp.py` for what is and is not sent. */
+  requestOtp: (phoneNumber: string) =>
+    request<OtpRequestResponse>("/auth/otp/request", {
+      method: "POST",
+      body: { phone_number: phoneNumber },
+    }),
+
+  /** Finish a phone sign-in, creating the account when the number is new. */
+  verifyOtp: (payload: { phone_number: string; code: string; full_name?: string | null }) =>
+    request<AuthResponse>("/auth/otp/verify", { method: "POST", body: payload }),
 
   register: (payload: {
     full_name: string;

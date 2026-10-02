@@ -320,13 +320,23 @@ export async function signIn(page: Page, redirectTo?: string): Promise<void> {
   await page.goto(redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : "/login");
   // Let hydration finish before typing; see fillField for why it matters.
   await page.waitForLoadState("networkidle");
+
+  // The form opens on phone + one-time code now. These specs sign in with a
+  // seeded email and password on purpose: it works whether or not
+  // `enable_phone_otp_login` is on, and not one of them is about the sign-in
+  // method. The phone flow has its own spec.
+  const toEmail = page.getByRole("button", { name: /sign in with email instead/i });
+  if (await toEmail.count()) await toEmail.click();
+
   const customer = await customerCredentials(page.request);
   await fillField(page, "Email", customer.email);
   // Exact, because the reveal toggle's aria-label is "Show password" and
   // getByLabel matches aria-label too — a substring match hits both and fails
   // strict mode.
   await fillField(page, "Password", customer.password);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  // Anchored: the footer offers "Sign in with your phone", which a loose
+  // match also hits — and two matches is a strict-mode failure, not a guess.
+  await page.getByRole("button", { name: /^sign in$/i }).click();
   try {
     await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
   } catch {

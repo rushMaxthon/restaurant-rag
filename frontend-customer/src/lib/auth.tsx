@@ -40,6 +40,11 @@ type AuthContextValue = AuthState & {
    */
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signInWithOtp: (payload: {
+    phone_number: string;
+    code: string;
+    full_name?: string | null;
+  }) => Promise<void>;
   register: (payload: {
     full_name: string;
     email: string;
@@ -183,6 +188,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await promoteGuestPreferences();
   }, []);
 
+  /**
+   * Adopt the session a phone sign-in just produced.
+   *
+   * Goes through the same three steps as `login` — reject a non-customer,
+   * store, promote the guest's preferences — because the account that arrives
+   * this way is in exactly the same position, and a brand new one is the very
+   * case promotion was written for.
+   */
+  const signInWithOtp = useCallback(
+    async (payload: { phone_number: string; code: string; full_name?: string | null }) => {
+      const response = await api.verifyOtp(payload);
+      if (response.role !== "CUSTOMER") {
+        throw new ApiError(ROLE_REJECTION_MESSAGE, 403);
+      }
+      setSession(response.access_token, response.user);
+      setState({ user: response.user, token: response.access_token });
+      await promoteGuestPreferences();
+    },
+    [],
+  );
+
   const register = useCallback(
     async (payload: {
       full_name: string;
@@ -214,10 +240,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(state.token && state.user),
       ready,
       login,
+      signInWithOtp,
       register,
       logout,
     }),
-    [state, ready, login, register, logout],
+    [state, ready, login, signInWithOtp, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

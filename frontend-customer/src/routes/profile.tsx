@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +58,8 @@ function ProfilePage() {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
   const isAuthenticated = useRequireAuth();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const profile = useProfile(isAuthenticated);
   const favorites = useFavorites(isAuthenticated);
   const toggleFavorite = useToggleFavorite();
@@ -124,12 +125,32 @@ function ProfilePage() {
         <ArrowLeft className="size-4" /> Back
       </button>
 
-      <h1 className="tab__name mt-5">{account?.full_name || "Your tab"}</h1>
-      <p className="tab__standing">
-        {profile.isLoading
-          ? "Fetching your tab…"
-          : standing(stats?.total_orders ?? 0, live, account?.full_name || "there")}
-      </p>
+      {/* The name and the way out, on one line.
+       *
+       * Signing out was only on the orders page, which is a strange place to
+       * keep it: this is the account screen, it is where the header's account
+       * button lands, and it is the first place anybody looks. On a phone it
+       * was reachable only by going somewhere else first. */}
+      <div className="tab__head mt-5">
+        <div>
+          <h1 className="tab__name">{account?.full_name || "Your tab"}</h1>
+          <p className="tab__standing">
+            {profile.isLoading
+              ? "Fetching your tab…"
+              : standing(stats?.total_orders ?? 0, live, account?.full_name || "there")}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            logout();
+            navigate({ to: "/" });
+          }}
+        >
+          <LogOut />
+          Log out
+        </Button>
+      </div>
 
       {error && (
         <p className="tab__error mt-5" role="alert">
