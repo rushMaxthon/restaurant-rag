@@ -42,7 +42,7 @@ export function KitchenGallery({ photos }: { photos: readonly BrandPhoto[] }) {
   return (
     <section className="gallery">
       <div className="page-pad section-pad gallery__inner">
-        <div className="gallery__head">
+        <div className="gallery__head reveal">
           <div>
             <p className="eyebrow">From our kitchen</p>
             <h2 className="font-display gallery__title">Made here, every day</h2>
@@ -54,7 +54,7 @@ export function KitchenGallery({ photos }: { photos: readonly BrandPhoto[] }) {
           </Link>
         </div>
 
-        <ul className="gallery__grid">
+        <ul className="gallery__grid reveal-group">
           {shown.map((photo, index) => (
             <li
               className="gallery__tile"

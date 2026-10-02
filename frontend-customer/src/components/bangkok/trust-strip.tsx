@@ -66,7 +66,9 @@ export function TrustStrip({
             <ChefHat aria-hidden="true" />
             <span>
               <strong>About {eta} min</strong>
-              <small>{fulfillment === "DELIVERY" ? "Cooked and delivered" : "Ready to collect"}</small>
+              <small>
+                {fulfillment === "DELIVERY" ? "Cooked and delivered" : "Ready to collect"}
+              </small>
             </span>
           </li>
         )}

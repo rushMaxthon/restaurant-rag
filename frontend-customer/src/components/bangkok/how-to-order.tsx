@@ -35,10 +35,10 @@ export function HowToOrder({ branch }: { branch: RestaurantLocation | undefined 
   return (
     <section className="how">
       <div className="page-pad section-pad how__inner">
-        <p className="eyebrow">How it works</p>
-        <h2 className="font-display how__title">Three steps, no phone call</h2>
+        <p className="eyebrow reveal">How it works</p>
+        <h2 className="font-display how__title reveal">Three steps, no phone call</h2>
 
-        <ol className="how__steps">
+        <ol className="how__steps reveal-group">
           <li className="how__step">
             <span className="how__n" aria-hidden="true">
               1

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FALLBACK_CURRENCY } from "@/lib/bangkok-data";
-import { storefrontConfigFrom, UNKNOWN_STOREFRONT } from "@/lib/storefront";
+import { storefrontConfigFrom, UNKNOWN_STOREFRONT, yearsTrading } from "@/lib/storefront";
 
 /**
  * What one `/app-config` answer becomes for the page that renders from it.
@@ -78,5 +78,36 @@ describe("storefrontConfigFrom", () => {
     it("is null when there is no branding at all", () => {
       expect(storefrontConfigFrom(restaurant).cover_image_url).toBeNull();
     });
+  });
+});
+
+/**
+ * A storefront says "since 1999" and counts the years itself.
+ *
+ * The listing sites publish the DURATION — "26 Years in Business" — which is
+ * correct on the day it is typed and silently wrong every year after. The
+ * column stores the year; this does the subtraction at render time.
+ */
+describe("yearsTrading", () => {
+  const at = (year: number) => new Date(`${year}-06-01T00:00:00Z`);
+
+  it("counts the years from the year it opened", () => {
+    expect(yearsTrading(1999, at(2026))).toBe(27);
+  });
+
+  it("says nothing when no year is set", () => {
+    expect(yearsTrading(null)).toBeNull();
+    expect(yearsTrading(undefined)).toBeNull();
+  });
+
+  it("says nothing in the opening year rather than '0 years'", () => {
+    expect(yearsTrading(2026, at(2026))).toBeNull();
+  });
+
+  it("refuses to count backwards from a year in the future", () => {
+    // The backend rejects these on the way in. This is the second line,
+    // because the column is JSONB and has outlived its rules before — and
+    // "Baking for -4 years" on a live storefront is unrecoverable.
+    expect(yearsTrading(2030, at(2026))).toBeNull();
   });
 });

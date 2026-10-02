@@ -4,6 +4,7 @@ import { getRequestHost } from "@tanstack/react-start/server";
 import { API_BASE_URL } from "@/lib/api";
 import { FALLBACK_CURRENCY, type CurrencyFormat } from "@/lib/bangkok-data";
 import {
+  NO_BRAND,
   storefrontConfigFrom,
   UNKNOWN_STOREFRONT,
   type AppConfigPayload,
@@ -56,7 +57,7 @@ const UNKNOWN_CONFIG: StorefrontConfig = {
   // know which restaurant it is — the same reason the copy above is nameless.
   contact: {},
   // Nothing to say about a restaurant we could not identify.
-  brand: { about_sections: [], faqs: [] },
+  brand: NO_BRAND,
 };
 
 const TTL_MS = 30_000;

@@ -79,12 +79,57 @@ export type BrandFaq = {
   answer: string;
 };
 
+/**
+ * One figure worth a tile, and where it came from.
+ *
+ * `note` is attribution. A rating a restaurant earned on a listing site is a
+ * real fact and not this platform's measurement — shown bare it reads as ours,
+ * which is a claim nobody here is entitled to make.
+ */
+export type BrandHighlight = {
+  value: string;
+  label: string;
+  note?: string;
+};
+
 export type StorefrontBrand = {
   about_sections: BrandSection[];
   faqs: BrandFaq[];
+  /**
+   * The YEAR, never a duration. "26 years in business" is what the listing
+   * sites publish, and it is correct for one year and silently wrong after.
+   * `yearsTrading` does the subtraction at render time.
+   */
+  established_year: number | null;
+  specialities: string[];
+  highlights: BrandHighlight[];
 };
 
-export const NO_BRAND: StorefrontBrand = { about_sections: [], faqs: [] };
+export const NO_BRAND: StorefrontBrand = {
+  about_sections: [],
+  faqs: [],
+  established_year: null,
+  specialities: [],
+  highlights: [],
+};
+
+/**
+ * How long this kitchen has been trading, from the year it opened.
+ *
+ * Returns null for a year nobody set, and for one that cannot be true — a
+ * storefront must never print "Baking for -4 years" because somebody typed
+ * next year's date into a form. The backend refuses those on the way in; this
+ * is the second line, because the column is JSONB and has outlived its rules
+ * before.
+ */
+export function yearsTrading(
+  establishedYear: number | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!establishedYear) return null;
+  const years = now.getFullYear() - establishedYear;
+  return years > 0 ? years : null;
+}
 
 /**
  * The subset of `restaurants`' address columns the backend judged real.
@@ -185,9 +230,16 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     contact: payload.contact ?? {},
     // Each half defaulted separately: a payload carrying sections but no
     // questions is a normal answer, not a malformed one.
+    // Each field defaulted separately: a payload carrying sections but no
+    // questions is a normal answer, not a malformed one — and a client built
+    // against an older backend, which is every mobile app between releases,
+    // simply will not see the fields that backend has never heard of.
     brand: {
       about_sections: payload.brand?.about_sections ?? [],
       faqs: payload.brand?.faqs ?? [],
+      established_year: payload.brand?.established_year ?? null,
+      specialities: payload.brand?.specialities ?? [],
+      highlights: payload.brand?.highlights ?? [],
     },
   };
 }

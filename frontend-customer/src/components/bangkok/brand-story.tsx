@@ -42,17 +42,33 @@ import { useStorefrontBrand, type BrandSection } from "@/lib/storefront";
  * whatever order they were written, which is what makes it the same component
  * for every tenant on the platform.
  */
-export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
+/**
+ * How the owner's sections divide up, classified by what is IN them.
+ *
+ * Classified rather than positional: an owner who leads with their list of
+ * services still gets a lead story, and one who writes nothing but prose gets
+ * no empty grid.
+ */
+function useClassifiedSections() {
   const { about_sections: sections } = useStorefrontBrand();
-
-  if (sections.length === 0) return null;
-
-  // Classified rather than positional: an owner who leads with their list of
-  // services still gets a lead story, and one who writes nothing but prose
-  // gets no empty grid.
   const prose = sections.filter((section) => !hasBullets(section) && bodyOf(section).length > 0);
-  const listed = sections.filter(hasBullets);
   const [lead, ...statements] = prose;
+  return { lead, statements, listed: sections.filter(hasBullets) };
+}
+
+/**
+ * The lead story: the owner's first paragraph, set beside their own food.
+ *
+ * The three blocks below are separate components rather than one `BrandStory`
+ * because the HOME PAGE owns the running order, and it needs to put things
+ * between them — the figures belong straight after the story that earns them,
+ * and the photographs belong before the list of services rather than after a
+ * closing statement. One component emitting all three in a fixed sequence
+ * meant the page read story → services → statement → numbers, with the single
+ * most persuasive fact on the page arriving fourth.
+ */
+export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
+  const { lead } = useClassifiedSections();
 
   return (
     <>
@@ -61,7 +77,7 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
         // on it clears the sticky header; see `.brand-lead` in polish.css.
         <section className="brand-lead" id="story">
           <div className="page-pad section-pad brand-lead__inner">
-            <div className="brand-lead__copy">
+            <div className="brand-lead__copy reveal">
               {/* The heading is the OWNER'S, not the restaurant's name. The
                   name was here first and it read as a mistake: for any tenant
                   who has not rewritten `hero_headline` into a slogan — which
@@ -83,7 +99,7 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
                 entirely when this kitchen has uploaded none, which is why the
                 copy column is not sized against it. */}
             {photos.length > 0 && (
-              <div className="brand-lead__art" data-count={Math.min(photos.length, 3)}>
+              <div className="brand-lead__art reveal" data-count={Math.min(photos.length, 3)}>
                 {photos.slice(0, 3).map((photo) => (
                   <figure className="brand-lead__shot" key={photo.src}>
                     <img alt={photo.alt} loading="lazy" src={photo.src} />
@@ -94,7 +110,16 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
           </div>
         </section>
       )}
+    </>
+  );
+}
 
+/** What the restaurant offers, from any section the owner gave bullets to. */
+export function BrandOffer() {
+  const { listed } = useClassifiedSections();
+
+  return (
+    <>
       {listed.map((section, index) => (
         <section className="brand-offer" key={`${section.heading}-${index}`}>
           <div className="page-pad section-pad brand-offer__inner">
@@ -102,13 +127,9 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
             {bodyOf(section).length > 0 && (
               <div className="brand-offer__body">{paragraphs(section)}</div>
             )}
-            <ul className="brand-offer__grid">
+            <ul className="brand-offer__grid reveal-group">
               {(section.bullets ?? []).map((bullet, at) => (
-                <li
-                  className="brand-offer__item rise-in"
-                  key={at}
-                  style={{ "--i": Math.min(at, 11) } as React.CSSProperties}
-                >
+                <li className="brand-offer__item" key={at}>
                   {/* One consistent mark, deliberately. Picking an icon per
                       bullet would mean guessing what the sentence is about,
                       and a wrong glyph beside somebody's own words is worse
@@ -123,12 +144,21 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
           </div>
         </section>
       ))}
+    </>
+  );
+}
 
+/** Any remaining prose section, as a statement in its own band. */
+export function BrandStandards() {
+  const { statements } = useClassifiedSections();
+
+  return (
+    <>
       {statements.length > 0 && (
         <section className="brand-standards">
           <div className="page-pad section-pad brand-standards__inner">
             {statements.map((section, index) => (
-              <article className="brand-standards__card" key={`${section.heading}-${index}`}>
+              <article className="brand-standards__card reveal" key={`${section.heading}-${index}`}>
                 <Quote className="brand-standards__mark" aria-hidden="true" />
                 <h2 className="font-display brand-standards__title">{section.heading}</h2>
                 <div className="brand-standards__body">{paragraphs(section)}</div>
@@ -185,7 +215,7 @@ export function BrandFaqs() {
         <p className="eyebrow">Before you order</p>
         <h2 className="font-display brand-faqs__title">Questions people ask</h2>
 
-        <div className="brand-faqs__list">
+        <div className="brand-faqs__list reveal-group">
           {faqs.map((faq, index) => (
             <details className="brand-faq" key={`${faq.question}-${index}`} open={index === 0}>
               <summary>{faq.question}</summary>

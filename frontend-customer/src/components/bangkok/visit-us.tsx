@@ -32,7 +32,7 @@ export function VisitUs({ branch }: { branch: RestaurantLocation | undefined }) 
   const tel = contact.phone ? contact.phone.replace(/[^+\d]/g, "") : "";
 
   return (
-    <div className="visit">
+    <div className="visit reveal">
       <div className="visit__where">
         <p className="eyebrow eyebrow--inherit">Visit us</p>
         <h2 className="font-display visit__title">{branch.branch_name}</h2>

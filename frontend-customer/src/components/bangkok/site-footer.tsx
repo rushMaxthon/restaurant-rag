@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { MapPin, Phone, Sparkles } from "lucide-react";
+import { Phone, Sparkles } from "lucide-react";
 
 import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
@@ -36,16 +36,6 @@ export function SiteFooter() {
   const askAi = hasCapability(store.capabilities, "ask_ai");
   const initials = brandInitials(copy.name);
 
-  // The branch the customer is actually looking at, which may be one of
-  // several. Its address is more specific than the brand's registered one, so
-  // it wins where there is one — somebody wanting to collect an order needs
-  // the branch, not the head office.
-  const branch = store.currentLocation;
-  const branchAddress = branch
-    ? [branch.address_line_1, branch.city].filter(Boolean).join(", ")
-    : "";
-  const address = branchAddress || contact.address || "";
-
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
@@ -58,31 +48,25 @@ export function SiteFooter() {
               search listing, so the two cannot describe different businesses. */}
           <p className="site-footer__blurb">{copy.meta_description}</p>
 
-          {(address || contact.phone) && (
+          {/* The phone number, and nothing else.
+           *
+           * The address and the opening hours used to be here too, and on the
+           * home page that put them on screen twice within 400px: once in the
+           * closing band, which is a designed "come and find us" with
+           * directions and today's hours, and again immediately below in
+           * small grey type. Two copies of an address is also how a business
+           * ends up listed at one it has moved away from.
+           *
+           * The number stays because it is the single most used thing in a
+           * restaurant's footer and it is on every page, not just this one.
+           * Everything else is one tap away under "Contact & hours". */}
+          {contact.phone && (
             <ul className="site-footer__contact">
-              {address && (
-                <li>
-                  <MapPin aria-hidden="true" />
-                  <span>
-                    {branchAddress && branch ? (
-                      <>
-                        <span className="site-footer__branch">{branch.branch_name}</span>
-                        {address}
-                      </>
-                    ) : (
-                      address
-                    )}
-                  </span>
-                </li>
-              )}
-              {contact.phone && (
-                <li>
-                  <Phone aria-hidden="true" />
-                  {/* A real link, not text. On a phone this is the single most
-                      used thing in a restaurant's footer. */}
-                  <a href={`tel:${contact.phone.replace(/[^+\d]/g, "")}`}>{contact.phone}</a>
-                </li>
-              )}
+              <li>
+                <Phone aria-hidden="true" />
+                {/* A real link, not text: on a phone this is a call. */}
+                <a href={`tel:${contact.phone.replace(/[^+\d]/g, "")}`}>{contact.phone}</a>
+              </li>
             </ul>
           )}
         </div>

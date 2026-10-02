@@ -3622,3 +3622,221 @@ html[data-splash="seen"] .splash {
   color: inherit;
   opacity: 0.7;
 }
+
+/* --- The figures a restaurant leads with ---------------------------------- */
+/* Sits straight after the story that earns them. Owner-typed, every one; the
+   only arithmetic is the years-trading line, done at render time so it cannot
+   go stale the way a stored "26 years in business" does. */
+.facts {
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+  padding: var(--space-10) var(--space-4);
+}
+@media (min-width: 640px) {
+  .facts {
+    padding-inline: var(--space-6);
+  }
+}
+@media (min-width: 1024px) {
+  .facts {
+    padding-inline: var(--space-10);
+  }
+}
+.facts__grid {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 1200px;
+  display: grid;
+  gap: var(--space-4);
+  /* Two across on a phone. One per row turns four short facts into a column
+     the length of the story above them. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 900px) {
+  /* As many columns as there are tiles, up to five — so three tiles are three
+     equal thirds rather than three quarters and a gap. */
+  .facts__grid[data-count="1"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .facts__grid[data-count="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .facts__grid[data-count="3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .facts__grid[data-count="4"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .facts__grid[data-count="5"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.facts__tile {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  min-width: 0;
+}
+/* The founding year. The one fact on the page a competitor cannot copy by
+   Tuesday, so it carries the brand rather than sitting in the row quietly. */
+.facts__tile[data-lead] {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: var(--primary-soft);
+}
+.facts__value {
+  font-family: var(--font-display-stack);
+  font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.05;
+  /* Figures in a row have to line up. Proportional digits make "1999" and
+     "4.6" sit at different optical weights beside each other. */
+  font-variant-numeric: tabular-nums;
+}
+.facts__tile[data-lead] .facts__value {
+  color: var(--primary-text);
+}
+.facts__label {
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  line-height: var(--leading-snug);
+}
+.facts__note {
+  margin-top: 2px;
+  font-size: var(--fs-tiny);
+  color: var(--muted);
+  line-height: var(--leading-snug);
+}
+
+/* --- What they are known for ---------------------------------------------- */
+.known {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.known__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.known__title {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: var(--display-weight, 800);
+  letter-spacing: var(--display-tracking, var(--tracking-tight));
+  line-height: var(--leading-tight);
+}
+@media (min-width: 768px) {
+  .known__title {
+    font-size: var(--fs-display-lg);
+  }
+}
+.known__grid {
+  list-style: none;
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  /* 320 rather than 260, so six specialities land as two rows of three
+     instead of four and a row of two with a hole beside it. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+.known__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-weight: 700;
+  line-height: var(--leading-snug);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.known__item:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+.known__item > svg {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .known__item {
+    transition: none;
+  }
+  .known__item:hover {
+    transform: none;
+  }
+}
+
+/* ===========================================================================
+   Reveal on scroll
+   ---------------------------------------------------------------------------
+   Scroll-LINKED, not scroll-triggered: the animation's timeline is the
+   element's own progress through the viewport, so it is tied to the scroll
+   position rather than fired once when a threshold is crossed. Scrubbing back
+   up plays it backwards, which is what separates this from a jQuery plugin.
+
+   **Done in CSS rather than with an IntersectionObserver, deliberately.** An
+   observer means the element starts hidden and JavaScript has to arrive to
+   show it — so a hydration that is slow, blocked or broken leaves a blank
+   page, and this app server-renders its first screen specifically so that
+   cannot happen. `menu-grid.tsx` already carries the scars of an observer
+   that did not fire (a hidden tab never runs one, and a fast scroll skips
+   its bands).
+
+   Here the failure mode is the whole design: a browser without
+   `animation-timeline` matches neither rule below, so the element is simply
+   visible, exactly as it is now. Nothing is ever hidden by default.
+
+   The transform is on blocks that contain no `position: fixed` descendant.
+   A transformed ancestor becomes the containing block for a fixed child —
+   the same trap documented on `page-in`, which stays opacity-only because
+   the concierge's composer is fixed inside it.
+   =========================================================================== */
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal,
+    .reveal-group > * {
+      animation: reveal-rise linear both;
+      animation-timeline: view();
+      /* Starts as the element enters and finishes well before it is centred,
+         so the reader is never waiting on it. `cover` rather than `entry` for
+         the end, because a block taller than the viewport never completes an
+         `entry` range and would sit half-faded for its whole height. */
+      animation-range: entry 2% cover 22%;
+    }
+
+    /* Each child runs on its OWN timeline, so a grid staggers because its
+       items genuinely reach the fold at different moments — no `--i` index,
+       no guessing, and it stays right when the grid reflows to one column on
+       a phone. */
+    .reveal-group > * {
+      animation-range: entry 4% cover 26%;
+    }
+  }
+}

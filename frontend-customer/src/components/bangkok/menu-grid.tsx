@@ -127,7 +127,6 @@ function jumpToSection(slug: string): () => void {
   return stop;
 }
 
-
 type Sort = "recommended" | "price-asc" | "price-desc" | "rating";
 
 const SORTS: { value: Sort; label: string }[] = [

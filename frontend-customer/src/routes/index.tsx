@@ -1,8 +1,14 @@
 import { useMemo } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, BookOpen, MapPin, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarCheck, MapPin, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BrandFaqs, BrandStory } from "@/components/bangkok/brand-story";
+import {
+  BrandFaqs,
+  BrandOffer,
+  BrandStandards,
+  BrandStory,
+} from "@/components/bangkok/brand-story";
+import { BrandHighlights, BrandSpecialities } from "@/components/bangkok/brand-facts";
 import { HowToOrder } from "@/components/bangkok/how-to-order";
 import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
@@ -12,7 +18,12 @@ import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { pickBrandPhotos } from "@/lib/brand-photos";
 import { useMenuItems } from "@/lib/queries";
-import { useStorefrontBrand, useStorefrontCopy, useStorefrontCover } from "@/lib/storefront";
+import {
+  useStorefrontBrand,
+  useStorefrontCopy,
+  useStorefrontCover,
+  yearsTrading,
+} from "@/lib/storefront";
 
 export const Route = createFileRoute("/")({
   // The root route already resolves this restaurant's copy from the request
@@ -83,6 +94,9 @@ function Home() {
   const city = branch?.city;
   const branchCount = locations.length;
   const hasStory = brand.about_sections.length > 0;
+  // The single most persuasive thing about a kitchen that has one, and it
+  // belongs in the first screen rather than halfway down.
+  const years = yearsTrading(brand.established_year);
 
   // A restaurant with a photograph of its own food earns the tall hero: the
   // picture IS the content. Without one the hero is a brand wash that says
@@ -111,6 +125,13 @@ function Home() {
                 <MapPin className="size-4 text-primary" />
                 {branchCount} {branchCount === 1 ? "branch" : "branches"}
                 {city ? ` in ${city}` : ""}
+              </span>
+            )}
+            {brand.established_year && (
+              <span className="hero-chip bg-surface text-foreground">
+                <CalendarCheck className="size-4 text-primary" />
+                Since {brand.established_year}
+                {years ? ` · ${years} years` : ""}
               </span>
             )}
             {branch && (
@@ -167,13 +188,29 @@ function Home() {
         sectionCount={sectionCount}
       />
 
-      {/* The owner's own words, in a shape that follows what they wrote. */}
+      {/* The owner's own words, in a shape that follows what they wrote — and
+          in an order this page chooses. Claim (the story) → evidence (the
+          figures) → specifics (what they are known for) → proof (their own
+          food) → what that gets you (the services) → how they say they work
+          (the statement). Each block is absent when the owner wrote nothing
+          for it, and the ones around it close up. */}
       <BrandStory photos={photos} />
+
+      {/* Straight after the story that earns them. These arrived fourth once,
+          behind a closing statement, which put "since 1999" below the fold. */}
+      <BrandHighlights />
+
+      {/* Not the menu's categories — the four or five things somebody in this
+          neighbourhood would actually name. See `BrandSpecialities`. */}
+      <BrandSpecialities />
 
       {/* Their own food, as photography rather than as a shop. The lead story
           has taken the first three, so the mosaic starts after them and
           disappears when there are not enough left to fill it. */}
       <KitchenGallery photos={photos.slice(3)} />
+
+      <BrandOffer />
+      <BrandStandards />
 
       <HowToOrder branch={branch} />
 
