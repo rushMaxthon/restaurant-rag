@@ -26,6 +26,86 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-02 (5) — Phone sign-in, the logo that reached nothing, and motion that is actually designed
+
+**Goal:** sign in with a mobile number and a one-time code (fixed `123456` for
+now), build the account-creation half too; show the restaurant's logo in the
+header; drop the trust strip; make the scroll animation premium rather than a
+slide; put a logout on the account page.
+
+**Changed:**
+- `backend/app/services/otp.py` (new) — availability, subscriber matching, the
+  fixed-code check. `enable_phone_otp_login` off by default and the fixed code
+  refused outside a local environment, the same two-guard shape as
+  `enable_delivery_rehearsal`.
+- `backend/app/api/auth.py` — `POST /auth/otp/request` and `/auth/otp/verify`,
+  find-or-create, and `_require_otp_available`.
+- `backend/app/schemas/auth.py` — `OtpRequest`, `OtpRequestResponse`,
+  `OtpVerify`.
+- `backend/app/services/app_clients.py` — `logo_url` falls back to
+  `restaurants.logo_image_url`, exactly as `cover_image_url` already did.
+- `frontend-customer/src/routes/login.tsx` — rewritten as phone → code, with
+  a name field only for a number that is new, and email/password one link away.
+- `src/lib/auth.tsx` — `signInWithOtp`; `src/lib/api.ts` — the two calls.
+- `src/lib/storefront.ts` — `logo_url` + `useStorefrontLogo`; `app-shell.tsx`
+  renders it, falling back to the monogram.
+- `src/routes/profile.tsx` — Log out, beside the name.
+- `src/routes/index.tsx` — `TrustStrip` removed (component deleted).
+- `src/polish.css` — the reveal system rebuilt: easing, scale, blur, a heading
+  wipe, and a parallax drift on photographs.
+- `e2e/phone-login.spec.ts` (new, 8); `e2e/helpers.ts` — `signIn` clicks
+  through to the email form and its button match is anchored.
+- `backend/tests/test_phone_otp_login.py` (new, 14).
+
+**Verified:** backend `unittest discover` — see below; customer 425, admin 244,
+kitchen 84; `npm run build` in all three; `npx playwright test` across
+mobile-layout, phone-login, scroll-lock, menu-rail and profile — 26 passed, 8
+skipped. The OTP flow driven through the real browser: an existing customer
+stored as `(982) 000-0011` signs in by typing `9820000011` and gets their own
+account, a new number creates one, a wrong code is refused.
+
+**Open:**
+- **There is no SMS sender.** The only code that works is the fixed one, and
+  it is local-only. Before this is real: a per-phone challenge with an expiry
+  and an attempt count, rate limiting on both routes, and constant-time
+  comparison. `services/otp.py` says so at the top.
+- `is_new_account` tells an unauthenticated caller whether a number is
+  registered. Every food app in this market does the same, and the route is
+  refused outside a local environment today — but it wants revisiting with the
+  real sender.
+- Subscriber matching is the **last 10 digits**, which is India-shaped. The
+  real fix when another country arrives is a normalised E.164 column, not a
+  wider match.
+- `ENABLE_PHONE_OTP_LOGIN=true` is in `backend/.env` for the demo.
+
+**Learned:**
+- **`overflow: hidden` makes an element a scroll container, and a `view()`
+  timeline resolves against the nearest scrollport.** The parallax on the
+  gallery photographs was attached, had the right keyframes and never moved —
+  progress pinned at exactly 0.5 — because each tile clipped with `hidden` and
+  the image was therefore measured against a box it never moves inside.
+  `overflow: clip` crops identically and creates no scrollport. Same
+  distinction that already mattered for `position: sticky`.
+- **Parallax by `object-position`, not by transform.** Scaling an image to
+  1.1 and sliding it widens its box by 10%, which on a full-width phone tile
+  reaches outside the viewport — `e2e/mobile-layout.spec.ts` fails it, and
+  correctly, because the tile clipping the pixels does not make the box
+  tappable. Panning the crop inside a frame that never moves is the same
+  effect with no geometry.
+- **What reads as premium is the settle, not the journey.** 110px of linear
+  travel looked cheap; 72px with `cubic-bezier(.22,1,.36,1)`, a 0.96 scale and
+  a blur on photographs looks designed. Easing applies on a scroll timeline —
+  it maps progress to value.
+- **`get_settings()` is `lru_cache`'d and other test modules clear it.** A
+  module-level `settings = get_settings()` in a test stops being the object
+  the code under test reads, so the OTP tests passed alone and failed seven
+  ways in a full run. Ask for it inside the test.
+- `EmailStr` rejects the RFC 2606 `.invalid` TLD, so a synthesised address for
+  a phone-only account goes under `example.com` instead.
+- Two fields named `cover_image_url` was documented and fixed; `logo_url` was
+  the identical trap one field over and was still open — a logo uploaded
+  against the restaurant reached no page at all.
+
 ## 2026-10-02 (4) — The brand page got something to say, and learned to move
 
 **Goal:** the landing page was "too empty and short"; fill it from this
