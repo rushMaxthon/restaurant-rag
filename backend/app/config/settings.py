@@ -849,14 +849,21 @@ class Settings(BaseSettings):
     # Signing in with a phone number and a one-time code, instead of an email
     # and a password.
     #
-    # Off by default because there is no SMS sender wired yet, so the only
-    # code this can check is `otp_debug_code` below — a password every account
-    # on the platform shares, written in a config file. `services/otp.py`
-    # additionally refuses to accept it unless `environment` is a local one,
-    # the same two-guard shape as the rehearsal courier above and for a
-    # sharper reason: the failure here is not a customer being told a rider is
-    # coming, it is anybody signing in as anybody.
-    enable_phone_otp_login: bool = False
+    # ON by default, and the guard that matters is the environment rather than
+    # this flag. The storefront has no other way in — there is no password
+    # form any more — so a default of False meant a fresh clone could not sign
+    # anybody in at all, which is what happened: `Signing in by phone is not
+    # available here` on a machine whose untracked `.env` simply did not have
+    # the line.
+    #
+    # Turning it on does NOT make the fixed code reachable in production.
+    # `services/otp.py` accepts `otp_debug_code` only when `environment` is a
+    # local one, and anywhere else reports that it cannot send a code and
+    # refuses — the failure there is not a customer being told a rider is
+    # coming, it is anybody signing in as anybody. So the dangerous half is
+    # still guarded by the thing a deploy cannot get wrong by omission, and
+    # the half that just needs to work locally now does.
+    enable_phone_otp_login: bool = True
     # The code accepted while there is nothing to send a real one with. Only
     # ever honoured on a local environment; see `services/otp.py`.
     otp_debug_code: str = "123456"

@@ -339,42 +339,92 @@ export function MenuGrid({
    * Which section is on screen, for the rail.
    *
    * Measured on scroll rather than watched with an IntersectionObserver, for
-   * two reasons set out in full on `activeSection`: an observer sampling frames
-   * jumps straight over a section heading on any normal flick, and it delivers
-   * nothing at all while the tab is in the background, which makes it
-   * unverifiable. This reads nineteen rects inside one animation frame.
+   * two reasons set out in full on `activeSection`: an observer sampling
+   * frames jumps straight over a section heading on any normal flick, and it
+   * delivers nothing at all while the tab is in the background, which makes
+   * it unverifiable.
    *
-   * `ACTIVE_LINE` is derived from the measured chrome at the top of this file,
-   * which is also what the jump uses — see the note there for why they have to
-   * come from one number.
+   * **The positions are cached, and the scroll handler does no layout.** It
+   * used to read nineteen `getBoundingClientRect()` inside every animation
+   * frame, and a rect read after any style change forces the browser to lay
+   * the page out there and then — nineteen forced layouts per frame, over
+   * 5,000 nodes, for the whole time somebody is scrolling. It never showed up
+   * as a long task because no single one crossed 50ms; it showed up as the
+   * page absorbing 85% of a wheel instead of 100%, and reading as a stutter
+   * at every section boundary.
+   *
+   * Now each heading's position is measured once into `tops`, and the
+   * handler only subtracts `scrollY` from numbers it already has — which
+   * costs nothing and reads no layout at all.
+   *
+   * The cache has to be right, and the page is not still: the webfont swaps
+   * and re-measures every dish name, images resolve, the grid reflows. A
+   * `ResizeObserver` on the grid invalidates it whenever any of that changes
+   * a height, which is the event that actually matters rather than a guess at
+   * how long it takes.
+   *
+   * `ACTIVE_LINE` is derived from the measured chrome at the top of this
+   * file, which is also what the jump uses — see the note there for why they
+   * have to come from one number.
    */
   useEffect(() => {
     if (sections.length === 0) return;
     let frame = 0;
+    let tops: number[] = [];
 
-    const measure = () => {
-      frame = 0;
-      const tops = sections.map((section) => {
+    // Absolute document positions, so they stay valid as the page scrolls.
+    const remeasure = () => {
+      tops = sections.map((section) => {
         const node = document.getElementById(section.slug);
-        return node ? node.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+        return node ? node.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY;
       });
-      setActive(activeSection(sections, tops, ACTIVE_LINE));
+    };
+
+    const apply = () => {
+      frame = 0;
+      // `activeSection` takes viewport-relative tops, and is tested that way.
+      setActive(
+        activeSection(
+          sections,
+          tops.map((top) => top - window.scrollY),
+          ACTIVE_LINE,
+        ),
+      );
     };
 
     const onScroll = () => {
-      // Coalesced to one measurement per frame. A wheel fires far faster than
-      // the page repaints, and reading a rect per event is how a scroll
-      // handler becomes the reason a page stutters.
-      if (frame === 0) frame = requestAnimationFrame(measure);
+      // Still coalesced to one update per frame: a wheel fires far faster
+      // than the page repaints.
+      if (frame === 0) frame = requestAnimationFrame(apply);
     };
 
-    measure();
+    const onResize = () => {
+      remeasure();
+      onScroll();
+    };
+
+    remeasure();
+    apply();
+
+    // Whatever changes a height invalidates the cache — the font swapping,
+    // an image resolving, the grid reflowing at a breakpoint.
+    const grid = document.querySelector(".menu-grid");
+    const observer =
+      typeof ResizeObserver !== "undefined" && grid
+        ? new ResizeObserver(() => {
+            remeasure();
+            onScroll();
+          })
+        : null;
+    observer?.observe(grid as Element);
+
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     return () => {
       if (frame !== 0) cancelAnimationFrame(frame);
+      observer?.disconnect();
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
     };
   }, [sections]);
 
