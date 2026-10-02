@@ -98,10 +98,27 @@ const ACTIVE_LINE = CHROME + 56;
  * followable — the eye has to see which way the page went, or the landing
  * reads as a different page rather than a different part of this one.
  */
-const TRAVEL_MIN_MS = 420;
-const TRAVEL_MAX_MS = 1100;
+const TRAVEL_MIN_MS = 380;
+const TRAVEL_MAX_MS = 620;
 const travelFor = (distance: number) =>
-  Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MIN_MS, Math.abs(distance) * 0.07));
+  Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MIN_MS, Math.abs(distance) * 0.45));
+
+/**
+ * How much of the journey is actually animated, as a multiple of the screen.
+ *
+ * Everything beyond this is covered instantly first, and only the final
+ * approach eases. That is not a shortcut, it is the fix for what animating the
+ * whole distance caused: this menu is 36,000px of lazily-loaded photographs,
+ * and easing across 13,000px of it drags the viewport through section after
+ * section whose images have not loaded. Measured on one jump — five of the six
+ * images on screen unloaded at once, fifteen frames with three or more — so
+ * every card drew its motif, then swapped to a photograph, the whole way past.
+ * That stream of swaps is the blinking.
+ *
+ * A screen and a bit is enough to see which way the page went, which is the
+ * only thing the travel was ever for.
+ */
+const APPROACH_SCREENS = 1.15;
 
 /** Decelerating: quick off the mark, settling into the landing. */
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -114,9 +131,44 @@ function jumpToSection(slug: string): () => void {
 
   // Somebody who has asked their system to stop moving things gets the
   // landing without the journey — not a faster journey.
-  const startedAt = typeof performance !== "undefined" ? performance.now() : 0;
-  const from = typeof window !== "undefined" ? window.scrollY : 0;
+  // Start the destination's photographs fetching at the moment of the click.
+  //
+  // A jump lands on a section whose images are still lazy, so they begin
+  // loading only once they are near the viewport — and each one draws its
+  // motif first and swaps to the photograph a moment later. Arriving on a
+  // screenful of those swaps is the blink.
+  //
+  // The eased approach below takes about 400ms, and this spends it: the
+  // images are told to load now rather than on arrival, so most of them are
+  // decoded by the time anybody is looking at them. It cannot help where the
+  // network is slower than the animation, which is why the motif underneath
+  // them stays — it is a considered placeholder rather than a blank.
+  const preload = (slugged: HTMLElement | null) => {
+    const section = slugged?.closest(".menu-section");
+    if (!section) return;
+    for (const image of section.querySelectorAll("img")) {
+      image.loading = "eager";
+      // Ahead of anything else still queued for a page this long.
+      image.fetchPriority = "high";
+    }
+  };
+
+  // Cover the distance beyond the final approach in one go, before anything
+  // is animated, so the eased part never drags the viewport through content
+  // that has not loaded.
   const first = typeof document !== "undefined" ? document.getElementById(slug) : null;
+  preload(first);
+  if (first && typeof window !== "undefined") {
+    const whole = first.getBoundingClientRect().top - LANDING;
+    const approach = window.innerHeight * APPROACH_SCREENS;
+    if (Math.abs(whole) > approach) {
+      window.scrollBy({ top: whole - Math.sign(whole) * approach, behavior: "instant" });
+    }
+  }
+
+  const startedAt = typeof performance !== "undefined" ? performance.now() : 0;
+  // Read AFTER the instant leg, so the tween eases from where it really is.
+  const from = typeof window !== "undefined" ? window.scrollY : 0;
   const travelMs =
     typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
       ? 0
