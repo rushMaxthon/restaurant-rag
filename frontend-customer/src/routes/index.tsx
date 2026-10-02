@@ -98,13 +98,18 @@ function Home() {
   // belongs in the first screen rather than halfway down.
   const years = yearsTrading(brand.established_year);
 
-  // A restaurant with a photograph of its own food earns the tall hero: the
-  // picture IS the content. Without one the hero is a brand wash that says
-  // nothing about the food (deliberately — see `StorefrontHero`), and at
-  // 72svh a phone opens on two thirds of a screen of flat orange before
-  // anything is said. So the box follows what is in it.
+  // A restaurant with a photograph of its own food gets the WHOLE first
+  // screen: the picture is the content, and stopping it short of the fold
+  // left a band of page under it that belonged to nothing. `svh` rather than
+  // `vh` so a phone measures the viewport it actually has, with the browser
+  // chrome showing, instead of the taller one it has after a scroll.
+  //
+  // Without a cover the hero is a brand wash that says nothing about the food
+  // (deliberately — see `StorefrontHero`), and a full screen of flat orange
+  // before a word is read is a worse opening than a short one. So the box
+  // follows what is in it.
   const hasCover = Boolean(useStorefrontCover());
-  const heroHeight = hasCover ? "min-h-[72svh]" : "min-h-[48svh] sm:min-h-[58svh]";
+  const heroHeight = hasCover ? "hero-full" : "min-h-[48svh] sm:min-h-[58svh]";
 
   return (
     <div className="pb-20 lg:pb-0">
@@ -115,7 +120,9 @@ function Home() {
             be `text-primary-foreground`, which is the ink for the BRAND colour
             and resolved to near-black in dark mode. */}
         <div
-          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-16 pt-28 sm:pb-20`}
+          // `pb-24` on a phone, not `pb-16`: the tab bar is fixed and 58px
+          // tall, so at a full-screen hero the buttons ended underneath it.
+          className={`hero-copy page-pad relative flex ${heroHeight} max-w-3xl flex-col justify-end pb-24 pt-28 sm:pb-20`}
         >
           <div className="mb-5 flex flex-wrap gap-2">
             {/* Nothing is claimed until it is known: no branch count before the
@@ -207,7 +214,7 @@ function Home() {
       {/* Their own food, as photography rather than as a shop. The lead story
           has taken the first three, so the mosaic starts after them and
           disappears when there are not enough left to fill it. */}
-      <KitchenGallery photos={photos.slice(3)} />
+      <KitchenGallery photos={photos.slice(3)} loading={menuQuery.isLoading} />
 
       <BrandOffer />
       <BrandStandards />

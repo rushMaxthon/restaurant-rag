@@ -28,8 +28,41 @@ import { useStorefrontCopy } from "@/lib/storefront";
  * six is a layout with holes in it, and the lead story above has already used
  * the best of them.
  */
-export function KitchenGallery({ photos }: { photos: readonly BrandPhoto[] }) {
+export function KitchenGallery({
+  photos,
+  loading = false,
+}: {
+  photos: readonly BrandPhoto[];
+  loading?: boolean;
+}) {
   const copy = useStorefrontCopy();
+
+  // The menu is fetched on the client, so this block has nothing to show for
+  // the first second or so of a cold visit. Rendering nothing and then
+  // appearing shoves everything below it down the page while somebody is
+  // reading it; the mosaic holds its own shape until the photographs arrive.
+  if (loading && photos.length === 0) {
+    return (
+      <section className="gallery" aria-hidden="true">
+        <div className="page-pad section-pad gallery__inner">
+          <div className="gallery__head">
+            <div>
+              <p className="eyebrow">From our kitchen</p>
+              <h2 className="font-display gallery__title">Made here, every day</h2>
+            </div>
+          </div>
+          <ul className="gallery__grid">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <li className="gallery__tile" data-lead={index === 0 ? true : undefined} key={index}>
+                <span className="gallery__placeholder skeleton" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
+
   if (photos.length < 3) return null;
 
   // Five fills the mosaic exactly: the lead tile two wide and two tall, four

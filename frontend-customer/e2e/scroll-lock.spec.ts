@@ -68,7 +68,14 @@ test.describe("opening a menu", () => {
     const before = await page.evaluate(() => document.documentElement.clientWidth);
     await trigger.click();
 
-    const option = page.getByRole("option", { name: /top rated/i });
+    // "Price: low to high", not "Top rated".
+    //
+    // The rating sort is only OFFERED when something is rated — `sortsFor`
+    // drops it otherwise, deliberately, because a sort that compares 0 against
+    // 0 for every pair reorders nothing. Not one of this restaurant's 187
+    // dishes carries a rating, so naming that option made this test a test of
+    // the seed data. Price is on the list whatever the menu holds.
+    const option = page.getByRole("option", { name: /price: low to high/i });
     await expect(option).toBeVisible();
 
     // Measured after the open animation, not during it. Radix zooms the panel
@@ -95,6 +102,6 @@ test.describe("opening a menu", () => {
 
     // And it actually sorts.
     await option.click();
-    await expect(trigger).toContainText(/top rated/i);
+    await expect(trigger).toContainText(/price: low to high/i);
   });
 });

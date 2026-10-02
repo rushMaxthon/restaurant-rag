@@ -292,6 +292,26 @@ textarea.flex:focus-visible {
    Children that deliberately sit on their own ground — the white location
    chip — still override this by declaring their own colour, which a utility
    does and inheritance does not. */
+/* One screen, exactly.
+ *
+ * `100svh` on its own overflowed, because the hero does not start at the top
+ * of the viewport: the sticky header is in normal flow above it, and below
+ * `sm` so is the branch picker. On a phone that pushed 126px of hero past the
+ * fold and took the buttons with it — the subcopy was cut mid-sentence and
+ * "See the menu" was not on screen at all.
+ *
+ * `svh` rather than `vh` so the unit is the viewport a phone actually has
+ * with its browser chrome showing, instead of the taller one it gets after a
+ * scroll — `vh` would reintroduce the same overflow on the first paint. */
+.hero-full {
+  min-height: calc(100svh - var(--header-h) - var(--branch-bar-h));
+}
+@media (min-width: 640px) {
+  .hero-full {
+    min-height: calc(100svh - var(--header-h));
+  }
+}
+
 .hero-copy {
   color: #fff;
 }
@@ -3120,6 +3140,23 @@ html[data-splash="seen"] .splash {
 }
 .gallery__tile:hover img {
   transform: scale(1.05);
+}
+/* The shape a tile holds while its photograph is still on the way. Sized by
+   the same `aspect-ratio` rules as the image it replaces, so nothing moves
+   when the real one arrives. */
+.gallery__placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+}
+.gallery__tile[data-lead] .gallery__placeholder {
+  aspect-ratio: 16 / 10;
+}
+@media (min-width: 900px) {
+  .gallery__tile[data-lead] .gallery__placeholder {
+    height: 100%;
+    aspect-ratio: auto;
+  }
 }
 .gallery__label {
   position: absolute;
