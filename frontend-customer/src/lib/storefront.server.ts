@@ -55,6 +55,8 @@ const UNKNOWN_CONFIG: StorefrontConfig = {
   // No address, because a storefront that could not reach its API does not
   // know which restaurant it is — the same reason the copy above is nameless.
   contact: {},
+  // Nothing to say about a restaurant we could not identify.
+  brand: { about_sections: [], faqs: [] },
 };
 
 const TTL_MS = 30_000;

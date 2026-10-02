@@ -17,6 +17,7 @@ import { DishSkeleton } from "@/components/bangkok/menu-grid";
 import { OfferCard } from "@/components/bangkok/offer-card";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
+import { BrandFaqs, BrandStory } from "@/components/bangkok/brand-story";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { availabilityNow } from "@/lib/branch-hours";
 import { useAuth } from "@/lib/auth";
@@ -253,6 +254,15 @@ function Home() {
           </div>
         )}
       </section>
+
+      {/* The restaurant's own words, between the menu and the closing band.
+          Below the food on purpose — somebody who arrived hungry should meet
+          dishes first — and above the call to action, because this is what
+          answers "should I order from these people" just before being asked
+          to. Both render nothing at all when the owner has written nothing,
+          and the page closes up around them. */}
+      <BrandStory />
+      <BrandFaqs />
 
       {/* The left half of this band is entirely about the concierge, so a
           restaurant without it gets the right half full-width rather than an

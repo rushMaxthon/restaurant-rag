@@ -51,7 +51,40 @@ export type StorefrontConfig = StorefrontCopy & {
    * nothing rather than rendering a placeholder.
    */
   contact: StorefrontContact;
+  /**
+   * What this restaurant says about itself at length, and the questions it
+   * has answered. Both lists, both usually empty.
+   *
+   * On the root loader with the rest because the home page renders it and a
+   * search engine reads the FAQ out of the first response — fetched after
+   * hydration, neither would arrive in time to matter.
+   *
+   * **Nothing here is ever derived.** An empty list means the owner has not
+   * written that part, and the page shows nothing rather than filling it with
+   * words we wrote under their name.
+   */
+  brand: StorefrontBrand;
 };
+
+/** One headed section of a restaurant's own description. */
+export type BrandSection = {
+  heading: string;
+  body: string;
+  bullets?: string[];
+};
+
+/** One question a customer asks before a first order, and its answer. */
+export type BrandFaq = {
+  question: string;
+  answer: string;
+};
+
+export type StorefrontBrand = {
+  about_sections: BrandSection[];
+  faqs: BrandFaq[];
+};
+
+export const NO_BRAND: StorefrontBrand = { about_sections: [], faqs: [] };
 
 /**
  * The subset of `restaurants`' address columns the backend judged real.
@@ -120,6 +153,7 @@ export type AppConfigPayload = {
   currency?: CurrencyFormat;
   branding?: { cover_image_url?: string | null; font_family?: string | null };
   contact?: StorefrontContact;
+  brand?: Partial<StorefrontBrand>;
 };
 
 /**
@@ -149,6 +183,12 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     // Taken as given rather than defaulted: the backend already decided which
     // keys are real, and inventing one here would put it back.
     contact: payload.contact ?? {},
+    // Each half defaulted separately: a payload carrying sections but no
+    // questions is a normal answer, not a malformed one.
+    brand: {
+      about_sections: payload.brand?.about_sections ?? [],
+      faqs: payload.brand?.faqs ?? [],
+    },
   };
 }
 
@@ -158,6 +198,17 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
  * A read of the root loader, like `useStorefrontCover` — these strings were in
  * the HTML before it was sent, so the footer on every page costs nothing.
  */
+/**
+ * This restaurant's own description and answered questions.
+ *
+ * A read of the root loader, like the contact details: these were in the HTML
+ * before it was sent, so the home page pays nothing for them.
+ */
+export function useStorefrontBrand(): StorefrontBrand {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return data?.brand ?? NO_BRAND;
+}
+
 export function useStorefrontContact(): StorefrontContact {
   const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
   return data?.contact ?? {};
