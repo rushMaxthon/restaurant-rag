@@ -736,6 +736,15 @@ function DishPage() {
                   >
                     Start a new cart with this
                   </Button>
+                  {/* The same reason as the ordinary Add button below, which
+                      this branch replaces. Without it, a customer whose cart
+                      belongs to another restaurant AND who has not answered a
+                      required group saw the one dead button on the page that
+                      explained nothing — the harder case of the two, and the
+                      one that got missed. */}
+                  {item.is_available && problem && (
+                    <p className="mt-2 text-sm font-semibold text-muted">{problem}</p>
+                  )}
                 </div>
               ) : added ? (
                 <div className="added-note mt-5 grid gap-2">

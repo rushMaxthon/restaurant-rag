@@ -201,7 +201,10 @@ export function RazorpayPayment({
       ) : null}
 
       <Button className="w-full" disabled={!ready || busy} onClick={open} size="lg">
-        {busy ? "Confirming…" : `Pay ${money(amount)}`}
+        {/* Same rule as the card sheet: a disabled button does not offer to
+            take a payment. A failed script already sets `error` above, but
+            the seconds BEFORE either outcome were a dead "Pay ₹157.50". */}
+        {busy ? "Confirming…" : !ready ? "Opening the payment window…" : `Pay ${money(amount)}`}
       </Button>
 
       <p className="flex items-center gap-2 text-sm text-muted">

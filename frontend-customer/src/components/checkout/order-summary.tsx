@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CartLine } from "@/lib/bangkok-store";
 import { chosenLabels } from "@/lib/customization";
+import { payButtonLabel, type PayBlock } from "@/lib/pay-gate";
 
 type Charges = React.ComponentProps<typeof ChargesBreakdown>["charges"];
 
@@ -49,6 +50,7 @@ export function OrderSummary({
   submitting,
   payingCard,
   canSubmit,
+  payBlock,
 }: {
   isDelivery: boolean;
   branchName: string | undefined;
@@ -75,6 +77,8 @@ export function OrderSummary({
   payingCard: boolean;
   /** Everything the form needs before the Pay button may be pressed. */
   canSubmit: boolean;
+  /** Why the button is disabled, when it is. See `lib/pay-gate.ts`. */
+  payBlock: PayBlock | null;
 }) {
   return (
     <aside className="elevated-panel order-summary h-fit lg:sticky lg:top-24">
@@ -236,14 +240,22 @@ export function OrderSummary({
         disabled={!canSubmit}
         type="submit"
       >
-        {submitting
-          ? payingCard
-            ? "Opening payment…"
-            : "Preparing your order…"
-          : deliveryKnown
-            ? `Pay ${money(total)}`
-            : "Add your address to continue"}
+        {payButtonLabel({
+          block: payBlock,
+          submitting,
+          openingPayment: payingCard,
+          priceLabel: `Pay ${money(total)}`,
+        })}
       </Button>
+      {/* Why, when the label could not carry it. A disabled button that
+          explains nothing is a dead end — and this one had a state with no
+          explanation anywhere on the page: a branch with no usable payment
+          method. `aria-live` because the reason changes under the customer as
+          they fill the form, and a screen reader would otherwise never hear
+          that the button became pressable. */}
+      <p aria-live="polite" className="pay-reason mt-2 hidden text-xs text-muted lg:block">
+        {!submitting && payBlock?.detail ? payBlock.detail : null}
+      </p>
     </aside>
   );
 }
@@ -269,6 +281,7 @@ export function MobilePayBar({
   deliveryKnown,
   submitting,
   canSubmit,
+  payBlock,
 }: {
   totalItems: number;
   money: (value: number) => string;
@@ -276,9 +289,22 @@ export function MobilePayBar({
   deliveryKnown: boolean;
   submitting: boolean;
   canSubmit: boolean;
+  /** Why the button is disabled, when it is. See `lib/pay-gate.ts`. */
+  payBlock: PayBlock | null;
 }) {
   return (
     <div className="above-tab-bar fixed inset-x-0 z-[45] border-t border-border bg-surface/95 p-3 backdrop-blur lg:hidden">
+      {/* Above the row, not inside the button.
+          The button is `flex-1` on a 393px screen, so a sentence in it would
+          either shrink the tap target below the 44px floor `mobile-layout.
+          spec.ts` enforces or run off the edge. The short `label` is used
+          rather than `detail` for the same reason — this bar has one line to
+          spare, and the labels are written to be that line. */}
+      {!submitting && payBlock ? (
+        <p aria-live="polite" className="pay-reason mx-auto mb-2 max-w-2xl text-xs font-bold text-muted">
+          {payBlock.label}
+        </p>
+      ) : null}
       <div className="mx-auto flex max-w-2xl items-center gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold text-muted">
