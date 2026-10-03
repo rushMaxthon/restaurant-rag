@@ -167,7 +167,15 @@ export function AddressAutocomplete({
         if (mine !== asked.current) return;
         setAvailable(reply.available);
         setSuggestions(reply.suggestions);
-        setOpen(reply.suggestions.length > 0);
+        // Only if the box still has focus.
+        //
+        // A reply can land after the customer has already moved on, and this
+        // line used to open the panel regardless — so a list of addresses
+        // appeared OVER the City and State fields a moment after they had
+        // started filling them in, with nothing to dismiss it but a click
+        // somewhere else. Reaching the next field is as clear a "done with
+        // that" as there is.
+        setOpen(reply.suggestions.length > 0 && document.activeElement?.id === inputId);
         setHighlighted(-1);
       } catch {
         // A typing box must never throw. No list is the honest outcome, and
