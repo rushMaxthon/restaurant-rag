@@ -80,14 +80,14 @@ CUT = GS + b"V\x42\x03"
 
 #: Characters a thermal printer's default code page does not have.
 #:
-#: The rupee sign is the one that matters here and it is not cosmetic: CP437
-#: and CP850, which is what most TM-series printers boot into, predate it. An
-#: un-transliterated bill prints the total as a box or drops the symbol, and
-#: "462.50" with no currency on a bill is worse than "Rs.462.50".
-#:
-#: Printers that DO have it need a code-page command and a different mapping,
-#: which is why this is a flag rather than a constant: `--charset utf8` sends
-#: the bytes through untouched for a printer that has been configured for it.
+#: A safety net for PROSE - a curly quote in a dish name, an en dash in a
+#: note. It is deliberately NOT where currency is handled any more, and that
+#: is worth the sentence: transliterating the rupee sign here, after
+#: `layout.py` had already padded the line for a one-character symbol, made
+#: `Subtotal ... Rs.100.00` fifty characters wide on 48-column paper, and the
+#: printer wrapped the money column. Money is now made printer-safe in
+#: `document.money_str`, before anything counts columns. The rupee entry stays
+#: below only to catch a symbol that reaches here from somewhere else.
 TRANSLITERATE = {
     "₹": "Rs.",  # rupee
     "’": "'",

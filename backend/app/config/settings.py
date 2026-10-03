@@ -440,6 +440,57 @@ class Settings(BaseSettings):
     # service. That is a dry run an owner can inspect, not a silent no-op.
     enable_marketing_dispatch: bool = False
 
+    # --- Auto-printing ------------------------------------------------------
+    #
+    # A paid order produces a ticket on the kitchen printer with no browser
+    # open and nobody signed in. See `docs/PRINT_AGENT_PLAN.md`.
+    #
+    # Off by default, and not because the feature is unfinished. Paper and a
+    # kitchen's attention are not recallable: a wrong docket at 9pm has a cook
+    # making food nobody ordered, which is the same posture
+    # `enable_marketing_dispatch` takes about a notification reaching a lock
+    # screen. A restaurant switches it on when its printer is paired and
+    # test-printed, not when the platform deploys.
+    #
+    # Deliberately NOT tied to `enable_realtime`. The socket only makes a
+    # ticket arrive sooner; the queue is what makes it arrive at all, and a
+    # restaurant that wants printing without realtime (or the reverse) is a
+    # reasonable thing to be.
+    #
+    # With it off, the whole path still runs and still writes job rows the
+    # owner can inspect - a dry run showing exactly what would have printed -
+    # and no agent is ever served them. Same shape as marketing dispatch, for
+    # the same reason.
+    enable_auto_print: bool = False
+
+    # How long a claimed job stays claimed before another poll may take it.
+    #
+    # The whole of the crash-recovery design: an agent that dies between
+    # claiming a ticket and printing it hands it back by doing nothing. Two
+    # minutes rather than seconds because a long docket on a slow thermal head
+    # or a TCP connect against an unplugged printer legitimately takes a
+    # while, and re-serving a job that is still printing is how a kitchen gets
+    # the same ticket twice.
+    print_job_claim_lease_seconds: int = 120
+
+    # How many jobs one poll may take. Enough that a burst of orders drains in
+    # one round trip; small enough that an agent which dies mid-batch leaves
+    # few tickets waiting out the lease.
+    print_job_poll_batch: int = 10
+
+    # How long an idle agent waits before asking again.
+    #
+    # Fifteen seconds, and the socket is what makes that acceptable: a ticket
+    # normally arrives within a second of the order because `order:updated`
+    # tells the agent to poll now. This interval is the floor for when the
+    # socket is down — the same division of labour as the kitchen board's
+    # 30-second refetch behind its live push.
+    #
+    # Server-controlled rather than baked into the agent, so a deployment can
+    # slow every installed agent down at once without anybody reinstalling
+    # anything.
+    print_agent_poll_seconds: int = 15
+
     # --- Realtime (Socket.IO) -----------------------------------------------
     #
     # Pushes "this order changed" to the kitchen board, the admin panel and the

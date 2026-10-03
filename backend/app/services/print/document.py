@@ -160,8 +160,45 @@ class Document:
         }
 
 
+#: Currency symbols a thermal printer cannot render, and what to print instead.
+#:
+#: CP437 and CP850 - what most TM-series printers boot into - predate the rupee
+#: sign, so it arrives as a box or is dropped, and a total with no currency on
+#: it is worse than "Rs.120.25".
+#:
+#: The substitution happens HERE, not in the agent, and that is the whole
+#: point. It was in the agent first, after layout had already padded the line
+#: for a one-character symbol: `Subtotal ... Rs.100.00` came out 50 characters
+#: wide on 48-column paper and the printer wrapped the money column. The
+#: currency symbol is part of what a ticket SAYS, so it is decided where
+#: everything else a ticket says is decided, before anything counts columns.
+PRINTER_SAFE_SYMBOLS = {
+    "₹": "Rs.",  # rupee
+    "€": "EUR ",  # euro
+    "£": "GBP ",  # pound - cp437 has it, many clones do not
+    "¥": "JPY ",  # yen
+    "₦": "NGN ",  # naira
+    "₱": "PHP ",  # peso
+}
+
+
+def printer_safe_symbol(symbol: str) -> str:
+    """What to print where a tenant's currency symbol will not render.
+
+    Anything still outside ASCII after the table above falls back to the
+    symbol stripped of what a printer cannot draw, and then to nothing - a
+    bare number beats a row of boxes.
+    """
+
+    if symbol in PRINTER_SAFE_SYMBOLS:
+        return PRINTER_SAFE_SYMBOLS[symbol]
+    if symbol.isascii():
+        return symbol
+    return symbol.encode("ascii", "ignore").decode("ascii")
+
+
 def money_str(amount: Decimal | float | int | str, symbol: str) -> str:
-    """Two decimal places, with the tenant's own symbol.
+    """Two decimal places, with a symbol this printer can actually draw.
 
     Formatted here rather than in the agent for the same reason as the times:
     a tenant charging in dollars and one charging in rupees are both correct at
@@ -169,4 +206,4 @@ def money_str(amount: Decimal | float | int | str, symbol: str) -> str:
     """
 
     value = Decimal(str(amount)).quantize(Decimal("0.01"))
-    return f"{symbol}{value}"
+    return f"{printer_safe_symbol(symbol)}{value}"

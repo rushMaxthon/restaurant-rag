@@ -115,6 +115,42 @@ class ADoubleSizeLineGetsHalfThePaper(unittest.TestCase):
         self.assertEqual(out, ["ABCDEFGHIJKLMNOP"])
 
 
+class MoneyIsPrinterSafeBeforeAnythingCountsColumns(unittest.TestCase):
+    """The bug that only a real printer found.
+
+    `₹` is one character and `Rs.` is three. The agent used to substitute them
+    when producing bytes - after `layout.py` had padded the row to exactly the
+    paper's width - so a rupee bill came out two characters too wide and the
+    printer wrapped the money column:
+
+        Subtotal                                 Rs.100.00   <- 50 of 48
+
+    Fifty-three layout and renderer tests passed through it, because they
+    measured a string that was still correct when they saw it. The symbol is
+    part of what a ticket SAYS, so it is decided in `money_str` now, and these
+    assert the arithmetic afterwards.
+    """
+
+    def test_a_rupee_bill_fits_the_paper(self) -> None:
+        from app.services.print.document import money_str
+
+        for width in (32, 42, 48):
+            for label, amount in (("Subtotal", "100.00"), ("TOTAL", "1234.50")):
+                out = rows(kv(label, money_str(amount, "₹")), width=width)
+                self.assertEqual(len(out), 1)
+                self.assertLessEqual(
+                    len(out[0]), width, f"{out[0]!r} overflows {width}-column paper"
+                )
+
+    def test_the_symbol_is_ascii_so_the_agent_changes_nothing(self) -> None:
+        # The property that makes the arithmetic hold: if the string the
+        # server padded is already printable, nothing downstream can widen it.
+        from app.services.print.document import money_str
+
+        for symbol in ("₹", "€", "$", "£"):
+            self.assertTrue(money_str("1.00", symbol).isascii(), symbol)
+
+
 class AValueIsNeverShortened(unittest.TestCase):
     def test_the_label_gives_way_not_the_value(self) -> None:
         # Half a phone number is a rider who cannot call. A shortened label

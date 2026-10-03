@@ -340,10 +340,14 @@ class TheCustomerBillShowsTheMoney(unittest.TestCase):
         # The arithmetic a customer does with their eyes. If these do not add
         # up the bill is worse than no bill: it looks like an overcharge.
         values = {line.k: line.v for line in self.render(make_order()).lines if line.k}
-        self.assertEqual(values["Subtotal"], "₹450.00")
-        self.assertEqual(values["Tax"], "₹22.50")
-        self.assertEqual(values["Delivery"], "₹40.00")
-        self.assertEqual(values["TOTAL"], "₹512.50")
+        # "Rs." rather than the rupee sign, decided here rather than in the
+        # agent. CP437 has no rupee, and substituting it downstream - after
+        # the layout had padded for one character - made a bill two columns
+        # too wide. See `MoneyIsPrinterSafeBeforeAnythingCountsColumns`.
+        self.assertEqual(values["Subtotal"], "Rs.450.00")
+        self.assertEqual(values["Tax"], "Rs.22.50")
+        self.assertEqual(values["Delivery"], "Rs.40.00")
+        self.assertEqual(values["TOTAL"], "Rs.512.50")
 
     def test_a_zero_charge_is_left_off_rather_than_printed_as_zero(self) -> None:
         # "Delivery ₹0.00" on a collection order reads as a line somebody
@@ -361,7 +365,7 @@ class TheCustomerBillShowsTheMoney(unittest.TestCase):
     def test_a_discount_prints_as_a_subtraction(self) -> None:
         order = make_order(discount_amount=Decimal("50.00"), total_amount=Decimal("462.50"))
         values = {line.k: line.v for line in self.render(order).lines if line.k}
-        self.assertEqual(values["Discount"], "-₹50.00")
+        self.assertEqual(values["Discount"], "-Rs.50.00")
 
     def test_an_unpaid_cash_order_says_so_unmistakably(self) -> None:
         # A bill handed over identical to a paid one is how a rider comes back

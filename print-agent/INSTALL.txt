@@ -1,0 +1,83 @@
+QuickBite print agent
+=====================
+
+Prints a kitchen ticket the moment a paid order arrives. No browser open,
+nobody signed in.
+
+
+WHAT YOU NEED
+-------------
+
+  * This folder, copied anywhere on the kitchen PC (the Desktop is fine).
+  * The printer switched on.
+  * A six-digit pairing code from the admin panel:
+        Printers  >  Add a printer  >  choose the branch
+    Codes last ten minutes. Get it just before you install.
+
+Nothing else. The agent is one self-contained file.
+
+
+INSTALL
+-------
+
+  1. Right-click the Start button  >  "Terminal (Admin)" or
+     "Windows PowerShell (Admin)".
+
+  2. Go to this folder, for example:
+
+        cd "$env:USERPROFILE\Desktop\QuickBitePrintAgent-0.1.0-win-x64"
+
+  3. Run:
+
+        .\install.ps1 -Server https://YOUR-SERVER/api -Code 123456
+
+That is it. The agent starts now and again every time the PC boots, with
+nobody signed in.
+
+
+IF THE PRINTER IS PLUGGED IN BY USB
+-----------------------------------
+
+Add -AtLogon:
+
+        .\install.ps1 -Server https://YOUR-SERVER/api -Code 123456 -AtLogon
+
+Windows cannot see a USB printer from a service that starts before anyone
+logs in, so the agent has to run as a signed-in user instead. Tickets then
+print only while somebody is logged in on that PC.
+
+
+IF YOU DO NOT HAVE THE ADMINISTRATOR PASSWORD
+---------------------------------------------
+
+Add -PerUser. No admin rights needed, and tickets print while you are
+signed in:
+
+        .\install.ps1 -Server https://YOUR-SERVER/api -Code 123456 -PerUser
+
+
+CHECK IT WORKS
+--------------
+
+In the admin panel, open Printers and press "Test print". A page should come
+out within a few seconds.
+
+If nothing does, the reason is in:
+
+        C:\ProgramData\QuickBitePrint\agent.log
+
+Common causes, in order of likelihood:
+
+  * The printer's IP address in the admin panel is wrong, or the printer is
+    on a different network from this PC.
+  * Auto-printing is still switched off for the restaurant.
+  * The printer is out of paper.
+
+
+REMOVE IT
+---------
+
+        .\uninstall.ps1
+
+The log and the pairing are kept, so you can reinstall without a new code.
+Add -Purge to remove those as well.
