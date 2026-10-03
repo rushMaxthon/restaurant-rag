@@ -633,17 +633,16 @@ export function MenuGrid({
                   {section.items.length} {section.items.length === 1 ? "dish" : "dishes"}
                 </span>
               </h2>
-              <div className="menu-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {section.items.map((item, i) => (
-                  <div
-                    className="rise-in"
-                    // Capped at 11 so a section of eighty dishes does not
-                    // stagger the last one in four seconds late.
-                    style={{ "--i": Math.min(i, 11) } as React.CSSProperties}
-                    key={item.id}
-                  >
-                    <DishCard item={item} />
-                  </div>
+              {/* Two columns at most, and no stagger.
+                  Four columns of rows would put a dish name and its price at
+                  opposite ends of a 300px gap, which is the one thing a price
+                  list has to get right. The per-item entrance went with the
+                  cards: this is the page that has to stay fast, and 187
+                  elements each animating themselves on arrival is the cost
+                  the scroll work spent a week removing. */}
+              <div className="menu-grid">
+                {section.items.map((item) => (
+                  <DishCard item={item} key={item.id} />
                 ))}
               </div>
             </section>

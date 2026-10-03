@@ -441,9 +441,7 @@
 .waiter-prompt--chat {
   margin-top: 2rem;
 }
-.dish-card {
-  box-shadow: 0 1px 0 var(--border);
-}
+
 .dish-placeholder {
   color: var(--primary);
 }
@@ -510,29 +508,33 @@
   scroll-snap-type: x proximity;
   padding-bottom: 0.5rem;
 }
+/* `--veg` and `--non-veg`, not `--success` and `--danger`. They were the same
+   green and red by coincidence, and the moment a theme moved one of those for
+   a reason that had nothing to do with food, this mark would have moved with
+   it. The mark is not a status; it is a legally defined signal. */
 .veg-mark,
 .nonveg-mark {
   display: inline-grid;
   place-items: center;
   width: 17px;
   height: 17px;
-  border: 2px solid var(--success);
+  border: 2px solid var(--veg);
 }
 .veg-mark i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--success);
+  background: var(--veg);
 }
 .nonveg-mark {
-  border-color: var(--danger);
+  border-color: var(--non-veg);
 }
 .nonveg-mark i {
   width: 0;
   height: 0;
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
-  border-bottom: 8px solid var(--danger);
+  border-bottom: 8px solid var(--non-veg);
 }
 .surface-panel {
   border: 1px solid var(--border);
@@ -1129,23 +1131,10 @@ html {
 
    `.lift` also adds a pressed state the card never had: a card that moves up
    on hover and does nothing when clicked feels like it ignored the click. */
-.dish-card {
-  box-shadow: var(--shadow-sm);
-  transition:
-    box-shadow var(--dur) var(--ease-out),
-    transform var(--dur) var(--ease-out),
-    border-color var(--dur) var(--ease-out);
-}
-.dish-card:hover {
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px) translateZ(0);
-}
-.dish-card:active {
-  box-shadow: var(--shadow-xs);
-  transform: translateY(0) scale(0.995);
-  transition-duration: var(--dur-fast);
-}
+/* The lift is gone with the card it belonged to. A row is not a floating
+   object, so it has nothing to lift off; it answers a pointer by tinting its
+   own ground instead, which is one paint rather than a shadow and a
+   transform on 187 elements. */
 
 /* --- Order tracking --------------------------------------------------------
    A horizontal rail reads as progress at a glance; the vertical checklist it

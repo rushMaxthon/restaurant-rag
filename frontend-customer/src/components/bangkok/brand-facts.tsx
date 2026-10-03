@@ -26,14 +26,16 @@ function FactValue({ animate, value }: { animate: boolean; value: string }) {
   const parts = /^([^\d]*)(\d+(?:\.\d+)?)([^\d]*)$/.exec(value.trim());
   if (!animate || !parts) return <>{value}</>;
 
-  const [, prefix, digits, suffix] = parts;
+  // Every group is optional to the type checker even though the pattern can
+  // only match with all three present, so they are coerced rather than
+  // asserted — an empty prefix is the right answer anyway.
+  const prefix = parts[1] ?? "";
+  const digits = parts[2] ?? "";
+  const suffix = parts[3] ?? "";
+  const decimals = digits.split(".")[1]?.length ?? 0;
+
   return (
-    <StatsCounter
-      decimals={digits.includes(".") ? digits.split(".")[1].length : 0}
-      prefix={prefix}
-      suffix={suffix}
-      value={Number(digits)}
-    />
+    <StatsCounter decimals={decimals} prefix={prefix} suffix={suffix} value={Number(digits)} />
   );
 }
 

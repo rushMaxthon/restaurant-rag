@@ -244,11 +244,11 @@ textarea.flex:focus-visible {
 .pay-option:focus-visible,
 .mobile-nav:focus-visible,
 .offer-card:focus-visible,
-.dish-card a:focus-visible {
+.dish-row a:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-.dish-card a:focus-visible {
+.dish-row a:focus-visible {
   border-radius: 0.5rem;
 }
 
@@ -433,19 +433,182 @@ textarea.flex:focus-visible {
 }
 
 /* --- Cards -----------------------------------------------------------------
-   The grid wraps each card in a .rise-in div for the stagger; a block wrapper
-   left short cards sat above their row-mates' bottoms. Grid stretches them. */
-.menu-grid > .rise-in {
+   One column on a phone, two from `sm` up, and no further. Rows are wide: a
+   third column would leave a dish name and its price at opposite ends of a
+   long gap, and a price list that makes you track across the page has failed
+   at the only job it has. */
+.menu-grid {
   display: grid;
+  gap: 0.15rem;
 }
-.dish-card {
-  border-radius: 0.75rem;
+@media (min-width: 640px) {
+  .menu-grid {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 1.75rem;
+  }
 }
-.dish-card .dish-title {
+/* --- A dish, as a row ------------------------------------------------------
+   Three columns: the mark, the words, and whatever you can do about it. The
+   mark is first because it is the thing people filter on before they read a
+   name, and keeping it in its own column means every row in a long section
+   starts on the same vertical line — which is where the rhythm comes from,
+   rather than from a rule between every pair.
+
+   No divider on purpose. Sections are already separated by their headings,
+   and 187 hairlines is the broadsheet look this redesign is avoiding. */
+.dish-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 0.9rem;
+  align-items: start;
+  padding: 0.8rem 0.75rem;
+  border-radius: 0.65rem;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+/* `hover: hover` only, or a tap leaves the row stuck looking selected. */
+@media (hover: hover) {
+  .dish-row:hover {
+    background: var(--surface-alt);
+  }
+}
+.dish-row[data-sold-out] {
+  opacity: 0.58;
+}
+
+/* Nudged onto the first text line's baseline rather than the box top. */
+.dish-row__mark {
+  margin-top: 0.2rem;
+}
+
+.dish-row__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.dish-row__name {
+  font-size: var(--fs-body-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  transition: color var(--dur-fast) ease;
+  /* The global 44px touch minimum applies to anchors that are not inline, and
+     this one is a block. On the old card the title was inline so the rule
+     silently did nothing; here it made a one-line name 44px tall and opened a
+     23px hole under every dish. Cleared at pointer sizes and restored below,
+     where it is a tap target rather than a gap — see the phone rule further
+     down. */
+  min-height: 0;
+}
+.dish-row__name:hover {
+  color: var(--primary);
+}
+
+.dish-row__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+.dish-row__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.dish-row__rating svg {
+  color: var(--primary);
+}
+
+.dish-row__desc {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  /* One line. A menu is scanned, not read, and two lines of description on
+     187 rows is a page nobody reaches the bottom of. The whole text is on the
+     dish's own page. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+/* Price and action on one line, price first. The money is what the eye is
+   looking for; the button is what the hand wants, and it sits at the end of
+   the row where the thumb already is. */
+.dish-row__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+  min-height: 40px;
+}
+.dish-row__price {
+  font-size: var(--fs-body-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dish-row__heart {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -0.25rem -0.35rem 0 0;
+  border-radius: 999px;
+  color: var(--muted);
   transition: color var(--dur-fast) ease;
 }
-.dish-card img {
+.dish-row__heart[data-on="true"] {
+  color: var(--danger);
+}
+
+.dish-row__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+/* Only ever rendered when the dish HAS a photograph, so this is never a
+   placeholder standing in for one. */
+.dish-row__thumb {
+  display: block;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 0.55rem;
   background: var(--surface-alt);
+}
+.dish-row__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dish-row__soldout {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+
+.dish-chip {
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  font-size: var(--fs-tiny);
+  font-weight: 700;
+  line-height: 1.5;
+}
+.dish-chip--hot {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.dish-chip--new {
+  background: var(--surface-alt);
+  color: var(--text);
 }
 /* The stepper replaces the + button the moment a dish is added; a soft pop
    confirms the add without a toast. */
@@ -459,10 +622,10 @@ textarea.flex:focus-visible {
     transform: none;
   }
 }
-.dish-card .qty-pill {
+.dish-row .qty-pill {
   animation: pop-in var(--dur) var(--ease-out) both;
 }
-.dish-card .qty-value {
+.dish-row .qty-value {
   min-width: 28px;
 }
 
@@ -849,9 +1012,13 @@ textarea.flex:focus-visible {
   /* The dish title is the largest tap target on a card and was 24px tall.
      Padding rather than font-size: the type scale is right, the hit area was
      not. */
-  .dish-card a.font-display {
-    display: inline-block;
-    padding-block: 0.35rem;
+  /* On a phone the name IS the tap target — the row is one column and there
+     is nothing else to hit — so the 44px minimum comes back here, and the
+     text is centred in it rather than sitting on top of a gap. */
+  .dish-row__name {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
   }
 }
 
@@ -2677,14 +2844,15 @@ html {
     font-size: var(--fs-title);
   }
 }
+/* Sentence case. "13 DISHES" shouted a number nobody needed shouted, and
+   uppercase small text is harder to read at exactly the size it was set. */
 .menu-section__count {
   margin-left: auto;
   flex-shrink: 0;
   color: var(--muted);
-  font-size: var(--fs-tiny);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 
