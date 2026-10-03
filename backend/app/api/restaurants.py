@@ -76,12 +76,15 @@ from app.services.payment_accounts import (
     delete_account,
     describe_accounts,
     list_accounts,
+    read_credentials,
     save_account,
 )
+from app.services.payments.base import PaymentProviderError
 from app.services.payments.service import webhook_events_for, webhook_url_for
 from app.services.payments.registry import (
     GATEWAY_FOR_METHOD,
     available_payment_methods,
+    build_provider,
     settles_with_own_account,
 )
 from app.services.secrets import SecretsUnavailable
@@ -1144,6 +1147,44 @@ def put_restaurant_payment_gateway(
             is_enabled=payload.is_enabled,
             updated_by_user_id=current_user.id,
         )
+        db.flush()
+
+        # Ask the gateway whether these keys are real, BEFORE committing them.
+        #
+        # Without this a wrong secret stores happily, the screen reads "Live",
+        # and the failure surfaces at the one moment it costs something: a
+        # customer pressing Pay, who is told "Authentication failed" and has no
+        # idea what to do about it. It happened here — a webhook secret was
+        # pasted into the Key Secret field, because the two sit next to each
+        # other and are both called a secret, and nothing about either one's
+        # shape gives the mistake away.
+        #
+        # Only when a secret was actually supplied. A save that just flips
+        # "offer this at checkout" sends no secret, and should not be refused
+        # because the network happened to be down.
+        if payload.secret_key:
+            # `require_enabled=False`: the keys are checked whether or not the
+            # gateway is being switched on in the same save. Somebody entering
+            # credentials now and enabling them later should still find out now
+            # that they typed the wrong secret.
+            credentials = read_credentials(
+                db, restaurant_id=restaurant.id, gateway=gateway, require_enabled=False
+            )
+            try:
+                if credentials is None:
+                    raise PaymentProviderError("the credentials could not be read back")
+                build_provider(gateway, credentials).verify_credentials()
+            except PaymentProviderError as error:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"{gateway.value.title()} rejected these credentials: {error}. "
+                        "Nothing was saved. Check the key and its secret are the pair from "
+                        "the gateway's API keys page, not the webhook signing secret."
+                    ),
+                ) from error
+
         db.commit()
     except SecretsUnavailable as error:
         db.rollback()

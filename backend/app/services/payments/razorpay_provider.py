@@ -172,6 +172,27 @@ class RazorpayProvider:
 
     # --- The contract -------------------------------------------------------
 
+    def verify_credentials(self) -> None:
+        """Ask Razorpay whether this key pair is real, before anything depends on it.
+
+        A wrong secret is indistinguishable from a right one until the first
+        customer tries to pay — the keys store, the screen says Live, and the
+        checkout then fails with "Authentication failed" at the moment somebody
+        is trying to give the restaurant money.
+
+        That happened: a webhook secret was pasted into the Key Secret field,
+        because the two sit next to each other and both are called a secret. A
+        Razorpay API secret is 24 characters of letters and digits; the webhook
+        secret is whatever the owner typed. Nothing in the shape of either one
+        makes the mistake obvious, so the only honest check is to ask Razorpay.
+
+        `GET /payments?count=1` is the cheapest authenticated call there is: it
+        reads nothing that matters, creates nothing, and a brand-new account
+        with no payments still answers 200 with an empty list.
+        """
+
+        self._request("GET", "/payments", params={"count": 1})
+
     def create_intent(
         self,
         *,

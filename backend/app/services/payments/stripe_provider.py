@@ -227,6 +227,23 @@ class StripeProvider:
             expires_at=session.get("expires_at"),
         )
 
+    def verify_credentials(self) -> None:
+        """Ask Stripe whether this secret key is real, before a customer does.
+
+        The same reasoning as the Razorpay method of this name: a wrong key
+        stores happily, the screen reads Live, and the failure surfaces at the
+        moment somebody is trying to pay. Balance is the cheapest authenticated
+        read on the account and changes nothing.
+        """
+
+        try:
+            stripe.Balance.retrieve(**self._client_kwargs())
+        except stripe.StripeError as error:
+            raise PaymentProviderError(
+                f"Stripe refused these credentials: {error.user_message or error}",
+                retryable=False,
+            ) from error
+
     def retrieve_intent(self, intent_id: str) -> PaymentIntentResult:
         try:
             intent = stripe.PaymentIntent.retrieve(intent_id, **self._client_kwargs())
