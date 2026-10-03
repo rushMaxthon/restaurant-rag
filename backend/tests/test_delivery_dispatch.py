@@ -79,6 +79,25 @@ def an_order(**over):
     return SimpleNamespace(**fields)
 
 
+# The environment `should_dispatch` is asked to answer in.
+#
+# Both entries are part of the answer, so these tests state them rather than
+# inherit them. The flag was always pinned; the courier HOST was not, and that
+# cost a real debugging round. Live Pidge credentials were put into
+# `backend/.env` on 2026-10-03 to test production dispatch, and three subtests
+# here started failing — `live_dispatch_blocked_reason()` was refusing to book
+# a rider from a local environment pointed at a production host, which is
+# precisely its job. The suite went red because of an untracked file, and the
+# interlock looked like the bug when it was the only thing behaving correctly.
+#
+# The interlock itself is tested in `test_delivery_live_interlock.py`, where
+# the host is the subject rather than a precondition.
+DISPATCH_ENABLED_LOCALLY = {
+    "ENABLE_DELIVERY_DISPATCH": "true",
+    "PIDGE_BASE_URL": "https://store.dev.pidge.in",
+}
+
+
 class WhichOrdersGoToACourierTests(unittest.TestCase):
     """`should_dispatch` is the last gate before real money is spent.
 
@@ -91,7 +110,7 @@ class WhichOrdersGoToACourierTests(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        patcher = mock.patch.dict(os.environ, {"ENABLE_DELIVERY_DISPATCH": "true"})
+        patcher = mock.patch.dict(os.environ, DISPATCH_ENABLED_LOCALLY)
         patcher.start()
         self.addCleanup(patcher.stop)
         get_settings.cache_clear()
@@ -225,7 +244,7 @@ class PullingTheStatusRatherThanWaitingForIt(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        patcher = mock.patch.dict(os.environ, {"ENABLE_DELIVERY_DISPATCH": "true"})
+        patcher = mock.patch.dict(os.environ, DISPATCH_ENABLED_LOCALLY)
         patcher.start()
         self.addCleanup(patcher.stop)
         get_settings.cache_clear()

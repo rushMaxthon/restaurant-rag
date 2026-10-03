@@ -431,6 +431,28 @@ export async function choosePickup(page: Page): Promise<void> {
 export const PAY_BUTTON = /^Pay (now|\p{Sc})/u;
 
 /**
+ * Choose card, before pressing Pay.
+ *
+ * Every test that drives Stripe's sheet has to do this, and none of them used
+ * to: card was the only way to pay, so it was preselected and pressing Pay
+ * opened Stripe. The moment a restaurant switched Razorpay on, Razorpay became
+ * the preselected method, Pay opened Razorpay's sheet, and the wait for a
+ * `__privateStripeFrame` timed out — a failure in a payment flow that had not
+ * changed, caused by admin data rather than by the build. It cost two separate
+ * debugging rounds in one afternoon, in `mobile-layout` and then `order-flow`,
+ * which is why it is a helper rather than a third copy.
+ *
+ * Which methods a branch offers is the restaurant's own setting, so this makes
+ * the choice rather than assuming it. Tolerant of card not being offered at
+ * all: the caller is about to wait for Stripe's iframe, and a clear timeout
+ * there says more than a failure here would.
+ */
+export async function chooseCardPayment(page: Page): Promise<void> {
+  const card = page.getByRole("radio", { name: /pay by card/i });
+  if (await card.isVisible().catch(() => false)) await card.click();
+}
+
+/**
  * Switch the checkout to "Schedule for later", once that choice exists.
  *
  * Resolves to whether the toggle was offered at all. A closed branch offers
@@ -527,19 +549,68 @@ export async function fillCheckoutContact(page: Page): Promise<void> {
   // backend refuses a checkout without them rather than pricing from a
   // re-geocoded line. So this drives the control the way a customer does.
   const picked = await pickAddressNearBranch(page);
-  if (!picked) {
-    // Typed as a fallback so a spec that is not about delivery still gets
-    // through when the suggestion service is unavailable. It will be refused
-    // at the Pay button, which is the correct behaviour and a clearer failure
-    // than an empty form.
-    await fillField(page, ADDRESS_LINE_1, "Radhe Shyam Society, Singanpor");
-    await fillField(page, "City", "Surat");
-    await fillField(page, "State", "Gujarat");
-    // Not "ZIP code": the label is derived from the tenant's currency, so it
-    // reads "PIN code" here. The VALUE needs no such care — `POSTAL_SHAPE`
-    // checks the shape rather than the format, for reasons given where it is
-    // defined.
-    await fillField(page, await postalFieldLabel(page.request), "395004");
+  if (picked) return;
+
+  // The suggestion service did not answer. Fall back to an address the
+  // ACCOUNT already holds, which carries the coordinates it was geocoded to
+  // when it was saved — and which the checkout prefills by itself.
+  //
+  // This used to type a plausible street and accept the refusal, on the
+  // grounds that "it will be refused at the Pay button, which is the correct
+  // behaviour and a clearer failure than an empty form". That was true when a
+  // saved address could not satisfy the coordinate rule either. It no longer
+  // is, and the cost of the old fallback was high: on a loaded machine the
+  // autocomplete times out, and then EVERY spec that pays for a delivery
+  // failed on a 422 about the address — four of them in one run on
+  // 2026-10-03, none of them about addresses, each one looking like a
+  // regression in whatever it actually tested.
+  //
+  // Note what this undoes. `pickAddressNearBranch` types into line 1, which
+  // overwrites the prefilled saved address and clears the point that came
+  // with it. Reloading puts both back, so the fallback is a reload rather
+  // than more typing.
+  if (await hasLocatedSavedAddress(page.request)) {
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByLabel("City", { exact: true })).not.toHaveValue("", { timeout: 15_000 });
+    // The name and number go back in: the reload reset them too.
+    await fillField(page, "Full name", "Playwright Tester");
+    await fillField(page, "Phone number", "4155550132", "(415) 555-0132");
+    return;
+  }
+
+  // Nothing located anywhere. Typed, and the order will be refused at the Pay
+  // button — still the correct behaviour, and now genuinely the last resort
+  // rather than the first one.
+  await fillField(page, ADDRESS_LINE_1, "Radhe Shyam Society, Singanpor");
+  await fillField(page, "City", "Surat");
+  await fillField(page, "State", "Gujarat");
+  // Not "ZIP code": the label is derived from the tenant's currency, so it
+  // reads "PIN code" here. The VALUE needs no such care — `POSTAL_SHAPE`
+  // checks the shape rather than the format, for reasons given where it is
+  // defined.
+  await fillField(page, await postalFieldLabel(page.request), "395004");
+}
+
+/**
+ * Has this account got a saved address a delivery can actually be priced to?
+ *
+ * Coordinates, not just text. An address saved before they were captured is
+ * no more use to the checkout than a typed one, and the whole point of the
+ * fallback above is to find a point the server will accept.
+ */
+async function hasLocatedSavedAddress(request: APIRequestContext): Promise<boolean> {
+  try {
+    const headers = await customerAuth(request);
+    const reply = await request.get(`${API_BASE}/profile/me`, { headers });
+    if (!reply.ok()) return false;
+    const saved = ((await reply.json()).saved_addresses ?? []) as {
+      latitude: number | null;
+      longitude: number | null;
+    }[];
+    return saved.some((entry) => entry.latitude !== null && entry.longitude !== null);
+  } catch {
+    return false;
   }
 }
 

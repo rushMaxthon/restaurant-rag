@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   PAY_BUTTON,
+  chooseCardPayment,
   choosePickup,
   clickFixed,
   fillCart,
@@ -207,8 +208,7 @@ import {
     // Pay opened Razorpay instead, so this failed on a layout that had not
     // changed. Which method is offered is admin data, not a property of the
     // build, so the choice is made here rather than assumed.
-    const cardOption = page.getByRole("radio", { name: /pay by card/i });
-    if (await cardOption.isVisible().catch(() => false)) await cardOption.click();
+    await chooseCardPayment(page);
 
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PAY_BUTTON, STORAGE_STATE_KEY, clickFixed, openScheduling, fillCart, fillCheckoutContact, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
+import { PAY_BUTTON, STORAGE_STATE_KEY, chooseCardPayment, clickFixed, openScheduling, fillCart, fillCheckoutContact, fillField, payWithTestCard, resetApp, signIn } from "./helpers";
 
 /**
  * What happens AFTER the card is accepted.
@@ -22,6 +22,10 @@ test("a paid order empties the cart and settles without a refresh", async ({ pag
   await times.first().click();
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  // Card, explicitly — see `chooseCardPayment`. This test settles a STRIPE
+  // payment and waits for Stripe's iframe, so it must not be handed
+  // Razorpay's sheet by a restaurant that has both switched on.
+  await chooseCardPayment(page);
   await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
   await expect(page.getByRole("heading", { name: /pay for your order/i })).toBeVisible({
     timeout: 60_000,

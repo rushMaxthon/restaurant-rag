@@ -3,6 +3,7 @@ import {
   API_BASE,
   PAY_BUTTON,
   TENANT_HEADER,
+  chooseCardPayment,
   choosePickup,
   clickFixed,
   fillCart,
@@ -170,8 +171,22 @@ test.describe("placing and paying for an order", () => {
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
     await times.first().click();
 
-    // Card is the only method: this product does not take cash.
-    await expect(page.getByText(/pay by card/i)).toBeVisible();
+    // Card, chosen explicitly.
+    //
+    // This read "card is the only method: this product does not take cash",
+    // and merely asserted the words were on screen before pressing Pay. That
+    // held for as long as card WAS the only method. The moment a restaurant
+    // switched Razorpay on, Razorpay became the preselected one, Pay opened
+    // Razorpay's sheet, and `payWithTestCard` waited for a Stripe iframe that
+    // was never going to mount — a failure in a payment flow that had not
+    // changed, caused by admin data rather than by the build.
+    //
+    // Which methods a branch offers is the restaurant's own setting, so the
+    // choice is made rather than assumed. Asserted visible here, unlike in
+    // `chooseCardPayment`, because this test's whole subject is a card
+    // payment: if card is not on offer there is nothing to test.
+    await expect(page.getByRole("radio", { name: /pay by card/i })).toBeVisible();
+    await chooseCardPayment(page);
 
     // Desktop submits from the sticky summary ("Pay $48.91"); below lg the
     // summary scrolls away and a fixed bottom bar carries it ("Pay now"). Same
