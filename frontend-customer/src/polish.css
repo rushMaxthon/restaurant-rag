@@ -3509,7 +3509,20 @@ html {
    accent along the top so the one panel that is about money reads as the
    anchor of the page rather than as a fourth step. */
 .order-summary {
-  position: relative;
+  /* No `position` here, and that is the fix for a misalignment that was
+     visible on every checkout: the panel sat 96px below the form beside it.
+     ----------------------------------------------------------------------
+     The markup asks for `sticky` with a `top` of 96px, so the summary follows
+     you down the form. This rule declared `position: relative` and, being
+     unlayered, beat the utility — leaving the element relative with a `top`
+     of 96px, which does not stick to anything and simply shoves it down the
+     page by 96 pixels. The offset meant to hold it clear of the header while
+     scrolling became a permanent gap at the top instead.
+
+     `relative` was here to anchor the 3px accent bar back when that was an
+     absolutely positioned `::before`. It is a background now, so nothing in
+     this panel needs a positioning context, and the breakdown popover brings
+     its own. */
   padding: var(--space-5);
   /* The accent is painted as a background rather than as a clipped
      pseudo-element, and this panel does NOT clip its overflow.
