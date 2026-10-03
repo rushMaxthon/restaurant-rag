@@ -944,9 +944,12 @@ export function LocationDetailPage({
       <nav className="segmented-tabs" aria-label="Location detail tabs">
         {[
           { key: "details", label: "Details", icon: Store },
-          { key: "settings", label: "Settings", icon: Settings2 },
-          { key: "slots", label: "Slots", icon: Clock3 },
-          { key: "general_settings", label: "General Settings", icon: Truck },
+          { key: "settings", label: "Address & contact", icon: Settings2 },
+          { key: "slots", label: "Opening hours", icon: Clock3 },
+          // "Fulfilment & fees" rather than "General Settings", which described
+          // nothing. This is where delivery, pickup, the payment toggles and
+          // the four charges live.
+          { key: "general_settings", label: "Fulfilment & fees", icon: Truck },
           { key: "menu", label: "Menu Items", icon: UtensilsCrossed },
           { key: "orders", label: "Orders", icon: ReceiptText },
         ].map((tab) => {

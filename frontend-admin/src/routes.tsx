@@ -30,7 +30,7 @@ import {
   Megaphone,
   Palette,
   ReceiptText,
-  Settings,
+  ListChecks,
   SlidersHorizontal,
   Sparkles,
   Store,
@@ -347,7 +347,7 @@ export const ROUTES: RouteDef[] = [
     id: "tenants",
     pattern: "/tenants",
     roles: ADMIN_ONLY,
-    nav: { section: "Platform", label: "Tenants", icon: Building2 },
+    nav: { section: "Platform", label: "Storefront apps", icon: Building2 },
     render: (ctx) => (
       <TenantsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
@@ -393,7 +393,7 @@ export const ROUTES: RouteDef[] = [
     // backend answers the same way for each — `_theme_restaurant_for` refuses
     // a restaurant_id from an owner that is not their own.
     roles: BOTH,
-    nav: { section: "Manage", label: "Website", icon: Globe },
+    nav: { section: "Manage", label: "Storefront content", icon: Globe },
     render: (ctx) => (
       <WebsitePage
         onToast={ctx.pushToast}
@@ -564,7 +564,7 @@ export const ROUTES: RouteDef[] = [
     id: "generated-combos",
     pattern: "/generated-combos",
     roles: BOTH,
-    nav: { section: "Manage", label: "Generated Combos", icon: Layers3 },
+    nav: { section: "Manage", label: "Combo suggestions", icon: Layers3 },
     render: (ctx) => (
       <GeneratedCombosPage
         onToast={ctx.pushToast}
@@ -592,7 +592,7 @@ export const ROUTES: RouteDef[] = [
     id: "preferences",
     pattern: "/preferences",
     roles: BOTH,
-    nav: { section: "Manage", label: "Preferences", icon: SlidersHorizontal },
+    nav: { section: "Manage", label: "Taste questions", icon: ListChecks },
     render: (ctx) => (
       <PreferencesPage onToast={ctx.pushToast} role={ctx.role} token={ctx.token} />
     ),
@@ -615,7 +615,7 @@ export const ROUTES: RouteDef[] = [
     id: "settings",
     pattern: "/settings",
     roles: BOTH,
-    nav: { section: "System", label: "Settings", icon: Settings },
+    nav: { section: "System", label: "Display settings", icon: SlidersHorizontal },
     render: (ctx) => <SettingsPage onToast={ctx.pushToast} />,
   },
 ];
