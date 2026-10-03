@@ -4115,3 +4115,124 @@ html {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* --- What people order ----------------------------------------------------
+   The shop window: real dishes, real prices, one tap to the cart. It is the
+   only block on this page that can be bought from, so it is the only one
+   with a filled button on it — everything else here is reading. */
+.picks {
+  background: var(--surface-alt);
+}
+.picks__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.picks__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.picks__title {
+  margin: 0;
+  font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.12;
+}
+.picks__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  color: var(--primary-text);
+  font-weight: 700;
+}
+.picks__all svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.picks__grid {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-8);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .picks__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1000px) {
+  .picks__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.picks__card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+@media (hover: hover) {
+  .picks__card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px) translateZ(0);
+  }
+}
+/* The photograph is the point of this block, so it gets the room: a 4:3 crop
+   rather than the menu card's 16:10, which is closer to how food is shot. */
+.picks__shot {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+.picks__shot > * {
+  width: 100%;
+  height: 100%;
+}
+
+.picks__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: var(--space-4);
+}
+.picks__name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: var(--fs-title-sm);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.picks__desc {
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.picks__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+.picks__price {
+  font-size: var(--fs-title-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}

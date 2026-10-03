@@ -9,6 +9,7 @@ import {
   BrandStory,
 } from "@/components/bangkok/brand-story";
 import { BrandSpecialities } from "@/components/bangkok/brand-facts";
+import { BrandPicks } from "@/components/bangkok/brand-picks";
 import { HowToOrder } from "@/components/bangkok/how-to-order";
 import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
@@ -198,6 +199,11 @@ function Home() {
       {/* Not the menu's categories — the four or five things somebody in this
           neighbourhood would actually name. See `BrandSpecialities`. */}
       <BrandSpecialities />
+
+      {/* The shop window. Everything above says who this restaurant is;
+          nothing said what anything costs, so the question a first-time
+          customer actually has could only be answered by leaving. */}
+      <BrandPicks />
 
       {/* Their own food, as photography rather than as a shop. The lead story
           has taken the first three, so the mosaic starts after them and

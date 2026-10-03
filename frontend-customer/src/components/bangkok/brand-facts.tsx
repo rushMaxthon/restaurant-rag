@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { Award, MapPin } from "lucide-react";
+import { Clock, MapPin } from "lucide-react";
 
 import { StatsCounter } from "@/components/ui/stats-counter";
+import { dayFromDate, formatSlotRange, weeklySlots } from "@/lib/branch-hours";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useStorefrontBrand, useStorefrontCopy, yearsTrading } from "@/lib/storefront";
 
@@ -80,6 +81,9 @@ export function BrandRail() {
   const store = useBangkokStore();
   const years = yearsTrading(established);
   const branch = store.orderLocation ?? store.currentLocation;
+  const today = dayFromDate(new Date());
+  const todaySlots =
+    weeklySlots(branch, "DELIVERY").find((entry) => entry.day === today)?.slots ?? [];
 
   return (
     <aside className="brand-rail">
@@ -113,6 +117,21 @@ export function BrandRail() {
           <p className="brand-rail__where">
             <MapPin aria-hidden="true" />
             {[branch.address_line_1, branch.city].filter(Boolean).join(", ")}
+          </p>
+        )}
+
+        {/* Today's hours, not the week's. "When can I get this" is the second
+            question after "what do they sell", and the answer people want is
+            about today — the full week is on the contact page for the one
+            person planning Thursday. */}
+        {todaySlots.length > 0 && (
+          <p className="brand-rail__where">
+            <Clock aria-hidden="true" />
+            <span>
+              Open today
+              <br />
+              {todaySlots.map(formatSlotRange).join(", ")}
+            </span>
           </p>
         )}
 
@@ -200,8 +219,12 @@ export function BrandSpecialities() {
         </h2>
         <ul className="known__grid reveal-group">
           {specialities.map((speciality) => (
+            // The award icon that led every one of these is gone. Repeating
+            // one icon six times down a list tells a reader nothing except
+            // that an icon was available; a structural device should carry
+            // information, and this one carried the same information six
+            // times. The words are the content.
             <li className="known__item" key={speciality}>
-              <Award aria-hidden="true" />
               <span>{speciality}</span>
             </li>
           ))}
