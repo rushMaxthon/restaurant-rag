@@ -200,6 +200,16 @@ import {
     await times.first().waitFor({ state: "visible", timeout: 20_000 });
     await times.first().click();
 
+    // Card, explicitly. This test is about STRIPE's sheet — it waits for a
+    // `__privateStripeFrame` two lines below — and it used to get there by
+    // default, because card was the only way to pay. The moment a restaurant
+    // switched Razorpay on, that became the preselected method and pressing
+    // Pay opened Razorpay instead, so this failed on a layout that had not
+    // changed. Which method is offered is admin data, not a property of the
+    // build, so the choice is made here rather than assumed.
+    const cardOption = page.getByRole("radio", { name: /pay by card/i });
+    if (await cardOption.isVisible().catch(() => false)) await cardOption.click();
+
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await clickFixed(page, page.getByRole("button", { name: PAY_BUTTON }).first());
 

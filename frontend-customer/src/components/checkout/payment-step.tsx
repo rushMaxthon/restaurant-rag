@@ -5,6 +5,17 @@ import { StepHeader } from "@/components/checkout/step-header";
 
 export type PayableMethod = "CARD" | "RAZORPAY";
 
+/** What each method is called, in one place so the single-method block and
+ *  the chooser cannot describe the same gateway two different ways. */
+const METHOD_TITLE: Record<PayableMethod, string> = {
+  CARD: "Pay by card",
+  RAZORPAY: "UPI, cards and wallets",
+};
+const METHOD_BLURB: Record<PayableMethod, string> = {
+  CARD: "Visa, Mastercard and Amex, handled by Stripe.",
+  RAZORPAY: "Any UPI app, card, netbanking or wallet, handled by Razorpay.",
+};
+
 /**
  * Step three: how this is paid for.
  *
@@ -14,7 +25,6 @@ export type PayableMethod = "CARD" | "RAZORPAY";
  * both correct at once — so nothing here is a button that dead-ends.
  */
 export function PaymentStep({
-  cardAvailable,
   paymentConfigPending,
   canPay,
   sessionExpired,
@@ -23,7 +33,6 @@ export function PaymentStep({
   method,
   onChooseMethod,
 }: {
-  cardAvailable: boolean;
   paymentConfigPending: boolean;
   canPay: boolean;
   sessionExpired: boolean;
@@ -40,16 +49,28 @@ export function PaymentStep({
         blurb="Paid securely before your order reaches the kitchen."
       />
 
-      <div className="mt-4 pay-option" data-on={cardAvailable}>
-        <CreditCard className="size-5 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1">
-          <span className="block font-bold">Pay by card</span>
-          <span className="block text-sm text-muted">
-            Visa, Mastercard and Amex, handled by Stripe.
+      {/* ONE method: described, not offered as a choice.
+          -------------------------------------------------------------------
+          This block used to render unconditionally and always said "Pay by
+          card … handled by Stripe", which was true back when Stripe was the
+          only gateway. It produced two bugs the moment a second one could be
+          switched on. A restaurant with both showed card twice — once here
+          and again in the list below. And a restaurant on Razorpay ALONE got
+          a greyed-out card block describing a gateway it does not use, with
+          no mention of the one it does.
+
+          So the single-method case now describes whichever method that
+          actually is. */}
+      {payableMethods.length === 1 && payableMethods[0] && (
+        <div className="mt-4 pay-option" data-on={canPay}>
+          <CreditCard className="size-5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">{METHOD_TITLE[payableMethods[0]]}</span>
+            <span className="block text-sm text-muted">{METHOD_BLURB[payableMethods[0]]}</span>
           </span>
-        </span>
-        {cardAvailable && <BadgeCheck className="size-5 shrink-0 text-primary" />}
-      </div>
+          {canPay && <BadgeCheck className="size-5 shrink-0 text-primary" />}
+        </div>
+      )}
 
       {paymentConfigPending && <p className="mt-3 text-sm text-muted">Checking payment options…</p>}
 
@@ -92,14 +113,12 @@ export function PaymentStep({
               role="radio"
               type="button"
             >
-              <span className="font-bold">
-                {option === "RAZORPAY" ? "UPI, cards and wallets" : "Card"}
+              <CreditCard className="size-5 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block font-bold">{METHOD_TITLE[option]}</span>
+                <span className="block text-sm text-muted">{METHOD_BLURB[option]}</span>
               </span>
-              <span className="text-sm text-muted">
-                {option === "RAZORPAY"
-                  ? "Pay with any UPI app, card, netbanking or wallet"
-                  : "Pay by card"}
-              </span>
+              {method === option && <BadgeCheck className="size-5 shrink-0 text-primary" />}
             </button>
           ))}
         </div>

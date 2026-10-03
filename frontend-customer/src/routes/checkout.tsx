@@ -768,8 +768,16 @@ function Checkout() {
   const submitting = validateOrder.isPending || createOrder.isPending || payingCard;
   // One rule for both Pay buttons, so the panel and the phone bar cannot
   // disagree about whether the order may be placed yet.
+  // `payableMethods.length > 0`, not `cardAvailable`. The gate asked whether
+  // STRIPE was available, which was the same question back when card was the
+  // only way to pay — and silently stopped being it. A restaurant settling
+  // through Razorpay alone would have had both Pay buttons disabled on a
+  // checkout that was otherwise complete, with nothing on screen to say why.
   const canSubmit =
-    s.cart.length > 0 && !submitting && cardAvailable && !(scheduling && !chosenSlot);
+    s.cart.length > 0 &&
+    !submitting &&
+    payableMethods.length > 0 &&
+    !(scheduling && !chosenSlot);
 
   return (
     <form
@@ -873,7 +881,6 @@ function Checkout() {
           />
 
           <PaymentStep
-            cardAvailable={cardAvailable}
             paymentConfigPending={paymentConfigPending}
             canPay={canPay}
             sessionExpired={sessionExpired}
