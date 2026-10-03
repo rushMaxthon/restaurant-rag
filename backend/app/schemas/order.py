@@ -104,6 +104,20 @@ class OrderCreateRequest(BaseModel):
     #: rather than a chosen number.
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    #: The saved address this order is going to, when the customer chose one
+    #: from their own list instead of typing.
+    #:
+    #: Here because the delivery QUOTE has taken it since the autocomplete was
+    #: built and the order never did, so the two paths disagreed about what
+    #: counts as a located address: the quote priced a saved address from its
+    #: stored rooftop, and the order refused the very same address for
+    #: carrying no coordinates — "choose your address from the suggestions",
+    #: shown to a customer who had chosen it. Reported 2026-10-03.
+    #:
+    #: Coordinates still win when both arrive. This is the fallback, and it is
+    #: scoped to the caller in the service, because an address id is a
+    #: guessable handle.
+    saved_address_id: uuid.UUID | None = None
     # Who to ring about this delivery. Optional so the mobile client, which
     # does not send them yet, keeps working; the web checkout requires them.
     contact_name: str | None = Field(default=None, max_length=255)

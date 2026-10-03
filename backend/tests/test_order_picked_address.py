@@ -101,8 +101,27 @@ class TheRulesAreInTheSource(unittest.TestCase):
         self.assertIn("GeocodeConfidence.ROOFTOP.value", self.source)
 
     def test_a_typed_address_is_refused_at_a_checkout(self) -> None:
-        self.assertIn("elif require_payment_validation:", self.source)
+        # Written as a check on `known_drop` rather than an `elif` on the
+        # coordinates, because a coordinate is no longer the only way to be
+        # located: an address chosen from the customer's own saved list
+        # carries one on its row. This used to read
+        # `elif require_payment_validation:`, hanging off the coordinate test,
+        # and so refused a saved address the customer had plainly chosen —
+        # "Please choose your address from the suggestions", shown to somebody
+        # who had. See test_saved_address_is_saved_once.
+        #
+        # The rule being guarded is unchanged and slightly stronger: a
+        # checkout that produced no point at all, by any route, is refused.
+        self.assertIn("if known_drop is None and require_payment_validation:", self.source)
         self.assertIn("choose your address from the suggestions", self.source)
+
+    def test_a_saved_address_is_a_located_address(self) -> None:
+        # The other route to a point, and the reason the refusal above had to
+        # move. The quote endpoint has read it since the autocomplete was
+        # built; the order path did not, so the two disagreed about the same
+        # address.
+        self.assertIn("payload.saved_address_id", self.source)
+        self.assertIn("saved.user_id == customer.id", self.source)
 
     def test_an_unpriced_delivery_is_still_refused(self) -> None:
         # The companion rule from test_delivery_fee_required. Both must hold:

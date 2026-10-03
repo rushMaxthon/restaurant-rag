@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 import sqlalchemy as sa
 from sqlalchemy import Select, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config.celery import celery_app
@@ -35,6 +36,7 @@ from app.services import order_charges
 from app.services.delivery.quoting import delivery_fee_for
 from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
+from app.models.user_saved_address import UserSavedAddress
 from app.schemas.order import (
     ChargeLineResponse,
     OrderChargesResponse,
@@ -514,7 +516,51 @@ def _prepare_order_draft(
                 payload.longitude,
                 GeocodeConfidence.ROOFTOP.value,
             )
-        elif require_payment_validation:
+        elif payload.saved_address_id is not None:
+            # An address out of the customer's own list. It was geocoded when
+            # it was saved, so the rooftop is already on the row and asking the
+            # map provider again would be a paid call for a worse answer.
+            #
+            # The quote endpoint has always done this; the order did not, which
+            # is how a customer could be priced for an address and then refused
+            # for it. Scoped to the caller: an address id is a guessable
+            # handle, and pricing against somebody else's row would leak where
+            # they live by way of a delivery distance.
+            # Wrapped because this lookup is NEW on the order path, and an
+            # order is the last thing that should fail over it. The table can
+            # be absent on an environment that has not run the migrations —
+            # `services/profile.py` has a whole fail-open path for exactly
+            # that — and before this fallback existed, placing an order never
+            # touched it. Letting the error through would turn a clean 422
+            # ("choose your address from the suggestions") into a 500 on the
+            # Pay button.
+            #
+            # Degrading to "no point from here" is safe: the refusal below
+            # still fires, so nothing is ever priced or driven to a place
+            # nobody chose.
+            saved: UserSavedAddress | None = None
+            try:
+                saved = db.get(UserSavedAddress, payload.saved_address_id)
+            except SQLAlchemyError:
+                logger.exception(
+                    "Could not read saved address %s for order pricing; "
+                    "continuing without its coordinates",
+                    payload.saved_address_id,
+                )
+                db.rollback()
+            if (
+                saved is not None
+                and saved.user_id == customer.id
+                and saved.latitude is not None
+                and saved.longitude is not None
+            ):
+                known_drop = (
+                    saved.latitude,
+                    saved.longitude,
+                    saved.geocode_confidence or GeocodeConfidence.ROOFTOP.value,
+                )
+
+        if known_drop is None and require_payment_validation:
             # No coordinate means the address was typed and never resolved to a
             # building. Pricing it would mean quoting from the middle of a
             # neighbourhood and sending a rider to the same place.
