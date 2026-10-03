@@ -193,7 +193,8 @@ export function BrandSpecialities() {
   return (
     <section className="known">
       <div className="page-pad section-pad known__inner">
-        <p className="eyebrow reveal">What we are known for</p>
+        {/* The "What we are known for" label that stood here said the same
+            thing as the heading beneath it, one line earlier and in capitals. */}
         <h2 className="font-display known__title reveal-wipe">
           <span>The things people come to {copy.name} for</span>
         </h2>

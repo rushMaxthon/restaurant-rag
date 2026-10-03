@@ -255,14 +255,32 @@ textarea.flex:focus-visible {
 /* --- Typography rhythm -----------------------------------------------------
    Section eyebrows were 16px bold caps typed by hand, so they weighed as much
    as the heading beneath. Small, tracked and lighter reads as a label. */
+/* Sentence case, and no tracking.
+   -----------------------------------------------------------------------
+   This was 0.76rem, weight 800, 0.12em of letter-spacing and UPPERCASE, in
+   the brand colour, above almost every heading on the site: "WHAT WE ARE
+   KNOWN FOR", "FROM OUR KITCHEN", "HOW IT WORKS", "BEFORE YOU ORDER". A
+   tracked-out capitalised label above a heading is the single commonest
+   tell of a templated page, and capitals are hardest to read at exactly
+   the size this is set at.
+
+   Restyled rather than deleted everywhere, because several of these do say
+   something the heading does not, and a label that earns its place is worth
+   keeping. The ones that only repeated the heading beneath them are gone
+   from their own components. */
 .eyebrow {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--primary);
+  margin-bottom: 0.35rem;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--muted);
+  /* Stated rather than simply dropped. `frontend-shared/components.css` also
+     declares `.eyebrow`, and the operator's panel still wants the uppercase
+     version — so removing the properties here left the shared ones applying
+     unopposed and the labels still shouting. They are reset explicitly, and
+     the admin keeps what it had until its own turn. */
+  text-transform: none;
+  letter-spacing: normal;
 }
 .eyebrow--inherit {
   color: inherit;
