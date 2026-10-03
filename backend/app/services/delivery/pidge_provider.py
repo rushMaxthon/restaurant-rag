@@ -398,6 +398,23 @@ class PidgeProvider:
         body = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
         return self._read(body.get("data") or body)
 
+    def cancel(self, provider_order_id: str) -> None:
+        """Cancel the whole order at Pidge.
+
+        The path has NO `/order/` segment — `/vendor/{id}/cancel`, where every
+        other call here is `/vendor/order/...`. Writing it by analogy with
+        `fetch` produces a 404 that reads like an unknown order.
+
+        Pidge allows this only while the order is PENDING or FULFILLED, which
+        is to say before a rider has the food. After that it answers 400
+        `order.action.cancel.not-allowed`, and `_call` already raises that as
+        non-retryable: it is a fact about the delivery, not a bad minute.
+        """
+
+        if not provider_order_id:
+            raise DeliveryProviderError("No delivery named", retryable=False)
+        self._call("POST", f"/v1.0/store/channel/vendor/{provider_order_id}/cancel")
+
     def parse_webhook(self, payload: dict[str, Any]) -> DeliveryResult:
         """Their webhook mirrors the status response, so one reader serves both."""
 

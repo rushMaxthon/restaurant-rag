@@ -284,6 +284,57 @@ def dispatch(db: Session, order: Order) -> OrderDelivery | None:
     return row
 
 
+def cancel(db: Session, order: Order) -> OrderDelivery | None:
+    """Call off the rider booked for this order. Idempotent.
+
+    Returns the delivery row, or None when no rider was ever booked. The
+    caller commits.
+
+    Not behind `enable_delivery_dispatch` or the live-host interlock, and that
+    is deliberate. Both exist to stop a rider being BOOKED; this un-books one,
+    and it can only ever act on a row that carries a courier's own id — which
+    means a booking that really happened. Gating it would leave the one
+    failure those guards cannot produce: a real rider riding to a cancelled
+    order because the flag was turned off after they were sent.
+
+    A refusal is recorded and re-raised rather than swallowed. Pidge refuses
+    once the food is collected, and "the rider still has it" is something a
+    person has to deal with — the row must not say CANCELLED when a bike is
+    on its way to somebody's door.
+    """
+
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    if row is None or not row.provider_order_id:
+        return None
+    try:
+        if DeliveryState(row.state).is_terminal:
+            return row
+    except ValueError:
+        # A state this code has never seen is not known to be finished, so
+        # the courier is still asked.
+        pass
+
+    provider = delivery_provider()
+    if provider is None:
+        return None
+    try:
+        provider.cancel(row.provider_order_id)
+    except DeliveryProviderError as error:
+        row.last_error = str(error)[:2000]
+        logger.warning(
+            "Courier would not cancel delivery %s for order %s: %s",
+            row.provider_order_id,
+            order.id,
+            error,
+        )
+        raise
+    row.state = DeliveryState.CANCELLED.value
+    row.provider_status = "cancelled"
+    row.last_error = ""
+    logger.info("Cancelled delivery %s for order %s", row.provider_order_id, order.id)
+    return row
+
+
 def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDelivery:
     """Write a courier's answer onto the delivery, and move the order if it should."""
 
@@ -333,4 +384,4 @@ def advance_order(order: Order, state: DeliveryState) -> bool:
     return True
 
 
-__all__ = ["advance_order", "build_request", "dispatch", "record", "should_dispatch"]
+__all__ = ["advance_order", "build_request", "cancel", "dispatch", "record", "should_dispatch"]

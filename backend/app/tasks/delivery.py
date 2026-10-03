@@ -20,7 +20,8 @@ from sqlalchemy import select
 from app.models.order_delivery import OrderDelivery
 from app.services.delivery.base import DeliveryProviderError, DeliveryState
 from app.services.delivery.registry import delivery_provider
-from app.services.delivery.service import dispatch, record
+from app.models.enums import OrderStatus
+from app.services.delivery.service import cancel, dispatch, record
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,53 @@ def dispatch_order_task(self, order_id: str) -> dict[str, str]:
             return {"status": "skipped", "order_id": str(order_id)}
         return {
             "status": "dispatched",
+            "order_id": str(order_id),
+            "provider_order_id": row.provider_order_id,
+        }
+
+
+@celery_app.task(
+    name="app.tasks.delivery.cancel_order_delivery_task",
+    bind=True,
+    max_retries=4,
+    default_retry_delay=30,
+)
+def cancel_order_delivery_task(self, order_id: str) -> dict[str, str]:
+    """Call off the rider for an order that has been cancelled.
+
+    The order is re-read and must actually BE cancelled. This task is queued
+    from inside the transaction that cancels the order, to run after its
+    commit — and a transaction can roll back. Without this check a cancellation
+    that never happened would still send a rider home, and the kitchen would
+    be holding food nobody is coming for.
+    """
+
+    with SessionLocal() as db:
+        order = db.get(Order, uuid.UUID(str(order_id)))
+        if order is None:
+            logger.warning("Delivery cancel: no order %s", order_id)
+            return {"status": "missing", "order_id": str(order_id)}
+        if order.status != OrderStatus.CANCELLED:
+            logger.warning(
+                "Delivery cancel: order %s is %s, not cancelled; leaving its rider alone",
+                order_id,
+                order.status,
+            )
+            return {"status": "skipped", "order_id": str(order_id)}
+        try:
+            row = cancel(db, order)
+        except DeliveryProviderError as error:
+            # As with dispatch: the row carries why, so commit it.
+            db.commit()
+            if error.retryable and self.request.retries < self.max_retries:
+                raise self.retry(exc=error) from error
+            logger.error("Delivery cancel gave up for order %s: %s", order_id, error)
+            return {"status": "failed", "order_id": str(order_id), "error": str(error)[:200]}
+        db.commit()
+        if row is None:
+            return {"status": "skipped", "order_id": str(order_id)}
+        return {
+            "status": "cancelled",
             "order_id": str(order_id),
             "provider_order_id": row.provider_order_id,
         }

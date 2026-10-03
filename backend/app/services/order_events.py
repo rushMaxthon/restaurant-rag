@@ -20,6 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
@@ -152,6 +153,41 @@ def mark_order_cancelled(
         note=note,
         occurred_at=moment,
     )
+    _queue_courier_cancel(db, order)
+
+
+def _queue_courier_cancel(db: Session, order: Order) -> None:
+    """If a rider was booked for this order, arrange for them to be called off.
+
+    Here rather than at each call site, for the reason `mark_order_cancelled`
+    exists at all: there is one way an order is cancelled, so there is one
+    place a rider can be forgotten. Today every cancellation is of an unpaid
+    order, which was never dispatched, and this does nothing — it is here for
+    the first cancellation path that is not, because that one will be written
+    by somebody thinking about refunds rather than about a bike.
+
+    Queued after the commit, never called inline: the courier is somebody
+    else's server, and the task re-reads the order and refuses to act unless
+    it really is cancelled, which is what makes a rollback harmless.
+    """
+
+    delivery = getattr(order, "delivery", None)
+    if delivery is None or not getattr(delivery, "provider_order_id", ""):
+        return
+    order_id = str(order.id)
+
+    def _send(_session: Session) -> None:
+        try:
+            from app.config.celery import celery_app
+
+            celery_app.send_task(
+                "app.tasks.delivery.cancel_order_delivery_task",
+                kwargs={"order_id": order_id},
+            )
+        except Exception:  # noqa: BLE001 - a broker that is down must not undo a cancellation
+            logger.warning("Could not queue a courier cancel for order %s", order_id, exc_info=True)
+
+    event.listen(db, "after_commit", _send, once=True)
 
 
 def record_menu_availability_event(
