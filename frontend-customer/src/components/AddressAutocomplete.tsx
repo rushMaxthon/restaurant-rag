@@ -28,6 +28,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { MapPin } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -223,8 +224,16 @@ export function AddressAutocomplete({
     } else if (event.key === "Enter" && highlighted >= 0) {
       // Only when something is highlighted. Swallowing a bare Enter would stop
       // somebody submitting a form with an address they typed themselves.
+      //
+      // The row is read before the key is swallowed, rather than indexed
+      // blind. `highlighted` is held in state and the list is replaced on
+      // every keystroke, so the two can disagree for a frame — and on that
+      // frame this handler was passing `undefined` into `choose`, cancelling
+      // the submit and resolving nothing.
+      const chosen = suggestions[highlighted];
+      if (!chosen) return;
       event.preventDefault();
-      void choose(suggestions[highlighted]);
+      void choose(chosen);
     } else if (event.key === "Escape") {
       setOpen(false);
     }
@@ -286,40 +295,56 @@ export function AddressAutocomplete({
         {searching ? "Searching for addresses" : resolving ? "Loading the address you chose" : ""}
       </p>
 
-      {searching && !resolving && (
-        <p className="mt-1 text-xs text-muted">Searching addresses…</p>
-      )}
-      {resolving && <p className="mt-1 text-xs text-muted">Looking up that address…</p>}
-
-      {open && suggestions.length > 0 && (
-        <ul
-          className="elevated-panel absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto py-1"
-          id={listId}
-          role="listbox"
-        >
-          {suggestions.map((suggestion, at) => (
-            <li
-              aria-selected={at === highlighted}
-              className={`cursor-pointer px-3 py-2 text-sm ${
-                at === highlighted ? "bg-[var(--surface-alt)]" : ""
-              }`}
-              id={`${listId}-${at}`}
-              key={suggestion.place_id}
-              // Mouse DOWN, not click: the input's blur fires first on a
-              // click and the list would already be closing.
-              onMouseDown={(event) => {
-                event.preventDefault();
-                void choose(suggestion);
-              }}
-              onMouseEnter={() => setHighlighted(at)}
-              role="option"
-            >
-              <span className="block font-semibold">{suggestion.primary}</span>
-              {suggestion.secondary && (
-                <span className="block text-xs text-muted">{suggestion.secondary}</span>
-              )}
-            </li>
-          ))}
+      {/*
+       * The two sentences that used to sit here — "Searching addresses…" and
+       * "Looking up that address…" — are gone.
+       *
+       * They said what the spinner inside the field already said, and they
+       * said it by inserting a line of text under the box, so every keystroke
+       * that started or finished a search nudged the rest of the form down and
+       * back. A loading state that moves the thing you are filling in is worse
+       * than no loading state. The spinner stays, because it occupies space
+       * that was already reserved, and the announcement above stays for anyone
+       * not looking at it.
+       *
+       * The waiting is shown where the answers will appear instead: the panel
+       * opens immediately with placeholder rows, so the list does not pop into
+       * existence under the cursor a moment after you stop typing.
+       */}
+      {open && (suggestions.length > 0 || searching) && (
+        <ul className="addr-list" id={listId} role="listbox">
+          {suggestions.length === 0 && searching
+            ? [0, 1, 2].map((row) => (
+                <li aria-hidden="true" className="addr-row addr-row--waiting" key={row}>
+                  <span className="addr-row__skeleton" />
+                  <span className="addr-row__skeleton addr-row__skeleton--sub" />
+                </li>
+              ))
+            : suggestions.map((suggestion, at) => (
+                <li
+                  aria-selected={at === highlighted}
+                  className="addr-row"
+                  data-active={at === highlighted || undefined}
+                  id={`${listId}-${at}`}
+                  key={suggestion.place_id}
+                  // Mouse DOWN, not click: the input's blur fires first on a
+                  // click and the list would already be closing.
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    void choose(suggestion);
+                  }}
+                  onMouseEnter={() => setHighlighted(at)}
+                  role="option"
+                >
+                  <MapPin aria-hidden="true" className="addr-row__pin" />
+                  <span className="addr-row__text">
+                    <span className="addr-row__primary">{suggestion.primary}</span>
+                    {suggestion.secondary && (
+                      <span className="addr-row__secondary">{suggestion.secondary}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
         </ul>
       )}
     </div>
