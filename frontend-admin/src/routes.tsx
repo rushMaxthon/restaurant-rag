@@ -321,6 +321,35 @@ export const ROUTES: RouteDef[] = [
     ),
   },
   {
+    // A direct address for the gateway keys.
+    //
+    // They live behind a tab on the restaurant page, and `/locations` on the
+    // end of a very similar URL leads somewhere else entirely — which is how
+    // the owner looking for them ended up on the branch screen instead, twice.
+    // A link somebody can be sent, and a page that can be bookmarked once
+    // found, is cheaper than better signposting.
+    //
+    // Both roles: an owner holds their own gateway account, which is the whole
+    // point of per-restaurant credentials. The backend re-checks that anyway.
+    id: "restaurant-payments",
+    pattern: "/admin/restaurants/:restaurantId/payments",
+    roles: BOTH,
+    restaurantOf: (params) => params.restaurantId,
+    activeNavPath: "/restaurants",
+    render: (ctx, params) => (
+      <RestaurantDetailPage
+        assignedRestaurantId={ctx.restaurantId}
+        initialSection="settings"
+        key={`${params.restaurantId}:payments`}
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
+        restaurantId={params.restaurantId}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
+  },
+  {
     id: "restaurant-detail",
     pattern: "/admin/restaurants/:restaurantId",
     roles: BOTH,
