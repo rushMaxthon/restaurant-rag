@@ -31,8 +31,14 @@ INSTALL
 
         .\install.ps1 -Server https://YOUR-SERVER/api -Code 123456
 
-That is it. The agent starts now and again every time the PC boots, with
-nobody signed in.
+That is it. Set up once, and from then on, with nobody doing anything:
+
+  * it starts when the PC boots - no sign-in needed
+  * it restarts itself within 2 minutes if it ever stops
+  * it has no window, so there is nothing to close by accident
+
+And if it IS stopped - PC off, agent killed, printer unplugged - the orders
+are not lost. They queue on the server and print the moment it is back.
 
 
 IF THE PRINTER IS PLUGGED IN BY USB

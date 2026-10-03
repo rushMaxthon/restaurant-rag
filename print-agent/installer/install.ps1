@@ -33,7 +33,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Server,
-    [Parameter(Mandatory = $true)][string]$Code,
+    # Not required when this PC is already paired: re-running the installer to
+    # pick up a new build should not need a fresh code, and demanding one made
+    # an upgrade indistinguishable from a first install.
+    [string]$Code,
 
     # Only for a deployment serving several restaurants on one address. In
     # production each has its own subdomain and the URL carries it.
@@ -90,7 +93,7 @@ administrator), so the agent can start at boot with nobody signed in.
 
 Or install it for this user only, which needs no Administrator rights:
 
-    .\install.ps1 -Server $Server -Code <a fresh code> -PerUser
+    .\install.ps1 -Server $Server -Code 123456      (use a fresh code) -PerUser
 
 Tickets then print only while this user is signed in.
 "@
@@ -154,15 +157,41 @@ https://nodejs.org (the .msi, all defaults) and run this again.
 # --- 4. Pair ----------------------------------------------------------------
 # Before the task is registered, so a wrong code fails here - where somebody
 # is watching - rather than silently at the next boot.
-$pairArgs = @()
-if ($launchArgs) { $pairArgs += (Join-Path $InstallDir "agent.cjs") }
-$pairArgs += @("pair", "--server", $Server, "--code", $Code)
-if ($StorefrontHost) { $pairArgs += @("--storefront-host", $StorefrontHost) }
+$existingConfig = Join-Path $env:ProgramData "QuickBitePrint\config.json"
+$alreadyPaired = Test-Path $existingConfig
 
-Step "Pairing with $Server ..."
-& $launcher @pairArgs
-if ($LASTEXITCODE -ne 0) {
-    Fail "Pairing failed. Codes last ten minutes - generate a fresh one from the Printers page and try again."
+if (-not $Code -and -not $alreadyPaired) {
+    Fail @"
+This PC is not paired yet, so a code is needed:
+
+    .\install.ps1 -Server $Server -Code 123456
+
+Get one from the admin panel: Printers > Add a printer > choose the branch.
+Codes last ten minutes and work once.
+"@
+}
+
+if ($Code) {
+    $pairArgs = @()
+    if ($launchArgs) { $pairArgs += (Join-Path $InstallDir "agent.cjs") }
+    $pairArgs += @("pair", "--server", $Server, "--code", $Code)
+    if ($StorefrontHost) { $pairArgs += @("--storefront-host", $StorefrontHost) }
+
+    Step "Pairing with $Server ..."
+    & $launcher @pairArgs
+    if ($LASTEXITCODE -ne 0) {
+        if ($alreadyPaired) {
+            # The common case for a second run: the code was already spent on
+            # the first one. The PC is paired, so this is an upgrade and the
+            # install should continue rather than stop at a step it did not
+            # need to take.
+            Write-Host "  That code did not work, but this PC is already paired - keeping it." -ForegroundColor Yellow
+        } else {
+            Fail "Pairing failed. Codes last ten minutes and work once - generate a fresh one from the Printers page."
+        }
+    }
+} else {
+    Step "Already paired; keeping the existing pairing"
 }
 
 # --- 5. The task ------------------------------------------------------------
@@ -177,17 +206,37 @@ if ($LASTEXITCODE -ne 0) {
 # answers the question without that.
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Step "Replacing the existing task"
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
+# NOT deleted here, and that ordering matters. Unregister-then-Register leaves a
+# window where the old task is gone and the new one has not been created: if the
+# registration then fails - which it does, with Access denied, on an account
+# that may not write to Task Scheduler - the PC is left with NO task at all,
+# worse off than before the installer ran. Observed on exactly that path; the
+# existing task survived only because the DELETE failed too, which is luck
+# rather than design.
+#
+# `Register-ScheduledTask -Force` replaces in one step instead: either the new
+# task exists or the old one still does.
 
 $action = New-ScheduledTaskAction -Execute $launcher -Argument "$($launchArgs)run" -WorkingDirectory $InstallDir
 
 if ($PerUser) {
     # The current account only, which is what makes this work without
     # elevation: registering a task for yourself needs no privilege.
+    #
+    # S4U rather than Interactive, and the difference is visible on the
+    # desktop. An Interactive task gives a console program a console WINDOW -
+    # confirmed on this build, titled with the full path to the exe - and a
+    # window on a kitchen PC is a window somebody tidying up will close. S4U
+    # runs the same task with no interactive desktop and no stored password,
+    # so there is nothing on screen to close.
+    #
+    # It needs the "log on as a batch job" right, which an administrator has
+    # by default and a standard user may not, so the registration below falls
+    # back to Interactive rather than failing.
     $me = $identity.Identity.Name
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $me
-    $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive
+    $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType S4U
     $where = "at logon for $me only"
 } elseif ($AtLogon) {
     # As the signed-in user, so the Windows spooler's per-user printers are
@@ -201,6 +250,32 @@ if ($PerUser) {
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     $where = "at startup, with no login needed"
 }
+
+# A repeat, on top of whichever trigger was chosen above.
+#
+# The trigger gets it started after a reboot; this is what gets it back if it
+# ever stops in between. `RestartCount` is not enough on its own: Task
+# Scheduler restarts a task that FAILED, and a process that is killed, or that
+# exits cleanly because its token was revoked, has not failed by that
+# definition - so nothing would bring it back until the next logon, which on a
+# kitchen PC could be the next morning.
+#
+# `MultipleInstances = IgnoreNew` below is what makes this safe to repeat: if
+# the agent is already running, every repeat is a no-op. If it is not, the
+# next one inside two minutes starts it. Two agents racing for one queue
+# cannot happen.
+#
+# Two minutes rather than five because the cost of checking is a no-op that
+# Windows performs anyway, and the cost of NOT checking is a cook not seeing
+# tickets during a dinner rush. Nothing is lost either way - the queue holds
+# them - but the delay is the thing being bought here.
+#
+# The duration is ten years rather than `[TimeSpan]::MaxValue`, which some
+# builds of Task Scheduler reject outright.
+$repeating = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Minutes 2) `
+    -RepetitionDuration (New-TimeSpan -Days 3650)
+$trigger.Repetition = $repeating.Repetition
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -225,19 +300,45 @@ $settings = New-ScheduledTaskSettingsSet `
 # Access denied - meaning a restaurant would reboot, nothing would print, and
 # the person who installed it would have no reason to suspect the install. An
 # installer that cannot confirm what it did must say so.
+$registered = $false
+$failure = ""
 try {
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings `
-        -Description "Prints kitchen tickets for new orders." -ErrorAction Stop | Out-Null
+        -Description "Prints kitchen tickets for new orders." -Force -ErrorAction Stop | Out-Null
+    $registered = $true
 } catch {
+    # Captured here because `$_` stops meaning the exception the moment this
+    # block ends, and the message below is printed further down.
+    $failure = $_.Exception.Message
+    # S4U needs a right a standard user may not have. Falling back keeps the
+    # install working; the only cost is a console window on the desktop, which
+    # is said out loud rather than left as a surprise.
+    if ($PerUser -and $principal.LogonType -eq "S4U") {
+        Write-Host "  Running hidden was refused; falling back to a visible window." -ForegroundColor Yellow
+        Write-Host "  (Closing that window stops printing until the 2-minute check restarts it.)" -ForegroundColor Yellow
+        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive
+        try {
+            Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+                -Principal $principal -Settings $settings `
+                -Description "Prints kitchen tickets for new orders." -Force -ErrorAction Stop | Out-Null
+            $registered = $true
+        } catch {
+            $failure = $_.Exception.Message
+            $registered = $false
+        }
+    }
+}
+
+if (-not $registered) {
     Fail @"
 The agent is installed and paired, but Windows would not register the
-background task: $($_.Exception.Message)
+background task: $failure
 
 Everything else is done, so finish it from an Administrator PowerShell window:
 
     cd $PSScriptRoot
-    .\install.ps1 -Server $Server -Code <a fresh code>
+    .\install.ps1 -Server $Server -Code 123456      (use a fresh code)
 
 Until then the agent can be run by hand, and will print normally:
 
@@ -249,6 +350,7 @@ if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) 
     Fail "The task '$TaskName' did not register, and Windows reported no reason. Try an Administrator PowerShell window."
 }
 Step "Scheduled task '$TaskName' registered: $where"
+Step "It checks itself every 2 minutes and restarts if it has stopped"
 
 try {
     Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
@@ -270,6 +372,25 @@ if ($state -eq "Running") {
 $dataDir = Join-Path $env:ProgramData "QuickBitePrint"
 Write-Host ""
 Write-Host "  Done." -ForegroundColor Green
+Write-Host ""
+Write-Host "  From now on, without anybody doing anything:" -ForegroundColor White
+if ($PerUser -or $AtLogon) {
+    Write-Host "    * starts when this user signs in"
+    Write-Host "    * restarts by itself within 2 minutes if it ever stops"
+    Write-Host ""
+    Write-Host "  It does NOT run while the PC sits at the sign-in screen." -ForegroundColor Yellow
+    Write-Host "  For a PC that must print with nobody signed in, run this from an" -ForegroundColor Yellow
+    Write-Host "  Administrator window instead (no -PerUser, no -AtLogon):" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    .\install.ps1 -Server $Server"
+} else {
+    Write-Host "    * starts when the PC boots, with nobody signed in"
+    Write-Host "    * restarts by itself within 2 minutes if it ever stops"
+    Write-Host "    * has no window, so there is nothing to close by accident"
+}
+Write-Host ""
+Write-Host "  Orders that arrive while it is stopped are not lost: they queue on"
+Write-Host "  the server and print the moment it is back."
 Write-Host ""
 Write-Host "  Log      $dataDir\agent.log"
 Write-Host "  Config   $dataDir\config.json"
