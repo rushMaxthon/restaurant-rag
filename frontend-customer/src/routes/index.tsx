@@ -138,11 +138,26 @@ function Home() {
               </span>
             )}
             {branch && (
-              <span
-                // The chip sits on `--success` or `--muted`, neither of which
-                // is the brand, so the brand's ink token was never right here.
-                className={`hero-chip text-white ${openNow.available ? "bg-success" : "bg-muted"}`}
-              >
+              // The same surface as the two chips beside it, with a coloured
+              // dot carrying the status.
+              //
+              // It used to be white on `--success` or on `--muted`. Measured,
+              // that was 3.3:1 in light — under AA at this size — and in dark
+              // it was worse in two ways at once: `--success` lifts to a
+              // brighter green there, so the chip became a pale box on a dark
+              // hero at 1.74:1, which the audit flags as a theme leak as well
+              // as unreadable.
+              //
+              // A dot does the same job with none of that. The colour it
+              // carries is never read AS text, so it cannot fail a contrast
+              // rule, and the label inherits the surface ink that the rest of
+              // the row already uses and that both themes already define.
+              <span className="hero-chip bg-surface text-foreground">
+                <span
+                  aria-hidden="true"
+                  className="status-dot"
+                  data-open={openNow.available || undefined}
+                />
                 {openNow.available ? "Open now" : "Closed right now"}
               </span>
             )}

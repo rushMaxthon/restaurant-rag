@@ -53,7 +53,7 @@ function placedAt(iso: string): string {
 function OrderRow({ order, index }: { order: Order; index: number }) {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
-  const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary";
+  const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary-text";
   // An unpaid order has not started, so it gets no pulse and no progress bar.
   const unpaid = order.status === "PAYMENT_PENDING" && order.payment_status !== "COD";
   const live = !SETTLED.has(order.status) && !unpaid;
@@ -91,7 +91,7 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
           {/* A booked time is the single most important fact about a scheduled
               order, and it was shown nowhere after checkout. */}
           {booked && (
-            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary-text">
               <CalendarClock className="size-4 shrink-0" />
               {isDelivery ? "Arriving" : "Ready"} {booked}
             </p>

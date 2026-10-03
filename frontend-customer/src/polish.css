@@ -148,7 +148,12 @@ main > * {
   transition: transform var(--dur) var(--ease-out);
 }
 .mobile-nav[data-status="active"] {
-  color: var(--primary);
+  /* The ink tier. At 12px on the bar's pale ground the brand FILL measures
+     3.25:1, and this is the label telling somebody which screen they are on
+     — the one word in the bar that has to be legible at a glance. The icon
+     beside it keeps the fill, because an icon is not text and carries the
+     same meaning through its shape. */
+  color: var(--primary-text);
 }
 .mobile-nav[data-status="active"] svg {
   transform: translateY(-1px);
@@ -1450,7 +1455,10 @@ html {
   max-width: 100%;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--primary);
+  /* `--primary-text`, not `--primary`. The brand fill is a FILL; as ink
+     on a pale ground it measures 3.25:1. The text tier is the same hue
+     walked down until it clears 4.5 against the page. */
+  color: var(--primary-text);
 }
 
 /* One tile per saved address, shown only when there is more than one — with
@@ -1795,7 +1803,10 @@ html {
   color: var(--primary);
 }
 .line__state {
-  color: var(--primary);
+  /* `--primary-text`, not `--primary`. The brand fill is a FILL; as ink
+     on a pale ground it measures 3.25:1. The text tier is the same hue
+     walked down until it clears 4.5 against the page. */
+  color: var(--primary-text);
   font-weight: 600;
 }
 
@@ -4368,4 +4379,18 @@ html {
   50% {
     opacity: 1;
   }
+}
+
+/* The open/closed dot on the hero chip. A colour that is never read as text,
+   so it carries the status without owing anything to a contrast rule — which
+   is the whole reason this replaced a white-on-green label. */
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.status-dot[data-open] {
+  background: var(--success);
 }
