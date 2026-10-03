@@ -227,6 +227,12 @@ class StripeProvider:
             expires_at=session.get("expires_at"),
         )
 
+    @property
+    def public_key(self) -> str:
+        """The key the browser mounts Stripe Elements with."""
+
+        return self._publishable_key
+
     def verify_credentials(self) -> None:
         """Ask Stripe whether this secret key is real, before a customer does.
 

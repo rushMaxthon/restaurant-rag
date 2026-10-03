@@ -186,6 +186,12 @@ class RazorpayProvider:
 
     # --- The contract -------------------------------------------------------
 
+    @property
+    def public_key(self) -> str:
+        """The key the browser opens Razorpay Checkout with — its `key_id`."""
+
+        return self._key_id
+
     def verify_credentials(self) -> None:
         """Ask Razorpay whether this key pair is real, before anything depends on it.
 
