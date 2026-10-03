@@ -174,7 +174,7 @@ export function BrandHighlights() {
 
   return (
     <section className="facts" aria-label="At a glance">
-      <ul className="facts__grid reveal-group--sides" data-count={Math.min(tiles.length, 5)}>
+      <ul className="facts__grid reveal-group" data-count={Math.min(tiles.length, 5)}>
         {tiles.map((tile) => (
           <li className="facts__tile" data-lead={tile.lead || undefined} key={tile.label}>
             {/* The year does not count up. Watching "Baking since" climb from

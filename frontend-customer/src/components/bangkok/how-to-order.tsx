@@ -40,7 +40,7 @@ export function HowToOrder({ branch }: { branch: RestaurantLocation | undefined 
           <span>Three steps, no phone call</span>
         </h2>
 
-        <ol className="how__steps reveal-group--sides">
+        <ol className="how__steps reveal-group how__steps--seq">
           <li className="how__step">
             <span className="how__n" aria-hidden="true">
               1

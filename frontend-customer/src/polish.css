@@ -3863,7 +3863,7 @@ html {
 @keyframes reveal-rise {
   from {
     opacity: 0;
-    transform: translate3d(0, 38px, 0) scale(0.97);
+    transform: translate3d(0, 16px, 0);
   }
   to {
     opacity: 1;
@@ -3952,7 +3952,6 @@ html {
     .reveal-right,
     .reveal-settle,
     .reveal-group > *,
-    .reveal-group--sides > *,
     .reveal-group--settle > * {
       animation: reveal-rise both;
       animation-timeline: view();
@@ -3966,9 +3965,8 @@ html {
        genuinely reach the fold at different moments — no index variable, and
        it stays right when the grid reflows to one column on a phone. */
     .reveal-group > *,
-    .reveal-group--sides > *,
     .reveal-group--settle > * {
-      animation-range: entry 4% cover 34%;
+      animation-range: entry 8% cover 20%;
     }
 
     .reveal-settle,
@@ -3987,12 +3985,6 @@ html {
         animation-name: reveal-from-left;
       }
       .reveal-right {
-        animation-name: reveal-from-right;
-      }
-      .reveal-group--sides > :nth-child(odd) {
-        animation-name: reveal-from-left;
-      }
-      .reveal-group--sides > :nth-child(even) {
         animation-name: reveal-from-right;
       }
     }
@@ -4036,7 +4028,6 @@ html {
   .reveal-right,
   .reveal-settle,
   .reveal-group > *,
-  .reveal-group--sides > *,
   .reveal-group--settle > *,
   .reveal-wipe > span,
   .parallax-img img {
@@ -4235,4 +4226,34 @@ html {
   font-size: var(--fs-title-sm);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+/* --- The three steps ------------------------------------------------------
+   The one place on this page where a stagger says something: these are
+   numbered, so they genuinely are a sequence and arriving in order reads as
+   the order you do them in. Everywhere else a stagger is just delay.
+
+   The number settles a beat after its own card rather than with it, which is
+   the whole effect — one small deliberate moment instead of three boxes
+   flying in from alternating edges. Its own `view()` timeline, so it stays
+   correct when the row reflows to a column on a phone. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .how__steps--seq .how__n {
+      animation: step-number both;
+      animation-timeline: view();
+      animation-range: entry 14% cover 26%;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+}
+@keyframes step-number {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

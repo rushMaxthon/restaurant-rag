@@ -132,7 +132,7 @@ export function BrandOffer() {
             {bodyOf(section).length > 0 && (
               <div className="brand-offer__body">{paragraphs(section)}</div>
             )}
-            <ul className="brand-offer__grid reveal-group--sides">
+            <ul className="brand-offer__grid reveal-group">
               {(section.bullets ?? []).map((bullet, at) => (
                 <li className="brand-offer__item" key={at}>
                   {/* One consistent mark, deliberately. Picking an icon per
