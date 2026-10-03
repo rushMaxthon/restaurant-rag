@@ -40,12 +40,27 @@ export const STORAGE = {
   state: "state",
   chatSession: "chat-session",
   guestPrefs: "guest-prefs",
+  /**
+   * The payment the customer is in the middle of.
+   *
+   * Held so a reload does not lose it. The payment sheet was component state,
+   * so refreshing the page while Razorpay's window was open dropped the
+   * order's id and the gateway's — and the cart had already been cleared by
+   * then, so the customer landed back on an empty address form with a paid
+   * order they could no longer see.
+   */
+  pendingPayment: "pending-payment",
 } as const;
 
 export type StorageName = (typeof STORAGE)[keyof typeof STORAGE];
 
-/** What each key used to be called, for the one-time adoption below. */
-const LEGACY: Record<StorageName, string> = {
+/**
+ * What each key used to be called, for the one-time adoption below.
+ *
+ * Partial: a key added after the rename has no previous name, and inventing
+ * one would mean reading a `bangkok-bowl-` key that never existed.
+ */
+const LEGACY: Partial<Record<StorageName, string>> = {
   token: "bangkok-bowl-token",
   user: "bangkok-bowl-user",
   state: "bangkok-bowl-state",
@@ -90,13 +105,15 @@ export function readTenant(name: StorageName): string | null {
     const current = window.localStorage.getItem(key);
     if (current !== null) return current;
 
-    const legacy = window.localStorage.getItem(LEGACY[name]);
+    const previous = LEGACY[name];
+    if (previous === undefined) return null;
+    const legacy = window.localStorage.getItem(previous);
     if (legacy === null) return null;
     // Adopted rather than copied: leaving the old key behind would mean a
     // second tenant on the same origin inheriting it too, which is the thing
     // being fixed.
     window.localStorage.setItem(key, legacy);
-    window.localStorage.removeItem(LEGACY[name]);
+    window.localStorage.removeItem(previous);
     return legacy;
   } catch {
     return null;
@@ -118,7 +135,8 @@ export function removeTenant(name: StorageName): void {
     window.localStorage.removeItem(tenantKey(name));
     // The legacy key too, or signing out would leave a stale token behind for
     // the adoption above to pick back up on the next load.
-    window.localStorage.removeItem(LEGACY[name]);
+    const previous = LEGACY[name];
+    if (previous !== undefined) window.localStorage.removeItem(previous);
   } catch {
     // Nothing to do; see above.
   }

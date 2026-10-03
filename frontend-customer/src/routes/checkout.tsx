@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, CheckCircle2, Clock } from "lucide-react";
 import type { PickedAddress } from "@/components/AddressAutocomplete";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,14 @@ import { ScheduleStep } from "@/components/checkout/schedule-step";
 import { StepRail } from "@/components/checkout/step-rail";
 import { orderCode } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { payBlock as payBlockFor } from "@/lib/pay-gate";
+import {
+  canResumePayment,
+  clearPendingPayment,
+  readPendingPayment,
+  writePendingPayment,
+  type PendingPayment,
+} from "@/lib/pending-payment";
 import {
   activeSlots,
   availabilityNow,
@@ -27,6 +35,7 @@ import {
 } from "@/lib/branch-hours";
 import {
   addressFromSaved,
+  pointFromSaved,
   composeDeliveryAddress,
   isSameAddress,
   formatPhoneAsTyped,
@@ -68,6 +77,7 @@ function Checkout() {
   // This restaurant's own name, resolved from the address in the root route.
   const copy = useStorefrontCopy();
   const s = useBangkokStore();
+  const navigate = useNavigate();
   const isAuthenticated = useRequireAuth();
   const validateOrder = useValidateOrder();
   const createOrder = useCreateOrder();
@@ -154,6 +164,12 @@ function Checkout() {
     if (preferred) {
       setAddress(addressFromSaved(preferred));
       setAddressId(preferred.id);
+      // Its coordinates too. This is the half that mattered most: a returning
+      // customer lands here with their default address already filled, and
+      // without this the very FIRST attempt to pay was refused — "Please
+      // choose your address from the suggestions", about an address they had
+      // not typed and could not see anything wrong with.
+      setPickedPoint(pointFromSaved(preferred));
       setSaveAddress(false);
       setFilledFromAccount(true);
     } else if (account.default_address) {
@@ -169,6 +185,12 @@ function Checkout() {
     setAddress(addressFromSaved(picked));
     setAddressId(id);
     setSaveAddress(false);
+    // The point comes with it. Without this, choosing a saved address filled
+    // the form and left `pickedPoint` null, so the order was refused for
+    // having no coordinates — the one thing a saved address is meant to spare
+    // somebody from doing again. Cleared rather than left stale when the saved
+    // address has none, or the previous address's point would price this one.
+    setPickedPoint(pointFromSaved(picked));
     if (picked.phone_number)
       setPhone(
         formatPhoneAsTyped(phoneWithoutCountryCode(picked.phone_number, s.phoneCountryCode)),
@@ -183,13 +205,101 @@ function Checkout() {
   // Set once the order and its intent exist; swaps the form for the gateway's
   // own payment UI. The cart is deliberately still full at this point — a
   // cancelled payment must leave the basket intact.
-  const [pending, setPending] = useState<{
-    orderId: string;
-    orderNumber: string;
-    clientSecret: string;
-    publishableKey: string;
-    method: "CARD" | "RAZORPAY";
-  } | null>(null);
+  const [pending, setPending] = useState<PendingPayment | null>(null);
+
+  /**
+   * Restore a payment that was already under way, once per load.
+   *
+   * `pending` is component state, so a reload used to drop it — and because
+   * the cart is cleared the moment a payment succeeds, the customer landed on
+   * an empty address form with a paid order they could no longer reach. That
+   * is the "refresh sends me back to the address screen" report.
+   *
+   * The stored value is never trusted on its own. It names an order, so the
+   * server is asked what state that order is actually in: still awaiting
+   * payment means resume the sheet, anything else means the payment landed (or
+   * the order went away) and the right place is the order itself. Without that
+   * check a paid order would reopen its own payment window.
+   *
+   * Deliberately not a lazy `useState` initializer: this app renders on the
+   * server, and reading localStorage during the first client render is what
+   * made the store's cart cause a hydration mismatch — see the comment in
+   * `bangkok-store.tsx`.
+   */
+  /**
+   * An order created but not yet paid for, and what it was created from.
+   *
+   * A ref rather than state: nothing renders from it, and it must be readable
+   * by the next `placeOrder` call without waiting for a re-render. Cleared
+   * wherever the order stops being retryable — paid, abandoned, or superseded
+   * by a different cart.
+   */
+  const heldOrderRef = useRef<{ id: string; number: string; signature: string } | null>(null);
+
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !isAuthenticated) return;
+    restoredRef.current = true;
+
+    const saved = readPendingPayment();
+    if (!saved) return;
+
+    let cancelled = false;
+    void api
+      .getOrder(saved.orderId)
+      .then((order) => {
+        if (cancelled) return;
+        // Stricter than the test the order page uses to show "confirming
+        // payment" — see `canResumePayment`. A payment that has settled but
+        // whose order status has not caught up must not be charged again.
+        if (canResumePayment(order)) {
+          setPending(saved);
+          return;
+        }
+        clearPendingPayment();
+        void navigate({ to: "/orders/$orderId", params: { orderId: saved.orderId } });
+      })
+      .catch(() => {
+        // Gone, or not this customer's. Either way there is nothing to resume
+        // and the checkout is the right place to be.
+        if (!cancelled) clearPendingPayment();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, navigate]);
+
+  /**
+   * Leave the payment sheet for the order it was paying for.
+   *
+   * Razorpay needs this and Stripe does not, which is the whole bug. Stripe is
+   * handed a `returnUrl` and redirects the browser itself; Razorpay is a modal
+   * over this page, so when its handler resolved, `onPaid` cleared the cart
+   * and nothing moved — leaving the customer on a checkout whose cart was now
+   * empty, which rendered as the address step. A successful payment looked
+   * exactly like having been thrown out of the flow.
+   */
+  function leaveForOrder(orderId: string): void {
+    // Paid, so it is no longer a retryable draft.
+    heldOrderRef.current = null;
+    clearPendingPayment();
+    s.clearCart();
+    void navigate({ to: "/orders/$orderId", params: { orderId } });
+  }
+
+  // Written as it changes rather than at the call sites, so a path that sets
+  // `pending` without remembering to store it cannot exist.
+  //
+  // It does NOT clear on null, and must not. `pending` starts null on every
+  // load — including the load that is about to restore a payment — so an
+  // `else` here would wipe the stored value before the restore effect above
+  // could read it. That is the same race the cart's persist effect guards with
+  // `hydrated` in `bangkok-store.tsx`. Clearing is therefore explicit at each
+  // of the three places a payment actually ends: paid, abandoned, or found to
+  // have moved on.
+  useEffect(() => {
+    if (pending) writePendingPayment(pending);
+  }, [pending]);
 
   // Which methods THIS RESTAURANT can actually take. Not the deployment's:
   // one deployment serves every tenant, and a Surat kitchen settling through
@@ -554,7 +664,7 @@ function Checkout() {
               customerName={fullName.trim() || profile.data?.user.full_name || null}
               customerPhone={phone.trim() || profile.data?.user.phone_number || null}
               keyId={pending.publishableKey}
-              onPaid={s.clearCart}
+              onPaid={() => leaveForOrder(pending.orderId)}
               orderId={pending.orderId}
               orderNumber={pending.orderNumber}
               razorpayOrderId={pending.clientSecret}
@@ -567,7 +677,14 @@ function Checkout() {
               amount={total}
               returnUrl={`${window.location.origin}/orders/${pending.orderId}`}
               onCancel={abandonPayment}
-              onPaid={s.clearCart}
+              // Stripe redirects to `returnUrl` itself, so this does not
+              // navigate — but the stored payment still has to go, or the next
+              // visit to the checkout would try to resume one that is done.
+              onPaid={() => {
+                heldOrderRef.current = null;
+                clearPendingPayment();
+                s.clearCart();
+              }}
             />
           )}
         </div>
@@ -659,6 +776,10 @@ function Checkout() {
       // a locality. The server now refuses a delivery order without them.
       latitude: pickedPoint?.latitude,
       longitude: pickedPoint?.longitude,
+      // And which saved address it is, when it came from the list. The server
+      // falls back to the coordinates stored on that row, so a saved address
+      // is never refused for being typed.
+      saved_address_id: isDelivery && addressId ? addressId : undefined,
       // Collected since the beginning and thrown away until migration 0058:
       // the form demanded a name and phone, said they were how the rider would
       // reach you, and sent neither.
@@ -688,17 +809,66 @@ function Checkout() {
       })),
     };
 
-    try {
-      await validateOrder.mutateAsync(payload);
-      const order = await createOrder.mutateAsync(payload);
+    // What the order would be created FROM, so a retry can tell "the same
+    // order again" from "a different order".
+    const signature = JSON.stringify(payload);
+
+    // An order already created by an attempt whose PAYMENT step failed.
+    //
+    // This exists because the two halves of placing an order fail in opposite
+    // ways and used to share one `try`. If `createOrder` fails, nothing was
+    // created and "we couldn't place your order, please try again" is both
+    // true and the right advice. If `createPaymentIntent` fails, the order
+    // EXISTS as PAYMENT_PENDING — so that sentence was a lie, and taking its
+    // advice created a SECOND order for the same food. The order page can
+    // only display a held payment, not pay one, so the customer was left with
+    // an unpayable order and an invitation to duplicate it.
+    let held = heldOrderRef.current;
+    if (held && held.signature !== signature) {
+      // The cart, the address, the time or the method changed, so the held
+      // order is for different food at a different price. Released rather
+      // than left behind: an abandoned PAYMENT_PENDING order is invisible to
+      // the customer and sits in the data forever.
+      void api.cancelPayment(held.id).catch(() => undefined);
+      heldOrderRef.current = null;
+      held = null;
+    }
+
+    // Phase one: the order itself. Skipped entirely when one is already held.
+    if (!held) {
+      try {
+        await validateOrder.mutateAsync(payload);
+        const order = await createOrder.mutateAsync(payload);
+        held = { id: order.id, number: orderCode(order), signature };
+        heldOrderRef.current = held;
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : "We couldn't place your order. Please try again.",
+        );
+        // A refusal about what is in the order is fixed in the cart, not here.
+        // Without the way back, "The selected size is unavailable for Build
+        // Your Own Pizza" is a dead end on the last screen before paying.
+        // Refusals about when ("Restaurant is currently closed") are answered
+        // on this page, so the link is offered only when the message names a
+        // dish in the cart or the cart itself.
+        setErrorNeedsCart(
+          refusalNeedsCart(
+            err instanceof ApiError && err.status === 400 ? err.message : "",
+            s.cart.map((line) => line.name),
+          ),
+        );
+        return;
+      }
 
       // Saved only now, with an order number against it: an address typed into
       // a form the customer then abandoned is not one they have told us to
       // keep. Failure here is silent on purpose — the order is placed, and
       // "we could not save your address for next time" is not something to
       // interrupt a payment with.
+      //
       // Not one we already hold: an order placed to an address on file must
-      // not add a second copy of it, or the picker fills up with one street.
+      // not add a second copy of it. The server refuses the duplicate too —
+      // see `_matching_saved_address` — so this only saves a request.
       const alreadyKnown = savedAddresses.some((entry) => isSameAddress(address, entry));
       if (isDelivery && saveAddress && !addressId && !alreadyKnown) {
         api
@@ -718,16 +888,16 @@ function Checkout() {
           })
           .catch(() => undefined);
       }
+    }
 
-      // The order exists but is PAYMENT_PENDING, and stays out of the kitchen
-      // queue until a verified webhook says the money moved. This step only
-      // fetches the intent; the card itself is typed into Stripe's own iframe,
-      // so no card data ever reaches this app or its server.
+    // Phase two: the gateway. The order is held either way, so a failure here
+    // never says it was not placed.
+    try {
       setPayingCard(true);
-      const intent = await api.createPaymentIntent(order.id);
+      const intent = await api.createPaymentIntent(held.id);
       setPending({
-        orderId: order.id,
-        orderNumber: orderCode(order),
+        orderId: held.id,
+        orderNumber: held.number,
         // For Razorpay this carries the Razorpay ORDER id rather than a
         // secret: that gateway has no client secret, and the browser needs
         // the order id to open Checkout. The field name comes from the
@@ -737,21 +907,17 @@ function Checkout() {
         method,
       });
     } catch (err) {
+      // Says what is true — the order is held, under a number they can quote
+      // — and that pressing Pay again is safe, which it now is: the held
+      // order is reused rather than a second one created.
+      const because = err instanceof ApiError ? ` ${err.message}` : "";
       setError(
-        err instanceof ApiError ? err.message : "We couldn't place your order. Please try again.",
+        `Your order is held as ${held.number}, but we could not open the payment window.${because} ` +
+          `Press Pay to try again — this will not create a second order.`,
       );
-      // A refusal about what is in the order is fixed in the cart, not here.
-      // Without the way back, "The selected size is unavailable for Build Your
-      // Own Pizza" is a dead end on the last screen before paying. Refusals
-      // about when ("Restaurant is currently closed") are answered on this
-      // page, so the link is offered only when the message names a dish in
-      // the cart or the cart itself.
-      setErrorNeedsCart(
-        refusalNeedsCart(
-          err instanceof ApiError && err.status === 400 ? err.message : "",
-          s.cart.map((line) => line.name),
-        ),
-      );
+      // Nothing in the cart is wrong, so the way back to it would be the
+      // wrong suggestion here.
+      setErrorNeedsCart(false);
     } finally {
       setPayingCard(false);
     }
@@ -761,6 +927,10 @@ function Checkout() {
   async function abandonPayment() {
     if (!pending) return;
     await api.cancelPayment(pending.orderId).catch(() => undefined);
+    // Cancelled, so pressing Pay again must create a fresh order rather than
+    // reuse the one just released.
+    heldOrderRef.current = null;
+    clearPendingPayment();
     setPending(null);
   }
 
@@ -772,11 +942,19 @@ function Checkout() {
   // only way to pay — and silently stopped being it. A restaurant settling
   // through Razorpay alone would have had both Pay buttons disabled on a
   // checkout that was otherwise complete, with nothing on screen to say why.
-  const canSubmit =
-    s.cart.length > 0 &&
-    !submitting &&
-    payableMethods.length > 0 &&
-    !(scheduling && !chosenSlot);
+  // One rule, in one place, returning a REASON rather than a boolean — so a
+  // button that cannot be pressed can always say why. The old version
+  // returned only the boolean, and the state it was added to fix (a branch
+  // with no usable payment method) left a complete-looking checkout with two
+  // dead buttons and no explanation anywhere on the page.
+  const payBlock = payBlockFor({
+    cartCount: s.cart.length,
+    payableMethodCount: payableMethods.length,
+    scheduling,
+    hasSlot: Boolean(chosenSlot),
+    deliveryKnown,
+  });
+  const canSubmit = !submitting && payBlock === null;
 
   return (
     <form
@@ -915,6 +1093,7 @@ function Checkout() {
           submitting={submitting}
           payingCard={payingCard}
           canSubmit={canSubmit}
+          payBlock={payBlock}
         />
       </div>
 
@@ -925,6 +1104,7 @@ function Checkout() {
         deliveryKnown={deliveryKnown}
         submitting={submitting}
         canSubmit={canSubmit}
+        payBlock={payBlock}
       />
     </form>
   );

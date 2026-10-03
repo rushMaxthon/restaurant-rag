@@ -4,6 +4,7 @@ import {
   composeDeliveryAddress,
   isSameAddress,
   looseAddressFields,
+  pointFromSaved,
   postalCodeLabel,
   formatPhoneAsTyped,
   phoneWithoutCountryCode,
@@ -224,6 +225,44 @@ describe("addressFromSaved", () => {
     const bare = { ...saved, address_line_2: null, landmark: null };
     expect(addressFromSaved(bare).line2).toBe("");
     expect(addressFromSaved(bare).landmark).toBe("");
+  });
+});
+
+describe("pointFromSaved", () => {
+  /**
+   * The bug this exists for: the checkout filled its form from a saved
+   * address and left the picked point null, so a delivery order carried no
+   * coordinates and the server refused it with "Please choose your address
+   * from the suggestions" — shown to a customer whose address was already on
+   * the screen, prefilled, unedited. Reported 2026-10-03.
+   */
+  it("hands back the point a saved address carries", () => {
+    expect(pointFromSaved({ latitude: 21.3026097, longitude: 72.9159345 })).toEqual({
+      latitude: 21.3026097,
+      longitude: 72.9159345,
+    });
+  });
+
+  it("is null for an address saved before coordinates were captured", () => {
+    expect(pointFromSaved({ latitude: null, longitude: null })).toBeNull();
+    expect(pointFromSaved({})).toBeNull();
+  });
+
+  it("refuses half a coordinate", () => {
+    // Half a point is worse than none: it would price and drive to the
+    // meridian. The server falls back to the row's own stored point instead.
+    expect(pointFromSaved({ latitude: 21.3026097, longitude: null })).toBeNull();
+    expect(pointFromSaved({ latitude: null, longitude: 72.9159345 })).toBeNull();
+  });
+
+  it("keeps a coordinate of zero", () => {
+    // 0,0 is in the Atlantic and no restaurant delivers there, but a falsy
+    // check here would also discard a real longitude of 0 — Greenwich, Accra,
+    // and everywhere else on the meridian.
+    expect(pointFromSaved({ latitude: 5.6037, longitude: 0 })).toEqual({
+      latitude: 5.6037,
+      longitude: 0,
+    });
   });
 });
 
