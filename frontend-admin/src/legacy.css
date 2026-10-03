@@ -15026,3 +15026,222 @@ optgroup {
   background-color: var(--surface);
   color: var(--text);
 }
+
+/* Printers
+ *
+ * One block per agent, because the unit an owner thinks in is "the PC in the
+ * kitchen" rather than "a printer row". Everything paints from tokens: the
+ * dark-mode guard in `adminStyles.test.ts` fails any light hex in a
+ * surface-painting property, and that guard exists because sixteen of them
+ * had already been written here by hand. */
+.print-agent {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.print-agent__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.print-agent__head h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+}
+
+.print-agent__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+/* A paired PC with no printer is running correctly and printing nothing, which
+ * is the most confusing state available. It gets a warning tint rather than a
+ * grey note so it does not read as ordinary help text. */
+.print-agent__empty {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: var(--fs-caption);
+}
+
+.printer-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.printer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-alt);
+}
+
+.printer-row__main {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.printer-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* The sentence that answers "why did nothing print". Deliberately not styled
+ * as an alert box: it sits inside a row that is otherwise fine, and a red
+ * panel would read as the whole printer being broken. */
+.print-job-error {
+  color: var(--danger);
+  font-size: var(--fs-caption);
+  overflow-wrap: anywhere;
+}
+
+.pairing-code {
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* Read off a screen and typed on a keyboard somebody may be using for the
+ * first time, so it is as large and as widely spaced as the modal allows. */
+.pairing-code__digits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.pairing-code__digits > span {
+  /* The stack directly, not a token: this design system has no mono token,
+   * and `adminStyles.test.ts` fails any custom property nothing defines. A
+   * fallback value does not excuse it, because the guard is about the token
+   * existing rather than about the declaration resolving - and it reads
+   * comments too, so naming an undefined one even in prose fails it. */
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  font-size: var(--fs-display);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--text);
+}
+
+.pairing-steps {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+/* A checkbox and two lines of label. The hint is what makes "cancellation
+ * slip" mean something to somebody setting up a printer for the first time,
+ * so it is part of the row rather than a tooltip.
+ *
+ * The sizing below is not belt-and-braces, it is the whole reason this block
+ * exists. `.field input` and `.form-grid input` set `width: 100%` and
+ * `min-height: var(--control-h)` on EVERY input they contain, which is right
+ * for a text box and catastrophic for a checkbox: measured in the browser,
+ * the box came out 528px wide and 40px tall and the label beside it was
+ * squashed to zero. That is the hazard CLAUDE.md names - this panel styles
+ * bare elements through descendant selectors - and an attribute selector is
+ * what out-specifies it. */
+.checkbox-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.checkbox-row:first-of-type {
+  border-top: 0;
+}
+
+.checkbox-row > input[type="checkbox"] {
+  width: 1.05rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  min-height: 1.05rem;
+  flex: 0 0 auto;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+
+.checkbox-row > span {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.checkbox-row small {
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+
+/* Controls keep their own height instead of stretching to the row.
+ *
+ * `.field` is a grid, and a grid item with the default `align-items: stretch`
+ * grows to fill its row. So in a two-column form, a field WITHOUT a hint sat
+ * next to one WITH a two-line hint and its input grew to match - measured at
+ * 61px beside a 40px one, which reads as a different kind of control rather
+ * than as alignment.
+ *
+ * Scoped to this form rather than fixed on `.field` itself, which 183 places
+ * use: the same defect is latent anywhere two paired fields carry unequal
+ * hints, but changing it globally would shift screens nobody has looked at.
+ * Worth doing properly one day; not inside a printer page. */
+.printer-form .field > input,
+.printer-form .field > select {
+  align-self: start;
+}
+
+/* A fieldset inside the form grid. `.field` makes it a grid, which stacks the
+ * rows correctly, but a legend needs saying out loud or it inherits nothing. */
+.checkbox-set > legend {
+  padding: 0;
+  margin-bottom: 0.2rem;
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+/* The state that looks like success and prints nothing: a PC paired with no
+ * printer. A call to action rather than a warning strip plus a separate
+ * button, because the two together read as a problem AND a chore. */
+.print-agent__setup {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-3);
+  background: var(--surface-alt);
+}
+
+.print-agent__setup p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+.print-agent__setup strong {
+  color: var(--text);
+  font-size: var(--fs-body);
+}

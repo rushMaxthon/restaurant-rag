@@ -55,6 +55,33 @@ export function resolveStatusPillTone(status: string | OrderStatus): StatusPillT
   if (normalized === 'OFFBOARDED') {
     return 'muted';
   }
+  // Printing. A ticket on paper is the only success here; QUEUED and CLAIMED
+  // are both "on its way" and deliberately the same colour, because the
+  // difference between them is ours and not the owner's. FAILED is already
+  // danger above.
+  if (normalized === 'PRINTED') {
+    return 'success';
+  }
+  if (normalized === 'QUEUED' || normalized === 'CLAIMED') {
+    return 'neutral';
+  }
+  // A print agent's three states, which are three and not two. NEVER
+  // CONNECTED is amber rather than red because it is a setup step somebody
+  // has not finished, not a thing that broke: the PC was paired and the agent
+  // was never started. Rendering it as OFFLINE would send whoever reads it
+  // looking for a network fault that is not there.
+  if (normalized === 'ONLINE') {
+    return 'success';
+  }
+  if (normalized === 'OFFLINE') {
+    return 'danger';
+  }
+  if (normalized === 'NEVER CONNECTED') {
+    return 'warning';
+  }
+  if (normalized === 'SWITCHED OFF') {
+    return 'muted';
+  }
   // The dashboard's AI-health indicator is `failures > 0 ? AMBER : CLEAR`. Both
   // fell through to `muted`, so the two opposite outcomes rendered identically
   // and the indicator said nothing at all.
