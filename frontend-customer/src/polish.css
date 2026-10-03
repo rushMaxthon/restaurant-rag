@@ -2422,12 +2422,13 @@ html {
 .info-page__intro p {
   margin: 0;
 }
+/* Sentence case. A date is a fact, not a heading, and "LAST UPDATED 1
+   OCTOBER 2026" set in tracked capitals was the loudest line on a page whose
+   whole job is being readable. */
 .info-page__updated {
   margin: var(--space-5) 0 0;
   color: var(--muted);
-  font-size: var(--fs-tiny);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
+  font-size: var(--fs-caption);
   font-weight: 700;
 }
 .info-page__body {
