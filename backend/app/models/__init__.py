@@ -31,6 +31,7 @@ from app.models.personalized_offer import (
 from app.models.personalized_recommendation_snapshot import PersonalizedRecommendationSnapshot
 from app.models.push_notification_campaign import PushNotificationCampaign
 from app.models.restaurant_channel_connection import RestaurantChannelConnection
+from app.models.print_agent import PrintAgent, Printer, PrintJob
 from app.models.push_notification_campaign_recipient import (
     PushNotificationCampaignRecipient,
 )
@@ -81,6 +82,9 @@ __all__ = [
     "PushNotificationCampaign",
     "PushNotificationCampaignRecipient",
     "RestaurantChannelConnection",
+    "PrintAgent",
+    "Printer",
+    "PrintJob",
     "PushNotificationEvent",
     "PersonalizedOffer",
     "PersonalizedOfferEvent",
