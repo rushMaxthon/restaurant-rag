@@ -1,7 +1,41 @@
 import { Award } from "lucide-react";
 
+import { StatsCounter } from "@/components/ui/stats-counter";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { useStorefrontBrand, useStorefrontCopy, yearsTrading } from "@/lib/storefront";
+
+/**
+ * A tile's figure, counting up to itself once it is on screen.
+ *
+ * The value is a STRING the owner typed, not a number: "4.6", "₹400", "21",
+ * "4.6★". So it is split rather than parsed — symbol, number, whatever
+ * trails — and only the middle part animates. Anything that does not match
+ * that shape is printed exactly as written, because an owner is entitled to
+ * put a word in this box and a counter is not entitled to mangle it.
+ *
+ * The decimal count comes from what they typed, so "4.6" counts in tenths and
+ * lands on 4.6 rather than on 5, and "4.60" would keep both places.
+ *
+ * **The trailing part may not contain digits**, which is what keeps a range
+ * out of here. An owner's "15-25" tile matched an earlier version of this as
+ * 15 followed by the literal "-25", so on the way up it read "0-25", "7-25",
+ * "13-25" — three ranges that were never true. One number can count; two
+ * cannot, so a value holding two is printed rather than animated.
+ */
+function FactValue({ animate, value }: { animate: boolean; value: string }) {
+  const parts = /^([^\d]*)(\d+(?:\.\d+)?)([^\d]*)$/.exec(value.trim());
+  if (!animate || !parts) return <>{value}</>;
+
+  const [, prefix, digits, suffix] = parts;
+  return (
+    <StatsCounter
+      decimals={digits.includes(".") ? digits.split(".")[1].length : 0}
+      prefix={prefix}
+      suffix={suffix}
+      value={Number(digits)}
+    />
+  );
+}
 
 /**
  * The figures a restaurant leads with, in a band of their own.
@@ -57,7 +91,12 @@ export function BrandHighlights() {
       <ul className="facts__grid reveal-group--sides" data-count={Math.min(tiles.length, 5)}>
         {tiles.map((tile) => (
           <li className="facts__tile" data-lead={tile.lead || undefined} key={tile.label}>
-            <strong className="facts__value">{tile.value}</strong>
+            {/* The year does not count up. Watching "Baking since" climb from
+                zero to 1999 is a slot machine, and the one number on this page
+                that means something at a glance would be the last to arrive. */}
+            <strong className="facts__value">
+              <FactValue animate={!tile.lead} value={tile.value} />
+            </strong>
             <span className="facts__label">{tile.label}</span>
             {tile.note && <small className="facts__note">{tile.note}</small>}
           </li>
