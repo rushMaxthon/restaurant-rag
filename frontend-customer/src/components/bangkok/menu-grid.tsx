@@ -485,13 +485,46 @@ export function MenuGrid({
    *
    * The rail scrolls horizontally and a long menu's chips run well past the
    * right edge, so without this the highlight is frequently off-screen and the
-   * rail looks like it is doing nothing. `nearest` rather than `center` so it
-   * only moves when it has to.
+   * rail looks like it is doing nothing.
+   *
+   * **The rail is scrolled directly. `scrollIntoView` cannot be used here.**
+   * It scrolls EVERY scrollable ancestor, and the last of those is the
+   * document — so each time a section boundary passed during an ordinary
+   * scroll, the browser also moved the page vertically to tidy up a chip that
+   * was a few pixels under the sticky header, with `behavior: "smooth"`
+   * animating it against the reader's own scrolling. That is the stutter: the
+   * page appeared to catch and settle at the top of each category, once per
+   * boundary, and `block: "nearest"` did not prevent it because the chip
+   * genuinely was clipped.
+   *
+   * Writing `scrollLeft` touches one axis of one element and cannot reach the
+   * document at all, which is the property that matters rather than the
+   * saving.
+   *
+   * Still only moves when it has to, which is what `nearest` was for: a rail
+   * that re-centres on every boundary is its own kind of noise.
    */
   useEffect(() => {
-    if (!active || !railRef.current) return;
-    const chip = railRef.current.querySelector<HTMLElement>(`[data-slug="${active}"]`);
-    chip?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    const rail = railRef.current;
+    if (!active || !rail) return;
+    const chip = rail.querySelector<HTMLElement>(`[data-slug="${active}"]`);
+    if (!chip) return;
+
+    // A chip's width of breathing room, so the highlighted one never sits
+    // flush against an edge looking like the end of the list.
+    const pad = 24;
+    const viewLeft = rail.scrollLeft;
+    const viewRight = viewLeft + rail.clientWidth;
+    const chipLeft = chip.offsetLeft;
+    const chipRight = chipLeft + chip.offsetWidth;
+
+    let left: number | null = null;
+    if (chipLeft < viewLeft + pad) left = chipLeft - pad;
+    else if (chipRight > viewRight - pad) left = chipRight - rail.clientWidth + pad;
+    if (left === null) return;
+
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    rail.scrollTo({ left: Math.max(0, left), behavior: still ? "auto" : "smooth" });
   }, [active]);
 
   function reset() {
