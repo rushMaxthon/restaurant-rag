@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChargesBreakdown } from "@/components/ChargesBreakdown";
+import { CartSuggestions } from "@/components/bangkok/cart-suggestions";
 import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 
@@ -246,6 +247,12 @@ function CartPage() {
               </div>
             </article>
           ))}
+
+          {/* The column beside a short cart used to run white to the bottom
+              of the summary, which reads as a page that has finished with
+              you — on the one screen where somebody is most willing to add
+              something. */}
+          <CartSuggestions />
         </section>
 
         <aside className="elevated-panel h-fit p-5 sm:p-6 lg:sticky lg:top-24">

@@ -1603,9 +1603,19 @@ html {
 }
 
 /* --- the rail --------------------------------------------------------------- */
+/* A panel, not a caption.
+   -----------------------------------------------------------------------
+   This was bare text and two underlined links floating in white beside a
+   column of solid cards, which read as a column that had not finished
+   loading. It holds the same quiet content; it just sits on something now,
+   so the page has two halves rather than one half and a margin. */
 .rail {
   display: grid;
   gap: 0.9rem;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
 }
 @media (min-width: 900px) {
   .rail {
@@ -1627,17 +1637,29 @@ html {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
+/* Buttons rather than underlined words. Two orange underlines stacked in a
+   column read as a footnote; these are the only two things this half of the
+   page can actually do. */
 .rail__action {
-  justify-self: start;
+  justify-self: stretch;
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.35rem;
-  border-bottom: 1.5px solid currentColor;
-  padding-bottom: 1px;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
   font-size: 0.88rem;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--text);
   cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.rail__action:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--surface-alt);
 }
 .rail__action:disabled {
   opacity: 0.5;
@@ -4023,4 +4045,73 @@ html {
     transform: none !important;
     filter: none !important;
   }
+}
+
+/* --- Add something else, under the cart -----------------------------------
+   Sits in the line-item column, so it fills the space a short cart leaves
+   beside the summary rather than pushing the summary down. Quiet by
+   construction: outline buttons, no badges, no "recommended for you" claim
+   this page has no scoring behind. */
+.cart-more {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+.cart-more__title {
+  font-size: var(--fs-title);
+  font-weight: 800;
+}
+.cart-more__note {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: var(--fs-body);
+}
+.cart-more__grid {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .cart-more__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.cart-more__item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+}
+.cart-more__shot {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-3);
+}
+.cart-more__body {
+  min-width: 0;
+}
+.cart-more__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+/* One line. A second line here pushes the row taller than the thumbnail and
+   the grid stops reading as a row of equals. */
+.cart-more__name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cart-more__price {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
