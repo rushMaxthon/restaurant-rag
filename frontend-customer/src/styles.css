@@ -1131,10 +1131,23 @@ html {
 
    `.lift` also adds a pressed state the card never had: a card that moves up
    on hover and does nothing when clicked feels like it ignored the click. */
-/* The lift is gone with the card it belonged to. A row is not a floating
-   object, so it has nothing to lift off; it answers a pointer by tinting its
-   own ground instead, which is one paint rather than a shadow and a
-   transform on 187 elements. */
+.dish-card {
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+.dish-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px) translateZ(0);
+}
+.dish-card:active {
+  box-shadow: var(--shadow-xs);
+  transform: translateY(0) scale(0.995);
+  transition-duration: var(--dur-fast);
+}
 
 /* --- Order tracking --------------------------------------------------------
    A horizontal rail reads as progress at a glance; the vertical checklist it

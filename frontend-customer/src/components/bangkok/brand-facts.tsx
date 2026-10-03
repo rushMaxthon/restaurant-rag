@@ -1,4 +1,5 @@
-import { Award } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Award, MapPin } from "lucide-react";
 
 import { StatsCounter } from "@/components/ui/stats-counter";
 import { useBangkokStore } from "@/lib/bangkok-store";
@@ -59,6 +60,70 @@ function FactValue({ animate, value }: { animate: boolean; value: string }) {
  * measurement; printed bare it reads as ours, which is a claim nobody here is
  * entitled to make. The tile puts the source under the number, always.
  */
+/**
+ * The shop's own facts, pinned beside its story.
+ *
+ * This is the same content the "at a glance" band used to carry across the
+ * full width, and moving it into a column changes what it does. A band of
+ * figures between two blocks of prose is a thing you scroll past; a column
+ * that stays while the story moves is the frame the story is read inside —
+ * and on a page whose job is "who is this", the answer should still be on
+ * screen when you reach the bottom of the paragraph that gave it.
+ *
+ * Sticky only where there is a second column to be beside. On a phone it is
+ * one block above the story, which is the order someone reads anyway: what
+ * this place is, then why.
+ */
+export function BrandRail() {
+  const { established_year: established, highlights } = useStorefrontBrand();
+  const copy = useStorefrontCopy();
+  const store = useBangkokStore();
+  const years = yearsTrading(established);
+  const branch = store.orderLocation ?? store.currentLocation;
+
+  return (
+    <aside className="brand-rail">
+      <div className="brand-rail__inner">
+        <p className="brand-rail__name font-display">{copy.name}</p>
+
+        {established && (
+          <p className="brand-rail__since">
+            Since {established}
+            {years ? <span>{years} years{branch?.city ? ` in ${branch.city}` : ""}</span> : null}
+          </p>
+        )}
+
+        {highlights.length > 0 && (
+          <dl className="brand-rail__facts">
+            {highlights.map((highlight) => (
+              <div key={highlight.label}>
+                <dt>
+                  <FactValue animate value={highlight.value} />
+                </dt>
+                <dd>
+                  {highlight.label}
+                  {highlight.note && <small>{highlight.note}</small>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {branch && (
+          <p className="brand-rail__where">
+            <MapPin aria-hidden="true" />
+            {[branch.address_line_1, branch.city].filter(Boolean).join(", ")}
+          </p>
+        )}
+
+        <Link className="brand-rail__cta" to="/menu">
+          Order now
+        </Link>
+      </div>
+    </aside>
+  );
+}
+
 export function BrandHighlights() {
   const { established_year: established, highlights } = useStorefrontBrand();
   const store = useBangkokStore();

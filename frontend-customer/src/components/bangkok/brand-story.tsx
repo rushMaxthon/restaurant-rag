@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check, Quote } from "lucide-react";
 
-import type { BrandPhoto } from "@/lib/brand-photos";
+import { BrandRail } from "@/components/bangkok/brand-facts";
 import { useStorefrontBrand, type BrandSection } from "@/lib/storefront";
 
 /**
@@ -67,7 +67,7 @@ function useClassifiedSections() {
  * meant the page read story → services → statement → numbers, with the single
  * most persuasive fact on the page arriving fourth.
  */
-export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
+export function BrandStory() {
   const { lead } = useClassifiedSections();
 
   return (
@@ -77,16 +77,25 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
         // on it clears the sticky header; see `.brand-lead` in polish.css.
         <section className="brand-lead" id="story">
           <div className="page-pad section-pad brand-lead__inner">
-            <div className="brand-lead__copy reveal-left">
+            {/* The shop's facts, pinned, with the story moving beside them.
+                They used to sit in a band of their own further down, which
+                meant the answer to "who is this" had scrolled away by the
+                time you finished reading why. */}
+            <BrandRail />
+
+            <div className="brand-lead__copy">
               {/* The heading is the OWNER'S, not the restaurant's name. The
                   name was here first and it read as a mistake: for any tenant
                   who has not rewritten `hero_headline` into a slogan — which
                   is every tenant on the day they are onboarded — the hero
-                  above says exactly the same words in 64px type. The eyebrow
-                  is a label rather than a claim, so it is ours to write, and
-                  the one line of display type on this block is a line the
-                  owner can change in `/website`. */}
-              <p className="eyebrow">Our story</p>
+                  above says exactly the same words in 64px type. The one line
+                  of display type on this block is a line the owner can change
+                  in `/website`.
+
+                  The "Our story" label that was here is gone. A tracked-out
+                  capitalised word above a heading is the commonest tell of a
+                  templated page, and this one announced a story that the
+                  heading underneath was already telling. */}
               <h2 className="font-display brand-lead__title reveal-wipe">
                 <span>{lead.heading}</span>
               </h2>
@@ -96,22 +105,11 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
               </Link>
             </div>
 
-            {/* Photographs of their own food, as evidence rather than as a
-                menu: no price, no add button, nothing to buy. Dropped
-                entirely when this kitchen has uploaded none, which is why the
-                copy column is not sized against it. */}
-            {photos.length > 0 && (
-              <div
-                className="brand-lead__art reveal-right parallax-img"
-                data-count={Math.min(photos.length, 3)}
-              >
-                {photos.slice(0, 3).map((photo) => (
-                  <figure className="brand-lead__shot" key={photo.src}>
-                    <img alt={photo.alt} loading="lazy" src={photo.src} />
-                  </figure>
-                ))}
-              </div>
-            )}
+            {/* The photographs that were here have gone to the gallery
+                further down, which was already showing the same three. Two
+                copies of a kitchen's best pictures on one page made both
+                look like filler, and the column they occupied is worth more
+                to the facts now in it. */}
           </div>
         </section>
       )}
