@@ -26,6 +26,218 @@ Running log of what each session did. Newest entry at the top.
 **Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
 ```
 
+## 2026-10-03 (4) — A disabled Pay button now says why
+
+**Goal:** "if the button is disable then we need to show user what's the issue
+why it's disable right".
+
+**This had already happened in production once.** The comment above the old
+`canSubmit` says so: the gate asked whether STRIPE was available, which was the
+same question back when card was the only way to pay and silently stopped being
+it — so a restaurant settling through Razorpay alone showed a complete checkout
+with both Pay buttons dead and nothing on screen to say why. The gate was fixed
+at the time. The silence was not.
+
+**Changed:**
+- `frontend-customer/src/lib/pay-gate.ts` (new) — `payBlock` returns a reason
+  rather than a boolean, for all four states (empty cart, no method the branch
+  can settle, no time while scheduling, no address). `canSubmit` is derived
+  from it. `payButtonLabel` owns every label the button has, so the two copies
+  cannot drift — the same argument the old `canSubmit` comment makes.
+- `frontend-customer/src/components/checkout/order-summary.tsx` — the detail
+  under the desktop button, the short label above the phone bar's row, both
+  `aria-live="polite"`.
+- `frontend-customer/src/routes/checkout.tsx` — computes it once, passes it to
+  both buttons.
+
+**Two decisions worth keeping:**
+
+Reasons are ordered by what the customer should do NEXT, not by how the checks
+are written. With two problems at once the quicker one is named first: being
+told to type an address and then that no time is picked is two round trips for
+one order. And the no-payment-method case does not blame them — there is
+nothing for them to fix, so it says the cart is saved and offers the phone.
+
+On a phone the reason goes ABOVE the row rather than in the button. That button
+is `flex-1` at 393px, so a sentence inside it would either shrink the tap
+target below the 44px floor `mobile-layout.spec.ts` enforces or run off the
+edge — either one worse than the silence. `e2e/disabled-pay-says-why.spec.ts`
+asserts both.
+
+**Verified:** `src/lib/pay-gate.test.ts` (new, 13) — including one asserting no
+block can be returned without words in it, since a truthy block with an empty
+label is the same bug with extra steps. Storefront vitest 464 pass;
+`tsc --noEmit` clean; `npm run build` clean. Backend `unittest discover`:
+**2900 tests, OK** — the three `test_delivery_dispatch` failures earlier today
+were the live-host interlock reacting to the Pidge credentials in `.env`, and
+are fixed by pinning the courier host in that test's own environment.
+
+**Learned:** I hand-rolled the "Schedule for later" toggle in the new spec as a
+`tab` (it is a `button`) and skipped `openScheduling`. The helper exists
+because that control races with session hydration — a bare `isVisible()` right
+after sign-in answers false, the click is skipped, and the test then waits 20s
+for slots nobody asked for. Use the helper.
+
+## 2026-10-03 (3) — A paid Razorpay order went nowhere, and a reload lost it
+
+**Goal:** "when i do payment done in razorpay it give me success but after that
+not moving to confirm screen it's still back me to checkout page", and "if i do
+page refresh then still keep me on last screen right? current one is going back
+to address screen".
+
+**One cause for both: the payment sheet was component state and nothing else.**
+
+`onPaid={s.clearCart}` was correct for Stripe and wrong for Razorpay, and the
+difference is the bug. Stripe is handed a `returnUrl` and redirects the browser
+itself, so clearing the cart is all the handler has to do. Razorpay is a modal
+over the page — there is no redirect — so when its handler resolved, the cart
+emptied and nothing moved. The checkout re-rendered with an empty cart, which
+is the address step. **A successful payment looked exactly like being thrown
+out of the flow.**
+
+The reload was the same `useState` from the other side: refreshing dropped the
+order id and the gateway's, and because the cart had already been cleared the
+customer landed on an empty address form with a paid order they could no longer
+reach from anywhere on the page.
+
+**Changed:**
+- `frontend-customer/src/lib/pending-payment.ts` (new) — the payment under way,
+  written to tenant-scoped storage. Stored values are checked field by field on
+  read: this comes out of a store the customer can edit, and a half-written one
+  would render a Pay button with no order behind it. Extra keys are dropped
+  rather than passed through.
+- `frontend-customer/src/lib/tenant-storage.ts` — `STORAGE.pendingPayment`.
+  `LEGACY` became `Partial<Record<...>>`, because a key added after the rename
+  has no previous name and inventing one would mean reading a `bangkok-bowl-`
+  key that never existed.
+- `frontend-customer/src/routes/checkout.tsx` — `leaveForOrder` (clear, empty
+  the cart, navigate), used by Razorpay's `onPaid`; Stripe's clears the stored
+  payment but still relies on its own redirect. A restore effect resumes a
+  payment after a reload, and `abandonPayment` clears the stored one.
+- `frontend-customer/e2e/helpers.ts` — `chooseCardPayment`. Third copy of the
+  same two lines in one afternoon, so it became a helper with the incident in
+  its docstring.
+- `frontend-customer/e2e/order-flow.spec.ts`, `mobile-layout.spec.ts`,
+  `payment-settles.spec.ts` — all three go through it.
+
+**`canResumePayment` is deliberately stricter than the order page's test.**
+`/orders/$orderId` shows "confirming payment" for `PAYMENT_PENDING` and not
+COD, which is right for a screen that WATCHES an order and wrong for one that
+would charge it again: `PAYMENT_PENDING` with `payment_status: PAID` is the gap
+between a settled payment and the status advancing, and in that gap the
+customer has already paid. I wrote the loose version first and the test caught
+it — reopening a gateway over a paid order is the one outcome worse than the
+bug being fixed.
+
+**Verified:** `src/lib/pending-payment.test.ts` (new, 13); storefront vitest
+451 pass; `tsc --noEmit` clean; `npm run build` clean.
+`e2e/payment-survives-reload.spec.ts` (new) drives card, because Razorpay's
+window cannot be paid by a test — the persistence is the same code either way,
+and `method` only decides which component renders.
+
+**Open:** the Razorpay navigation itself is not covered end to end, for that
+reason. It is one function (`leaveForOrder`) called from one place, and the
+user confirmed the payment succeeds, so what was missing was only the
+navigation — but a real UPI payment is the only way to see it.
+
+## 2026-10-03 (2) — A saved address was refused and saved twice
+
+**Goal:** two bugs from one screenshot of `/checkout`: the page said "Please
+choose your address from the suggestions" while a saved address card was
+selected, and the picker showed "12 Velanja - Gothan Road, Surat, Gujarat,
+394150" twice.
+
+**What was actually wrong:** three separate gaps, all in the same seam between
+a saved address and the order.
+
+1. `SavedAddress` in `frontend-customer/src/lib/api.ts` did not declare
+   `latitude`/`longitude`. The server has returned them all along
+   (`SavedAddressResponse` in `app/schemas/profile.py`), so the checkout could
+   not read coordinates it was being given.
+2. Neither the initial prefill nor `applySavedAddress` set `pickedPoint`. The
+   prefill is the worse half: a returning customer lands on checkout with
+   their default address already filled, so the FIRST attempt to pay was
+   refused, about an address they had not typed.
+3. `OrderCreateRequest` had no `saved_address_id` at all, though
+   `DeliveryQuoteRequest` has taken one since the autocomplete was built. So
+   the quote priced a saved address from its stored rooftop and the order
+   refused the very same address for carrying no coordinates.
+
+The duplicate was a cached list. `isSameAddress` compares the typed address
+against the picker's contents, but that list is a TanStack query: the first
+order writes the row, the cache does not know yet, and the second order the
+same evening writes it again. Confirmed in the database — two rows
+byte-identical in every column including their coordinates, which is why the
+comparison "should" have matched and did not. The rule moved to the server,
+where there is one list and no cache in front of it.
+
+**Changed:**
+- `frontend-customer/src/lib/api.ts` — `latitude`/`longitude` on
+  `SavedAddress`; `saved_address_id` on `OrderCreateRequest`.
+- `frontend-customer/src/lib/delivery-address.ts` — new `pointFromSaved`
+  beside `addressFromSaved`, because the two are always used together and were
+  not. Refuses half a coordinate; keeps a real zero (Greenwich). Corrected
+  `isSameAddress`'s docstring, which claimed to be the duplicate guard.
+- `frontend-customer/src/routes/checkout.tsx` — both the prefill effect and
+  `applySavedAddress` set the point through that one helper; the order carries
+  `saved_address_id`.
+- `backend/app/services/profile.py` — `_address_fingerprint` and
+  `_matching_saved_address`; `create_user_saved_address` returns the existing
+  row instead of inserting a second. A re-save may fill a MISSING phone number
+  and may promote to default, nothing else.
+- `backend/app/schemas/order.py` + `app/services/orders.py` — the order path
+  falls back to the saved row's stored point, scoped to the caller, exactly as
+  the quote endpoint already did. The refusal became
+  `if known_drop is None and require_payment_validation` — it hung off the
+  coordinate test, which is why a located saved address was refused.
+- `frontend-admin/src/components/PaymentSettingsPanel.tsx` — the webhook
+  secret hint said "Payments work without it; confirmations arrive late".
+  Both providers raise `WebhookVerificationError` with no secret
+  (`razorpay_provider.py:417`, `stripe_provider.py:276`), so every update is
+  rejected unread and a paid order stays unpaid. Rewritten to say so.
+- `frontend-customer/e2e/order-flow.spec.ts` — selects card explicitly.
+  Pre-existing breakage from enabling Razorpay earlier today, same as the
+  mobile-layout fix: the spec asserted card was the only method.
+
+**Verified:**
+- `tests/test_saved_address_is_saved_once.py` (new, 16) and
+  `test_order_picked_address` / `test_delivery_quotes` /
+  `test_profile_update_is_a_patch` — 67 pass, three consecutive runs.
+- `frontend-customer` vitest 434 pass (4 new in `delivery-address.test.ts`);
+  `tsc --noEmit` clean; `npm run build` clean. `frontend-admin` 246 pass,
+  build clean.
+- `e2e/saved-address.spec.ts` (new, 3) pass, and **each was proven to fail
+  against its bug** by reverting the fix and restarting the API.
+
+**Learned — two ways an e2e test can be green against the bug it is for.**
+Worth knowing before writing another one here.
+
+- `/orders/validate` runs `_prepare_order_draft` with
+  `require_payment_validation=False`, so it never reaches the coordinate
+  refusal. A first version of the test asked validation and passed with the
+  fix removed.
+- `_prepare_order_draft` checks the payment method (line ~400) BEFORE the
+  address (line ~510). An unsupported method returns 503 and the address rule
+  is never exercised. The spec now reads `/payments/config` and sends a method
+  the branch actually takes.
+- A customer token is bound to the app client the HOST resolves to, so a dish
+  from another restaurant is a 403 that arrives before any address rule. The
+  spec resolves its restaurant through `/app-config` with `TENANT_HEADER`.
+
+**Open:**
+- **One duplicate row is still in Supabase**, on the phone account
+  `6353100362@phone.example.com`: id `5730a9fc-0e9e-4c08-89f9-9d8becb9e7b9`,
+  byte-identical to `1395f976-118d-455f-9d8f-69d69f9709e7` and referenced by
+  nothing (no FK anywhere points at `user_saved_addresses`). The DELETE was
+  refused by this environment's sandbox; the SQL was handed to the user.
+- `test_order_picked_address.py` pins source text. It now pins the new shape;
+  anything that moves that block has to update it again.
+- Still outstanding from earlier today: `refund.created` / `refund.processed`
+  to be ticked in the Razorpay dashboard; per-branch `service_radius_km` unset
+  (₹157 delivery on a ₹150 order); Famous Chinese Cuisine missing 44 of 65
+  dishes, phone, logo, cover photo, established year; the admin half of the
+  redesign not started.
+
 ## 2026-10-02 (6) — White bands in dark mode, a bill that did not add up, and a third restaurant
 
 **Goal:** the admin's forms were unreadable in dark mode ("this is happend in

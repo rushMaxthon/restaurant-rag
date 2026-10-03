@@ -361,14 +361,17 @@ export function PaymentSettingsPanel({
                           setForm((current) => ({ ...current, webhook_secret: event.target.value }))
                         }
                         placeholder={
-                          account.has_webhook_secret ? 'Leave blank to keep the stored one' : 'Optional for now'
+                          account.has_webhook_secret
+                            ? 'Leave blank to keep the stored one'
+                            : 'Needed before any payment can be confirmed'
                         }
                         type="password"
                         value={form.webhook_secret}
                       />
                       <small>
-                        Used to verify that a payment update really came from{' '}
-                        {account.label}. Payments work without it; confirmations arrive late.
+                        Proves a payment update really came from {account.label}. Without it every
+                        update from them is rejected unread, so an order that was paid for stays
+                        unpaid on your board — this is not optional, it is the last step.
                       </small>
                     </label>
 
