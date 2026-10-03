@@ -71,6 +71,37 @@
 @import "../../frontend-shared/components.css";
 
 :root {
+  /* --- The storefront's own neutrals -------------------------------------
+     Declared here rather than in the shared file, and deliberately so: these
+     are the STOREFRONT's decisions. The operator's panel imports the same
+     shared tokens and keeps its measured values until its own turn comes, so
+     re-skinning a customer-facing page cannot quietly move a contrast ratio
+     on a screen nobody is looking at.
+
+     Why a pale green-grey rather than the warm cream this kind of page
+     usually gets: the accent belongs to the restaurant. Twelve presets, plus
+     any hex an owner types, written onto the root at runtime. A page whose
+     warmth comes from orange falls apart for the Teal, Forest and Slate
+     restaurants, so the warmth has to live in the neutrals — and the one
+     colour this product can claim honestly is the green of the vegetarian
+     mark, desaturated until it reads as paper rather than as a hue.
+
+     Measured, not picked: `--muted` is 5.68:1 on `--bg` and `--text` is
+     16.0:1, both above AA at body size. */
+  --bg: #f2f5f0;
+  --surface: #ffffff;
+  --surface-alt: #e8ede4;
+  --text: #161a14;
+  --muted: #5b6356;
+  --border: #dce2d8;
+
+  /* The veg and non-veg marks. Fixed, never themed, and the only two colours
+     on this site a restaurant cannot change — they are a legally mandated
+     signal in this market, and an owner recolouring them to match a brand
+     would be making a food-safety mark mean something else. */
+  --veg: #1f7a3d;
+  --non-veg: #9a2a1f;
+
   /* The phone tab bar's height. Pinned controls above it need a number to
      offset by, and a bar whose height is only whatever its icons add up to
      cannot give them one. */
@@ -88,6 +119,26 @@
   --placeholder-c: color-mix(in srgb, var(--success) 16%, var(--surface));
   --placeholder-d: color-mix(in srgb, var(--text) 10%, var(--primary-soft));
 }
+
+/* The same neutrals after dark. Built up from a green-black rather than down
+   from the shared file's blue-grey, so the two themes read as one palette at
+   two levels rather than as two palettes. `--muted` is 8.2:1 on this page,
+   which is more headroom than the light theme has — a dark surface is where
+   secondary text usually goes to die. */
+.dark {
+  --bg: #121511;
+  --surface: #1a1e19;
+  --surface-alt: #232821;
+  --text: #f2f5f0;
+  --muted: #a8b0a3;
+  --border: #2b3129;
+
+  /* Lifted off the dark ground. The light-mode values are ink on paper and
+     would sink into it. */
+  --veg: #4fb873;
+  --non-veg: #d4675a;
+}
+
 @layer base {
   * {
     border-color: var(--border);
