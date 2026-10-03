@@ -80,6 +80,20 @@ _EVENT_STATUS = {
     "payment_link.paid": "succeeded",
     "payment_link.expired": "cancelled",
     "payment_link.cancelled": "cancelled",
+    # Refunds. Stripe has acted on `charge.refunded` since this shipped and
+    # Razorpay acted on nothing, so a refund issued from their dashboard moved
+    # the money and left this app still showing the order as paid.
+    #
+    # BOTH of Razorpay's refund events map here, on purpose. `refund.created`
+    # fires the moment one is issued; `refund.processed` when the bank settles
+    # it, which can be days later. Waiting for the second would leave an order
+    # reading "paid" long after the customer had their money back, and acting
+    # on the first is what Stripe's single event already amounts to. Arriving
+    # twice is harmless: the second is the same outcome applied to a row
+    # already in it, and each carries its own event id so neither is dropped
+    # as a duplicate of the other.
+    "refund.created": "refunded",
+    "refund.processed": "refunded",
 }
 
 #: What a restaurant subscribes its webhook to in the Razorpay dashboard, and

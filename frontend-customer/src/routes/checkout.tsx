@@ -554,7 +554,6 @@ function Checkout() {
               customerName={fullName.trim() || profile.data?.user.full_name || null}
               customerPhone={phone.trim() || profile.data?.user.phone_number || null}
               keyId={pending.publishableKey}
-              onCancel={abandonPayment}
               onPaid={s.clearCart}
               orderId={pending.orderId}
               orderNumber={pending.orderNumber}
