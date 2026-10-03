@@ -4394,3 +4394,70 @@ html {
 .status-dot[data-open] {
   background: var(--success);
 }
+
+/* --- The hero arrives ------------------------------------------------------
+   One orchestrated moment when a page opens, and the only non-user-triggered
+   motion on the site that is allowed to be noticeable.
+
+   The photograph settles from 1.05 to rest while the scrim lifts off it, so
+   the picture reads as arriving rather than as already having been there. The
+   copy was already staggering in on top; it now starts after the picture has
+   begun moving, so the two read as one sequence instead of two things that
+   happen to overlap.
+
+   This is a SETTLE, not a zoom. The note above `.hero-full` rules out a slow
+   drift across a photograph this size, and it is right — that is a
+   screensaver. The distinction is that this one finishes: 900ms, decelerating
+   hard, and then the image never moves again.
+
+   Deliberately not a splash screen. One of those was built here and removed,
+   because it held the page back from somebody who already knew what they
+   wanted. This costs nobody anything: the content is on screen and readable
+   from the first frame, and the motion plays over it.
+
+   `both` with no delay on the image so there is no frame where the hero is
+   blank — a fill-mode gap on the largest paint of the page is a flash. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-arrive__shot {
+    animation: hero-settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    /* Its own layer for the duration, so scaling a full-bleed photograph does
+       not repaint the copy sitting on it every frame. */
+    will-change: transform;
+  }
+  .hero-arrive::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: #000;
+    animation: hero-lift 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  /* The copy follows the picture rather than racing it. The per-child stagger
+     above this is untouched; this only moves the whole group back far enough
+     that the image has visibly started first. */
+  .hero-arrive .hero-copy > * {
+    animation-delay: calc(var(--hero-step, 0ms) + 160ms);
+  }
+  .hero-arrive .hero-copy > :nth-child(1) { --hero-step: 60ms; }
+  .hero-arrive .hero-copy > :nth-child(2) { --hero-step: 140ms; }
+  .hero-arrive .hero-copy > :nth-child(3) { --hero-step: 220ms; }
+  .hero-arrive .hero-copy > :nth-child(4) { --hero-step: 300ms; }
+  .hero-arrive .hero-copy > :nth-child(5) { --hero-step: 380ms; }
+}
+
+@keyframes hero-settle {
+  from {
+    transform: scale(1.05);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes hero-lift {
+  from {
+    opacity: 0.38;
+  }
+  to {
+    opacity: 0;
+  }
+}

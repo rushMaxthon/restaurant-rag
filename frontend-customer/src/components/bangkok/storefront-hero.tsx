@@ -34,18 +34,23 @@ export function StorefrontHero({ children, className }: StorefrontHeroProps) {
   const copy = useStorefrontCopy();
 
   return (
-    <section className={`relative overflow-hidden ${className ?? ""}`}>
+    <section className={`hero-arrive relative overflow-hidden ${className ?? ""}`}>
       {cover ? (
         <img
           alt={`Food from ${copy.name}`}
-          className="absolute inset-0 size-full object-cover"
+          className="hero-arrive__shot absolute inset-0 size-full object-cover"
+          // The hero is the largest paint on the page and the thing the whole
+          // arrival is built around, so it is never lazy and never waits its
+          // turn behind a script.
+          decoding="async"
+          fetchPriority="high"
           src={cover}
         />
       ) : (
         // Not an empty div: a flat brand block behind white type reads as an
         // unloaded image. The gradient and the grain give it a deliberate
         // surface without saying anything about the food.
-        <div aria-hidden className="storefront-hero-wash absolute inset-0" />
+        <div aria-hidden className="hero-arrive__shot storefront-hero-wash absolute inset-0" />
       )}
       {children}
     </section>
