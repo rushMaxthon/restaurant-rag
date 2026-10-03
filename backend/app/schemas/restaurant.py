@@ -218,6 +218,10 @@ class RestaurantStorefrontUpdate(BaseModel):
     hero_subcopy: str | None = None
     concierge_intro: str | None = None
     login_blurb: str | None = None
+    #: Claims rather than labels, so the owner writes them — see
+    #: `restaurant_storefront.py`.
+    kitchen_headline: str | None = None
+    promise_note: str | None = None
 
 
 class BrandSectionPayload(BaseModel):

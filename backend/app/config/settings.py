@@ -845,6 +845,28 @@ class Settings(BaseSettings):
     # is only a flag is one `.env` away from a customer being told a rider is
     # coming when nobody is.
     enable_delivery_rehearsal: bool = False
+
+    # Signing in with a phone number and a one-time code, instead of an email
+    # and a password.
+    #
+    # ON by default, and the guard that matters is the environment rather than
+    # this flag. The storefront has no other way in — there is no password
+    # form any more — so a default of False meant a fresh clone could not sign
+    # anybody in at all, which is what happened: `Signing in by phone is not
+    # available here` on a machine whose untracked `.env` simply did not have
+    # the line.
+    #
+    # Turning it on does NOT make the fixed code reachable in production.
+    # `services/otp.py` accepts `otp_debug_code` only when `environment` is a
+    # local one, and anywhere else reports that it cannot send a code and
+    # refuses — the failure there is not a customer being told a rider is
+    # coming, it is anybody signing in as anybody. So the dangerous half is
+    # still guarded by the thing a deploy cannot get wrong by omission, and
+    # the half that just needs to work locally now does.
+    enable_phone_otp_login: bool = True
+    # The code accepted while there is nothing to send a real one with. Only
+    # ever honoured on a local environment; see `services/otp.py`.
+    otp_debug_code: str = "123456"
     # The one way to book a REAL rider from a development machine.
     #
     # A laptop dispatches through exactly the same task, provider and

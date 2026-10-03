@@ -87,7 +87,9 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
                   the one line of display type on this block is a line the
                   owner can change in `/website`. */}
               <p className="eyebrow">Our story</p>
-              <h2 className="font-display brand-lead__title">{lead.heading}</h2>
+              <h2 className="font-display brand-lead__title reveal-wipe">
+                <span>{lead.heading}</span>
+              </h2>
               <div className="brand-lead__body">{paragraphs(lead)}</div>
               <Link className="brand-lead__cta" to="/menu">
                 See the full menu <ArrowRight aria-hidden="true" />
@@ -99,7 +101,10 @@ export function BrandStory({ photos }: { photos: readonly BrandPhoto[] }) {
                 entirely when this kitchen has uploaded none, which is why the
                 copy column is not sized against it. */}
             {photos.length > 0 && (
-              <div className="brand-lead__art reveal-right" data-count={Math.min(photos.length, 3)}>
+              <div
+                className="brand-lead__art reveal-right parallax-img"
+                data-count={Math.min(photos.length, 3)}
+              >
                 {photos.slice(0, 3).map((photo) => (
                   <figure className="brand-lead__shot" key={photo.src}>
                     <img alt={photo.alt} loading="lazy" src={photo.src} />
@@ -123,11 +128,13 @@ export function BrandOffer() {
       {listed.map((section, index) => (
         <section className="brand-offer" key={`${section.heading}-${index}`}>
           <div className="page-pad section-pad brand-offer__inner">
-            <h2 className="font-display brand-offer__title">{section.heading}</h2>
+            <h2 className="font-display brand-offer__title reveal-wipe">
+              <span>{section.heading}</span>
+            </h2>
             {bodyOf(section).length > 0 && (
               <div className="brand-offer__body">{paragraphs(section)}</div>
             )}
-            <ul className="brand-offer__grid reveal-group">
+            <ul className="brand-offer__grid reveal-group--sides">
               {(section.bullets ?? []).map((bullet, at) => (
                 <li className="brand-offer__item" key={at}>
                   {/* One consistent mark, deliberately. Picking an icon per
@@ -216,7 +223,9 @@ export function BrandFaqs() {
     <section className="brand-faqs">
       <div className="page-pad section-pad brand-faqs__inner">
         <p className="eyebrow">Before you order</p>
-        <h2 className="font-display brand-faqs__title">Questions people ask</h2>
+        <h2 className="font-display brand-faqs__title reveal-wipe">
+          <span>Questions people ask</span>
+        </h2>
 
         <div className="brand-faqs__list reveal-group">
           {faqs.map((faq, index) => (

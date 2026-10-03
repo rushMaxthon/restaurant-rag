@@ -1235,7 +1235,9 @@ export type StorefrontCopyKey =
   | 'hero_headline'
   | 'hero_subcopy'
   | 'concierge_intro'
-  | 'login_blurb';
+  | 'login_blurb'
+  | 'kitchen_headline'
+  | 'promise_note';
 
 export interface RestaurantStorefront {
   restaurant_id: string;

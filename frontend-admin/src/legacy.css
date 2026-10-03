@@ -2041,7 +2041,7 @@ select:focus-visible {
 }
 
 .menu-option-panel {
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  background: linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-subtle) 100%);
 }
 
 .menu-group-list__cell,
@@ -2262,7 +2262,7 @@ select:focus-visible {
 }
 
 .admin-table__row:hover {
-  background: #f8f9fb;
+  background: var(--row-hover);
 }
 
 .admin-table__row--clickable {
@@ -2388,7 +2388,7 @@ select:focus-visible {
   padding: 16px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  background: linear-gradient(180deg, var(--surface-solid), var(--surface-subtle));
   box-shadow: var(--shadow-sm);
 }
 
@@ -2549,7 +2549,7 @@ select:focus-visible {
 }
 
 .table-action-menu__item:hover {
-  background: #f7f8fb;
+  background: var(--row-hover);
 }
 
 .table-action-menu__item--danger {
@@ -2874,7 +2874,7 @@ select:focus-visible {
   border-bottom: 1px solid var(--border);
   background:
     radial-gradient(circle at top right, rgba(255, 122, 40, 0.08), transparent 28%),
-    linear-gradient(180deg, #ffffff 0%, #fffaf6 100%);
+    linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-warm) 100%);
 }
 
 .modal-card__header p {
@@ -2887,7 +2887,12 @@ select:focus-visible {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 18px 24px 22px;
-  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  /* Flat, not a gradient. The gradient that was here ran #ffffff to #fcfdff —
+     a one-percent shift nobody could see, which on the way to a token became
+     a real one and took `.ui-checkbox__label` from 4.52:1 to 4.35:1. A body
+     is the backdrop every field label is measured against, so it gets the
+     one surface rather than a tint of it. */
+  background: var(--surface-solid);
 }
 
 .modal-card__body::-webkit-scrollbar {
@@ -2910,7 +2915,7 @@ select:focus-visible {
   margin-top: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, #ffffff 32%);
+  background: linear-gradient(180deg, var(--surface-veil) 0%, var(--surface-solid) 32%);
   backdrop-filter: blur(10px);
 }
 
@@ -3101,7 +3106,7 @@ select:focus-visible {
   padding: 16px;
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  background: linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-subtle) 100%);
 }
 
 .slot-form-card__field {
@@ -3317,7 +3322,7 @@ select:focus-visible {
   padding: 18px 20px;
   border-radius: var(--radius-6);
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  background: linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-subtle) 100%);
   box-shadow: var(--inset-sheen);
 }
 
@@ -3342,7 +3347,7 @@ select:focus-visible {
   min-height: 36px;
   padding: 0 14px;
   border-radius: var(--radius-pill);
-  background: #f3f5f9;
+  background: var(--muted-soft);
   color: var(--hint);
   font-size: var(--fs-label);
   font-weight: 800;
@@ -8372,8 +8377,8 @@ summary:focus-visible,
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.7rem;
   border-radius: var(--radius-1);
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--warning-soft);
+  color: var(--on-warning-soft);
   font-size: var(--fs-label);
   line-height: 1.35;
 }
@@ -12893,7 +12898,7 @@ summary:focus-visible,
 }
 
 .hub-table tbody tr:hover {
-  background: #fffaf7;
+  background: var(--row-hover);
 }
 
 .hub-table tbody tr:last-child td {
@@ -13044,7 +13049,7 @@ summary:focus-visible,
 }
 
 .hub-quick__item:hover {
-  background: #fff7f2;
+  background: var(--row-hover);
 }
 
 .hub-quick__copy {
@@ -13258,7 +13263,7 @@ summary:focus-visible,
 .hub-skeleton {
   display: block;
   border-radius: var(--radius-2);
-  background: linear-gradient(90deg, var(--card-muted) 25%, #ffffff 50%, var(--card-muted) 75%);
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-sheen) 50%, var(--skeleton) 75%);
   background-size: 200% 100%;
   animation: hub-shimmer 1.4s ease-in-out infinite;
 }
@@ -13503,7 +13508,7 @@ summary:focus-visible,
 
 .mkt-bubble--sms {
   border-bottom-left-radius: 4px;
-  background: #e9e9eb;
+  background: var(--surface-alt);
 }
 
 /* The opt-out line is greyed because it is not the owner's to edit — but it is

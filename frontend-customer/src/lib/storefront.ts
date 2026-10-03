@@ -30,6 +30,12 @@ export type StorefrontConfig = StorefrontCopy & {
    * storefront painting an empty band first.
    */
   cover_image_url: string | null;
+  /** The restaurant's own mark, when it has uploaded one. */
+  logo_url: string | null;
+  /** An icon chosen specifically for the browser tab, when one was. */
+  favicon_url: string | null;
+  /** This restaurant's accent, for a tab icon drawn when they have no logo. */
+  primary_color: string | null;
   /**
    * The id of the typeface this restaurant chose, from the backend allowlist.
    *
@@ -166,6 +172,16 @@ export type StorefrontCopy = {
   og_description: string;
   hero_headline: string;
   hero_subcopy: string;
+  /**
+   * The heading over the photographs, and the line in the footer.
+   *
+   * Editable because both are CLAIMS rather than labels: "Made here, every
+   * day" is true of a kitchen that cooks and false of a counter that resells,
+   * and this app cannot tell which restaurant it is serving. They default to
+   * the weakest true version — see `restaurant_storefront.py`.
+   */
+  kitchen_headline: string;
+  promise_note: string;
   concierge_intro: string;
   login_blurb: string;
 };
@@ -189,6 +205,8 @@ export const UNKNOWN_STOREFRONT: StorefrontCopy = {
   hero_subcopy: "Browse the menu and order online.",
   concierge_intro: "Ask me anything about the menu.",
   login_blurb: "Sign in to place your order.",
+  kitchen_headline: "A look at the food",
+  promise_note: "Order online.",
 };
 
 /** The shape `/app-config` answers with, as far as a storefront cares. */
@@ -196,7 +214,13 @@ export type AppConfigPayload = {
   display_name?: string;
   storefront?: Partial<StorefrontCopy>;
   currency?: CurrencyFormat;
-  branding?: { cover_image_url?: string | null; font_family?: string | null };
+  branding?: {
+    cover_image_url?: string | null;
+    logo_url?: string | null;
+    favicon_url?: string | null;
+    primary_color?: string | null;
+    font_family?: string | null;
+  };
   contact?: StorefrontContact;
   brand?: Partial<StorefrontBrand>;
 };
@@ -222,6 +246,10 @@ export function storefrontConfigFrom(payload: AppConfigPayload): StorefrontConfi
     // falls back to this restaurant's brand colour rather than another
     // restaurant's food.
     cover_image_url: payload.branding?.cover_image_url?.trim() || null,
+    // Blank and absent both mean "no logo", so the header draws the monogram.
+    logo_url: payload.branding?.logo_url?.trim() || null,
+    favicon_url: payload.branding?.favicon_url?.trim() || null,
+    primary_color: payload.branding?.primary_color?.trim() || null,
     // Blank and absent both mean "unset", which `resolveFonts` reads as the
     // platform default rather than as a family called "".
     font_family: payload.branding?.font_family?.trim() || null,
@@ -312,6 +340,19 @@ export function useStorefrontCopy(): StorefrontCopy {
 export function useStorefrontCover(): string | null {
   const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
   return data?.cover_image_url ?? null;
+}
+
+/**
+ * This restaurant's logo, or null when it has not uploaded one.
+ *
+ * Read from the root loader like the cover, so the header draws the real mark
+ * in the first HTML response rather than swapping a monogram for it after
+ * hydration. Null is the normal state and has its own answer — the monogram
+ * built from the restaurant's own name — rather than a placeholder image.
+ */
+export function useStorefrontLogo(): string | null {
+  const data = useLoaderData({ from: "__root__" }) as StorefrontConfig | undefined;
+  return data?.logo_url ?? null;
 }
 
 export function useMoney(): (value: Money | number) => string {

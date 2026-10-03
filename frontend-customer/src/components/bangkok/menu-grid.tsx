@@ -53,10 +53,21 @@ const ACTIVE_LINE = CHROME + 56;
  * `scroll-padding-top` — which is how a jump came to land 85px below the rail
  * while the highlight named the previous section.
  *
- * **Never `behavior: "smooth"`.** The browser animates towards an offset
- * computed when the animation begins, and content arriving above the target
- * moves it, so the animation ends early. Measured on a 6,000px jump: smooth
- * stopped 2,281px short; instant landed.
+ * **Animated here rather than with `behavior: "smooth"`.** The browser
+ * animates towards an offset computed when the animation BEGINS, and content
+ * arriving above the target moves it, so the animation ends early. Measured
+ * on a 6,000px jump: native smooth stopped 2,281px short.
+ *
+ * So the travel is tweened in this loop, which re-measures the heading every
+ * frame and eases towards wherever it is NOW. That is what makes it both
+ * smooth and correct on a page that is still growing — the target moving
+ * under the animation is the normal case here, not the edge one.
+ *
+ * Two phases, deliberately. The TRAVEL is eased, because it is a journey a
+ * reader follows with their eye. What comes after is CORRECTION — the webfont
+ * swapping and re-measuring every dish name, the router restoring a saved
+ * position — and those are instant, because a correction that animates reads
+ * as the page drifting on its own.
  *
  * **Corrected every frame, by the remaining distance.** One scroll is not
  * enough, because two different things disturb it and they are not the same
@@ -77,11 +88,91 @@ const ACTIVE_LINE = CHROME + 56;
  * correcting the scroll under somebody who has started reading would be far
  * worse than landing slightly off.
  */
+/**
+ * How long the eased travel lasts.
+ *
+ * Distance-aware, because one duration cannot serve both ends of a 36,000px
+ * menu: a flat 520ms made the jump to the next section along feel unhurried
+ * and the jump to the last one feel like a teleport. Scaled by the distance
+ * and clamped at both ends, so a short hop stays brisk and a long one stays
+ * followable — the eye has to see which way the page went, or the landing
+ * reads as a different page rather than a different part of this one.
+ */
+const TRAVEL_MIN_MS = 380;
+const TRAVEL_MAX_MS = 620;
+const travelFor = (distance: number) =>
+  Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MIN_MS, Math.abs(distance) * 0.45));
+
+/**
+ * How much of the journey is actually animated, as a multiple of the screen.
+ *
+ * Everything beyond this is covered instantly first, and only the final
+ * approach eases. That is not a shortcut, it is the fix for what animating the
+ * whole distance caused: this menu is 36,000px of lazily-loaded photographs,
+ * and easing across 13,000px of it drags the viewport through section after
+ * section whose images have not loaded. Measured on one jump — five of the six
+ * images on screen unloaded at once, fifteen frames with three or more — so
+ * every card drew its motif, then swapped to a photograph, the whole way past.
+ * That stream of swaps is the blinking.
+ *
+ * A screen and a bit is enough to see which way the page went, which is the
+ * only thing the travel was ever for.
+ */
+const APPROACH_SCREENS = 1.15;
+
+/** Decelerating: quick off the mark, settling into the landing. */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
 function jumpToSection(slug: string): () => void {
   let abandoned = false;
   let frame = 0;
   let quiet = 0;
   let passes = 0;
+
+  // Somebody who has asked their system to stop moving things gets the
+  // landing without the journey — not a faster journey.
+  // Start the destination's photographs fetching at the moment of the click.
+  //
+  // A jump lands on a section whose images are still lazy, so they begin
+  // loading only once they are near the viewport — and each one draws its
+  // motif first and swaps to the photograph a moment later. Arriving on a
+  // screenful of those swaps is the blink.
+  //
+  // The eased approach below takes about 400ms, and this spends it: the
+  // images are told to load now rather than on arrival, so most of them are
+  // decoded by the time anybody is looking at them. It cannot help where the
+  // network is slower than the animation, which is why the motif underneath
+  // them stays — it is a considered placeholder rather than a blank.
+  const preload = (slugged: HTMLElement | null) => {
+    const section = slugged?.closest(".menu-section");
+    if (!section) return;
+    for (const image of section.querySelectorAll("img")) {
+      image.loading = "eager";
+      // Ahead of anything else still queued for a page this long.
+      image.fetchPriority = "high";
+    }
+  };
+
+  // Cover the distance beyond the final approach in one go, before anything
+  // is animated, so the eased part never drags the viewport through content
+  // that has not loaded.
+  const first = typeof document !== "undefined" ? document.getElementById(slug) : null;
+  preload(first);
+  if (first && typeof window !== "undefined") {
+    const whole = first.getBoundingClientRect().top - LANDING;
+    const approach = window.innerHeight * APPROACH_SCREENS;
+    if (Math.abs(whole) > approach) {
+      window.scrollBy({ top: whole - Math.sign(whole) * approach, behavior: "instant" });
+    }
+  }
+
+  const startedAt = typeof performance !== "undefined" ? performance.now() : 0;
+  // Read AFTER the instant leg, so the tween eases from where it really is.
+  const from = typeof window !== "undefined" ? window.scrollY : 0;
+  const travelMs =
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : travelFor(first ? first.getBoundingClientRect().top - LANDING : 0);
 
   const stop = () => {
     if (abandoned) return;
@@ -98,9 +189,20 @@ function jumpToSection(slug: string): () => void {
     if (!node) return stop();
 
     const remaining = node.getBoundingClientRect().top - LANDING;
-    if (Math.abs(remaining) > 2) {
-      // By the REMAINING distance, so it converges instead of recomputing an
-      // absolute position that keeps going stale.
+    const elapsed = performance.now() - startedAt;
+
+    if (elapsed < travelMs) {
+      // Still travelling. The destination is re-measured every frame, so a
+      // page growing above the target pulls the whole curve with it instead
+      // of leaving the animation short.
+      const target = window.scrollY + remaining;
+      const eased = easeOut(elapsed / travelMs);
+      window.scrollTo({ top: from + (target - from) * eased, behavior: "instant" });
+      quiet = 0;
+    } else if (Math.abs(remaining) > 2) {
+      // Arrived, and something moved underneath it. By the REMAINING
+      // distance, so it converges instead of recomputing an absolute
+      // position that keeps going stale.
       window.scrollBy({ top: remaining, behavior: "instant" });
       quiet = 0;
     } else {
@@ -289,42 +391,92 @@ export function MenuGrid({
    * Which section is on screen, for the rail.
    *
    * Measured on scroll rather than watched with an IntersectionObserver, for
-   * two reasons set out in full on `activeSection`: an observer sampling frames
-   * jumps straight over a section heading on any normal flick, and it delivers
-   * nothing at all while the tab is in the background, which makes it
-   * unverifiable. This reads nineteen rects inside one animation frame.
+   * two reasons set out in full on `activeSection`: an observer sampling
+   * frames jumps straight over a section heading on any normal flick, and it
+   * delivers nothing at all while the tab is in the background, which makes
+   * it unverifiable.
    *
-   * `ACTIVE_LINE` is derived from the measured chrome at the top of this file,
-   * which is also what the jump uses — see the note there for why they have to
-   * come from one number.
+   * **The positions are cached, and the scroll handler does no layout.** It
+   * used to read nineteen `getBoundingClientRect()` inside every animation
+   * frame, and a rect read after any style change forces the browser to lay
+   * the page out there and then — nineteen forced layouts per frame, over
+   * 5,000 nodes, for the whole time somebody is scrolling. It never showed up
+   * as a long task because no single one crossed 50ms; it showed up as the
+   * page absorbing 85% of a wheel instead of 100%, and reading as a stutter
+   * at every section boundary.
+   *
+   * Now each heading's position is measured once into `tops`, and the
+   * handler only subtracts `scrollY` from numbers it already has — which
+   * costs nothing and reads no layout at all.
+   *
+   * The cache has to be right, and the page is not still: the webfont swaps
+   * and re-measures every dish name, images resolve, the grid reflows. A
+   * `ResizeObserver` on the grid invalidates it whenever any of that changes
+   * a height, which is the event that actually matters rather than a guess at
+   * how long it takes.
+   *
+   * `ACTIVE_LINE` is derived from the measured chrome at the top of this
+   * file, which is also what the jump uses — see the note there for why they
+   * have to come from one number.
    */
   useEffect(() => {
     if (sections.length === 0) return;
     let frame = 0;
+    let tops: number[] = [];
 
-    const measure = () => {
-      frame = 0;
-      const tops = sections.map((section) => {
+    // Absolute document positions, so they stay valid as the page scrolls.
+    const remeasure = () => {
+      tops = sections.map((section) => {
         const node = document.getElementById(section.slug);
-        return node ? node.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+        return node ? node.getBoundingClientRect().top + window.scrollY : Number.POSITIVE_INFINITY;
       });
-      setActive(activeSection(sections, tops, ACTIVE_LINE));
+    };
+
+    const apply = () => {
+      frame = 0;
+      // `activeSection` takes viewport-relative tops, and is tested that way.
+      setActive(
+        activeSection(
+          sections,
+          tops.map((top) => top - window.scrollY),
+          ACTIVE_LINE,
+        ),
+      );
     };
 
     const onScroll = () => {
-      // Coalesced to one measurement per frame. A wheel fires far faster than
-      // the page repaints, and reading a rect per event is how a scroll
-      // handler becomes the reason a page stutters.
-      if (frame === 0) frame = requestAnimationFrame(measure);
+      // Still coalesced to one update per frame: a wheel fires far faster
+      // than the page repaints.
+      if (frame === 0) frame = requestAnimationFrame(apply);
     };
 
-    measure();
+    const onResize = () => {
+      remeasure();
+      onScroll();
+    };
+
+    remeasure();
+    apply();
+
+    // Whatever changes a height invalidates the cache — the font swapping,
+    // an image resolving, the grid reflowing at a breakpoint.
+    const grid = document.querySelector(".menu-grid");
+    const observer =
+      typeof ResizeObserver !== "undefined" && grid
+        ? new ResizeObserver(() => {
+            remeasure();
+            onScroll();
+          })
+        : null;
+    observer?.observe(grid as Element);
+
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     return () => {
       if (frame !== 0) cancelAnimationFrame(frame);
+      observer?.disconnect();
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
     };
   }, [sections]);
 

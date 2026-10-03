@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link } from "@tanstack/react-router";
 import { Heart, Minus, Plus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import { useMoney } from "@/lib/storefront";
 
-export function DishCard({ item }: { item: MenuItem }) {
+function DishCardImpl({ item }: { item: MenuItem }) {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
   const { addItem, cart, changeQuantity, conflictsWithCart } = useBangkokStore();
@@ -156,3 +157,20 @@ export function DishCard({ item }: { item: MenuItem }) {
     </article>
   );
 }
+
+/**
+ * Memoised, and the menu is why.
+ *
+ * The rail's highlight lives in `MenuGrid`, the same component that renders
+ * every card — so crossing a section boundary while scrolling set state there
+ * and re-rendered all 187 of them. Measured on this restaurant's menu: a
+ * ~190ms frame each time, once per section, which is exactly the stutter you
+ * feel scrolling the page.
+ *
+ * `item` comes from the query cache and keeps its identity between renders,
+ * so the comparison is a reference check and the whole subtree is skipped.
+ * Everything else this reads — the cart, favourites, the currency — comes
+ * from context, which `memo` does not block: a card still re-renders when the
+ * quantity in the cart changes, which is the one time it has to.
+ */
+export const DishCard = memo(DishCardImpl);

@@ -3,7 +3,7 @@ import { Phone, Sparkles } from "lucide-react";
 
 import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
-import { useStorefrontContact, useStorefrontCopy } from "@/lib/storefront";
+import { useStorefrontContact, useStorefrontCopy, useStorefrontLogo } from "@/lib/storefront";
 
 /**
  * The end of every page, and the part of a brand site that says somebody real
@@ -35,13 +35,20 @@ export function SiteFooter() {
   const store = useBangkokStore();
   const askAi = hasCapability(store.capabilities, "ask_ai");
   const initials = brandInitials(copy.name);
+  // The same mark as the header. One page showing a logo and a monogram of
+  // the same brand reads as two different brands.
+  const logo = useStorefrontLogo();
 
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
         <div className="site-footer__brand">
           <Link to="/" className="site-footer__id" aria-label={`${copy.name} home`}>
-            {initials && <span className="brand-mark">{initials}</span>}
+            {logo ? (
+              <img className="brand-logo" src={logo} alt="" width={42} height={42} />
+            ) : (
+              initials && <span className="brand-mark">{initials}</span>
+            )}
             <span className="font-display site-footer__name">{copy.name}</span>
           </Link>
           {/* The restaurant's own sentence about itself — the same one in its
@@ -131,7 +138,7 @@ export function SiteFooter() {
         {/* Said plainly because it is the honest description of what this site
             is, and because a customer who knows the kitchen cooks to order is
             a customer who is not surprised by the wait. */}
-        <p className="site-footer__made">Every order cooked to order.</p>
+        <p className="site-footer__made">{copy.promise_note}</p>
       </div>
 
       <StructuredData name={copy.name} description={copy.meta_description} />

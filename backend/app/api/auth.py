@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,11 +10,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import AppScopeDep, IdentityAppClientDep
+from app.config import get_settings
 from app.config.database import get_db
 from app.models.enums import UserRole
 from app.models.app_client import AppClient
 from app.models.user import User
-from app.schemas.auth import AuthResponse, LogoutAllResponse, UserLogin, UserRegister, UserResponse
+from app.schemas.auth import (
+    AuthResponse,
+    LogoutAllResponse,
+    OtpRequest,
+    OtpRequestResponse,
+    OtpVerify,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+)
 from app.services.personalized_offers import (
     invalidate_user_personalized_offers_cache,
     sync_global_welcome_offer_for_user,
@@ -24,6 +35,12 @@ from app.services.auth import (
     create_access_token,
     hash_password,
     normalize_phone_number,
+)
+from app.services.otp import (
+    code_is_valid,
+    matches_subscriber,
+    otp_availability,
+    subscriber_key,
 )
 from app.services.realtime.outbox import queue_session_revoked
 
@@ -188,6 +205,164 @@ def login(
             detail="Invalid email or phone number or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    return _auth_response(db, user)
+
+
+def _otp_customer(db: Session, *, key: str, app_client_id) -> User | None:
+    """The customer on this app whose number ends in these digits.
+
+    Matched on the trailing digits rather than the stored string: the column
+    holds `(982) 000-0011`, `+19059039992` and `9192127000`, all written by
+    different paths over the years. A literal comparison would hand a
+    returning customer a second account and an empty order history.
+    """
+
+    return db.scalar(
+        select(User).where(
+            matches_subscriber(User.phone_number, key),
+            User.role == UserRole.CUSTOMER,
+            User.app_client_id == app_client_id,
+        )
+    )
+
+
+def _require_otp_available() -> None:
+    """Refuse the whole flow unless a code can actually be checked."""
+
+    availability = otp_availability()
+    if availability.available:
+        return
+    if availability.reason == "no_sender":
+        # The flag is on somewhere real with nothing to send with. Said out
+        # loud: the alternative is accepting a code printed in a config file.
+        logger.error(
+            "enable_phone_otp_login is on in environment=%s with no SMS sender. "
+            "Refusing to sign anybody in rather than accepting the fixed code.",
+            get_settings().environment,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We cannot send a code right now. Please sign in with your email instead.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Signing in by phone is not available here.",
+    )
+
+
+@router.post("/otp/request", response_model=OtpRequestResponse)
+def request_otp(
+    payload: OtpRequest,
+    db: Annotated[Session, Depends(get_db)],
+    app_client_id: IdentityAppClientDep,
+) -> OtpRequestResponse:
+    """Start a phone sign-in.
+
+    Answers whether this number is already an account, so the next screen can
+    ask a first-time caller for their name — and, while the fixed code is in
+    use, hands back the code so a demo needs no SMS at all.
+    """
+
+    _require_otp_available()
+    key = subscriber_key(payload.phone_number)
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Enter a phone number.",
+        )
+
+    existing = _otp_customer(db, key=key, app_client_id=app_client_id)
+    settings = get_settings()
+    return OtpRequestResponse(
+        sent=True,
+        is_new_account=existing is None,
+        debug_code=settings.otp_debug_code.strip() or None,
+    )
+
+
+@router.post("/otp/verify", response_model=AuthResponse)
+def verify_otp(
+    payload: OtpVerify,
+    db: Annotated[Session, Depends(get_db)],
+    app_client_id: IdentityAppClientDep,
+) -> AuthResponse:
+    """Finish a phone sign-in, creating the account the first time.
+
+    An account made this way has no password anyone knows: `hashed_password`
+    is NOT NULL, so it is filled with the hash of a random secret that is
+    discarded here. That is deliberate rather than a placeholder — it means
+    the row cannot be signed into through `/auth/login` by guessing, and the
+    phone is the only way in.
+
+    The email is synthesised for the same reason the password is: the column
+    is NOT NULL and this customer has not given one. It is put under
+    `example.com`, which RFC 2606 reserves precisely so it can be used this
+    way and which therefore can never belong to anybody — `.invalid` says it
+    more plainly and `EmailStr` rejects it, which is the right call for a
+    column every other path treats as a real address.
+    """
+
+    _require_otp_available()
+    key = subscriber_key(payload.phone_number)
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Enter a phone number.",
+        )
+    if not code_is_valid(payload.code):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="That code is not right. Check it and try again.",
+        )
+
+    user = _otp_customer(db, key=key, app_client_id=app_client_id)
+    if user is not None:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This account is not active. Please contact us.",
+            )
+        return _auth_response(db, user)
+
+    stored_phone = normalize_phone_number(payload.phone_number) or key
+    name = (payload.full_name or "").strip()
+    user = User(
+        # Their own name when they gave one. Never a generated stand-in: a
+        # storefront greeting "Hi, Customer" is worse than one greeting
+        # nobody, and the checkout asks for a name again anyway.
+        full_name=name,
+        email=f"{key}@phone.example.com",
+        phone_number=stored_phone,
+        hashed_password=hash_password(secrets.token_urlsafe(32)),
+        role=UserRole.CUSTOMER,
+        app_client_id=app_client_id,
+        is_active=True,
+        # The phone IS the verification: they just proved they hold it.
+        is_verified=True,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Two requests for the same new number at once. The partial unique
+        # indexes are the authority; the loser re-reads the winner's row and
+        # signs in, because both callers proved the same thing.
+        db.rollback()
+        user = _otp_customer(db, key=key, app_client_id=app_client_id)
+        if user is None:
+            logger.exception("Phone sign-up failed and no row was found afterwards")
+            raise
+        return _auth_response(db, user)
+    db.refresh(user)
+
+    try:
+        if sync_global_welcome_offer_for_user(db, user=user):
+            db.commit()
+            invalidate_user_personalized_offers_cache(user.id)
+    except Exception:
+        db.rollback()
+        logger.exception("Welcome offer bootstrap failed for phone sign-up user_id=%s", user.id)
 
     return _auth_response(db, user)
 

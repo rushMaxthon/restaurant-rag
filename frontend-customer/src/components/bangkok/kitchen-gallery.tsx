@@ -48,7 +48,9 @@ export function KitchenGallery({
           <div className="gallery__head">
             <div>
               <p className="eyebrow">From our kitchen</p>
-              <h2 className="font-display gallery__title">Made here, every day</h2>
+              <h2 className="font-display gallery__title reveal-wipe">
+                <span>{copy.kitchen_headline}</span>
+              </h2>
             </div>
           </div>
           <ul className="gallery__grid">
@@ -78,7 +80,9 @@ export function KitchenGallery({
         <div className="gallery__head reveal">
           <div>
             <p className="eyebrow">From our kitchen</p>
-            <h2 className="font-display gallery__title">Made here, every day</h2>
+            <h2 className="font-display gallery__title reveal-wipe">
+              <span>{copy.kitchen_headline}</span>
+            </h2>
           </div>
           {/* The one way out of this block, and it goes to the menu — where
               the prices, the sizes and the add buttons are. */}
@@ -87,7 +91,7 @@ export function KitchenGallery({
           </Link>
         </div>
 
-        <ul className="gallery__grid reveal-group--settle">
+        <ul className="gallery__grid reveal-group--settle parallax-img">
           {shown.map((photo, index) => (
             <li
               className="gallery__tile"

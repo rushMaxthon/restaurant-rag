@@ -39,6 +39,14 @@ HERO_HEADLINE_KEY = "hero_headline"
 HERO_SUBCOPY_KEY = "hero_subcopy"
 CONCIERGE_INTRO_KEY = "concierge_intro"
 LOGIN_BLURB_KEY = "login_blurb"
+#: The heading over the photographs of this kitchen's own food.
+#:
+#: Editable because it is a CLAIM, not a label: "Made here, every day" is
+#: true of a bakery that bakes and false of a counter that resells, and the
+#: storefront cannot tell which it is serving. The two below are the same
+#: kind of sentence — the one in the footer appears on every page.
+KITCHEN_HEADLINE_KEY = "kitchen_headline"
+PROMISE_NOTE_KEY = "promise_note"
 
 # Length caps sized to where each string actually lands, not picked round.
 # A title past ~60 characters is truncated in a search result and a
@@ -53,6 +61,8 @@ STOREFRONT_LIMITS: dict[str, int] = {
     HERO_SUBCOPY_KEY: 240,
     CONCIERGE_INTRO_KEY: 240,
     LOGIN_BLURB_KEY: 180,
+    KITCHEN_HEADLINE_KEY: 60,
+    PROMISE_NOTE_KEY: 80,
 }
 
 STOREFRONT_KEYS = tuple(STOREFRONT_LIMITS)
@@ -158,6 +168,13 @@ def default_storefront(restaurant: Restaurant) -> dict[str, str]:
             "popular, what suits a group."
         ),
         LOGIN_BLURB_KEY: f"Sign in to order from {name}{where}.",
+        # Deliberately the weakest true version of each. A default is shown
+        # under a real business's name before anybody has read it, so it has
+        # to be a sentence that cannot be wrong — "made here" and "cooked to
+        # order" are claims the owner should make, not ones we should make
+        # for them.
+        KITCHEN_HEADLINE_KEY: "A look at the food",
+        PROMISE_NOTE_KEY: f"Order online from {name}.",
     }
 
 

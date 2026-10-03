@@ -36,9 +36,11 @@ export function HowToOrder({ branch }: { branch: RestaurantLocation | undefined 
     <section className="how">
       <div className="page-pad section-pad how__inner">
         <p className="eyebrow reveal">How it works</p>
-        <h2 className="font-display how__title reveal">Three steps, no phone call</h2>
+        <h2 className="font-display how__title reveal-wipe">
+          <span>Three steps, no phone call</span>
+        </h2>
 
-        <ol className="how__steps reveal-group">
+        <ol className="how__steps reveal-group--sides">
           <li className="how__step">
             <span className="how__n" aria-hidden="true">
               1
@@ -56,9 +58,15 @@ export function HowToOrder({ branch }: { branch: RestaurantLocation | undefined 
               2
             </span>
             <ChefHat className="how__icon" aria-hidden="true" />
-            <h3>We make it to order</h3>
+            <h3>Straight to the counter</h3>
             <p>
-              Your order reaches the counter the moment it is placed — nothing is sitting waiting.
+              {/* "Nothing is sitting waiting" was here and is not ours to
+                  say: it is true of a bakery that bakes to order and false of
+                  a counter that holds food ready, and this page cannot tell
+                  which restaurant it is on. What is left is true by
+                  construction — the kitchen board receives the order when it
+                  is placed, because that is how the software works. */}
+              Your order reaches the kitchen the moment it is placed.
               {hasMinutes ? ` ${branch.branch_name} works to about ${minutes} minutes.` : ""} Want
               it later? Pick a time at checkout.
             </p>

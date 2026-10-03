@@ -18,7 +18,7 @@ import { AuthProvider } from "@/lib/auth";
 import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
 import { fontTokenCss, resolveFonts } from "@/lib/fonts";
-import { SPLASH_PREPAINT, SplashScreen } from "@/components/bangkok/splash-screen";
+import { faviconHref } from "@/lib/favicon";
 import { RELOAD_TO_TOP_PREPAINT } from "@/lib/reload-to-top";
 import { getStorefrontCopy } from "@/lib/storefront.server";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         ...fonts.hrefs.map((href) => ({ rel: "stylesheet", href })),
         { rel: "stylesheet", href: appCss },
         { rel: "stylesheet", href: polishCss },
-        { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+        // This restaurant's own icon, not the platform's and certainly not
+        // the generator's. `/favicon.ico` was hardcoded, so every tenant wore
+        // Lovable's mark in the tab, in a bookmark and on a home screen — the
+        // same class of mistake as the shared hero photograph, in the places
+        // a brand is most visible and least often checked.
+        { rel: "icon", href: faviconHref(loaderData ?? UNKNOWN_STOREFRONT) },
       ],
       // After the stylesheets, so it wins over the token file's defaults
       // without needing !important or a higher specificity.
@@ -122,33 +127,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   const storefront = Route.useLoaderData() as typeof UNKNOWN_STOREFRONT | undefined;
   return (
-    // `suppressHydrationWarning` because `SPLASH_PREPAINT` runs in the head,
-    // before React, and sets `data-splash="seen"` on this element for a repeat
-    // visit. The server cannot know what is in the visitor's sessionStorage,
-    // so the attribute is on the client and not in the SSR HTML, and React
-    // reports the difference as a hydration mismatch on every second page
-    // view. This is the documented escape for exactly that: a pre-paint script
-    // writing to <html>, the same pattern a theme script uses. It suppresses
-    // the warning for THIS element's attributes only — children are still
-    // checked — and nothing else about the element is written by the server.
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <head>
-        {/* Before anything renders, so a second page in the same visit never
-            flashes the splash. React cannot run early enough to prevent that,
-            which is the same reason the operator panel inlines its theme
-            script. */}
-        <script dangerouslySetInnerHTML={{ __html: SPLASH_PREPAINT }} />
-        {/* Also before anything renders, and for the same reason: it has to
-            get to the router's cached scroll position before the router
-            does. See `reload-to-top.ts`. */}
+        {/* Before anything renders, because it has to reach the router's
+            cached scroll position before the router does. See
+            `reload-to-top.ts`. */}
         <script dangerouslySetInnerHTML={{ __html: RELOAD_TO_TOP_PREPAINT }} />
         <HeadContent />
       </head>
       <body>
-        {/* Over the page, not instead of it: the menu, the copy and the meta
-            tags are all in this same response whether the overlay renders or
-            not, so a crawler reads the storefront either way. */}
-        <SplashScreen name={(storefront ?? UNKNOWN_STOREFRONT).name} />
         {children}
         <Scripts />
       </body>

@@ -608,6 +608,18 @@ textarea.flex:focus-visible {
   align-items: flex-start;
   gap: 0.85rem;
 }
+/* A restaurant's own mark, where the monogram would otherwise be.
+   Same box as `.brand-mark` so the header does not shift by a pixel when a
+   tenant uploads one, and `contain` rather than `cover`: a logo is a shape
+   with its own margins, and cropping it to fill a circle cuts the shape. */
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: var(--radius-3);
+}
+
 .concierge-welcome .brand-mark {
   box-shadow: 0 0 0 4px var(--primary-soft);
 }
@@ -2157,99 +2169,6 @@ html {
   color: var(--muted);
 }
 
-/* --- First arrival ---------------------------------------------------------
-   The restaurant's name, held for a moment, then out of the way.
-
-   The timing is the whole design. 1100ms total: the mark and name settle over
-   the first ~450ms, hold briefly, and the overlay is gone by 1.1s — which is
-   roughly how long the menu takes to arrive behind it from a backend on
-   another continent. Long enough to read a name, short enough that nobody who
-   came to order dinner notices they waited.
-
-   Driven entirely by a CSS animation with `forwards`, and that is deliberate:
-   there is no JavaScript that has to run for this to leave. A timer waiting on
-   a query can hang when the query hangs, and a splash screen that outlives its
-   data is the worst version of this idea — the one where a customer stares at
-   a logo because the backend is down. Here the overlay leaves on time even if
-   the bundle never loads at all.
-
-   `visibility` rather than `display` on the way out, so the fade can run; and
-   `pointer-events: none` from the start of the fade so it cannot swallow a tap
-   from somebody faster than the animation. */
-@keyframes splash-out {
-  0%,
-  62% {
-    opacity: 1;
-    visibility: visible;
-  }
-  100% {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-@keyframes splash-mark-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.splash {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: var(--space-4);
-  background: var(--bg);
-  animation: splash-out 1.1s var(--ease-out) forwards;
-  pointer-events: none;
-}
-.splash__mark {
-  display: grid;
-  place-items: center;
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  /* The brand as a filled surface carrying a label — the one token that is
-     measured for exactly this. */
-  background: var(--primary-strong);
-  color: var(--on-primary);
-  font-family: var(--font-display-stack);
-  font-size: var(--fs-title);
-  font-weight: 800;
-  letter-spacing: var(--tracking-tight);
-  box-shadow: var(--shadow-brand-md);
-  animation: splash-mark-in var(--dur-slow) var(--ease-spring) both;
-}
-.splash__name {
-  margin: 0;
-  font-family: var(--font-display-stack);
-  font-size: var(--fs-title-sm);
-  font-weight: var(--display-weight, 700);
-  letter-spacing: var(--display-tracking, var(--tracking-tight));
-  color: var(--text);
-  animation: splash-mark-in var(--dur-slow) var(--ease-out) both;
-  animation-delay: 90ms;
-}
-
-/* A repeat view inside the same visit. Set before the first paint by the
-   inline script, so there is no flash to remove. */
-html[data-splash="seen"] .splash {
-  display: none;
-}
-
-/* Not a shorter animation — none at all. Somebody who has asked their system
-   to stop moving things has not asked for a faster version of the thing. */
-@media (prefers-reduced-motion: reduce) {
-  .splash {
-    display: none;
-  }
-}
 
 /* ===========================================================================
    The footer, and the pages of prose it leads to
@@ -2878,7 +2797,12 @@ html[data-splash="seen"] .splash {
 }
 .brand-lead__shot {
   margin: 0;
-  overflow: hidden;
+  /* `clip`, not `hidden`. `hidden` makes this a SCROLL CONTAINER, and a
+     `view()` timeline resolves against the nearest scrollport — so the
+     parallax inside measured the image against this tile, where it never
+     moves, and sat frozen at progress 0.5 forever. `clip` crops identically
+     and creates no scrollport, so the timeline reaches the page. */
+  overflow: clip;
   border-radius: var(--radius-5);
   background: var(--skeleton);
   box-shadow: var(--shadow-md);
@@ -2890,9 +2814,6 @@ html[data-splash="seen"] .splash {
   aspect-ratio: 4 / 3;
   object-fit: cover;
   transition: transform var(--dur-slow) var(--ease-out);
-}
-.brand-lead__shot:hover img {
-  transform: scale(1.04);
 }
 .brand-lead__shot:first-child {
   grid-column: 1 / -1;
@@ -3115,7 +3036,12 @@ html[data-splash="seen"] .splash {
 }
 .gallery__tile {
   position: relative;
-  overflow: hidden;
+  /* `clip`, not `hidden`. `hidden` makes this a SCROLL CONTAINER, and a
+     `view()` timeline resolves against the nearest scrollport — so the
+     parallax inside measured the image against this tile, where it never
+     moves, and sat frozen at progress 0.5 forever. `clip` crops identically
+     and creates no scrollport, so the timeline reaches the page. */
+  overflow: clip;
   border-radius: var(--radius-5);
   background: var(--skeleton);
   box-shadow: var(--shadow-sm);
@@ -3138,9 +3064,11 @@ html[data-splash="seen"] .splash {
     aspect-ratio: auto;
   }
 }
-.gallery__tile:hover img {
-  transform: scale(1.05);
-}
+/* No hover zoom on a gallery tile any more: the image already carries a
+   parallax drift on `transform`, and two rules animating one property means
+   whichever is newer wins and the drift stutters on mouse-over. The drift is
+   the better of the two anyway — it plays for everyone, including every
+   phone, where hover does not exist. */
 /* The shape a tile holds while its photograph is still on the way. Sized by
    the same `aspect-ratio` rules as the image it replaces, so nothing moves
    when the real one arrives. */
@@ -3434,19 +3362,31 @@ html[data-splash="seen"] .splash {
    anchor of the page rather than as a fourth step. */
 .order-summary {
   position: relative;
-  overflow: hidden;
   padding: var(--space-5);
-}
-.order-summary::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(
+  /* The accent is painted as a background rather than as a clipped
+     pseudo-element, and this panel does NOT clip its overflow.
+
+     It used to: a 3px `::before` sat at `inset: 0 0 auto` and `overflow:
+     hidden` was what kept its square ends off the panel's rounded corners.
+     That clip also cut off the "Taxes and charges" popover, which is
+     absolutely positioned inside this panel — on a real bill the fourth
+     line (GST on the delivery fee) and the total row were simply not on
+     screen, so the three lines a customer COULD see added up to less than
+     the figure they were being charged. A decoration cost the bill its
+     arithmetic.
+
+     A background is clipped by `border-radius` on its own, so the accent
+     still stops at the corner and nothing else is clipped with it. The
+     colour comes from the panel's own `background-color`; only the image
+     is set here. */
+  background-image: linear-gradient(
     90deg,
     var(--primary),
     color-mix(in srgb, var(--primary) 55%, transparent)
   );
+  background-repeat: no-repeat;
+  background-size: 100% 3px;
+  background-position: top left;
 }
 
 /* Where to collect from, on a pickup order. Replaces a run of utilities so
@@ -3460,114 +3400,6 @@ html[data-splash="seen"] .splash {
   background: var(--surface-alt);
 }
 
-
-/* ===========================================================================
-   The landing page: a strip of facts, and where to find the kitchen
-   ---------------------------------------------------------------------------
-   Both built from the branch row and nothing else. Fewer cells for a branch
-   that has published less; never a placeholder.
-   =========================================================================== */
-.trust-strip {
-  /* Overlaps the hero by a little, so the strip reads as sitting ON the
-     photograph's lower edge rather than as the first row of a new page —
-     the one piece of layering on the whole route, and it is where the eye
-     lands after the headline. */
-  position: relative;
-  z-index: 1;
-  margin-top: calc(var(--space-8) * -1);
-  padding-inline: var(--space-4);
-}
-@media (min-width: 640px) {
-  .trust-strip {
-    padding-inline: var(--space-6);
-  }
-}
-@media (min-width: 1024px) {
-  .trust-strip {
-    padding-inline: var(--space-10);
-  }
-}
-.trust-strip__list {
-  list-style: none;
-  margin: 0 auto;
-  padding: var(--space-2);
-  max-width: 1400px;
-  display: grid;
-  gap: var(--space-2);
-  /* Two across on a phone — four stacked is a column of the same shape as
-     the dish grid under it and the strip stops reading as a strip. */
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-6);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-}
-@media (min-width: 900px) {
-  .trust-strip__list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0;
-  }
-  /* Hairlines between cells at four across; at two across the gap does it. */
-  .trust-cell + .trust-cell {
-    border-left: 1px solid var(--border);
-  }
-}
-.trust-cell {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  min-width: 0;
-}
-.trust-cell > svg {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  margin-top: 2px;
-  color: var(--primary);
-}
-.trust-cell[data-tone="open"] > svg {
-  color: var(--success);
-}
-.trust-cell[data-tone="closed"] > svg {
-  color: var(--muted);
-}
-.trust-cell > span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.trust-cell strong {
-  font-size: var(--fs-caption);
-  font-weight: 800;
-  line-height: var(--leading-snug);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.trust-cell small {
-  font-size: var(--fs-tiny);
-  color: var(--muted);
-  line-height: var(--leading-snug);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.trust-cell small a {
-  /* The ellipsis has to live on the ANCHOR, not only on the `small` around
-     it. Clipping the parent hides the overflow visually while the inline
-     child still measures its full intrinsic width — so a long address
-     reported a box reaching 446px inside a 393px phone, which is what
-     `e2e/mobile-layout.spec.ts` exists to catch. */
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
 
 /* --- Visit us, in the closing band ------------------------------------- */
 /* Sits on the brand-coloured half of the band, so every colour here is the
@@ -3819,48 +3651,53 @@ html[data-splash="seen"] .splash {
   }
 }
 
+/* The account screen's heading row: the name, and the way out beside it. */
+.tab__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.tab__head .tab__name {
+  margin-top: 0;
+}
+
 /* ===========================================================================
    Reveal on scroll
    ---------------------------------------------------------------------------
-   Scroll-LINKED, not scroll-triggered: the animation's timeline is the
-   element's own progress through the viewport, so it is tied to the scroll
-   position rather than fired once when a threshold is crossed. Scrubbing back
-   up plays it backwards, which is what separates this from a jQuery plugin.
-
-   **Done in CSS rather than with an IntersectionObserver, deliberately.** An
+   Scroll-LINKED, on `view()` timelines: the animation's clock is the
+   element's own progress through the viewport, so scrubbing back up plays it
+   backwards. Done in CSS rather than with an IntersectionObserver because an
    observer means the element starts hidden and JavaScript has to arrive to
-   show it — so a hydration that is slow, blocked or broken leaves a blank
-   page, and this app server-renders its first screen specifically so that
-   cannot happen. `menu-grid.tsx` already carries the scars of an observer
-   that did not fire (a hidden tab never runs one, and a fast scroll skips
-   its bands).
+   show it — and this app server-renders its first screen precisely so a slow
+   or failed hydration cannot blank the page. A browser without
+   `animation-timeline` matches none of these rules and simply shows
+   everything.
 
-   Here the failure mode is the whole design: a browser without
-   `animation-timeline` matches neither rule below, so the element is simply
-   visible, exactly as it is now. Nothing is ever hidden by default.
+   **What makes it read as crafted rather than as a slide.** The first version
+   translated 110px on a linear curve and looked like it: a block arriving at
+   constant speed and stopping dead. Three things fix that, and they are the
+   same three every well-made site uses.
 
-   The transform is on blocks that contain no `position: fixed` descendant.
-   A transformed ancestor becomes the containing block for a fixed child —
-   the same trap documented on `page-in`, which stays opacity-only because
-   the concierge's composer is fixed inside it.
+   * **Easing.** A timing function still applies on a scroll timeline — it
+     maps progress to value — so movement decelerates into place instead of
+     marching.
+   * **A touch of scale.** 0.96 → 1 reads as the block settling INTO the page
+     rather than sliding across it.
+   * **Blur.** 10px → 0 is the single biggest tell, and the most expensive, so
+     it is confined to photographs — never a grid of cards whose text would
+     re-rasterise every frame.
+
+   Distance is modest now. Long travel was the ask and it was the wrong lever:
+   what looks expensive is the settle, not the journey.
    =========================================================================== */
-@keyframes reveal-rise {
-  from {
-    opacity: 0;
-    transform: translateY(26px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 
 /* Sideways entrances need the block they are in to clip, or an element that
-   starts 32px to the right of where it belongs widens the document and the
-   page gains a horizontal scrollbar — which `e2e/mobile-layout.spec.ts`
-   fails on, correctly. `clip` rather than `hidden`: `hidden` would make the
-   section a scroll container, and a scroll container is what `position:
-   sticky` measures itself against. */
+   starts outside where it belongs widens the document and the page gains a
+   horizontal scrollbar. `clip`, not `hidden`: `hidden` would make the section
+   a scroll container, and a scroll container is what `position: sticky`
+   measures itself against. */
 .brand-lead,
 .brand-standards,
 .gallery,
@@ -3868,14 +3705,29 @@ html[data-splash="seen"] .splash {
 .how,
 .facts,
 .brand-offer,
-.brand-faqs {
+.brand-faqs,
+/* The closing band too. It is the one block with no max-width — it runs the
+   full page — so a `reveal-left` inside it has no gutter to travel into and
+   its box leaves the viewport without this. */
+.visit-band {
   overflow-x: clip;
+}
+
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 38px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @keyframes reveal-from-left {
   from {
     opacity: 0;
-    transform: translate3d(-34px, 10px, 0);
+    transform: translate3d(-72px, 18px, 0) scale(0.96);
   }
   to {
     opacity: 1;
@@ -3886,7 +3738,7 @@ html[data-splash="seen"] .splash {
 @keyframes reveal-from-right {
   from {
     opacity: 0;
-    transform: translate3d(34px, 10px, 0);
+    transform: translate3d(72px, 18px, 0) scale(0.96);
   }
   to {
     opacity: 1;
@@ -3894,44 +3746,95 @@ html[data-splash="seen"] .splash {
   }
 }
 
-/* For photographs. A picture that slides is a picture that looks like it is
-   in the wrong place for a moment; one that settles out of a slight zoom
-   reads as the image arriving rather than the layout moving. */
+/* For photographs: no travel at all. A picture that slides looks like it is
+   in the wrong place for a moment; one that resolves out of a slight zoom and
+   a blur reads as the image arriving. */
 @keyframes reveal-settle {
   from {
     opacity: 0;
-    transform: scale(1.04);
+    transform: scale(1.06);
+    filter: blur(10px);
   }
   to {
     opacity: 1;
     transform: none;
+    filter: blur(0);
+  }
+}
+
+/* A heading rising out of its own box, which the clip on the parent turns
+   into a wipe. The most recognisable "this was designed" moment on a page,
+   and it costs one span. */
+@keyframes reveal-wipe {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 105%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The parallax drift under a photograph. Runs for the WHOLE time the tile is
+   on screen (`animation-range: cover`), unlike the entrances, which are over
+   early.
+   
+   Animated on `object-position`, NOT on a transform. The first version scaled
+   the image to 1.1 and slid it, which drifts correctly and makes the image's
+   box 10% wider than its tile — on a full-width tile that is wider than the
+   phone, and `e2e/mobile-layout.spec.ts` failed it: the tile clips the pixels
+   but the BOX still reaches past the viewport, and a box outside the viewport
+   is exactly what that test guards. Panning the crop inside a frame that
+   never moves gives the same effect with no geometry at all, so it can run at
+   every width instead of being switched off on phones. Needs `object-fit:
+   cover`, which every photograph here already has. */
+@keyframes reveal-drift {
+  from {
+    object-position: 50% 40%;
+  }
+  to {
+    object-position: 50% 60%;
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
+    .reveal,
     .reveal-left,
     .reveal-right,
     .reveal-settle,
+    .reveal-group > *,
+    .reveal-group--sides > *,
     .reveal-group--settle > * {
-      animation: reveal-rise linear both;
+      animation: reveal-rise both;
       animation-timeline: view();
-      animation-range: entry 2% cover 24%;
+      animation-range: entry 2% cover 30%;
+      /* Decelerating, not linear. The whole difference between "it animates"
+         and "somebody chose how it animates". */
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     }
-    /* Sideways only where the layout actually HAS sides.
-     *
-     * Below 900px the lead story stacks into one column, so a horizontal
-     * entrance is motion that illustrates nothing — and on a 393px phone an
-     * element starting 34px out is an element whose box is outside the
-     * viewport for the length of the animation. It is clipped, so nothing
-     * scrolls and nothing is unreachable, but `e2e/mobile-layout.spec.ts`
-     * measures boxes rather than scrollbars and is right to: "off screen" is
-     * the thing it is guarding, and a transiently off-screen box is still a
-     * box nobody can tap. A phone gets the rise instead. */
-    .reveal-left,
-    .reveal-right {
-      animation-name: reveal-rise;
+
+    /* Each child on its OWN timeline, so a grid staggers because its items
+       genuinely reach the fold at different moments — no index variable, and
+       it stays right when the grid reflows to one column on a phone. */
+    .reveal-group > *,
+    .reveal-group--sides > *,
+    .reveal-group--settle > * {
+      animation-range: entry 4% cover 34%;
     }
+
+    .reveal-settle,
+    .reveal-group--settle > * {
+      animation-name: reveal-settle;
+    }
+
+    /* Sideways only where the layout HAS sides. Below 900px the two-column
+       blocks stack, so a horizontal entrance illustrates nothing — and on a
+       393px phone an element starting 72px out has a box outside the viewport
+       for the length of the animation, which `e2e/mobile-layout.spec.ts` fails
+       on, correctly: clipped or not, a box nobody can tap is what it guards.
+       Phones get the rise. */
     @media (min-width: 900px) {
       .reveal-left {
         animation-name: reveal-from-left;
@@ -3939,36 +3842,60 @@ html[data-splash="seen"] .splash {
       .reveal-right {
         animation-name: reveal-from-right;
       }
+      .reveal-group--sides > :nth-child(odd) {
+        animation-name: reveal-from-left;
+      }
+      .reveal-group--sides > :nth-child(even) {
+        animation-name: reveal-from-right;
+      }
     }
-    .reveal-settle,
-    .reveal-group--settle > * {
-      animation-name: reveal-settle;
+
+    /* The heading wipe. The clip is what hides the line before it rises; the
+       padding is for descenders, which a tight clip would shave off a "g". */
+    .reveal-wipe {
+      display: block;
+      overflow: clip;
+      padding-bottom: 0.12em;
     }
-    .reveal-group--settle > * {
-      animation-range: entry 4% cover 28%;
+    .reveal-wipe > span {
+      display: block;
+      animation: reveal-wipe both;
+      animation-timeline: view();
+      animation-range: entry 4% cover 26%;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Photographs drift as the page moves past them. On the IMAGE, never the
+       tile, so the frame stays put and only its contents move. */
+    .parallax-img img {
+      animation: reveal-drift linear both;
+      animation-timeline: view();
+      animation-range: cover;
     }
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .reveal,
-    .reveal-group > * {
-      animation: reveal-rise linear both;
-      animation-timeline: view();
-      /* Starts as the element enters and finishes well before it is centred,
-         so the reader is never waiting on it. `cover` rather than `entry` for
-         the end, because a block taller than the viewport never completes an
-         `entry` range and would sit half-faded for its whole height. */
-      animation-range: entry 2% cover 22%;
-    }
+/* Printing has no scroll, so a scroll-linked animation has no progress: every
+   revealed block sits at its starting frame and prints blank. Found by taking
+   a full-page screenshot of this page — the hero and the footer came out, and
+   everything between them was white.
 
-    /* Each child runs on its OWN timeline, so a grid staggers because its
-       items genuinely reach the fold at different moments — no `--i` index,
-       no guessing, and it stays right when the grid reflows to one column on
-       a phone. */
-    .reveal-group > * {
-      animation-range: entry 4% cover 26%;
-    }
+   Nothing to animate on paper, so the whole system is switched off rather
+   than fixed up. `!important` because these compete with the keyframes
+   themselves, which is the one place it is the right tool. */
+@media print {
+  .reveal,
+  .reveal-left,
+  .reveal-right,
+  .reveal-settle,
+  .reveal-group > *,
+  .reveal-group--sides > *,
+  .reveal-group--settle > *,
+  .reveal-wipe > span,
+  .parallax-img img {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
   }
 }

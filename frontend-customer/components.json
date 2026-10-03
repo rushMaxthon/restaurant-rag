@@ -18,5 +18,7 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "registries": {}
+  "registries": {
+    "@vengeanceui": "https://www.vengenceui.com/r/{name}.json"
+  }
 }

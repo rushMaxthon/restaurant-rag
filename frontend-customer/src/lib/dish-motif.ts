@@ -36,6 +36,22 @@ const BY_WORD: ReadonlyArray<readonly [string, Motif]> = [
   ["chapati", "flatbread"],
   ["naan", "flatbread"],
   ["puri", "flatbread"],
+  // Added for a fast-food menu, and only where an existing drawing is
+  // honestly what the dish looks like: a pizza and a wrap ARE flatbread,
+  // pasta IS noodles, a sandwich IS cut into pieces. A burger, chips and a
+  // milkshake are deliberately NOT here — no drawing in this set depicts
+  // them, and the neutral plate is a better answer than a shape that is
+  // wrong. The list is food vocabulary, not one restaurant's data, which is
+  // why it can grow here without anything becoming tenant-specific.
+  ["pizza", "flatbread"],
+  ["wrap", "flatbread"],
+  ["shawarma", "flatbread"],
+  ["frankie", "flatbread"],
+  ["pasta", "noodles"],
+  ["spaghetti", "noodles"],
+  ["macaroni", "noodles"],
+  ["sandwich", "squares"],
+  ["toast", "squares"],
   ["noodle", "noodles"],
   ["hakka", "noodles"],
   ["chowmein", "noodles"],
