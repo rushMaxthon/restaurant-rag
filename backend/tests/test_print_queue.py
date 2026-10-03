@@ -351,12 +351,34 @@ class PrintQueueTests(unittest.TestCase):
             self.assertEqual(len(made), 1)
         self.assertEqual(self._auto_dockets(), 1)
 
-    def test_a_failed_ticket_can_be_queued_again(self) -> None:
-        # Excluded from the index on purpose: a printer that was out of paper
-        # must not block the order from ever printing.
+    def test_a_ticket_still_retrying_is_not_duplicated(self) -> None:
+        # The other half of the retry change. While a ticket is QUEUED again
+        # after a failure it is still live, so a second enqueue must be
+        # refused by the index exactly as it would be for a fresh one -
+        # otherwise a printer that was briefly off produces two dockets when
+        # it comes back.
         [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
         self.session.commit()
         ack_job(self.session, self.agent, job.id, printed=False, error="Out of paper")
+        self.assertEqual(job.status, PrintJobStatus.QUEUED)
+
+        again = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
+        self.session.commit()
+        self.assertEqual(again, [], "a retrying ticket was duplicated")
+        self.assertEqual(self._auto_dockets(), 1)
+
+    def test_a_ticket_finally_given_up_on_can_be_queued_again(self) -> None:
+        # FAILED is excluded from the index on purpose: once a ticket has been
+        # abandoned, a later order event - or a reprint - must be able to
+        # produce a new one rather than being blocked forever by the corpse.
+        [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
+        self.session.commit()
+        job.attempts = get_settings().print_job_max_attempts
+        self.session.add(job)
+        self.session.commit()
+        ack_job(self.session, self.agent, job.id, printed=False, error="Out of paper")
+        self.assertEqual(job.status, PrintJobStatus.FAILED)
+
         again = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
         self.session.commit()
         self.assertEqual(len(again), 1)
@@ -489,6 +511,61 @@ class PrintQueueTests(unittest.TestCase):
         self.assertEqual(second.status, PrintJobStatus.PRINTED)
         self.assertEqual(second.printed_at, printed_at, "the first print time stands")
 
+    def test_a_failure_goes_back_in_the_queue_rather_than_dying(self) -> None:
+        """The commonest kitchen failure, and it used to be fatal.
+
+        A printer switched off for thirty seconds permanently killed the
+        docket: one attempt, FAILED, never served again. Two real tickets were
+        lost that way to a printer that was working again by the time anyone
+        looked at it.
+        """
+
+        [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
+        self.session.commit()
+        claim_jobs(self.session, self.agent)
+
+        ack_job(
+            self.session,
+            self.agent,
+            job.id,
+            printed=False,
+            error="The printer at 192.168.1.50 did not answer.",
+        )
+        self.assertEqual(job.status, PrintJobStatus.QUEUED, "a transient failure killed it")
+        self.assertIsNone(job.claimed_at, "it must be claimable again without waiting a lease")
+        # The reason is kept even though it is going to be retried, so an
+        # owner watching the screen sees it struggling rather than idle.
+        self.assertIn("did not answer", job.last_error)
+
+        # And the next poll really does pick it up.
+        self.assertEqual([j.id for j in claim_jobs(self.session, self.agent)], [job.id])
+
+    def test_a_ticket_too_old_to_be_useful_is_given_up_on(self) -> None:
+        # A docket half an hour late has a cook making food for a customer who
+        # has left. That is what Reprint is for, with a person deciding.
+        [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
+        self.session.commit()
+        job.created_at = datetime.now(UTC) - timedelta(
+            minutes=get_settings().print_job_retry_window_minutes + 5
+        )
+        self.session.add(job)
+        self.session.commit()
+
+        ack_job(self.session, self.agent, job.id, printed=False, error="still unreachable")
+        self.assertEqual(job.status, PrintJobStatus.FAILED)
+
+    def test_a_ticket_that_fails_instantly_cannot_spin_forever(self) -> None:
+        # The ceiling underneath the window: a job failing on every poll must
+        # not retry for the whole half hour.
+        [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
+        self.session.commit()
+        job.attempts = get_settings().print_job_max_attempts
+        self.session.add(job)
+        self.session.commit()
+
+        ack_job(self.session, self.agent, job.id, printed=False, error="no printer")
+        self.assertEqual(job.status, PrintJobStatus.FAILED)
+
     def test_a_failure_carries_a_sentence_the_owner_can_act_on(self) -> None:
         [job] = enqueue_for_order(self.session, self.order, kind=PrintJobKind.KITCHEN_DOCKET)
         self.session.commit()
@@ -499,7 +576,10 @@ class PrintQueueTests(unittest.TestCase):
             printed=False,
             error="The printer at 192.168.1.50 did not answer. Check it is switched on.",
         )
-        self.assertEqual(job.status, PrintJobStatus.FAILED)
+        # QUEUED now, not FAILED - see the retry test above. What matters
+        # here is that the SENTENCE survives either way, because that string
+        # is what the owner reads on the Printers page.
+        self.assertEqual(job.status, PrintJobStatus.QUEUED)
         self.assertIn("switched on", self.printer.last_error)
 
     def test_another_agents_job_is_invisible(self) -> None:

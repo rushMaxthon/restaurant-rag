@@ -491,6 +491,25 @@ class Settings(BaseSettings):
     # anything.
     print_agent_poll_seconds: int = 15
 
+    # How long a ticket keeps trying before it is given up on.
+    #
+    # One failed attempt used to be fatal: a printer switched off for thirty
+    # seconds - the commonest failure there is in a kitchen, along with someone
+    # unplugging it to vacuum - permanently killed the docket, and the order
+    # was cooked from nothing. Observed live.
+    #
+    # Measured from when the ticket was QUEUED rather than counted in
+    # attempts, because the honest question is "is this still worth printing",
+    # and that is about the age of the order. A docket produced half an hour
+    # late is a cook making food for a customer who has already left; a
+    # reprint is the right tool for that, with a person deciding.
+    print_job_retry_window_minutes: int = 30
+
+    # A ceiling underneath the window, so a ticket that fails instantly every
+    # time cannot spin for half an hour. At a fifteen-second poll this is
+    # roughly ten minutes of trying, whichever runs out first.
+    print_job_max_attempts: int = 40
+
     # --- Realtime (Socket.IO) -----------------------------------------------
     #
     # Pushes "this order changed" to the kitchen board, the admin panel and the

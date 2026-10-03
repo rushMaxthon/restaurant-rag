@@ -348,13 +348,39 @@ def ack_job(
         job.printer.last_printed_at = now
         job.printer.last_error = None
     else:
-        job.status = PrintJobStatus.FAILED
         # The sentence an owner reads. The Marketing Hub's argument, for the
         # same reason: "that string lands in `campaign.last_error` and then on
         # their screen". It is stored on the printer as well as the job so the
         # admin can say "this printer is unreachable" without scanning jobs.
         job.last_error = (error or "The agent could not print this ticket.")[:2000]
         job.printer.last_error = job.last_error
+
+        # A failure is usually temporary, so the ticket goes back in the queue
+        # rather than dying.
+        #
+        # One attempt used to be fatal, and that was wrong about the most
+        # common failure a kitchen has: a printer switched off for thirty
+        # seconds, a network blip, somebody unplugging it to vacuum. Two
+        # tickets were permanently lost to a printer that was unreachable for
+        # under a minute and working again by the time anyone looked.
+        #
+        # It gives up on age rather than on attempts alone, because the honest
+        # question is whether the ticket is still worth printing. A docket
+        # half an hour late has a cook making food for a customer who has left
+        # — that is what the Reprint button is for, with a person deciding.
+        settings = get_settings()
+        age = now - (job.created_at or now)
+        exhausted = (
+            age > timedelta(minutes=settings.print_job_retry_window_minutes)
+            or (job.attempts or 0) >= settings.print_job_max_attempts
+        )
+        if exhausted:
+            job.status = PrintJobStatus.FAILED
+        else:
+            # Back to QUEUED, not CLAIMED: the next poll picks it up without
+            # waiting out a lease it no longer holds.
+            job.status = PrintJobStatus.QUEUED
+            job.claimed_at = None
 
     agent.last_seen_at = now
     db.add_all([job, job.printer, agent])

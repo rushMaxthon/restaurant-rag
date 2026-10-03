@@ -259,7 +259,17 @@ def pair_agent(
         token_hash=_hash_token(raw),
         hostname=payload.hostname,
         agent_version=payload.agent_version,
-        last_seen_at=datetime.now(UTC),
+        # Deliberately NOT `last_seen_at`. Pairing is the installer checking
+        # in, not the agent running — and setting it here made a PC that had
+        # paired and never started show as "Online, seen just now" on the
+        # Printers page for two minutes. The "never connected" state exists
+        # precisely for that case, which is the most actionable thing the page
+        # can say, and this line made it unreachable. Observed after an
+        # install whose task registration failed: the screen said online, the
+        # agent had never run.
+        #
+        # It is set on the first poll instead, which is the question the badge
+        # is really answering.
     )
     db.add(agent)
     db.commit()
@@ -287,6 +297,22 @@ def poll_jobs(agent: AgentDep, db: Annotated[Session, Depends(get_db)]) -> PollR
     """
 
     settings = get_settings()
+
+    # The poll itself is the liveness signal, not the printing.
+    #
+    # `claim_jobs` stamps `last_seen_at` only when it hands work over, so an
+    # agent polling every fifteen seconds with nothing to print went "offline"
+    # on the admin screen after two minutes while being perfectly healthy —
+    # seen on the Printers page with the process running and the printer
+    # working. An owner who distrusts the status badge has no way left to tell
+    # a working printer from a broken one.
+    #
+    # Committed separately and first, so a failure anywhere below still leaves
+    # the proof that this agent is alive.
+    agent.last_seen_at = datetime.now(UTC)
+    db.add(agent)
+    db.commit()
+
     jobs = claim_jobs(db, agent)
     printers = {printer.id: printer for printer in agent.printers}
     return PollResponse(
