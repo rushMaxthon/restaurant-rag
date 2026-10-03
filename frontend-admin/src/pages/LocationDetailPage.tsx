@@ -1573,17 +1573,34 @@ export function LocationDetailPage({
                 label="Google Pay (not available)"
                 onChange={() => undefined}
               />
+              {/* Razorpay is live and this box was disabled, with copy saying
+                  it was "not supported yet" and "ignored at checkout". Both
+                  were false: `SUPPORTED_PAYMENT_METHODS` in the payments
+                  registry is card, Razorpay and cash, and
+                  `available_payment_methods` reads this very flag. The screen
+                  was telling an owner their UPI switch did nothing.
+
+                  Google Pay above stays disabled, because that one is true —
+                  the registry leaves it out on purpose, since Razorpay's own
+                  checkout already covers UPI and wallets behind one button. */}
               <Checkbox
                 checked={generalSettingsForm.razorpay_enabled}
-                disabled
-                label="Razorpay (not available)"
-                onChange={() => undefined}
+                label="Razorpay (UPI, cards, wallets)"
+                onChange={(checked) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, razorpay_enabled: checked } : current,
+                  )
+                }
               />
             </div>
             <p className="field form-grid__wide hint-text">
-              Customers can pay by card (Stripe) or cash on delivery. Google Pay
-              and Razorpay are not supported yet — their saved values are shown
-              for reference only and are ignored at checkout.
+              Customers can pay by card, by cash on delivery, or through Razorpay
+              — which covers UPI, netbanking and wallets behind one button. A
+              method only appears at checkout once this branch has it switched on
+              AND the restaurant has that gateway&rsquo;s keys saved, so a
+              customer is never shown a button that cannot take their money. Add
+              keys under the restaurant&rsquo;s Settings tab. Google Pay is not
+              supported; its saved value is kept for reference and ignored.
             </p>
             <label className="field">
               <span>Packaging fee</span>
