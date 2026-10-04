@@ -2699,18 +2699,18 @@ select:focus-visible {
 .kds-branch {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   justify-self: start;
   align-self: center;
   width: fit-content;
   max-width: 100%;
-  padding: 3px 10px 3px 9px;
+  padding: 3px var(--space-3) 3px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface-subtle);
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   line-height: 1.5;
   white-space: nowrap;
 }
@@ -5315,20 +5315,20 @@ select:focus-visible {
 .ntf-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-  gap: 14px;
+  gap: var(--space-4);
   align-items: start;
 }
 
 .ntf-card {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
   align-content: start;
 }
 
 .ntf-card__header {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-3);
 }
 
 .ntf-card__header h2 {
@@ -5356,20 +5356,20 @@ select:focus-visible {
 
 .ntf-form {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .ntf-form__row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ntf-scope {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
@@ -5409,12 +5409,12 @@ select:focus-visible {
 
 .ntf-scope__count {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
 }
 
@@ -5423,7 +5423,7 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-3);
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
@@ -5432,16 +5432,16 @@ select:focus-visible {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: var(--space-2) var(--space-4);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
 .ntf-sendbar__meta span {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .ntf-sendbar__meta svg {
@@ -5451,13 +5451,13 @@ select:focus-visible {
 .ntf-result-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .ntf-result {
   display: grid;
   gap: 3px;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
@@ -5465,7 +5465,7 @@ select:focus-visible {
 
 .ntf-result span {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--hint);
@@ -5477,7 +5477,7 @@ select:focus-visible {
 }
 
 .ntf-result--success {
-  border-color: rgba(32, 168, 110, 0.3);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
   background: var(--success-soft);
 }
 
@@ -5486,7 +5486,7 @@ select:focus-visible {
 }
 
 .ntf-result--danger {
-  border-color: rgba(213, 59, 67, 0.3);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
   background: var(--danger-soft);
 }
 
@@ -5496,7 +5496,7 @@ select:focus-visible {
 
 .ntf-history__list {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   max-height: 520px;
   overflow-y: auto;
   padding-right: 2px;
@@ -5504,8 +5504,8 @@ select:focus-visible {
 
 .ntf-history__item {
   display: grid;
-  gap: 5px;
-  padding: 11px 13px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--card);
@@ -5515,7 +5515,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ntf-history__top strong {
@@ -5528,12 +5528,12 @@ select:focus-visible {
 
 .ntf-history__badge {
   flex-shrink: 0;
-  padding: 3px 9px;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--success-soft);
   color: var(--on-success-soft);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
 }
 
@@ -5557,19 +5557,19 @@ select:focus-visible {
 .ntf-history__stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: var(--space-1) var(--space-3);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--hint);
 }
 
 .ntf-history__error {
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-1);
   background: var(--danger-soft);
   color: var(--on-danger-soft);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   line-height: 1.45;
 }
 
@@ -5704,7 +5704,7 @@ select:focus-visible {
 .set-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 36px;
+  gap: var(--space-10);
   align-items: start;
   width: min(1320px, 100%);
 }
@@ -5717,7 +5717,7 @@ select:focus-visible {
 
 .set-rail {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   align-content: start;
   position: sticky;
   top: 16px;
@@ -5725,8 +5725,8 @@ select:focus-visible {
 
 .set-rail__card {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -5735,7 +5735,7 @@ select:focus-visible {
 .set-rail__card h3 {
   margin: 0;
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted);
@@ -5758,8 +5758,8 @@ select:focus-visible {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding: 7px 0;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
   font-size: var(--fs-caption);
 }
 
@@ -5775,7 +5775,7 @@ select:focus-visible {
 .set-fact dd {
   margin: 0;
   min-width: 0;
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--text);
   text-align: right;
   overflow-wrap: anywhere;
@@ -5785,7 +5785,7 @@ select:focus-visible {
 .set-identity {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   padding-bottom: 20px;
 }
@@ -5799,7 +5799,7 @@ select:focus-visible {
 
 .set-identity__copy strong {
   font-size: var(--fs-body-lg);
-  font-weight: 750;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.012em;
   color: var(--text);
 }
@@ -5813,12 +5813,12 @@ select:focus-visible {
 .set-identity .secondary-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .set-scope {
   margin: 0;
-  padding: 10px 0 20px 14px;
+  padding: var(--space-3) 0 var(--space-5) var(--space-4);
   border-left: 2px solid var(--accent-track);
   font-size: var(--fs-caption);
   line-height: 1.55;
@@ -5830,15 +5830,15 @@ select:focus-visible {
 .set-group {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
-  gap: 28px;
-  padding: 24px 0;
+  gap: var(--space-8);
+  padding: var(--space-6) 0;
   border-top: 1px solid var(--border);
 }
 
 .set-group__head h2 {
   margin: 0;
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -5858,8 +5858,8 @@ select:focus-visible {
 .set-item {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 4px 0 14px;
+  gap: var(--space-6);
+  padding: var(--space-1) 0 var(--space-4);
 }
 
 .set-item + .set-item {
@@ -5880,7 +5880,7 @@ select:focus-visible {
 
 .set-item__copy strong {
   font-size: var(--fs-label);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
 }
 
@@ -5914,11 +5914,11 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   min-height: var(--control-h-sm);
-  padding: 5px 12px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
@@ -5948,7 +5948,7 @@ select:focus-visible {
   flex-shrink: 0;
   border-radius: var(--radius-pill);
   font-size: var(--fs-label);
-  font-weight: 750;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
 }
 
@@ -5958,8 +5958,8 @@ select:focus-visible {
 }
 
 .st-avatar--owner {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
 }
 
 .st-switch {
@@ -5983,7 +5983,7 @@ select:focus-visible {
   height: 18px;
   border-radius: var(--radius-pill);
   background: var(--surface);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.24);
+  box-shadow: var(--shadow-xs);
   transition: transform var(--dur-fast) var(--ease-out);
 }
 
@@ -6003,7 +6003,7 @@ select:focus-visible {
 @media (max-width: 1180px) {
   .set-shell {
     grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
+    gap: var(--space-6);
   }
 
   .set-rail {
@@ -6015,7 +6015,7 @@ select:focus-visible {
 @media (max-width: 820px) {
   .set-group {
     grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
+    gap: var(--space-4);
   }
 
   /* Stacked, the group title sits directly above a setting label of nearly the
@@ -6032,7 +6032,7 @@ select:focus-visible {
   .set-item {
     align-items: flex-start;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
   }
 
   .set-item__control {
@@ -6049,14 +6049,14 @@ select:focus-visible {
 .ai-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-stat {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   align-content: start;
-  padding: 13px 14px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--card);
@@ -6065,7 +6065,7 @@ select:focus-visible {
 
 .ai-stat__label {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -6073,7 +6073,7 @@ select:focus-visible {
 
 .ai-stat > strong {
   font-size: var(--fs-title);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: -0.02em;
   line-height: 1.05;
 }
@@ -6094,13 +6094,13 @@ select:focus-visible {
 
 .ai-trace-list {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-trace {
   display: grid;
-  gap: 11px;
-  padding: 13px 15px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--card);
@@ -6109,7 +6109,7 @@ select:focus-visible {
 .ai-trace__header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-trace__avatar {
@@ -6147,7 +6147,7 @@ select:focus-visible {
 .ai-trace__badges {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -6155,11 +6155,11 @@ select:focus-visible {
 .ai-trace__time {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
 }
 
@@ -6191,13 +6191,13 @@ select:focus-visible {
 .ai-trace__convo {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-trace__bubble {
   display: grid;
-  gap: 5px;
-  padding: 10px 12px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-3);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
@@ -6206,15 +6206,15 @@ select:focus-visible {
 
 .ai-trace__bubble--assistant {
   background: var(--accent-soft);
-  border-color: rgba(230, 74, 0, 0.18);
+  border-color: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .ai-trace__bubble-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -6237,24 +6237,24 @@ select:focus-visible {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: var(--space-2);
 }
 
 .ai-trace__stage {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
 .ai-trace__stage strong {
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   color: var(--text);
 }
 
@@ -6825,19 +6825,19 @@ summary:focus-visible,
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-toolbar select {
   min-height: var(--control-h);
   max-width: 220px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--field-bg);
   color: var(--text);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 /* --- the thread's context bar --------------------------------------------
@@ -6848,14 +6848,14 @@ summary:focus-visible,
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   /* Matches `.ai-workspace` so the bar lines up with the thread beneath it -
      it is a sibling in the DOM, not a child, so it has to be told. */
   width: min(1400px, 100%);
   align-self: center;
   margin: 0 0 10px;
-  padding: 0 20px 14px;
+  padding: 0 var(--space-5) var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 
@@ -6866,13 +6866,13 @@ summary:focus-visible,
      no ellipsis and no tooltip, so an option that does not fit is simply a
      sentence cut in half. */
   max-width: 260px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .ai-bar__spacer { flex: 1; }
@@ -6880,17 +6880,17 @@ summary:focus-visible,
 .ai-bar__context {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   white-space: nowrap;
 }
 
 .ai-bar__context em {
   font-style: normal;
-  font-weight: 500;
+  font-weight: var(--fw-regular);
   color: var(--hint);
   font-variant-numeric: tabular-nums;
 }
@@ -6904,15 +6904,15 @@ summary:focus-visible,
 .ai-bar__refresh {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: var(--control-h-sm);
-  padding: 0 11px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -6928,7 +6928,7 @@ summary:focus-visible,
 .ai-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 288px;
-  gap: 28px;
+  gap: var(--space-8);
   /* An explicit width with `align-self`, not `margin: 0 auto` with a
      max-width: auto side margins on a flex item suppress stretch, so the grid
      shrank to fit its content instead of filling the width it was given. */
@@ -6936,15 +6936,15 @@ summary:focus-visible,
   align-self: center;
   flex: 1;
   min-height: 0;
-  padding: 0 20px;
+  padding: 0 var(--space-5);
 }
 
 .ai-rail {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
   min-height: 0;
-  padding: 4px 0 20px;
+  padding: var(--space-1) 0 var(--space-5);
   border-left: 1px solid var(--border);
   padding-left: 22px;
 }
@@ -6953,7 +6953,7 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: var(--space-2);
   flex: none;
   min-height: var(--control-h);
   border-radius: var(--radius-sm);
@@ -6961,7 +6961,7 @@ summary:focus-visible,
   background: var(--card);
   color: var(--text);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -6980,7 +6980,7 @@ summary:focus-visible,
 .ai-rail__label {
   margin: 0 0 8px;
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--hint);
@@ -6996,9 +6996,9 @@ summary:focus-visible,
 .ai-rail__item {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--muted);
   text-align: left;
@@ -7019,7 +7019,7 @@ summary:focus-visible,
 
 .ai-rail__item-copy strong {
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: inherit;
   /* Two lines, then ellipsis: a rail full of one-line titles tells you less
      than a rail of readable ones. */
@@ -7055,7 +7055,7 @@ summary:focus-visible,
   overflow-y: auto;
   scrollbar-width: thin;
   overscroll-behavior: contain;
-  padding: 8px 0 28px;
+  padding: var(--space-2) 0 var(--space-8);
 }
 
 /* A reading measure, centred. Wide enough for the metric strip to sit four
@@ -7070,7 +7070,7 @@ summary:focus-visible,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: var(--space-8);
 }
 
 /* --- a turn --------------------------------------------------------------- */
@@ -7078,7 +7078,7 @@ summary:focus-visible,
 .ai-turn {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 14px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -7091,7 +7091,7 @@ summary:focus-visible,
 
 .ai-turn--user .ai-turn__body {
   max-width: 82%;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
   background: var(--primary-soft);
 }
@@ -7121,23 +7121,23 @@ summary:focus-visible,
 
 /* --- what the assistant says ---------------------------------------------- */
 
-.ai-said { display: grid; gap: 12px; }
+.ai-said { display: grid; gap: var(--space-3); }
 
 .ai-said__period {
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
 }
 
-.ai-said__period span { color: var(--hint); font-weight: 500; }
+.ai-said__period span { color: var(--hint); font-weight: var(--fw-regular); }
 
 .ai-said__headline {
   margin: 0;
   font-size: var(--fs-title);
   line-height: 1.25;
   letter-spacing: -0.02em;
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   max-width: 30ch;
   text-wrap: balance;
 }
@@ -7162,14 +7162,14 @@ summary:focus-visible,
   margin: 0;
   font-size: var(--fs-body);
   color: var(--text);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .ai-said__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   padding-top: 4px;
 }
@@ -7179,9 +7179,9 @@ summary:focus-visible,
 .ai-welcome {
   max-width: 520px;
   margin: 14vh auto 0;
-  padding: 0 20px;
+  padding: 0 var(--space-5);
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   justify-items: center;
   text-align: center;
 }
@@ -7200,7 +7200,7 @@ summary:focus-visible,
 .ai-welcome h1 {
   margin: 0;
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: -0.02em;
 }
 
@@ -7210,7 +7210,7 @@ summary:focus-visible,
 
 .ai-composer {
   flex: none;
-  padding: 0 0 16px;
+  padding: 0 0 var(--space-4);
   /* Fades the thread out behind the composer instead of letting turns collide
      with its top edge. */
   background: linear-gradient(180deg, transparent, var(--bg) 34%);
@@ -7221,20 +7221,20 @@ summary:focus-visible,
   margin: 0 auto;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
-.ai-starters { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-starters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .ai-starters__item {
   min-height: var(--control-h-sm);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--card);
   color: var(--text);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -7244,8 +7244,8 @@ summary:focus-visible,
 .ai-composer__form {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 7px 7px 16px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--card);
@@ -7290,7 +7290,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   font-size: var(--fs-micro);
   color: var(--hint);
 }
@@ -7298,10 +7298,10 @@ summary:focus-visible,
 .ai-composer__clear {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   color: var(--hint);
   font-size: var(--fs-micro);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   transition: color var(--dur-fast) var(--ease-out);
 }
 
@@ -7321,9 +7321,9 @@ summary:focus-visible,
 .ai-find {
   display: grid;
   grid-template-columns: 78px minmax(0, 1fr) auto;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
-  padding: 15px 0;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--divider);
 }
 
@@ -7336,7 +7336,7 @@ summary:focus-visible,
 /* The bar answers "does this one matter" before a word is read: its width is
    the finding's own score against the strongest on screen. Both come from the
    payload; the feed used to render every finding at identical weight. */
-.ai-find__impact { display: grid; gap: 5px; padding-top: 4px; }
+.ai-find__impact { display: grid; gap: var(--space-1); padding-top: 4px; }
 
 .ai-find__bar { height: 6px; border-radius: 3px; background: var(--divider); overflow: hidden; }
 
@@ -7348,16 +7348,16 @@ summary:focus-visible,
 
 .ai-find__amount {
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.ai-find__main { display: grid; gap: 5px; min-width: 0; }
+.ai-find__main { display: grid; gap: var(--space-1); min-width: 0; }
 
-.ai-find__head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.ai-find__head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 
-.ai-find__head strong { font-size: var(--fs-body); font-weight: 700; letter-spacing: -0.01em; }
+.ai-find__head strong { font-size: var(--fs-body); font-weight: var(--fw-strong); letter-spacing: -0.01em; }
 
 .ai-find__body {
   margin: 0;
@@ -7370,10 +7370,10 @@ summary:focus-visible,
 .ai-find__period {
   font-size: var(--fs-micro);
   color: var(--hint);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
-.ai-find__actions { display: flex; gap: 6px; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.ai-find__actions { display: flex; gap: var(--space-2); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 
 /* Revealed on hover or keyboard focus. Always-on controls on eleven rows was
    most of the visual noise; hiding them entirely would make them unreachable. */
@@ -7383,15 +7383,15 @@ summary:focus-visible,
 .ai-find__action {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   min-height: var(--control-h-sm);
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
   transition: var(--dur-fast) var(--ease-out);
 }
@@ -7405,15 +7405,15 @@ summary:focus-visible,
 .ai-sev--stopped {
   background: var(--danger-soft);
   color: var(--on-danger-soft);
-  border: 1px solid rgba(213, 59, 67, 0.22);
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
 }
 
 .ai-fold {
   justify-self: start;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   transition: color var(--dur-fast) var(--ease-out);
 }
 
@@ -7431,7 +7431,7 @@ summary:focus-visible,
   right: 0.4rem;
   bottom: 0;
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   pointer-events: none;
   z-index: 20;
 }
@@ -7454,25 +7454,25 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
-.ai-ask__head h2 { margin: 0; font-size: var(--fs-label); font-weight: 800; }
+.ai-ask__head h2 { margin: 0; font-size: var(--fs-label); font-weight: var(--fw-strong); }
 
-.ai-ask__headactions { display: flex; gap: 6px; }
+.ai-ask__headactions { display: flex; gap: var(--space-2); }
 
 .ai-ask__ghost {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   min-height: 28px;
-  padding: 0 9px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -7482,29 +7482,29 @@ summary:focus-visible,
 
 .ai-ask__log {
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-4);
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   align-content: start;
   scrollbar-width: thin;
   overscroll-behavior: contain;
 }
 
-.ai-ask__intro { display: grid; gap: 12px; }
+.ai-ask__intro { display: grid; gap: var(--space-3); }
 
 .ai-ask__intro p { margin: 0; font-size: var(--fs-label); color: var(--muted); max-width: 62ch; }
 
-.ai-ask__starters { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-ask__starters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .ai-ask__starter {
   min-height: var(--control-h-sm);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--card);
   color: var(--text);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -7515,8 +7515,8 @@ summary:focus-visible,
 .ai-ask__bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px 9px 14px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
@@ -7543,22 +7543,22 @@ summary:focus-visible,
   color: var(--hint);
   border: 1px solid var(--border);
   border-radius: var(--radius-1);
-  padding: 2px 6px;
+  padding: 2px var(--space-2);
   flex: none;
 }
 
 .ai-ask__send {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   /* The console's primary button, at the console's control height. */
   min-height: var(--control-h);
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--primary-strong);
   color: var(--on-primary);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   flex: none;
   box-shadow: var(--shadow-brand-sm);
   transition: var(--dur-fast) var(--ease-out);
@@ -7571,27 +7571,27 @@ summary:focus-visible,
 /* The figures behind an answer, as a labelled table rather than a JSON dump. */
 .ai-facts {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   margin-top: 10px;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
 }
 
-.ai-facts__grid { display: grid; gap: 6px; margin: 0; }
+.ai-facts__grid { display: grid; gap: var(--space-2); margin: 0; }
 
 .ai-facts__row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--space-4);
   font-size: var(--fs-caption);
 }
 
 .ai-facts__row dt { color: var(--muted); }
 
-.ai-facts__row dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ai-facts__row dd { margin: 0; font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
 
 .ai-facts__findings { margin: 0; padding-left: 18px; font-size: var(--fs-caption); color: var(--muted); }
 
@@ -7611,10 +7611,10 @@ summary:focus-visible,
   border: 1px solid var(--border);
   border-radius: var(--radius-4);
   box-shadow: var(--shadow-sm);
-  padding: 1rem 1.15rem;
+  padding: var(--space-4) 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .ai-card--loading {
@@ -7626,7 +7626,7 @@ summary:focus-visible,
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 0.75rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -7649,7 +7649,7 @@ summary:focus-visible,
 }
 
 .ai-card--briefing {
-  gap: 1rem;
+  gap: var(--space-4);
   /* Queried on its own width rather than the viewport's. The card sits in a
      column whose width depends on the chat rail beside it, so a viewport
      breakpoint gets this wrong: at 1380px the window is wide while this card is
@@ -7662,7 +7662,7 @@ summary:focus-visible,
 .ai-briefing__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr);
-  gap: 1.25rem 2rem;
+  gap: var(--space-5) var(--space-8);
   align-items: start;
 }
 
@@ -7698,11 +7698,11 @@ summary:focus-visible,
 .ai-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
-  padding: 0.16rem 0.45rem;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.01em;
   background: var(--surface-subtle);
   color: var(--muted);
@@ -7729,7 +7729,7 @@ summary:focus-visible,
      the narrative in a half-width column; in the thread they run the full
      measure, so all four fit on one row. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem;
+  gap: var(--space-2);
 }
 
 @container briefing (max-width: 840px) {
@@ -7741,11 +7741,11 @@ summary:focus-visible,
 .ai-tile {
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  padding: 0.75rem 0.85rem;
+  padding: var(--space-3) 0.85rem;
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -7758,7 +7758,7 @@ summary:focus-visible,
 
 .ai-tile__value {
   font-size: var(--fs-display-sm);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   line-height: 1.15;
   letter-spacing: -0.03em;
   color: var(--text);
@@ -7770,9 +7770,9 @@ summary:focus-visible,
 .ai-tile__delta {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   flex-wrap: wrap;
   font-variant-numeric: tabular-nums;
 }
@@ -7782,7 +7782,7 @@ summary:focus-visible,
 .ai-tile__delta em {
   flex-basis: 100%;
   font-style: normal;
-  font-weight: 500;
+  font-weight: var(--fw-regular);
   font-size: var(--fs-caption);
   color: var(--hint);
 }
@@ -7796,7 +7796,7 @@ summary:focus-visible,
 /* No comparison was made, so it gets no colour and no arrow. */
 .ai-tile__delta--none {
   color: var(--hint);
-  font-weight: 500;
+  font-weight: var(--fw-regular);
   font-style: italic;
 }
 
@@ -7806,7 +7806,7 @@ summary:focus-visible,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
   padding-top: 0.7rem;
   border-top: 1px solid var(--border);
@@ -7815,13 +7815,13 @@ summary:focus-visible,
 .ai-notes-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   border: none;
   background: none;
-  padding: 0.2rem 0;
+  padding: 3px 0;
   cursor: pointer;
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 
@@ -7837,12 +7837,12 @@ summary:focus-visible,
 
 .ai-notes {
   margin: 0;
-  padding: 0.75rem 0.9rem 0.75rem 1.9rem;
+  padding: var(--space-3) 0.9rem var(--space-3) 1.9rem;
   border-radius: var(--radius-sm);
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-2);
   font-size: var(--fs-caption);
   line-height: 1.55;
   color: var(--hint);
@@ -7865,8 +7865,8 @@ summary:focus-visible,
 .ai-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.9rem;
-  padding: 0.95rem 0.9rem 0.95rem 1rem;
+  gap: var(--space-4);
+  padding: 0.95rem 0.9rem 0.95rem var(--space-4);
   border-radius: var(--radius-2);
   border-left: 3px solid transparent;
   transition: background var(--dur-fast) var(--ease-out);
@@ -7904,19 +7904,19 @@ summary:focus-visible,
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: var(--space-2);
 }
 
 .ai-row__head {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .ai-row__head strong {
   font-size: var(--fs-body-lg);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
   letter-spacing: -0.01em;
   line-height: 1.35;
@@ -7936,7 +7936,7 @@ summary:focus-visible,
 .ai-row__period,
 .ai-row__status {
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--hint);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -7959,9 +7959,9 @@ summary:focus-visible,
      not — so terms and estimate sit side by side rather than stacking and
      doubling the height of every recommendation. */
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.7rem 2rem;
+  gap: 0.7rem var(--space-8);
   margin: 0.25rem 0 0;
-  padding: 0.7rem 0.85rem;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-1);
   background: var(--surface-subtle);
   max-width: 82ch;
@@ -7970,13 +7970,13 @@ summary:focus-visible,
 .ai-facts-grid__item {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 3px;
   min-width: 0;
 }
 
 .ai-facts-grid dt {
   font-size: var(--fs-micro);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--hint);
@@ -7989,12 +7989,12 @@ summary:focus-visible,
   color: var(--text);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 3px;
 }
 
 .ai-facts-grid dd strong {
   font-size: var(--fs-body-lg);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
 }
 
@@ -8008,7 +8008,7 @@ summary:focus-visible,
 .ai-row__error {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-1);
   margin: 0;
   font-size: var(--fs-caption);
   color: var(--danger);
@@ -8018,7 +8018,7 @@ summary:focus-visible,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
   margin-top: 0.35rem;
   padding-top: 0.7rem;
@@ -8027,7 +8027,7 @@ summary:focus-visible,
 
 .ai-row__buttons {
   display: flex;
-  gap: 0.45rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -8038,13 +8038,13 @@ summary:focus-visible,
 .ai-sev {
   flex-shrink: 0;
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   /* Fixed width so the titles start on one vertical line whatever the label. */
   min-width: 3.1rem;
   text-align: center;
-  padding: 0.2rem 0.4rem;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-1);
   background: var(--surface-subtle);
   color: var(--muted);
@@ -8069,7 +8069,7 @@ summary:focus-visible,
 /* Actions stay out of the way until the row is engaged with. */
 .ai-row__actions {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-1);
   flex-shrink: 0;
   /* Reserved whether or not it is showing, so a row does not reflow on hover. */
   min-width: 3.6rem;
@@ -8089,9 +8089,9 @@ summary:focus-visible,
 .ai-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   min-height: var(--control-h-sm);
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   font-size: var(--fs-caption);
 }
 
@@ -8100,9 +8100,9 @@ summary:focus-visible,
 .ai-cause {
   display: flex;
   align-items: flex-start;
-  gap: 0.45rem;
+  gap: var(--space-2);
   margin: 0.2rem 0 0;
-  padding: 0 0 0 0.7rem;
+  padding: 0 0 0 var(--space-3);
   border-left: 2px solid var(--border);
   background: none;
   font-size: var(--fs-label);
@@ -8116,7 +8116,7 @@ summary:focus-visible,
 .ai-offer-cell {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 3px;
   align-items: flex-start;
 }
 
@@ -8126,11 +8126,11 @@ summary:focus-visible,
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
   border-radius: var(--radius-1);
-  padding: 0.5rem 0.65rem;
+  padding: var(--space-2) 0.65rem;
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 .ai-outcome--above_estimate { border-left-color: var(--success); }
@@ -8143,7 +8143,7 @@ summary:focus-visible,
 .ai-outcome__head {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-1);
   flex-wrap: wrap;
   font-size: var(--fs-caption);
   color: var(--muted);
@@ -8169,10 +8169,10 @@ summary:focus-visible,
 
 .ai-msg {
   border-radius: var(--radius-md);
-  padding: 0.75rem 0.9rem;
+  padding: var(--space-3) 0.9rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
   max-width: 100%;
 }
 
@@ -8202,7 +8202,7 @@ summary:focus-visible,
 .ai-answer {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -8213,14 +8213,14 @@ summary:focus-visible,
 }
 
 .ai-answer strong {
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
 }
 
 .ai-answer__heading {
   margin: 0.15rem 0 0;
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--hint);
@@ -8231,7 +8231,7 @@ summary:focus-visible,
   padding-left: 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: var(--space-2);
   font-size: var(--fs-body);
   line-height: 1.6;
 }
@@ -8245,7 +8245,7 @@ summary:focus-visible,
 }
 
 .ai-answer__list--numbered li::marker {
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--primary-text);
 }
 
@@ -8270,14 +8270,14 @@ summary:focus-visible,
 .ai-msg__meta {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   flex-wrap: wrap;
 }
 
 .ai-facts-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 3px;
   background: none;
   border: none;
   padding: 0;
@@ -8289,7 +8289,7 @@ summary:focus-visible,
 
 .ai-facts {
   margin: 0;
-  padding: 0.7rem;
+  padding: var(--space-3);
   border-radius: var(--radius-1);
   background: var(--card);
   border: 1px solid var(--border);
@@ -8325,20 +8325,20 @@ summary:focus-visible,
 
 .ai-period {
   display: inline-flex;
-  gap: 0.125rem;
-  padding: 0.15rem;
-  border: 1px solid var(--border, #e2e5ea);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--surface-subtle, #f6f7f9);
+  background: var(--surface-subtle);
 }
 
 .ai-period__option {
   border: 0;
   background: transparent;
   border-radius: var(--radius-pill);
-  padding: 0.32rem 0.72rem;
+  padding: var(--space-1) var(--space-3);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   /* `--text-muted` is not a token in this app and never has been, so this
      always resolved to the literal — the LIGHT muted grey, which then
      stayed that colour on a dark page. The fallback is what hid it. */
@@ -8349,8 +8349,8 @@ summary:focus-visible,
 }
 
 .ai-period__option.is-active {
-  background: var(--surface, #fff);
-  color: var(--text, #111827);
+  background: var(--surface, var(--on-primary));
+  color: var(--text, var(--text));
   box-shadow: var(--shadow-sm);
 }
 
@@ -8363,9 +8363,9 @@ summary:focus-visible,
 .ai-stale {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
   margin: 0 0 0.75rem;
-  padding: 0.5rem 0.7rem;
+  padding: var(--space-2) 0.7rem;
   border-radius: var(--radius-1);
   background: var(--warning-soft);
   color: var(--on-warning-soft);
@@ -8376,16 +8376,16 @@ summary:focus-visible,
 /* Findings from other windows: kept, but not silently mixed into this one. */
 .ai-older {
   margin-top: 0.75rem;
-  border-top: 1px solid var(--border, #e2e5ea);
+  border-top: 1px solid var(--border);
   padding-top: 0.6rem;
 }
 
 .ai-older > summary {
   cursor: pointer;
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--muted);
-  padding: 0.25rem 0;
+  padding: var(--space-1) 0;
 }
 
 /* ---------------------------------- */
@@ -8398,14 +8398,14 @@ summary:focus-visible,
    the one part of the reply the owner is meant to act on rather than read. */
 .ai-sugs {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   margin-top: 14px;
 }
 
 .ai-sug {
   display: grid;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
@@ -8423,7 +8423,7 @@ summary:focus-visible,
 .ai-sug__head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .ai-sug__icon {
@@ -8439,14 +8439,14 @@ summary:focus-visible,
 }
 
 .ai-sug__icon--combo {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
 }
 
 .ai-sug__title {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin-right: auto;
   min-width: 0;
@@ -8454,14 +8454,14 @@ summary:focus-visible,
 
 .ai-sug__title strong {
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
   color: var(--text);
 }
 
 .ai-sug__kind {
   font-size: var(--fs-micro);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--muted);
@@ -8471,10 +8471,10 @@ summary:focus-visible,
 .ai-sug__state {
   flex-shrink: 0;
   width: fit-content;
-  padding: 3px 9px;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-micro);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   background: var(--surface-subtle);
   border: 1px solid var(--border);
@@ -8500,23 +8500,23 @@ summary:focus-visible,
 .ai-sug__terms {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .ai-sug__deal {
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .ai-sug__price {
   display: inline-flex;
   align-items: baseline;
-  gap: 7px;
+  gap: var(--space-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -8527,13 +8527,13 @@ summary:focus-visible,
 
 .ai-sug__price b {
   font-size: var(--fs-body);
-  font-weight: 750;
+  font-weight: var(--fw-strong);
   color: var(--text);
 }
 
 .ai-sug__save {
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--success-text);
   font-variant-numeric: tabular-nums;
 }
@@ -8547,7 +8547,7 @@ summary:focus-visible,
 .ai-sug__items {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -8556,8 +8556,8 @@ summary:focus-visible,
 .ai-sug__items li {
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
-  padding: 4px 9px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   font-size: var(--fs-caption);
@@ -8565,7 +8565,7 @@ summary:focus-visible,
 }
 
 .ai-sug__items b {
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
 }
 
@@ -8579,17 +8579,17 @@ summary:focus-visible,
 .ai-sug__impact {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--accent-text);
 }
 
 .ai-sug__evidence {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: var(--space-2) var(--space-4);
   margin: 0;
   padding-top: 2px;
   border-top: 1px solid var(--border);
@@ -8598,7 +8598,7 @@ summary:focus-visible,
 .ai-sug__evidence > div {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-2);
   padding-top: 8px;
 }
 
@@ -8612,7 +8612,7 @@ summary:focus-visible,
 .ai-sug__evidence dd {
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -8620,23 +8620,23 @@ summary:focus-visible,
 .ai-sug__foot {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .ai-sug__act {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   height: var(--control-h-sm);
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border: none;
   border-radius: var(--radius-sm);
   background: var(--primary-strong);
   color: var(--on-primary);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: filter var(--dur-fast) var(--ease-out);
 }
@@ -8652,11 +8652,7 @@ summary:focus-visible,
 }
 
 .ai-sug__spin {
-  animation: ai-sug-spin 0.9s linear infinite;
-}
-
-@keyframes ai-sug-spin {
-  to { transform: rotate(360deg); }
+  animation: spin 0.9s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8666,16 +8662,16 @@ summary:focus-visible,
 .ai-sug__view {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   height: var(--control-h-sm);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-solid);
   color: var(--text);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   cursor: pointer;
 }
 
@@ -8684,16 +8680,16 @@ summary:focus-visible,
 .ai-sug__done {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--success-text);
 }
 
 .ai-sug__error {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-caption);
   line-height: 1.5;
@@ -13936,7 +13932,7 @@ summary:focus-visible,
 .tenant-host {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .tenant-host svg {
@@ -13950,9 +13946,9 @@ summary:focus-visible,
 .tenant-subject {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   margin-bottom: 18px;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-alt);
