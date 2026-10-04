@@ -2116,6 +2116,13 @@ select:focus-visible {
 
 .primary-button,
 .secondary-button {
+  /* Both, not just the primary. A secondary button was an inline box, so an
+     icon beside its label had no gap at all — "⟳Refresh", "←Back to menu" —
+     on every screen that put one there. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   min-height: var(--control-h);
   padding: 0 var(--space-3);
   border-radius: var(--radius-control);
