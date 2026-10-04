@@ -45,9 +45,12 @@ checked. The refresh was verified with `scripts/audit-pages.js` in dark and
 light on the owner's screens.
 
 **Open:**
-- **The refresh has not been LOOKED at.** The browser window was hidden for
-  most of it, so screenshots timed out and every check after Task 2 is the
-  audit's numbers. Walk it, at 1440px and 390px, as OWNER and as ADMIN.
+- **The refresh was looked at late, and only as OWNER.** Tasks 3-10 were done
+  with the browser window hidden and checked by the audit's numbers alone. A
+  visual pass followed (dark and light at desktop, eight screens at 390px) and
+  a fresh-context review, which found what the audit could not: literal whites
+  swapped for `--on-primary` on grounds that do not theme. Fixed in `de52e78`.
+  The padding-longhand snap in that commit came AFTER the visual pass.
 - ADMIN-only screens (Restaurants list, Storefront apps, AI Logs,
   Notifications) and Login were not viewed at all.
 - `0075` parents on `0073`; the print branch has `0074_print_agents` on the
