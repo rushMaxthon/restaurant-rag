@@ -159,10 +159,27 @@ describe("ink is chosen for the ground it sits on", () => {
     [".mkt-preview__sender", "the mock-up sender line"],
     [".bp-swatch__chip", "the tick on a brand swatch"],
     [".mkt-skeleton", "the marketing skeleton's sheen"],
+    [".mkt-hero", "the campaign banner, dark in both themes"],
   ])("%s does not use --on-primary (%s)", (selector) => {
     const block = blocksFor(selector);
     expect(block).not.toBe("");
     expect(block).not.toContain("--on-primary");
+  });
+});
+
+describe("the campaign banner is one colour in both themes", () => {
+  /**
+   * Its ground was built from `--mkt-ink`, which is the marketing TEXT colour
+   * and so goes near-white in dark mode: a pale banner on a dark page, with
+   * white type on it. A banner is not text. It takes the tokens that are
+   * dark in both themes, and the ink that goes with them.
+   */
+  it("is not painted with the text colour", () => {
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const hero = stripped.match(/(?:^|\n)\.mkt-hero \{([^{}]*)\}/)?.[1] ?? "";
+    expect(hero).not.toBe("");
+    expect(hero).not.toContain("--mkt-ink");
+    expect(hero).toContain("var(--sidebar)");
   });
 });
 

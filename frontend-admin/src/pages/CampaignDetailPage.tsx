@@ -29,6 +29,7 @@ import {
   statusClass,
   statusLabel,
 } from '../components/marketing/meta';
+import { useMarketingScope } from '../hooks/useMarketingScope';
 import { formatCompactCurrency, formatCurrency, formatDate } from '../services/api';
 import { pluralize } from '../services/format';
 import {
@@ -96,8 +97,16 @@ export function CampaignDetailPage({
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
+  // Called before `load` on purpose: the hook's effect writes the scope the
+  // request is sent with, and effects run in the order they are declared.
+  // Without it this page relied on the Hub having been visited first in this
+  // browser, and a link opened cold answered `restaurant_id is required`.
+  const scope = useMarketingScope();
 
   const load = useCallback(async () => {
+    if (!scope.ready) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -108,7 +117,8 @@ export function CampaignDetailPage({
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+    // The restaurant is a dependency: switching it in the sidebar refetches.
+  }, [campaignId, scope.ready, scope.selectedRestaurantId]);
 
   useEffect(() => {
     void load();

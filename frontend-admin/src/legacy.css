@@ -10385,7 +10385,10 @@ summary:focus-visible,
   background:
     radial-gradient(120% 140% at 88% -10%, color-mix(in srgb, var(--primary) 42%, transparent) 0%, transparent 58%),
     radial-gradient(90% 120% at 8% 110%, rgba(120, 90, 255, 0.24) 0%, transparent 60%),
-    linear-gradient(140deg, var(--mkt-ink) 0%, var(--mkt-ink-2) 100%);
+    /* The tokens that are dark in BOTH themes. This was `--mkt-ink`, the
+       marketing text colour, which goes near-white in dark mode — so the
+       banner turned pale on a dark page. A banner is not text. */
+    linear-gradient(140deg, var(--sidebar) 0%, var(--sidebar-2) 100%);
   box-shadow: var(--mkt-shadow-2);
   overflow: hidden;
 }
@@ -10403,7 +10406,8 @@ summary:focus-visible,
 
 .mkt-hero__title {
   margin: 0;
-  color: var(--on-primary);
+  /* The ink for an always-dark ground, like the sidebar's. */
+  color: var(--sidebar-ink);
   font-size: clamp(1.75rem, 2.8vw, 2.3rem);
   font-weight: var(--fw-heavy);
   line-height: 1.08;
@@ -10413,7 +10417,7 @@ summary:focus-visible,
 .mkt-hero__lead {
   margin: 0;
   max-width: 54ch;
-  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
+  color: color-mix(in srgb, var(--sidebar-ink) 72%, transparent);
   font-size: var(--fs-body-lg);
   line-height: 1.55;
 }
@@ -10482,15 +10486,15 @@ summary:focus-visible,
 
 /* On the dark hero, a plain white button is the ghost. */
 .mkt-hero .mkt-btn--ghost {
-  border-color: color-mix(in srgb, var(--on-primary) 20%, transparent);
-  background: color-mix(in srgb, var(--on-primary) 8%, transparent);
-  color: var(--on-primary);
+  border-color: color-mix(in srgb, var(--sidebar-ink) 20%, transparent);
+  background: color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  color: var(--sidebar-ink);
   box-shadow: none;
 }
 
 .mkt-hero .mkt-btn--ghost:hover {
-  background: color-mix(in srgb, var(--on-primary) 15%, transparent);
-  color: var(--on-primary);
+  background: color-mix(in srgb, var(--sidebar-ink) 15%, transparent);
+  color: var(--sidebar-ink);
 }
 
 .mkt-btn--sm {

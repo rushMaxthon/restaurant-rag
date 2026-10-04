@@ -19,6 +19,7 @@ import { ChannelPreview } from '../components/marketing/ChannelPreview';
 import { ContentStep } from '../components/marketing/ContentStep';
 import { contentBlocker } from '../components/marketing/contentRules';
 import { useAdminStore } from '../hooks/useAdminStore';
+import { useMarketingScope } from '../hooks/useMarketingScope';
 import { ReachSummary } from '../components/marketing/ReachSummary';
 import { ReviewStep } from '../components/marketing/ReviewStep';
 import { SocialAudienceStep } from '../components/marketing/SocialAudienceStep';
@@ -218,6 +219,8 @@ export function CampaignEditorPage({
   // The signed-in staff member, because a test send goes to *their* address
   // rather than to the one the channel sends from.
   const { user: currentUser } = useAdminStore();
+  // Before every effect that fetches, for the reason on `CampaignDetailPage`.
+  const scope = useMarketingScope();
   const [draft, setDraft] = useState<CampaignDraft>(() => emptyDraft());
   const [step, setStep] = useState(STEP_CHANNEL);
   const [furthest, setFurthest] = useState(STEP_CHANNEL);
@@ -282,7 +285,7 @@ export function CampaignEditorPage({
   /* ---------------------------------------------------------------- load -- */
 
   const load = useCallback(async () => {
-    if (!campaignId) {
+    if (!campaignId || !scope.ready) {
       return;
     }
     setLoading(true);
@@ -306,7 +309,7 @@ export function CampaignEditorPage({
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+  }, [campaignId, scope.ready, scope.selectedRestaurantId]);
 
   useEffect(() => {
     void load();
