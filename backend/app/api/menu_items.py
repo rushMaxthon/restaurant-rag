@@ -432,7 +432,7 @@ def create_menu_item(
     _queue_embedding_job(menu_item.id)
     hydrate_dynamic_bestseller_flags(db, [menu_item])
     hydrate_recent_valid_order_counts(db, [menu_item])
-    return serialize_menu_item(menu_item)
+    return serialize_menu_item(menu_item, viewer=current_user)
 
 
 @router.post("/bulk", response_model=MenuItemBulkCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -532,7 +532,7 @@ def create_menu_item_bulk(
     hydrate_dynamic_bestseller_flags(db, menu_items)
     hydrate_recent_valid_order_counts(db, menu_items)
     return MenuItemBulkCreateResponse(
-        created=[serialize_menu_item(item) for item in menu_items],
+        created=[serialize_menu_item(item, viewer=current_user) for item in menu_items],
         skipped=[
             MenuItemBulkSkippedLocation(
                 restaurant_location_id=location.id,
@@ -609,7 +609,7 @@ def list_menu_items(
     hydrate_dynamic_bestseller_flags(db, menu_items)
     hydrate_recent_valid_order_counts(db, menu_items)
     favorite_ids = get_user_favorite_ids(db, current_user, menu_item_ids=[menu_item.id for menu_item in menu_items])
-    return serialize_menu_items(menu_items, favorite_ids=favorite_ids)
+    return serialize_menu_items(menu_items, favorite_ids=favorite_ids, viewer=current_user)
 
 
 @router.get("/{menu_item_id}", response_model=MenuItemResponse)
@@ -647,7 +647,7 @@ def get_menu_item(
     hydrate_dynamic_bestseller_flags(db, [menu_item])
     hydrate_recent_valid_order_counts(db, [menu_item])
     favorite_ids = get_user_favorite_ids(db, current_user, menu_item_ids=[menu_item.id])
-    return serialize_menu_item(menu_item, favorite_ids=favorite_ids)
+    return serialize_menu_item(menu_item, favorite_ids=favorite_ids, viewer=current_user)
 
 
 @router.put("/{menu_item_id}", response_model=MenuItemResponse)
@@ -704,7 +704,7 @@ def update_menu_item(
     _queue_embedding_job(menu_item.id)
     hydrate_dynamic_bestseller_flags(db, [menu_item])
     hydrate_recent_valid_order_counts(db, [menu_item])
-    return serialize_menu_item(menu_item)
+    return serialize_menu_item(menu_item, viewer=current_user)
 
 
 @router.patch("/{menu_item_id}/availability", response_model=MenuItemResponse)
@@ -745,7 +745,7 @@ def update_menu_item_availability(
     )
     hydrate_dynamic_bestseller_flags(db, [menu_item])
     hydrate_recent_valid_order_counts(db, [menu_item])
-    return serialize_menu_item(menu_item)
+    return serialize_menu_item(menu_item, viewer=current_user)
 
 
 @router.delete("/{menu_item_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)

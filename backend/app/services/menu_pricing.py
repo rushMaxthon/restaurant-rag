@@ -75,6 +75,22 @@ def commission_percent_of(location: Any) -> Decimal:
     return Decimal("0.00")
 
 
+def sees_typed_prices(viewer: Any) -> bool:
+    """Whether a response to `viewer` may carry the rate and the typed prices.
+
+    Only the two roles that manage a menu. A customer is sent `price` and
+    nothing else: the rate is the platform's own business, and a typed price
+    beside a listed one gives it away by division. Nobody at all — an
+    anonymous storefront, a serializer called without a viewer — is a
+    customer, so forgetting to pass one hides the figures rather than
+    publishing them.
+    """
+
+    # Compared by value: the models import nothing from services, and the role
+    # is a StrEnum.
+    return str(getattr(viewer, "role", "")) in {"ADMIN", "OWNER"}
+
+
 def listed_price(entered: Any, *, commission_percent: Any) -> Decimal:
     """What a customer pays for something the owner priced at `entered`."""
 
@@ -171,5 +187,6 @@ __all__ = [
     "listed_price",
     "relist_menu_item",
     "reprice_location",
+    "sees_typed_prices",
     "stamp_entered_prices",
 ]

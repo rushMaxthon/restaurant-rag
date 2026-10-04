@@ -255,5 +255,68 @@ class SavingTheBranchTests(unittest.TestCase):
         self.assertEqual(branch.delivery_fee, D("40"))
 
 
+class WhatACustomerIsSentTests(unittest.TestCase):
+    """The rate, and the typed price that gives it away, go to staff only.
+
+    The branch and menu routes answer the storefront as well as the dashboard.
+    A customer is sent the price they pay; `commission_percent` and
+    `base_price` beside it would let anybody read the platform's cut off the
+    network tab.
+    """
+
+    def test_only_the_roles_that_manage_a_menu_see_them(self) -> None:
+        from app.services.menu_pricing import sees_typed_prices
+
+        for role in (UserRole.ADMIN, UserRole.OWNER):
+            with self.subTest(role=role):
+                self.assertTrue(sees_typed_prices(SimpleNamespace(role=role)))
+        for role in (UserRole.CUSTOMER, UserRole.KITCHEN):
+            with self.subTest(role=role):
+                self.assertFalse(sees_typed_prices(SimpleNamespace(role=role)))
+
+    def test_nobody_is_a_customer(self) -> None:
+        # An anonymous storefront request, and a serializer called without a
+        # viewer by code written later: both must hide, not publish.
+        from app.services.menu_pricing import sees_typed_prices
+
+        self.assertFalse(sees_typed_prices(None))
+        self.assertFalse(sees_typed_prices(mock.Mock()))
+
+    def test_the_serializers_hide_unless_told_who_is_asking(self) -> None:
+        import inspect
+
+        from app.services.favorites import serialize_menu_item, serialize_menu_items
+        from app.services.restaurant_locations import build_location_response
+
+        for fn in (serialize_menu_item, serialize_menu_items, build_location_response):
+            with self.subTest(fn=fn.__name__):
+                self.assertIsNone(inspect.signature(fn).parameters["viewer"].default)
+
+    def test_a_dish_is_serialised_without_the_typed_price_for_a_customer(self) -> None:
+        from app.services.favorites import _serialize_menu_item_customization_option as option
+        from app.services.favorites import _serialize_menu_item_size as size_of
+
+        row = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001", name="Large", price=D("110.00"),
+            base_price=D("100.00"), is_active=True, sort_order=0, customization_groups=[],
+        )
+        self.assertIsNone(size_of(row).base_price)
+        self.assertEqual(size_of(row, typed=True).base_price, D("100.00"))
+        self.assertEqual(size_of(row).price, D("110.00"))
+
+        extra = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000002", name="Cheese", extra_price=D("22.00"),
+            base_extra_price=D("20.00"), is_active=True, is_countable=False, sort_order=0,
+        )
+        self.assertIsNone(option(extra).base_extra_price)
+        self.assertEqual(option(extra, typed=True).base_extra_price, D("20.00"))
+
+    def test_the_branch_response_can_carry_no_rate(self) -> None:
+        from app.schemas.restaurant import RestaurantLocationResponse
+
+        field = RestaurantLocationResponse.model_fields["commission_percent"]
+        self.assertIsNone(field.default)
+
+
 if __name__ == "__main__":
     unittest.main()

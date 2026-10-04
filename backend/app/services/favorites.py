@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 from collections.abc import Iterable
 
 from sqlalchemy import delete, select
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.models.favorite import Favorite
+from app.services import menu_pricing
 from app.models.menu_item import MenuItem
 from app.models.menu_item_customization_group import MenuItemCustomizationGroup
 from app.models.menu_item_customization_option import MenuItemCustomizationOption
@@ -48,13 +50,17 @@ settings = get_settings()
 
 def _serialize_menu_item_customization_option(
     option: MenuItemCustomizationOption,
+    *,
+    typed: bool = False,
 ) -> MenuItemCustomizationOptionResponse:
     return MenuItemCustomizationOptionResponse(
         id=option.id,
         name=option.name,
         extra_price=option.extra_price,
         base_extra_price=(
-            option.base_extra_price
+            None
+            if not typed
+            else option.base_extra_price
             if option.base_extra_price is not None
             else option.extra_price
         ),
@@ -66,6 +72,8 @@ def _serialize_menu_item_customization_option(
 
 def _serialize_menu_item_customization_group(
     group: MenuItemCustomizationGroup,
+    *,
+    typed: bool = False,
 ) -> MenuItemCustomizationGroupResponse:
     sorted_options = sorted(
         group.options,
@@ -83,13 +91,13 @@ def _serialize_menu_item_customization_group(
         is_active=group.is_active,
         sort_order=group.sort_order,
         options=[
-            _serialize_menu_item_customization_option(option)
+            _serialize_menu_item_customization_option(option, typed=typed)
             for option in sorted_options
         ],
     )
 
 
-def _serialize_menu_item_size(size: MenuItemSize) -> MenuItemSizeResponse:
+def _serialize_menu_item_size(size: MenuItemSize, *, typed: bool = False) -> MenuItemSizeResponse:
     sorted_groups = sorted(
         size.customization_groups,
         key=lambda group: (group.sort_order, group.title.lower(), str(group.id)),
@@ -98,11 +106,17 @@ def _serialize_menu_item_size(size: MenuItemSize) -> MenuItemSizeResponse:
         id=size.id,
         name=size.name,
         price=size.price,
-        base_price=size.base_price if size.base_price is not None else size.price,
+        base_price=(
+            None
+            if not typed
+            else size.base_price
+            if size.base_price is not None
+            else size.price
+        ),
         is_active=size.is_active,
         sort_order=size.sort_order,
         customization_groups=[
-            _serialize_menu_item_customization_group(group)
+            _serialize_menu_item_customization_group(group, typed=typed)
             for group in sorted_groups
         ],
     )
@@ -168,8 +182,16 @@ def get_user_favorite_ids(
         raise _favorites_schema_not_ready_http_error() from exc
 
 
-def serialize_menu_item(menu_item: MenuItem, *, favorite_ids: set[uuid.UUID] | None = None) -> MenuItemResponse:
+def serialize_menu_item(
+    menu_item: MenuItem,
+    *,
+    favorite_ids: set[uuid.UUID] | None = None,
+    viewer: Any = None,
+) -> MenuItemResponse:
     favorite_ids = favorite_ids or set()
+    # What the owner typed goes to the people who edit the menu. A customer
+    # is sent the price they pay and nothing to divide it by.
+    typed = menu_pricing.sees_typed_prices(viewer)
     location = getattr(menu_item, "restaurant_location", None)
     is_new = is_menu_item_new(menu_item)
     recommendation_label, recommendation_reason = build_generic_menu_item_badge_metadata(menu_item)
@@ -193,7 +215,11 @@ def serialize_menu_item(menu_item: MenuItem, *, favorite_ids: set[uuid.UUID] | N
         description=menu_item.description,
         price=menu_item.price,
         base_price=(
-            menu_item.base_price if menu_item.base_price is not None else menu_item.price
+            None
+            if not typed
+            else menu_item.base_price
+            if menu_item.base_price is not None
+            else menu_item.price
         ),
         is_veg=menu_item.is_veg,
         is_available=menu_item.is_available,
@@ -216,9 +242,9 @@ def serialize_menu_item(menu_item: MenuItem, *, favorite_ids: set[uuid.UUID] | N
         is_favorite=menu_item.id in favorite_ids,
         has_sizes=menu_item.has_sizes,
         has_customizations=menu_item.has_customizations,
-        sizes=[_serialize_menu_item_size(size) for size in sorted_sizes],
+        sizes=[_serialize_menu_item_size(size, typed=typed) for size in sorted_sizes],
         customization_groups=[
-            _serialize_menu_item_customization_group(group)
+            _serialize_menu_item_customization_group(group, typed=typed)
             for group in sorted_groups
         ],
     )
@@ -228,9 +254,13 @@ def serialize_menu_items(
     menu_items: list[MenuItem],
     *,
     favorite_ids: set[uuid.UUID] | None = None,
+    viewer: Any = None,
 ) -> list[MenuItemResponse]:
     favorite_ids = favorite_ids or set()
-    return [serialize_menu_item(menu_item, favorite_ids=favorite_ids) for menu_item in menu_items]
+    return [
+        serialize_menu_item(menu_item, favorite_ids=favorite_ids, viewer=viewer)
+        for menu_item in menu_items
+    ]
 
 
 def apply_recommendation_favorite_flags(

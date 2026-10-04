@@ -655,6 +655,9 @@ class LocationScheduleOptionsResponse(BaseModel):
 class RestaurantLocationResponse(RestaurantLocationBase):
     model_config = ConfigDict(from_attributes=True)
 
+    #: Null for everyone but the staff who manage the branch. See
+    #: `menu_pricing.sees_typed_prices`.
+    commission_percent: Decimal | None = None  # type: ignore[assignment]
     id: uuid.UUID
     restaurant_id: uuid.UUID
     delivery_available_now: bool = False

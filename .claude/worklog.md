@@ -50,8 +50,10 @@ caches flushed, combos refreshed, re-embeds queued. The stamp is still
 `0074_print_agents`.
 
 **Open:**
-- `commission_percent` is on the public branch response, so a storefront client
-  can read it. Hiding it needs a role-aware serializer.
+- Done 2026-10-05: the rate and the typed prices are sent to ADMIN and OWNER
+  only (`menu_pricing.sees_typed_prices`); `build_location_response` and
+  `serialize_menu_item` take a `viewer` and hide by default. Checked live:
+  anonymous and customer get none on the restaurant, branch and menu routes.
 - Nothing reports the commission earned per order; the order keeps only the
   customer price.
 - `seed.py` inserts items with no base, so a seeded menu is not marked up until

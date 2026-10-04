@@ -190,6 +190,7 @@ def _detail_response(
     *,
     locations: list[RestaurantLocation],
     include_owner: bool = True,
+    viewer: User | None = None,
 ) -> RestaurantDetailResponse:
     """Serialise a restaurant, with the owner block only for staff.
 
@@ -199,7 +200,9 @@ def _detail_response(
     or enumerate a restaurant id.
     """
     response = RestaurantDetailResponse.model_validate(restaurant)
-    response.locations = [build_location_response(location) for location in locations]
+    response.locations = [
+        build_location_response(location, viewer=viewer) for location in locations
+    ]
     if not include_owner:
         response.owner = None
     return response
@@ -353,6 +356,7 @@ def get_restaurant_detail(
     return _detail_response(
         restaurant,
         locations=list_restaurant_locations(db, restaurant_id=restaurant.id, include_inactive=True),
+        viewer=current_user,
     )
 
 
@@ -431,6 +435,7 @@ def update_restaurant_settings(
     return _detail_response(
         refreshed,
         locations=list_restaurant_locations(db, restaurant_id=restaurant_id, include_inactive=True),
+        viewer=current_user,
     )
 
 
@@ -503,7 +508,7 @@ def get_restaurant_locations(
         if restaurant is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
         locations = list_restaurant_locations(db, restaurant_id=restaurant_id, include_inactive=False)
-    return [build_location_response(location) for location in locations]
+    return [build_location_response(location, viewer=current_user) for location in locations]
 
 
 @router.get("/{restaurant_id}/locations/{location_id}", response_model=RestaurantLocationResponse)
@@ -535,7 +540,7 @@ def get_restaurant_location(
         location_id=location_id,
         include_inactive=include_inactive,
     )
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 @router.get(
@@ -607,7 +612,7 @@ def create_restaurant_location(
     db.commit()
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 def _apply_location_changes(
@@ -711,7 +716,7 @@ def update_restaurant_location(
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
     _after_menu_reprice(db, location, repriced)
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 @router.post("/{restaurant_id}/locations/{location_id}/locate", response_model=BranchLocationLookup)
@@ -796,7 +801,7 @@ def deactivate_restaurant_location(
     db.commit()
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 @router.get(
@@ -821,7 +826,7 @@ def get_restaurant_location_general_settings(
         location_id=location_id,
         include_inactive=True,
     )
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 @router.patch(
@@ -855,7 +860,7 @@ def update_restaurant_location_general_settings(
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
     _after_menu_reprice(db, location, repriced)
-    return build_location_response(location)
+    return build_location_response(location, viewer=current_user)
 
 
 @router.get(
