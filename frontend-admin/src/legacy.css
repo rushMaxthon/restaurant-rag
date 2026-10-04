@@ -40,7 +40,7 @@ button {
 
 .admin-layout__main {
   min-width: 0;
-  padding: 18px 18px 26px;
+  padding: var(--space-5) var(--space-5) var(--space-6);
 }
 
 .admin-layout__content {
@@ -60,23 +60,23 @@ button {
   padding-top: 0;
 }
 
-[data-density='compact'] .page-stack { gap: 14px; }
+[data-density='compact'] .page-stack { gap: var(--space-4); }
 
 [data-density='compact'] .admin-surface,
 [data-density='compact'] .panel,
 [data-density='compact'] .login-card {
-  padding: 12px;
-  gap: 12px;
+  padding: var(--space-3);
+  gap: var(--space-3);
 }
 
 [data-density='compact'] .admin-table th,
 [data-density='compact'] .admin-table td {
-  padding: 6px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
-[data-density='compact'] .usr-stat { padding: 9px 12px; }
+[data-density='compact'] .usr-stat { padding: var(--space-2) var(--space-3); }
 
-[data-density='compact'] .page-intro { gap: 12px; }
+[data-density='compact'] .page-intro { gap: var(--space-3); }
 
 [data-density='compact'] .data-toolbar { padding-bottom: 12px; }
 
@@ -84,7 +84,7 @@ button {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(11, 13, 22, 0.54);
+  background: var(--overlay);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--dur-fast) var(--ease-out);
@@ -105,12 +105,18 @@ button {
      match. Measured on this checkout at 1920x1080: the nav wanted 776px and
      had 661px, so `Notifications` and `Settings` sat below a scroll with
      nothing on screen saying so. See the note on `__sections`. */
-  gap: 14px;
-  padding: 18px 14px;
+  /* One step DOWN from where the 14px/18px literals would round to. The nav
+     below is a fit, not a margin (see `__sections`), and rounding these up
+     would have put `Display settings` back under the fold at 1080p. */
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+  /* The stops are the tokens now. They were two literals of their own, so the
+     `.dark` values of `--sidebar` — "a shade deeper, so it still separates
+     from a dark page" — were declared and never reached the sidebar. */
   background:
-    radial-gradient(circle at top left, rgba(255, 82, 0, 0.18), transparent 18%),
-    linear-gradient(180deg, #171a2f 0%, #101221 100%);
-  color: #fff;
+    radial-gradient(circle at top left, color-mix(in srgb, var(--primary) 18%, transparent), transparent 18%),
+    linear-gradient(180deg, var(--sidebar-2) 0%, var(--sidebar) 100%);
+  color: var(--sidebar-ink);
 }
 
 .admin-sidebar__top,
@@ -134,11 +140,11 @@ button {
 
 .admin-sidebar__top {
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .admin-sidebar__brand {
-  gap: 10px;
+  gap: var(--space-3);
   color: inherit;
   text-align: left;
 }
@@ -158,7 +164,7 @@ button {
   height: 38px;
   border-radius: var(--radius-3);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   box-shadow: var(--shadow-brand-sm);
 }
 
@@ -169,7 +175,7 @@ button {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-5);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .admin-sidebar__brand-copy strong,
@@ -208,8 +214,8 @@ button {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-4);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  color: var(--sidebar-ink);
 }
 
 /* Sixteen entries in five groups, and they have to fit.
@@ -238,7 +244,7 @@ button {
   /* Firefox has no ::-webkit-scrollbar; these two are how it gets the same
      treatment, and `thin` is the narrowest it offers. */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.26) transparent;
+  scrollbar-color: color-mix(in srgb, var(--sidebar-ink) 26%, transparent) transparent;
 }
 
 .admin-sidebar__sections::-webkit-scrollbar {
@@ -247,16 +253,16 @@ button {
 
 .admin-sidebar__sections::-webkit-scrollbar-thumb {
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.26);
+  background: color-mix(in srgb, var(--sidebar-ink) 26%, transparent);
 }
 
 .admin-sidebar__sections:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.4);
+  background: color-mix(in srgb, var(--sidebar-ink) 40%, transparent);
 }
 
 .admin-sidebar__section {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .admin-sidebar__section + .admin-sidebar__section {
@@ -265,10 +271,10 @@ button {
 
 .admin-sidebar__section-label {
   margin: 0;
-  padding: 0 10px;
-  color: rgba(255, 255, 255, 0.38);
+  padding: 0 var(--space-3);
+  color: color-mix(in srgb, var(--sidebar-ink) 38%, transparent);
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -298,17 +304,17 @@ button {
 .admin-sidebar__link {
   position: relative;
   justify-content: flex-start;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
   /* 34px, down from 38px. Still above the 32px that a row of text plus a 17px
      icon needs to stay comfortably clickable, and 4px x 16 entries is the
      single biggest saving available in the nav. */
   min-height: 34px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-2);
-  color: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--sidebar-ink) 72%, transparent);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   transition: var(--dur-fast) var(--ease-out);
 }
 
@@ -322,15 +328,15 @@ button {
 }
 
 .admin-sidebar__link:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: color-mix(in srgb, var(--sidebar-ink) 5%, transparent);
+  color: var(--sidebar-ink);
   transform: none;
 }
 
 .admin-sidebar__link--active,
 .admin-sidebar__link--active:hover {
-  background: rgba(255, 82, 0, 0.16);
-  color: #fff;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--sidebar-ink);
 }
 
 .admin-sidebar__link--active::before {
@@ -345,13 +351,13 @@ button {
 }
 
 .admin-sidebar__link--active .admin-sidebar__link-copy svg {
-  color: #ff8a4d;
+  color: color-mix(in srgb, var(--primary) 70%, var(--sidebar-ink));
 }
 
 .admin-sidebar__link-copy {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -363,7 +369,7 @@ button {
 
 .admin-sidebar__footer {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .admin-sidebar__signout {
@@ -375,24 +381,24 @@ button {
   flex-shrink: 0;
   margin-left: auto;
   border-radius: var(--radius-1);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid color-mix(in srgb, var(--sidebar-ink) 12%, transparent);
+  background: color-mix(in srgb, var(--sidebar-ink) 6%, transparent);
+  color: color-mix(in srgb, var(--sidebar-ink) 72%, transparent);
   transition: var(--dur-fast) var(--ease-out);
 }
 
 .admin-sidebar__signout:hover {
-  background: rgba(213, 59, 67, 0.28);
-  border-color: rgba(213, 59, 67, 0.4);
-  color: #fff;
+  background: color-mix(in srgb, var(--danger) 28%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--sidebar-ink);
 }
 
 .admin-sidebar__profile {
-  gap: 10px;
-  padding: 10px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   border-radius: var(--radius-4);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--sidebar-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
 }
 
 .admin-sidebar__profile-details {
@@ -406,9 +412,9 @@ button {
 .admin-sidebar__logout {
   min-height: 48px;
   border-radius: var(--radius-5);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-weight: 700;
+  background: color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  color: var(--sidebar-ink);
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-menu-fab {
@@ -423,15 +429,15 @@ button {
 .login-card,
 .field {
   display: grid;
-  gap: 18px;
+  gap: var(--space-5);
 }
 
 .field {
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .page-stack {
-  gap: 22px;
+  gap: var(--space-6);
 }
 
 .page-intro,
@@ -445,13 +451,13 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .page-intro h1,
 .login-card h1 {
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
@@ -470,14 +476,14 @@ button {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .admin-surface,
 .panel,
 .login-card,
 .modal-card {
-  padding: 16px;
+  padding: var(--space-4);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--card);
@@ -492,20 +498,20 @@ button {
 .panel__header {
   display: flex;
   align-items: start;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .admin-surface h2,
 .panel h2,
 .modal-card h2 {
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   line-height: 1.15;
   letter-spacing: -0.015em;
 }
 
 .toolbar-meta {
-  font-weight: 700;
+  font-weight: var(--fw-medium);
 }
 
 .generated-combos-combo-cell,
@@ -651,6 +657,15 @@ button {
 
 @media (max-width: 900px) {.generated-combos-performance-cell {
     gap: 10px;
+  }
+}
+
+/* The one spinner. There were four — comboStatusSpin, reportsSpin,
+   ai-sug-spin, bp-spin — identical but for the name. Each family moves onto
+   this one as its screen is refreshed. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1275,12 +1290,12 @@ button {
 }
 
 .insight-list {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .insight-row {
-  gap: 16px;
-  padding: 12px 14px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1295,19 +1310,19 @@ button {
 .insight-row__meta {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .data-toolbar {
-  gap: 14px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   padding-bottom: 18px;
 }
 
 .data-toolbar__group {
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -1325,7 +1340,7 @@ button {
 .page-search--select {
   width: 100%;
   min-height: var(--control-h);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--field-bg);
@@ -1353,7 +1368,7 @@ input:where(:not([type='checkbox'],
 textarea,
 select {
   min-height: var(--control-h);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--field-bg);
@@ -1364,7 +1379,7 @@ select {
 }
 
 textarea {
-  padding: 12px;
+  padding: var(--space-3);
 }
 
 input:where(:not([type='checkbox'],
@@ -1382,7 +1397,7 @@ select:focus-visible {
 .form-grid textarea {
   min-height: 110px;
   resize: vertical;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
 }
 
 .page-search:focus,
@@ -1465,7 +1480,7 @@ select:focus-visible {
 .field span {
   color: var(--muted);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   letter-spacing: 0;
 }
 
@@ -1479,7 +1494,7 @@ select:focus-visible {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 18px;
+  gap: var(--space-4) var(--space-5);
 }
 
 .form-grid__wide {
@@ -1490,15 +1505,15 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
   max-width: 100%;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-3);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-subtle) 100%);
   color: var(--muted);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-align: left;
   transition:
     border-color var(--dur-fast) var(--ease-out),
@@ -1509,14 +1524,14 @@ select:focus-visible {
 }
 
 .ui-checkbox:hover:not(:disabled) {
-  border-color: rgba(255, 82, 0, 0.24);
+  border-color: color-mix(in srgb, var(--primary) 24%, transparent);
   box-shadow: var(--shadow-brand-sm);
   transform: translateY(-1px);
 }
 
 .ui-checkbox:focus-visible {
   outline: none;
-  border-color: rgba(255, 82, 0, 0.34);
+  border-color: color-mix(in srgb, var(--primary) 34%, transparent);
   box-shadow: var(--shadow-ring), var(--shadow-brand-sm);
 }
 
@@ -1526,8 +1541,8 @@ select:focus-visible {
 
 .ui-checkbox--sm {
   min-height: 36px;
-  padding: 0 10px;
-  gap: 8px;
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
   font-size: var(--fs-label);
 }
 
@@ -1537,7 +1552,7 @@ select:focus-visible {
 }
 
 .ui-checkbox--checked {
-  border-color: rgba(255, 82, 0, 0.3);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
   background: var(--primary-soft);
   color: var(--text);
   box-shadow: var(--shadow-brand-sm);
@@ -1578,9 +1593,9 @@ select:focus-visible {
 }
 
 .ui-checkbox--checked .ui-checkbox__control {
-  border-color: rgba(255, 82, 0, 0.55);
-  background: linear-gradient(135deg, #ff5200, #ff7a30);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: var(--primary);
+  color: var(--on-primary);
   box-shadow: var(--shadow-brand-sm);
 }
 
@@ -2108,7 +2123,7 @@ select:focus-visible {
 }
 
 .secondary-button--ghost {
-  gap: 8px;
+  gap: var(--space-2);
   border-color: var(--border);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--muted);
@@ -2117,14 +2132,14 @@ select:focus-visible {
 .primary-button,
 .secondary-button {
   min-height: var(--control-h);
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   font-size: var(--fs-label);
   /* 700 → 600. At 13px, bold is the weight a label shouts in; the storefront
      sets its buttons at medium and they read as more confident, not less.
      The press-scale and the focus halo both arrive from the shared
      stylesheet, so they are not restated here. */
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   transition:
     transform var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
@@ -2149,7 +2164,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   background: var(--primary-strong);
   /* `--on-primary`, not white: a tenant whose accent is pale needs dark text
      on it, and that decision belongs to the brand, not to this rule. */
@@ -2203,8 +2218,8 @@ select:focus-visible {
 
 .table-container {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--radius-5);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2218,6 +2233,18 @@ select:focus-visible {
   background: var(--surface);
 }
 
+/* A table inside a surface is flat. The surface is the raised thing; a
+   container inside it that is ALSO bordered, padded and shadowed made every
+   list page read as three nested boxes — surface, container, table. On its
+   own, outside a surface, the container still frames itself. */
+.admin-surface .table-container {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .admin-table {
   width: 100%;
   min-width: 760px;
@@ -2228,7 +2255,7 @@ select:focus-visible {
 .admin-table th,
 .admin-table td {
   min-height: 42px;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
@@ -2241,7 +2268,7 @@ select:focus-visible {
   background: var(--surface-subtle);
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-medium);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -2270,7 +2297,7 @@ select:focus-visible {
 }
 
 .admin-table__row--clickable:hover {
-  background: rgba(255, 82, 0, 0.05);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .admin-table__cell-content {
@@ -2287,7 +2314,7 @@ select:focus-visible {
 
 .admin-table__cell-content strong,
 .admin-table__cell-content b {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .admin-table__cell-content > * {
@@ -2465,7 +2492,7 @@ select:focus-visible {
 .status-stack,
 .form-actions,
 .modal-actions {
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -2493,20 +2520,20 @@ select:focus-visible {
 }
 
 .table-icon-button:hover {
-  border-color: rgba(255, 82, 0, 0.2);
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent);
   color: var(--on-primary-soft);
   background: var(--primary-soft);
 }
 
 .table-icon-button--danger:hover {
   color: var(--on-danger-soft);
-  border-color: rgba(213, 59, 67, 0.18);
+  border-color: color-mix(in srgb, var(--danger) 18%, transparent);
   background: var(--danger-soft);
 }
 
 .table-icon-button--success:hover {
   color: var(--on-success-soft);
-  border-color: rgba(32, 168, 110, 0.16);
+  border-color: color-mix(in srgb, var(--success) 16%, transparent);
   background: var(--success-soft);
 }
 
@@ -2529,8 +2556,8 @@ select:focus-visible {
   z-index: 4;
   min-width: 180px;
   display: grid;
-  gap: 4px;
-  padding: 8px;
+  gap: var(--space-1);
+  padding: var(--space-2);
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -2540,9 +2567,9 @@ select:focus-visible {
 .table-action-menu__item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   min-height: 36px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-2);
   color: var(--text);
   font-size: var(--fs-label);
@@ -2638,18 +2665,18 @@ select:focus-visible {
      `width: fit-content` covers plain block parents. */
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   justify-self: start;
   align-self: center;
   width: fit-content;
   max-width: 100%;
   /* Asymmetric on purpose: the dot already reads as visual padding on the
      leading edge, so an equal 10px there would look lopsided. */
-  padding: 3px 10px 3px 8px;
+  padding: 3px var(--space-3) 3px var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   line-height: 1.5;
   letter-spacing: 0.005em;
   /* Labels arrive pre-formatted from `formatStatusLabel` in sentence case.
@@ -2742,21 +2769,21 @@ select:focus-visible {
 .usr-role.usr-role--owner {
   background: var(--success-soft);
   color: var(--on-success-soft);
-  border-color: rgba(32, 168, 110, 0.22);
+  border-color: color-mix(in srgb, var(--success) 22%, transparent);
 }
 
 .status-pill.status-pill--warning,
 .generated-combos-visibility-badge.generated-combos-visibility-badge--draft {
   background: var(--warning-soft);
   color: var(--on-warning-soft);
-  border-color: rgba(242, 161, 0, 0.28);
+  border-color: color-mix(in srgb, var(--warning) 28%, transparent);
 }
 
 .status-pill.status-pill--info,
 .usr-role.usr-role--customer {
   background: var(--blue-soft);
   color: var(--on-blue-soft);
-  border-color: rgba(43, 102, 228, 0.2);
+  border-color: color-mix(in srgb, var(--blue) 20%, transparent);
 }
 
 .status-pill.status-pill--primary,
@@ -2764,13 +2791,13 @@ select:focus-visible {
 .usr-role.usr-role--admin {
   background: var(--primary-soft);
   color: var(--on-primary-soft);
-  border-color: rgba(255, 82, 0, 0.22);
+  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .status-pill.status-pill--danger {
   background: var(--danger-soft);
   color: var(--on-danger-soft);
-  border-color: rgba(213, 59, 67, 0.2);
+  border-color: color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 /* Reserved for states that are genuinely dormant - archived, closed,
@@ -2779,7 +2806,7 @@ select:focus-visible {
 .generated-combos-visibility-badge.generated-combos-visibility-badge--archived {
   background: var(--muted-soft);
   color: var(--on-muted-soft);
-  border-color: rgba(109, 116, 137, 0.18);
+  border-color: color-mix(in srgb, var(--muted) 18%, transparent);
 }
 
 /* Live but not yet acted on - PLACED. Previously `muted`, which made a brand
@@ -2797,7 +2824,7 @@ select:focus-visible {
 .usr-role.usr-role--kitchen {
   background: var(--neutral-soft);
   color: var(--on-neutral-soft);
-  border-color: rgba(138, 92, 246, 0.22);
+  border-color: color-mix(in srgb, var(--chart-4) 22%, transparent);
 }
 
 /* Shrink-wrap guard for the remaining passive badges. See the note in the
@@ -2818,12 +2845,12 @@ select:focus-visible {
   z-index: 90;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--space-6);
   overflow: auto;
   overscroll-behavior: contain;
   background:
-    radial-gradient(circle at top, rgba(255, 122, 40, 0.12), transparent 26%),
-    rgba(17, 21, 35, 0.56);
+    radial-gradient(circle at top, color-mix(in srgb, var(--primary) 12%, transparent), transparent 26%),
+    var(--overlay);
   backdrop-filter: blur(12px);
 }
 
@@ -2870,10 +2897,10 @@ select:focus-visible {
 }
 
 .modal-card__header {
-  padding: 22px 24px 18px;
+  padding: var(--space-6) var(--space-6) var(--space-5);
   border-bottom: 1px solid var(--border);
   background:
-    radial-gradient(circle at top right, rgba(255, 122, 40, 0.08), transparent 28%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary) 8%, transparent), transparent 28%),
     linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-warm) 100%);
 }
 
@@ -2886,7 +2913,7 @@ select:focus-visible {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 18px 24px 22px;
+  padding: var(--space-5) var(--space-6) var(--space-6);
   /* Flat, not a gradient. The gradient that was here ran #ffffff to #fcfdff —
      a one-percent shift nobody could see, which on the way to a token became
      a real one and took `.ui-checkbox__label` from 4.52:1 to 4.35:1. A body
@@ -2900,7 +2927,7 @@ select:focus-visible {
 }
 
 .modal-card__body::-webkit-scrollbar-thumb {
-  background: rgba(181, 190, 207, 0.8);
+  background: var(--border);
   border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -2911,7 +2938,7 @@ select:focus-visible {
   bottom: 0;
   z-index: 1;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-3);
   margin-top: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
@@ -2926,13 +2953,13 @@ select:focus-visible {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .detail-grid > div {
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4);
   border-radius: var(--radius-5);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2950,13 +2977,13 @@ select:focus-visible {
 .field--inline {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
   align-items: stretch;
 }
 
 .modal-close:hover,
 .modal-close:focus-visible {
-  border-color: rgba(255, 82, 0, 0.28);
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
   box-shadow: var(--shadow-lg);
   transform: translateY(-1px);
 }
@@ -3030,16 +3057,16 @@ select:focus-visible {
 
 .segmented-tabs {
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .segmented-tabs__item {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   min-height: 34px;
-  padding: 0 13px;
+  padding: 0 var(--space-3);
   font-size: var(--fs-label);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
@@ -3052,7 +3079,7 @@ select:focus-visible {
 }
 
 .segmented-tabs__item--active {
-  border-color: rgba(255, 82, 0, 0.24);
+  border-color: color-mix(in srgb, var(--primary) 24%, transparent);
   /* The selected pill keeps the brand tint and takes it from the token, so
      dark mode gets the deep version rather than a cream gradient. */
   background: var(--primary-soft);
@@ -3192,9 +3219,9 @@ select:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   margin-top: 0;
-  padding: 12px 14px 0;
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .table-container + .pagination {
@@ -3207,7 +3234,7 @@ select:focus-visible {
 .pagination__page-size {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -3219,14 +3246,14 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-self: end;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .pagination__page-size span {
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -3243,7 +3270,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   justify-self: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -3254,10 +3281,10 @@ select:focus-visible {
 .pagination__page {
   min-width: 34px;
   min-height: 34px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-2);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 /* The pagination row is secondary chrome, so it uses the compact control
@@ -3272,10 +3299,10 @@ select:focus-visible {
 
 .pagination .secondary-button {
   min-height: var(--control-h-sm);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-2);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .pagination__page--active {
@@ -3311,15 +3338,15 @@ select:focus-visible {
 
 .settings-list {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .settings-row {
   width: 100%;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--space-5);
   text-align: left;
-  padding: 18px 20px;
+  padding: var(--space-5) var(--space-5);
   border-radius: var(--radius-6);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-subtle) 100%);
@@ -3350,7 +3377,6 @@ select:focus-visible {
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-alt);
 }
 
 .gst-switch-card__text {
@@ -3383,12 +3409,14 @@ select:focus-visible {
   justify-content: center;
   min-width: 66px;
   min-height: 36px;
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--muted-soft);
-  color: var(--hint);
+  /* The badge ink measured against THIS background: `--hint` is 4.14:1 on
+     `--muted-soft` in light mode, under the 4.5 a 13px label needs. */
+  color: var(--on-muted-soft);
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .toggle-pill--on {
@@ -3412,14 +3440,14 @@ select:focus-visible {
   right: 20px;
   bottom: 20px;
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   z-index: 100;
 }
 
 .toast {
   min-width: 280px;
   max-width: 360px;
-  padding: 12px 14px 12px 16px;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-4);
   text-align: left;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -3516,7 +3544,7 @@ select:focus-visible {
   }
 
 .admin-layout__main {
-    padding: 16px 16px 24px;
+    padding: var(--space-4) var(--space-4) var(--space-6);
   }
 
 .admin-layout__content--flush {
@@ -3655,8 +3683,8 @@ select:focus-visible {
 
 .pagination {
     grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 10px 0 0;
+    gap: var(--space-3);
+    padding: var(--space-3) 0 0;
   }
 
 .table-container + .pagination {
@@ -3688,7 +3716,7 @@ select:focus-visible {
 
 .modal-overlay {
     align-items: end;
-    padding: 14px;
+    padding: var(--space-4);
   }
 
 .modal-card,
@@ -5655,12 +5683,12 @@ select:focus-visible {
 .admin-sidebar__profile {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   margin-bottom: 8px;
   border-radius: var(--radius-4);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--sidebar-ink) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
   min-width: 0;
 }
 
@@ -5676,7 +5704,7 @@ select:focus-visible {
   background: var(--brand-mark-grad);
   color: var(--on-primary);
   font-size: var(--fs-caption);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
   box-shadow: none;
 }
@@ -5690,7 +5718,7 @@ select:focus-visible {
 }
 
 .admin-sidebar__profile .admin-sidebar__profile-copy strong {
-  color: #fff;
+  color: var(--sidebar-ink);
   font-size: var(--fs-label);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5701,37 +5729,37 @@ select:focus-visible {
   display: inline-flex;
   justify-self: start;
   margin-top: 0;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
 
 .admin-sidebar__profile-role--admin {
-  background: rgba(255, 82, 0, 0.22);
-  color: #ffb38a;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: color-mix(in srgb, var(--primary) 45%, var(--sidebar-ink));
 }
 
 .admin-sidebar__profile-role--owner {
-  background: rgba(32, 168, 110, 0.22);
-  color: #7fe0b4;
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: color-mix(in srgb, var(--success) 50%, var(--sidebar-ink));
 }
 
 .maintenance-banner {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
   margin: 14px 18px 0;
-  padding: 9px 14px;
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(242, 161, 0, 0.35);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
   background: var(--warning-soft);
   color: var(--on-warning-soft);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   line-height: 1.45;
 }
 
@@ -6349,7 +6377,7 @@ select:focus-visible {
      instead of into the tiles. */
   grid-template-columns: repeat(auto-fill, minmax(184px, 224px));
   justify-content: start;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .usr-stat--static {
@@ -6364,8 +6392,8 @@ select:focus-visible {
 .usr-stat {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 12px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -6375,12 +6403,12 @@ select:focus-visible {
 }
 
 .usr-stat:hover {
-  border-color: rgba(230, 74, 0, 0.3);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
   transform: translateY(-1px);
 }
 
 .usr-stat--active {
-  border-color: rgba(230, 74, 0, 0.45);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
   box-shadow: var(--shadow-ring), var(--shadow-md);
 }
 
@@ -6409,7 +6437,7 @@ select:focus-visible {
 
 .usr-stat__label {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-medium);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -6417,7 +6445,7 @@ select:focus-visible {
 
 .usr-stat__copy > strong {
   font-size: var(--fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: -0.01em;
   line-height: 1.1;
 }
@@ -6430,7 +6458,7 @@ select:focus-visible {
 .usr-cell {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -6443,7 +6471,7 @@ select:focus-visible {
 .usr-cell__copy strong {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   font-size: var(--fs-label);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6460,12 +6488,12 @@ select:focus-visible {
 
 .usr-you {
   font-style: normal;
-  padding: 1px 7px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -6502,10 +6530,10 @@ select:focus-visible {
 }
 
 .breadcrumbs__link {
-  padding: 3px 6px;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-1);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--muted);
   transition: var(--dur-fast) var(--ease-out);
   max-width: 220px;
@@ -6520,9 +6548,9 @@ select:focus-visible {
 }
 
 .breadcrumbs__current {
-  padding: 3px 6px;
+  padding: 3px var(--space-2);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--text);
   max-width: 260px;
   overflow: hidden;
@@ -6542,7 +6570,7 @@ select:focus-visible {
 .admin-table__sort {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   padding: 0;
   border: 0;
   background: none;
@@ -6607,12 +6635,12 @@ select:focus-visible {
   top: -48px;
   left: 12px;
   z-index: 200;
-  padding: 9px 14px;
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-2);
   background: var(--primary-strong);
   color: var(--on-primary);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   transition: top var(--dur-fast) var(--ease-out);
 }
 
@@ -6624,7 +6652,7 @@ button:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid rgba(230, 74, 0, 0.55);
+  outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
   outline-offset: 2px;
 }
 
@@ -6758,7 +6786,7 @@ summary:focus-visible,
 .form-grid__section h3 {
   margin: 0;
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .form-grid__section p {
@@ -6775,7 +6803,7 @@ summary:focus-visible,
 
 .field__error {
   color: var(--danger);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .color-field__row {
@@ -14324,9 +14352,9 @@ summary:focus-visible,
 .mixed-currency {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-3);
   margin: 0;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--warning) 9%, var(--surface));
@@ -14342,7 +14370,7 @@ summary:focus-visible,
 }
 
 .mixed-currency strong {
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 /* --- Capabilities ---------------------------------------------------------
