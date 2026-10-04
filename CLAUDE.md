@@ -170,8 +170,15 @@ role radius (`--radius-control`, `--radius-card`, `--radius-modal`) live in
 `frontend-admin/src/index.css`, written to be promoted into the shared file.
 `src/styleBudget.test.ts` counts off-token padding, gap, weight and colour in
 `legacy.css` per class family; a number there may be lowered and never raised.
-Two families are deliberately not zero: marketing's scoped token definitions
-and the branding phone preview, which draws another app.
+Four families are deliberately not zero, each with its reason beside its
+number: marketing (`mkt`, `hub`) for its scoped token definitions and the
+phone and message mock-ups, the branding phone preview (`ph`), which draws
+another app, and one white tick on a brand swatch (`bp`).
+
+**`--on-primary` is the ink for a BRAND fill and nothing else.** It inverts in
+dark mode, so it is wrong on any ground that does not flip with the theme: a
+mock-up screen, a preset swatch, a dark-mode hairline. Replacing a literal
+white with it broke all three at once; `styleBudget.test.ts` now names them.
 
 **Colour is written at runtime and beats the stylesheet.** `src/lib/theme.ts`
 (`applyBrandColor`) sets `--primary`, `--primary-soft`, `--on-primary` and the

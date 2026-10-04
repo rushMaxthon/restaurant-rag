@@ -847,7 +847,7 @@ export function ReportsPage({
                 {activeFiltersCount} active
               </span>
             ) : null}
-            <button className="secondary-button" onClick={clearFilters} type="button">
+            <button className="secondary-button secondary-button--ghost" onClick={clearFilters} type="button">
               Clear
             </button>
           </div>

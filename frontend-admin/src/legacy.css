@@ -78,7 +78,7 @@ button {
 
 [data-density='compact'] .page-intro { gap: var(--space-3); }
 
-[data-density='compact'] .data-toolbar { padding-bottom: 12px; }
+[data-density='compact'] .data-toolbar { padding-bottom: var(--space-3); }
 
 .admin-sidebar__scrim {
   position: fixed;
@@ -240,7 +240,7 @@ button {
 .admin-sidebar__sections {
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--space-1);
   /* Firefox has no ::-webkit-scrollbar; these two are how it gets the same
      treatment, and `thin` is the narrowest it offers. */
   scrollbar-width: thin;
@@ -1303,7 +1303,7 @@ button {
 .data-toolbar {
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding-bottom: 18px;
+  padding-bottom: var(--space-5);
 }
 
 .data-toolbar__group {
@@ -1415,8 +1415,8 @@ select:focus-visible {
 
 .page-search-field .page-search {
   /* Room for the icon on the left and the clear control on the right. */
-  padding-left: 34px;
-  padding-right: 34px;
+  padding-left: var(--space-8);
+  padding-right: var(--space-8);
   max-width: none;
 }
 
@@ -2179,7 +2179,7 @@ select:focus-visible {
   align-items: flex-end;
   justify-content: center;
   min-width: 20px;
-  padding-bottom: 6px;
+  padding-bottom: var(--space-2);
   color: var(--hint);
   user-select: none;
 }
@@ -2695,7 +2695,7 @@ select:focus-visible {
 
 .st-role-pill,
 .usr-role {
-  padding-left: 9px;
+  padding-left: var(--space-2);
 }
 
 /* Which branch a kitchen account works, in the staff table.
@@ -2728,7 +2728,7 @@ select:focus-visible {
 }
 
 .status-pill--interactive {
-  padding-right: 8px;
+  padding-right: var(--space-2);
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
@@ -2927,7 +2927,7 @@ select:focus-visible {
 }
 
 .modal-card__body::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
   border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -2940,14 +2940,14 @@ select:focus-visible {
   justify-content: flex-end;
   gap: var(--space-3);
   margin-top: 8px;
-  padding-top: 14px;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
   background: linear-gradient(180deg, var(--surface-veil) 0%, var(--surface-solid) 32%);
   backdrop-filter: blur(10px);
 }
 
 .confirm-dialog__body {
-  padding-top: 20px;
+  padding-top: var(--space-5);
 }
 
 .detail-grid {
@@ -3090,7 +3090,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: flex-end;
   gap: var(--space-5);
-  padding-inline: 4px;
+  padding-inline: var(--space-1);
   border-bottom: 1px solid var(--border);
 }
 
@@ -3206,7 +3206,7 @@ select:focus-visible {
 }
 
 .slot-table .admin-table__actions-cell {
-  padding-right: 10px;
+  padding-right: var(--space-3);
 }
 
 .slot-table .table-icon-button {
@@ -3226,7 +3226,7 @@ select:focus-visible {
 
 .table-container + .pagination {
   margin-top: -4px;
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -3261,7 +3261,7 @@ select:focus-visible {
 .pagination__page-size .page-search--select {
   min-height: 34px;
   max-width: 84px;
-  padding-inline: 10px;
+  padding-inline: var(--space-3);
   font-size: var(--fs-label);
 }
 
@@ -3729,18 +3729,18 @@ select:focus-visible {
 
 .modal-card__header,
 .modal-card__body {
-    padding-left: 18px;
-    padding-right: 18px;
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
   }
 
 .modal-card__header {
-    padding-top: 18px;
-    padding-bottom: 16px;
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-4);
   }
 
 .modal-card__body {
-    padding-top: 18px;
-    padding-bottom: 20px;
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
   }
 
 .modal-card .modal-actions {
@@ -4137,7 +4137,10 @@ select:focus-visible {
 .order-timeline__step::after {
   content: '';
   position: absolute;
-  top: 29px;
+  /* Through the centre of the 32px marker: the step's padding, plus half
+     the marker, less the line's own half-pixel. Written from the padding's
+     token, for the same reason as the horizontal pair below. */
+  top: calc(var(--space-4) + 15px);
   /* The connector spans the grid gap, so it is the gap: written as the same
      token, or the line stops short of the next step when the gap moves. */
   right: calc(-1 * var(--space-3));
@@ -4245,7 +4248,7 @@ select:focus-visible {
 
 .order-detail__item-options {
   margin: 2px 0 0;
-  padding-left: 16px;
+  padding-left: var(--space-4);
   display: grid;
   gap: 2px;
 }
@@ -4307,7 +4310,7 @@ select:focus-visible {
 
 .order-detail__totals-row--grand {
   margin-top: 4px;
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px dashed var(--border);
 }
 
@@ -4500,7 +4503,7 @@ select:focus-visible {
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
   color: var(--hint);
-  padding-right: 4px;
+  padding-right: var(--space-1);
   white-space: nowrap;
 }
 
@@ -4901,7 +4904,7 @@ select:focus-visible {
   align-items: stretch;
   gap: var(--space-3);
   min-height: 190px;
-  padding-top: 6px;
+  padding-top: var(--space-2);
 }
 
 .rpt-vbars__item {
@@ -5431,7 +5434,7 @@ select:focus-visible {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -5794,7 +5797,7 @@ select:focus-visible {
   align-items: center;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding-bottom: 20px;
+  padding-bottom: var(--space-5);
 }
 
 .set-identity__copy {
@@ -5870,12 +5873,12 @@ select:focus-visible {
 }
 
 .set-item + .set-item {
-  padding-top: 14px;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
 .set-group__items > .set-item:last-child {
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 
 .set-item__copy {
@@ -5965,8 +5968,8 @@ select:focus-visible {
 }
 
 .st-avatar--owner {
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
-  color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--on-blue-soft);
 }
 
 .st-switch {
@@ -6666,8 +6669,8 @@ summary:focus-visible,
 }
 
 .lg-input input {
-  padding-left: 36px;
-  padding-right: 40px;
+  padding-left: var(--space-10);
+  padding-right: var(--space-10);
 }
 
 .lg-input__toggle {
@@ -6705,7 +6708,7 @@ summary:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-top: 6px;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
 
@@ -6821,7 +6824,7 @@ summary:focus-visible,
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding-top: 14px;
+  padding-top: var(--space-4);
 }
 
 /* The page-intro actions for this screen: scope, period, refresh on one row.
@@ -6953,7 +6956,7 @@ summary:focus-visible,
   min-height: 0;
   padding: var(--space-1) 0 var(--space-5);
   border-left: 1px solid var(--border);
-  padding-left: 22px;
+  padding-left: var(--space-6);
 }
 
 .ai-rail__new {
@@ -7178,7 +7181,7 @@ summary:focus-visible,
   justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 /* --- the welcome state ---------------------------------------------------- */
@@ -7343,7 +7346,7 @@ summary:focus-visible,
 /* The bar answers "does this one matter" before a word is read: its width is
    the finding's own score against the strongest on screen. Both come from the
    payload; the feed used to render every finding at identical weight. */
-.ai-find__impact { display: grid; gap: var(--space-1); padding-top: 4px; }
+.ai-find__impact { display: grid; gap: var(--space-1); padding-top: var(--space-1); }
 
 .ai-find__bar { height: 6px; border-radius: 3px; background: var(--divider); overflow: hidden; }
 
@@ -7600,7 +7603,7 @@ summary:focus-visible,
 
 .ai-facts__row dd { margin: 0; font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
 
-.ai-facts__findings { margin: 0; padding-left: 18px; font-size: var(--fs-caption); color: var(--muted); }
+.ai-facts__findings { margin: 0; padding-left: var(--space-5); font-size: var(--fs-caption); color: var(--muted); }
 
 .ai-facts__findings li { margin-bottom: 3px; }
 
@@ -7618,7 +7621,7 @@ summary:focus-visible,
   border: 1px solid var(--border);
   border-radius: var(--radius-4);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) 1.15rem;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -7683,7 +7686,7 @@ summary:focus-visible,
 
 .ai-footnote {
   margin: 0;
-  padding-top: 0.75rem;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   font-size: var(--fs-caption);
   color: var(--hint);
@@ -7748,7 +7751,7 @@ summary:focus-visible,
 .ai-tile {
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  padding: var(--space-3) 0.85rem;
+  padding: var(--space-3) var(--space-3);
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
@@ -7815,7 +7818,7 @@ summary:focus-visible,
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  padding-top: 0.7rem;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -7844,7 +7847,7 @@ summary:focus-visible,
 
 .ai-notes {
   margin: 0;
-  padding: var(--space-3) 0.9rem var(--space-3) 1.9rem;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-8);
   border-radius: var(--radius-control);
   background: var(--surface-subtle);
   display: flex;
@@ -7873,7 +7876,7 @@ summary:focus-visible,
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
-  padding: 0.95rem 0.9rem 0.95rem var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-4);
   border-radius: var(--radius-2);
   border-left: 3px solid transparent;
   transition: background var(--dur-fast) var(--ease-out);
@@ -7882,8 +7885,8 @@ summary:focus-visible,
 /* An action carries more inside it than a finding does — terms, an estimate,
    two buttons — so it gets the room to hold them without feeling packed. */
 .ai-row--action {
-  padding-top: 1.1rem;
-  padding-bottom: 1.1rem;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
 }
 
 .ai-list > .ai-row + .ai-row {
@@ -7954,7 +7957,7 @@ summary:focus-visible,
    card rather than sitting wherever each title happens to end. */
 .ai-row__period {
   margin-left: auto;
-  padding-left: 0.75rem;
+  padding-left: var(--space-3);
 }
 
 /* Terms and estimate as labelled pairs on a fixed track, so they align
@@ -7966,7 +7969,7 @@ summary:focus-visible,
      not — so terms and estimate sit side by side rather than stacking and
      doubling the height of every recommendation. */
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.7rem var(--space-8);
+  gap: var(--space-3) var(--space-8);
   margin: 0.25rem 0 0;
   padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-1);
@@ -8028,7 +8031,7 @@ summary:focus-visible,
   gap: var(--space-3);
   flex-wrap: wrap;
   margin-top: 0.35rem;
-  padding-top: 0.7rem;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
 
@@ -8133,7 +8136,7 @@ summary:focus-visible,
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
   border-radius: var(--radius-1);
-  padding: var(--space-2) 0.65rem;
+  padding: var(--space-2) var(--space-3);
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
@@ -8176,7 +8179,7 @@ summary:focus-visible,
 
 .ai-msg {
   border-radius: var(--radius-3);
-  padding: var(--space-3) 0.9rem;
+  padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -8235,7 +8238,7 @@ summary:focus-visible,
 
 .ai-answer__list {
   margin: 0;
-  padding-left: 1.15rem;
+  padding-left: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -8244,7 +8247,7 @@ summary:focus-visible,
 }
 
 .ai-answer__list li {
-  padding-left: 0.15rem;
+  padding-left: 2px;
 }
 
 .ai-answer__list li::marker {
@@ -8356,8 +8359,8 @@ summary:focus-visible,
 }
 
 .ai-period__option.is-active {
-  background: var(--surface, var(--on-primary));
-  color: var(--text, var(--text));
+  background: var(--surface);
+  color: var(--text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -8372,7 +8375,7 @@ summary:focus-visible,
   align-items: center;
   gap: var(--space-2);
   margin: 0 0 0.75rem;
-  padding: var(--space-2) 0.7rem;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-1);
   background: var(--warning-soft);
   color: var(--on-warning-soft);
@@ -8384,7 +8387,7 @@ summary:focus-visible,
 .ai-older {
   margin-top: 0.75rem;
   border-top: 1px solid var(--border);
-  padding-top: 0.6rem;
+  padding-top: var(--space-2);
 }
 
 .ai-older > summary {
@@ -8606,7 +8609,7 @@ summary:focus-visible,
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  padding-top: 8px;
+  padding-top: var(--space-2);
 }
 
 .ai-sug__evidence dt {
@@ -8822,7 +8825,8 @@ summary:focus-visible,
   width: 42px;
   height: 42px;
   border-radius: var(--radius-pill);
-  color: var(--on-primary);
+  /* On the swatch's own colour, which is not the theme's. */
+  color: #ffffff;
   /* Inset rather than a border, so a pale swatch still has an edge without a
      ring that changes the colour being judged. */
   box-shadow: var(--inset-hairline);
@@ -8924,7 +8928,7 @@ summary:focus-visible,
   justify-content: space-between;
   gap: var(--space-4);
   margin-top: 26px;
-  padding-top: 18px;
+  padding-top: var(--space-5);
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
   align-self: end;
@@ -9876,7 +9880,9 @@ summary:focus-visible,
 .pref-row__facts li + li::before {
   content: '';
   position: absolute;
-  left: -8px;
+  /* Centred in the row's column gap, so it is written from the gap: half
+     the gap back, less half of the dot's own 3px. */
+  left: calc(var(--space-4) / -2 - 1.5px);
   top: 50%;
   width: 3px;
   height: 3px;
@@ -9979,12 +9985,12 @@ summary:focus-visible,
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding-inline: 12px;
+  padding-inline: var(--space-3);
   font-size: var(--fs-label);
 }
 
 .pref-row__retire {
-  padding-inline: 10px;
+  padding-inline: var(--space-3);
   color: var(--danger);
 }
 
@@ -10009,17 +10015,17 @@ summary:focus-visible,
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding-block: 20px;
+  padding-block: var(--space-5);
   border-bottom: 1px solid var(--border);
 }
 
 .pref-editor__section:first-child {
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .pref-editor__section:last-child {
   border-bottom: 0;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 
 .pref-editor__legend {
@@ -10046,7 +10052,7 @@ summary:focus-visible,
   place-items: center;
   min-width: 20px;
   height: 20px;
-  padding-inline: 6px;
+  padding-inline: var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
   font-variant-numeric: tabular-nums;
@@ -10359,7 +10365,7 @@ summary:focus-visible,
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: var(--mkt-gap-lg);
-  padding: 34px var(--mkt-pad);
+  padding: var(--space-8) var(--mkt-pad);
   border-radius: var(--mkt-radius);
   background:
     radial-gradient(120% 140% at 88% -10%, color-mix(in srgb, var(--primary) 42%, transparent) 0%, transparent 58%),
@@ -10760,7 +10766,7 @@ summary:focus-visible,
 .mkt-step__head {
   display: grid;
   gap: var(--space-2);
-  padding-bottom: 22px;
+  padding-bottom: var(--space-6);
   border-bottom: 1px solid var(--mkt-line-soft);
 }
 
@@ -10795,7 +10801,7 @@ summary:focus-visible,
   justify-content: space-between;
   gap: var(--space-4);
   margin-top: 2px;
-  padding: 18px var(--mkt-pad);
+  padding: var(--space-5) var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -11140,15 +11146,17 @@ summary:focus-visible,
 }
 
 .mkt-preview__clock strong {
-  color: var(--on-primary);
+  /* A literal, on purpose: this ground does not change with the theme, so
+     its ink must not either. `--on-primary` goes near-black in dark mode. */
+  color: #ffffff;
   font-size: 2.1rem;
-  font-weight: var(--fw-regular);
+  font-weight: var(--fw-light);
   line-height: 1;
   letter-spacing: -0.02em;
 }
 
 .mkt-preview__clock span {
-  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
+  color: rgb(255 255 255 / 0.72);
   font-size: var(--fs-caption);
   font-weight: var(--fw-regular);
 }
@@ -12027,7 +12035,7 @@ summary:focus-visible,
   background: linear-gradient(
     90deg,
     var(--card-muted) 25%,
-    color-mix(in srgb, var(--on-primary) 70%, transparent) 50%,
+    var(--skeleton-sheen) 50%,
     var(--card-muted) 75%
   );
   background-size: 200% 100%;
@@ -12185,7 +12193,7 @@ summary:focus-visible,
   .mkt-row__money {
     grid-area: money;
     text-align: left;
-    padding-top: 4px;
+    padding-top: var(--space-1);
     border-top: 1px solid var(--mkt-line-soft);
   }
 
@@ -12273,7 +12281,7 @@ summary:focus-visible,
   --hub-promo-bg:
     radial-gradient(80% 90% at 100% 100%, #ffe6d6 0%, transparent 62%),
     linear-gradient(140deg, #fff5ef 0%, #fffcfa 70%);
-  --hub-disc-bg: radial-gradient(circle at 34% 30%, var(--on-primary) 0%, #ffe8db 55%, #ffd9c4 100%);
+  --hub-disc-bg: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffe8db 55%, #ffd9c4 100%);
 
   --hub-radius: 18px;
   --hub-radius-sm: 12px;
@@ -12299,8 +12307,8 @@ summary:focus-visible,
 .dark .mkt {
   --mkt-ink: var(--text);
   --mkt-ink-2: var(--muted);
-  --mkt-line: color-mix(in srgb, var(--on-primary) 10%, transparent);
-  --mkt-line-soft: color-mix(in srgb, var(--on-primary) 6%, transparent);
+  --mkt-line: rgb(255 255 255 / 0.1);
+  --mkt-line-soft: rgb(255 255 255 / 0.06);
   --mkt-accent: var(--primary);
   --mkt-accent-wash: linear-gradient(135deg, #2a1d16 0%, #1d1917 100%);
 
@@ -12309,7 +12317,7 @@ summary:focus-visible,
 }
 
 .dark .mkt-hub {
-  --hub-line-soft: color-mix(in srgb, var(--on-primary) 7%, transparent);
+  --hub-line-soft: rgb(255 255 255 / 0.07);
   /* The light value is darkened for a pale wash; on a dark one the tuned
      warning token is already the readable choice. */
   --hub-amber: var(--warning);
@@ -12598,7 +12606,7 @@ summary:focus-visible,
   top: 2px;
   right: 34px;
   background: #25d366;
-  color: var(--on-primary);
+  color: #ffffff;
 }
 
 .hub-art__badge--b {
@@ -12612,7 +12620,7 @@ summary:focus-visible,
   bottom: 6px;
   right: 22px;
   background: var(--hub-purple);
-  color: var(--on-primary);
+  color: #ffffff;
 }
 
 /* The primary action column. Separate from the banner so the button is the
@@ -13362,7 +13370,7 @@ summary:focus-visible,
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--mkt-line-soft);
   font-size: var(--fs-caption);
 }
@@ -13407,7 +13415,7 @@ summary:focus-visible,
   display: grid;
   gap: var(--space-2);
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--space-5);
   color: var(--muted);
   font-size: var(--fs-caption);
 }
@@ -13469,7 +13477,7 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
+  color: rgb(255 255 255 / 0.72);
   font-size: var(--fs-micro);
   font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
@@ -13677,7 +13685,7 @@ summary:focus-visible,
 
 .mkt-social__comment {
   border-top: 1px solid var(--mkt-line-soft);
-  padding-top: 8px;
+  padding-top: var(--space-2);
 }
 
 .mkt-social__tags {
@@ -13743,7 +13751,7 @@ summary:focus-visible,
    the largest thing on it. */
 .mkt-boost__total {
   margin: 0;
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--mkt-line);
   color: var(--mkt-ink);
   font-size: var(--fs-caption);
@@ -13806,7 +13814,7 @@ summary:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding-top: 12px;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--mkt-line-soft);
 }
 
@@ -13884,7 +13892,7 @@ summary:focus-visible,
 .mkt-conn__form {
   display: grid;
   gap: var(--space-4);
-  padding-top: 14px;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--mkt-line-soft);
 }
 
@@ -13892,7 +13900,7 @@ summary:focus-visible,
   display: grid;
   gap: var(--space-2);
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--space-5);
   color: var(--muted);
   font-size: var(--fs-caption);
 }
@@ -14259,7 +14267,7 @@ summary:focus-visible,
   padding: var(--space-3) var(--space-4);
   border: 0;
   border-top: 1px solid color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
-  background: color-mix(in srgb, black 18%, transparent);
+  background: color-mix(in srgb, var(--sidebar-shade) 18%, transparent);
   color: var(--primary-text);
   font-size: var(--fs-caption);
   font-weight: var(--fw-strong);
@@ -14268,7 +14276,7 @@ summary:focus-visible,
 }
 
 .workspace__footer:hover {
-  background: color-mix(in srgb, black 30%, transparent);
+  background: color-mix(in srgb, var(--sidebar-shade) 30%, transparent);
 }
 
 /* --- Mixed currency -------------------------------------------------------
@@ -14544,7 +14552,7 @@ summary:focus-visible,
 
 .gateway__form {
   margin-top: 14px;
-  padding-top: 16px;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 

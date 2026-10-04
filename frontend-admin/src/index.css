@@ -136,6 +136,9 @@
      ink does not flip — and it was fourteen `rgba(255, 255, 255, …)` literals
      because there was no name for it. Opacities are mixed from this. */
   --sidebar-ink: #ffffff;
+  /* What darkens a band ON the sidebar — the tenant switcher's footer. The
+     sidebar is dark in both themes, so this does not flip either. */
+  --sidebar-shade: #000000;
 
   /* ---- Weight ------------------------------------------------------------
      Four, with a job each. The panel had 312 weight declarations as bare
@@ -146,6 +149,7 @@
      These three groups are panel-local for now. They are written to be
      PROMOTED into `frontend-shared/tokens.css` unchanged, the way the type
      and radius scales were, once the storefront wants them. */
+  --fw-light: 300;     /* one place: the clock on the phone mock-up's lock screen */
   --fw-regular: 500;   /* body, descriptions, table cells */
   --fw-medium: 600;    /* labels, nav, buttons, emphasised cells */
   --fw-strong: 700;    /* headings, figures */
@@ -167,7 +171,10 @@
      Eight radius steps were being chosen by eye, 39 distinct values in one
      stylesheet. A corner belongs to the KIND of box, so there are four
      (the fourth is the shared `--radius-pill`). */
-  --radius-control: var(--radius-1);
+  /* The shared `--radius`, not `--radius-1`: both are 8px, but controls are
+     meant to follow the token the storefront's controls do (see the note on
+     `--radius-sm` below). */
+  --radius-control: var(--radius);
   --radius-card: var(--radius-4);
   --radius-modal: var(--radius-6);
   --success-soft: #e9f7ef;
