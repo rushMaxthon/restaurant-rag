@@ -2468,7 +2468,7 @@ select:focus-visible {
 .mobile-data-card__field span {
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-medium);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -2804,7 +2804,11 @@ select:focus-visible {
    `.admin-table__cell-content span` paints every span in a cell `--hint`,
    and an interactive pill wraps its text in one — so "Live" on Combo
    suggestions was grey on the green wash, 4.27:1 in light mode, where the
-   pill's own measured ink is 4.5. */
+   pill's own measured ink is 4.5.
+
+   The `.admin-table` half is there for specificity: without it this only
+   beat the cell rule by coming later in the file. */
+.admin-table .status-pill span,
 .status-pill span {
   color: inherit;
 }
@@ -3228,6 +3232,17 @@ select:focus-visible {
   margin-top: -4px;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+
+/* Under a FLAT table (one inside a surface) the pagination lines up with the
+   table's own edges and draws no rule of its own. The divider and the 16px
+   inset above belonged to the padded container; with that gone they left a
+   loose hairline floating under the table's border and the page numbers
+   stepped in from its sides. */
+.admin-surface .table-container + .pagination {
+  margin-top: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 0;
 }
 
 .pagination__summary,
@@ -4728,7 +4743,7 @@ select:focus-visible {
 
 .rpt-panel__header h3 {
   font-size: var(--fs-body-lg);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-strong);
 }
 
 .rpt-panel__header p {
@@ -5113,7 +5128,7 @@ select:focus-visible {
   background: var(--rpt-surface-2);
   color: var(--muted);
   font-size: var(--fs-tiny);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-strong);
 }
 
 .rpt-cell__copy {
@@ -6611,7 +6626,7 @@ summary:focus-visible,
   background: var(--brand-mark-grad);
   color: var(--on-primary);
   font-size: var(--fs-body);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-strong);
   box-shadow: var(--shadow-brand-sm);
 }
 
@@ -14043,7 +14058,7 @@ summary:focus-visible,
   background: var(--brand-mark-grad);
   color: var(--on-primary);
   font-size: var(--fs-caption);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
@@ -14211,7 +14226,7 @@ summary:focus-visible,
   );
   color: var(--sidebar-ink);
   font-size: var(--fs-micro);
-  font-weight: var(--fw-heavy);
+  font-weight: var(--fw-strong);
   flex-shrink: 0;
 }
 
