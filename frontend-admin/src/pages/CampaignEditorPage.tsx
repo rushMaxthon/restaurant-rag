@@ -32,7 +32,8 @@ import {
   primaryChannel,
 } from '../components/marketing/channels';
 import { FALLBACK_ICON, GOAL_ICONS, SEGMENT_ICONS } from '../components/marketing/meta';
-import { formatCurrency, formatDate } from '../services/api';
+import { formatDate } from '../services/api';
+import { useMarketingMoney } from '../hooks/useMarketingMoney';
 import { pluralize } from '../services/format';
 import {
   createDraftId,
@@ -216,6 +217,8 @@ export function CampaignEditorPage({
   onNavigate,
   onToast,
 }: CampaignEditorPageProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   // The signed-in staff member, because a test send goes to *their* address
   // rather than to the one the channel sends from.
   const { user: currentUser } = useAdminStore();

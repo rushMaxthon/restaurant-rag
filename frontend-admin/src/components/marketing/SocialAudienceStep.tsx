@@ -15,7 +15,7 @@
  */
 
 import { Check, MapPin, Megaphone, Users } from 'lucide-react';
-import { formatCurrency } from '../../services/api';
+import { useMarketingMoney } from '../../hooks/useMarketingMoney';
 import { marketingReference } from '../../services/marketing/marketingApi';
 import { getChannel } from './channels';
 import type { CampaignContentExtra, MarketingChannel } from '../../services/marketing/types';
@@ -52,6 +52,8 @@ export function SocialAudienceStep({
   onBranch,
   onExtra,
 }: SocialAudienceStepProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   const definition = getChannel(channel);
   const boosting = (extra.boost_budget ?? 0) > 0;
   const days = extra.boost_days ?? 3;

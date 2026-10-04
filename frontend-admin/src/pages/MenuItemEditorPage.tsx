@@ -555,7 +555,7 @@ export function MenuItemEditorPage({
             </small>
           </label>
 
-          <MenuItemCustomizationEditor form={form} onChange={setForm} />
+          <MenuItemCustomizationEditor form={form} onChange={setForm} restaurantId={restaurantId} />
 
           <label className="field form-grid__wide">
             <span>Image URL</span>

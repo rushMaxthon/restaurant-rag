@@ -416,6 +416,12 @@ button {
 
 .field {
   gap: var(--space-2);
+  /* A field is as tall as its own contents. It is a grid inside a grid row,
+     and the default stretch shared the row's height out among its children —
+     so a one-line input beside a field with a hint, or beside a textarea,
+     grew to match: "Cuisine" twice the height of "Name" on the menu editor,
+     and every headline input on Storefront content as tall as a paragraph. */
+  align-content: start;
 }
 
 .page-stack {

@@ -30,8 +30,9 @@ import {
   statusLabel,
 } from '../components/marketing/meta';
 import { useMarketingScope } from '../hooks/useMarketingScope';
-import { formatCompactCurrency, formatCurrency, formatDate } from '../services/api';
-import { pluralize } from '../services/format';
+import { formatDate } from '../services/api';
+import { useMarketingMoney } from '../hooks/useMarketingMoney';
+import { pluralize, shortDay } from '../services/format';
 import {
   cancelCampaign,
   duplicateCampaign,
@@ -91,6 +92,8 @@ export function CampaignDetailPage({
   onNavigate,
   onToast,
 }: CampaignDetailPageProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency, compact: formatCompactCurrency } = useMarketingMoney();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -501,9 +504,9 @@ export function CampaignDetailPage({
                   <VerticalBarsChart
                     className="dashboard-admin-bars"
                     data={attribution.daily.map((day) => ({
-                      label: day.label,
+                      label: shortDay(day.label),
                       value: day.revenue,
-                      meta: `${day.label} · ${pluralize(day.orders, 'order')}`,
+                      meta: `${shortDay(day.label)} · ${pluralize(day.orders, 'order')}`,
                     }))}
                     valueFormatter={(value) => formatCurrency(value)}
                   />

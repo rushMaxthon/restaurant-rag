@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { Plus } from "lucide-react";
 import { Checkbox } from "./common/Checkbox";
+import { useMoney } from "../hooks/useMoney";
 
 import type {
   MenuItem,
@@ -63,6 +64,8 @@ export type MenuItemFormState = {
 type MenuItemCustomizationEditorProps = {
   form: MenuItemFormState;
   onChange: (nextForm: MenuItemFormState) => void;
+  /** Whose menu this is, so a price is written in that restaurant's money. */
+  restaurantId?: string | null;
 };
 
 function createId(prefix: string): string {
@@ -590,7 +593,11 @@ function updateTextField<T extends keyof MenuItemFormState>(
 export function MenuItemCustomizationEditor({
   form,
   onChange,
+  restaurantId,
 }: MenuItemCustomizationEditorProps) {
+  // The two read-only price cells below wrote a literal `$` in front of the
+  // number, so a Surat bakery's ₹40 size read "$40" in its own editor.
+  const money = useMoney();
   const [sizeDraft, setSizeDraft] = useState({ name: "", price: "" });
   const [sizeDraftError, setSizeDraftError] = useState<string | null>(null);
   const [editingSizeId, setEditingSizeId] = useState<string | null>(null);
@@ -1956,7 +1963,7 @@ export function MenuItemCustomizationEditor({
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Extra price</span>
-                                      <span>${option.extra_price}</span>
+                                      <span>{money.format(option.extra_price || 0, restaurantId)}</span>
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Countable</span>
@@ -2209,7 +2216,7 @@ export function MenuItemCustomizationEditor({
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Price</span>
-                            <span>{size.price ? `$${size.price}` : "Pending"}</span>
+                            <span>{size.price ? money.format(size.price, restaurantId) : "Pending"}</span>
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Status</span>

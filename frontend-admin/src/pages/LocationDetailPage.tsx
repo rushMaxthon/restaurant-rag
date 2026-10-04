@@ -1510,6 +1510,13 @@ export function LocationDetailPage({
             </div>
           </div>
           <form className="form-grid" onSubmit={submitGeneralSettings}>
+            {/* Twenty-odd controls in one grid read as a wall. The headings group
+                what was already adjacent; no field has moved, so nothing an owner
+                learned the position of is somewhere else. */}
+            <div className="form-grid__section">
+              <h3>Status and fulfilment</h3>
+              <p>Whether this branch is taking orders, and how it hands them over.</p>
+            </div>
             <div className="field form-grid__wide field--inline">
               <Checkbox
                 checked={generalSettingsForm.is_open}
@@ -1564,6 +1571,10 @@ export function LocationDetailPage({
                 toggles stay visible but disabled rather than being deleted,
                 so the column values remain legible and re-enabling them is a
                 one-line change once a provider exists. */}
+            <div className="form-grid__section">
+              <h3>Payment methods</h3>
+              <p>What a customer can pay with at this branch.</p>
+            </div>
             <div className="field form-grid__wide field--inline">
               <Checkbox
                 checked={generalSettingsForm.card_payment_enabled}
@@ -1618,6 +1629,10 @@ export function LocationDetailPage({
               keys under the restaurant&rsquo;s Settings tab. Google Pay is not
               supported; its saved value is kept for reference and ignored.
             </p>
+            <div className="form-grid__section">
+              <h3>Taxes and charges</h3>
+              <p>What is added to the food on a customer&rsquo;s bill.</p>
+            </div>
             <label className="field">
               <span>Packaging fee</span>
               <input
@@ -1718,6 +1733,10 @@ export function LocationDetailPage({
               never taxed again. Leave them at 0 and 5% to charge exactly what
               this branch charged before.
             </p>
+            <div className="form-grid__section">
+              <h3>Delivery, timing and limits</h3>
+              <p>The fee, the minimum, and the times a customer is quoted.</p>
+            </div>
             <label className="field">
               <span>Delivery fee</span>
               <input
