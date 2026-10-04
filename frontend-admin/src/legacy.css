@@ -3005,16 +3005,16 @@ select:focus-visible {
 .restaurant-detail-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: center;
-  padding: 16px;
+  padding: var(--space-4);
   background: var(--card);
 }
 
 .restaurant-detail-hero__copy h2 {
   margin: 6px 0 4px;
   font-size: var(--fs-title);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.02em;
 }
 
@@ -3026,13 +3026,13 @@ select:focus-visible {
 .restaurant-detail-hero__metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .restaurant-metric-card {
   display: grid;
-  gap: 4px;
-  padding: 13px 14px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
@@ -3082,20 +3082,20 @@ select:focus-visible {
 .slot-mode-tabs {
   display: inline-flex;
   align-items: flex-end;
-  gap: 18px;
+  gap: var(--space-5);
   padding-inline: 4px;
   border-bottom: 1px solid var(--border);
 }
 
 .slot-mode-tabs__item {
   position: relative;
-  padding: 0 2px 12px;
+  padding: 0 2px var(--space-3);
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--muted);
   font-size: var(--fs-body-lg);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .slot-mode-tabs__item::after {
@@ -3121,9 +3121,9 @@ select:focus-visible {
 .slot-form-card {
   display: grid;
   grid-template-columns: minmax(132px, 1fr) minmax(136px, 1fr) minmax(136px, 1fr) minmax(132px, 0.8fr) auto;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: end;
-  padding: 16px;
+  padding: var(--space-4);
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--surface-solid) 0%, var(--surface-subtle) 100%);
@@ -3135,7 +3135,7 @@ select:focus-visible {
 
 .slot-form-card__toggle {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .slot-form-card__checkbox {
@@ -3147,7 +3147,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-3);
   min-height: 44px;
 }
 
@@ -3166,7 +3166,7 @@ select:focus-visible {
 .slot-table .admin-table th,
 .slot-table .admin-table td {
   min-height: 0;
-  padding: 9px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .slot-table .admin-table td {
@@ -3190,7 +3190,7 @@ select:focus-visible {
 .slot-table .table-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   flex-wrap: nowrap;
 }
 
@@ -3650,7 +3650,7 @@ select:focus-visible {
   }
 
 .slot-mode-tabs {
-    gap: 14px;
+    gap: var(--space-4);
     overflow-x: auto;
   }
 
@@ -14304,7 +14304,7 @@ summary:focus-visible,
 
 .capability-list {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .capability-skeleton {
@@ -14316,8 +14316,8 @@ summary:focus-visible,
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
-  padding: 16px 18px;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -14333,19 +14333,19 @@ summary:focus-visible,
 
 .capability__copy {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .capability__title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .capability__title strong {
   font-size: var(--fs-body-lg);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .capability__copy p {
@@ -14357,12 +14357,12 @@ summary:focus-visible,
 }
 
 .capability__why {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--text);
 }
 
 .capability__actor {
-  font-weight: 500;
+  font-weight: var(--fw-regular);
   color: var(--muted);
 }
 
@@ -14372,7 +14372,7 @@ summary:focus-visible,
 
 .capability__actions {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   justify-items: stretch;
   flex-shrink: 0;
 }
@@ -14381,13 +14381,13 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 0;
   background: transparent;
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   cursor: pointer;
 }
 
@@ -14514,7 +14514,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-caption);
   color: var(--muted);
@@ -14529,7 +14529,7 @@ summary:focus-visible,
    every checkout that uses it, and seeing it is how somebody confirms the
    right account is wired up. */
 .gateway__keys code {
-  padding: 2px 7px;
+  padding: 2px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-1);
   background: var(--surface-alt);
@@ -14551,7 +14551,7 @@ summary:focus-visible,
 .gateway__webhook-url {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* The URL is long and must be copied EXACTLY, so it never truncates with an
@@ -14560,7 +14560,7 @@ summary:focus-visible,
 .gateway__webhook-url code {
   flex: 1;
   min-width: 0;
-  padding: 9px 11px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-1);
   background: var(--surface-alt);
@@ -14575,13 +14575,13 @@ summary:focus-visible,
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .gateway__webhook-events {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
@@ -14589,7 +14589,7 @@ summary:focus-visible,
 
 .gateway__webhook-events code {
   display: inline-block;
-  padding: 2px 7px;
+  padding: 2px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-1);
   background: var(--surface-alt);
@@ -14601,7 +14601,7 @@ summary:focus-visible,
 .gateway__toggle {
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .gateway__toggle input {
@@ -14626,8 +14626,8 @@ summary:focus-visible,
 .method-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface);
 }
 
@@ -14639,7 +14639,7 @@ summary:focus-visible,
 
 .method-row strong {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .method-row span {
