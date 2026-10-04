@@ -1,4 +1,11 @@
-import { ChevronLeft, LogOut, Moon, Sun } from "lucide-react";
+import {
+  ChevronLeft,
+  LogOut,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sun,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { applyTheme, storedTheme, type Theme } from "../services/theme";
@@ -8,6 +15,10 @@ import { activeNavPathFor, navFor } from "../routes";
 import type { UserRole } from "../types/app";
 
 interface SidebarProps {
+  /** An icon rail rather than a full column. Desktop only: a phone's drawer
+   *  is always full, because it is already out of the way when closed. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   currentPath: string;
   isMobileOpen: boolean;
   onNavigate: (path: string) => void;
@@ -67,21 +78,25 @@ function ThemeToggle() {
   return (
     <button
       aria-label={theme === "dark" ? "Use light mode" : "Use dark mode"}
-      className="admin-sidebar__signout"
+      className="admin-sidebar__action"
       onClick={flip}
       title={theme === "dark" ? "Use light mode" : "Use dark mode"}
       type="button"
     >
       {theme === "dark" ? (
-        <Sun size={16} strokeWidth={2.1} />
+        <Sun size={15} strokeWidth={2.1} />
       ) : (
-        <Moon size={16} strokeWidth={2.1} />
+        <Moon size={15} strokeWidth={2.1} />
       )}
+      {/* Names what the button will DO, like its aria-label. */}
+      <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
     </button>
   );
 }
 
 export function Sidebar({
+  collapsed,
+  onToggleCollapsed,
   currentPath,
   isMobileOpen,
   onNavigate,
@@ -140,6 +155,22 @@ export function Sidebar({
               </div>
             </button>
           ) : null}
+          {/* Desktop only (the stylesheet hides it in the drawer). The label
+              says what it will do, and `aria-expanded` says what it is. */}
+          <button
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            className="admin-sidebar__collapse"
+            onClick={onToggleCollapsed}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
+            type="button"
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={13} strokeWidth={2.2} />
+            ) : (
+              <PanelLeftClose size={13} strokeWidth={2.2} />
+            )}
+          </button>
           <button
             aria-label="Close navigation"
             className="admin-sidebar__close"
@@ -158,6 +189,10 @@ export function Sidebar({
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = isItemActive(currentPath, item.path);
+                  const label =
+                    role === "OWNER" && item.path === "/restaurants"
+                      ? "My Restaurant"
+                      : item.label;
 
                   return (
                     <button
@@ -166,7 +201,12 @@ export function Sidebar({
                           ? "admin-sidebar__link admin-sidebar__link--active"
                           : "admin-sidebar__link"
                       }
+                      aria-current={isActive ? "page" : undefined}
                       key={item.path}
+                      // The rail shows icons alone, so the name moves to the
+                      // tooltip. Expanded, a tooltip repeating the visible
+                      // label is noise.
+                      title={collapsed ? label : undefined}
                       onClick={() => {
                         onNavigate(
                           role === "OWNER" &&
@@ -181,11 +221,7 @@ export function Sidebar({
                     >
                       <span className="admin-sidebar__link-copy">
                         <Icon size={17} strokeWidth={2.1} />
-                        <span>
-                          {role === "OWNER" && item.path === "/restaurants"
-                            ? "My Restaurant"
-                            : item.label}
-                        </span>
+                        <span>{label}</span>
                       </span>
                     </button>
                   );
@@ -212,15 +248,21 @@ export function Sidebar({
                 </span>
               </>
             ) : null}
+          </div>
+          {/* Under the name, not beside it. Two icon buttons in the same row
+              left about 90px for the name, so every account read as
+              "Bhagwati …" with the role badge tucked under the buttons. */}
+          <div className="admin-sidebar__actions">
             <ThemeToggle />
             <button
               aria-label="Sign out"
-              className="admin-sidebar__signout"
+              className="admin-sidebar__action admin-sidebar__action--danger"
               onClick={onLogout}
               title="Sign out"
               type="button"
             >
-              <LogOut size={16} strokeWidth={2.1} />
+              <LogOut size={15} strokeWidth={2.1} />
+              <span>Sign out</span>
             </button>
           </div>
         </div>
