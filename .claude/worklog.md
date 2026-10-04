@@ -30,11 +30,10 @@ favorites, admin types and editor) and the reprice hooks in both branch PATCH
 routes are gone. `order_charges.for_location` is the only reader of the flag.
 Admin wording rewritten ("Menu prices already include GST").
 
-**Open:** `0076_gst_switch_keeps_prices` is written and NOT applied to
-Supabase. Bhagwati Bakery / Main Branch has the switch on and is still selling
-at typed+18% (187 items, 298 sizes) until it runs: it copies `base_price` back
-into `price`, then drops the base columns. After it runs, flush `rag:response:*`
-and re-embed that branch's items — their text quotes the old prices.
+**Applied to Supabase** the same day, by hand through the Supabase MCP (the
+stamp there is still `0074_print_agents`, so alembic did not run it): Bhagwati
+Bakery's 187 items and 298 sizes are back at the typed price, the base columns
+are gone, caches flushed, 187 re-embeds queued (no Celery worker was running).
 The OFF rate is the branch's own `tax_percent` (default 5), not a fixed 18.
 
 ## 2026-10-04 — Rider cancel, GST inside menu prices, admin panel visual refresh (Windows checkout, branch `redesign`)
