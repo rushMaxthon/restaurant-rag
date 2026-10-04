@@ -48,7 +48,7 @@ const BUDGET: Record<string, Counts> = {
   "modal": { spacing: 0, weight: 0, colour: 0 },
   "ntf": { spacing: 20, weight: 6, colour: 2 },
   "offer": { spacing: 1, weight: 1, colour: 0 },
-  "order": { spacing: 34, weight: 8, colour: 8 },
+  "order": { spacing: 0, weight: 0, colour: 0 },
   "page": { spacing: 0, weight: 0, colour: 0 },
   "pagination": { spacing: 0, weight: 0, colour: 0 },
   "panel": { spacing: 0, weight: 0, colour: 0 },
