@@ -116,6 +116,7 @@ function DashboardHeader({
   return (
     <section className="dashboard-admin-hero">
       <div className="dashboard-admin-hero__copy">
+        <span className="eyebrow">Overview</span>
         <h1>Platform pulse at a glance</h1>
         <p>
           Monitor orders, revenue, AI chat interactions, and operational status across platforms.
@@ -1158,6 +1159,7 @@ export function DashboardPage({
     <div className="page-stack">
       <section className="dashboard-admin-hero">
         <div className="dashboard-admin-hero__copy">
+          <span className="eyebrow">Overview</span>
           <h1>
             {assignedRestaurant
               ? assignedRestaurant.name

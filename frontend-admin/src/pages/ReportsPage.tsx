@@ -780,6 +780,7 @@ export function ReportsPage({
     <div className="rpt">
       <header className="rpt-header">
         <div className="rpt-header__copy">
+          <span className="eyebrow">Overview</span>
           <h1>{isAdmin ? "Platform reports" : "Restaurant reports"}</h1>
           <p>
             {isAdmin
@@ -792,16 +793,16 @@ export function ReportsPage({
             <Clock3 size={14} strokeWidth={2.1} />
             {formatTimestamp(lastUpdatedAt)}
           </span>
-          <button className="rpt-btn" onClick={exportCsv} type="button">
+          <button className="secondary-button" onClick={exportCsv} type="button">
             <Download size={15} strokeWidth={2.1} />
             CSV
           </button>
-          <button className="rpt-btn" onClick={exportSnapshot} type="button">
+          <button className="secondary-button" onClick={exportSnapshot} type="button">
             <Download size={15} strokeWidth={2.1} />
             JSON
           </button>
           <button
-            className="rpt-btn rpt-btn--primary"
+            className="primary-button"
             disabled={loading}
             onClick={() => {
               void loadRestaurants(true);
@@ -846,7 +847,7 @@ export function ReportsPage({
                 {activeFiltersCount} active
               </span>
             ) : null}
-            <button className="rpt-btn rpt-btn--ghost" onClick={clearFilters} type="button">
+            <button className="secondary-button" onClick={clearFilters} type="button">
               Clear
             </button>
           </div>
@@ -998,7 +999,7 @@ export function ReportsPage({
         />
       </section>
 
-      <div className="rpt-tabs" role="tablist" aria-label="Report sections">
+      <div className="segmented-tabs" role="tablist" aria-label="Report sections">
         {(
           [
             ["analytics", "Analytics"],
@@ -1008,7 +1009,7 @@ export function ReportsPage({
         ).map(([tab, label]) => (
           <button
             aria-selected={activeTab === tab}
-            className={activeTab === tab ? "rpt-tabs__btn rpt-tabs__btn--active" : "rpt-tabs__btn"}
+            className={activeTab === tab ? "segmented-tabs__item segmented-tabs__item--active" : "segmented-tabs__item"}
             key={tab}
             onClick={() => setActiveTab(tab)}
             role="tab"

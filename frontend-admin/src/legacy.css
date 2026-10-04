@@ -747,20 +747,20 @@ button {
 .dashboard-admin-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: var(--space-4);
   align-items: start;
   padding: 0 2px;
 }
 
 .dashboard-admin-hero__copy {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dashboard-admin-hero__copy h1 {
   margin: 0;
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
@@ -777,7 +777,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -787,7 +787,7 @@ button {
   align-items: center;
   min-height: 34px;
   min-width: auto;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-3);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -808,14 +808,14 @@ button {
   background: transparent;
   color: var(--text);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   outline: none;
 }
 
 .dashboard-admin-hero__refresh {
   min-width: 92px;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-3);
   box-shadow: none;
 }
@@ -823,13 +823,13 @@ button {
 .dashboard-admin-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .dashboard-admin-metric {
   display: grid;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -847,13 +847,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .dashboard-admin-metric__top span {
   color: var(--text);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-admin-metric__icon {
@@ -874,7 +874,7 @@ button {
 
 .dashboard-admin-metric small {
   color: var(--success-text);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   line-height: 1.35;
   font-size: var(--fs-caption);
 }
@@ -889,7 +889,7 @@ button {
 .dashboard-admin-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.82fr);
-  gap: 10px;
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -897,7 +897,7 @@ button {
 .dashboard-admin-grid__aside,
 .dashboard-admin-tertiary-grid {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .dashboard-admin-tertiary-grid {
@@ -905,15 +905,15 @@ button {
 }
 
 .dashboard-admin-panel {
-  gap: 10px;
-  padding: 14px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
 .dashboard-admin-panel--chart {
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dashboard-admin-panel h2 {
@@ -928,7 +928,7 @@ button {
 .dashboard-admin-area-chart {
   position: relative;
   overflow: hidden;
-  padding: 6px 6px 0 0;
+  padding: var(--space-2) var(--space-2) 0 0;
   border-radius: var(--radius-5);
   /* Tokens, not white. This was two white gradients, which on a white card
      were invisible and on a dark one painted a 994x208 pale slab across the
@@ -947,7 +947,7 @@ button {
 }
 
 .dashboard-admin-area-chart__area {
-  fill: rgba(230, 74, 0, 0.1);
+  fill: color-mix(in srgb, var(--primary) 10%, transparent);
   opacity: 0;
   animation: dashboardAreaReveal 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
@@ -981,7 +981,7 @@ button {
 }
 
 .dashboard-admin-area-chart__axis-line {
-  stroke: rgba(100, 116, 139, 0.48);
+  stroke: color-mix(in srgb, var(--muted) 48%, transparent);
   stroke-width: 1;
 }
 
@@ -998,25 +998,25 @@ button {
 }
 
 .dashboard-admin-area-chart__hover-line {
-  stroke: rgba(148, 163, 184, 0.9);
+  stroke: color-mix(in srgb, var(--hint) 90%, transparent);
   stroke-width: 1;
   stroke-dasharray: 3 4;
 }
 
 .dashboard-admin-area-chart__axis-label {
-  fill: #6b7280;
+  fill: var(--muted);
   font-size: var(--fs-tiny);
-  font-weight: 500;
+  font-weight: var(--fw-regular);
 }
 
 .dashboard-admin-area-chart__axis-label--x {
-  fill: #6b7280;
+  fill: var(--muted);
 }
 
 .dashboard-admin-area-chart__tooltip {
   position: absolute;
   min-width: 128px;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
@@ -1032,7 +1032,7 @@ button {
 
 .dashboard-admin-area-chart__tooltip strong {
   display: block;
-  color: #111827;
+  color: var(--text);
   font-size: var(--fs-title-sm);
   line-height: 1.1;
 }
@@ -1041,18 +1041,18 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   margin-top: 6px;
 }
 
 .dashboard-admin-area-chart__tooltip span {
-  color: #6b7280;
+  color: var(--muted);
   font-size: var(--fs-label);
 }
 
 .dashboard-admin-area-chart__tooltip span:last-child {
-  color: #111827;
-  font-weight: 700;
+  color: var(--text);
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-admin-bars {
@@ -1060,14 +1060,14 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
   align-items: end;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 170px;
 }
 
 .dashboard-admin-bars__item {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   outline: none;
 }
 
@@ -1089,19 +1089,19 @@ button {
 .dashboard-admin-bars__item span {
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-admin-bars__value {
   color: var(--text);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-admin-bars__tooltip {
   position: absolute;
   min-width: 124px;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
@@ -1117,7 +1117,7 @@ button {
 }
 
 .dashboard-admin-bars__tooltip strong {
-  color: #111827;
+  color: var(--text);
   font-size: var(--fs-body-lg);
   line-height: 1.1;
 }
@@ -1126,25 +1126,25 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   margin-top: 6px;
 }
 
 .dashboard-admin-bars__tooltip span,
 .dashboard-admin-bars__tooltip small {
-  color: #6b7280;
+  color: var(--muted);
   font-size: var(--fs-caption);
 }
 
 .dashboard-admin-bars__tooltip span:last-child {
-  color: #111827;
-  font-weight: 700;
+  color: var(--text);
+  font-weight: var(--fw-strong);
 }
 
 .dashboard-admin-list,
 .dashboard-admin-health {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dashboard-admin-list__row,
@@ -1152,8 +1152,8 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-2);
   /* `--border` rather than the near-white literal that was here: on a dark
      ground a 96%-opaque #e5eaf3 hairline reads as a lit outline around every
@@ -1187,7 +1187,7 @@ button {
   min-height: 34px;
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-1);
   background: var(--card-muted);
   color: var(--muted);
@@ -1199,12 +1199,12 @@ button {
    them rather than each page re-deciding. */
 .dashboard-admin-health__row--success {
   background: var(--success-soft);
-  border-color: rgba(52, 211, 106, 0.28);
+  border-color: color-mix(in srgb, var(--success) 28%, transparent);
 }
 
 .dashboard-admin-health__row--warning {
   background: var(--warning-soft);
-  border-color: rgba(245, 158, 11, 0.3);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 .dashboard-admin-empty-state {
@@ -1212,7 +1212,7 @@ button {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--hint);
   text-align: center;
 }
@@ -1224,17 +1224,11 @@ button {
   place-items: center;
   border-radius: var(--radius-pill);
   border: 2px solid var(--border);
-  color: rgba(164, 171, 186, 1);
+  color: var(--hint);
 }
 
 .reports-spin {
-  animation: reportsSpin 0.85s linear infinite;
-}
-
-@keyframes reportsSpin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: spin 0.85s linear infinite;
 }
 
 @keyframes dashboardLineDraw {
@@ -1286,7 +1280,7 @@ button {
 .chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: var(--space-5);
 }
 
 .insight-list {
@@ -2152,7 +2146,6 @@ select:focus-visible {
    for keyboard users without outlining every button that gets clicked. */
 .primary-button:focus-visible,
 .secondary-button:focus-visible,
-.rpt-btn:focus-visible,
 .table-icon-button:focus-visible,
 .pagination__page:focus-visible,
 .modal-close:focus-visible {
@@ -2411,8 +2404,8 @@ select:focus-visible {
 
 .mobile-data-card {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--surface-solid), var(--surface-subtle));
@@ -2434,12 +2427,12 @@ select:focus-visible {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .mobile-data-card__copy {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .mobile-data-card__copy strong {
@@ -2452,13 +2445,13 @@ select:focus-visible {
 
 .mobile-data-card__grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mobile-data-card__field {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .mobile-data-card__field > strong {
@@ -2468,7 +2461,7 @@ select:focus-visible {
 }
 
 .mobile-data-card__field > strong > span {
-  font-weight: 500;
+  font-weight: var(--fw-regular);
   text-transform: none;
   letter-spacing: normal;
   font-size: var(--fs-caption);
@@ -2477,7 +2470,7 @@ select:focus-visible {
 .mobile-data-card__field span {
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -3428,7 +3421,7 @@ select:focus-visible {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--space-6);
 }
 
 .login-card {
@@ -3562,8 +3555,8 @@ select:focus-visible {
     justify-content: center;
     margin-bottom: 14px;
     border-radius: var(--radius-4);
-    background: rgba(21, 23, 42, 0.92);
-    color: #fff;
+    background: color-mix(in srgb, var(--sidebar) 92%, transparent);
+    color: var(--sidebar-ink);
     box-shadow: var(--shadow-md);
   }
 
@@ -3649,7 +3642,7 @@ select:focus-visible {
 
 .mobile-data-list {
     display: grid;
-    gap: 14px;
+    gap: var(--space-4);
   }
 
 .mobile-data-card__grid {
@@ -4471,7 +4464,7 @@ select:focus-visible {
 
 .rpt-header__copy h1 {
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
 }
 
 .rpt-header__copy p {
@@ -4485,65 +4478,21 @@ select:focus-visible {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rpt-header__updated {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--hint);
   padding-right: 4px;
   white-space: nowrap;
 }
 
 /* --- buttons ----------------------------------- */
-
-.rpt-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: var(--control-h);
-  padding: 0 14px;
-  border-radius: var(--rpt-radius-sm);
-  border: 1px solid var(--rpt-border);
-  background: var(--rpt-surface);
-  color: var(--rpt-ink);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  transition: var(--dur-fast) var(--ease-out);
-}
-
-.rpt-btn:hover {
-  border-color: rgba(230, 74, 0, 0.35);
-  transform: translateY(-1px);
-}
-
-.rpt-btn--primary {
-  background: var(--primary-strong);
-  border-color: var(--primary-strong);
-  color: var(--on-primary);
-}
-
-.rpt-btn--primary:disabled {
-  opacity: 0.65;
-  transform: none;
-  cursor: wait;
-}
-
-.rpt-btn--ghost {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
-
-.rpt-btn--ghost:hover {
-  color: var(--rpt-accent-text);
-  border-color: transparent;
-  background: var(--rpt-accent-soft);
-}
 
 /* --- generic card ------------------------------ */
 
@@ -4596,10 +4545,10 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   min-height: var(--control-h-sm);
-  padding: 5px 12px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-1);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   transition: var(--dur-fast) var(--ease-out);
   white-space: nowrap;
@@ -4614,19 +4563,19 @@ select:focus-visible {
 .rpt-filters__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rpt-filters__count {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--rpt-accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
 }
 
@@ -4638,13 +4587,13 @@ select:focus-visible {
 
 .rpt-field {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
 .rpt-field > span {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -4653,7 +4602,7 @@ select:focus-visible {
 .rpt-field input,
 .rpt-field select {
   min-height: 34px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border-radius: var(--rpt-radius-sm);
   border: 1px solid var(--rpt-border);
   background: var(--field-bg);
@@ -4664,7 +4613,7 @@ select:focus-visible {
 
 .rpt-field input:focus-visible,
 .rpt-field select:focus-visible {
-  outline: 2px solid rgba(230, 74, 0, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
   outline-offset: 1px;
   border-color: var(--primary);
 }
@@ -4684,21 +4633,21 @@ select:focus-visible {
 
 .rpt-stat {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   align-content: start;
-  padding: 13px 14px;
+  padding: var(--space-3) var(--space-4);
 }
 
 .rpt-stat__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rpt-stat__label {
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4724,7 +4673,7 @@ select:focus-visible {
 
 .rpt-stat__value {
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: -0.02em;
   line-height: 1.05;
   overflow: hidden;
@@ -4744,42 +4693,12 @@ select:focus-visible {
 
 /* --- tabs -------------------------------------- */
 
-.rpt-tabs {
-  display: inline-flex;
-  align-self: start;
-  padding: 3px;
-  gap: 2px;
-  border-radius: var(--rpt-radius-sm);
-  background: var(--rpt-surface-2);
-  border: 1px solid var(--rpt-border);
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.rpt-tabs__btn {
-  border: 0;
-  background: transparent;
-  padding: 7px 14px;
-  border-radius: var(--radius-1);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  color: var(--muted);
-  white-space: nowrap;
-  transition: var(--dur-fast) var(--ease-out);
-}
-
-.rpt-tabs__btn--active {
-  background: var(--rpt-surface);
-  color: var(--rpt-accent-text);
-  box-shadow: var(--shadow-sm);
-}
-
 /* --- panels ------------------------------------ */
 
 .rpt-panel {
   padding: var(--rpt-pad);
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   align-content: start;
   min-width: 0;
 }
@@ -4789,12 +4708,12 @@ select:focus-visible {
   align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: var(--space-1) var(--space-3);
 }
 
 .rpt-panel__header h3 {
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
 }
 
 .rpt-panel__header p {
@@ -4822,9 +4741,9 @@ select:focus-visible {
 .rpt-chart-skeleton {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: var(--space-3);
   height: 180px;
-  padding: 8px 4px 0;
+  padding: var(--space-2) var(--space-1) 0;
 }
 
 .rpt-chart-skeleton span {
@@ -4882,13 +4801,13 @@ select:focus-visible {
 .rpt-area__axis-label {
   fill: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .rpt-area__area {
-  fill: rgba(230, 74, 0, 0.1);
+  fill: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .rpt-area__line {
@@ -4900,7 +4819,7 @@ select:focus-visible {
 }
 
 .rpt-area__hover-line {
-  stroke: rgba(230, 74, 0, 0.35);
+  stroke: color-mix(in srgb, var(--primary) 35%, transparent);
   stroke-width: 1;
 }
 
@@ -4927,10 +4846,10 @@ select:focus-visible {
   display: grid;
   gap: 2px;
   min-width: 120px;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-2);
-  background: #191d2e;
-  color: #fff;
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
   box-shadow: var(--shadow-lg);
   pointer-events: none;
   font-size: var(--fs-caption);
@@ -4952,14 +4871,14 @@ select:focus-visible {
 .rpt-hbars__tooltip div {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  color: rgba(255, 255, 255, 0.78);
+  gap: var(--space-3);
+  color: color-mix(in srgb, var(--sidebar-ink) 78%, transparent);
 }
 
 .rpt-area__tooltip small,
 .rpt-vbars__tooltip small,
 .rpt-hbars__tooltip small {
-  color: rgba(255, 255, 255, 0.55);
+  color: color-mix(in srgb, var(--sidebar-ink) 55%, transparent);
 }
 
 /* --- vertical bars ----------------------------- */
@@ -4968,7 +4887,7 @@ select:focus-visible {
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 190px;
   padding-top: 6px;
 }
@@ -4979,14 +4898,14 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   outline: none;
   cursor: pointer;
 }
 
 .rpt-vbars__value {
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -5011,12 +4930,12 @@ select:focus-visible {
 
 .rpt-vbars__item:hover .rpt-vbars__bar,
 .rpt-vbars__item:focus-visible .rpt-vbars__bar {
-  background: #c93f00;
+  background: var(--primary-strong);
 }
 
 .rpt-vbars__item > strong {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   max-width: 100%;
   overflow: hidden;
@@ -5038,7 +4957,7 @@ select:focus-visible {
 .rpt-hbars {
   position: relative;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   align-content: start;
 }
 
@@ -5046,7 +4965,7 @@ select:focus-visible {
   display: grid;
   grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   outline: none;
   cursor: pointer;
 }
@@ -5086,12 +5005,12 @@ select:focus-visible {
 
 .rpt-hbars__row:hover .rpt-hbars__bar,
 .rpt-hbars__row:focus-visible .rpt-hbars__bar {
-  background: #c93f00;
+  background: var(--primary-strong);
 }
 
 .rpt-hbars__value {
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
   color: var(--rpt-ink);
 }
@@ -5107,8 +5026,8 @@ select:focus-visible {
 .rpt-highlight {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 12px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   min-width: 0;
 }
 
@@ -5132,7 +5051,7 @@ select:focus-visible {
 
 .rpt-highlight__copy span {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -5164,7 +5083,7 @@ select:focus-visible {
 .rpt-cell {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -5179,7 +5098,7 @@ select:focus-visible {
   background: var(--rpt-surface-2);
   color: var(--muted);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
 }
 
 .rpt-cell__copy {
@@ -5204,19 +5123,19 @@ select:focus-visible {
 
 .rpt-chip {
   display: inline-flex;
-  padding: 3px 9px;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--rpt-surface-2);
   border: 1px solid var(--rpt-border);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--muted);
   white-space: nowrap;
 }
 
 .rpt-meter {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   justify-items: end;
   min-width: 90px;
 }
@@ -5243,14 +5162,14 @@ select:focus-visible {
 
 .rpt-peaks {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rpt-peaks__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--rpt-radius-sm);
   border: 1px solid var(--rpt-border);
   background: var(--rpt-surface-2);
@@ -5287,14 +5206,14 @@ select:focus-visible {
 .rpt-scope {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
 }
 
 .rpt-scope > div {
   display: grid;
   gap: 2px;
-  padding: 9px 11px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--rpt-radius-sm);
   border: 1px solid var(--rpt-border);
   background: var(--rpt-surface-2);
@@ -5303,7 +5222,7 @@ select:focus-visible {
 
 .rpt-scope dt {
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--hint);
@@ -5312,7 +5231,7 @@ select:focus-visible {
 .rpt-scope dd {
   margin: 0;
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5322,7 +5241,7 @@ select:focus-visible {
 
 @media (max-width: 1100px) {
   .rpt-vbars {
-    gap: 8px;
+    gap: var(--space-2);
   }
 }
 
@@ -5351,7 +5270,7 @@ select:focus-visible {
   }
 
 .rpt-seg__btn {
-    padding: 6px 4px;
+    padding: var(--space-2) var(--space-1);
     text-align: center;
   }
 
@@ -6658,13 +6577,13 @@ summary:focus-visible,
 
 .lg-card {
   width: min(100%, 420px);
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .lg-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-3);
 }
 
 .lg-brand__mark {
@@ -6677,7 +6596,7 @@ summary:focus-visible,
   background: var(--brand-mark-grad);
   color: var(--on-primary);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   box-shadow: var(--shadow-brand-sm);
 }
 
@@ -6693,13 +6612,13 @@ summary:focus-visible,
 
 .lg-brand__copy span {
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--hint);
 }
 
 .lg-heading {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .lg-heading h1 {
@@ -6711,13 +6630,13 @@ summary:focus-visible,
 }
 
 .lg-error {
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(213, 59, 67, 0.3);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   background: var(--danger-soft);
   color: var(--on-danger-soft);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   line-height: 1.5;
 }
 
@@ -14071,9 +13990,9 @@ summary:focus-visible,
 .workspace__trigger {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-4);
   background: transparent;
@@ -14086,8 +14005,8 @@ summary:focus-visible,
 }
 
 .workspace__trigger:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--sidebar-ink) 12%, transparent);
+  background: color-mix(in srgb, var(--sidebar-ink) 6%, transparent);
 }
 
 /* Once a restaurant is picked the control carries that restaurant's colour.
@@ -14107,7 +14026,7 @@ summary:focus-visible,
   background: var(--brand-mark-grad);
   color: var(--on-primary);
   font-size: var(--fs-caption);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
@@ -14116,7 +14035,7 @@ summary:focus-visible,
   background: linear-gradient(
     135deg,
     var(--tenant-accent),
-    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+    color-mix(in srgb, var(--tenant-accent) 72%, var(--sidebar-ink))
   );
 }
 
@@ -14135,18 +14054,18 @@ summary:focus-visible,
 
 .workspace__copy strong {
   font-size: var(--fs-label);
-  font-weight: 700;
-  color: #fff;
+  font-weight: var(--fw-strong);
+  color: var(--sidebar-ink);
 }
 
 .workspace__copy > span {
   font-size: var(--fs-caption);
-  color: rgba(255, 255, 255, 0.52);
+  color: color-mix(in srgb, var(--sidebar-ink) 52%, transparent);
 }
 
 .workspace__chevron {
   margin-left: auto;
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--sidebar-ink) 45%, transparent);
   flex-shrink: 0;
   transition: transform var(--dur-fast) var(--ease-out);
 }
@@ -14176,7 +14095,7 @@ summary:focus-visible,
   width: 296px;
   max-width: calc(100vw - 32px);
   display: grid;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--sidebar-ink) 10%, transparent);
   border-radius: var(--radius-4);
   background: var(--sidebar-2);
   box-shadow: var(--shadow-xl);
@@ -14198,10 +14117,10 @@ summary:focus-visible,
 .workspace__search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.4);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--sidebar-ink) 40%, transparent);
 }
 
 .workspace__search input {
@@ -14209,12 +14128,12 @@ summary:focus-visible,
   padding: 0;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--sidebar-ink);
   font-size: var(--fs-label);
 }
 
 .workspace__search input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--sidebar-ink) 35%, transparent);
 }
 
 .workspace__search input:focus-visible {
@@ -14230,28 +14149,28 @@ summary:focus-visible,
      there is a search field above it. */
   max-height: 364px;
   overflow-y: auto;
-  padding: 6px;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  padding: var(--space-2);
+  scrollbar-color: color-mix(in srgb, var(--sidebar-ink) 18%, transparent) transparent;
 }
 
 .workspace__item {
   --tenant-accent: var(--primary);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 8px;
+  padding: var(--space-2);
   border: 0;
   border-radius: var(--radius-2);
   background: transparent;
-  color: #fff;
+  color: var(--sidebar-ink);
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out);
 }
 
 .workspace__item:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: color-mix(in srgb, var(--sidebar-ink) 7%, transparent);
 }
 
 .workspace__item > svg {
@@ -14271,17 +14190,17 @@ summary:focus-visible,
   background: linear-gradient(
     135deg,
     var(--tenant-accent),
-    color-mix(in srgb, var(--tenant-accent) 72%, #fff)
+    color-mix(in srgb, var(--tenant-accent) 72%, var(--sidebar-ink))
   );
-  color: #fff;
+  color: var(--sidebar-ink);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   flex-shrink: 0;
 }
 
 .workspace__item-avatar--all {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.65);
+  background: color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--sidebar-ink) 65%, transparent);
 }
 
 .workspace__item-copy {
@@ -14299,27 +14218,27 @@ summary:focus-visible,
 
 .workspace__item-copy strong {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .workspace__item-copy > span {
   font-size: var(--fs-caption);
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--sidebar-ink) 45%, transparent);
 }
 
 /* A tenant that is off the air, named in its own colour rather than in the
    grey of a city name — the one thing in this list that is not incidental. */
 .workspace__flag {
   font-style: normal;
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--warning-text);
 }
 
 .workspace__empty {
   margin: 0;
-  padding: 16px 10px;
+  padding: var(--space-4) var(--space-3);
   font-size: var(--fs-caption);
-  color: rgba(255, 255, 255, 0.45);
+  color: color-mix(in srgb, var(--sidebar-ink) 45%, transparent);
   text-align: center;
 }
 
@@ -14328,19 +14247,19 @@ summary:focus-visible,
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 11px 14px;
+  padding: var(--space-3) var(--space-4);
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.18);
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-ink) 8%, transparent);
+  background: color-mix(in srgb, black 18%, transparent);
   color: var(--primary-text);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out);
 }
 
 .workspace__footer:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: color-mix(in srgb, black 30%, transparent);
 }
 
 /* --- Mixed currency -------------------------------------------------------
@@ -14523,11 +14442,11 @@ summary:focus-visible,
 
 .lg-card {
   width: min(100%, 420px);
-  gap: 18px;
+  gap: var(--space-5);
   /* Roomier than a panel embedded in a page: this one is the whole screen,
      and 16px of padding on a 420px card reads as cramped when there is
      nothing else competing for the space. */
-  padding: 30px 28px;
+  padding: var(--space-8) var(--space-8);
   border-color: transparent;
   box-shadow: var(--shadow-xl);
 }
