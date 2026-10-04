@@ -132,6 +132,44 @@
   --hint: #6b738b;
   --sidebar: #15172a;
   --sidebar-2: #1d2036;
+  /* What is written ON the sidebar. It is near-black in both themes, so its
+     ink does not flip — and it was fourteen `rgba(255, 255, 255, …)` literals
+     because there was no name for it. Opacities are mixed from this. */
+  --sidebar-ink: #ffffff;
+
+  /* ---- Weight ------------------------------------------------------------
+     Four, with a job each. The panel had 312 weight declarations as bare
+     numbers and 233 of them were 700 or 800 — when most text is bold nothing
+     is, and the eye has no page title to land on. Regular is 500 because
+     Plus Jakarta Sans at 400 goes thin at 12-13px on a dark surface.
+
+     These three groups are panel-local for now. They are written to be
+     PROMOTED into `frontend-shared/tokens.css` unchanged, the way the type
+     and radius scales were, once the storefront wants them. */
+  --fw-regular: 500;   /* body, descriptions, table cells */
+  --fw-medium: 600;    /* labels, nav, buttons, emphasised cells */
+  --fw-strong: 700;    /* headings, figures */
+  --fw-heavy: 800;     /* the page title and the number in a stat tile — nothing else */
+
+  /* ---- Rhythm, by role ---------------------------------------------------
+     Names for the shared `--space-*` steps, so a rule says what it is spacing
+     rather than how many pixels. A card that wants to be roomier changes one
+     line here and every card follows. */
+  --pad-card: var(--space-4);
+  --pad-card-lg: var(--space-6);
+  --pad-row: var(--space-3) var(--space-4);
+  --pad-control: 0 var(--space-3);
+  --gap-inline: var(--space-2);
+  --gap-stack: var(--space-3);
+  --gap-section: var(--space-6);
+
+  /* ---- Shape, by role ----------------------------------------------------
+     Eight radius steps were being chosen by eye, 39 distinct values in one
+     stylesheet. A corner belongs to the KIND of box, so there are four
+     (the fourth is the shared `--radius-pill`). */
+  --radius-control: var(--radius-1);
+  --radius-card: var(--radius-4);
+  --radius-modal: var(--radius-6);
   --success-soft: #e9f7ef;
   --warning: #f2a100;
   --warning-soft: #fff4d8;
