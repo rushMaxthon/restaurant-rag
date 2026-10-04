@@ -1592,6 +1592,45 @@ export interface OrderDelivery {
 }
 
 
+/** An order as a card on the live board: the order, and its courier. */
+export interface LiveOrder extends Order {
+  /** Null for a pickup order, and for a delivery nobody has been booked for. */
+  delivery: OrderDelivery | null;
+  /** When it reached DELIVERED, from the event log. Null for an open order. */
+  completed_at?: string | null;
+}
+
+/** One status on the live board. `total` is the true count; `orders` is capped. */
+export interface LiveOrdersStage {
+  status: OrderStatus;
+  total: number;
+  /** How many of `total` have been open longer than the board's stale line. */
+  stale_total?: number;
+  orders: LiveOrder[];
+}
+
+/** One restaurant's share of the live board, counted by the database. */
+export interface LiveRestaurantLoad {
+  restaurant_id: string;
+  name: string;
+  city: string;
+  counts: Partial<Record<OrderStatus, number>>;
+  /** The part of each count that is backlog. */
+  stale?: Partial<Record<OrderStatus, number>>;
+}
+
+/** `GET /orders/live`: everything in flight, and what was delivered today. */
+export interface LiveOrdersBoard {
+  generated_at: string;
+  completed_from: string;
+  stage_limit: number;
+  /** After how long an open order counts as backlog rather than tonight's work. */
+  stale_after_minutes?: number;
+  stages: LiveOrdersStage[];
+  /** Exact per-restaurant counts, which the capped card lists cannot give. */
+  restaurants: LiveRestaurantLoad[];
+}
+
 /** What a geocoder made of a branch's own address. */
 export type BranchLocationLookup = {
   found: boolean;

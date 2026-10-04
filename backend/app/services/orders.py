@@ -995,23 +995,22 @@ def _completion_times(db: Session, order_ids: list[uuid.UUID]) -> dict[uuid.UUID
     return {order_id: occurred_at for order_id, occurred_at in rows}
 
 
-def list_orders(
-    db: Session,
+def _scope_orders(
+    query: Select,
     current_user: User,
     *,
-    owner_restaurant_id: uuid.UUID | None = None,
-    restaurant_id: uuid.UUID | None = None,
-    restaurant_location_id: uuid.UUID | None = None,
-    app_scope_restaurant_id: uuid.UUID | None = None,
-    search: str | None = None,
-    status_filter: OrderStatus | None = None,
-    due_from: datetime | None = None,
-    completed_from: datetime | None = None,
-    sort: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> tuple[list[OrderResponse], int]:
-    query = _order_base_query()
+    owner_restaurant_id: uuid.UUID | None,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    app_scope_restaurant_id: uuid.UUID | None,
+) -> Select:
+    """Narrow any query over `orders` to what this account may see.
+
+    Lifted out of `list_orders` unchanged so a second reader — the live
+    board's per-restaurant count — applies the same rule rather than a copy of
+    it. Whatever this allows, both allow.
+    """
+
     if current_user.role == UserRole.CUSTOMER:
         query = query.where(Order.customer_id == current_user.id)
     elif current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
@@ -1037,6 +1036,89 @@ def list_orders(
 
     if restaurant_location_id is not None:
         query = query.where(Order.restaurant_location_id == restaurant_location_id)
+    return query
+
+
+def count_live_orders_by_restaurant(
+    db: Session,
+    current_user: User,
+    *,
+    owner_restaurant_id: uuid.UUID | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+    open_statuses: tuple[OrderStatus, ...],
+    completed_from: datetime,
+    stale_before: datetime,
+) -> list[tuple[uuid.UUID, str, str, OrderStatus, int, int]]:
+    """How many orders each restaurant has in each live status.
+
+    `(restaurant_id, name, city, status, count, stale)` rows: every order in one of
+    `open_statuses`, plus those DELIVERED at or after `completed_from`. One
+    grouped query, so the live board's "who has what" strip is exact even when
+    a column of cards has been capped — counting the cards instead told an
+    admin a restaurant had 99 new orders when it had 213.
+
+    `stale` is how many of `count` have been waiting since before
+    `stale_before`. Waiting is measured from the slot for a scheduled order
+    and from `placed_at` otherwise — the same clock the board's cards show —
+    so an order placed last week for tonight is not backlog.
+    """
+
+    waiting_since = sa.case(
+        (Order.schedule_type == OrderScheduleType.SCHEDULED, Order.scheduled_at),
+        else_=Order.placed_at,
+    )
+
+    query = _scope_orders(
+        select(
+            Order.restaurant_id,
+            Restaurant.name,
+            Restaurant.city,
+            Order.status,
+            sa.func.count(),
+            sa.func.count().filter(waiting_since < stale_before),
+        )
+        .select_from(Order)
+        .join(Restaurant, Restaurant.id == Order.restaurant_id),
+        current_user,
+        owner_restaurant_id=owner_restaurant_id,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        app_scope_restaurant_id=app_scope_restaurant_id,
+    ).where(
+        sa.or_(
+            Order.status.in_(open_statuses),
+            sa.and_(Order.status == OrderStatus.DELIVERED, _completed_at >= completed_from),
+        )
+    ).group_by(Order.restaurant_id, Restaurant.name, Restaurant.city, Order.status)
+    return [tuple(row) for row in db.execute(query).all()]
+
+
+def list_orders(
+    db: Session,
+    current_user: User,
+    *,
+    owner_restaurant_id: uuid.UUID | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+    search: str | None = None,
+    status_filter: OrderStatus | None = None,
+    due_from: datetime | None = None,
+    completed_from: datetime | None = None,
+    sort: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[OrderResponse], int]:
+    query = _scope_orders(
+        _order_base_query(),
+        current_user,
+        owner_restaurant_id=owner_restaurant_id,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        app_scope_restaurant_id=app_scope_restaurant_id,
+    )
 
     if status_filter is not None:
         query = query.where(Order.status == status_filter)

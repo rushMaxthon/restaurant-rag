@@ -17,6 +17,59 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 (live orders) — A live orders board for the admin and the owner
+
+**Goal:** the platform admin sees every restaurant's orders in progress — what
+is waiting, cooking, on the road, done — and an owner sees their own, with the
+rider and the courier's tracking link.
+
+**Changed:**
+- `GET /orders/live` (`services/live_orders.py`): `list_orders` asked once per
+  status, so the board cannot show a row the Orders page would not; deliveries
+  read once for the whole board; `restaurants` is an exact per-restaurant count
+  from one grouped query (`count_live_orders_by_restaurant`). The scope part of
+  `list_orders` was lifted into `_scope_orders` so both readers share it.
+- `frontend-admin`: `/live-orders` ("Live orders" in the sidebar, above Orders,
+  both staff roles). `LiveOrdersPage`, rules in `services/liveOrders.ts`,
+  styles under the `live-` family at the end of `legacy.css`.
+- The admin's restaurant pick is sent to the server, not filtered in the
+  browser: a column carries its first 100 cards, so a quieter restaurant's
+  orders were not in the list to be filtered (seen live: chip said 4 new,
+  column showed 0). The picker strip itself is deliberately not narrowed.
+
+**Verified:** `test_live_orders` (13); full backend suite 2,966 run, 1 failure,
+the pre-existing Celery task-list check. Admin 361 tests, build and lint clean.
+In the browser as owner and as admin, dark and light, and at 390px in a frame:
+counts, the restaurant pick, the Track link (`_blank`, `noopener`), no
+horizontal overflow, 44px targets on the phone layout.
+
+**Second pass, same day — backlog, and a board that explains itself:**
+- Open stages are now sent NEWEST first and anything waiting more than 24h is
+  counted apart (`stale_total`, `restaurants[].stale`, `stale_after_minutes`).
+  Oldest-first with a cap of 100 meant that with 213 stale PLACED rows in the
+  database, tonight's new order was not on the board at all. Backlog sits in a
+  folded section under each column; the headline numbers are today's work.
+- `components/InfoTip.tsx`: a "?" with a portalled bubble (hover, focus, tap),
+  answering what it is / who handles it / what you do. On every stat tile,
+  every column, the progress tile and the admin's restaurant strip. The copy
+  is in `services/liveOrders.ts` and differs by role — an admin is told to call
+  the restaurant, not to accept an order they have no button for.
+- A "How to read this board" guide, open until closed (remembered in
+  localStorage), and a `title` on every badge, tag and button on a card.
+
+**Verified (second pass):** `test_live_orders` 14; backend suite 2,967 run, the
+same 1 pre-existing failure. Admin 374 tests, build and lint clean. In the
+browser as owner and admin: tips open on hover and on tap and close on Escape,
+the backlog section folds, phone width has no overflow and 44px targets.
+
+**Open:**
+- Not committed or pushed.
+- Every open order in the shared database is more than a day old (233 of
+  them), so the live columns read 0 with the backlog folded underneath. The
+  board is right; a fresh order is needed to see a live card.
+- The board has no "advance status" action; it opens the order page for that.
+- `Refresh` is the shared `secondary-button`, 40px tall on a phone.
+
 ## 2026-10-04 (commission) — The platform's commission goes into the menu price
 
 **Goal:** "our commission" as an editable percent, 10 by default, added to the

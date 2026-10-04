@@ -7,6 +7,7 @@ import type {
   StorefrontCopyKey,
   BranchLocationLookup,
   OrderDelivery,
+  LiveOrdersBoard,
   AdminAILog,
   AdminPreferenceOption,
   AdminPreferenceQuestion,
@@ -1101,6 +1102,20 @@ export const api = {
     }
     await response.json().catch(() => null);
     return Number(response.headers.get('X-Total-Count') ?? 0);
+  },
+  /**
+   * The live board: every open order in scope and what was delivered since
+   * `completedFrom` — the viewer's own midnight, which the server cannot know.
+   */
+  getLiveOrders(
+    token: string,
+    opts: { completedFrom: Date; restaurantId?: string | null },
+  ): Promise<LiveOrdersBoard> {
+    const params = new URLSearchParams({ completed_from: opts.completedFrom.toISOString() });
+    if (opts.restaurantId) {
+      params.set('restaurant_id', opts.restaurantId);
+    }
+    return request<LiveOrdersBoard>(`/orders/live?${params.toString()}`, { token });
   },
   getOrder(token: string, orderId: string): Promise<Order> {
     return request<Order>(`/orders/${orderId}`, { token });

@@ -474,3 +474,58 @@ class OrderDeliveryResponse(BaseModel):
     last_error: str
     created_at: datetime
     updated_at: datetime
+
+
+class LiveOrderResponse(OrderResponse):
+    """An order as a card on the live board: the order, and its courier.
+
+    `delivery` is null for a pickup order and for a delivery nobody has been
+    asked to carry yet. It is the same shape `/orders/{id}/delivery` returns,
+    so the rider's name, phone and tracking link reach the board in the one
+    request rather than in one more per card.
+    """
+
+    delivery: OrderDeliveryResponse | None = None
+
+
+class LiveOrdersStage(BaseModel):
+    """One column of the board.
+
+    `total` is how many orders are in this status; `orders` is capped. They
+    differ on a busy night, and the board says so instead of looking complete.
+    """
+
+    status: OrderStatus
+    total: int
+    #: How many of `total` have waited longer than the board's stale line.
+    #: Backlog, counted apart so the headline is tonight's work.
+    stale_total: int = 0
+    orders: list[LiveOrderResponse]
+
+
+class LiveRestaurantLoad(BaseModel):
+    """One restaurant's share of the board, counted by the database.
+
+    Counted there and not from the cards because the cards are capped: a
+    restaurant with 213 new orders must not read as 99 because 100 were sent.
+    """
+
+    restaurant_id: uuid.UUID
+    name: str
+    city: str
+    counts: dict[OrderStatus, int]
+    #: The part of each count that is backlog. Absent means none.
+    stale: dict[OrderStatus, int] = Field(default_factory=dict)
+
+
+class LiveOrdersResponse(BaseModel):
+    """Everything in flight, and what was delivered since `completed_from`."""
+
+    generated_at: datetime
+    completed_from: datetime
+    stage_limit: int
+    #: After how long an open order counts as backlog. Sent, so the screen
+    #: draws its line where these counts drew theirs.
+    stale_after_minutes: int = 1440
+    stages: list[LiveOrdersStage]
+    restaurants: list[LiveRestaurantLoad] = Field(default_factory=list)

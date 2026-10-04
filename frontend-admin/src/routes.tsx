@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Megaphone,
+  Radio,
   Palette,
   ReceiptText,
   ListChecks,
@@ -60,6 +61,7 @@ import { MenuItemsPage } from "./pages/MenuItemsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { OffersPage } from "./pages/OffersPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
+import { LiveOrdersPage } from "./pages/LiveOrdersPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -457,6 +459,24 @@ export const ROUTES: RouteDef[] = [
         onNavigate={ctx.navigate}
         onToast={ctx.pushToast}
         orderId={params.orderId}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
+  },
+  {
+    // Above Orders on purpose. Orders is the history — every order there has
+    // ever been, in a table. This is the question asked all evening: what is
+    // waiting, what is cooking, what is on the road. Both staff roles, with
+    // the backend scoping it: an admin sees every restaurant, an owner theirs.
+    id: "live-orders",
+    pattern: "/live-orders",
+    roles: BOTH,
+    nav: { section: "Manage", label: "Live orders", icon: Radio },
+    render: (ctx) => (
+      <LiveOrdersPage
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
         role={ctx.role}
         token={ctx.token}
       />
