@@ -484,7 +484,7 @@ button {
 .login-card,
 .modal-card {
   padding: var(--space-4);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--card);
   box-shadow: var(--shadow-md);
@@ -1281,7 +1281,7 @@ button {
 .insight-row {
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -1326,7 +1326,7 @@ button {
   width: 100%;
   min-height: var(--control-h);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--field-bg);
   color: var(--text);
@@ -1354,7 +1354,7 @@ textarea,
 select {
   min-height: var(--control-h);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--field-bg);
   color: var(--text);
@@ -1606,7 +1606,7 @@ select:focus-visible {
   gap: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--surface-subtle);
 }
 
@@ -1661,7 +1661,7 @@ select:focus-visible {
   padding: var(--space-3) var(--space-3);
   text-align: left;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
@@ -1758,7 +1758,7 @@ select:focus-visible {
   gap: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-subtle);
 }
 
@@ -2118,7 +2118,7 @@ select:focus-visible {
 .secondary-button {
   min-height: var(--control-h);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-size: var(--fs-label);
   /* 700 → 600. At 13px, bold is the weight a label shouts in; the storefront
      sets its buttons at medium and they read as more confident, not less.
@@ -3033,7 +3033,7 @@ select:focus-visible {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
 }
@@ -3442,7 +3442,7 @@ select:focus-visible {
   max-width: 360px;
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-4);
   text-align: left;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   border: 1px solid var(--border);
   border-left: 3px solid var(--muted);
   box-shadow: var(--shadow-lg);
@@ -5370,7 +5370,7 @@ select:focus-visible {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
 }
@@ -5458,7 +5458,7 @@ select:focus-visible {
   display: grid;
   gap: 3px;
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--surface-subtle);
 }
@@ -5506,7 +5506,7 @@ select:focus-visible {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--card);
 }
@@ -5678,7 +5678,7 @@ select:focus-visible {
   gap: var(--space-2);
   margin: 14px 18px 0;
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
   background: var(--warning-soft);
   color: var(--on-warning-soft);
@@ -5728,7 +5728,7 @@ select:focus-visible {
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -6057,7 +6057,7 @@ select:focus-visible {
   gap: var(--space-1);
   align-content: start;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--card);
   box-shadow: var(--shadow-md);
@@ -6101,7 +6101,7 @@ select:focus-visible {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   border: 1px solid var(--border);
   background: var(--card);
 }
@@ -6319,7 +6319,7 @@ select:focus-visible {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   text-align: left;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--card);
   box-shadow: var(--shadow-md);
@@ -6636,7 +6636,7 @@ summary:focus-visible,
 
 .lg-error {
   padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   background: var(--danger-soft);
   color: var(--on-danger-soft);
@@ -6832,7 +6832,7 @@ summary:focus-visible,
   min-height: var(--control-h);
   max-width: 220px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--field-bg);
   color: var(--text);
@@ -6867,7 +6867,7 @@ summary:focus-visible,
      sentence cut in half. */
   max-width: 260px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -6907,7 +6907,7 @@ summary:focus-visible,
   gap: var(--space-2);
   min-height: var(--control-h-sm);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted);
@@ -6956,7 +6956,7 @@ summary:focus-visible,
   gap: var(--space-2);
   flex: none;
   min-height: var(--control-h);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -6999,7 +6999,7 @@ summary:focus-visible,
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--muted);
   text-align: left;
   transition: var(--dur-fast) var(--ease-out);
@@ -7092,7 +7092,7 @@ summary:focus-visible,
 .ai-turn--user .ai-turn__body {
   max-width: 82%;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--primary-soft);
 }
 
@@ -7192,7 +7192,7 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--primary-soft);
   color: var(--on-primary-soft);
 }
@@ -7247,7 +7247,7 @@ summary:focus-visible,
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-modal);
   background: var(--card);
   box-shadow: var(--shadow-md);
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
@@ -7387,7 +7387,7 @@ summary:focus-visible,
   min-height: var(--control-h-sm);
   padding: 0 var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--card);
   color: var(--muted);
   font-size: var(--fs-caption);
@@ -7444,7 +7444,7 @@ summary:focus-visible,
   max-height: min(56vh, 520px);
   border: 1px solid var(--border);
   /* Same radius and elevation as every other raised surface on the console. */
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -7469,7 +7469,7 @@ summary:focus-visible,
   gap: var(--space-1);
   min-height: 28px;
   padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--muted);
   font-size: var(--fs-caption);
   font-weight: var(--fw-strong);
@@ -7518,7 +7518,7 @@ summary:focus-visible,
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: var(--shadow-md);
 }
@@ -7554,7 +7554,7 @@ summary:focus-visible,
   /* The console's primary button, at the console's control height. */
   min-height: var(--control-h);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--primary-strong);
   color: var(--on-primary);
   font-size: var(--fs-label);
@@ -7574,7 +7574,7 @@ summary:focus-visible,
   gap: var(--space-3);
   margin-top: 10px;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
 }
@@ -7838,7 +7838,7 @@ summary:focus-visible,
 .ai-notes {
   margin: 0;
   padding: var(--space-3) 0.9rem var(--space-3) 1.9rem;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--surface-subtle);
   display: flex;
   flex-direction: column;
@@ -8168,7 +8168,7 @@ summary:focus-visible,
 }
 
 .ai-msg {
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   padding: var(--space-3) 0.9rem;
   display: flex;
   flex-direction: column;
@@ -8408,7 +8408,7 @@ summary:focus-visible,
   padding: var(--space-4) var(--space-4);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-solid);
   box-shadow: var(--shadow-xs);
 }
@@ -8433,7 +8433,7 @@ summary:focus-visible,
   width: 26px;
   height: 26px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
 }
@@ -8506,7 +8506,7 @@ summary:focus-visible,
 
 .ai-sug__deal {
   padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-caption);
@@ -8631,7 +8631,7 @@ summary:focus-visible,
   height: var(--control-h-sm);
   padding: 0 var(--space-3);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--primary-strong);
   color: var(--on-primary);
   font: inherit;
@@ -8666,7 +8666,7 @@ summary:focus-visible,
   height: var(--control-h-sm);
   padding: 0 var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--surface-solid);
   color: var(--text);
   font: inherit;
@@ -8789,7 +8789,7 @@ summary:focus-visible,
   gap: var(--space-2);
   padding: var(--space-4) var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-solid);
   font: inherit;
   cursor: pointer;
@@ -8844,7 +8844,7 @@ summary:focus-visible,
   margin-top: 14px;
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-solid);
   cursor: pointer;
 }
@@ -13950,7 +13950,7 @@ summary:focus-visible,
   margin-bottom: 18px;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface-alt);
 }
 
@@ -14277,7 +14277,7 @@ summary:focus-visible,
   margin: 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: color-mix(in srgb, var(--warning) 9%, var(--surface));
   font-size: var(--fs-caption);
   line-height: 1.5;
@@ -14306,7 +14306,7 @@ summary:focus-visible,
 
 .capability-skeleton {
   height: 92px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
 }
 
 .capability {
@@ -14316,7 +14316,7 @@ summary:focus-visible,
   gap: var(--space-5);
   padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--surface);
   /* A hairline of the brand down the edge of anything that is on, so the
      answer is readable before any of the words are. */
@@ -14615,7 +14615,7 @@ summary:focus-visible,
   display: grid;
   gap: 1px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-3);
   background: var(--border);
   overflow: hidden;
 }

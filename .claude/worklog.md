@@ -17,6 +17,64 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-04 — Rider cancel, GST inside menu prices, admin panel visual refresh (Windows checkout, branch `redesign`)
+
+**Goal:** three asks before a client demo: make sure Pidge's four vendor calls
+are all wired, add a per-branch "18% GST in menu prices" switch, and make the
+admin panel look like one product.
+
+**Changed:**
+- **Delivery** — `cancel` on the courier contract, the Pidge and rehearsal
+  providers, `service.cancel`, `cancel_order_delivery_task`, queued after commit
+  from `mark_order_cancelled`. See `backend/docs/delivery-integration.md`.
+- **GST** — `restaurant_locations.gst_in_menu_prices`; `base_price` beside every
+  price (`menu_items`, `menu_item_sizes`, `…options.base_extra_price`);
+  `services/menu_pricing.py` rewrites `price` when an item is saved or the
+  switch moves; `order_charges.for_location` charges no food tax when it is on.
+  Migration `0075_gst_in_menu_prices`. Admin: `GstPriceSwitch` on the Menu Items
+  page and the branch's Menu Items tab.
+- **Admin refresh** — spec and plan in `docs/superpowers/`. Tokens for weight,
+  role spacing and role radius in `frontend-admin/src/index.css`;
+  `styleBudget.test.ts` is a ratchet over `legacy.css`; every class family
+  except the branding phone preview is on the spacing and weight scales.
+
+**Verified:** backend `test_gst_menu_prices` + menu + order suites; admin
+`npm run test` (312) and `npm run build`; GST switched on and off against the
+live API on one branch, prices restored exactly, order validation total
+checked. The refresh was verified with `scripts/audit-pages.js` in dark and
+light on the owner's screens.
+
+**Open:**
+- **The refresh has not been LOOKED at.** The browser window was hidden for
+  most of it, so screenshots timed out and every check after Task 2 is the
+  audit's numbers. Walk it, at 1440px and 390px, as OWNER and as ADMIN.
+- ADMIN-only screens (Restaurants list, Storefront apps, AI Logs,
+  Notifications) and Login were not viewed at all.
+- `0075` parents on `0073`; the print branch has `0074_print_agents` on the
+  same parent, and Supabase is stamped `0074`. Re-point `0075` at `0074` when
+  the print branch merges. The columns were applied to Supabase through its
+  own migration tool, not alembic.
+- No real cancel was sent to live Pidge, and no real payment was taken with
+  the GST switch on.
+- Full backend suite still not run on this branch.
+
+**Learned:**
+- **A literal offset equal to an old gap is a coupling.** Snapping `gap: 10px`
+  to a token left the order timeline's connector (`right: -10px; width: 10px`)
+  2px short. After moving any spacing, grep for the old number as an offset.
+- **`.field span` outranks a bare class.** `.web-tag`, `.web-hint` and
+  `.web-count` never got their own size or ink for that reason; the same
+  trap as `.admin-table__cell-content span` and the doubled badge tones.
+- **A hidden browser tab freezes CSS transitions**, so the audit read after a
+  theme toggle reports the OLD theme's colours as leaks. Navigate after
+  toggling; freshly mounted elements have the right values.
+- **`git checkout -- file` on this machine hands back CRLF** (autocrlf), and a
+  patch anchor written with `
+` then matches nothing.
+- Marketing (`.mkt`, `.mkt-hub`) has its own scoped tokens with `.dark` twins;
+  its literals are definitions, not strays. The phone preview (`ph-`) is a
+  drawing of the customer app and is not on the panel's scale on purpose.
+
 ## YYYY-MM-DD — short title
 
 **Goal:** what was asked.

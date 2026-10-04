@@ -163,6 +163,16 @@ classes; `src/polish.css` is the later layer on top of it. There is no
 PostCSS step and no `tailwind.config` — all configuration is inside
 `styles.css`.
 
+**The admin panel has three more scales, and a ratchet.** Weight (`--fw-regular`
+500, `--fw-medium` 600, `--fw-strong` 700, `--fw-heavy` 800 — the last for a
+page title and a stat figure only), role spacing (`--pad-*`, `--gap-*`) and
+role radius (`--radius-control`, `--radius-card`, `--radius-modal`) live in
+`frontend-admin/src/index.css`, written to be promoted into the shared file.
+`src/styleBudget.test.ts` counts off-token padding, gap, weight and colour in
+`legacy.css` per class family; a number there may be lowered and never raised.
+Two families are deliberately not zero: marketing's scoped token definitions
+and the branding phone preview, which draws another app.
+
 **Colour is written at runtime and beats the stylesheet.** `src/lib/theme.ts`
 (`applyBrandColor`) sets `--primary`, `--primary-soft`, `--on-primary` and the
 `--placeholder-*` tiles on the root element from `/app-config`, so a tenant's
