@@ -20,6 +20,7 @@ import { Checkbox } from "../components/common/Checkbox";
 import { DataToolbar } from "../components/DataToolbar";
 import { EmptyPanel } from "../components/EmptyPanel";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { GstPriceSwitch } from "../components/GstPriceSwitch";
 import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
@@ -364,6 +365,9 @@ export function LocationDetailPage({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingGeneralSettings, setIsSavingGeneralSettings] = useState(false);
   const [isSavingSlot, setIsSavingSlot] = useState(false);
+  // Remounts the menu table after the GST switch moves, because every price
+  // in it has just changed on the server.
+  const [menuVersion, setMenuVersion] = useState(0);
   const [deletingSlotId, setDeletingSlotId] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
 
@@ -936,6 +940,12 @@ export function LocationDetailPage({
           <div className="restaurant-metric-card">
             <strong>{location.estimated_pickup_time} min</strong>
             <span>Pickup ETA</span>
+          </div>
+          <div className="restaurant-metric-card">
+            <strong>{location.gst_in_menu_prices ? "18% GST on" : "GST off"}</strong>
+            <span>
+              {location.gst_in_menu_prices ? "Included in menu prices" : "Not in menu prices"}
+            </span>
           </div>
           <div className="restaurant-metric-card">
             <strong>{location.is_open ? "Open" : "Closed"}</strong>
@@ -1654,7 +1664,8 @@ export function LocationDetailPage({
                 own prices in the menu editor; the 18% is added for you. Off:
                 customers see the prices you typed, and &ldquo;Tax on food&rdquo;
                 below is added on the bill. Saving this changes the whole
-                menu&rsquo;s prices at once.
+                menu&rsquo;s prices at once. The same switch is on the Menu
+                Items tab.
               </p>
             </div>
             <label className="field">
@@ -1870,7 +1881,23 @@ export function LocationDetailPage({
               </p>
             </div>
           </div>
+          <GstPriceSwitch
+            location={location}
+            onChanged={(updated) => {
+              syncLocation(updated);
+              setGeneralSettingsForm((current) =>
+                current
+                  ? { ...current, gst_in_menu_prices: Boolean(updated.gst_in_menu_prices) }
+                  : current,
+              );
+              setMenuVersion((version) => version + 1);
+            }}
+            onToast={onToast}
+            restaurantId={restaurant.id}
+            token={token}
+          />
           <RestaurantMenuTable
+            key={menuVersion}
             token={token}
             role={role}
             restaurant={restaurant}

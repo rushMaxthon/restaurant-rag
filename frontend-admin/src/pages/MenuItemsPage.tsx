@@ -4,6 +4,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataToolbar } from "../components/DataToolbar";
 import { StatTiles, type StatTileItem } from "../components/StatTiles";
 import { EmptyPanel } from "../components/EmptyPanel";
+import { GstPriceSwitch } from "../components/GstPriceSwitch";
 import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
@@ -504,6 +505,25 @@ export function MenuItemsPage({
             title="Restaurant not assigned"
             description="This owner account cannot create restaurants. Ask an admin to assign one restaurant."
           />
+        </section>
+      ) : null}
+
+      {/* Here because this is where an owner comes to look at prices. One
+          per branch: the switch is a branch's, and this page lists them all.
+          Not for an ADMIN, whose view spans restaurants and loads no branches. */}
+      {!isAdmin && restaurant && ownerLocations.length > 0 ? (
+        <section className="admin-surface page-stack">
+          {ownerLocations.map((branch) => (
+            <GstPriceSwitch
+              key={branch.id}
+              location={branch}
+              onChanged={() => void load(true)}
+              onToast={onToast}
+              restaurantId={restaurant.id}
+              showBranchName={ownerLocations.length > 1}
+              token={token}
+            />
+          ))}
         </section>
       ) : null}
 

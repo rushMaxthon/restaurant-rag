@@ -3339,6 +3339,44 @@ select:focus-visible {
   transform: none;
 }
 
+/* The GST switch on a branch's Menu Items tab: what it does on the left,
+   the one button on the right, stacked on a phone so the button keeps its
+   full width and its touch height. */
+.gst-switch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-alt);
+}
+
+.gst-switch-card__text {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gst-switch-card__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.gst-switch-card button {
+  flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+  .gst-switch-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .toggle-pill {
   display: inline-flex;
   align-items: center;
