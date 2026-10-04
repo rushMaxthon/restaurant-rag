@@ -6733,7 +6733,7 @@ summary:focus-visible,
 .color-field__row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .color-field__row input[type='color'] {
@@ -8697,7 +8697,7 @@ summary:focus-visible,
   margin: 0;
   font-size: var(--fs-caption);
   line-height: 1.5;
-  color: var(--danger, #d92d20);
+  color: var(--danger);
 }
 
 @media (max-width: 640px) {
@@ -8723,7 +8723,7 @@ summary:focus-visible,
     'picker preview'
     'actions preview';
   grid-template-rows: auto 1fr;
-  gap: 0 40px;
+  gap: 0 var(--space-10);
   align-items: start;
 }
 
@@ -8733,7 +8733,7 @@ summary:focus-visible,
 
 .bp__picker {
   display: grid;
-  gap: 28px;
+  gap: var(--space-8);
   min-width: 0;
 }
 
@@ -8746,7 +8746,7 @@ summary:focus-visible,
 .bp__section-head h3 {
   margin: 0;
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
 }
 
@@ -8772,7 +8772,7 @@ summary:focus-visible,
      card floated a 46px swatch in the middle of a 180px cell. */
   grid-template-columns: repeat(6, minmax(0, 132px));
   justify-content: start;
-  gap: 10px;
+  gap: var(--space-3);
   margin-top: 14px;
 }
 
@@ -8790,8 +8790,8 @@ summary:focus-visible,
 .bp-swatch {
   display: grid;
   justify-items: center;
-  gap: 7px;
-  padding: 14px 8px 11px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-solid);
@@ -8819,7 +8819,7 @@ summary:focus-visible,
   width: 42px;
   height: 42px;
   border-radius: var(--radius-pill);
-  color: #ffffff;
+  color: var(--on-primary);
   /* Inset rather than a border, so a pale swatch still has an edge without a
      ring that changes the colour being judged. */
   box-shadow: var(--inset-hairline);
@@ -8827,7 +8827,7 @@ summary:focus-visible,
 
 .bp-swatch__name {
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
   text-align: center;
 }
@@ -8843,10 +8843,10 @@ summary:focus-visible,
 .bp__custom {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   width: fit-content;
   margin-top: 14px;
-  padding: 12px 16px 12px 12px;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-solid);
@@ -8881,8 +8881,8 @@ summary:focus-visible,
   cursor: pointer;
 }
 
-.bp__custom-fields { display: grid; gap: 5px; }
-.bp__custom-fields b { font-size: var(--fs-caption); font-weight: 650; color: var(--text); }
+.bp__custom-fields { display: grid; gap: var(--space-1); }
+.bp__custom-fields b { font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--text); }
 
 .bp__custom-fields input[type='text'] {
   width: 130px;
@@ -8891,16 +8891,16 @@ summary:focus-visible,
   text-transform: uppercase;
 }
 
-.bp__custom-fields input.is-invalid { border-color: var(--danger, #d92d20); }
+.bp__custom-fields input.is-invalid { border-color: var(--danger); }
 
 .bp__custom-tag {
   align-self: flex-start;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--on-primary-soft);
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -8909,7 +8909,7 @@ summary:focus-visible,
   margin: 10px 0 0;
   font-size: var(--fs-caption);
   line-height: 1.5;
-  color: var(--warning, #b54708);
+  color: var(--warning-text);
   max-width: 62ch;
 }
 
@@ -8919,7 +8919,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   margin-top: 26px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
@@ -8927,7 +8927,7 @@ summary:focus-visible,
   align-self: end;
 }
 
-.bp__live { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bp__live { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 
 .bp__live-dot {
   width: 26px;
@@ -8938,7 +8938,7 @@ summary:focus-visible,
 }
 
 .bp__live-copy { display: grid; gap: 1px; min-width: 0; }
-.bp__live-copy b { font-size: var(--fs-label); font-weight: 700; color: var(--text); }
+.bp__live-copy b { font-size: var(--fs-label); font-weight: var(--fw-strong); color: var(--text); }
 .bp__live-copy i {
   font-size: var(--fs-caption);
   font-style: normal;
@@ -8946,9 +8946,8 @@ summary:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
-.bp__spin { animation: bp-spin 0.9s linear infinite; }
+.bp__spin { animation: spin 0.9s linear infinite; }
 
-@keyframes bp-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   .bp__spin { animation: none; }
@@ -8959,7 +8958,7 @@ summary:focus-visible,
 
 .bp__preview {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   position: sticky;
   top: 16px;
 }
@@ -8968,12 +8967,12 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .bp__preview-label {
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted);
@@ -8991,14 +8990,14 @@ summary:focus-visible,
 .bp__modes button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: none;
   border-radius: var(--radius-pill);
   background: none;
   font: inherit;
   font-size: var(--fs-micro);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--muted);
   cursor: pointer;
 }
@@ -9018,7 +9017,7 @@ summary:focus-visible,
    sets from the device's own palette maths - nothing here invents a colour. */
 .bp-phone {
   border-radius: var(--radius-7);
-  padding: 6px;
+  padding: var(--space-2);
   background: var(--bg);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-lg);
@@ -9661,13 +9660,13 @@ summary:focus-visible,
 }
 
 .bp__screens button {
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   border: none;
   border-radius: var(--radius-pill);
   background: none;
   font: inherit;
   font-size: var(--fs-micro);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--muted);
   cursor: pointer;
 }
@@ -9682,7 +9681,7 @@ summary:focus-visible,
 
 .bp__facts {
   display: flex;
-  gap: 18px;
+  gap: var(--space-5);
   margin: 2px 0 0;
 }
 
@@ -9698,7 +9697,7 @@ summary:focus-visible,
 .bp__facts dd {
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -9713,7 +9712,7 @@ summary:focus-visible,
 @media (max-width: 1080px) {
   .bp {
     grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
+    gap: var(--space-8);
   }
 
   .bp__preview {
@@ -9733,15 +9732,15 @@ summary:focus-visible,
 .pref-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .pref-row {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: var(--space-5);
   align-items: start;
-  padding: 18px 20px;
+  padding: var(--space-5) var(--space-5);
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
   background: var(--card);
@@ -9793,7 +9792,7 @@ summary:focus-visible,
   height: 26px;
   border-radius: var(--radius-pill);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   background: var(--card-muted);
@@ -9827,7 +9826,7 @@ summary:focus-visible,
 .pref-row__main {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -9835,13 +9834,13 @@ summary:focus-visible,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 .pref-row__title h3 {
   margin: 0;
   font-size: var(--fs-body-lg);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
 }
 
@@ -9859,7 +9858,7 @@ summary:focus-visible,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 14px;
+  gap: 0 var(--space-4);
   margin: 2px 0 0;
   padding: 0;
   list-style: none;
@@ -9885,7 +9884,7 @@ summary:focus-visible,
 }
 
 .pref-row__fact--signal {
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--accent-text);
 }
 
@@ -9896,15 +9895,15 @@ summary:focus-visible,
 .pref-row__options {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
   margin-top: 3px;
 }
 
 .pref-chip {
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   color: var(--text);
   background: var(--card-muted);
   border: 1px solid var(--border);
@@ -9926,7 +9925,7 @@ summary:focus-visible,
 .pref-row__answers {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 4px 0 0;
   font-size: var(--fs-caption);
   color: var(--hint);
@@ -9937,11 +9936,11 @@ summary:focus-visible,
 .pref-tag {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--muted);
@@ -9966,7 +9965,7 @@ summary:focus-visible,
 .pref-row__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
@@ -9976,7 +9975,7 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: var(--space-2);
   padding-inline: 12px;
   font-size: var(--fs-label);
 }
@@ -10006,7 +10005,7 @@ summary:focus-visible,
 .pref-editor__section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
   padding-block: 20px;
   border-bottom: 1px solid var(--border);
 }
@@ -10023,10 +10022,10 @@ summary:focus-visible,
 .pref-editor__legend {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--hint);
@@ -10036,7 +10035,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .pref-editor__count {
@@ -10056,7 +10055,7 @@ summary:focus-visible,
 .pref-editor__pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .pref-editor__note {
@@ -10071,14 +10070,14 @@ summary:focus-visible,
 .pref-editor__toggles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .pref-toggle {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   border-radius: var(--radius-4);
   border: 1px solid var(--border);
@@ -10117,7 +10116,7 @@ summary:focus-visible,
 
 .pref-toggle__copy strong {
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--text);
 }
 
@@ -10132,7 +10131,7 @@ summary:focus-visible,
 .pref-editor__options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -10142,7 +10141,7 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .pref-editor__option-index {
@@ -10152,7 +10151,7 @@ summary:focus-visible,
   height: 26px;
   border-radius: var(--radius-pill);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
   color: var(--hint);
   background: var(--card-muted);
@@ -10201,8 +10200,8 @@ summary:focus-visible,
    however many options the question has. */
 .pref-editor__actions {
   justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--border);
   background: var(--card-muted);
 }
@@ -14767,7 +14766,7 @@ summary:focus-visible,
 .web-block__head h2 {
   margin: 0;
   font-size: var(--fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 .web-block__head p {
   margin: var(--space-2) 0 0;
@@ -14782,7 +14781,7 @@ summary:focus-visible,
 .web-group h3 {
   margin: 0;
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 .web-group__blurb {
   margin: var(--space-1) 0 var(--space-4);
@@ -14797,20 +14796,27 @@ summary:focus-visible,
    an automatic field goes on tracking the restaurant's name and city, and one
    the owner has written stays exactly as written. Nowhere else on the screen
    could say it as cheaply. */
+/* Qualified with `.field` for specificity, and it matters: the tag is a span
+   inside a field label, and `.field span` (0,1,1) beat a bare `.web-tag`
+   (0,1,0). So the tag's own size and ink never applied — it rendered as 13px
+   label text in `--muted` on its wash, 4.4:1 in light mode. The pair below is
+   the badge pair, measured against each other. */
+.field .web-tag,
 .web-tag {
   margin-left: var(--space-2);
-  padding: 1px 7px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--surface-alt);
-  color: var(--muted);
+  background: var(--muted-soft);
+  color: var(--on-muted-soft);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
 }
+.field .web-tag--written,
 .web-tag--written {
   background: var(--primary-soft);
-  color: var(--primary-text);
+  color: var(--on-primary-soft);
 }
 .web-field__foot {
   display: flex;
@@ -14819,33 +14825,38 @@ summary:focus-visible,
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+/* The same `.field span` contest as `.web-tag` above, and the same ink: on
+   the field's `--surface-alt` ground `--muted` is 4.4:1 in light mode. */
+.field .web-hint,
 .web-hint {
-  color: var(--muted);
+  color: var(--on-muted-soft);
   font-size: var(--fs-tiny);
   line-height: var(--leading-snug);
 }
+.field .web-count,
 .web-count {
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--on-muted-soft);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   /* So the count does not jiggle the layout as it changes. */
   font-variant-numeric: tabular-nums;
 }
+.field .web-count--over,
 .web-count--over {
   color: var(--danger-text);
 }
 .web-revert {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   margin-top: var(--space-2);
   padding: 0;
   border: 0;
   background: none;
   color: var(--primary-text);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-align: left;
   cursor: pointer;
 }
@@ -14880,7 +14891,7 @@ summary:focus-visible,
   border: 1px solid var(--border);
   color: var(--muted);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 .web-row__tools {
   display: flex;
@@ -14917,7 +14928,7 @@ summary:focus-visible,
 .web-add {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 /* Said beside the row rather than only at the save button, because the owner
    needs to know WHICH row, and a form that refuses without pointing is the
@@ -14971,11 +14982,11 @@ summary:focus-visible,
 .web-problem {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin: var(--space-2) 0 0;
   color: var(--danger-text);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 .web-problem--foot {
   margin-top: var(--space-5);
