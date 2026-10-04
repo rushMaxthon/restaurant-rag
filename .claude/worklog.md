@@ -17,6 +17,46 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-04 (commission) — The platform's commission goes into the menu price
+
+**Goal:** "our commission" as an editable percent, 10 by default, added to the
+menu price.
+
+**Changed:**
+- `restaurant_locations.commission_percent` (default 10). The customer price is
+  the typed price plus the rate; `price` stays "what the customer pays" and the
+  typed figure is kept in `base_price` / `base_extra_price`.
+- `services/menu_pricing.py` is back (deleted in 0076 as the GST markup), now
+  driven by the rate. Prices are rewritten on an item save and when the rate
+  changes; the GST switch still rewrites nothing.
+- Only an ADMIN may change the rate — `_apply_location_changes` refuses an
+  owner with 403; an owner opening a branch gets the default.
+- Admin: "Our commission (%)" on the branch's Fulfilment & fees form (read-only
+  for an owner), a hero tile, and the item editor loads the typed price again.
+- `0077_commission_percent` marks up every existing price by its branch's rate.
+
+**Verified:** `test_menu_commission` (22) and `test_gst_menu_prices` pass; full
+backend suite 2,948 run, 2 failures, both there before this work
+(`test_celery_loads_every_task_module_the_way_a_worker_does`,
+`test_a_figure_the_model_was_not_shown_is_still_rejected`). Admin 336 tests and
+build pass. 0077 run up, up again and down on a throwaway local database.
+Live through the API on Bhagwati: 50 -> 55 at 10%, 56 at 12%, back to 55; a new
+item typed 100 lists at 110 and stays 110 after a second save; a non-admin
+changing the rate is 403.
+
+**Supabase:** 0077 applied by hand (MCP migration `commission_percent`), the
+user having chosen "add 10% to all": 2,065 items across 32 branches repriced,
+caches flushed, combos refreshed, re-embeds queued. The stamp is still
+`0074_print_agents`.
+
+**Open:**
+- `commission_percent` is on the public branch response, so a storefront client
+  can read it. Hiding it needs a role-aware serializer.
+- Nothing reports the commission earned per order; the order keeps only the
+  customer price.
+- `seed.py` inserts items with no base, so a seeded menu is not marked up until
+  the branch's rate is next changed.
+
 ## 2026-10-04 (GST) — The GST switch no longer changes prices
 
 The switch was built backwards. The owner meant "my menu prices already

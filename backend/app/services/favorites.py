@@ -53,6 +53,11 @@ def _serialize_menu_item_customization_option(
         id=option.id,
         name=option.name,
         extra_price=option.extra_price,
+        base_extra_price=(
+            option.base_extra_price
+            if option.base_extra_price is not None
+            else option.extra_price
+        ),
         is_active=option.is_active,
         is_countable=option.is_countable,
         sort_order=option.sort_order,
@@ -93,6 +98,7 @@ def _serialize_menu_item_size(size: MenuItemSize) -> MenuItemSizeResponse:
         id=size.id,
         name=size.name,
         price=size.price,
+        base_price=size.base_price if size.base_price is not None else size.price,
         is_active=size.is_active,
         sort_order=size.sort_order,
         customization_groups=[
@@ -186,6 +192,9 @@ def serialize_menu_item(menu_item: MenuItem, *, favorite_ids: set[uuid.UUID] | N
         cuisine_type=menu_item.cuisine_type,
         description=menu_item.description,
         price=menu_item.price,
+        base_price=(
+            menu_item.base_price if menu_item.base_price is not None else menu_item.price
+        ),
         is_veg=menu_item.is_veg,
         is_available=menu_item.is_available,
         is_bestseller=is_menu_item_bestseller(menu_item),

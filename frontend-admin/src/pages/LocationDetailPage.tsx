@@ -101,6 +101,7 @@ type LocationGeneralSettingsForm = {
   // the person typing it.
   packaging_fee: string;
   platform_fee: string;
+  commission_percent: string;
   tax_percent: string;
   delivery_tax_percent: string;
   gst_in_menu_prices: boolean;
@@ -228,6 +229,7 @@ function toGeneralSettingsForm(location: RestaurantLocation): LocationGeneralSet
     delivery_fee: String(location.delivery_fee),
     packaging_fee: String(location.packaging_fee ?? 0),
     platform_fee: String(location.platform_fee ?? 0),
+    commission_percent: String(Number(location.commission_percent ?? 10)),
     tax_percent: String(location.tax_percent ?? 5),
     delivery_tax_percent: String(location.delivery_tax_percent ?? 0),
     gst_in_menu_prices: Boolean(location.gst_in_menu_prices),
@@ -307,6 +309,9 @@ export function LocationDetailPage({
   // instead of a skeleton.
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(detailKey));
   const [activeTab, setActiveTab] = useState<LocationTab>("details");
+  // Remounts the menu table after the commission changes, because every
+  // price in it has just changed on the server.
+  const [menuVersion, setMenuVersion] = useState(0);
   const [settingsForm, setSettingsForm] = useState<LocationSettingsForm | null>(
     () => (cachedLocation ? toLocationSettingsForm(cachedLocation) : null),
   );
@@ -609,6 +614,11 @@ export function LocationDetailPage({
           tax_percent: amountOrZero(generalSettingsForm.tax_percent),
           delivery_tax_percent: amountOrZero(generalSettingsForm.delivery_tax_percent),
           gst_in_menu_prices: generalSettingsForm.gst_in_menu_prices,
+          // The platform's rate. An owner's save leaves it out: the server
+          // refuses an owner who changes it, and the field is read-only here.
+          ...(role === "ADMIN"
+            ? { commission_percent: amountOrZero(generalSettingsForm.commission_percent) }
+            : {}),
           minimum_order_amount: Number(generalSettingsForm.minimum_order_amount),
           estimated_delivery_time: Number(generalSettingsForm.estimated_delivery_time),
           estimated_pickup_time: Number(generalSettingsForm.estimated_pickup_time),
@@ -625,8 +635,19 @@ export function LocationDetailPage({
               : Number(generalSettingsForm.service_radius_km),
         },
       );
+      const commissionMoved =
+        Number(updated.commission_percent ?? 10) !== Number(location.commission_percent ?? 10);
       syncLocation(updated);
-      onToast("General settings saved", `${updated.branch_name} fulfillment rules were updated.`, "success");
+      if (commissionMoved) {
+        setMenuVersion((version) => version + 1);
+      }
+      onToast(
+        "General settings saved",
+        commissionMoved
+          ? `${updated.branch_name} now adds ${Number(updated.commission_percent ?? 10)}% commission. Every menu price was updated.`
+          : `${updated.branch_name} fulfillment rules were updated.`,
+        "success",
+      );
     } catch (error: unknown) {
       const message =
         error instanceof ApiError
@@ -947,6 +968,10 @@ export function LocationDetailPage({
             <span>
               {location.gst_in_menu_prices ? "No tax added at checkout" : "Added at checkout"}
             </span>
+          </div>
+          <div className="restaurant-metric-card">
+            <strong>{Number(location.commission_percent ?? 10)}% commission</strong>
+            <span>Added to menu prices</span>
           </div>
           <div className="restaurant-metric-card">
             <strong>{location.is_open ? "Open" : "Closed"}</strong>
@@ -1662,6 +1687,31 @@ export function LocationDetailPage({
                 }
               />
             </label>
+            <label className="field">
+              <span>Our commission (%)</span>
+              <input
+                disabled={role !== "ADMIN"}
+                max="100"
+                min="0"
+                step="0.01"
+                title={role !== "ADMIN" ? "Set by the platform admin" : undefined}
+                type="number"
+                value={generalSettingsForm.commission_percent}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, commission_percent: event.target.value } : current,
+                  )
+                }
+              />
+              <span className="hint-text">
+                Added to every menu price on this branch: a dish typed at 100
+                is shown to customers at{" "}
+                {(100 + amountOrZero(generalSettingsForm.commission_percent)).toFixed(2)}.
+                {role === "ADMIN"
+                  ? " Saving a new rate updates every price on the menu."
+                  : " Set by the platform admin."}
+              </span>
+            </label>
             <div className="field form-grid__wide">
               <Checkbox
                 checked={generalSettingsForm.gst_in_menu_prices}
@@ -1913,6 +1963,7 @@ export function LocationDetailPage({
             token={token}
           />
           <RestaurantMenuTable
+            key={menuVersion}
             token={token}
             role={role}
             restaurant={restaurant}

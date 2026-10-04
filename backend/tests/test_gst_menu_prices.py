@@ -99,43 +99,47 @@ class TheBillTests(unittest.TestCase):
 
 
 class ThePricesAreLeftAloneTests(unittest.TestCase):
-    """Nothing rewrites a price because of the switch."""
+    """Nothing rewrites a price because of the switch.
 
-    def test_there_is_no_markup_module(self) -> None:
-        # `services/menu_pricing.py` was the thing that added 18%. If it comes
-        # back, so does a menu that costs more than the owner typed.
-        self.assertFalse((BACKEND_ROOT / "app" / "services" / "menu_pricing.py").exists())
+    `services/menu_pricing.py` and the `base_price` columns are back, and they
+    are not this: they carry the platform's commission (`test_menu_commission`).
+    What must never come back is the GST switch reaching them.
+    """
 
-    def test_nothing_keeps_a_second_price_beside_the_first(self) -> None:
-        from app.models.menu_item import MenuItem
-        from app.models.menu_item_customization_option import MenuItemCustomizationOption
-        from app.models.menu_item_size import MenuItemSize
+    ADMIN = SimpleNamespace(role="ADMIN")
 
-        for model, column in (
-            (MenuItem, "base_price"),
-            (MenuItemSize, "base_price"),
-            (MenuItemCustomizationOption, "base_extra_price"),
-        ):
-            with self.subTest(model=model.__name__):
-                self.assertNotIn(column, model.__table__.columns)
+    def apply(self, branch, changes):
+        from app.api import restaurants
+        from app.services import menu_pricing
+
+        with mock.patch.object(menu_pricing, "reprice_location") as reprice:
+            result = restaurants._apply_location_changes(
+                mock.Mock(), branch, dict(changes), self.ADMIN
+            )
+        return result, reprice
+
+    def test_the_markup_module_knows_nothing_about_gst(self) -> None:
+        source = (BACKEND_ROOT / "app" / "services" / "menu_pricing.py").read_text("utf-8")
+        code = source.split('"""', 2)[2]
+        self.assertNotIn("gst_in_menu_prices", code)
 
     def test_moving_the_switch_touches_only_the_branch(self) -> None:
-        from app.api import restaurants
-
-        branch = SimpleNamespace(gst_in_menu_prices=False, delivery_fee=D("0"))
-        restaurants._apply_location_changes(
-            branch, {"gst_in_menu_prices": True, "delivery_fee": D("40")}
-        )
-        self.assertIs(branch.gst_in_menu_prices, True)
-        self.assertEqual(branch.delivery_fee, D("40"))
+        for before in (False, True):
+            with self.subTest(before=before):
+                branch = SimpleNamespace(gst_in_menu_prices=before, delivery_fee=D("0"))
+                result, reprice = self.apply(
+                    branch, {"gst_in_menu_prices": not before, "delivery_fee": D("40")}
+                )
+                reprice.assert_not_called()
+                self.assertEqual(result, [])
+                self.assertIs(branch.gst_in_menu_prices, not before)
+                self.assertEqual(branch.delivery_fee, D("40"))
 
     def test_a_null_is_no_opinion(self) -> None:
         # The column is NOT NULL, and a form that sends null for a checkbox it
         # never rendered must not 500 or switch the branch off.
-        from app.api import restaurants
-
         branch = SimpleNamespace(gst_in_menu_prices=True)
-        restaurants._apply_location_changes(branch, {"gst_in_menu_prices": None})
+        self.apply(branch, {"gst_in_menu_prices": None})
         self.assertIs(branch.gst_in_menu_prices, True)
 
 

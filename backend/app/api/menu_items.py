@@ -40,6 +40,8 @@ from app.services.bestsellers import (
     hydrate_recent_valid_order_counts,
     invalidate_bestseller_cache_for_locations,
 )
+from app.models.restaurant_location import RestaurantLocation
+from app.services import menu_pricing
 from app.services.cache import cache_delete_pattern
 from app.services.favorites import get_user_favorite_ids, serialize_menu_item, serialize_menu_items
 from app.services.generated_combos import refresh_generated_combo_availability
@@ -115,6 +117,23 @@ def _queue_embedding_job(menu_item_id: uuid.UUID) -> None:
         celery_app.send_task("app.tasks.embed.embed_menu_item", args=[str(menu_item_id)])
     except Exception:
         logger.exception("Failed to queue embedding task for menu item %s", menu_item_id)
+
+
+def _stamp_prices(db: Session, menu_item: MenuItem) -> None:
+    """Turn what the owner typed into what this item's branch sells at.
+
+    Runs after the payload is applied, when every price on the item is the
+    typed one, and adds the branch's commission. The branch is looked up
+    rather than read off the relationship: a new item has only the id, and an
+    edited one may have just been moved to a branch on a different rate.
+    """
+
+    percent = db.scalar(
+        select(RestaurantLocation.commission_percent).where(
+            RestaurantLocation.id == menu_item.restaurant_location_id
+        )
+    )
+    menu_pricing.stamp_entered_prices(menu_item, commission_percent=percent)
 
 
 def _resolve_manageable_location_id(
@@ -398,6 +417,7 @@ def create_menu_item(
         is_new_launch=payload.is_new_launch,
     )
     _sync_menu_item_customizations(menu_item, payload)
+    _stamp_prices(db, menu_item)
     db.add(menu_item)
     db.commit()
     menu_item = _reload_menu_item_for_response(db, menu_item.id)
@@ -494,6 +514,7 @@ def create_menu_item_bulk(
             is_new_launch=payload.is_new_launch,
         )
         _sync_menu_item_customizations(menu_item, payload)
+        _stamp_prices(db, menu_item)
         db.add(menu_item)
         created_items.append(menu_item)
     db.commit()
@@ -667,6 +688,7 @@ def update_menu_item(
     if payload.launched_at is not None:
         menu_item.launched_at = payload.launched_at
     _sync_menu_item_customizations(menu_item, payload)
+    _stamp_prices(db, menu_item)
 
     db.add(menu_item)
     db.commit()

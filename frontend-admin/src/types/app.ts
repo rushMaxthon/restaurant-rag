@@ -474,6 +474,12 @@ export interface RestaurantLocation {
    * No price changes either way.
    */
   gst_in_menu_prices?: boolean;
+  /**
+   * The platform's commission, added to every menu price the owner types:
+   * typed 100 at 10 is 110 for the customer. Changing it rewrites every price
+   * the branch sells at, on the server. Only an ADMIN may change it.
+   */
+  commission_percent?: number | string;
   longitude: number | string | null;
   phone_number: string | null;
   delivery_fee: number | string;
@@ -651,6 +657,8 @@ export interface MenuItemCustomizationOption {
   id: string;
   name: string;
   extra_price: number | string;
+  /** What the owner typed. See `MenuItem.base_price`. */
+  base_extra_price?: number | string | null;
   is_active: boolean;
   is_countable: boolean;
   sort_order: number;
@@ -684,6 +692,8 @@ export interface MenuItemSize {
   id: string;
   name: string;
   price: number | string;
+  /** What the owner typed. See `MenuItem.base_price`. */
+  base_price?: number | string | null;
   is_active: boolean;
   sort_order: number;
   customization_groups: MenuItemCustomizationGroup[];
@@ -699,7 +709,15 @@ export interface MenuItem {
   category: string;
   cuisine_type: string | null;
   description: string | null;
+  /** What the customer pays: the typed price plus the branch's commission.
+   *  It is the figure to SHOW and never the one to edit. */
   price: number | string;
+  /**
+   * What the owner typed. The editor loads this, not `price`: a save sends
+   * the figure back as the typed price, and loading 110 for an item typed as
+   * 100 would mark it up again on every save.
+   */
+  base_price?: number | string | null;
   is_veg: boolean;
   is_available: boolean;
   is_bestseller: boolean;
