@@ -1,27 +1,20 @@
-"""A branch that sells at prices already containing 18% GST.
+"""A branch whose menu prices already contain GST.
 
-The owner types 100; the customer sees 118 and pays 118, and nothing is added
-for tax on food at checkout. One switch per branch.
+One switch per branch, and it says something about the prices the owner
+typed — it never changes them.
 
-The way this goes wrong is always the same: two figures for one dish. So the
-price is WRITTEN when the switch moves or an item is saved, and everything that
-reads a price reads the result. What is pinned here is the writing.
+- ON: the menu is GST-inclusive. The customer pays the price on the menu and
+  no tax on food is added at checkout.
+- OFF: the menu is before tax. The branch's `tax_percent` is added on the
+  bill, as it always was.
 
-**Marked up twice.** The editor loads a price, the owner changes the name, the
-editor saves the price back. If what it loaded was 118, the item is now 139.24
-and goes up again on every save. The typed figure is kept beside the price and
-is what an editor is handed.
-
-**No way back.** 118 / 1.18 is 100, but 116.82 / 1.18 is 98.9999. Switching
-off restores the typed figure from where it was kept, not by division.
-
-**Taxed twice.** With GST inside the price, the branch's own `tax_percent`
-must not also be charged — and with the switch off it must be charged exactly
-as before.
-
-**A cart that does not add up.** Half of an extra, and three of a dish, are
-worked out from the LISTED price by three clients. The listed price is
-therefore rounded to the paisa once, here, before anything multiplies it.
+**This first shipped the other way round, and that was wrong.** ON used to
+ADD 18% to every price the owner had typed: 100 became 118 on the menu. The
+owner had been asked the wrong question — they were telling us their prices
+already had GST in them, and we charged their customers 18% more for saying
+so. What is pinned here is that a price is exactly what was typed, whichever
+way the switch points, and that the only thing the switch moves is the tax
+line on the bill.
 """
 
 from __future__ import annotations
@@ -38,123 +31,9 @@ BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.services import menu_pricing, order_charges  # noqa: E402
-from app.services.menu_pricing import (  # noqa: E402
-    listed_price,
-    relist_menu_item,
-    stamp_entered_prices,
-)
+from app.services import order_charges  # noqa: E402
 
 D = Decimal
-
-
-def an_option(extra: str, base: str | None = None):
-    return SimpleNamespace(extra_price=D(extra), base_extra_price=None if base is None else D(base))
-
-
-def a_size(price: str, base: str | None = None):
-    return SimpleNamespace(price=D(price), base_price=None if base is None else D(base))
-
-
-def an_item(price: str, *, base: str | None = None, sizes=(), options=()):
-    return SimpleNamespace(
-        price=D(price),
-        base_price=None if base is None else D(base),
-        sizes=list(sizes),
-        customization_groups=[SimpleNamespace(options=list(options))] if options else [],
-    )
-
-
-class TheListedPriceTests(unittest.TestCase):
-    def test_off_is_the_typed_price(self) -> None:
-        self.assertEqual(listed_price(D("100"), gst_in_menu_prices=False), D("100.00"))
-
-    def test_on_adds_eighteen_percent(self) -> None:
-        self.assertEqual(listed_price(D("100"), gst_in_menu_prices=True), D("118.00"))
-        self.assertEqual(listed_price(D("249"), gst_in_menu_prices=True), D("293.82"))
-
-    def test_it_is_rounded_to_the_paisa_half_up(self) -> None:
-        # 49.75 * 1.18 = 58.705. Banker's rounding gives 58.70, and a column
-        # somebody adds up by eye then looks short.
-        self.assertEqual(listed_price(D("49.75"), gst_in_menu_prices=True), D("58.71"))
-
-    def test_a_free_extra_stays_free(self) -> None:
-        self.assertEqual(listed_price(D("0"), gst_in_menu_prices=True), D("0.00"))
-        self.assertEqual(listed_price(None, gst_in_menu_prices=True), D("0.00"))
-
-
-class SavingAnItemTests(unittest.TestCase):
-    def test_everything_on_the_item_is_listed_and_the_typed_figure_is_kept(self) -> None:
-        item = an_item(
-            "200",
-            sizes=[a_size("200"), a_size("350")],
-            options=[an_option("30"), an_option("0")],
-        )
-        stamp_entered_prices(item, gst_in_menu_prices=True)
-
-        self.assertEqual((item.base_price, item.price), (D("200.00"), D("236.00")))
-        self.assertEqual([s.base_price for s in item.sizes], [D("200.00"), D("350.00")])
-        self.assertEqual([s.price for s in item.sizes], [D("236.00"), D("413.00")])
-        options = item.customization_groups[0].options
-        self.assertEqual([o.base_extra_price for o in options], [D("30.00"), D("0.00")])
-        self.assertEqual([o.extra_price for o in options], [D("35.40"), D("0.00")])
-
-    def test_what_was_typed_wins_over_what_was_recorded(self) -> None:
-        # The owner changed 100 to 120. The price column holds the 120 they
-        # typed; the base still says 100 and must not be believed.
-        item = an_item("120", base="100")
-        stamp_entered_prices(item, gst_in_menu_prices=True)
-        self.assertEqual((item.base_price, item.price), (D("120.00"), D("141.60")))
-
-    def test_a_branch_with_the_switch_off_sells_at_the_typed_price(self) -> None:
-        item = an_item("120", sizes=[a_size("120")], options=[an_option("15")])
-        stamp_entered_prices(item, gst_in_menu_prices=False)
-        self.assertEqual((item.base_price, item.price), (D("120.00"), D("120.00")))
-        self.assertEqual(item.sizes[0].price, D("120.00"))
-        self.assertEqual(item.customization_groups[0].options[0].extra_price, D("15.00"))
-
-    def test_saving_what_the_editor_was_handed_changes_nothing(self) -> None:
-        # The double mark-up, as it would have happened: load, save, load, save.
-        item = an_item("100")
-        stamp_entered_prices(item, gst_in_menu_prices=True)
-        for _ in range(3):
-            item.price = item.base_price  # the editor sends back the BASE
-            stamp_entered_prices(item, gst_in_menu_prices=True)
-        self.assertEqual(item.price, D("118.00"))
-
-
-class FlippingTheSwitchTests(unittest.TestCase):
-    def test_on_marks_up_a_menu_that_never_had_a_base(self) -> None:
-        # Every row that exists before this feature: a price, and no base.
-        item = an_item("99", sizes=[a_size("99")], options=[an_option("20")])
-        relist_menu_item(item, gst_in_menu_prices=True)
-        self.assertEqual((item.base_price, item.price), (D("99.00"), D("116.82")))
-        self.assertEqual(item.sizes[0].price, D("116.82"))
-        self.assertEqual(item.customization_groups[0].options[0].extra_price, D("23.60"))
-
-    def test_on_twice_is_on_once(self) -> None:
-        # A retried request, or two tabs. 18% of 118 must never be added.
-        item = an_item("100")
-        relist_menu_item(item, gst_in_menu_prices=True)
-        relist_menu_item(item, gst_in_menu_prices=True)
-        self.assertEqual(item.price, D("118.00"))
-
-    def test_off_returns_exactly_what_was_typed(self) -> None:
-        # 116.82 / 1.18 = 98.99915... — division would hand back 99.00 here by
-        # luck and miss by a paisa elsewhere. The base is the record.
-        for typed in ("99", "49.75", "0.05", "1234.56"):
-            with self.subTest(typed=typed):
-                item = an_item(typed)
-                relist_menu_item(item, gst_in_menu_prices=True)
-                relist_menu_item(item, gst_in_menu_prices=False)
-                self.assertEqual(item.price, D(typed).quantize(D("0.01")))
-
-    def test_the_cheapest_size_is_still_the_items_price(self) -> None:
-        # An item with sizes carries the cheapest active size as its own
-        # price. Raising everything by one percentage keeps that true.
-        item = an_item("180", sizes=[a_size("180"), a_size("260")])
-        relist_menu_item(item, gst_in_menu_prices=True)
-        self.assertEqual(item.price, min(size.price for size in item.sizes))
 
 
 class TheBillTests(unittest.TestCase):
@@ -169,7 +48,7 @@ class TheBillTests(unittest.TestCase):
         fields.update(over)
         return SimpleNamespace(**fields)
 
-    def bill(self, branch, subtotal="118.00", discount="0"):
+    def bill(self, branch, subtotal="100.00", discount="0"):
         return order_charges.for_location(
             branch, subtotal=D(subtotal), delivery_fee=D("0"), discount_amount=D(discount)
         )
@@ -177,13 +56,18 @@ class TheBillTests(unittest.TestCase):
     def test_gst_in_the_price_is_not_charged_again(self) -> None:
         charges = self.bill(self.branch(gst_in_menu_prices=True))
         self.assertEqual(charges.food_tax, D("0.00"))
-        self.assertEqual(charges.total_amount, D("118.00"))
+        self.assertEqual(charges.total_amount, D("100.00"))
         self.assertNotIn("food_tax", [line.key for line in charges.lines])
 
-    def test_the_switch_off_charges_what_it_always_did(self) -> None:
-        charges = self.bill(self.branch(), subtotal="100.00")
+    def test_prices_before_tax_are_taxed_at_checkout(self) -> None:
+        charges = self.bill(self.branch())
         self.assertEqual(charges.food_tax, D("5.00"))
         self.assertEqual(charges.total_amount, D("105.00"))
+
+    def test_the_rate_at_checkout_is_the_branchs_own(self) -> None:
+        charges = self.bill(self.branch(tax_percent=D("18.00")))
+        self.assertEqual(charges.food_tax, D("18.00"))
+        self.assertEqual(charges.total_amount, D("118.00"))
 
     def test_the_other_charges_are_untouched_by_the_switch(self) -> None:
         # The switch is about tax on FOOD. Delivery keeps its own rate and the
@@ -202,7 +86,7 @@ class TheBillTests(unittest.TestCase):
 
     def test_a_branch_row_from_before_the_column_prices_as_before(self) -> None:
         old = SimpleNamespace(tax_percent=D("5.00"))
-        self.assertEqual(self.bill(old, subtotal="100.00").food_tax, D("5.00"))
+        self.assertEqual(self.bill(old).food_tax, D("5.00"))
 
     def test_a_stand_in_branch_is_not_read_as_switched_on(self) -> None:
         # Several suites price against a Mock branch, whose every attribute is
@@ -211,40 +95,47 @@ class TheBillTests(unittest.TestCase):
             packaging_fee=D("0"), platform_fee=D("0"), tax_percent=D("5.00"),
             delivery_tax_percent=D("0"),
         )
-        self.assertEqual(self.bill(stand_in, subtotal="100.00").food_tax, D("5.00"))
+        self.assertEqual(self.bill(stand_in).food_tax, D("5.00"))
 
 
-class SavingTheBranchTests(unittest.TestCase):
-    def apply(self, branch, changes):
+class ThePricesAreLeftAloneTests(unittest.TestCase):
+    """Nothing rewrites a price because of the switch."""
+
+    def test_there_is_no_markup_module(self) -> None:
+        # `services/menu_pricing.py` was the thing that added 18%. If it comes
+        # back, so does a menu that costs more than the owner typed.
+        self.assertFalse((BACKEND_ROOT / "app" / "services" / "menu_pricing.py").exists())
+
+    def test_nothing_keeps_a_second_price_beside_the_first(self) -> None:
+        from app.models.menu_item import MenuItem
+        from app.models.menu_item_customization_option import MenuItemCustomizationOption
+        from app.models.menu_item_size import MenuItemSize
+
+        for model, column in (
+            (MenuItem, "base_price"),
+            (MenuItemSize, "base_price"),
+            (MenuItemCustomizationOption, "base_extra_price"),
+        ):
+            with self.subTest(model=model.__name__):
+                self.assertNotIn(column, model.__table__.columns)
+
+    def test_moving_the_switch_touches_only_the_branch(self) -> None:
         from app.api import restaurants
 
-        with mock.patch.object(menu_pricing, "reprice_location", return_value=["item"]) as reprice:
-            result = restaurants._apply_location_changes(mock.Mock(), branch, dict(changes))
-        return result, reprice
-
-    def test_moving_the_switch_reprices_the_menu(self) -> None:
-        branch = SimpleNamespace(gst_in_menu_prices=False)
-        result, reprice = self.apply(branch, {"gst_in_menu_prices": True})
-        reprice.assert_called_once()
-        self.assertEqual(result, ["item"])
-        self.assertTrue(branch.gst_in_menu_prices)
-
-    def test_a_save_that_leaves_it_alone_reprices_nothing(self) -> None:
-        # Every save of the settings form sends the switch along with the rest.
-        for before in (True, False):
-            with self.subTest(before=before):
-                branch = SimpleNamespace(gst_in_menu_prices=before, delivery_fee=D("0"))
-                result, reprice = self.apply(
-                    branch, {"gst_in_menu_prices": before, "delivery_fee": D("40")}
-                )
-                reprice.assert_not_called()
-                self.assertEqual(result, [])
-                self.assertEqual(branch.delivery_fee, D("40"))
+        branch = SimpleNamespace(gst_in_menu_prices=False, delivery_fee=D("0"))
+        restaurants._apply_location_changes(
+            branch, {"gst_in_menu_prices": True, "delivery_fee": D("40")}
+        )
+        self.assertIs(branch.gst_in_menu_prices, True)
+        self.assertEqual(branch.delivery_fee, D("40"))
 
     def test_a_null_is_no_opinion(self) -> None:
+        # The column is NOT NULL, and a form that sends null for a checkbox it
+        # never rendered must not 500 or switch the branch off.
+        from app.api import restaurants
+
         branch = SimpleNamespace(gst_in_menu_prices=True)
-        _, reprice = self.apply(branch, {"gst_in_menu_prices": None})
-        reprice.assert_not_called()
+        restaurants._apply_location_changes(branch, {"gst_in_menu_prices": None})
         self.assertIs(branch.gst_in_menu_prices, True)
 
 

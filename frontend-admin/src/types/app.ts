@@ -469,9 +469,9 @@ export interface RestaurantLocation {
   tax_percent?: number | string;
   delivery_tax_percent?: number | string;
   /**
-   * Menu prices already contain 18% GST: the customer sees and pays the typed
-   * price plus 18%, and `tax_percent` is not charged on top. Flipping it
-   * rewrites every price the branch sells at, on the server.
+   * The typed menu prices already contain GST: the customer pays the menu
+   * price and `tax_percent` is not charged on food at checkout. Off, it is.
+   * No price changes either way.
    */
   gst_in_menu_prices?: boolean;
   longitude: number | string | null;
@@ -651,8 +651,6 @@ export interface MenuItemCustomizationOption {
   id: string;
   name: string;
   extra_price: number | string;
-  /** What the owner typed. See `MenuItem.base_price`. */
-  base_extra_price?: number | string | null;
   is_active: boolean;
   is_countable: boolean;
   sort_order: number;
@@ -686,8 +684,6 @@ export interface MenuItemSize {
   id: string;
   name: string;
   price: number | string;
-  /** What the owner typed. See `MenuItem.base_price`. */
-  base_price?: number | string | null;
   is_active: boolean;
   sort_order: number;
   customization_groups: MenuItemCustomizationGroup[];
@@ -703,15 +699,7 @@ export interface MenuItem {
   category: string;
   cuisine_type: string | null;
   description: string | null;
-  /** What the customer pays. On a GST-inclusive branch this is 18% above
-   *  what was typed, so it is the figure to SHOW and never the one to edit. */
   price: number | string;
-  /**
-   * What the owner typed. The editor loads this, not `price`: a save sends
-   * the figure back as the typed price, and loading 118 for an item typed as
-   * 100 would mark it up again on every save.
-   */
-  base_price?: number | string | null;
   is_veg: boolean;
   is_available: boolean;
   is_bestseller: boolean;

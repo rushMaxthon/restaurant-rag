@@ -110,12 +110,6 @@ from app.services.restaurant_theme import (
 )
 from app.services.auth import get_current_user, get_current_user_optional, hash_password, require_admin, require_owner
 from app.services.personalized_offers import invalidate_all_personalized_offer_caches
-from app.config.celery import celery_app
-from app.services import menu_pricing
-from app.services.bestsellers import invalidate_bestseller_cache_for_locations
-from app.services.cache import cache_delete_pattern
-from app.services.generated_combos import refresh_generated_combo_availability
-from app.services.recommendations import invalidate_all_recommendation_caches
 from app.services.restaurant_locations import (
     build_default_location_for_restaurant,
     build_location_response,
@@ -604,53 +598,22 @@ def create_restaurant_location(
     return build_location_response(location)
 
 
-def _apply_location_changes(db: Session, location: RestaurantLocation, changes: dict) -> list:
-    """Write a branch's edited fields, and reprice its menu if the GST switch moved.
+def _apply_location_changes(location: RestaurantLocation, changes: dict) -> None:
+    """Write a branch's edited fields.
 
-    Returns the items whose prices were rewritten — empty for every save that
-    did not touch the switch. Both branch PATCH routes come through here, so
-    the switch cannot be flipped by one door and leave the menu at the old
-    prices: that would charge 118 with tax_percent added on top, or 100 with
-    no tax at all.
+    Both branch PATCH routes come through here for one reason: the GST switch.
+    It only says whether the typed menu prices already contain GST, so moving
+    it changes the tax line on the next bill and nothing else — no price is
+    rewritten. (It once added 18% to the whole menu. That was the wrong
+    reading of what the owner was telling us; see `test_gst_menu_prices`.)
     """
 
     # An explicit null is "no opinion", not "off". The column is NOT NULL, and
     # a form that sends null for a checkbox it never rendered must not 500.
     if changes.get("gst_in_menu_prices", False) is None:
         changes.pop("gst_in_menu_prices")
-    before = bool(location.gst_in_menu_prices)
     for field_name, value in changes.items():
         setattr(location, field_name, value)
-    if bool(location.gst_in_menu_prices) == before:
-        return []
-    return menu_pricing.reprice_location(db, location)
-
-
-def _after_menu_reprice(db: Session, location: RestaurantLocation, repriced: list) -> None:
-    """What an edited price always needs, for a whole branch at once.
-
-    The same four things `PUT /menu-items/{id}` does for one item: drop the
-    caches holding the old figure, re-check the combos built on it, and
-    re-embed the text that quotes it. After the commit, and none of it may
-    undo the commit — the prices are already right, and a cache that cannot
-    be reached expires on its own.
-    """
-
-    if not repriced:
-        return
-    try:
-        invalidate_all_recommendation_caches()
-        cache_delete_pattern("rag:response:*")
-        invalidate_bestseller_cache_for_locations([location.id])
-        refresh_generated_combo_availability(
-            db,
-            restaurant_id=location.restaurant_id,
-            restaurant_location_id=location.id,
-        )
-        for item in repriced:
-            celery_app.send_task("app.tasks.embed.embed_menu_item", args=[str(item.id)])
-    except Exception:  # noqa: BLE001 - see the docstring
-        logger.exception("Follow-up after repricing branch %s did not finish", location.id)
 
 
 @router.patch("/{restaurant_id}/locations/{location_id}", response_model=RestaurantLocationResponse)
@@ -673,12 +636,11 @@ def update_restaurant_location(
         location_id=location_id,
         include_inactive=True,
     )
-    repriced = _apply_location_changes(db, location, payload.model_dump(exclude_unset=True))
+    _apply_location_changes(location, payload.model_dump(exclude_unset=True))
     db.add(location)
     db.commit()
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
-    _after_menu_reprice(db, location, repriced)
     return build_location_response(location)
 
 
@@ -815,12 +777,11 @@ def update_restaurant_location_general_settings(
         location_id=location_id,
         include_inactive=True,
     )
-    repriced = _apply_location_changes(db, location, payload.model_dump(exclude_unset=True))
+    _apply_location_changes(location, payload.model_dump(exclude_unset=True))
     db.add(location)
     db.commit()
     db.refresh(location)
     invalidate_all_personalized_offer_caches()
-    _after_menu_reprice(db, location, repriced)
     return build_location_response(location)
 
 

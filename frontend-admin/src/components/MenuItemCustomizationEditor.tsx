@@ -227,7 +227,7 @@ function mapOptionToForm(
   return {
     id: option.id,
     name: option.name,
-    extra_price: toStringNumber(option.base_extra_price ?? option.extra_price),
+    extra_price: toStringNumber(option.extra_price),
     is_active: option.is_active,
     is_countable: option.is_countable,
     sort_order: String(option.sort_order),
@@ -346,8 +346,7 @@ export function createMenuItemFormStateFromItem(item: MenuItem): MenuItemFormSta
     category: item.category,
     cuisine_type: item.cuisine_type ?? "",
     description: item.description ?? "",
-    // The typed price, not the listed one — see `MenuItem.base_price`.
-    price: toStringNumber(item.base_price ?? item.price),
+    price: toStringNumber(item.price),
     launched_at: toDateTimeLocalValue(item.launched_at),
     is_veg: item.is_veg,
     is_available: item.is_available,
@@ -358,7 +357,7 @@ export function createMenuItemFormStateFromItem(item: MenuItem): MenuItemFormSta
     sizes: item.sizes.map((size) => ({
       id: size.id,
       name: size.name,
-      price: toStringNumber(size.base_price ?? size.price),
+      price: toStringNumber(size.price),
       is_active: size.is_active,
       sort_order: String(size.sort_order),
       customization_groups: [],

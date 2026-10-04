@@ -17,6 +17,26 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-04 (GST) — The GST switch no longer changes prices
+
+The switch was built backwards. The owner meant "my menu prices already
+include GST"; `0075` made ON add 18% to every typed price. Now:
+
+- ON: typed price is what the customer pays, no food tax at checkout.
+- OFF: menu is before tax, the branch's `tax_percent` is added on the bill.
+
+`services/menu_pricing.py`, `base_price` / `base_extra_price` (models, schemas,
+favorites, admin types and editor) and the reprice hooks in both branch PATCH
+routes are gone. `order_charges.for_location` is the only reader of the flag.
+Admin wording rewritten ("Menu prices already include GST").
+
+**Open:** `0076_gst_switch_keeps_prices` is written and NOT applied to
+Supabase. Bhagwati Bakery / Main Branch has the switch on and is still selling
+at typed+18% (187 items, 298 sizes) until it runs: it copies `base_price` back
+into `price`, then drops the base columns. After it runs, flush `rag:response:*`
+and re-embed that branch's items — their text quotes the old prices.
+The OFF rate is the branch's own `tax_percent` (default 5), not a fixed 18.
+
 ## 2026-10-04 — Rider cancel, GST inside menu prices, admin panel visual refresh (Windows checkout, branch `redesign`)
 
 **Goal:** three asks before a client demo: make sure Pidge's four vendor calls

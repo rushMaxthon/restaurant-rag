@@ -31,8 +31,6 @@ class MenuItemCustomizationOption(TimestampMixin, Base):
         default=Decimal("0.00"),
         server_default="0.00",
     )
-    #: What the owner typed. See `MenuItem.base_price`.
-    base_extra_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     is_countable: Mapped[bool] = mapped_column(
         Boolean,

@@ -10,7 +10,7 @@ interface GstPriceSwitchProps {
   location: RestaurantLocation;
   /** Name the branch in the heading. For a screen that lists several. */
   showBranchName?: boolean;
-  /** The saved branch. Every price it sells at has just changed. */
+  /** The saved branch. */
   onChanged: (updated: RestaurantLocation) => void;
   onToast: (
     title: string,
@@ -20,17 +20,24 @@ interface GstPriceSwitchProps {
 }
 
 /**
- * "18% GST in menu prices" for one branch: what it is doing now, and the one
- * button that changes it.
+ * "Menu prices already include GST" for one branch: what it is doing now, and
+ * the one button that changes it.
+ *
+ * The switch is a statement about the prices the owner typed, and it never
+ * changes one. On: they are GST-inclusive, so the customer pays the menu
+ * price and no tax on food is added at checkout. Off: they are before tax,
+ * and the branch's own rate is added on the bill. It first shipped the other
+ * way round — on ADDED 18% to the menu — which is why every sentence here
+ * says out loud that prices stay as typed.
  *
  * It sits wherever a menu's prices are shown — the branch's Menu Items tab and
  * the Menu Items page — because that is where somebody looks for a setting
- * that changes prices. It first shipped only as a checkbox in the Fulfilment &
- * fees form, below the payment methods, and nobody could find it.
+ * about prices. As a checkbox in the Fulfilment & fees form alone, below the
+ * payment methods, nobody could find it.
  *
  * Saves on its own rather than through that form, and sends the one field:
- * the endpoint is a PATCH. It asks first, because the change is the whole
- * menu, for customers, at once.
+ * the endpoint is a PATCH. It asks first, because it changes what every
+ * customer of the branch is billed from the next order on.
  */
 export function GstPriceSwitch({
   token,
@@ -44,6 +51,7 @@ export function GstPriceSwitch({
   const [prompt, setPrompt] = useState<boolean | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isOn = Boolean(location.gst_in_menu_prices);
+  const taxPercent = Number(location.tax_percent ?? 5);
 
   const confirm = async () => {
     if (prompt === null || isSaving) {
@@ -60,10 +68,10 @@ export function GstPriceSwitch({
       );
       onChanged(updated);
       onToast(
-        next ? "18% GST added to menu prices" : "18% GST removed from menu prices",
+        next ? "Menu prices now include GST" : "Tax is now added at checkout",
         next
-          ? `Customers of ${updated.branch_name} now see every price 18% higher.`
-          : `Customers of ${updated.branch_name} now see the prices you typed.`,
+          ? `Customers of ${updated.branch_name} pay the menu price, with no tax on food added at checkout.`
+          : `Customers of ${updated.branch_name} pay the menu price plus ${Number(updated.tax_percent ?? 5)}% tax on food at checkout.`,
         "success",
       );
       setPrompt(null);
@@ -82,7 +90,7 @@ export function GstPriceSwitch({
         <div className="gst-switch-card__text">
           <div className="gst-switch-card__title">
             <strong>
-              18% GST in menu prices
+              Menu prices already include GST
               {showBranchName ? ` · ${location.branch_name}` : ""}
             </strong>
             <span className={isOn ? "toggle-pill toggle-pill--on" : "toggle-pill"}>
@@ -91,8 +99,8 @@ export function GstPriceSwitch({
           </div>
           <p className="hint-text">
             {isOn
-              ? "Customers see and pay every price on this branch with 18% GST already added, and no separate tax on food is charged at checkout. The editor still shows the price you typed."
-              : "Customers see the prices you typed, and tax on food is added on the bill. Turn this on to add 18% GST to every price on this branch at once."}
+              ? "The prices you typed already have GST in them. Customers pay exactly the menu price, and no tax on food is added at checkout."
+              : `The prices you typed are before tax. Tax on food (${taxPercent}%) is added to the bill at checkout. Turn this on if your prices already include GST.`}
           </p>
         </div>
         <button
@@ -101,22 +109,22 @@ export function GstPriceSwitch({
           onClick={() => setPrompt(!isOn)}
           type="button"
         >
-          {isOn ? "Remove 18% GST" : "Add 18% GST to prices"}
+          {isOn ? "Add tax at checkout instead" : "My prices include GST"}
         </button>
       </div>
       <ConfirmDialog
         busy={isSaving}
-        confirmLabel={prompt ? "Add 18% GST" : "Remove 18% GST"}
+        confirmLabel={prompt ? "Yes, prices include GST" : "Add tax at checkout"}
         description={
           prompt
-            ? `Every dish, size and extra at ${location.branch_name} will be listed and charged 18% higher, starting now. A dish priced at 100 becomes 118. Tax on food will no longer be added at checkout.`
-            : `Every price at ${location.branch_name} will go back to exactly what you typed, starting now. Tax on food (${location.tax_percent ?? 5}%) will be added at checkout again.`
+            ? `Customers of ${location.branch_name} will pay exactly the menu price, starting with the next order. Tax on food (${taxPercent}%) will no longer be added at checkout. Your menu prices do not change.`
+            : `Tax on food (${taxPercent}%) will be added to every bill at ${location.branch_name}, on top of the menu price, starting with the next order. Your menu prices do not change.`
         }
-        eyebrow="Menu prices"
+        eyebrow="Tax on food"
         onCancel={() => setPrompt(null)}
         onConfirm={() => void confirm()}
         open={prompt !== null}
-        title={prompt ? "Add 18% GST to every menu price?" : "Remove 18% GST from menu prices?"}
+        title={prompt ? "Do your menu prices already include GST?" : "Add tax on food at checkout?"}
       />
     </>
   );

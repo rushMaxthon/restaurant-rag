@@ -365,9 +365,6 @@ export function LocationDetailPage({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isSavingGeneralSettings, setIsSavingGeneralSettings] = useState(false);
   const [isSavingSlot, setIsSavingSlot] = useState(false);
-  // Remounts the menu table after the GST switch moves, because every price
-  // in it has just changed on the server.
-  const [menuVersion, setMenuVersion] = useState(0);
   const [deletingSlotId, setDeletingSlotId] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>(() => cachedDetail?.orders ?? []);
 
@@ -942,9 +939,13 @@ export function LocationDetailPage({
             <span>Pickup ETA</span>
           </div>
           <div className="restaurant-metric-card">
-            <strong>{location.gst_in_menu_prices ? "18% GST on" : "GST off"}</strong>
+            <strong>
+              {location.gst_in_menu_prices
+                ? "GST in prices"
+                : `${Number(location.tax_percent ?? 5)}% tax`}
+            </strong>
             <span>
-              {location.gst_in_menu_prices ? "Included in menu prices" : "Not in menu prices"}
+              {location.gst_in_menu_prices ? "No tax added at checkout" : "Added at checkout"}
             </span>
           </div>
           <div className="restaurant-metric-card">
@@ -1664,7 +1665,7 @@ export function LocationDetailPage({
             <div className="field form-grid__wide">
               <Checkbox
                 checked={generalSettingsForm.gst_in_menu_prices}
-                label="Add 18% GST to menu prices"
+                label="Menu prices already include GST"
                 onChange={(checked) =>
                   setGeneralSettingsForm((current) =>
                     current ? { ...current, gst_in_menu_prices: checked } : current,
@@ -1672,15 +1673,12 @@ export function LocationDetailPage({
                 }
               />
               <p className="hint-text">
-                On: every price on this branch&rsquo;s menu is shown to
-                customers 18% higher &mdash; a dish you priced at 100 is listed
-                and charged at 118, extras and sizes included &mdash; and no
-                separate tax on food is added at checkout. You keep typing your
-                own prices in the menu editor; the 18% is added for you. Off:
-                customers see the prices you typed, and &ldquo;Tax on food&rdquo;
-                below is added on the bill. Saving this changes the whole
-                menu&rsquo;s prices at once. The same switch is on the Menu
-                Items tab.
+                On: the prices you typed already have GST in them, so
+                customers pay exactly the menu price and no tax on food is
+                added at checkout. Off: your prices are before tax, and
+                &ldquo;Tax on food&rdquo; below is added on the bill. Either
+                way your menu prices stay exactly as you typed them. The same
+                switch is on the Menu Items tab.
               </p>
             </div>
             <label className="field">
@@ -1692,7 +1690,7 @@ export function LocationDetailPage({
                 step="0.01"
                 title={
                   generalSettingsForm.gst_in_menu_prices
-                    ? "Not charged while 18% GST is included in menu prices"
+                    ? "Not charged while menu prices already include GST"
                     : undefined
                 }
                 type="number"
@@ -1705,7 +1703,7 @@ export function LocationDetailPage({
               />
               {generalSettingsForm.gst_in_menu_prices ? (
                 <small className="hint-text">
-                  Not charged while 18% GST is included in menu prices.
+                  Not charged while menu prices already include GST.
                 </small>
               ) : null}
             </label>
@@ -1909,14 +1907,12 @@ export function LocationDetailPage({
                   ? { ...current, gst_in_menu_prices: Boolean(updated.gst_in_menu_prices) }
                   : current,
               );
-              setMenuVersion((version) => version + 1);
             }}
             onToast={onToast}
             restaurantId={restaurant.id}
             token={token}
           />
           <RestaurantMenuTable
-            key={menuVersion}
             token={token}
             role={role}
             restaurant={restaurant}

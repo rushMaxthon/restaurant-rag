@@ -449,8 +449,8 @@ class RestaurantLocationBase(BaseModel):
     tax_percent: Decimal = Field(default=Decimal("5.00"), ge=0, le=100)
     #: Percent on the delivery fee, at its own rate.
     delivery_tax_percent: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
-    #: Menu prices already contain 18% GST, and `tax_percent` is not charged
-    #: on top. Flipping it rewrites every price the branch sells at.
+    #: The typed menu prices already contain GST, so `tax_percent` is not
+    #: charged on food at checkout. Off, it is. No price changes either way.
     gst_in_menu_prices: bool = False
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     estimated_delivery_time: int = Field(default=30, ge=1, le=240)

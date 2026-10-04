@@ -43,10 +43,6 @@ class MenuItem(TimestampMixin, Base):
     cuisine_type: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    #: What the owner typed, where `price` is what the customer pays. They
-    #: differ only on a branch with `gst_in_menu_prices` on. NULL means the
-    #: two are the same figure and nothing has ever needed to tell them apart.
-    base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_veg: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     is_bestseller: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")

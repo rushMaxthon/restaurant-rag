@@ -211,9 +211,10 @@ def for_location(
     else.
     """
 
-    # A branch whose menu prices already contain GST charges no tax on food
-    # here: the subtotal it hands over is made of those prices, and adding
-    # `tax_percent` would tax the customer twice. `is True` rather than
+    # The one place the GST switch is read. On, the owner has said the prices
+    # they typed already contain GST, so the subtotal is tax-inclusive and
+    # adding `tax_percent` would tax the customer twice. Off, the menu is
+    # before tax and the branch's own rate goes on the bill. `is True` rather than
     # truthiness, because this is also called with stand-in objects whose
     # every attribute is truthy.
     if getattr(location, "gst_in_menu_prices", False) is True:
