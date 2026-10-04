@@ -22,7 +22,7 @@ const BUDGET: Record<string, Counts> = {
   "capability": { spacing: 0, weight: 0, colour: 0 },
   "chart": { spacing: 0, weight: 0, colour: 0 },
   "color": { spacing: 1, weight: 0, colour: 0 },
-  "combo": { spacing: 9, weight: 1, colour: 1 },
+  "combo": { spacing: 0, weight: 0, colour: 0 },
   "confirm": { spacing: 0, weight: 0, colour: 0 },
   "dashboard": { spacing: 0, weight: 0, colour: 0 },
   "data": { spacing: 0, weight: 0, colour: 0 },
@@ -32,9 +32,11 @@ const BUDGET: Record<string, Counts> = {
   "field": { spacing: 0, weight: 0, colour: 0 },
   "form": { spacing: 0, weight: 0, colour: 0 },
   "gateway": { spacing: 0, weight: 0, colour: 0 },
-  "generated": { spacing: 3, weight: 2, colour: 0 },
+  "generated": { spacing: 0, weight: 0, colour: 0 },
   "gst": { spacing: 0, weight: 0, colour: 0 },
-  "hub": { spacing: 44, weight: 24, colour: 9 },
+  // Two that are not this product's colours to choose: WhatsApp's green on the
+  // channel art, and the peach of the promo illustration.
+  "hub": { spacing: 0, weight: 0, colour: 2 },
   "insight": { spacing: 0, weight: 0, colour: 0 },
   "kds": { spacing: 2, weight: 1, colour: 0 },
   "lg": { spacing: 0, weight: 0, colour: 0 },
@@ -43,11 +45,15 @@ const BUDGET: Record<string, Counts> = {
   "menu": { spacing: 0, weight: 0, colour: 0 },
   "method": { spacing: 0, weight: 0, colour: 0 },
   "mixed": { spacing: 0, weight: 0, colour: 0 },
-  "mkt": { spacing: 145, weight: 56, colour: 102 },
+  // What is left is deliberate. `.mkt` and `.mkt-hub` define their own scoped
+  // tokens (`--mkt-ink`, `--hub-banner-bg`…), each with a `.dark` twin, and a
+  // token's definition is where a literal belongs. The rest is the phone and
+  // message mock-ups, which draw another product's screen and do not theme.
+  "mkt": { spacing: 0, weight: 0, colour: 59 },
   "mobile": { spacing: 0, weight: 0, colour: 0 },
   "modal": { spacing: 0, weight: 0, colour: 0 },
   "ntf": { spacing: 20, weight: 6, colour: 2 },
-  "offer": { spacing: 1, weight: 1, colour: 0 },
+  "offer": { spacing: 0, weight: 0, colour: 0 },
   "order": { spacing: 0, weight: 0, colour: 0 },
   "page": { spacing: 0, weight: 0, colour: 0 },
   "pagination": { spacing: 0, weight: 0, colour: 0 },

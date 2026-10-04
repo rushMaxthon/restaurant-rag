@@ -540,13 +540,13 @@ button {
 
 .generated-combos-combo-cell span:nth-child(2) {
   color: var(--text);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .generated-combos-performance-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -559,7 +559,7 @@ button {
 .generated-combos-performance-metric span {
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -572,7 +572,7 @@ button {
 .combo-status-control {
   position: relative;
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   justify-items: start;
 }
 
@@ -593,7 +593,7 @@ button {
 }
 
 .combo-status-spinner {
-  animation: comboStatusSpin 900ms linear infinite;
+  animation: spin 900ms linear infinite;
 }
 
 .combo-status-trigger__chevron {
@@ -612,9 +612,9 @@ button {
   left: 0;
   z-index: 20;
   min-width: 190px;
-  padding: 8px;
+  padding: var(--space-2);
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
@@ -624,11 +624,11 @@ button {
 .combo-status-menu__item {
   width: 100%;
   min-height: 40px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-3);
   color: var(--text);
   text-align: left;
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .combo-status-menu__item:hover {
@@ -638,13 +638,13 @@ button {
 
 .generated-combos-visibility-copy {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .combo-confidence-note {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: -2px;
   color: var(--hint);
   font-size: var(--fs-caption);
@@ -656,7 +656,7 @@ button {
 }
 
 @media (max-width: 900px) {.generated-combos-performance-cell {
-    gap: 10px;
+    gap: var(--space-3);
   }
 }
 
@@ -664,15 +664,6 @@ button {
    ai-sug-spin, bp-spin — identical but for the name. Each family moves onto
    this one as its screen is refreshed. */
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes comboStatusSpin {
-  from {
-    transform: rotate(0deg);
-  }
   to {
     transform: rotate(360deg);
   }
@@ -689,7 +680,7 @@ button {
 .combo-detail-item,
 .combo-detail-item__meta {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .combo-detail-grid {
@@ -710,13 +701,13 @@ button {
 }
 
 .combo-detail-items {
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .combo-detail-item {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  padding: 14px 16px;
+  padding: var(--space-4) var(--space-4);
   border-radius: var(--radius-5);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -741,7 +732,7 @@ button {
 
 .combo-detail-item__meta {
   justify-items: end;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .dashboard-admin-hero {
@@ -2380,7 +2371,7 @@ select:focus-visible {
 .offer-table__stack,
 .offer-table__status {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .offer-table__title strong,
@@ -2391,7 +2382,7 @@ select:focus-visible {
 
 .offer-table__meta {
   color: var(--muted);
-  font-weight: 500;
+  font-weight: var(--fw-regular);
 }
 
 .offer-table__status span {
@@ -2737,7 +2728,7 @@ select:focus-visible {
 
 .combo-status-trigger:hover .status-pill--interactive,
 .combo-status-trigger:focus-visible .status-pill--interactive {
-  border-color: rgba(255, 82, 0, 0.28);
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
   box-shadow: var(--shadow-sm);
 }
 
@@ -2800,6 +2791,15 @@ select:focus-visible {
   background: var(--muted-soft);
   color: var(--on-muted-soft);
   border-color: color-mix(in srgb, var(--muted) 18%, transparent);
+}
+
+/* A label wrapped in a span inside a pill takes the pill's ink.
+   `.admin-table__cell-content span` paints every span in a cell `--hint`,
+   and an interactive pill wraps its text in one — so "Live" on Combo
+   suggestions was grey on the green wash, 4.27:1 in light mode, where the
+   pill's own measured ink is 4.5. */
+.status-pill span {
+  color: inherit;
 }
 
 /* Live but not yet acted on - PLACED. Previously `muted`, which made a brand
@@ -10273,7 +10273,7 @@ summary:focus-visible,
   /* Three levels only. More than that and nothing reads as lifted. */
   --mkt-shadow-1: 0 1px 2px rgba(20, 22, 43, 0.04), 0 6px 18px rgba(20, 22, 43, 0.04);
   --mkt-shadow-2: 0 2px 6px rgba(20, 22, 43, 0.05), 0 18px 44px rgba(20, 22, 43, 0.08);
-  --mkt-shadow-pop: 0 10px 30px rgba(255, 82, 0, 0.22);
+  --mkt-shadow-pop: 0 10px 30px color-mix(in srgb, var(--primary) 22%, transparent);
 
   display: grid;
   gap: var(--mkt-gap);
@@ -10284,10 +10284,10 @@ summary:focus-visible,
 .mkt-eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   color: var(--mkt-accent-text);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
@@ -10297,7 +10297,7 @@ summary:focus-visible,
   color: var(--mkt-ink);
   /* See the note on `.order-detail__title-row h1`: one page-title size. */
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -10306,7 +10306,7 @@ summary:focus-visible,
   margin: 0;
   color: var(--mkt-ink);
   font-size: var(--fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   line-height: 1.2;
   letter-spacing: -0.02em;
 }
@@ -10323,7 +10323,7 @@ summary:focus-visible,
 
 .mkt-card {
   display: grid;
-  gap: 20px;
+  gap: var(--space-5);
   padding: var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
@@ -10333,18 +10333,18 @@ summary:focus-visible,
 
 .mkt-card--tight {
   padding: var(--mkt-pad-sm);
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .mkt-card__head {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .mkt-card__head--row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 /* ------------------------------------------------------------- hero -- */
@@ -10360,7 +10360,7 @@ summary:focus-visible,
   padding: 34px var(--mkt-pad);
   border-radius: var(--mkt-radius);
   background:
-    radial-gradient(120% 140% at 88% -10%, rgba(255, 82, 0, 0.42) 0%, transparent 58%),
+    radial-gradient(120% 140% at 88% -10%, color-mix(in srgb, var(--primary) 42%, transparent) 0%, transparent 58%),
     radial-gradient(90% 120% at 8% 110%, rgba(120, 90, 255, 0.24) 0%, transparent 60%),
     linear-gradient(140deg, var(--mkt-ink) 0%, var(--mkt-ink-2) 100%);
   box-shadow: var(--mkt-shadow-2);
@@ -10369,7 +10369,7 @@ summary:focus-visible,
 
 .mkt-hero__copy {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   position: relative;
   z-index: 1;
 }
@@ -10380,9 +10380,9 @@ summary:focus-visible,
 
 .mkt-hero__title {
   margin: 0;
-  color: #fff;
+  color: var(--on-primary);
   font-size: clamp(1.75rem, 2.8vw, 2.3rem);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.08;
   letter-spacing: -0.035em;
 }
@@ -10390,7 +10390,7 @@ summary:focus-visible,
 .mkt-hero__lead {
   margin: 0;
   max-width: 54ch;
-  color: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
   font-size: var(--fs-body-lg);
   line-height: 1.55;
 }
@@ -10398,7 +10398,7 @@ summary:focus-visible,
 .mkt-hero__actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   position: relative;
   z-index: 1;
 }
@@ -10409,14 +10409,14 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: var(--space-2);
   height: 46px;
-  padding: 0 22px;
+  padding: 0 var(--space-6);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.005em;
   cursor: pointer;
   white-space: nowrap;
@@ -10453,32 +10453,32 @@ summary:focus-visible,
 }
 
 .mkt-btn--ghost:not(:disabled):hover {
-  border-color: rgba(255, 82, 0, 0.36);
+  border-color: color-mix(in srgb, var(--primary) 36%, transparent);
   color: var(--mkt-accent-text);
 }
 
 /* On the dark hero, a plain white button is the ghost. */
 .mkt-hero .mkt-btn--ghost {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--on-primary) 20%, transparent);
+  background: color-mix(in srgb, var(--on-primary) 8%, transparent);
+  color: var(--on-primary);
   box-shadow: none;
 }
 
 .mkt-hero .mkt-btn--ghost:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: color-mix(in srgb, var(--on-primary) 15%, transparent);
+  color: var(--on-primary);
 }
 
 .mkt-btn--sm {
   height: 38px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   font-size: var(--fs-caption);
 }
 
 .mkt-btn--quiet {
   height: 38px;
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border-color: transparent;
   background: transparent;
   color: var(--muted);
@@ -10494,15 +10494,15 @@ summary:focus-visible,
 .mkt-demo {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 46px;
-  padding: 0 6px 0 14px;
-  border: 1px dashed rgba(255, 255, 255, 0.24);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px dashed color-mix(in srgb, var(--on-primary) 24%, transparent);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.66);
+  background: color-mix(in srgb, var(--on-primary) 6%, transparent);
+  color: color-mix(in srgb, var(--on-primary) 66%, transparent);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-demo__label {
@@ -10512,14 +10512,14 @@ summary:focus-visible,
 .mkt-demo select {
   height: 34px;
   min-width: 142px;
-  padding: 0 10px;
+  padding: 0 var(--space-3);
   border: none;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: color-mix(in srgb, var(--on-primary) 10%, transparent);
+  color: var(--on-primary);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -10532,13 +10532,13 @@ summary:focus-visible,
 .mkt-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .mkt-metric {
   display: grid;
-  gap: 14px;
-  padding: 22px;
+  gap: var(--space-4);
+  padding: var(--space-6);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
   background: var(--surface);
@@ -10549,7 +10549,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mkt-metric__icon {
@@ -10568,7 +10568,7 @@ summary:focus-visible,
   margin-bottom: 9px;
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -10577,7 +10577,7 @@ summary:focus-visible,
   display: block;
   color: var(--mkt-ink);
   font-size: var(--fs-display);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
@@ -10592,11 +10592,11 @@ summary:focus-visible,
 .mkt-delta {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-delta--up {
@@ -10656,7 +10656,7 @@ summary:focus-visible,
 .mkt-steps__button {
   display: grid;
   justify-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
   padding: 0;
   border: none;
@@ -10682,7 +10682,7 @@ summary:focus-visible,
   background: var(--surface);
   color: var(--hint);
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   transition:
     transform var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out),
@@ -10706,14 +10706,14 @@ summary:focus-visible,
 .mkt-steps__label {
   color: var(--hint);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-align: center;
   letter-spacing: -0.005em;
 }
 
 .mkt-steps__item--current .mkt-steps__label {
   color: var(--mkt-ink);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-steps__item--done .mkt-steps__label {
@@ -10741,13 +10741,13 @@ summary:focus-visible,
   position: sticky;
   top: 20px;
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   align-content: start;
 }
 
 .mkt-step {
   display: grid;
-  gap: 26px;
+  gap: var(--space-6);
   padding: var(--mkt-pad);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius);
@@ -10757,30 +10757,30 @@ summary:focus-visible,
 
 .mkt-step__head {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding-bottom: 22px;
   border-bottom: 1px solid var(--mkt-line-soft);
 }
 
 .mkt-section {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .mkt-section__label {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
   color: var(--mkt-ink);
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
 }
 
 .mkt-section__label span {
   color: var(--hint);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 /* The action bar. Sticky so "Continue" is reachable without scrolling back. */
@@ -10791,7 +10791,7 @@ summary:focus-visible,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   margin-top: 2px;
   padding: 18px var(--mkt-pad);
   border: 1px solid var(--mkt-line);
@@ -10810,14 +10810,14 @@ summary:focus-visible,
 
 .mkt-actions__hint--blocked {
   color: var(--danger);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 /* ------------------------------------------------- selectable cards -- */
 
 .mkt-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mkt-grid--2 {
@@ -10834,8 +10834,8 @@ summary:focus-visible,
 .mkt-pick {
   position: relative;
   display: grid;
-  gap: 10px;
-  padding: 18px;
+  gap: var(--space-3);
+  padding: var(--space-5);
   border: 1.5px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
   background: var(--surface);
@@ -10851,7 +10851,7 @@ summary:focus-visible,
 }
 
 .mkt-pick:not(.mkt-pick--disabled):hover {
-  border-color: rgba(255, 82, 0, 0.32);
+  border-color: color-mix(in srgb, var(--primary) 32%, transparent);
   transform: translateY(-2px);
   box-shadow: var(--mkt-shadow-1);
 }
@@ -10889,7 +10889,7 @@ summary:focus-visible,
 .mkt-pick__title {
   color: var(--mkt-ink);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   line-height: 1.3;
   letter-spacing: -0.012em;
 }
@@ -10903,10 +10903,10 @@ summary:focus-visible,
 .mkt-pick__foot {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 /* The tick, top-right, on anything selectable. */
@@ -10921,7 +10921,7 @@ summary:focus-visible,
   height: 21px;
   border-radius: 50%;
   background: var(--mkt-accent);
-  color: #fff;
+  color: var(--on-primary);
   opacity: 0;
   transform: scale(0.7);
   transition:
@@ -10935,25 +10935,25 @@ summary:focus-visible,
 }
 
 .mkt-pick__badge {
-  padding: 3px 10px;
+  padding: 3px var(--space-3);
   border-radius: var(--radius-pill);
   background: var(--card-muted);
   color: var(--mkt-ink);
   font-size: var(--fs-caption);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
 .mkt-pick--selected .mkt-pick__badge {
   background: var(--mkt-accent);
-  color: #fff;
+  color: var(--on-primary);
 }
 
 .mkt-pick__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Inside a row card the title and its line of detail stack; the icon and the
@@ -10968,8 +10968,8 @@ summary:focus-visible,
 .mkt-pick--row {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
 }
 
 .mkt-pick--row .mkt-pick__tick {
@@ -10986,23 +10986,23 @@ summary:focus-visible,
 
 .mkt-field {
   display: grid;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 .mkt-field__label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--mkt-ink);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-field__count {
   color: var(--hint);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -11014,7 +11014,7 @@ summary:focus-visible,
 .mkt-field select,
 .mkt-field textarea {
   width: 100%;
-  padding: 13px 15px;
+  padding: var(--space-3) var(--space-4);
   border: 1.5px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
   background: var(--surface);
@@ -11054,23 +11054,23 @@ summary:focus-visible,
 .mkt-chips {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .mkt-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   height: 32px;
-  padding: 0 13px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
   transition:
@@ -11087,7 +11087,7 @@ summary:focus-visible,
 
 .mkt-preview {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
   justify-items: center;
 }
 
@@ -11096,7 +11096,7 @@ summary:focus-visible,
 .mkt-preview__device {
   width: 100%;
   max-width: 262px;
-  padding: 9px;
+  padding: var(--space-2);
   border-radius: 34px;
   background: linear-gradient(160deg, #3a3f5c 0%, #12142a 100%);
   box-shadow: var(--shadow-xl);
@@ -11105,10 +11105,10 @@ summary:focus-visible,
 .mkt-preview__screen {
   position: relative;
   display: grid;
-  gap: 18px;
+  gap: var(--space-5);
   align-content: start;
   min-height: 232px;
-  padding: 26px 13px 24px;
+  padding: var(--space-6) var(--space-3) var(--space-6);
   border-radius: var(--radius-8);
   background:
     radial-gradient(130% 90% at 15% 0%, rgba(255, 138, 61, 0.42) 0%, transparent 58%),
@@ -11138,23 +11138,23 @@ summary:focus-visible,
 }
 
 .mkt-preview__clock strong {
-  color: #fff;
+  color: var(--on-primary);
   font-size: 2.1rem;
-  font-weight: 300;
+  font-weight: var(--fw-regular);
   line-height: 1;
   letter-spacing: -0.02em;
 }
 
 .mkt-preview__clock span {
-  color: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
   font-size: var(--fs-caption);
-  font-weight: 500;
+  font-weight: var(--fw-regular);
 }
 
 .mkt-preview__notification {
   display: grid;
-  gap: 5px;
-  padding: 13px 14px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-5);
   background: color-mix(in srgb, var(--surface) 93%, transparent);
   backdrop-filter: blur(8px);
@@ -11178,10 +11178,10 @@ summary:focus-visible,
 .mkt-preview__app {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   color: #6c7288;
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.09em;
 }
@@ -11189,7 +11189,7 @@ summary:focus-visible,
 .mkt-preview__title {
   color: #11142a;
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   line-height: 1.3;
   letter-spacing: -0.01em;
 }
@@ -11208,7 +11208,7 @@ summary:focus-visible,
 .mkt-preview__switcher {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   width: 100%;
 }
 
@@ -11248,26 +11248,26 @@ summary:focus-visible,
 
 .mkt-reach-head {
   display: grid;
-  gap: 4px;
-  padding: 18px;
+  gap: var(--space-1);
+  padding: var(--space-5);
   border-radius: var(--mkt-radius-sm);
   background: var(--mkt-accent-wash);
-  border: 1px solid rgba(255, 82, 0, 0.14);
+  border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .mkt-reach-head__label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-reach-head__value {
   color: var(--mkt-ink);
   font-size: 2rem;
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.05;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
@@ -11280,7 +11280,7 @@ summary:focus-visible,
 
 .mkt-reach {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -11290,8 +11290,8 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 12px;
-  padding: 13px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
   background: var(--surface);
@@ -11327,7 +11327,7 @@ summary:focus-visible,
 .mkt-reach__copy strong {
   color: var(--mkt-ink);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-reach__copy span {
@@ -11342,7 +11342,7 @@ summary:focus-visible,
   display: grid;
   gap: 3px;
   margin: 7px 0 0;
-  padding: 8px 0 0;
+  padding: var(--space-2) 0 0;
   border-top: 1px dashed var(--mkt-line);
   list-style: none;
   color: var(--hint);
@@ -11352,13 +11352,13 @@ summary:focus-visible,
 .mkt-reach__blockers li {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .mkt-reach__count {
   color: var(--mkt-ink);
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -11366,7 +11366,7 @@ summary:focus-visible,
 
 .mkt-notices {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -11375,8 +11375,8 @@ summary:focus-visible,
 .mkt-notice {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid transparent;
   border-radius: var(--mkt-radius-xs);
 }
@@ -11398,7 +11398,7 @@ summary:focus-visible,
 
 .mkt-notice__copy strong {
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
 }
 
@@ -11409,35 +11409,35 @@ summary:focus-visible,
 }
 
 .mkt-notice--block {
-  border-color: rgba(213, 59, 67, 0.22);
+  border-color: color-mix(in srgb, var(--danger) 22%, transparent);
   background: var(--danger-soft);
   color: var(--on-danger-soft);
 }
 
 .mkt-notice--block .mkt-notice__icon {
-  background: rgba(213, 59, 67, 0.14);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
 }
 
 .mkt-notice--warn {
-  border-color: rgba(242, 161, 0, 0.26);
+  border-color: color-mix(in srgb, var(--warning) 26%, transparent);
   background: var(--warning-soft);
   color: var(--on-warning-soft);
 }
 
 .mkt-notice--warn .mkt-notice__icon {
-  background: rgba(242, 161, 0, 0.18);
-  color: #b57a00;
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning-text);
 }
 
 .mkt-notice--info {
-  border-color: rgba(43, 102, 228, 0.18);
+  border-color: color-mix(in srgb, var(--blue) 18%, transparent);
   background: var(--blue-soft);
   color: var(--on-blue-soft);
 }
 
 .mkt-notice--info .mkt-notice__icon {
-  background: rgba(43, 102, 228, 0.14);
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
   color: var(--blue);
 }
 
@@ -11461,9 +11461,9 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 18px;
-  padding: 20px;
-  border: 1.5px dashed rgba(255, 82, 0, 0.32);
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 32%, transparent);
   border-radius: var(--mkt-radius-sm);
   background: var(--mkt-accent-wash);
 }
@@ -11488,7 +11488,7 @@ summary:focus-visible,
 .mkt-test__copy strong {
   color: var(--mkt-ink);
   font-size: var(--fs-label);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-test__copy span {
@@ -11512,8 +11512,8 @@ summary:focus-visible,
 .mkt-review__row {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
-  gap: 16px;
-  padding: 15px 18px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--mkt-line-soft);
 }
 
@@ -11524,7 +11524,7 @@ summary:focus-visible,
 .mkt-review__row dt {
   color: var(--hint);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -11533,7 +11533,7 @@ summary:focus-visible,
   margin: 0;
   color: var(--mkt-ink);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   line-height: 1.5;
 }
 
@@ -11542,22 +11542,22 @@ summary:focus-visible,
 .mkt-summary {
   display: flex;
   align-items: center;
-  gap: 10px 20px;
+  gap: var(--space-3) var(--space-5);
   flex-wrap: wrap;
-  padding: 16px 22px;
+  padding: var(--space-4) var(--space-6);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
   background: var(--surface);
   box-shadow: var(--mkt-shadow-1);
   color: var(--muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-summary span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .mkt-detail {
@@ -11577,7 +11577,7 @@ summary:focus-visible,
 
 .mkt-funnel {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -11587,13 +11587,13 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr) 136px;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .mkt-funnel__label {
   color: var(--mkt-ink);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-funnel__track {
@@ -11629,7 +11629,7 @@ summary:focus-visible,
 .mkt-funnel__value strong {
   color: var(--mkt-ink);
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -11641,14 +11641,14 @@ summary:focus-visible,
 .mkt-money {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
 }
 
 .mkt-money > div {
   display: grid;
-  gap: 5px;
-  padding: 16px;
+  gap: var(--space-1);
+  padding: var(--space-4);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
   background: var(--surface);
@@ -11657,7 +11657,7 @@ summary:focus-visible,
 .mkt-money dt {
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -11666,14 +11666,14 @@ summary:focus-visible,
   margin: 0;
   color: var(--mkt-ink);
   font-size: var(--fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 /* The figure that answers "was this worth it". */
 .mkt-money__total {
-  border-color: rgba(32, 168, 110, 0.3);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
   background: var(--success-soft);
 }
 
@@ -11693,8 +11693,8 @@ summary:focus-visible,
 .mkt-setup > div {
   display: grid;
   grid-template-columns: 112px minmax(0, 1fr);
-  gap: 14px;
-  padding: 13px 16px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--mkt-line-soft);
 }
 
@@ -11705,20 +11705,20 @@ summary:focus-visible,
 .mkt-setup dt {
   color: var(--hint);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-setup dd {
   margin: 0;
   color: var(--mkt-ink);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   line-height: 1.5;
 }
 
 .mkt-failures {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -11728,13 +11728,13 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-xs);
   background: var(--surface);
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .mkt-failures__icon {
@@ -11749,7 +11749,7 @@ summary:focus-visible,
 }
 
 .mkt-failures strong {
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -11758,7 +11758,7 @@ summary:focus-visible,
 .mkt-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -11780,7 +11780,7 @@ summary:focus-visible,
 .mkt-toolbar__search input {
   width: 100%;
   height: 44px;
-  padding: 0 15px 0 40px;
+  padding: 0 var(--space-4) 0 var(--space-10);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
   background: var(--surface);
@@ -11796,8 +11796,8 @@ summary:focus-visible,
 
 .mkt-tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
   background: var(--card-muted);
@@ -11806,14 +11806,14 @@ summary:focus-visible,
 
 .mkt-tab {
   height: 36px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   border: none;
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
@@ -11831,7 +11831,7 @@ summary:focus-visible,
 
 .mkt-list {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* A campaign is a row with a life of its own — status, audience, money — so
@@ -11841,8 +11841,8 @@ summary:focus-visible,
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 18px;
-  padding: 18px 20px;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5);
   border: 1px solid var(--mkt-line);
   border-radius: var(--mkt-radius-sm);
   background: var(--surface);
@@ -11854,7 +11854,7 @@ summary:focus-visible,
 }
 
 .mkt-row:hover {
-  border-color: rgba(255, 82, 0, 0.3);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
   transform: translateY(-2px);
   box-shadow: var(--mkt-shadow-1);
 }
@@ -11873,25 +11873,25 @@ summary:focus-visible,
 
 .mkt-row__copy {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
 .mkt-row__title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   color: var(--mkt-ink);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.012em;
 }
 
 .mkt-row__meta {
   display: flex;
   align-items: center;
-  gap: 6px 14px;
+  gap: var(--space-2) var(--space-4);
   flex-wrap: wrap;
   color: var(--hint);
   font-size: var(--fs-caption);
@@ -11900,7 +11900,7 @@ summary:focus-visible,
 .mkt-row__meta span {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .mkt-row__money {
@@ -11912,7 +11912,7 @@ summary:focus-visible,
 .mkt-row__money strong {
   color: var(--mkt-ink);
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -11920,13 +11920,13 @@ summary:focus-visible,
 .mkt-row__money span {
   color: var(--hint);
   font-size: var(--fs-tiny);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .mkt-row__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* --------------------------------------------------- status + states -- */
@@ -11934,11 +11934,11 @@ summary:focus-visible,
 .mkt-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -11985,8 +11985,8 @@ summary:focus-visible,
 .mkt-empty {
   display: grid;
   justify-items: center;
-  gap: 14px;
-  padding: 56px 28px;
+  gap: var(--space-4);
+  padding: var(--space-16) var(--space-8);
   border: 1.5px dashed var(--mkt-line);
   border-radius: var(--mkt-radius);
   background: var(--surface-subtle);
@@ -12007,7 +12007,7 @@ summary:focus-visible,
 .mkt-empty strong {
   color: var(--mkt-ink);
   font-size: var(--fs-title-sm);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.02em;
 }
 
@@ -12025,7 +12025,7 @@ summary:focus-visible,
   background: linear-gradient(
     90deg,
     var(--card-muted) 25%,
-    rgba(255, 255, 255, 0.7) 50%,
+    color-mix(in srgb, var(--on-primary) 70%, transparent) 50%,
     var(--card-muted) 75%
   );
   background-size: 200% 100%;
@@ -12064,7 +12064,7 @@ summary:focus-visible,
 
 .mkt-skeleton-stack {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 /* ------------------------------------------------------------- misc -- */
@@ -12072,14 +12072,14 @@ summary:focus-visible,
 .mkt-back {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   padding: 0;
   border: none;
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -12108,7 +12108,7 @@ summary:focus-visible,
 }
 
 .mkt-icon-btn--danger:hover {
-  border-color: rgba(213, 59, 67, 0.2);
+  border-color: color-mix(in srgb, var(--danger) 20%, transparent);
   background: var(--danger-soft);
   color: var(--on-danger-soft);
 }
@@ -12151,7 +12151,7 @@ summary:focus-visible,
   .mkt-hero {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    padding: 26px 20px;
+    padding: var(--space-6) var(--space-5);
   }
 
   .mkt-hero__actions {
@@ -12169,7 +12169,7 @@ summary:focus-visible,
       'icon copy'
       'money money'
       'actions actions';
-    gap: 14px;
+    gap: var(--space-4);
   }
 
   .mkt-row__icon {
@@ -12200,12 +12200,12 @@ summary:focus-visible,
   .mkt-review__row,
   .mkt-setup > div {
     grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .mkt-funnel__row {
     grid-template-columns: 84px minmax(0, 1fr) 92px;
-    gap: 10px;
+    gap: var(--space-3);
   }
 
   .mkt-steps__label {
@@ -12217,7 +12217,7 @@ summary:focus-visible,
   }
 
   .mkt-actions {
-    padding: 14px 18px;
+    padding: var(--space-4) var(--space-5);
   }
 }
 
@@ -12271,14 +12271,14 @@ summary:focus-visible,
   --hub-promo-bg:
     radial-gradient(80% 90% at 100% 100%, #ffe6d6 0%, transparent 62%),
     linear-gradient(140deg, #fff5ef 0%, #fffcfa 70%);
-  --hub-disc-bg: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffe8db 55%, #ffd9c4 100%);
+  --hub-disc-bg: radial-gradient(circle at 34% 30%, var(--on-primary) 0%, #ffe8db 55%, #ffd9c4 100%);
 
   --hub-radius: 18px;
   --hub-radius-sm: 12px;
   --hub-shadow: 0 1px 2px rgba(22, 30, 51, 0.04), 0 8px 24px rgba(22, 30, 51, 0.05);
 
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   color: var(--hub-ink);
 }
 
@@ -12297,8 +12297,8 @@ summary:focus-visible,
 .dark .mkt {
   --mkt-ink: var(--text);
   --mkt-ink-2: var(--muted);
-  --mkt-line: rgb(255 255 255 / 0.1);
-  --mkt-line-soft: rgb(255 255 255 / 0.06);
+  --mkt-line: color-mix(in srgb, var(--on-primary) 10%, transparent);
+  --mkt-line-soft: color-mix(in srgb, var(--on-primary) 6%, transparent);
   --mkt-accent: var(--primary);
   --mkt-accent-wash: linear-gradient(135deg, #2a1d16 0%, #1d1917 100%);
 
@@ -12307,7 +12307,7 @@ summary:focus-visible,
 }
 
 .dark .mkt-hub {
-  --hub-line-soft: rgb(255 255 255 / 0.07);
+  --hub-line-soft: color-mix(in srgb, var(--on-primary) 7%, transparent);
   /* The light value is darkened for a pale wash; on a dark one the tuned
      warning token is already the readable choice. */
   --hub-amber: var(--warning);
@@ -12317,10 +12317,10 @@ summary:focus-visible,
   /* The same three washes, built from the surface rather than from white, so
      the banner still reads as a lifted panel instead of a light box. */
   --hub-banner-bg:
-    radial-gradient(90% 120% at 100% 0%, rgb(255 107 38 / 0.16) 0%, transparent 60%),
+    radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--primary) 16%, transparent) 0%, transparent 60%),
     linear-gradient(135deg, #241a15 0%, var(--surface) 62%);
   --hub-promo-bg:
-    radial-gradient(80% 90% at 100% 100%, rgb(255 107 38 / 0.14) 0%, transparent 62%),
+    radial-gradient(80% 90% at 100% 100%, color-mix(in srgb, var(--primary) 14%, transparent) 0%, transparent 62%),
     linear-gradient(140deg, #221a16 0%, var(--surface) 70%);
   --hub-disc-bg: radial-gradient(circle at 34% 30%, #3a2a20 0%, #2a1d16 55%, #231a14 100%);
 }
@@ -12342,7 +12342,7 @@ summary:focus-visible,
   display: block;
   color: var(--hub-hint);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.16em;
 }
@@ -12351,7 +12351,7 @@ summary:focus-visible,
   margin: 0;
   color: var(--hub-ink);
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   letter-spacing: -0.02em;
 }
 
@@ -12415,8 +12415,8 @@ summary:focus-visible,
 .hub-panel__head {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 20px 22px;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--hub-line-soft);
 }
 
@@ -12431,14 +12431,14 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: var(--space-2);
   height: 44px;
-  padding: 0 20px;
+  padding: 0 var(--space-5);
   border: 1px solid transparent;
   border-radius: var(--hub-radius-sm);
   font: inherit;
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
   cursor: pointer;
   white-space: nowrap;
@@ -12486,14 +12486,14 @@ summary:focus-visible,
 .hub-link {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   padding: 0;
   border: none;
   background: none;
   color: var(--hub-brand-text);
   font: inherit;
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -12507,7 +12507,7 @@ summary:focus-visible,
 .hub-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: stretch;
 }
 
@@ -12515,9 +12515,9 @@ summary:focus-visible,
   position: relative;
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 34px 36px;
-  border: 1px solid rgba(255, 82, 0, 0.16);
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
   border-radius: var(--hub-radius);
   background: var(--hub-banner-bg);
   overflow: hidden;
@@ -12535,7 +12535,7 @@ summary:focus-visible,
   color: var(--hub-ink);
   /* See the note on `.order-detail__title-row h1`: one page-title size. */
   font-size: var(--fs-display-sm);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1.2;
   letter-spacing: -0.03em;
 }
@@ -12569,7 +12569,7 @@ summary:focus-visible,
   inset: 16px 10px 12px 18px;
   border-radius: 50%;
   background: var(--hub-disc-bg);
-  box-shadow: inset 0 -6px 18px rgba(255, 82, 0, 0.14);
+  box-shadow: inset 0 -6px 18px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .hub-art__horn {
@@ -12596,37 +12596,37 @@ summary:focus-visible,
   top: 2px;
   right: 34px;
   background: #25d366;
-  color: #fff;
+  color: var(--on-primary);
 }
 
 .hub-art__badge--b {
   top: 40px;
   right: 0;
   background: var(--hub-brand);
-  color: #fff;
+  color: var(--on-primary);
 }
 
 .hub-art__badge--c {
   bottom: 6px;
   right: 22px;
   background: var(--hub-purple);
-  color: #fff;
+  color: var(--on-primary);
 }
 
 /* The primary action column. Separate from the banner so the button is the
    most solid thing on the screen, not decoration inside a gradient. */
 .hub-launch {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   align-content: start;
 }
 
 .hub-quickstart {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   width: 100%;
-  padding: 18px;
+  padding: var(--space-5);
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
   background: var(--surface);
@@ -12651,7 +12651,7 @@ summary:focus-visible,
   display: block;
   color: var(--hub-ink);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.015em;
 }
 
@@ -12673,13 +12673,13 @@ summary:focus-visible,
 .hub-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .hub-stat {
   display: grid;
-  gap: 12px;
-  padding: 20px;
+  gap: var(--space-3);
+  padding: var(--space-5);
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
   background: var(--surface);
@@ -12689,23 +12689,23 @@ summary:focus-visible,
 .hub-stat__top {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-3);
 }
 
 .hub-stat__label {
   color: var(--hub-muted);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .hub-stat__value {
   display: flex;
   align-items: baseline;
-  gap: 9px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   color: var(--hub-ink);
   font-size: var(--fs-display);
-  font-weight: 800;
+  font-weight: var(--fw-heavy);
   line-height: 1;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
@@ -12721,10 +12721,10 @@ summary:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 3px 8px;
+  padding: 3px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .hub-pill--up {
@@ -12747,8 +12747,8 @@ summary:focus-visible,
 .hub-attention {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 18px 22px;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
   border: 1px solid var(--hub-line);
   border-radius: var(--hub-radius);
   background: var(--surface);
@@ -12764,7 +12764,7 @@ summary:focus-visible,
   display: block;
   color: var(--hub-ink);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.018em;
 }
 
@@ -12779,10 +12779,10 @@ summary:focus-visible,
 .hub-pager {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--hub-hint);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -12814,19 +12814,19 @@ summary:focus-visible,
 
 .hub-select {
   height: 34px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--hub-line);
   border-radius: var(--radius-1);
   background: var(--surface);
   color: var(--hub-ink);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
 .hub-chart {
-  padding: 18px 20px 8px;
+  padding: var(--space-5) var(--space-5) var(--space-2);
 }
 
 /* ------------------------------------------------------------- split -- */
@@ -12834,13 +12834,13 @@ summary:focus-visible,
 .hub-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
 .hub-side {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   align-content: start;
 }
 
@@ -12856,12 +12856,12 @@ summary:focus-visible,
 }
 
 .hub-table th {
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--hub-line-soft);
   background: var(--card-muted);
   color: var(--hub-hint);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-medium);
   text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -12874,7 +12874,7 @@ summary:focus-visible,
 }
 
 .hub-table td {
-  padding: 14px 16px;
+  padding: var(--space-4) var(--space-4);
   border-bottom: 1px solid var(--hub-line-soft);
   color: var(--hub-ink);
   font-size: var(--fs-label);
@@ -12898,7 +12898,7 @@ summary:focus-visible,
 .hub-cell {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -12910,7 +12910,7 @@ summary:focus-visible,
   display: block;
   color: var(--hub-ink);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.012em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12924,16 +12924,16 @@ summary:focus-visible,
 }
 
 .hub-cell--stack strong {
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .hub-channel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   color: var(--hub-muted);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .hub-channel svg {
@@ -12941,7 +12941,7 @@ summary:focus-visible,
 }
 
 .hub-money {
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
 }
 
@@ -12950,10 +12950,10 @@ summary:focus-visible,
 .hub-status {
   display: inline-flex;
   align-items: center;
-  padding: 4px 11px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   font-size: var(--fs-tiny);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
 }
 
 .hub-status--sent {
@@ -12985,7 +12985,7 @@ summary:focus-visible,
 .hub-actions-cell {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   justify-content: flex-end;
 }
 
@@ -13010,7 +13010,7 @@ summary:focus-visible,
 }
 
 .hub-icon-btn--danger:hover {
-  border-color: rgba(213, 59, 67, 0.22);
+  border-color: color-mix(in srgb, var(--danger) 22%, transparent);
   background: var(--hub-danger-wash);
   color: var(--hub-danger);
 }
@@ -13019,16 +13019,16 @@ summary:focus-visible,
 
 .hub-quick {
   display: grid;
-  gap: 4px;
-  padding: 10px;
+  gap: var(--space-1);
+  padding: var(--space-3);
 }
 
 .hub-quick__item {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 11px 12px;
+  padding: var(--space-3) var(--space-3);
   border: none;
   border-radius: var(--hub-radius-sm);
   background: transparent;
@@ -13051,7 +13051,7 @@ summary:focus-visible,
   display: block;
   color: var(--hub-ink);
   font-size: var(--fs-label);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.012em;
 }
 
@@ -13073,9 +13073,9 @@ summary:focus-visible,
 .hub-promo {
   position: relative;
   display: grid;
-  gap: 10px;
-  padding: 22px;
-  border: 1px solid rgba(255, 82, 0, 0.16);
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
   border-radius: var(--hub-radius);
   background: var(--hub-promo-bg);
   overflow: hidden;
@@ -13084,7 +13084,7 @@ summary:focus-visible,
 .hub-promo strong {
   color: var(--hub-ink);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.018em;
 }
 
@@ -13115,8 +13115,8 @@ summary:focus-visible,
 .hub-state {
   display: grid;
   justify-items: center;
-  gap: 12px;
-  padding: 54px 28px;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-8);
   text-align: center;
 }
 
@@ -13134,7 +13134,7 @@ summary:focus-visible,
 .hub-state strong {
   color: var(--hub-ink);
   font-size: var(--fs-body-lg);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   letter-spacing: -0.02em;
 }
 
@@ -13171,15 +13171,15 @@ summary:focus-visible,
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   height: var(--control-h);
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
@@ -13200,7 +13200,7 @@ summary:focus-visible,
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--fs-micro);
-  font-weight: 800;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
 }
@@ -13236,13 +13236,13 @@ summary:focus-visible,
   min-width: 160px;
   max-width: 260px;
   /* Room on the right for the chevron above, which is drawn over this. */
-  padding: 0 24px 0 0;
+  padding: 0 var(--space-6) 0 0;
   border: none;
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
   /* The pill owns the focus treatment. */
   outline: none;
@@ -13272,8 +13272,8 @@ summary:focus-visible,
 
 .hub-skeleton-stack {
   display: grid;
-  gap: 12px;
-  padding: 20px;
+  gap: var(--space-3);
+  padding: var(--space-5);
 }
 
 /* The demo-state control, quiet against the blue workspace. */
@@ -13316,7 +13316,7 @@ summary:focus-visible,
   .hub-banner {
     flex-direction: column;
     align-items: flex-start;
-    padding: 26px 22px;
+    padding: var(--space-6) var(--space-6);
   }
 
   .hub-art {
@@ -13358,7 +13358,7 @@ summary:focus-visible,
 .mkt-channel__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: var(--space-1) var(--space-3);
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--mkt-line-soft);
@@ -13366,7 +13366,7 @@ summary:focus-visible,
 }
 
 .mkt-channel__reach {
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   color: var(--mkt-ink);
 }
 
@@ -13378,8 +13378,8 @@ summary:focus-visible,
    it does not stop anyone: the campaign can still be built and saved. */
 .mkt-setup-panel {
   display: flex;
-  gap: 12px;
-  padding: 16px 18px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
   background: var(--mkt-accent-wash);
@@ -13387,7 +13387,7 @@ summary:focus-visible,
 
 .mkt-setup-panel__copy {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -13403,7 +13403,7 @@ summary:focus-visible,
 
 .mkt-setup-panel__copy ul {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
@@ -13417,7 +13417,7 @@ summary:focus-visible,
 .mkt-railrow {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -13428,15 +13428,15 @@ summary:focus-visible,
 .mkt-channel-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--mkt-ink);
   font: inherit;
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   cursor: pointer;
 }
 
@@ -13449,8 +13449,8 @@ summary:focus-visible,
 
 .mkt-preview__screen--sms,
 .mkt-preview__screen--whatsapp {
-  gap: 10px;
-  padding: 20px 12px;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-3);
 }
 
 /* A messages thread, not a lock screen: the inherited gradient made an SMS
@@ -13466,18 +13466,18 @@ summary:focus-visible,
 .mkt-preview__sender {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: rgba(255, 255, 255, 0.72);
+  gap: var(--space-1);
+  color: color-mix(in srgb, var(--on-primary) 72%, transparent);
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .mkt-bubble {
   display: grid;
-  gap: 5px;
-  padding: 10px 12px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-4);
   background: var(--surface);
   color: var(--mkt-ink);
@@ -13551,15 +13551,15 @@ summary:focus-visible,
 
 .mkt-mail__head {
   display: grid;
-  gap: 4px;
-  padding: 12px 14px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--mkt-line-soft);
 }
 
 .mkt-mail__from {
   color: var(--muted);
   font-size: var(--fs-micro);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -13579,7 +13579,7 @@ summary:focus-visible,
 
 .mkt-mail__body {
   margin: 0;
-  padding: 14px;
+  padding: var(--space-4);
   color: var(--mkt-ink-2);
   font-size: var(--fs-caption);
   line-height: 1.55;
@@ -13588,7 +13588,7 @@ summary:focus-visible,
 
 .mkt-mail__footer {
   margin: 0;
-  padding: 10px 14px 14px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
   color: var(--muted);
   font-size: var(--fs-micro);
   text-decoration: underline;
@@ -13610,8 +13610,8 @@ summary:focus-visible,
 .mkt-social__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
 }
 
 .mkt-social__avatar {
@@ -13624,7 +13624,7 @@ summary:focus-visible,
 .mkt-social__handle {
   color: var(--mkt-ink);
   font-size: var(--fs-caption);
-  font-weight: 700;
+  font-weight: var(--fw-strong);
 }
 
 .mkt-social__media {
@@ -13648,7 +13648,7 @@ summary:focus-visible,
 
 .mkt-social__placeholder {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   place-items: center;
   height: 100%;
   color: var(--muted);
@@ -13658,15 +13658,15 @@ summary:focus-visible,
 
 .mkt-social__actions {
   display: flex;
-  gap: 12px;
-  padding: 10px 12px 4px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-1);
   color: var(--mkt-ink);
 }
 
 .mkt-social__caption,
 .mkt-social__comment {
   margin: 0;
-  padding: 4px 12px 10px;
+  padding: var(--space-1) var(--space-3) var(--space-3);
   color: var(--mkt-ink-2);
   font-size: var(--fs-caption);
   line-height: 1.5;
@@ -13684,7 +13684,7 @@ summary:focus-visible,
 
 .mkt-social__meta {
   margin: 0;
-  padding: 0 12px 12px;
+  padding: 0 var(--space-3) var(--space-3);
   color: var(--muted);
   font-size: var(--fs-caption);
 }
@@ -13698,13 +13698,15 @@ summary:focus-visible,
 }
 
 .mkt-field__hint--warn {
-  color: #a3540a;
+  /* The token, which has a dark value. This was a literal dark amber with
+     none, so in dark mode a warning was brown text on a near-black card. */
+  color: var(--warning-text);
 }
 
 .mkt-toggle {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-3);
   cursor: pointer;
   font-size: var(--fs-caption);
   color: var(--mkt-ink);
@@ -13723,8 +13725,8 @@ summary:focus-visible,
 
 .mkt-boost {
   display: grid;
-  gap: 14px;
-  padding: 16px 18px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
   background: var(--mkt-accent-wash);
@@ -13732,7 +13734,7 @@ summary:focus-visible,
 
 .mkt-boost__field {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Money is the only irreversible thing on the social audience screen, so it is
@@ -13757,8 +13759,8 @@ summary:focus-visible,
    the sentence they would say out loud. */
 .mkt-verdict {
   display: grid;
-  gap: 12px;
-  padding: 22px 24px;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-6);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
   background: var(--surface);
@@ -13773,7 +13775,7 @@ summary:focus-visible,
 
 .mkt-verdict__quote {
   margin: 0;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border-left: 3px solid var(--mkt-accent);
   border-radius: 0 8px 8px 0;
   background: var(--mkt-accent-wash);
@@ -13786,7 +13788,7 @@ summary:focus-visible,
 .mkt-verdict__line {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   margin: 0;
   color: var(--muted);
   font-size: var(--fs-caption);
@@ -13794,21 +13796,21 @@ summary:focus-visible,
 }
 
 .mkt-verdict__line--warn {
-  color: #a3540a;
-  font-weight: 700;
+  color: var(--warning-text);
+  font-weight: var(--fw-strong);
 }
 
 .mkt-verdict__edits {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   padding-top: 12px;
   border-top: 1px solid var(--mkt-line-soft);
 }
 
 @media (max-width: 1080px) {
   .mkt-railrow {
-    gap: 10px;
+    gap: var(--space-3);
   }
 }
 
@@ -13822,8 +13824,8 @@ summary:focus-visible,
 
 .mkt-conn {
   display: grid;
-  gap: 14px;
-  padding: 16px 18px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
   background: var(--surface);
@@ -13836,7 +13838,7 @@ summary:focus-visible,
 .mkt-conn__row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -13866,27 +13868,27 @@ summary:focus-visible,
 }
 
 .mkt-conn__meta--bad {
-  color: #a3540a;
+  color: var(--warning-text);
   opacity: 1;
 }
 
 .mkt-conn__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .mkt-conn__form {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
   padding-top: 14px;
   border-top: 1px solid var(--mkt-line-soft);
 }
 
 .mkt-conn__steps {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
@@ -13895,7 +13897,7 @@ summary:focus-visible,
 
 .mkt-conn__save {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* --------------------------------------------------------- social report -- */
@@ -13903,8 +13905,8 @@ summary:focus-visible,
 .mkt-postcard {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--mkt-line);
   border-radius: var(--radius-lg, 14px);
   background: var(--mkt-accent-wash);
