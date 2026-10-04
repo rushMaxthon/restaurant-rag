@@ -102,6 +102,7 @@ type LocationGeneralSettingsForm = {
   platform_fee: string;
   tax_percent: string;
   delivery_tax_percent: string;
+  gst_in_menu_prices: boolean;
   minimum_order_amount: string;
   estimated_delivery_time: string;
   estimated_pickup_time: string;
@@ -228,6 +229,7 @@ function toGeneralSettingsForm(location: RestaurantLocation): LocationGeneralSet
     platform_fee: String(location.platform_fee ?? 0),
     tax_percent: String(location.tax_percent ?? 5),
     delivery_tax_percent: String(location.delivery_tax_percent ?? 0),
+    gst_in_menu_prices: Boolean(location.gst_in_menu_prices),
     minimum_order_amount: String(location.minimum_order_amount),
     estimated_delivery_time: String(location.estimated_delivery_time),
     estimated_pickup_time: String(location.estimated_pickup_time),
@@ -605,6 +607,7 @@ export function LocationDetailPage({
           platform_fee: amountOrZero(generalSettingsForm.platform_fee),
           tax_percent: amountOrZero(generalSettingsForm.tax_percent),
           delivery_tax_percent: amountOrZero(generalSettingsForm.delivery_tax_percent),
+          gst_in_menu_prices: generalSettingsForm.gst_in_menu_prices,
           minimum_order_amount: Number(generalSettingsForm.minimum_order_amount),
           estimated_delivery_time: Number(generalSettingsForm.estimated_delivery_time),
           estimated_pickup_time: Number(generalSettingsForm.estimated_pickup_time),
@@ -1633,12 +1636,39 @@ export function LocationDetailPage({
                 }
               />
             </label>
+            <div className="field form-grid__wide">
+              <Checkbox
+                checked={generalSettingsForm.gst_in_menu_prices}
+                label="Add 18% GST to menu prices"
+                onChange={(checked) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, gst_in_menu_prices: checked } : current,
+                  )
+                }
+              />
+              <p className="hint-text">
+                On: every price on this branch&rsquo;s menu is shown to
+                customers 18% higher &mdash; a dish you priced at 100 is listed
+                and charged at 118, extras and sizes included &mdash; and no
+                separate tax on food is added at checkout. You keep typing your
+                own prices in the menu editor; the 18% is added for you. Off:
+                customers see the prices you typed, and &ldquo;Tax on food&rdquo;
+                below is added on the bill. Saving this changes the whole
+                menu&rsquo;s prices at once.
+              </p>
+            </div>
             <label className="field">
               <span>Tax on food (%)</span>
               <input
+                disabled={generalSettingsForm.gst_in_menu_prices}
                 max="100"
                 min="0"
                 step="0.01"
+                title={
+                  generalSettingsForm.gst_in_menu_prices
+                    ? "Not charged while 18% GST is included in menu prices"
+                    : undefined
+                }
                 type="number"
                 value={generalSettingsForm.tax_percent}
                 onChange={(event) =>
@@ -1647,6 +1677,11 @@ export function LocationDetailPage({
                   )
                 }
               />
+              {generalSettingsForm.gst_in_menu_prices ? (
+                <small className="hint-text">
+                  Not charged while 18% GST is included in menu prices.
+                </small>
+              ) : null}
             </label>
             <label className="field">
               <span>Tax on delivery (%)</span>

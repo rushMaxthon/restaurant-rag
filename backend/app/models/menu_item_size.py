@@ -27,6 +27,8 @@ class MenuItemSize(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    #: What the owner typed. See `MenuItem.base_price`.
+    base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 

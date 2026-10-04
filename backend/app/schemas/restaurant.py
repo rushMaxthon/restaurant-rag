@@ -449,6 +449,9 @@ class RestaurantLocationBase(BaseModel):
     tax_percent: Decimal = Field(default=Decimal("5.00"), ge=0, le=100)
     #: Percent on the delivery fee, at its own rate.
     delivery_tax_percent: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    #: Menu prices already contain 18% GST, and `tax_percent` is not charged
+    #: on top. Flipping it rewrites every price the branch sells at.
+    gst_in_menu_prices: bool = False
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     estimated_delivery_time: int = Field(default=30, ge=1, le=240)
     estimated_pickup_time: int = Field(default=20, ge=1, le=240)
@@ -499,6 +502,7 @@ class RestaurantLocationUpdate(BaseModel):
     platform_fee: Decimal | None = Field(default=None, ge=0)
     tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    gst_in_menu_prices: bool | None = None
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)
@@ -563,6 +567,7 @@ class RestaurantLocationGeneralSettingsUpdate(BaseModel):
     platform_fee: Decimal | None = Field(default=None, ge=0)
     tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    gst_in_menu_prices: bool | None = None
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)

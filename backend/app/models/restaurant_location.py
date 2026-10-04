@@ -91,6 +91,13 @@ class RestaurantLocation(TimestampMixin, Base):
     delivery_tax_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
     )
+    #: Whether this branch's menu prices already contain 18% GST. On, the
+    #: customer sees and pays the typed price plus 18%, and `tax_percent` is
+    #: not charged on top — the two are alternatives, never a sum. The prices
+    #: themselves are rewritten when this moves; see services/menu_pricing.py.
+    gst_in_menu_prices: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     minimum_order_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
