@@ -30,11 +30,17 @@ export function ChargesBreakdown({
   charges,
   money,
   label = "Taxes and charges",
+  unknownText,
 }: {
   charges: OrderCharges | null | undefined;
   /** The caller's currency formatter, so this never guesses a symbol. */
   money: (amount: number) => string;
   label?: string;
+  /**
+   * What to print in place of the figure while there is no bill to print.
+   * Without it the row said 0, which is a claim: nothing is charged.
+   */
+  unknownText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
@@ -65,7 +71,7 @@ export function ChargesBreakdown({
 
   return (
     <div className="relative" ref={holder}>
-      <div className="flex justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <dt className="text-muted">
           {expandable ? (
             <button
@@ -80,7 +86,11 @@ export function ChargesBreakdown({
             label
           )}
         </dt>
-        <dd className="money font-semibold">{money(Number(charges?.total ?? 0))}</dd>
+        {charges || !unknownText ? (
+          <dd className="money font-semibold">{money(Number(charges?.total ?? 0))}</dd>
+        ) : (
+          <dd className="text-right text-xs text-muted">{unknownText}</dd>
+        )}
       </div>
 
       {open && expandable && (

@@ -378,7 +378,7 @@ export const ROUTES: RouteDef[] = [
     id: "tenants",
     pattern: "/tenants",
     roles: ADMIN_ONLY,
-    nav: { section: "Platform", label: "Storefront apps", icon: Building2 },
+    nav: { section: "Platform", label: "Tenants", icon: Building2 },
     render: (ctx) => (
       <TenantsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
@@ -627,7 +627,13 @@ export const ROUTES: RouteDef[] = [
     id: "users",
     pattern: "/users",
     roles: BOTH,
-    nav: { section: "Manage", label: "Users", icon: Users },
+    nav: {
+      section: "Manage",
+      label: "Users",
+      icon: Users,
+      // An owner is shown their customers and nobody else, and the page says so.
+      labelFor: (role) => (role === "OWNER" ? "Customers" : "Users"),
+    },
     render: (ctx) => (
       <AdminUsersPage
         currentUserId={ctx.user.id}
@@ -664,7 +670,7 @@ export const ROUTES: RouteDef[] = [
     id: "settings",
     pattern: "/settings",
     roles: BOTH,
-    nav: { section: "System", label: "Display settings", icon: SlidersHorizontal },
+    nav: { section: "System", label: "Settings", icon: SlidersHorizontal },
     render: (ctx) => <SettingsPage onToast={ctx.pushToast} />,
   },
 ];

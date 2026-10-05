@@ -107,7 +107,7 @@ export function AILogsPage({ token, onToast }: AILogsPageProps) {
         help="ai-logs"
         eyebrow="RAG monitoring"
         title="AI logs"
-        description="Inspect user prompts, retrieval breadth, suggestion output, and response quality across the AI layer."
+        description="What customers asked the food chat, what it found on the menu, and what it answered."
       />
 
       <section className="ai-stats" aria-label="Trace summary">

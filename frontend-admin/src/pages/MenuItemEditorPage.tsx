@@ -402,10 +402,10 @@ export function MenuItemEditorPage({
         title={isEditing ? `Edit ${item?.name ?? "menu item"}` : "Add menu item"}
         description={
           isEditing
-            ? "Update pricing, launch details, sizes, and customization groups without leaving the dashboard."
+            ? "Change the price, photo, sizes and the choices a customer can make."
             : isMultiLocationCreate
-              ? "Create a menu item once and publish it to every selected branch in a single action."
-              : "Create a new menu item for this location with the same catalog structure used across the admin workspace."
+              ? "Add a dish once and put it on the menu at every branch you select."
+              : "Add a new dish to this branch's menu."
         }
         actions={
           <button

@@ -249,7 +249,7 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
         help="notifications"
         eyebrow="Messaging"
         title="Notification Center"
-        description="Broadcast customer, owner, and operational updates from one Firebase-backed workspace."
+        description="Send a push notification to phones, and see what was sent recently."
       />
 
       <section className="ntf-layout">

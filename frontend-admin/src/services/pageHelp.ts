@@ -20,7 +20,8 @@ import type { UserRole } from "../types/app";
 type PerRole = string | { ADMIN: string; OWNER: string };
 
 interface PageHelpEntry {
-  title: string;
+  /** The page's own heading, which for a few pages differs by role. */
+  title: PerRole;
   what: PerRole;
   who: PerRole;
   action: PerRole;
@@ -211,7 +212,7 @@ export const PAGE_HELP = {
     action: "Open a combo to see what is in it and why it was suggested. Move it to Live so customers see it, or archive it to take it away.",
   },
   users: {
-    title: "Users",
+    title: { ADMIN: "Users", OWNER: "Customers" },
     what: {
       ADMIN: "Every account on the platform: admins, owners, kitchen logins and customers.",
       OWNER: "The customers who signed up in your restaurant's app.",
@@ -290,7 +291,7 @@ function forRole(value: PerRole, role: UserRole): string {
 export function pageHelp(id: PageHelpId, role: UserRole): PageHelpCopy {
   const entry: PageHelpEntry = PAGE_HELP[id];
   return {
-    title: entry.title,
+    title: forRole(entry.title, role),
     what: forRole(entry.what, role),
     who: forRole(entry.who, role),
     action: forRole(entry.action, role),

@@ -167,7 +167,7 @@ export function OrderSummary({
         })}
         {/* One row that opens into the parts. Falls back to a plain,
             unexpandable line when the server sent no breakdown. */}
-        <ChargesBreakdown charges={charges} money={money} />
+        <ChargesBreakdown charges={charges} money={money} unknownText="Worked out at payment" />
       </dl>
 
       {isDelivery && quotedByCourier ? (

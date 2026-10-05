@@ -48,6 +48,7 @@ import {
 } from "@/lib/delivery-address";
 import { useRequireAuth } from "@/lib/require-auth";
 import {
+  useCartCharges,
   useCreateOrder,
   useDeliveryQuote,
   usePaymentConfig,
@@ -350,6 +351,9 @@ function Checkout() {
   // silently picks whichever reading scores best. The form already has the
   // parts, so flattening them and asking the server to take them apart again
   // loses accuracy for nothing.
+  // Beside the quote, above the early returns, because it is a hook. What it
+  // is for is explained where it is read.
+  const chargesPreview = useCartCharges(s.orderLocation?.id, s.subtotal);
   const deliveryQuote = useDeliveryQuote(
     s.orderLocation?.id,
     addressIsQuotable
@@ -474,8 +478,20 @@ function Checkout() {
   // customer. The 5% this page used to multiply by is gone: it was a guess
   // that happened to match the old hardcoded rate, and it would have quietly
   // lied the moment a restaurant set its own.
-  const charges = deliveryKnown ? (deliveryQuote.data?.charges ?? null) : null;
-  const tax = charges ? Number(charges.total) : s.subtotal * 0.05;
+  //
+  // That paragraph was true of the row and not of the total. Until an address
+  // was typed `charges` was null, so the row printed 0 — and the line below
+  // still added `subtotal * 0.05` into "So far". The bill read Subtotal 99,
+  // Taxes and charges 0, So far 103.95: a total nobody could add up to, on
+  // the screen where they are about to pay it.
+  //
+  // Before the address there is still a real answer for everything except the
+  // trip: the cart asks the server for it, and this asks the same question.
+  // With no answer at all the row says so and the total counts nothing for it.
+  const charges = deliveryKnown
+    ? (deliveryQuote.data?.charges ?? null)
+    : (chargesPreview.data?.charges ?? null);
+  const tax = charges ? Number(charges.total) : 0;
   // Delivery is in the total only once it is known. A total that quietly counts
   // an unknown fee as zero is a number the customer will be asked to pay more
   // than.

@@ -322,7 +322,7 @@ export function RestaurantDetailPage({
           { key: "locations", label: "Locations", icon: Eye },
           {
             key: "generated_combos",
-            label: "Generated Combos",
+            label: "Combo suggestions",
             icon: Layers3,
           },
           { key: "menu", label: "Menu Items", icon: UtensilsCrossed },

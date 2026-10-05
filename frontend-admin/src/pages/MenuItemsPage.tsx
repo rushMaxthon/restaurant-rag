@@ -487,8 +487,8 @@ export function MenuItemsPage({
         title="Menu items"
         description={
           isAdmin
-            ? "Same menu workspace, but with full platform visibility across all restaurants."
-            : `Same menu workspace, filtered automatically to ${restaurant?.name ?? "your assigned restaurant"}.`
+            ? "Every dish, across every restaurant."
+            : `Every dish at ${restaurant?.name ?? "your restaurant"}.`
         }
       />
 

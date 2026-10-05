@@ -380,7 +380,7 @@ export function PreferencesPage({ token, role, onToast }: PreferencesPageProps) 
     <PageIntro
       help="preferences"
       eyebrow="Preferences"
-      title="Onboarding questions"
+      title="Taste questions"
       description={
         isPlatformAdmin
           ? 'Asked in every restaurant’s app unless an owner hides one for themselves. Changes reach customers immediately — no app release.'
