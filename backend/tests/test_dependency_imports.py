@@ -72,6 +72,7 @@ class ImportOrderTests(unittest.TestCase):
         expected = {
             "app.tasks.ai_offers.generate_ai_offers_task",
             "app.tasks.ai_recommendations.generate_ai_recommendations_task",
+            "app.tasks.delivery.cancel_order_delivery_task",
             "app.tasks.delivery.dispatch_order_task",
             "app.tasks.delivery.refresh_deliveries_task",
             "app.tasks.embed.backfill_menu_embeddings",

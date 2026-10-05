@@ -40,7 +40,7 @@ from app.services.auth import (
 )
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
-from app.services.delivery.quoting import attempt_quote, fee_from, points_for, usable_in
+from app.services.delivery.quoting import attempt_quote, before_delivery_tax, fee_from, points_for, usable_in
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services import order_charges
 from app.services.live_orders import build_live_board
@@ -240,6 +240,10 @@ def quote_delivery(
         )
 
     fee = fee_from(quote)
+    if fee is not None:
+        # The same step the order path takes, or the checkout would quote one
+        # delivery fee and the order would charge another.
+        fee = before_delivery_tax(fee, location)
     if fee is None:
         # Unserviceable, or priced at nothing. The branch's fee stands and the
         # flag travels, so the page can warn without the fee disappearing.

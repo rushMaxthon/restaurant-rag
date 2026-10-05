@@ -23,6 +23,7 @@ from unittest import mock
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.config import get_settings  # noqa: E402
+from app.services import order_charges  # noqa: E402
 from app.services.delivery import quoting  # noqa: E402
 from app.services.delivery.base import DeliveryProviderError, DeliveryQuote  # noqa: E402
 from app.services.delivery.pidge_provider import PidgeProvider  # noqa: E402
@@ -82,6 +83,69 @@ class ChoosingTheFigureToPrint(unittest.TestCase):
 
     def test_one_end_of_the_band_is_enough(self) -> None:
         self.assertEqual(quoting.fee_from(_quote(max_cost=None)), Decimal("67.04"))
+
+
+class TheCourierHasAlreadyChargedTheTax(unittest.TestCase):
+    """A courier's figure contains GST. The bill must not add it again.
+
+    Pidge quotes what it will invoice, and that invoice is inclusive of 18%.
+    The bill has its own "GST on delivery fee" line, worked out from the
+    branch's rate — so charging the courier's figure as the fee taxed the same
+    delivery twice: a trip Pidge prices at 59.00 cost the customer 69.62.
+    """
+
+    def _branch(self, rate: str) -> SimpleNamespace:
+        return SimpleNamespace(delivery_tax_percent=Decimal(rate))
+
+    def _billed(self, branch, fee: Decimal) -> Decimal:
+        charges = order_charges.for_location(
+            branch, subtotal=Decimal("0.00"), delivery_fee=fee, discount_amount=Decimal("0.00")
+        )
+        return charges.delivery_fee + charges.delivery_tax
+
+    def test_the_tax_is_taken_out_of_the_fee(self) -> None:
+        fee = quoting.before_delivery_tax(Decimal("59.00"), self._branch("18.00"))
+        self.assertEqual(fee, Decimal("50.00"))
+
+    def test_fee_plus_its_tax_is_what_the_courier_charges(self) -> None:
+        branch = self._branch("18.00")
+        self.assertEqual(
+            self._billed(branch, quoting.before_delivery_tax(Decimal("59.00"), branch)),
+            Decimal("59.00"),
+        )
+
+    def test_it_is_never_more_than_a_paisa_from_the_courier(self) -> None:
+        # Exact is not always on offer. A fee and 18% of it, each rounded to
+        # the paisa, cannot add up to 10.00 at all: 8.47 makes 9.99 and 8.48
+        # makes 10.01. So the promise is the nearest paisa, for every figure.
+        branch = self._branch("18.00")
+        exact = 0
+        for paise in range(1000, 30000, 7):
+            courier = Decimal(paise) / 100
+            billed = self._billed(branch, quoting.before_delivery_tax(courier, branch))
+            self.assertLessEqual(abs(billed - courier), Decimal("0.01"), f"courier charged {courier}")
+            exact += billed == courier
+        # And exact wherever it can be, which is most of them.
+        self.assertGreater(exact, 2000)
+
+    def test_a_branch_that_adds_no_delivery_tax_charges_the_figure_as_it_is(self) -> None:
+        # Nothing is added later, so nothing may be taken out now: that would
+        # hand the customer the tax and leave the platform paying it.
+        for rate in ("0.00",):
+            self.assertEqual(
+                quoting.before_delivery_tax(Decimal("59.00"), self._branch(rate)), Decimal("59.00")
+            )
+        self.assertEqual(
+            quoting.before_delivery_tax(Decimal("59.00"), SimpleNamespace()), Decimal("59.00")
+        )
+
+    def test_the_order_path_charges_the_fee_before_tax(self) -> None:
+        branch = _Branch()
+        branch.delivery_tax_percent = Decimal("18.00")
+        quote = _quote(min_cost=Decimal("59.00"), max_cost=Decimal("59.00"))
+        with mock.patch.object(quoting, "quote_for", return_value=quote):
+            fee = quoting.delivery_fee_for(branch, "12 Some Street", currency="INR")
+        self.assertEqual(fee, Decimal("50.00"))
 
 
 class WhenTheQuoteCannotBeUsed(unittest.TestCase):

@@ -260,6 +260,26 @@ distance formula of our own. The only figures that reach a customer are the
 branch's own fee or the courier's own quote — the stand-in is in the
 COORDINATES, never in the price.
 
+### The courier's figure already contains GST
+
+Pidge quotes what it will invoice, and that is inclusive of 18%. The bill has
+its own "GST on delivery fee" line at the branch's `delivery_tax_percent`, so
+charging the quote as the fee taxed one delivery twice — a 59.00 trip reached
+the customer as 69.62.
+
+`quoting.before_delivery_tax` takes the tax back out before the fee is stored:
+59.00 becomes a fee of 50.00, the tax line adds 9.00, and the customer pays
+what the courier charges. Both the quote endpoint and `create_order` go
+through it, so the checkout and the order cannot disagree.
+
+It uses the branch's own rate, and takes nothing out when that rate is zero —
+which it is by default. So for the customer to see the split, the branch must
+have `delivery_tax_percent` set to 18. It is never applied to the branch's
+flat fee, which is a number the owner typed.
+
+Checked live on 2026-10-05 against Bhagwati Bakery: courier 50.00, fee 42.37,
+GST 7.63.
+
 ## The tracking link is a code, not a URL
 
 Confirmed by Pidge directly. Their webhook carries a short code:
