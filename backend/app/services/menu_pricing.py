@@ -91,6 +91,23 @@ def sees_typed_prices(viewer: Any) -> bool:
     return str(getattr(viewer, "role", "")) in {"ADMIN", "OWNER"}
 
 
+def sees_commission_rate(viewer: Any) -> bool:
+    """Whether a response to `viewer` may carry the platform's rate itself.
+
+    The platform admin, and nobody else. An owner was sent it too, and their
+    branch page said "10% commission - added to menu prices" on a tile. The
+    rate is the platform's commercial term with each restaurant, set per
+    branch; it is not the owner's to read off a dashboard, any more than it
+    was theirs to change.
+
+    Narrower than `sees_typed_prices` on purpose. An owner still has to be
+    handed the price they typed: their editor loads it, and loading the
+    listed price instead would mark the dish up again on every save.
+    """
+
+    return str(getattr(viewer, "role", "")) == "ADMIN"
+
+
 def listed_price(entered: Any, *, commission_percent: Any) -> Decimal:
     """What a customer pays for something the owner priced at `entered`."""
 
@@ -187,6 +204,7 @@ __all__ = [
     "listed_price",
     "relist_menu_item",
     "reprice_location",
+    "sees_commission_rate",
     "sees_typed_prices",
     "stamp_entered_prices",
 ]

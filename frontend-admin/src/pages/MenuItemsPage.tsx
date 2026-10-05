@@ -28,6 +28,7 @@ import type {
   RestaurantLocation,
   UserRole,
 } from "../types/app";
+import { menuListPrice } from "../services/menuPrice";
 
 interface MenuItemsPageProps {
   token: string;
@@ -142,7 +143,8 @@ export function MenuItemsPage({
     category: item.category,
     cuisineType: item.cuisine_type,
     description: item.description,
-    price: item.price,
+    // The typed price for an owner - see `menuListPrice`.
+    price: menuListPrice(item, role),
     launchedAt: item.launched_at,
     isNewLaunch: item.is_new_launch,
     isNew: item.is_new,

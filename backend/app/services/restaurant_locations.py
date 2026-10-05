@@ -926,7 +926,7 @@ def build_location_response(
             # to nobody else; this route also answers the storefront.
             "commission_percent": (
                 location.commission_percent
-                if menu_pricing.sees_typed_prices(viewer)
+                if menu_pricing.sees_commission_rate(viewer)
                 else None
             ),
             "fulfillment_slots": (

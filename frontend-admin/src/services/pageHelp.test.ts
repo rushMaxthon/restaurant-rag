@@ -26,9 +26,15 @@ describe("pageHelp", () => {
     expect(pageHelp("orders", "ADMIN").what).toMatch(/every restaurant/i);
   });
 
-  it("tells an owner the commission is not theirs to change", () => {
-    expect(pageHelp("location-detail", "OWNER").action).toMatch(/commission/i);
+  it("mentions the commission to the platform admin and to nobody else", () => {
     expect(pageHelp("location-detail", "ADMIN").action).toMatch(/commission/i);
+    expect(pageHelp("menu-item-editor", "ADMIN").action).toMatch(/commission/i);
+    // The rate is the platform's own figure. An owner's help text naming it
+    // would tell them what the hidden tile no longer does.
+    for (const id of IDS) {
+      const help = pageHelp(id, "OWNER");
+      expect(`${help.what} ${help.who} ${help.action}`, id).not.toMatch(/commission/i);
+    }
   });
 
   it("falls back to the owner's words for a role with no copy of its own", () => {

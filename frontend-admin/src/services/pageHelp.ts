@@ -112,7 +112,7 @@ export const PAGE_HELP = {
     },
     action: {
       ADMIN: "Change settings and press Save. Changing the commission re-prices every menu item at this branch straight away.",
-      OWNER: "Change settings and press Save. The commission is set by the platform, so you can see it here but not change it.",
+      OWNER: "Change settings and press Save. Changes to hours, delivery and fees apply to new orders straight away.",
     },
   },
   "menu-items": {
@@ -131,7 +131,10 @@ export const PAGE_HELP = {
     title: "Menu item editor",
     what: "The form for one dish: name, description, photo, price, sizes and the choices a customer can make.",
     who: "Whoever manages the menu: the owner, or the platform admin on their behalf.",
-    action: "Fill in the form and press Save. Type your own price: the platform commission is added on top of it when the dish is saved. Stock left caps how many can be sold.",
+    action: {
+      ADMIN: "Fill in the form and press Save. Type the restaurant's own price: the platform commission is added on top when the dish is saved. Stock left caps how many can be sold.",
+      OWNER: "Fill in the form and press Save. Set the price, photo, sizes and options. Stock left caps how many can be sold.",
+    },
   },
   orders: {
     title: "Orders",

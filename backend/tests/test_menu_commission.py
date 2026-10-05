@@ -234,6 +234,24 @@ class SavingTheBranchTests(unittest.TestCase):
         self.assertEqual(result, [])
         self.assertTrue(branch.gst_in_menu_prices)
 
+    def test_only_the_platform_admin_is_told_the_rate(self) -> None:
+        # The owner's branch page had a tile reading "10% commission". The
+        # rate is the platform's term with the restaurant, not a figure for
+        # the owner's dashboard.
+        from app.services.menu_pricing import sees_commission_rate
+
+        self.assertTrue(sees_commission_rate(SimpleNamespace(role=UserRole.ADMIN)))
+        for role in (UserRole.OWNER, UserRole.KITCHEN, UserRole.CUSTOMER):
+            with self.subTest(role=role):
+                self.assertFalse(sees_commission_rate(SimpleNamespace(role=role)))
+
+    def test_an_owner_is_still_handed_the_price_they_typed(self) -> None:
+        # Hiding the rate must not hide this: the editor loads the typed
+        # price, and loading the listed one marks the dish up on every save.
+        from app.services.menu_pricing import sees_typed_prices
+
+        self.assertTrue(sees_typed_prices(SimpleNamespace(role=UserRole.OWNER)))
+
     def test_an_owner_may_not_change_the_platforms_rate(self) -> None:
         branch = SimpleNamespace(commission_percent=D("10.00"), delivery_fee=D("0"))
         with self.assertRaises(HTTPException) as refused:
@@ -277,8 +295,10 @@ class WhatACustomerIsSentTests(unittest.TestCase):
     def test_nobody_is_a_customer(self) -> None:
         # An anonymous storefront request, and a serializer called without a
         # viewer by code written later: both must hide, not publish.
-        from app.services.menu_pricing import sees_typed_prices
+        from app.services.menu_pricing import sees_commission_rate, sees_typed_prices
 
+        self.assertFalse(sees_commission_rate(None))
+        self.assertFalse(sees_commission_rate(mock.Mock()))
         self.assertFalse(sees_typed_prices(None))
         self.assertFalse(sees_typed_prices(mock.Mock()))
 

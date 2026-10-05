@@ -970,10 +970,15 @@ export function LocationDetailPage({
               {location.gst_in_menu_prices ? "No tax added at checkout" : "Added at checkout"}
             </span>
           </div>
-          <div className="restaurant-metric-card">
-            <strong>{Number(location.commission_percent ?? 10)}% commission</strong>
-            <span>Added to menu prices</span>
-          </div>
+          {/* The platform admin's own figure. The server does not send an
+              owner the rate at all; without this guard the tile would still
+              draw, reading the fallback 10 as if it were theirs. */}
+          {role === "ADMIN" ? (
+            <div className="restaurant-metric-card">
+              <strong>{Number(location.commission_percent ?? 10)}% commission</strong>
+              <span>Added to menu prices</span>
+            </div>
+          ) : null}
           <div className="restaurant-metric-card">
             <strong>{location.is_open ? "Open" : "Closed"}</strong>
             <span>{location.is_active ? "Active branch" : "Inactive branch"}</span>
@@ -1688,14 +1693,13 @@ export function LocationDetailPage({
                 }
               />
             </label>
+            {role === "ADMIN" ? (
             <label className="field">
               <span>Our commission (%)</span>
               <input
-                disabled={role !== "ADMIN"}
                 max="100"
                 min="0"
                 step="0.01"
-                title={role !== "ADMIN" ? "Set by the platform admin" : undefined}
                 type="number"
                 value={generalSettingsForm.commission_percent}
                 onChange={(event) =>
@@ -1707,12 +1711,11 @@ export function LocationDetailPage({
               <span className="hint-text">
                 Added to every menu price on this branch: a dish typed at 100
                 is shown to customers at{" "}
-                {(100 + amountOrZero(generalSettingsForm.commission_percent)).toFixed(2)}.
-                {role === "ADMIN"
-                  ? " Saving a new rate updates every price on the menu."
-                  : " Set by the platform admin."}
+                {(100 + amountOrZero(generalSettingsForm.commission_percent)).toFixed(2)}. Saving a
+                new rate updates every price on the menu.
               </span>
             </label>
+            ) : null}
             <div className="field form-grid__wide">
               <Checkbox
                 checked={generalSettingsForm.gst_in_menu_prices}
