@@ -20,6 +20,7 @@ Marketing Hub for owner-run campaigns and a kitchen order board.
 | `frontend-customer/` | customer web app | TanStack Start + React 19, Tailwind, shadcn/Radix, TanStack Query (SSR) |
 | `frontend-admin/` | shared ADMIN + OWNER dashboard | React 19 + Vite, only `lucide-react` + fontsource |
 | `frontend-kitchen/` | the kitchen order board (KDS) | React 19 + Vite, TanStack Query, hand-written CSS, `lucide-react` + fontsource |
+| `kitchen/` | the kitchen board as a native tablet/phone app | React Native 0.85 CLI, React Navigation native stack, AsyncStorage, Socket.IO, Ionicons, react-native-sound |
 | `mobile/` | customer app | React Native 0.85 CLI, React Navigation, Firebase phone auth, Stripe RN, Notifee |
 
 ---
@@ -387,6 +388,20 @@ below) invalidates them the moment an order moves; the poll is the safety net â€
 Polling / Not updating accordingly. The rules worth testing are pure and live
 in `src/lib/board.ts` and `src/lib/realtime.ts`.
 
+### The native kitchen app (`kitchen/`)
+
+The same board as `frontend-kitchen`, redesigned for touch rather than
+ported: four columns on a landscape tablet, stage tabs on a phone, a
+dedicated order screen, Completed orders pushed over the board, Settings
+with the branch picker. Same API, same rules (`src/utils/board.ts` and
+friends mirror `frontend-kitchen/src/lib/`), so a change to the flow,
+thresholds or wording belongs in both. Its folder layout copies `mobile/`;
+no code is shared with it. Components are arrow functions. Read
+`kitchen/docs/architecture.md` before changing native setup â€” the chime
+file, the explicit AVFoundation link and the Ionicons fonts each fail
+silently or at link time when missed. Tested with jest against the real
+store and navigation, with only `src/services` mocked.
+
 ---
 
 ## Realtime (Socket.IO)
@@ -451,6 +466,7 @@ changed" (`onChange(null)`).
 - schema -> `backend/app/models/` + `backend/alembic/versions/`
 - admin UI -> `frontend-admin/src/pages/`, `frontend-admin/src/components/`
 - kitchen board -> `frontend-kitchen/src/` (rules in `src/lib/board.ts`)
+- native kitchen app -> `kitchen/src/` (rules in `src/utils/`)
 - customer web UI -> `frontend-customer/src/pages/`, `.../components/`
 - mobile UI -> `mobile/src/screens/`, `.../components/`, `.../navigation/`
 

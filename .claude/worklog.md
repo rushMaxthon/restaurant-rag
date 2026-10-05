@@ -17,6 +17,109 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 — kitchen/: the whole native kitchen app
+
+**Goal:** design the complete native Kitchen app with `frontend-kitchen` as
+the functional reference — board, order detail, advancing, completed orders,
+settings, every state — redesigned for touch, in the mobile-style structure.
+
+**Changed (all in `kitchen/`, staged, not committed):**
+- Rules ported as the app's own modules in `src/utils/` (board, metrics,
+  history, realtime): flow + verbs, 24h live window, oldest-first, overflow
+  count, urgency thresholds, half-and-half rows, payment wording. Web's
+  "HIGH" badge is "SOON" here.
+- Data layer: `services/` (api with X-Total-Count + 401 hook + 15s timeout,
+  orders, restaurants, storage, realtime socket, sound, orderEvents bus),
+  `hooks/` (usePolling, useBoard, useAdvanceOrder, useOrder, useOrderHistory,
+  useNewOrderAlerts, useRealtime…), store persists session/sound/branch.
+- Screens: board (4 columns ≥900pt, stage tabs below; 2-up 600–900), order
+  detail (two panes ≥768), completed orders (search, infinite scroll), settings
+  (branch picker, sound + test alert, connection, sign-out confirm), login
+  (expired notice), splash.
+- Deps (mobile's versions): async-storage, react-native-vector-icons,
+  socket.io-client; plus react-native-sound. Chime WAV generated into
+  Android raw + iOS bundle; AVFoundation linked; Ionicons fonts; phone
+  landscape allowed.
+- `CLAUDE.md` gained a `kitchen/` row and section.
+
+**Verified:** tsc, eslint, jest 15 suites / 107 tests (board states, advance +
+refusal, alert silent on first load, overflow, admin-without-restaurant,
+history today vs search, read-only completed order, branch picker, sound
+persistence, sign-out, 401 handling). iOS built and run on iPhone 16 Pro and a
+new "Kitchen iPad Pro 13" simulator against a throwaway mock API; every screen
+screenshotted. Visual QA caught and fixed: metrics strip filling half the
+iPad, tickets crushing "Hand to rider" in narrow columns, order codes
+truncated, scheduled orders reading "now", detail panes reversed, stage
+track overflowing.
+
+**Open:** Android never built. No keep-awake while the board is open. Not run
+against the real backend (only seeded logins are admin-without-restaurant and
+a customer). The simulators still hold a mock session (token "mock") — it
+will 401 against a real backend and land on login with the expired notice.
+
+**Learned:**
+- `usePolling` must rerun when its refresh callback changes, or a branch
+  switch / search waits a full poll — the jest suite caught it.
+- A horizontal ScrollView in a column grows to fill it; `flexGrow: 0`.
+- A ScrollView's own `flex` is not honoured as a row child; wrap it in a View.
+- `react-native-sound` 0.13 dropped `require()` assets and does not link
+  AVFoundation itself.
+
+## 2026-10-03 — kitchen/ (RN app) given mobile's file architecture
+
+**Goal:** lay out the new React Native kitchen app (`kitchen/`, untracked here,
+its own `.git`) on exactly the same structure as `mobile/` — root files, path
+aliases, `src/` folders, theme trio, colocated tests — with only
+kitchen-specific code inside. Nothing imported from or copied out of mobile.
+
+**Changed (all in `kitchen/`):** `App.tsx`; `babel.config.js` + `tsconfig.json`
+(mobile's eight aliases; added devDependency `babel-plugin-module-resolver`);
+`react-native.config.js`, `.env`/`.env.example` (no env loader, on purpose),
+`docs/architecture.md`; `.gitignore` restored from the template (it had been
+deleted in the working tree). `src/`: `theme.ts`/`themeBase.ts`/
+`themePalette.ts` (status colours) + tests, `components/` (+`board/`),
+`config/api.ts`, `data/boardColumns.ts`, `hooks/` (`useAppStore`,
+`useAppForegroundEffect`), `navigation/` (AppNavigator, navigationTypes,
+navigationService), `screens/{auth/login,board,orders/orderDetail,settings}`,
+`services/api.ts`, `store/AppStore.tsx`, `types/app.ts`, `utils/time.ts` + test.
+
+**Verified:** `tsc --noEmit`; `jest` 4 suites / 17 tests; `eslint` clean;
+`react-native bundle --platform ios` builds.
+
+**Later the same day:** nested `kitchen/.git` moved to
+`/Users/imac/data/kitchen-git-backup-2026-10-03`; `kitchen/` staged in the
+parent (not committed). Components converted to arrow functions (user
+preference). Navigation switched to React Navigation 7 native stack, in the
+user's layout: `navigation/stackNavigation/index.tsx` +
+`navigation/hooks/useNavigation.ts` (`RootStackParamList`,
+`useNavigationHook`, `useRouteHook`), screens default-exported through
+folder `index.ts`, `@navigation` alias, `MainActivity.onCreate(null)`,
+`pod install`. 5 suites / 19 tests.
+
+Login screen built: `POST /auth/login` (no bundle-id header, so staff are
+eligible), customer accounts refused client-side (`utils/auth.ts`), wrong
+password vs unreachable server worded apart, 15s request timeout. Wide
+layout (>=768) is brand panel + form; phone is header row + form. Seen on
+the iPhone 16 Pro simulator; the wide layout was NOT seen (simulator could not
+be rotated from the terminal). 7 suites / 38 tests.
+
+**Open:** AsyncStorage not installed (no `services/storage.ts`; sign-in does
+not survive a restart). No sign-out button yet. Wide layout unverified on a
+device. Screens are
+placeholders — no data fetching or order actions yet.
+
+**Learned:**
+- An alias named `@types/*` makes tsc fail with TS6137 (it is the
+  DefinitelyTyped namespace) — import `@/types/app`, which is what mobile does.
+- After changing `babel.config.js`, Metro keeps resolving with the old
+  transform cache: "Unable to resolve module @hooks/..." until `--reset-cache`.
+- `/auth/login` returns 401 for a deactivated account too — there is no
+  separate 403 to word differently, and no rate limiting (no 429).
+- `pod install` here dies with `Unicode Normalization not appropriate for
+  ASCII-8BIT` unless `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` is set.
+- Jest needs `@react-navigation` and `standard-navigation` added to
+  `transformIgnorePatterns` — they ship untranspiled ES modules.
+
 ## YYYY-MM-DD — short title
 
 **Goal:** what was asked.

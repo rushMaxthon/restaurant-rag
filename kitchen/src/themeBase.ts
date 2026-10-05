@@ -1,0 +1,79 @@
+import type { OrderStatus } from '@/types/app';
+import { STATUS_COLORS } from './themePalette';
+
+export type ThemePreference = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark';
+
+export interface ThemeColors {
+  background: string;
+  surface: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  accent: string;
+  // Text and spinners drawn on an accent-filled button.
+  onAccent: string;
+  inputBackground: string;
+  danger: string;
+  // Banner background behind danger-coloured text.
+  dangerSoft: string;
+  // "Due soon" tickets and special instructions — attention, not alarm.
+  warning: string;
+  warningSoft: string;
+  // A selected row, a positive state.
+  accentSoft: string;
+  // Chips, tracks and other quiet fills on a surface.
+  surfaceMuted: string;
+}
+
+export interface AppTheme {
+  mode: ThemeMode;
+  colors: ThemeColors;
+  status: Record<OrderStatus, string>;
+  spacing: (step: number) => number;
+}
+
+export const lightTheme: ThemeColors = {
+  background: '#F4F4F5',
+  surface: '#FFFFFF',
+  border: '#E4E4E7',
+  text: '#18181B',
+  textMuted: '#71717A',
+  // #15803D rather than the brighter #16A34A: white button text on the
+  // brighter green measures about 3.3:1, short of AA.
+  accent: '#15803D',
+  onAccent: '#FFFFFF',
+  inputBackground: '#FAFAFA',
+  danger: '#B91C1C',
+  dangerSoft: '#FEF2F2',
+  warning: '#B45309',
+  warningSoft: '#FFFBEB',
+  accentSoft: '#F0FDF4',
+  surfaceMuted: '#F4F4F5',
+};
+
+export const darkTheme: ThemeColors = {
+  background: '#09090B',
+  surface: '#18181B',
+  border: '#27272A',
+  text: '#FAFAFA',
+  textMuted: '#A1A1AA',
+  accent: '#22C55E',
+  onAccent: '#052E16',
+  inputBackground: '#09090B',
+  danger: '#FCA5A5',
+  dangerSoft: '#2A1215',
+  warning: '#FCD34D',
+  warningSoft: '#2A2110',
+  accentSoft: '#0F2A1A',
+  surfaceMuted: '#27272A',
+};
+
+export function createTheme(mode: ThemeMode): AppTheme {
+  return {
+    mode,
+    colors: mode === 'dark' ? darkTheme : lightTheme,
+    status: STATUS_COLORS,
+    spacing: step => step * 4,
+  };
+}
