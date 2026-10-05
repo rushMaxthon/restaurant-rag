@@ -10,6 +10,7 @@ had a bad minute.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 import uuid
 
 from app.config.celery import celery_app
@@ -153,6 +154,14 @@ def refresh_deliveries_task() -> dict[str, int]:
                 logger.warning("Could not refresh delivery %s: %s", row.id, error)
                 continue
             record(db, row, result)
+            # A rider on the road: where exactly. Pidge allows this once per
+            # 30 seconds per order, which a one-minute sweep stays inside.
+            if row.state in {DeliveryState.ASSIGNED.value, DeliveryState.PICKED_UP.value, DeliveryState.IN_TRANSIT.value}:
+                track = getattr(provider, "track", None)
+                point = track(row.provider_order_id) if track else None
+                if point is not None:
+                    row.rider_latitude, row.rider_longitude = point
+                    row.rider_location_at = datetime.now(UTC)
             if row.state != was:
                 changed += 1
                 logger.info("Delivery %s moved %s -> %s", row.id, was, row.state)

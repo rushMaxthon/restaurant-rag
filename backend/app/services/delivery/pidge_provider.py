@@ -394,9 +394,40 @@ class PidgeProvider:
             raw=body,
         )
 
-    def fetch(self, provider_order_id: str) -> DeliveryResult:
-        body = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
+    def fetch(self, provider_order_id: str, *, simulate: str | None = None) -> DeliveryResult:
+        """What Pidge says about one delivery now.
+
+        `simulate` is the sandbox's `dummy_status`: the same response, as it
+        would read at that stage of a trip ("fulfilled|picked up"). Pidge
+        honours it on staging only, and the caller refuses it anywhere else.
+        """
+
+        params = {"dummy_status": simulate} if simulate else None
+        body = self._call(
+            "GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}", params=params
+        )
         return self._read(body.get("data") or body)
+
+    def track(self, provider_order_id: str) -> tuple[float, float] | None:
+        """Where the rider is right now, or None.
+
+        Pidge rate-limits this to once per 30 seconds per order, across every
+        caller, so it is asked from the one-minute sweep and nowhere else. It
+        answers nulls before a rider moves and for a finished trip; both are
+        None here rather than a point at 0,0 in the sea off West Africa.
+        """
+
+        try:
+            body = self._call(
+                "GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}/fulfillment/tracking"
+            )
+        except DeliveryProviderError:
+            return None
+        location = ((body.get("data") or {}).get("location")) or {}
+        latitude, longitude = _float(location.get("latitude")), _float(location.get("longitude"))
+        if latitude is None or longitude is None:
+            return None
+        return latitude, longitude
 
     def cancel(self, provider_order_id: str) -> None:
         """Cancel the whole order at Pidge.
@@ -426,19 +457,78 @@ class PidgeProvider:
         rider = fulfillment.get("rider")
         rider = rider if isinstance(rider, dict) else {}
         fulfillment_status = fulfillment.get("status") or data.get("fulfillment_status")
+        state = state_for(fulfillment_status, data.get("status"))
+        # The pickup and drop blocks carry an `eta` from the moment a rider is
+        # assigned, and a `timestamp` once the event has happened. Read from
+        # the sandbox, not the Postman page: the fields this used to look for,
+        # `picked_up_at` and `delivered_at`, are not anything Pidge sends.
+        pickup = fulfillment.get("pickup") if isinstance(fulfillment.get("pickup"), dict) else {}
+        drop = fulfillment.get("drop") if isinstance(fulfillment.get("drop"), dict) else {}
+        timeline, located, failure = _timeline(fulfillment.get("logs"))
         return DeliveryResult(
             provider_order_id=str(data.get("id") or ""),
-            state=state_for(fulfillment_status, data.get("status")),
+            state=state,
             reference=str(data.get("reference_id") or ""),
             rider_name=str(rider.get("name") or ""),
             rider_mobile=str(rider.get("mobile") or ""),
             tracking_url=_tracking_url(data, fulfillment),
             distance_metres=_float(data.get("pickup_drop_distance")),
-            picked_up_at=_moment(fulfillment.get("picked_up_at")),
-            delivered_at=_moment(fulfillment.get("delivered_at")),
+            picked_up_at=_moment(pickup.get("timestamp")) or _moment(fulfillment.get("picked_up_at")),
+            # The drop block gets a timestamp on an RTO too - the rider "dropped"
+            # the food back at the restaurant. Only a delivery is a delivery.
+            delivered_at=(
+                _moment(drop.get("timestamp")) or _moment(fulfillment.get("delivered_at"))
+                if state == DeliveryState.DELIVERED
+                else None
+            ),
             provider_status=str(fulfillment_status or data.get("status") or ""),
             raw=data,
+            pickup_eta=_moment(pickup.get("eta")),
+            drop_eta=_moment(drop.get("eta")),
+            courier_charge=_money(fulfillment.get("delivery_charge")),
+            rider_latitude=located[0] if located else None,
+            rider_longitude=located[1] if located else None,
+            rider_location_at=located[2] if located else None,
+            failure_reason=failure if state == DeliveryState.FAILED else "",
+            timeline=timeline,
         )
+
+
+#: Where a trip went wrong, as opposed to a step along the way.
+_FAILURE_STATUSES = {"UNDELIVERED", "RTO_OUT_FOR_DELIVERY", "RTO_UNDELIVERED", "RTO_DELIVERED", "LOST", "DAMAGED", "DISPOSED"}
+
+
+def _timeline(
+    logs: Any,
+) -> tuple[list[dict[str, Any]], tuple[float, float, datetime | None] | None, str]:
+    """The courier's steps, the rider's last known point, and why it failed.
+
+    Pidge's `logs` hold every status with a time, a remark ("Start for
+    Pickup", "Customer reject order - DRTO") and the rider's position at that
+    moment. Returned oldest first. Duplicated statuses are kept: a rider who
+    reached the door twice did reach it twice.
+    """
+
+    steps: list[dict[str, Any]] = []
+    located: tuple[float, float, datetime | None] | None = None
+    failure = ""
+    for log in logs if isinstance(logs, list) else []:
+        if not isinstance(log, dict):
+            continue
+        status = str(log.get("status") or "").strip().upper()
+        if not status:
+            continue
+        at = _moment(log.get("timestamp"))
+        remark = str(log.get("remark") or "").strip()
+        steps.append({"status": status, "at": at.isoformat() if at else None, "remark": remark})
+        where = log.get("location") if isinstance(log.get("location"), dict) else {}
+        latitude, longitude = _float(where.get("latitude")), _float(where.get("longitude"))
+        if latitude is not None and longitude is not None:
+            located = (latitude, longitude, at)
+        if status in _FAILURE_STATUSES and remark and not failure:
+            failure = remark
+    steps.sort(key=lambda step: step["at"] or "")
+    return steps, located, failure
 
 
 def _money(value: Any) -> Decimal | None:

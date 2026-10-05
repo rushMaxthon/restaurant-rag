@@ -97,7 +97,7 @@ class TheBoardTests(unittest.TestCase):
         db = mock.Mock()
         db.scalars.return_value.all.return_value = list(deliveries)
         with mock.patch.object(live_orders, "list_orders", side_effect=fake_list_orders),                 mock.patch.object(live_orders, "count_live_orders_by_restaurant", side_effect=fake_counts), \
-                mock.patch.object(live_orders, "_as_card", side_effect=lambda order, delivery: SimpleNamespace(order=order, delivery=delivery)),                 mock.patch.object(live_orders, "LiveOrdersStage", side_effect=lambda **fields: SimpleNamespace(**fields)),                 mock.patch.object(live_orders, "LiveOrdersResponse", side_effect=lambda **fields: SimpleNamespace(**fields)):
+                mock.patch.object(live_orders, "_as_card", side_effect=lambda order, delivery, viewer=None: SimpleNamespace(order=order, delivery=delivery)),                 mock.patch.object(live_orders, "LiveOrdersStage", side_effect=lambda **fields: SimpleNamespace(**fields)),                 mock.patch.object(live_orders, "LiveOrdersResponse", side_effect=lambda **fields: SimpleNamespace(**fields)):
             board = live_orders.build_live_board(
                 db,
                 mock.Mock(),

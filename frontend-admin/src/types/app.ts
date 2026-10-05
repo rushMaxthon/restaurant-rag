@@ -1610,6 +1610,25 @@ export interface OrderDelivery {
   last_error: string;
   created_at: string;
   updated_at: string;
+  /** When the courier expects the rider at the restaurant, and at the door. */
+  pickup_eta?: string | null;
+  drop_eta?: string | null;
+  rider_latitude?: number | null;
+  rider_longitude?: number | null;
+  rider_location_at?: string | null;
+  /** Why the trip did not arrive, in the courier's words. */
+  failure_reason?: string;
+  /** Every step the courier reported, oldest first. */
+  timeline?: Array<{ status: string; at: string | null; remark: string }>;
+  /** 1 for the first rider, 2 after a re-book. */
+  attempt?: number;
+  /** What the courier invoices. Sent to the platform admin only. */
+  courier_charge?: number | string | null;
+  can_rebook?: boolean;
+  /** The server's answer: a rider booked, not yet collected, and the order still stands. */
+  can_cancel?: boolean;
+  /** Platform admin, on the courier's sandbox: the simulate buttons. */
+  can_simulate?: boolean;
 }
 
 

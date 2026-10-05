@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 #: still stands. Somebody decides what happens next; a status machine should
 #: not decide it by itself.
 _ORDER_STATUS_FOR = {
+    # The rider has the food, so it has left the kitchen. This used to wait
+    # for IN_TRANSIT, and Pidge reports PICKED_UP and OUT_FOR_DELIVERY a few
+    # seconds apart - except when the second push is lost, when the order sat
+    # in "Being prepared" while a rider rode it across town.
+    DeliveryState.PICKED_UP: OrderStatus.OUT_FOR_DELIVERY,
     DeliveryState.IN_TRANSIT: OrderStatus.OUT_FOR_DELIVERY,
     DeliveryState.DELIVERED: OrderStatus.DELIVERED,
 }
@@ -335,8 +340,47 @@ def cancel(db: Session, order: Order) -> OrderDelivery | None:
     return row
 
 
+#: Courier states a person can do nothing more about, as statuses Pidge
+#: reports. Read by `can_rebook`.
+_REBOOKABLE = {DeliveryState.FAILED.value, DeliveryState.CANCELLED.value}
+
+
+def _notify_after_commit(db: Session, order: Order, status: OrderStatus) -> None:
+    """Tell the customer their order moved, once the move is committed.
+
+    The same task a kitchen tap sends (`update_order_status`). Queued from
+    `after_commit` so a rolled-back record announces nothing, and swallowed
+    there because a broker that is down must not undo a delivery update.
+    """
+
+    from app.config.celery import celery_app
+
+    kwargs = {
+        "order_id": str(order.id),
+        "customer_id": str(order.customer_id),
+        "restaurant_id": str(order.restaurant_id),
+        "new_status": status.value,
+    }
+
+    def _send(_session: Session) -> None:
+        try:
+            celery_app.send_task("app.tasks.notifications.send_order_status_notification", kwargs=kwargs)
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not queue the status notification for order %s", order.id, exc_info=True)
+
+    event.listen(db, "after_commit", _send, once=True)
+
+
 def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDelivery:
-    """Write a courier's answer onto the delivery, and move the order if it should."""
+    """Write a courier's answer onto the delivery, and move the order if it should.
+
+    A move is made the way a kitchen tap makes one: an order status event
+    in the same transaction (history, the live boards, "Done today"), and a
+    notification to the customer after the commit. It used to set
+    `order.status` and nothing else, so a delivered order had no DELIVERED
+    event - it never appeared under Done today - and its customer was never
+    told the food had arrived.
+    """
 
     if result.provider_order_id:
         row.provider_order_id = result.provider_order_id
@@ -356,8 +400,142 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
         row.delivered_at = result.delivered_at
     if result.raw:
         row.raw = result.raw
-    if row.order is not None:
-        advance_order(row.order, result.state)
+    # Kept once learned: a later answer without them (the sandbox's, or a
+    # finished trip's) must not blank what the screen already showed.
+    if result.pickup_eta is not None:
+        row.pickup_eta = result.pickup_eta
+    if result.drop_eta is not None:
+        row.drop_eta = result.drop_eta
+    if result.courier_charge is not None:
+        row.courier_charge = result.courier_charge
+    if result.rider_latitude is not None and result.rider_longitude is not None:
+        if row.rider_location_at is None or result.rider_location_at is None or (
+            result.rider_location_at >= row.rider_location_at
+        ):
+            row.rider_latitude = result.rider_latitude
+            row.rider_longitude = result.rider_longitude
+            row.rider_location_at = result.rider_location_at
+    if result.timeline:
+        row.timeline = result.timeline
+    if result.failure_reason:
+        row.failure_reason = result.failure_reason
+    order = row.order
+    if order is not None:
+        before = order.status
+        if advance_order(order, result.state):
+            from app.services.order_events import record_order_status_event
+            from app.models.enums import OrderEventActor
+
+            record_order_status_event(
+                db,
+                order=order,
+                from_status=before,
+                to_status=order.status,
+                actor=OrderEventActor.SYSTEM,
+                note=f"courier: {(result.provider_status or result.state.value).lower()}",
+                metadata={"source": "courier", "provider": row.provider, "courier_status": result.provider_status},
+                occurred_at=(
+                    result.delivered_at
+                    if order.status == OrderStatus.DELIVERED and result.delivered_at
+                    else None
+                ),
+            )
+            _notify_after_commit(db, order, order.status)
+    return row
+
+
+def can_cancel(order: Order, row: OrderDelivery | None) -> bool:
+    """Whether a person may call this rider off.
+
+    Narrower than `cancel` itself, which the system path also uses for an
+    order it has just cancelled. A person is offered it only while the order
+    still stands and the food has not been collected - Pidge refuses after
+    that. Without the order check, an order closed by hand whose courier row
+    never moved past PENDING offered "Cancel rider" on a finished delivery.
+    """
+
+    if row is None or not row.provider_order_id:
+        return False
+    if row.state not in {DeliveryState.PENDING.value, DeliveryState.ASSIGNED.value}:
+        return False
+    return order.status not in {OrderStatus.DELIVERED, OrderStatus.CANCELLED}
+
+
+def can_rebook(order: Order, row: OrderDelivery | None) -> bool:
+    """Whether a new rider may be asked for: the last trip is over and the food is not."""
+
+    if row is None or row.state not in _REBOOKABLE:
+        return False
+    return order.status in {OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.OUT_FOR_DELIVERY}
+
+
+def rebook(db: Session, order: Order) -> OrderDelivery:
+    """Book another rider for an order whose delivery failed or was called off.
+
+    The row is reused - `order_id` is unique, which is what stops two riders
+    being booked by accident - and its attempt number goes up, because Pidge
+    refuses a reference it has seen before. The old trip's id is kept in
+    `raw` history only through the courier's own records; this row now
+    describes the new one.
+
+    Every guard on a first booking applies: the dispatch flag, the live-host
+    interlock, a delivery order that is still standing. The caller commits.
+    """
+
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    if not can_rebook(order, row):
+        raise DeliveryProviderError("This order's delivery cannot be re-booked now.", retryable=False)
+    if not should_dispatch(order):
+        raise DeliveryProviderError(
+            "Rider booking is switched off on this server, so no rider can be booked.", retryable=False
+        )
+    provider = delivery_provider()
+    if provider is None:
+        raise DeliveryProviderError("No delivery partner is configured.", retryable=False)
+
+    attempt = (row.attempt or 1) + 1
+    request = build_request(order)
+    request.reference = f"{order.id}-{attempt}"
+    try:
+        result = provider.create(request)
+    except DeliveryProviderError as error:
+        row.last_error = str(error)[:2000]
+        raise
+    row.attempt = attempt
+    row.state = DeliveryState.PENDING.value
+    row.rider_name = row.rider_mobile = row.tracking_url = row.failure_reason = row.last_error = ""
+    row.rider_latitude = row.rider_longitude = row.rider_location_at = None
+    row.picked_up_at = row.delivered_at = row.pickup_eta = row.drop_eta = None
+    row.courier_charge = None
+    row.timeline = []
+    record(db, row, result)
+    logger.info("Re-booked order %s as %s (attempt %s)", order.id, result.provider_order_id, attempt)
+    return row
+
+
+def simulate_allowed() -> bool:
+    """Only against the courier's sandbox, where nothing reaches a rider."""
+
+    return _is_sandbox_host(get_settings().pidge_base_url)
+
+
+def simulate(db: Session, order: Order, courier_status: str) -> OrderDelivery:
+    """Make the sandbox say a trip reached `courier_status`, and record it.
+
+    For testing and demonstrating the whole flow without a rider: it goes
+    through `record` exactly as a real update does, so the order moves, the
+    history is written and the customer is notified. Refused on any host but
+    the sandbox. The caller commits.
+    """
+
+    if not simulate_allowed():
+        raise DeliveryProviderError("Simulating is only possible on the courier's sandbox.", retryable=False)
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    provider = delivery_provider()
+    if row is None or not row.provider_order_id or provider is None or not hasattr(provider, "fetch"):
+        raise DeliveryProviderError("This order has no courier booking to simulate.", retryable=False)
+    result = provider.fetch(row.provider_order_id, simulate=courier_status)
+    record(db, row, result)
     return row
 
 
@@ -384,4 +562,7 @@ def advance_order(order: Order, state: DeliveryState) -> bool:
     return True
 
 
-__all__ = ["advance_order", "build_request", "cancel", "dispatch", "record", "should_dispatch"]
+__all__ = [
+    "advance_order", "build_request", "can_rebook", "cancel", "dispatch", "rebook",
+    "record", "should_dispatch", "simulate", "simulate_allowed",
+]

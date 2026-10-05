@@ -941,6 +941,22 @@ export const api = {
   getOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
     return request<OrderDelivery | null>(`/orders/${orderId}/delivery`, { token });
   },
+  /** Call the rider off while the order stands. Refused once the food is collected. */
+  cancelOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/cancel`, { method: 'POST', token });
+  },
+  /** Book another rider after the last trip failed or was called off. */
+  rebookOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/rebook`, { method: 'POST', token });
+  },
+  /** Sandbox only, admin only: make the courier report a stage. */
+  simulateOrderDelivery(token: string, orderId: string, status: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/simulate`, {
+      method: 'POST',
+      token,
+      body: { status },
+    });
+  },
   /** What this restaurant has switched on, and why. Owners may read it too. */
   getRestaurantCapabilities(token: string, restaurantId: string): Promise<RestaurantCapability[]> {
     return request<RestaurantCapability[]>(`/restaurants/${restaurantId}/capabilities`, { token });

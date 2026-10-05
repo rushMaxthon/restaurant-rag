@@ -1,8 +1,17 @@
-import { Bike, TriangleAlert } from 'lucide-react';
+import { Bike, MapPin, RotateCcw, TriangleAlert, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { api, formatDate } from '../services/api';
-import type { OrderDelivery } from '../types/app';
+import { ApiError, api, formatDate } from '../services/api';
+import {
+  SIMULATE_STAGES,
+  canCancelRider,
+  isBadStep,
+  nextEta,
+  riderMapUrl,
+  stepLabel,
+} from '../services/courier';
+import { useMoney } from '../hooks/useMoney';
+import type { OrderDelivery, ToastMessage } from '../types/app';
 
 /**
  * What the courier is doing with this order.
@@ -36,6 +45,8 @@ interface DeliveryPanelProps {
   awaiting?: boolean;
   token: string;
   orderId: string;
+  /** Said when a cancel, re-book or simulate succeeds or is refused. */
+  onToast?: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
 /** Our seven states, in words a person reads, and the tone each deserves. */
@@ -52,9 +63,18 @@ const STATES: Record<string, { label: string; tone: 'ok' | 'busy' | 'warn' }> = 
 /** States a delivery cannot move on from, so there is nothing left to watch. */
 const DONE = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
 
-export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) {
+export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPanelProps) {
+  const money = useMoney();
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  // Two presses to call a rider off, like the live board's buttons: the first
+  // says what will happen, the second does it. No browser dialog, which
+  // blocks the page for everyone watching it.
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  // Bumped after an action, so the poll restarts from the new state - a
+  // re-booked trip is live again and must be watched again.
+  const [round, setRound] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +120,28 @@ export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) 
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [token, orderId, awaiting]);
+  }, [token, orderId, awaiting, round]);
+
+  const act = async (
+    run: () => Promise<OrderDelivery | null>,
+    done: string,
+  ) => {
+    setBusy(true);
+    try {
+      const next = await run();
+      setDelivery(next);
+      onToast?.(done, '', 'success');
+      setRound((count) => count + 1);
+    } catch (error) {
+      onToast?.(
+        'The courier said no',
+        error instanceof ApiError ? error.message : 'Please try again.',
+        'error',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (loading) return null;
 
@@ -130,6 +171,16 @@ export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) 
   }
 
   const state = STATES[delivery.state] ?? { label: delivery.state, tone: 'busy' as const };
+  const eta = nextEta({
+    state: delivery.state,
+    pickup_eta: delivery.pickup_eta ?? null,
+    drop_eta: delivery.drop_eta ?? null,
+  });
+  const mapUrl = riderMapUrl({
+    rider_latitude: delivery.rider_latitude ?? null,
+    rider_longitude: delivery.rider_longitude ?? null,
+  });
+  const timeline = delivery.timeline ?? [];
   const distanceKm =
     delivery.distance_metres != null ? (delivery.distance_metres / 1000).toFixed(1) : null;
 
@@ -156,6 +207,7 @@ export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) 
           <TriangleAlert size={14} strokeWidth={2.1} />
           The food was sent out and came back. The order has not been changed —
           somebody needs to decide what happens next.
+          {delivery.failure_reason ? ` The courier said: “${delivery.failure_reason}”.` : ''}
         </p>
       )}
 
@@ -222,6 +274,26 @@ export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) 
           </div>
         )}
 
+        {eta && (
+          <div className="order-detail__fact">
+            <span>{eta.label}</span>
+            <strong>{formatDate(eta.at)}</strong>
+          </div>
+        )}
+
+        {mapUrl && delivery.rider_location_at && (
+          <div className="order-detail__fact">
+            <span>Rider last seen</span>
+            <strong className="order-detail__fact-inline">
+              <MapPin size={14} strokeWidth={2.1} />
+              <a href={mapUrl} target="_blank" rel="noreferrer">
+                On the map
+              </a>
+              <em>{formatDate(delivery.rider_location_at)}</em>
+            </strong>
+          </div>
+        )}
+
         {delivery.tracking_url && (
           <div className="order-detail__fact">
             <span>Tracking</span>
@@ -232,7 +304,102 @@ export function DeliveryPanel({ token, orderId, awaiting }: DeliveryPanelProps) 
             </strong>
           </div>
         )}
+
+        {/* Only ever present for the platform admin: the server leaves it out
+            for anybody else. */}
+        {delivery.courier_charge != null && (
+          <div className="order-detail__fact">
+            <span>Courier charge</span>
+            <strong>{money.format(Number(delivery.courier_charge))}</strong>
+          </div>
+        )}
+
+        {(delivery.attempt ?? 1) > 1 && (
+          <div className="order-detail__fact">
+            <span>Booking</span>
+            <strong>Rider #{delivery.attempt}</strong>
+          </div>
+        )}
       </div>
+
+      {timeline.length > 0 && (
+        <ol className="courier-timeline" aria-label="What the courier reported">
+          {timeline.map((step, index) => (
+            <li
+              className={isBadStep(step.status) ? 'courier-timeline__step courier-timeline__step--bad' : 'courier-timeline__step'}
+              key={`${step.status}-${step.at ?? index}`}
+            >
+              <span className="courier-timeline__dot" aria-hidden="true" />
+              <strong>{stepLabel(step.status)}</strong>
+              <span>
+                {step.at ? formatDate(step.at) : ''}
+                {step.remark ? ` · ${step.remark}` : ''}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {(canCancelRider(delivery) || delivery.can_rebook) && (
+        <div className="courier-actions">
+          {canCancelRider(delivery) && (
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onBlur={() => setConfirmCancel(false)}
+              onClick={() => {
+                if (!confirmCancel) {
+                  setConfirmCancel(true);
+                  return;
+                }
+                setConfirmCancel(false);
+                void act(() => api.cancelOrderDelivery(token, orderId), 'Rider called off');
+              }}
+              title="Cancel the courier booking. Possible until the rider picks the food up."
+              type="button"
+            >
+              <XCircle size={15} strokeWidth={2.1} />
+              {confirmCancel ? 'Tap again to call the rider off' : 'Cancel rider'}
+            </button>
+          )}
+          {delivery.can_rebook && (
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => void act(() => api.rebookOrderDelivery(token, orderId), 'New rider requested')}
+              title="Ask the courier for another rider for this order."
+              type="button"
+            >
+              <RotateCcw size={15} strokeWidth={2.1} />
+              Book a new rider
+            </button>
+          )}
+        </div>
+      )}
+
+      {delivery.can_simulate && delivery.provider_order_id && (
+        <div className="courier-simulate">
+          <span>Sandbox: make the courier report</span>
+          <div>
+            {SIMULATE_STAGES.map((stage) => (
+              <button
+                className="secondary-button secondary-button--ghost"
+                disabled={busy}
+                key={stage.status}
+                onClick={() =>
+                  void act(
+                    () => api.simulateOrderDelivery(token, orderId, stage.status),
+                    `Courier reported: ${stage.label}`,
+                  )
+                }
+                type="button"
+              >
+                {stage.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

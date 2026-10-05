@@ -5167,3 +5167,35 @@ and `git log`.
   previously answered incorrectly.
 - `settings.py` is the single best file for understanding product intent — every
   threshold carries the measurement or the incident that produced it.
+
+## 2026-10-05 — Pidge: courier status moves the order properly, and everything Pidge sends is used
+
+**Goal:** when a rider is assigned and moves, the order follows; use what
+Pidge's API offers; fill the gaps before launch.
+
+**Changed:**
+- Courier-driven order moves now write a status event (history, "Done
+  today"), notify the customer after commit and push realtime, exactly like a
+  kitchen tap. PICKED_UP now moves the order to OUT_FOR_DELIVERY.
+- Read and stored: pickup/drop ETAs, pickup/drop timestamps, Pidge's charge
+  (ADMIN only), the full log timeline, rider last position (+ `/fulfillment/
+  tracking` in the minute sweep), failure reason, attempt number. Migration
+  `0081_delivery_details`, applied to Supabase by hand.
+- New endpoints: `/orders/{id}/delivery/cancel` (guarded by `can_cancel`:
+  not on a finished order, not after collection), `/rebook` (new reference
+  `{order}-{attempt}`), `/simulate` (ADMIN, sandbox host only).
+- Admin: courier card shows ETA, timeline, last-seen map link, charge,
+  cancel (two-tap) / rebook / sandbox simulate; live board shows ETA.
+- Storefront order page: "Arriving by …", the rider's current step, and a
+  failed-delivery message (`src/lib/courier.ts`).
+- `backend/docs/delivery-integration.md`: new section on what Pidge sends and
+  what is still unused.
+
+**Verified:** delivery tests incl. 21 in `test_delivery_tracking` (real
+sandbox bodies in `tests/fixtures/pidge_sandbox_states.json`); admin 447,
+storefront 506, both builds; admin lint at the 67 baseline. Browser: courier
+card renders; "Cancel rider" was offered on a DELIVERED order whose row was
+still PENDING — fixed by the server-side `can_cancel`.
+
+**Learned:** the local env points at live Pidge, so simulate is refused
+locally; it needs a sandbox `PIDGE_BASE_URL`.

@@ -29,7 +29,9 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text
+from decimal import Decimal
+
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -88,6 +90,22 @@ class OrderDelivery(TimestampMixin, Base):
     #: reassignments and timestamps live in shapes no interface should try to
     #: anticipate, and "what did they actually send" is otherwise unanswerable.
     raw: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    # --- read out of `raw` so screens need not dig (migration 0081) --------
+    pickup_eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    drop_eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: What the courier invoices for the trip. The admin's figure, compared
+    #: with the delivery fee the customer paid; not sent to anybody else.
+    courier_charge: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    rider_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rider_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rider_location_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failure_reason: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: Every step the courier reported, oldest first. See `DeliveryResult`.
+    timeline: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    #: Which booking this is: 1 for the first rider, 2 after a re-book. Sent
+    #: to the courier inside the reference, which it requires to be unique.
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     order: Mapped["Order"] = relationship(back_populates="delivery")
 

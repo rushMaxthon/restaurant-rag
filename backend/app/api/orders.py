@@ -19,6 +19,7 @@ from app.schemas.order import (
     DeliveryQuoteRequest,
     DeliveryQuoteResponse,
     OrderCreateRequest,
+    DeliverySimulateRequest,
     OrderDeliveryResponse,
     OrderResponse,
     OrderStatusUpdateRequest,
@@ -508,7 +509,122 @@ def get_order_delivery(
 
     order = _read_order(db, current_user, order_id, app_scope)
     delivery = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
-    return OrderDeliveryResponse.model_validate(delivery) if delivery is not None else None
+    return _delivery_response(db, delivery, current_user)
+
+
+def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User) -> OrderDeliveryResponse | None:
+    if delivery is None:
+        return None
+    from app.services.delivery import service as delivery_service
+
+    order = db.get(Order, delivery.order_id)
+    response = OrderDeliveryResponse.model_validate(delivery)
+    response.can_rebook = (
+        order is not None
+        and str(viewer.role) in {"ADMIN", "OWNER"}
+        and delivery_service.can_rebook(order, delivery)
+    )
+    response.can_cancel = (
+        order is not None
+        and str(viewer.role) in {"ADMIN", "OWNER"}
+        and delivery_service.can_cancel(order, delivery)
+    )
+    response.can_simulate = str(viewer.role) == "ADMIN" and delivery_service.simulate_allowed()
+    return response.for_viewer(viewer)
+
+
+def _staff_order(db: Session, current_user: User, order_id: uuid.UUID, app_scope: AppScope) -> Order:
+    """The order, for an action only the restaurant or the platform may take.
+
+    The reader decides whether this person may see it at all - 404 if not -
+    and then the role decides whether they may act. A kitchen login sees the
+    order and may not spend money on riders.
+    """
+
+    if str(current_user.role) not in {"ADMIN", "OWNER"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the restaurant or the platform can do this.")
+    _read_order(db, current_user, order_id, app_scope)
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order
+
+
+def _delivery_action(db: Session, current_user: User, order: Order, action) -> OrderDeliveryResponse | None:
+    from app.services.delivery.base import DeliveryProviderError
+
+    try:
+        row = action()
+    except DeliveryProviderError as error:
+        db.commit()  # keep `last_error`, which says why
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    db.commit()
+    return _delivery_response(db, row, current_user)
+
+
+@router.post("/{order_id}/delivery/cancel", response_model=OrderDeliveryResponse | None)
+def cancel_order_delivery(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """Call the rider off, while the order itself stands.
+
+    For a rider who is not coming, or an order the restaurant will hand over
+    itself. Pidge allows it only before the food is collected; after that it
+    refuses, and the refusal is shown rather than hidden.
+    """
+
+    from app.services.delivery import service as delivery_service
+
+    order = _staff_order(db, current_user, order_id, app_scope)
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    if not delivery_service.can_cancel(order, row):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This rider can no longer be called off: the order is finished or the food is already collected.",
+        )
+    return _delivery_action(db, current_user, order, lambda: delivery_service.cancel(db, order))
+
+
+@router.post("/{order_id}/delivery/rebook", response_model=OrderDeliveryResponse | None)
+def rebook_order_delivery(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """Book another rider after the last trip failed or was called off."""
+
+    from app.services.delivery import service as delivery_service
+
+    order = _staff_order(db, current_user, order_id, app_scope)
+    return _delivery_action(db, current_user, order, lambda: delivery_service.rebook(db, order))
+
+
+@router.post("/{order_id}/delivery/simulate", response_model=OrderDeliveryResponse | None)
+def simulate_order_delivery(
+    order_id: uuid.UUID,
+    payload: DeliverySimulateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """Sandbox only: make the courier report a stage, and record it as real.
+
+    Platform admin only, and refused unless the courier is its sandbox, where
+    no rider exists to be sent anywhere.
+    """
+
+    from app.services.delivery import service as delivery_service
+
+    if str(current_user.role) != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the platform admin can simulate.")
+    order = _staff_order(db, current_user, order_id, app_scope)
+    return _delivery_action(
+        db, current_user, order, lambda: delivery_service.simulate(db, order, payload.status)
+    )
 
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)

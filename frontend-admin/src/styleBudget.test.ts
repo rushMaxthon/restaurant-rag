@@ -86,6 +86,7 @@ const BUDGET: Record<string, Counts> = {
   "tenant": { spacing: 0, weight: 0, colour: 0 },
   "tip": { spacing: 0, weight: 0, colour: 0 },
   "pw": { spacing: 0, weight: 0, colour: 0 },
+  "courier": { spacing: 0, weight: 0, colour: 0 },
   "toast": { spacing: 0, weight: 0, colour: 0 },
   "toggle": { spacing: 0, weight: 0, colour: 0 },
   "toolbar": { spacing: 0, weight: 0, colour: 0 },

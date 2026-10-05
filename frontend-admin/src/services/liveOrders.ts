@@ -350,6 +350,8 @@ export interface DeliveryLine {
   riderPhone: string;
   /** Null unless it is a link a browser should open. */
   trackingUrl: string | null;
+  /** "Rider due 8:16 pm" - the courier's next ETA, or empty. */
+  eta?: string;
 }
 
 const DELIVERY_STATES: Record<string, { label: string; tone: DeliveryTone; help: string }> = {
@@ -465,6 +467,22 @@ export function safeTrackingUrl(value: string | null | undefined): string | null
   }
 }
 
+/**
+ * The courier's next ETA as the card says it: the door while the food is on
+ * its way, the restaurant while a rider is coming for it.
+ */
+export function etaText(delivery: NonNullable<LiveOrder["delivery"]>): string {
+  const time = (value: string | null | undefined) =>
+    value ? new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "";
+  if (delivery.state === "PICKED_UP" || delivery.state === "IN_TRANSIT") {
+    return delivery.drop_eta ? `Due at the door ${time(delivery.drop_eta)}` : "";
+  }
+  if (delivery.state === "ASSIGNED" || delivery.state === "PENDING") {
+    return delivery.pickup_eta ? `Rider due ${time(delivery.pickup_eta)}` : "";
+  }
+  return "";
+}
+
 /** What the card says about getting the food to the customer. */
 export function deliveryLine(order: LiveOrder): DeliveryLine {
   const none = { riderName: "", riderPhone: "", trackingUrl: null };
@@ -506,6 +524,7 @@ export function deliveryLine(order: LiveOrder): DeliveryLine {
     riderName: delivery.rider_name,
     riderPhone: delivery.rider_mobile,
     trackingUrl: safeTrackingUrl(delivery.tracking_url),
+    eta: etaText(delivery),
   };
 }
 
