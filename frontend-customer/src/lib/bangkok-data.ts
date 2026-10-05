@@ -61,6 +61,11 @@ export type MenuItem = {
   price: Money;
   is_veg: boolean;
   is_available: boolean;
+  /**
+   * How many are left. Null, or absent from an older server, means the dish
+   * is not counted. Read it through `lib/stock.ts`, never directly.
+   */
+  stock_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   rating: Money | null;

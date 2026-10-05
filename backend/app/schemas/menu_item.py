@@ -146,6 +146,11 @@ class MenuItemRequestBase(BaseModel):
     price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     is_veg: bool = False
     is_available: bool = True
+    #: How many are left to sell. Left out or null means "not counted". On an
+    #: update, leaving it OUT keeps whatever is stored - see `update_menu_item`
+    #: - so a client that has never heard of stock cannot switch counting off
+    #: by saving a dish's name.
+    stock_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_bestseller: bool = False
     is_featured: bool = False
     image_url: str | None = Field(default=None, max_length=500)
@@ -222,6 +227,9 @@ class MenuItemResponse(BaseModel):
     base_price: Decimal | None = None
     is_veg: bool
     is_available: bool
+    #: Sent to everybody, customers included: a storefront cannot say "only 2
+    #: left" or stop a stepper at 2 without it. Null is "not counted".
+    stock_quantity: int | None = None
     is_bestseller: bool
     is_featured: bool = False
     image_url: str | None = None

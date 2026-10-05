@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +24,15 @@ if TYPE_CHECKING:
 
 class MenuItem(TimestampMixin, Base):
     __tablename__ = "menu_items"
+    # Mirrored from migration 0078 because the test suites build from
+    # `create_all` and never run a migration. The bare name: the metadata's
+    # naming convention adds `ck_menu_items_` to it.
+    __table_args__ = (
+        CheckConstraint(
+            "stock_quantity IS NULL OR stock_quantity >= 0",
+            name="stock_quantity_not_negative",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     restaurant_id: Mapped[uuid.UUID] = mapped_column(
@@ -49,6 +58,11 @@ class MenuItem(TimestampMixin, Base):
     base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_veg: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    #: How many can still be sold. NULL means nobody is counting, which is a
+    #: different fact from zero: zero is sold out, NULL is unlimited. Written
+    #: by `services/stock.py` when an order is placed or cancelled, and by the
+    #: owner when they restock. See that module for why it is one UPDATE.
+    stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_bestseller: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     popularity_score: Mapped[Decimal] = mapped_column(

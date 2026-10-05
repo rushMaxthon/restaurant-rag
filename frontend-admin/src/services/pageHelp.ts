@@ -131,7 +131,7 @@ export const PAGE_HELP = {
     title: "Menu item editor",
     what: "The form for one dish: name, description, photo, price, sizes and the choices a customer can make.",
     who: "Whoever manages the menu: the owner, or the platform admin on their behalf.",
-    action: "Fill in the form and press Save. Type your own price: the platform commission is added on top of it when the dish is saved.",
+    action: "Fill in the form and press Save. Type your own price: the platform commission is added on top of it when the dish is saved. Stock left caps how many can be sold.",
   },
   orders: {
     title: "Orders",

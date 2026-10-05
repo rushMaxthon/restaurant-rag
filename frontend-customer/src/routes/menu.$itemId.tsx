@@ -17,6 +17,7 @@ import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
 
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { canBuy, inCartOf, roomLeft, stockNote } from "@/lib/stock";
 import type { OptionPortion } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
@@ -146,6 +147,14 @@ function DishPage() {
   // that is decided, once, rather than inferred from each topping's portion.
   const [split, setSplit] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
+  // What is left for THIS customer: the count, less what their cart already
+  // holds. The server makes the same sum when the order is placed; doing it
+  // here is what stops the stepper at 3 instead of the checkout at the end.
+  const inCart = inCartOf(store.cart, item?.id ?? "");
+  const room = roomLeft(item, inCart);
+  const buyable = canBuy(item);
+  const overStock = room !== null && quantity > room;
+  const stockLine = stockNote(item, inCart);
   const [added, setAdded] = useState(false);
 
   // Related dishes come from THIS dish's restaurant, not whichever one the app
@@ -719,6 +728,7 @@ function DishPage() {
                     type="button"
                     className="qty-step"
                     aria-label="Increase quantity"
+                    disabled={room !== null && quantity >= room}
                     onClick={() => setQuantity((q) => q + 1)}
                   >
                     <Plus className="size-4" />
@@ -731,6 +741,11 @@ function DishPage() {
                   </p>
                 </div>
               </div>
+              {/* Beside the stepper it explains. A + that has stopped working
+                  with nothing said reads as a broken page. */}
+              {item.is_available && stockLine ? (
+                <p className="mt-2 text-sm font-bold text-primary-text">{stockLine}</p>
+              ) : null}
 
               {/* Cart scope is restaurant + location, so a dish from another
                 kitchen cannot join this order. Offering to start a fresh cart
@@ -745,7 +760,7 @@ function DishPage() {
                   </p>
                   <Button
                     className="mt-3 h-12 w-full"
-                    disabled={!valid || !item.is_available}
+                    disabled={!valid || !buyable || overStock}
                     onClick={() => handleAdd(true)}
                   >
                     Start a new cart with this
@@ -778,10 +793,16 @@ function DishPage() {
                 <>
                   <Button
                     className="mt-5 h-12 w-full text-base"
-                    disabled={!valid || !item.is_available}
+                    disabled={!valid || !buyable || overStock}
                     onClick={() => handleAdd(false)}
                   >
-                    {item.is_available ? `Add to cart · ${money(total)}` : "Currently unavailable"}
+                    {!item.is_available
+                      ? "Currently unavailable"
+                      : !buyable
+                        ? "Sold out"
+                        : overStock
+                          ? "No more left to add"
+                          : `Add to cart · ${money(total)}`}
                   </Button>
                   {/* Say what is missing. A greyed-out button with no reason is
                     the dead end this app keeps producing; the customer has to

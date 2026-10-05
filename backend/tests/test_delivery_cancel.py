@@ -206,6 +206,9 @@ class CancellingAnOrderRemembersItsRiderTests(unittest.TestCase):
         order = SimpleNamespace(
             id=uuid.uuid4(),
             status=OrderStatus.ACCEPTED,
+            # No lines, so nothing to give back to stock: a cancellation also
+            # returns what the order took, and that is not what is under test.
+            items=[],
             delivery=delivery,
             cancellation_reason=None,
             cancelled_by=None,

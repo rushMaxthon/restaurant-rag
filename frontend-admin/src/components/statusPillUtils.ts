@@ -24,7 +24,7 @@ export function resolveStatusPillTone(status: string | OrderStatus): StatusPillT
   if (normalized === 'PAYMENT_PENDING') {
     return 'warning';
   }
-  if (normalized === 'CANCELLED' || normalized === 'FAILED') {
+  if (normalized === 'CANCELLED' || normalized === 'FAILED' || normalized === 'SOLD OUT') {
     return 'danger';
   }
   if (normalized === 'PAID' || normalized === 'COD') {

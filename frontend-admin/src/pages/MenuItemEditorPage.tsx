@@ -560,6 +560,26 @@ export function MenuItemEditorPage({
 
           <MenuItemCustomizationEditor form={form} onChange={setForm} restaurantId={restaurantId} />
 
+          <label className="field">
+            <span>Stock left</span>
+            <input
+              inputMode="numeric"
+              placeholder="Not counted"
+              value={form.stock_quantity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  stock_quantity: event.target.value,
+                }))
+              }
+            />
+            <small className="hint-text">
+              How many you can still sell. It goes down with every order and customers cannot
+              order more than this. Leave it empty if you do not count this dish; 0 shows it as
+              sold out.
+            </small>
+          </label>
+
           <label className="field form-grid__wide">
             <span>Image URL</span>
             <input

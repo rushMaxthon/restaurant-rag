@@ -390,6 +390,8 @@ export interface AdminMenuItem {
   price: number | string;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left to sell. Null means the dish is not counted. */
+  stock_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -720,6 +722,8 @@ export interface MenuItem {
   base_price?: number | string | null;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left to sell. Null means the dish is not counted. */
+  stock_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -778,6 +782,8 @@ export interface MenuItemUpsertPayload {
   price: number;
   is_veg: boolean;
   is_available: boolean;
+  /** Null stops the count. Leaving it out keeps whatever is stored. */
+  stock_quantity?: number | null;
   is_new_launch: boolean;
   image_url?: string | null;
   launched_at?: string | null;

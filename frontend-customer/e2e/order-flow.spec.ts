@@ -28,8 +28,39 @@ import {
  */
 
 test.describe("choosing a branch", () => {
+  /**
+   * How many branches the restaurant under test has.
+   *
+   * The gate is a question, and a restaurant with one branch is not asked it:
+   * one option is not a choice, and the store settles it silently. So which
+   * of the two behaviours is correct depends on the restaurant this machine's
+   * storefront resolves to, and both are asserted rather than one assumed.
+   */
+  async function branchCount(page: import("@playwright/test").Page): Promise<number> {
+    return page.evaluate(async () => {
+      const api = "http://localhost:8000/api";
+      const config = await fetch(`${api}/app-config?host=${encodeURIComponent(location.host)}`).then(
+        (response) => response.json(),
+      );
+      const restaurant = await fetch(`${api}/restaurants/${config.restaurant_id}`).then((response) =>
+        response.json(),
+      );
+      return (restaurant.locations ?? []).length;
+    });
+  }
+
   test("a first-time visitor picks a branch before seeing a menu", async ({ page }) => {
     await resetAppFirstVisit(page);
+
+    if ((await branchCount(page)) <= 1) {
+      // Nothing to pick between, so nothing is asked — and the menu is there.
+      await page.goto("/menu");
+      await expect(page.getByRole("button", { name: /^Add / }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.locator(".branch-gate")).toHaveCount(0);
+      return;
+    }
 
     // Branches of one restaurant do not carry the same food, so the app asks
     // rather than choosing silently. It is a modal, which means it also has to
@@ -60,7 +91,9 @@ test.describe("choosing a branch", () => {
 
   test("the menu is reachable once a branch is chosen", async ({ page }) => {
     await resetAppFirstVisit(page);
-    await page.getByRole("dialog").locator(".branch-gate__option").first().click();
+    if ((await branchCount(page)) > 1) {
+      await page.getByRole("dialog").locator(".branch-gate__option").first().click();
+    }
     await page.goto("/menu");
     await expect(page.getByRole("button", { name: /^Add / }).first()).toBeVisible({
       timeout: 30_000,

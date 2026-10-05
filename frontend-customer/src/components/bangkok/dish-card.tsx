@@ -7,6 +7,7 @@ import { VegMark } from "./veg-mark";
 import { type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { soleSize } from "@/lib/customization";
+import { canBuy, roomLeft, stockNote } from "@/lib/stock";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import { useMoney } from "@/lib/storefront";
@@ -45,6 +46,13 @@ function DishCardImpl({ item }: { item: MenuItem }) {
   const inCart = lines.reduce((sum, line) => sum + line.quantity, 0);
   const lastLine = lines[lines.length - 1];
 
+  // The server refuses an order for more than is left; this is the same rule
+  // told early. `buyable` folds "sold out" into "switched off", because to a
+  // customer they are one fact: it cannot be had right now.
+  const buyable = canBuy(item);
+  const room = roomLeft(item, inCart);
+  const note = stockNote(item, inCart);
+
   return (
     <article className="dish-card group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
       {/* Outside the Link, so a tap saves the dish instead of opening it.
@@ -79,10 +87,10 @@ function DishCardImpl({ item }: { item: MenuItem }) {
             {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
           </div>
         )}
-        {!item.is_available && (
+        {!buyable && (
           <div className="absolute inset-0 grid place-items-center bg-overlay">
             <span className="rounded-full bg-surface px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide">
-              Unavailable
+              {item.is_available ? "Sold out" : "Unavailable"}
             </span>
           </div>
         )}
@@ -122,6 +130,10 @@ function DishCardImpl({ item }: { item: MenuItem }) {
           </p>
         ) : null}
 
+        {/* Only while it can still be bought: "Sold out" is already said on
+            the photograph and in place of the button. */}
+        {buyable && note ? <p className="text-xs font-bold text-primary-text">{note}</p> : null}
+
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">
             {only
@@ -131,7 +143,7 @@ function DishCardImpl({ item }: { item: MenuItem }) {
                 : money(item.price)}
           </span>
 
-          {!item.is_available ? (
+          {!buyable ? (
             <span className="text-sm font-semibold text-muted">Sold out</span>
           ) : conflicts || needsChoices ? (
             <Button variant="outline" size="sm" asChild>
@@ -154,6 +166,8 @@ function DishCardImpl({ item }: { item: MenuItem }) {
                 type="button"
                 className="qty-step"
                 aria-label={`Add another ${item.name}`}
+                // The cart holds the last of them. The note above says so.
+                disabled={room === 0}
                 onClick={add}
               >
                 <Plus className="size-4" />

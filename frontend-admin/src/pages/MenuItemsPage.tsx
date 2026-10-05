@@ -56,6 +56,8 @@ type MenuRow = {
   isNew: boolean;
   isVeg: boolean;
   isAvailable: boolean;
+  /** Null when the dish is not counted. */
+  stockQuantity: number | null;
   isBestseller: boolean;
   recentValidOrderCount: number;
   recentValidOrderWindowDays: number;
@@ -146,6 +148,7 @@ export function MenuItemsPage({
     isNew: item.is_new,
     isVeg: item.is_veg,
     isAvailable: item.is_available,
+    stockQuantity: item.stock_quantity ?? null,
     isBestseller: item.is_bestseller,
     recentValidOrderCount: item.recent_valid_order_count,
     recentValidOrderWindowDays: item.recent_valid_order_window_days,
@@ -168,6 +171,7 @@ export function MenuItemsPage({
     isNew: item.is_new,
     isVeg: item.is_veg,
     isAvailable: item.is_available,
+    stockQuantity: item.stock_quantity ?? null,
     isBestseller: item.is_bestseller,
     recentValidOrderCount: item.recent_valid_order_count,
     recentValidOrderWindowDays: item.recent_valid_order_window_days,
@@ -353,6 +357,25 @@ export function MenuItemsPage({
       header: "Price",
       render: (item) => money.format(item.price, item.restaurantId),
       mobileLabel: "Price",
+      align: "right",
+    },
+    {
+      id: "stock",
+      header: "Stock",
+      // Three different facts, and the difference matters to whoever restocks:
+      // not counted is not a problem, sold out is one right now.
+      render: (item) =>
+        item.stockQuantity === null ? (
+          <span>Not counted</span>
+        ) : item.stockQuantity === 0 ? (
+          <StatusPill status="SOLD OUT" />
+        ) : (
+          <>
+            <strong>{item.stockQuantity}</strong>
+            <span>left</span>
+          </>
+        ),
+      mobileLabel: "Stock",
       align: "right",
     },
     {

@@ -33,6 +33,7 @@ from app.models.menu_availability_event import MenuItemAvailabilityEvent
 from app.models.menu_item import MenuItem
 from app.models.order import Order
 from app.models.user import User
+from app.services import stock
 from app.services.realtime.outbox import queue_order_updated
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,11 @@ def mark_order_cancelled(
         note=note,
         occurred_at=moment,
     )
+    # Here for the reason the rider is: there is one way an order is
+    # cancelled, so there is one place its stock can be forgotten. Today that
+    # is an unpaid checkout, which is exactly the order holding loaves nobody
+    # is going to collect.
+    stock.release(db, order.items)
     _queue_courier_cancel(db, order)
 
 

@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +38,12 @@ class OrderItem(TimestampMixin, Base):
     menu_item_size_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     size_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: This line subtracted from its dish's `stock_quantity`. What lets a
+    #: cancellation give back exactly what THIS order took, and nothing for
+    #: an order placed before the owner started counting.
+    stock_reserved: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     base_unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0.00"))
     customization_total_price: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),

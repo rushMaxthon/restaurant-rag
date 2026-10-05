@@ -572,6 +572,7 @@ def list_admin_menu_items(
             price=menu_item.price,
             is_veg=menu_item.is_veg,
             is_available=menu_item.is_available,
+            stock_quantity=menu_item.stock_quantity,
             is_bestseller=is_menu_item_bestseller(menu_item),
             is_featured=get_menu_item_featured_flag(menu_item),
             image_url=menu_item.image_url,

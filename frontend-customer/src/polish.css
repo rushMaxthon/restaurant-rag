@@ -470,6 +470,51 @@ textarea.flex:focus-visible {
 .dish-card {
   border-radius: 0.75rem;
 }
+
+/* Two to a row on a phone. One to a row made each card a screen tall, so a
+   menu of 187 dishes was 187 screens and the fourth dish was three swipes
+   away — while the same menu on a laptop shows eight at a glance. This is
+   still the photograph-first card, not the row layout the note above
+   retired: the picture stays on top and stays the largest thing on it.
+
+   Everything inside is tightened to fit ~170px, and the price row may wrap,
+   because a stepper beside a price is wider than the card. */
+@media (max-width: 639px) {
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+  .menu-grid .dish-card > a > * {
+    aspect-ratio: 4 / 3;
+  }
+  .menu-grid .dish-card > div {
+    gap: 0.25rem;
+    padding: 0.625rem;
+  }
+  .menu-grid .dish-card .dish-title {
+    font-size: 0.95rem;
+  }
+  .menu-grid .dish-card p {
+    min-height: 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+  .menu-grid .dish-card > div > div:last-child {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .menu-grid .dish-card .money {
+    font-size: 0.95rem;
+  }
+  /* Pushed to the right when it wraps onto its own line. */
+  .menu-grid .dish-card .qty-pill {
+    margin-left: auto;
+  }
+  .menu-grid .dish-card .heart {
+    right: 0.35rem;
+    top: 0.35rem;
+  }
+}
 .dish-card .dish-title {
   transition: color var(--dur-fast) ease;
 }
@@ -2006,7 +2051,9 @@ html {
   margin-top: 0.2rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--primary);
+  /* The text tier, not the fill. `--primary` on a white card is 3.25:1 at
+     this size, which `e2e/contrast.spec.ts` measures and refuses. */
+  color: var(--primary-text);
 }
 .pair__price {
   display: flex;

@@ -411,6 +411,7 @@ def create_menu_item(
         description=payload.description,
         is_veg=payload.is_veg,
         is_available=payload.is_available,
+        stock_quantity=payload.stock_quantity,
         is_bestseller=_resolve_featured_flag(payload),
         image_url=payload.image_url,
         launched_at=payload.launched_at or datetime.now(UTC),
@@ -508,6 +509,9 @@ def create_menu_item_bulk(
             description=payload.description,
             is_veg=payload.is_veg,
             is_available=payload.is_available,
+            # Each branch gets its own count of the same number: the dish is a
+            # row per branch, and a loaf sold in one is not gone from another.
+            stock_quantity=payload.stock_quantity,
             is_bestseller=_resolve_featured_flag(payload),
             image_url=payload.image_url,
             launched_at=launched_at,
@@ -674,6 +678,12 @@ def update_menu_item(
     menu_item.is_veg = payload.is_veg
     previous_available = menu_item.is_available
     menu_item.is_available = payload.is_available
+    # Only when the request said something about it. This endpoint replaces a
+    # dish whole, and a client written before stock existed sends no such
+    # field - which would arrive here as None and quietly stop the count.
+    # Sending null on purpose is how an owner stops counting.
+    if "stock_quantity" in payload.model_fields_set:
+        menu_item.stock_quantity = payload.stock_quantity
     record_menu_availability_event(
         db,
         menu_item=menu_item,

@@ -32,7 +32,7 @@ from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
-from app.services import order_charges
+from app.services import order_charges, stock
 from app.services.capabilities import resolve_capabilities
 from app.services.delivery.quoting import delivery_fee_for
 from app.services.geocoding.base import GeocodeConfidence
@@ -437,6 +437,12 @@ def _prepare_order_draft(
         restaurant_location_id=restaurant_location.id,
         menu_item_ids=[item.menu_item_id for item in payload.items],
     )
+
+    # Before any pricing, so a cart that cannot be filled is told so in words
+    # - on the cart's own validate call as well as at checkout. This is the
+    # courteous half; `stock.reserve` in `create_order` is the half that
+    # actually keeps the last loaf from being sold twice.
+    stock.ensure_in_stock(menu_items, payload.items)
 
     subtotal = Decimal("0.00")
     order_items: list[OrderItem] = []
@@ -891,6 +897,11 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
     order.payment_reference = None
 
     db.add(order)
+    # Taken now, in the transaction that creates the order, so the two commit
+    # or fail together. It raises 409 if somebody else took the last one
+    # between the check above and here; nothing has been committed, so the
+    # order goes with it.
+    stock.reserve(db, draft.order_items)
     # The opening event, with no `from_status`: it records the state the order
     # was created in, so the history starts at creation rather than at the
     # first transition.

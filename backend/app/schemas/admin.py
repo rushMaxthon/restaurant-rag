@@ -57,6 +57,8 @@ class AdminMenuItemResponse(BaseModel):
     image_url: str | None
     recent_valid_order_count: int = 0
     recent_valid_order_window_days: int = 30
+    #: How many are left. Null is "not counted".
+    stock_quantity: int | None = None
     popularity_score: Decimal
     launched_at: datetime
     created_at: datetime

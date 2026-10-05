@@ -17,6 +17,60 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 (stock, phone layout, delivery GST, promo switch)
+
+**Goal:** stop a dish being sold past what the kitchen has; give the phone
+layout the care the desktop had; stop taxing a courier's fee twice; make the
+promo code box a switch.
+
+**Changed:**
+- **Stock.** `menu_items.stock_quantity` (NULL = not counted) and
+  `order_items.stock_reserved`, migration `0078_menu_item_stock`.
+  `services/stock.py` owns it: `ensure_in_stock` in `_prepare_order_draft`,
+  `reserve` in `create_order`, `release` in `mark_order_cancelled`. Admin:
+  "Stock left" in the dish editor, a Stock column in the menu list. Storefront:
+  `lib/stock.ts`, used by the dish card, the dish page and the cart.
+- **Phone.** Menu is two cards to a row under 640px; the branch row is not
+  drawn for a one-branch restaurant; the cart's bill comes before its
+  suggestions; login starts at the top.
+- **Delivery GST.** `quoting.before_delivery_tax` takes the branch's delivery
+  tax back out of a courier's quote, so the tax line charges it once.
+- **Promo code.** A `promo_code` capability, on by default; off, the box is
+  hidden and `promo_code_to_record` stores nothing.
+- Admin page descriptions and sidebar names tidied; checkout's pre-address
+  total no longer adds a guessed 5%.
+
+**Verified:** backend 2,988 tests (the 4 that broke were stand-in orders with
+no `items`, fixed in `test_delivery_cancel`). Admin 382, storefront 492,
+kitchen 84; both builds. Live, against the running backend: stock 3 refused an
+order of 4 by name, an order of 2 left 1, a second 2 was refused, cancelling
+the first gave 2 back; a PUT without the field kept the count. In a browser:
+the card, dish page and cart all stop at the count and say why.
+
+**Open:**
+- **`0078` was applied to Supabase by hand** (migration `menu_item_stock`),
+  as `0077` was. The stamp is still behind; the revision is guarded.
+- **One count per dish.** Sizes share it and each takes one. Per-size stock
+  is not built.
+- **The chat and the recommendation rows do not read stock.** They can still
+  suggest a sold-out dish; the order is refused when it is placed. The mobile
+  app shows no stock either, and is refused the same way.
+- An owner sets a count and it only ever goes down. There is no daily reset
+  and no low-stock alert.
+- Supabase's session pool had no free slot at one point today. See the entry
+  below; still not found.
+- Two throwaway "Review Walkthrough" customers and two cancelled test orders
+  are in the shared database.
+
+**Learned:**
+- `PUT /menu-items/{id}` replaces a dish whole, so any new optional field
+  arrives as its default from a client that has never heard of it. Read
+  `model_fields_set` or the first old client to save a dish erases it.
+- A heredoc carrying Python with triple-quoted strings and apostrophes fails
+  in Git Bash with "unexpected EOF". Write the script with the Write tool.
+- A test that passes a `SimpleNamespace` order to `mark_order_cancelled`
+  breaks the moment that function reads one more attribute. Three suites do.
+
 ## 2026-10-05 (page help, storefront review)
 
 **Goal:** make the admin explain itself without spending the screen on it, then

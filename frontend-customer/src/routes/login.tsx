@@ -166,7 +166,7 @@ function LoginPage() {
         </div>
       </StorefrontHero>
 
-      <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
+      <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-start py-8 lg:justify-center lg:py-16">
         <div className="mx-auto w-full max-w-md">
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
             {step === "code" && isNewAccount ? "Almost there" : "Welcome back"}

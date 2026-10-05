@@ -17,7 +17,8 @@ import { DishImage } from "@/components/bangkok/dish-image";
 import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
-import { useCartCharges } from "@/lib/queries";
+import { useCartCharges, useMenuItems } from "@/lib/queries";
+import { inCartOf, roomLeft, stockNote } from "@/lib/stock";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
@@ -73,6 +74,13 @@ function CartPage() {
   // without an address. Only the delivery fee and the tax on it are not, which
   // is exactly what the line under the total still says is to come.
   const chargesQuery = useCartCharges(s.orderLocation?.id, s.subtotal);
+  // The branch's menu, for one thing: how many of each dish are left. A cart
+  // line is a snapshot taken when the dish was added and knows nothing about
+  // stock, so the + here could otherwise run past what the kitchen has and
+  // the customer would only hear about it when the order was refused. The
+  // menu screen has already fetched this, so it is normally a cache read.
+  const menuQuery = useMenuItems(s.restaurantId, s.orderLocation?.id);
+  const dishes = new Map((menuQuery.data ?? []).map((dish) => [dish.id, dish]));
   const charges = chargesQuery.data?.charges ?? null;
   const tax = charges ? Number(charges.total) : null;
   const total = s.subtotal + (tax ?? 0);
@@ -170,7 +178,7 @@ function CartPage() {
       <WaiterPrompt placement="cart" />
 
       <div className="mt-8 grid items-start gap-6 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="space-y-3">
+        <section className="space-y-3 lg:col-start-1 lg:row-start-1">
           {s.cart.map((line, i) => (
             <article
               className="line-card elevated-panel rise-in grid grid-cols-[92px_minmax(0,1fr)] gap-4 p-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-5 sm:p-4"
@@ -205,6 +213,26 @@ function CartPage() {
                       </div>
                     )}
                     <p className="money mt-2 text-sm text-muted">{money(line.unitPrice)} each</p>
+                    {(() => {
+                      const dish = dishes.get(line.itemId);
+                      const held = inCartOf(s.cart, line.itemId);
+                      const note = stockNote(dish, held);
+                      const left = dish?.stock_quantity;
+                      // More in the cart than the kitchen has: said here, in
+                      // words, before the order is refused for it.
+                      if (typeof left === "number" && held > left) {
+                        return (
+                          <p className="inline-error mt-1 text-xs">
+                            {left === 0
+                              ? "Sold out since you added it. Please remove it."
+                              : `Only ${left} left. Please reduce the quantity.`}
+                          </p>
+                        );
+                      }
+                      return note ? (
+                        <p className="mt-1 text-xs font-bold text-primary-text">{note}</p>
+                      ) : null;
+                    })()}
                   </div>
                   <b className="money shrink-0 text-lg font-extrabold leading-tight">
                     {money(line.unitPrice * line.quantity)}
@@ -227,6 +255,9 @@ function CartPage() {
                       type="button"
                       className="qty-step"
                       aria-label={`Add another ${line.name}`}
+                      disabled={
+                        roomLeft(dishes.get(line.itemId), inCartOf(s.cart, line.itemId)) === 0
+                      }
                       onClick={() => s.changeQuantity(line.lineId, 1)}
                     >
                       <Plus className="size-4" />
@@ -247,15 +278,14 @@ function CartPage() {
               </div>
             </article>
           ))}
-
-          {/* The column beside a short cart used to run white to the bottom
-              of the summary, which reads as a page that has finished with
-              you — on the one screen where somebody is most willing to add
-              something. */}
-          <CartSuggestions />
         </section>
 
-        <aside className="elevated-panel h-fit p-5 sm:p-6 lg:sticky lg:top-24">
+        {/* Second in the document, so on a phone the bill and the checkout
+            button come straight after the cart. They used to follow the
+            suggestions: six more dishes to scroll past, on the one screen whose
+            job is to get somebody to the next one. On a wide screen it is
+            placed back in the right-hand column, across both rows. */}
+        <aside className="elevated-panel h-fit p-5 sm:p-6 lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <div className="segmented" data-active={s.fulfillment}>
             <span className="segmented-thumb" aria-hidden="true" />
             <button
@@ -417,6 +447,14 @@ function CartPage() {
             </p>
           </div>
         </aside>
+
+        {/* The column beside a short cart used to run white to the bottom
+            of the summary, which reads as a page that has finished with
+            you — on the one screen where somebody is most willing to add
+            something. */}
+        <div className="lg:col-start-1 lg:row-start-2">
+          <CartSuggestions />
+        </div>
       </div>
     </div>
   );

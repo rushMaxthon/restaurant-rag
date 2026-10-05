@@ -11,6 +11,7 @@ import type {
   MenuItemSizePayload,
   MenuItemUpsertPayload,
 } from "../types/app";
+import { stockChange } from "../services/menuStock";
 
 type MenuItemCustomizationOptionFormState = {
   id: string;
@@ -53,6 +54,13 @@ export type MenuItemFormState = {
   launched_at: string;
   is_veg: boolean;
   is_available: boolean;
+  /** As typed. Empty is "not counted", which is not the same as 0. */
+  stock_quantity: string;
+  /**
+   * What the box held when the dish was opened; null for a new dish. Compared
+   * on save so an untouched count is not written back - see `stockChange`.
+   */
+  stock_loaded: string | null;
   image_url: string;
   is_new_launch: boolean;
   has_sizes: boolean;
@@ -299,6 +307,8 @@ export function createEmptyMenuItemFormState(): MenuItemFormState {
     launched_at: "",
     is_veg: true,
     is_available: true,
+    stock_quantity: "",
+    stock_loaded: null,
     image_url: "",
     is_new_launch: false,
     has_sizes: false,
@@ -351,6 +361,8 @@ export function createMenuItemFormStateFromItem(item: MenuItem): MenuItemFormSta
     launched_at: toDateTimeLocalValue(item.launched_at),
     is_veg: item.is_veg,
     is_available: item.is_available,
+    stock_quantity: item.stock_quantity == null ? "" : String(item.stock_quantity),
+    stock_loaded: item.stock_quantity == null ? "" : String(item.stock_quantity),
     image_url: item.image_url ?? "",
     is_new_launch: item.is_new_launch,
     has_sizes: item.has_sizes,
@@ -545,6 +557,7 @@ export function buildMenuItemUpsertPayload(
     price: fallbackPrice,
     is_veg: form.is_veg,
     is_available: form.is_available,
+    ...stockChange(form.stock_quantity, form.stock_loaded),
     is_new_launch: form.is_new_launch,
     image_url: form.image_url.trim() || null,
     launched_at: toApiDateTimeValue(form.launched_at),

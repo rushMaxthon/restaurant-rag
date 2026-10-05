@@ -123,9 +123,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
       </header>
-      <div className="border-b border-border bg-surface px-4 py-2 sm:hidden">
-        <BranchPicker className="w-full" />
-      </div>
+      {/* Only where there is a branch to pick. With one, this was a full-width
+          row under the header on every page of a phone, holding a menu with a
+          single entry in it — sixty pixels of the first screen for nothing. */}
+      {store.locations.length > 1 ? (
+        <div className="border-b border-border bg-surface px-4 py-2 sm:hidden">
+          <BranchPicker className="w-full" />
+        </div>
+      ) : null}
       <main className="app-main">{children}</main>
       {/* Inside the shell rather than per route, so there is no page that can
           forget it — including the 404 and the error boundary, which are
