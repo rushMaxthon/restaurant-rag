@@ -29,6 +29,7 @@ export function BrandingPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="branding"
         description="The accent colour your customers see throughout your app. Menus, prices and order status keep their own colours."
         eyebrow="Customer app"
         title="Branding"

@@ -50,6 +50,7 @@ import {
   type Restaurant,
   type UserRole,
 } from "../types/app";
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface ReportsPageProps {
   token: string;
@@ -781,7 +782,10 @@ export function ReportsPage({
       <header className="rpt-header">
         <div className="rpt-header__copy">
           <span className="eyebrow">Overview</span>
-          <h1>{isAdmin ? "Platform reports" : "Restaurant reports"}</h1>
+          <div className="tip-row">
+            <h1>{isAdmin ? "Platform reports" : "Restaurant reports"}</h1>
+            <PageHelpTip page="reports" />
+          </div>
           <p>
             {isAdmin
               ? "Revenue, orders, engagement and AI activity across every restaurant."

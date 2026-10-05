@@ -50,6 +50,7 @@ import {
   type OrderStatus,
   type UserRole,
 } from "../types/app";
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface OrderDetailPageProps {
   token: string;
@@ -417,6 +418,7 @@ export function OrderDetailPage({
           <div className="order-detail__title-row">
             <h1>Order #{order.id.slice(0, 8)}</h1>
             <StatusPill status={order.status} />
+            <PageHelpTip page="order-detail" />
           </div>
           <p className="order-detail__hero-meta">
             <span className="order-detail__hero-id" title={order.id}>

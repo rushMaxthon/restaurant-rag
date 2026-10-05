@@ -45,6 +45,7 @@ import {
   subscribeToDemoMode,
 } from '../services/marketing/marketingApi';
 import type { Campaign } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface CampaignDetailPageProps {
   campaignId: string;
@@ -277,7 +278,10 @@ export function CampaignDetailPage({
             <GoalIcon size={12} strokeWidth={2.6} />
             {goal.label}
           </span>
-          <h1 className="mkt-hero__title">{campaign.name}</h1>
+          <div className="tip-row">
+            <h1 className="mkt-hero__title">{campaign.name}</h1>
+            <PageHelpTip page="campaign-detail" />
+          </div>
           <p className="mkt-hero__lead">
             {segment.name} · {branchLabel(campaign.branch_ids)} ·{' '}
             {getChannel(primaryChannel(campaign.channels)).label}

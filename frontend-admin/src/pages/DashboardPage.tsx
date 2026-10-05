@@ -44,6 +44,7 @@ import type {
   User,
   UserRole,
 } from "../types/app";
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface DashboardPageProps {
   token: string;
@@ -117,7 +118,10 @@ function DashboardHeader({
     <section className="dashboard-admin-hero">
       <div className="dashboard-admin-hero__copy">
         <span className="eyebrow">Overview</span>
-        <h1>Platform pulse at a glance</h1>
+        <div className="tip-row">
+          <h1>Platform pulse at a glance</h1>
+          <PageHelpTip page="dashboard" />
+        </div>
         <p>
           Monitor orders, revenue, AI chat interactions, and operational status across platforms.
         </p>
@@ -1160,11 +1164,14 @@ export function DashboardPage({
       <section className="dashboard-admin-hero">
         <div className="dashboard-admin-hero__copy">
           <span className="eyebrow">Overview</span>
-          <h1>
-            {assignedRestaurant
-              ? assignedRestaurant.name
-              : "Restaurant operations at a glance"}
-          </h1>
+          <div className="tip-row">
+            <h1>
+              {assignedRestaurant
+                ? assignedRestaurant.name
+                : "Restaurant operations at a glance"}
+            </h1>
+            <PageHelpTip page="dashboard" />
+          </div>
           <p>
             Today's orders, revenue, menu health, and top dishes for your
             restaurant in one focused view.

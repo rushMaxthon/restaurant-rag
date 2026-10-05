@@ -334,6 +334,7 @@ export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
   return (
     <div className="page-stack">
       <PageIntro
+        help="tenants"
         description="Every restaurant running on this platform, what it is carrying, and whether its storefront is answering."
         eyebrow="Platform"
         title="Tenants"

@@ -929,6 +929,7 @@ export function OffersPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="offers"
         eyebrow="Campaign control"
         title="Offers"
         description={

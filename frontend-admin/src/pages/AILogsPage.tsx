@@ -104,6 +104,7 @@ export function AILogsPage({ token, onToast }: AILogsPageProps) {
   return (
     <div className="page-stack">
       <PageIntro
+        help="ai-logs"
         eyebrow="RAG monitoring"
         title="AI logs"
         description="Inspect user prompts, retrieval breadth, suggestion output, and response quality across the AI layer."

@@ -378,6 +378,7 @@ export function PreferencesPage({ token, role, onToast }: PreferencesPageProps) 
 
   const intro = (
     <PageIntro
+      help="preferences"
       eyebrow="Preferences"
       title="Onboarding questions"
       description={

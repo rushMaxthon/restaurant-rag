@@ -438,6 +438,7 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   return (
     <div className="page-stack">
       <PageIntro
+        help="orders"
         eyebrow="Operations"
         title="Orders"
         description={

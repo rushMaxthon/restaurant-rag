@@ -317,6 +317,7 @@ export function MenuItemEditorPage({
     return (
       <div className="page-stack">
         <PageIntro
+          help="menu-item-editor"
           eyebrow="Menu management"
           title={isEditing ? "Edit menu item" : "Add menu item"}
           description="Loading the editor inside the current restaurant workspace."
@@ -345,6 +346,7 @@ export function MenuItemEditorPage({
     return (
       <div className="page-stack">
         <PageIntro
+          help="menu-item-editor"
           eyebrow="Menu management"
           title="Menu item editor unavailable"
           description="The editor could not be opened inside this location workspace."
@@ -395,6 +397,7 @@ export function MenuItemEditorPage({
         onNavigate={onNavigate}
       />
       <PageIntro
+        help="menu-item-editor"
         eyebrow="Menu management"
         title={isEditing ? `Edit ${item?.name ?? "menu item"}` : "Add menu item"}
         description={

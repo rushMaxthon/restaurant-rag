@@ -61,6 +61,7 @@ import type {
   ReachEstimate,
   SegmentKey,
 } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface CampaignEditorPageProps {
   /** Null when creating. Otherwise the draft or scheduled campaign to resume. */
@@ -830,7 +831,10 @@ export function CampaignEditorPage({
             <ChevronLeft size={14} strokeWidth={2.5} />
             Marketing
           </button>
-          <h1 className="mkt-h1">{draft.name.trim() || 'New campaign'}</h1>
+          <div className="tip-row">
+            <h1 className="mkt-h1">{draft.name.trim() || 'New campaign'}</h1>
+            <PageHelpTip page="campaign-editor" />
+          </div>
         </div>
         {step > STEP_CHANNEL ? (
           <button

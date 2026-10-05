@@ -194,6 +194,7 @@ export function SettingsPage({ onToast }: SettingsPageProps) {
   return (
     <div className="page-stack">
       <PageIntro
+        help="settings"
         description="Your account and the preferences stored in this browser."
         eyebrow="System"
         title="Settings"

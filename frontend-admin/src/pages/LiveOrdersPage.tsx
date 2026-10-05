@@ -1,6 +1,5 @@
 import {
   Bike,
-  BookOpen,
   CalendarClock,
   ChefHat,
   CircleCheckBig,
@@ -14,7 +13,6 @@ import {
   ShoppingBag,
   Store,
   Truck,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -62,23 +60,12 @@ interface LiveOrdersPageProps {
  */
 const REFRESH_MS = 30_000;
 
-/** Remembers that somebody closed the guide, so it does not reopen on every visit. */
-const GUIDE_KEY = "live-orders-guide";
-
 const COLUMN_ICONS: Record<LiveColumnKey, LucideIcon> = {
   new: ShoppingBag,
   kitchen: ChefHat,
   road: Truck,
   done: CircleCheckBig,
 };
-
-function readGuideOpen(): boolean {
-  try {
-    return window.localStorage.getItem(GUIDE_KEY) !== "closed";
-  } catch {
-    return true;
-  }
-}
 
 function paymentTag(order: LiveOrder): { label: string; paid: boolean; help: string } {
   if (order.payment_status === "PAID") {
@@ -258,7 +245,6 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
   // Which column a phone shows. On a wide screen all four are visible and
   // this only decides which stat tile is highlighted.
   const [activeColumn, setActiveColumn] = useState<LiveColumnKey>("new");
-  const [guideOpen, setGuideOpen] = useState(readGuideOpen);
   const [now, setNow] = useState(() => new Date());
   const onToastRef = useRef(onToast);
   const hasBoard = useRef(false);
@@ -266,19 +252,6 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
   useEffect(() => {
     onToastRef.current = onToast;
   }, [onToast]);
-
-  const toggleGuide = () => {
-    setGuideOpen((current) => {
-      const next = !current;
-      try {
-        if (next) window.localStorage.removeItem(GUIDE_KEY);
-        else window.localStorage.setItem(GUIDE_KEY, "closed");
-      } catch {
-        // Private mode: the guide simply reopens next visit.
-      }
-      return next;
-    });
-  };
 
   const load = useCallback(
     async (mode: "first" | "silent" | "manual") => {
@@ -417,62 +390,6 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
             Try again
           </button>
         </div>
-      ) : null}
-
-      {guideOpen ? (
-        <section aria-label="How to read this board" className="live-guide">
-          <header className="live-guide__head">
-            <span className="live-guide__title">
-              <BookOpen aria-hidden="true" size={16} />
-              <strong>How to read this board</strong>
-            </span>
-            <button
-              aria-label="Close the guide"
-              className="live-guide__close"
-              onClick={toggleGuide}
-              title="Close the guide. Bring it back with the Guide button."
-              type="button"
-            >
-              <X aria-hidden="true" size={16} />
-            </button>
-          </header>
-          <p className="live-guide__lead">
-            {isAdmin
-              ? "This is for the platform admin: one screen showing where every restaurant's orders are right now. An order moves left to right as the restaurant works on it. You watch; the restaurant and the rider do the work."
-              : "This is for you and your staff: one screen showing where each of your orders is right now. An order moves left to right as your kitchen and the rider work on it."}
-          </p>
-          <ol className="live-guide__steps">
-            {columns.map((column, index) => {
-              const help = columnHelp(column.key, role);
-              const Icon = COLUMN_ICONS[column.key];
-              return (
-                <li className={`live-guide__step live-guide__step--${column.key}`} key={column.key}>
-                  <span className="live-guide__step-head">
-                    <span className="live-guide__num">{index + 1}</span>
-                    <Icon aria-hidden="true" size={15} />
-                    <strong>{column.title}</strong>
-                  </span>
-                  <span className="live-guide__text">{help.what}</span>
-                  <span className="live-guide__do">
-                    <em>You:</em> {help.action}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
-          <dl className="live-guide__terms">
-            {CARD_HELP.map((entry) => (
-              <div key={entry.term}>
-                <dt>{entry.term}</dt>
-                <dd>{entry.meaning}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="live-guide__foot">
-            Not sure about something? Hover or tap any <strong>?</strong> on the page, or hold the
-            pointer over a badge.
-          </p>
-        </section>
       ) : null}
 
       <section aria-label="Today at a glance" className="live-stats">
@@ -653,16 +570,25 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
             Clear filters
           </button>
         ) : null}
-        <button
-          aria-pressed={guideOpen}
-          className="secondary-button live-guide-toggle"
-          onClick={toggleGuide}
-          title="Show or hide the explanation of this board"
-          type="button"
-        >
-          <BookOpen aria-hidden="true" size={15} />
-          {guideOpen ? "Hide guide" : "Guide"}
-        </button>
+        <span className="live-guide-toggle">
+          How to read this board
+          <InfoTip label="how to read this board" wide>
+            <strong className="tip__title">How to read this board</strong>
+            <p className="tip__lead">
+              {isAdmin
+                ? "For the platform admin: where every restaurant's orders are right now. An order moves left to right as the restaurant works on it. You watch; the restaurant and the rider do the work."
+                : "For you and your staff: where each of your orders is right now. An order moves left to right as your kitchen and the rider work on it."}
+            </p>
+            <dl className="tip__rows">
+              {CARD_HELP.map((entry) => (
+                <div key={entry.term}>
+                  <dt>{entry.term}</dt>
+                  <dd>{entry.meaning}</dd>
+                </div>
+              ))}
+            </dl>
+          </InfoTip>
+        </span>
       </section>
 
       {loadError && !board && !isLoading ? (

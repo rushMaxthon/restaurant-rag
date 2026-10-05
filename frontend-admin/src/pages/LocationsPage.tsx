@@ -523,6 +523,7 @@ export function LocationsPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="locations"
         eyebrow="Branch management"
         title="Locations"
         description="Review every branch for the current restaurant, then open a location workspace for settings, menu items, and orders."

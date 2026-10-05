@@ -924,6 +924,7 @@ export function RestaurantDetailPage({
         />
       ) : null}
       <PageIntro
+        help="restaurant-detail"
         eyebrow={isAdmin ? "Restaurant workspace" : "Assigned restaurant"}
         title={restaurant.name}
         description={

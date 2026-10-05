@@ -482,6 +482,7 @@ export function MenuItemsPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="menu-items"
         eyebrow="Menu catalog"
         title="Menu items"
         description={

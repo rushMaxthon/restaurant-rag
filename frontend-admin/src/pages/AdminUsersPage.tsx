@@ -286,6 +286,7 @@ export function AdminUsersPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="users"
         eyebrow={isOwnerView ? 'My restaurant' : 'Access control'}
         title={isOwnerView ? 'Customers' : 'Users'}
         description={

@@ -47,6 +47,7 @@ import {
   subscribeToDemoMode,
 } from '../services/marketing/marketingApi';
 import type { Campaign, MarketingDashboard } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface MarketingPageProps {
   onNavigate: (path: string) => void;
@@ -273,7 +274,10 @@ export function MarketingPage({ onNavigate, onToast }: MarketingPageProps) {
       <section className="hub-top">
         <div className="hub-banner">
           <div className="hub-banner__copy">
-            <span className="hub-eyebrow">Marketing Hub</span>
+            <span className="hub-eyebrow">
+              Marketing Hub
+              <PageHelpTip page="marketing" />
+            </span>
             <h1 className="hub-banner__title">
               Reach your customers,
               <em>and see what it earned.</em>

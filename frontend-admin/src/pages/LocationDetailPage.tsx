@@ -927,6 +927,7 @@ export function LocationDetailPage({
         onNavigate={onNavigate}
       />
       <PageIntro
+        help="location-detail"
         eyebrow="Branch workspace"
         title={location.branch_name}
         description={`Manage branch settings, slots, menu items, and orders for ${restaurant.name}.`}

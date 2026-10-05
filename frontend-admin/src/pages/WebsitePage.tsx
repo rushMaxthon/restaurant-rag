@@ -214,6 +214,7 @@ export function WebsitePage({ token, role, restaurantId, onToast }: WebsitePageP
   return (
     <div className="page">
       <PageIntro
+        help="website"
         eyebrow="Manage"
         title="Website"
         description="The words on your own site: what a search result shows, what the home page says, and what you tell somebody who has not ordered from you before."

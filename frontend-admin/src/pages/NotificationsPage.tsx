@@ -246,6 +246,7 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
   return (
     <div className="page-stack">
       <PageIntro
+        help="notifications"
         eyebrow="Messaging"
         title="Notification Center"
         description="Broadcast customer, owner, and operational updates from one Firebase-backed workspace."

@@ -472,6 +472,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   return (
     <div className="page-stack">
       <PageIntro
+        help="restaurants"
         eyebrow="Moderation"
         title="Restaurants"
         description="Approve, edit, and manage every restaurant with better search, filtering, and lifecycle controls."

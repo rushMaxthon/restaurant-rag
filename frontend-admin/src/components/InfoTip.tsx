@@ -1,27 +1,37 @@
-import { CircleHelp } from "lucide-react";
+import { Info } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface InfoTipProps {
   /** What the tip is about, for a screen reader: "About New orders". */
   label: string;
+  /** For a longer explanation: a glossary reads badly in a narrow column. */
+  wide?: boolean;
   children: ReactNode;
 }
 
 interface Placement {
   left: number;
+  width: number;
+  maxHeight: number;
   top?: number;
   bottom?: number;
 }
 
 const WIDTH = 288;
+const WIDTH_WIDE = 420;
 const MARGIN = 8;
+/** How far the bubble's edge sits left of the button it opens from. */
+const INSET = 12;
 
 /**
- * A small "?" that explains the thing beside it.
+ * A small "i" that explains the thing beside it.
  *
- * Opens on hover and on keyboard focus, and on a tap — a phone has neither of
- * the first two, and a native `title` attribute never shows there at all.
+ * Opens on a click and nothing else. It used to open on hover and focus as
+ * well, and a pointer crossing the page on its way somewhere else kept
+ * throwing explanations up; a click also works the same on a phone, where a
+ * native `title` attribute never shows at all. Enter and Space click a button,
+ * so the keyboard needs nothing of its own.
  *
  * The bubble is rendered into `document.body` and positioned in viewport
  * coordinates. Inside the element it describes, it was clipped: a stat tile
@@ -29,31 +39,29 @@ const MARGIN = 8;
  * sideways, and a card lifts on hover with a transform, which turns
  * `position: fixed` into "fixed to the card". Out here none of that reaches it.
  */
-export function InfoTip({ label, children }: InfoTipProps) {
+export function InfoTip({ label, wide = false, children }: InfoTipProps) {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  // When it last opened. A tap on a phone is a focus and then a click, a few
-  // milliseconds apart: without this the focus opened the bubble and the click
-  // that followed read it as "already open" and closed it again.
-  const openedAt = useRef(0);
-
   const open = useCallback(() => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    openedAt.current = Date.now();
-    const width = Math.min(WIDTH, window.innerWidth - MARGIN * 2);
-    const left = Math.min(
-      Math.max(rect.left + rect.width / 2 - width / 2, MARGIN),
-      window.innerWidth - width - MARGIN,
-    );
-    // Below when there is room, above when the button is low on the screen.
+    const width = Math.min(wide ? WIDTH_WIDE : WIDTH, window.innerWidth - MARGIN * 2);
+    // Starts under the button and runs right, pulled back in at the screen's
+    // edge. Centred on the button it hung over the sidebar from every page
+    // title, which sits a few pixels from it.
+    const left = Math.min(Math.max(rect.left - INSET, MARGIN), window.innerWidth - width - MARGIN);
+    // Whichever side has more room, and never taller than that room: a long
+    // explanation scrolls inside the bubble rather than running off the screen.
+    const above = rect.top - MARGIN * 2;
+    const below = window.innerHeight - rect.bottom - MARGIN * 2;
     setPlacement(
-      rect.bottom > window.innerHeight * 0.6
-        ? { left, bottom: window.innerHeight - rect.top + MARGIN }
-        : { left, top: rect.bottom + MARGIN },
+      above > below
+        ? { left, width, maxHeight: above, bottom: window.innerHeight - rect.top + MARGIN }
+        : { left, width, maxHeight: below, top: rect.bottom + MARGIN },
     );
-  }, []);
+  }, [wide]);
 
   const close = useCallback(() => setPlacement(null), []);
 
@@ -62,14 +70,26 @@ export function InfoTip({ label, children }: InfoTipProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
+    // A click anywhere else closes it. Blur alone is not enough: Safari does
+    // not focus a button on click, so there it would never blur either.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      // Not the bubble itself: a long one scrolls, and that takes a press.
+      if (!buttonRef.current?.contains(target) && !bubbleRef.current?.contains(target)) close();
+    };
     // The bubble is pinned to where the button WAS. Once the page moves it is
     // pointing at nothing, so it goes rather than follows.
     window.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("pointerdown", onPointerDown);
+    const onScroll = (event: Event) => {
+      if (event.target !== bubbleRef.current) close();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", close);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
   }, [placement, close]);
@@ -81,33 +101,31 @@ export function InfoTip({ label, children }: InfoTipProps) {
         aria-expanded={placement !== null}
         aria-label={`About ${label}`}
         className="tip"
-        onBlur={close}
         onClick={(event) => {
           // Often sits inside something clickable. Asking what a column is
           // must not also open it.
           event.stopPropagation();
-          if (placement && Date.now() - openedAt.current > 400) close();
-          else if (!placement) open();
+          if (placement) close();
+          else open();
         }}
-        onFocus={open}
-        onMouseEnter={open}
-        onMouseLeave={close}
         ref={buttonRef}
         type="button"
       >
-        <CircleHelp aria-hidden="true" size={15} />
+        <Info aria-hidden="true" size={15} />
       </button>
       {placement
         ? createPortal(
             <div
               className="tip__bubble"
               id={id}
+              ref={bubbleRef}
               role="tooltip"
               style={{
                 left: placement.left,
                 top: placement.top,
                 bottom: placement.bottom,
-                width: Math.min(WIDTH, window.innerWidth - MARGIN * 2),
+                width: placement.width,
+                maxHeight: placement.maxHeight,
               }}
             >
               {children}

@@ -622,6 +622,7 @@ function GeneratedCombosWorkspace({
   return (
     <div className="page-stack">
       <PageIntro
+        help="generated-combos"
         actions={
           isAdmin ? (
             <button

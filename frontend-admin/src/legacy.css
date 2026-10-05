@@ -15551,7 +15551,6 @@ optgroup {
 }
 
 .live-stat__main:focus-visible,
-.live-guide__close:focus-visible,
 .live-rest:focus-visible,
 .live-card__open:focus-visible,
 .live-card__call:focus-visible,
@@ -16279,159 +16278,16 @@ optgroup {
   }
 }
 
-/* -- the guide -------------------------------------------------------------
-   Open until somebody closes it. The board is four coloured columns of small
-   cards; without a sentence saying which way to read them, and whose job each
-   column is, a new owner is looking at a wall. */
-
-.live-guide {
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-card);
-  background: var(--surface-warm);
-}
-
-.live-guide__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.live-guide__title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--primary-text);
-  font-size: var(--fs-body-lg);
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__title strong {
-  color: var(--text);
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__close {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.live-guide__close:hover {
-  background: var(--row-hover);
-  color: var(--text);
-}
-
-.live-guide__lead,
-.live-guide__foot {
-  margin: 0;
-  max-width: 78ch;
-  color: var(--text);
-  font-size: var(--fs-body);
-  line-height: var(--leading-relaxed);
-}
-
-.live-guide__foot {
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-
-.live-guide__steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.live-guide__step {
-  display: grid;
-  align-content: start;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--live-accent);
-  border-radius: var(--radius-3);
-  background: var(--surface);
-}
-
-.live-guide__step-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--live-ink);
-  font-size: var(--fs-body);
-}
-
-.live-guide__step-head strong {
-  color: var(--text);
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__num {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-pill);
-  background: var(--live-soft);
-  color: var(--live-ink);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__text,
-.live-guide__do {
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: var(--leading-snug);
-}
-
-.live-guide__do {
-  color: var(--text);
-}
-
-.live-guide__do em {
-  color: var(--live-ink);
-  font-style: normal;
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__terms {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3) var(--space-5);
-  margin: 0;
-}
-
-.live-guide__terms dt {
-  color: var(--text);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
-}
-
-.live-guide__terms dd {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: var(--leading-snug);
-}
+/* The board's explanation is one "i" at the end of the filter row. */
 
 .live-guide-toggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
 }
 
 /* -- backlog ---------------------------------------------------------------
@@ -16527,10 +16383,24 @@ optgroup {
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--hint);
-  cursor: help;
+  cursor: pointer;
   transition:
     background var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
+}
+
+/* A title and its "i" on one line. The title keeps its own styles; this only
+   seats the button beside it instead of beneath it. */
+.tip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tip-row h1 {
+  margin: 0;
+  min-width: 0;
 }
 
 .tip:hover,
@@ -16558,13 +16428,18 @@ optgroup {
   font-size: var(--fs-label);
   line-height: var(--leading-snug);
   text-align: left;
-  pointer-events: none;
+  overflow-y: auto;
   animation: rise-in var(--dur-fast) var(--ease-out) both;
 }
 
 .tip__title {
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
+}
+
+.tip__lead {
+  margin: 0;
+  color: var(--muted);
 }
 
 .tip__rows {
@@ -16592,27 +16467,7 @@ optgroup {
   }
 }
 
-@media (max-width: 1280px) {
-  .live-guide__steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .live-guide__terms {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 720px) {
-  .live-guide {
-    padding: var(--space-4);
-  }
-
-  .live-guide__steps,
-  .live-guide__terms {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .live-guide__close,
   .tip {
     width: 44px;
     height: 44px;
