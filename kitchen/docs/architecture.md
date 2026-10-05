@@ -32,7 +32,8 @@ config/            api.ts — backend base URL
 data/              boardColumns (stages + empty-state copy), boardFilters
 hooks/             useAppStore selectors, usePolling, useBoard, useAdvanceOrder,
                    useOrder, useOrderHistory, useNewOrderAlerts, useRealtime, …
-navigation/        stackNavigation/ (native stack), hooks/useNavigation.ts, navigationService
+navigation/        stackNavigation/ (root native stack), tabNavigation/ (Home + Settings tabs),
+                   hooks/useNavigation.ts, navigationService
 screens/           auth/login, board, orders/orderDetail, orders/orderHistory, settings
 services/          api (HTTP), auth, orders, restaurants, storage, realtime, sound, orderEvents
 store/             AppStore.tsx — session (persisted), preferences
@@ -72,8 +73,41 @@ test/              fixtures and the renderApp harness (tests only)
 | 600–900pt (portrait tablet) | stage tabs, tickets two across | two panes from 768pt |
 | < 600pt (phone) | stage tabs, one ticket per row, search behind an icon | one column, action bar fixed at the bottom |
 
-Completed orders is pushed on top of the board, so the board stays mounted
-underneath — it keeps polling and still announces the next ticket.
+Navigation: signed out, the root stack holds only Login. Signed in, its base
+is `MainTabs` — bottom tabs **Home** (the board) and **Settings** — with
+Order details and Completed orders pushed full-screen over the tabs. Tabs
+keep each other mounted and pushed screens sit above them, so the board
+keeps polling and still announces the next ticket from anywhere in the app.
+Tab screens navigate with the shared `useNavigationHook()`: a stack route
+bubbles up to the root stack, a tab route is handled by the tab navigator.
+`ScreenContainer` drops its bottom inset inside a tab, where the tab bar
+already owns it.
+
+## Design system
+
+`themeBase.ts` exports one `space`, `radius` and `type` scale alongside the
+colours; screens and components use them rather than their own numbers.
+Cards are flat — surface, 1px border, `radius.xl` — with no drop shadows:
+shadows in long lists are costly on low-end Android, and colour already
+carries the meaning (stage colours on counts and buttons, urgency tints on
+ticket headers, amber for customer notes, red only when something is late or
+failed). `IconTile`, `StateView`, `Pill` and `ScreenHeader` are the shared
+pieces every screen is built from.
+
+## Rendering cost
+
+- **Polls reuse unchanged orders** (`utils/reconcile.ts`): an idle poll
+  hands the screen the same board object, so nothing below it re-renders;
+  a busy one re-renders only tickets that moved. Board, order and history
+  all go through it. `hooks/useBoard.test.tsx` pins this.
+- **Tickets compare by displayed minute**: the 15-second clock does not
+  redraw every card, only those whose wait actually changed.
+- **Derived data is memoised** in `BoardScreen` (per-stage lists, counts,
+  flags, callbacks) so memoised children get identical props.
+- **One skeleton pulse** shared by every placeholder; the arrival highlight
+  is a single native-driven fade, not a loop.
+- **Lists** render tickets in small batches with a modest window, and
+  detach off-screen rows on Android.
 
 ## Native setup that is easy to break
 

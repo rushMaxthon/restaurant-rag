@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { ApiError } from '@services/api';
 import { fetchOrder } from '@services/orders';
-import type { BoardScope, KitchenOrder } from '@/types/app';
+import type { KitchenOrder } from '@/types/app';
 import { usePolling } from '@hooks/usePolling';
+import { reuseUnchanged } from '@utils/reconcile';
 
 export interface OrderState {
   order: KitchenOrder | null;
@@ -20,7 +21,6 @@ export interface OrderState {
 export function useOrder(
   token: string | null,
   orderId: string,
-  scope: BoardScope,
   initial: KitchenOrder | undefined,
   pollIntervalMs: number,
 ) {
@@ -36,16 +36,19 @@ export function useOrder(
       return;
     }
     try {
-      const fresh = await fetchOrder(token, orderId, scope);
-      setState(current => ({
-        order: {
-          ...fresh,
-          completed_at: fresh.completed_at ?? current.order?.completed_at ?? null,
-        },
-        loading: false,
-        missing: false,
-        error: null,
-      }));
+      const fetched = await fetchOrder(token, orderId);
+      setState(current => {
+        const fresh = {
+          ...fetched,
+          completed_at: fetched.completed_at ?? current.order?.completed_at ?? null,
+        };
+        const order = current.order ? reuseUnchanged([current.order], [fresh])[0] : fresh;
+        // Unchanged since the last poll: same state, no re-render.
+        if (order === current.order && !current.loading && !current.missing && !current.error) {
+          return current;
+        }
+        return { order, loading: false, missing: false, error: null };
+      });
     } catch (error) {
       setState(current => ({
         ...current,
@@ -54,8 +57,7 @@ export function useOrder(
         error: error instanceof Error ? error.message : 'Could not load this order.',
       }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, orderId, scope.restaurantId]);
+  }, [token, orderId]);
 
   usePolling(load, pollIntervalMs, Boolean(token));
 

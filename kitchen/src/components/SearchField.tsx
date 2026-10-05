@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { useTheme } from '@/theme';
+import { radius, useTheme } from '@/theme';
 import { Icon } from '@components/Icon';
 
 interface SearchFieldProps {
@@ -9,6 +9,8 @@ interface SearchFieldProps {
   placeholder: string;
   accessibilityLabel: string;
   busy?: boolean;
+  // GET /orders caps `search` at 120 characters and answers 422 past it.
+  maxLength?: number;
   testID?: string;
 }
 
@@ -18,13 +20,17 @@ export const SearchField = ({
   placeholder,
   accessibilityLabel,
   busy = false,
+  maxLength = 120,
   testID,
 }: SearchFieldProps) => {
   const { colors } = useTheme();
   return (
     <View
-      style={[styles.field, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
-      <Icon name="search" size={18} color={colors.textMuted} />
+      style={[
+        styles.field,
+        { backgroundColor: colors.surface, borderColor: value ? colors.accent : colors.border },
+      ]}>
+      <Icon name="search" size={19} color={value ? colors.accent : colors.textMuted} />
       <TextInput
         testID={testID}
         value={value}
@@ -32,6 +38,7 @@ export const SearchField = ({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         accessibilityLabel={accessibilityLabel}
+        maxLength={maxLength}
         autoCapitalize="characters"
         autoCorrect={false}
         returnKeyType="search"
@@ -58,9 +65,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     minHeight: 48,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
     paddingHorizontal: 14,
   },
-  input: { flex: 1, fontSize: 16, paddingVertical: 10, fontWeight: '600' },
+  input: { flex: 1, fontSize: 16, paddingVertical: 10, fontWeight: '700', letterSpacing: 0.4 },
 });

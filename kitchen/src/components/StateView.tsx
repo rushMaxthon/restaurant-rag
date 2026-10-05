@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '@/theme';
+import { radius, space, type, useTheme } from '@/theme';
 import { Icon, type IconName } from '@components/Icon';
 import { PrimaryButton } from '@components/PrimaryButton';
 
@@ -18,7 +18,9 @@ interface StateViewProps {
 
 // Every empty, error and fault state in the app. One component so a quiet
 // service and a failed load never look alike: calm is green and reassuring,
-// danger says what happened and what to do.
+// danger says what happened and what to do. The icon sits in a double ring —
+// a soft halo around a tinted disc — which reads as deliberate rather than
+// as a missing image.
 export const StateView = ({
   icon,
   title,
@@ -32,25 +34,31 @@ export const StateView = ({
   const { colors } = useTheme();
   const iconColor =
     tone === 'calm' ? colors.accent : tone === 'danger' ? colors.danger : colors.textMuted;
-  const iconBackground =
+  const tint =
     tone === 'calm' ? colors.accentSoft : tone === 'danger' ? colors.dangerSoft : colors.surfaceMuted;
+  const disc = compact ? 52 : 76;
   return (
     <View testID={testID} style={[styles.container, compact ? styles.compact : styles.full]}>
       <View
         style={[
-          styles.iconWrap,
-          compact && styles.iconWrapCompact,
-          { backgroundColor: iconBackground },
+          styles.halo,
+          { width: disc + 20, height: disc + 20, borderRadius: (disc + 20) / 2, borderColor: tint },
         ]}>
-        <Icon name={icon} size={compact ? 22 : 30} color={iconColor} />
+        <View
+          style={[
+            styles.disc,
+            { width: disc, height: disc, borderRadius: disc / 2, backgroundColor: tint },
+          ]}>
+          <Icon name={icon} size={compact ? 24 : 34} color={iconColor} />
+        </View>
       </View>
       <Text
         accessibilityRole="header"
-        style={[styles.title, compact && styles.titleCompact, { color: colors.text }]}>
+        style={[compact ? styles.titleCompact : styles.title, { color: colors.text }]}>
         {title}
       </Text>
       {body ? (
-        <Text style={[styles.body, compact && styles.bodyCompact, { color: colors.textMuted }]}>
+        <Text style={[compact ? styles.bodyCompact : styles.body, { color: colors.textMuted }]}>
           {body}
         </Text>
       ) : null}
@@ -64,21 +72,20 @@ export const StateView = ({
 };
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', justifyContent: 'center', gap: 10 },
-  full: { flex: 1, padding: 32 },
-  compact: { paddingVertical: 28, paddingHorizontal: 16 },
-  iconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  container: { alignItems: 'center', justifyContent: 'center', gap: space.sm },
+  full: { flex: 1, padding: space.xxxl },
+  compact: { paddingVertical: space.xxl, paddingHorizontal: space.lg },
+  halo: {
+    borderWidth: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: space.sm,
+    opacity: 1,
   },
-  iconWrapCompact: { width: 48, height: 48, borderRadius: 24 },
-  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  titleCompact: { fontSize: 17 },
-  body: { fontSize: 16, lineHeight: 23, textAlign: 'center', maxWidth: 420 },
-  bodyCompact: { fontSize: 14, lineHeight: 20 },
-  action: { marginTop: 12, minWidth: 220 },
+  disc: { alignItems: 'center', justifyContent: 'center' },
+  title: { ...type.title, textAlign: 'center' },
+  titleCompact: { ...type.heading, textAlign: 'center' },
+  body: { ...type.body, textAlign: 'center', maxWidth: 440 },
+  bodyCompact: { ...type.caption, textAlign: 'center', maxWidth: 280 },
+  action: { marginTop: space.md, minWidth: 220, borderRadius: radius.md },
 });

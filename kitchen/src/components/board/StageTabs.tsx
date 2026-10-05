@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '@/theme';
+import { radius, useTheme } from '@/theme';
 import { BOARD_COLUMNS } from '@/data/boardColumns';
 import type { LiveStatus } from '@/types/app';
 import { inkOn } from '@/themePalette';
@@ -17,14 +17,15 @@ interface StageTabsProps {
 }
 
 // The phone's replacement for four columns: one stage at a time, with every
-// stage's count always visible.
-export const StageTabs = ({ value, onChange, counts, late, arrived }: StageTabsProps) => {
+// stage's count always visible. The selected stage takes its own colour as
+// an underline and count, so the tab matches the tickets' action buttons.
+const StageTabsComponent = ({ value, onChange, counts, late, arrived }: StageTabsProps) => {
   const theme = useTheme();
   const { colors } = theme;
   return (
     <View
       accessibilityRole="tablist"
-      style={[styles.bar, { backgroundColor: colors.surfaceMuted }]}>
+      style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       {BOARD_COLUMNS.map(column => {
         const active = column.status === value;
         const stageColor = theme.status[column.status];
@@ -40,22 +41,25 @@ export const StageTabs = ({ value, onChange, counts, late, arrived }: StageTabsP
             }`}
             style={[
               styles.tab,
-              active && [styles.active, { backgroundColor: colors.surface }],
+              active && { backgroundColor: colors.surfaceMuted },
               arrived[column.status] && !active && [styles.arrived, { borderColor: colors.accent }],
             ]}>
+            <View style={styles.countRow}>
+              <View style={[styles.count, { backgroundColor: active ? stageColor : colors.surfaceMuted }]}>
+                <Text style={[styles.countText, { color: active ? inkOn(stageColor) : colors.text }]}>
+                  {counts[column.status]}
+                </Text>
+              </View>
+              {late[column.status] ? (
+                <View style={[styles.lateDot, { backgroundColor: colors.danger }]} />
+              ) : null}
+            </View>
             <Text
               numberOfLines={1}
               style={[styles.title, { color: active ? colors.text : colors.textMuted }]}>
               {column.title}
             </Text>
-            <View style={[styles.count, { backgroundColor: active ? stageColor : colors.border }]}>
-              <Text style={[styles.countText, { color: active ? inkOn(stageColor) : colors.text }]}>
-                {counts[column.status]}
-              </Text>
-            </View>
-            {late[column.status] ? (
-              <View style={[styles.lateDot, { backgroundColor: colors.danger, borderColor: colors.surfaceMuted }]} />
-            ) : null}
+            <View style={[styles.underline, active ? { backgroundColor: stageColor } : styles.underlineIdle]} />
           </Pressable>
         );
       })}
@@ -63,35 +67,33 @@ export const StageTabs = ({ value, onChange, counts, late, arrived }: StageTabsP
   );
 };
 
+export const StageTabs = memo(StageTabsComponent);
+
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', borderRadius: 16, padding: 4, gap: 4 },
+  bar: {
+    flexDirection: 'row',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 4,
+    gap: 4,
+  },
   tab: {
     flex: 1,
-    minHeight: 56,
-    borderRadius: 12,
+    minHeight: 64,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 4,
-  },
-  active: {
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    paddingTop: 8,
+    paddingHorizontal: 2,
+    overflow: 'hidden',
   },
   arrived: { borderWidth: 2 },
+  countRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  count: { minWidth: 30, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 2, alignItems: 'center' },
+  countText: { fontSize: 15, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  lateDot: { width: 8, height: 8, borderRadius: 4 },
   title: { fontSize: 13, fontWeight: '800' },
-  count: { minWidth: 28, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 1, alignItems: 'center' },
-  countText: { fontSize: 14, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  lateDot: {
-    position: 'absolute',
-    top: 6,
-    right: 8,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-  },
+  underline: { alignSelf: 'stretch', height: 3, borderRadius: 2, marginHorizontal: 10, marginTop: 2 },
+  underlineIdle: { backgroundColor: 'transparent' },
 });

@@ -65,12 +65,10 @@ export const fetchCompletedOrders = (
   });
 
 // Out-of-scope orders come back 404, not 403 — the board learns nothing about
-// an order it may not see, including whether it exists.
-export const fetchOrder = (token: string, orderId: string, scope: BoardScope) =>
-  request<KitchenOrder>(`/orders/${orderId}`, {
-    token,
-    query: { restaurant_id: scope.restaurantId },
-  });
+// an order it may not see, including whether it exists. Takes no scope
+// parameters: the server resolves it from the signed-in account alone.
+export const fetchOrder = (token: string, orderId: string) =>
+  request<KitchenOrder>(`/orders/${orderId}`, { token });
 
 // One step along the flow. The server refuses anything but the single legal
 // next status. restaurant_id matters only for an ADMIN; an OWNER or KITCHEN

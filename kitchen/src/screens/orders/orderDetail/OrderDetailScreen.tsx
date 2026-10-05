@@ -58,7 +58,6 @@ const OrderDetailScreen = () => {
   const { order, loading, missing, error, reload } = useOrder(
     token,
     params.orderId,
-    scope,
     params.order,
     pollIntervalFor(realtime),
   );
@@ -118,19 +117,36 @@ const OrderDetailScreen = () => {
   const stageColor = theme.status[order.status];
   const showBranch = scope.locationId === null && (restaurant?.locations.length ?? 0) > 1;
 
+  const isDelivery = order.fulfillment_type === 'DELIVERY';
   const facts: Fact[] = [
-    { label: 'Ordered', value: completedLabel(order.placed_at, now) },
+    { label: 'Ordered', icon: 'time-outline', value: completedLabel(order.placed_at, now) },
     ...(isScheduled(order)
-      ? [{ label: 'Scheduled for', value: clockTime(order.scheduled_at) }]
+      ? [
+          {
+            label: 'Scheduled for',
+            icon: 'calendar-outline' as const,
+            value: clockTime(order.scheduled_at),
+            emphasis: true,
+          },
+        ]
       : []),
-    ...(finished ? [{ label: 'Completed', value: completedLabel(order.completed_at, now) }] : []),
-    { label: 'Type', value: order.fulfillment_type === 'DELIVERY' ? 'Delivery' : 'Pickup' },
-    ...(customerName(order) ? [{ label: 'Customer', value: customerName(order)! }] : []),
+    ...(finished
+      ? [{ label: 'Completed', icon: 'checkmark-done' as const, value: completedLabel(order.completed_at, now) }]
+      : []),
+    {
+      label: 'Type',
+      icon: isDelivery ? 'bicycle' : 'bag-handle-outline',
+      value: isDelivery ? 'Delivery' : 'Pickup',
+    },
+    ...(customerName(order)
+      ? [{ label: 'Customer', icon: 'person-outline' as const, value: customerName(order)! }]
+      : []),
     ...(showBranch && order.restaurant_location
-      ? [{ label: 'Branch', value: order.restaurant_location.branch_name }]
+      ? [{ label: 'Branch', icon: 'location-outline' as const, value: order.restaurant_location.branch_name }]
       : []),
     {
       label: 'Payment',
+      icon: 'cash-outline',
       value: (
         <PaymentPill
           status={order.payment_status}
@@ -142,8 +158,11 @@ const OrderDetailScreen = () => {
     },
   ];
 
+  const waitTint =
+    urgency === 'late' ? colors.dangerSoft : urgency === 'due' ? colors.warningSoft : colors.surfaceMuted;
   const hero = (
     <View style={styles.card}>
+      <View style={[styles.accent, { backgroundColor: stageColor }]} />
       <View style={styles.hero}>
         <View style={styles.heroText}>
           <Text style={styles.code}>{orderCode(order)}</Text>
@@ -155,14 +174,18 @@ const OrderDetailScreen = () => {
           />
         </View>
         {live ? (
-          <View style={styles.waitBox} accessible accessibilityLabel={`Waiting ${formatWait(waitingMinutes(order, now))}`}>
-            <Text style={styles.waitLabel}>Waiting</Text>
+          <View
+            style={[styles.waitBox, { backgroundColor: waitTint }]}
+            accessible
+            accessibilityLabel={`Waiting ${formatWait(waitingMinutes(order, now))}`}>
+            <Text style={[styles.waitLabel, { color: waitColor }]}>Waiting</Text>
             <Text style={[styles.waitValue, { color: waitColor }]}>
               {formatWait(waitingMinutes(order, now))}
             </Text>
           </View>
         ) : null}
       </View>
+      <View style={styles.divider} />
       <StageProgress status={order.status} fulfillment={order.fulfillment_type} />
       {finished ? (
         <Banner
@@ -191,15 +214,23 @@ const OrderDetailScreen = () => {
 
   const factsCard = (
     <View style={styles.card}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>
+        Details
+      </Text>
       <FactList facts={facts} />
     </View>
   );
 
   const itemsCard = (
     <View style={styles.card}>
-      <Text accessibilityRole="header" style={styles.sectionTitle}>
-        {itemCount(order.items)}
-      </Text>
+      <View style={styles.sectionHead}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
+          Items
+        </Text>
+        <View style={styles.countPill}>
+          <Text style={styles.countPillText}>{itemCount(order.items)}</Text>
+        </View>
+      </View>
       <OrderItemsList items={order.items} large />
       {order.special_instructions ? (
         <InstructionsCallout text={order.special_instructions} />
@@ -208,12 +239,22 @@ const OrderDetailScreen = () => {
   );
 
   const actionError = errors[order.id];
+  const next = nextStatus(order.status);
   const actionBar = live ? (
     <View style={styles.actionBar}>
       {actionError ? (
-        <Text accessibilityRole="alert" style={styles.actionError}>
-          {actionError}
-        </Text>
+        <View accessibilityRole="alert" style={styles.actionError}>
+          <Icon name="alert-circle" size={16} color={colors.danger} />
+          <Text style={styles.actionErrorText}>{actionError}</Text>
+        </View>
+      ) : null}
+      {next ? (
+        <View style={styles.nextHint}>
+          <View style={[styles.nextHintDot, { backgroundColor: theme.status[next] }]} />
+          <Text style={styles.nextHintText}>
+            Moves to {stageLabel(next, order.fulfillment_type)}
+          </Text>
+        </View>
       ) : null}
       <AdvanceButton
         testID="detail-advance"

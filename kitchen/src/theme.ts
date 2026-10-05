@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { createTheme, darkTheme, lightTheme } from './themeBase';
+import { createTheme, darkTheme, lightTheme, radius, space, type } from './themeBase';
 import type { AppTheme, ThemeColors, ThemeMode, ThemePreference } from './themeBase';
 
-export { createTheme, darkTheme, lightTheme };
+export { createTheme, darkTheme, lightTheme, radius, space, type };
 export type { AppTheme, ThemeColors, ThemeMode, ThemePreference };
 
 const ThemeContext = createContext<AppTheme>(createTheme('light'));

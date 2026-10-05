@@ -69,6 +69,26 @@ export const darkTheme: ThemeColors = {
   surfaceMuted: '#27272A',
 };
 
+// One spacing scale, one radius scale and one type scale for every screen,
+// so cards, gaps and headings line up across the app instead of each screen
+// picking its own numbers.
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 } as const;
+
+export const radius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 } as const;
+
+export const type = {
+  // Order codes and the big numbers a cook reads from across the kitchen.
+  display: { fontSize: 30, fontWeight: '900', letterSpacing: -0.3 },
+  title: { fontSize: 22, fontWeight: '800', letterSpacing: -0.2 },
+  heading: { fontSize: 17, fontWeight: '800' },
+  body: { fontSize: 16, fontWeight: '500', lineHeight: 22 },
+  bodyStrong: { fontSize: 16, fontWeight: '700', lineHeight: 22 },
+  label: { fontSize: 14, fontWeight: '700' },
+  caption: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  // Section labels above grouped lists.
+  overline: { fontSize: 12, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+} as const;
+
 export function createTheme(mode: ThemeMode): AppTheme {
   return {
     mode,

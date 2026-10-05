@@ -3,6 +3,7 @@ import { BOARD_COLUMNS } from '@/data/boardColumns';
 import { fetchOrdersByStatus } from '@services/orders';
 import type { BoardScope, KitchenOrder, LiveStatus } from '@/types/app';
 import { hiddenCount, inServiceOrder, liveWindowStart } from '@utils/board';
+import { reuseUnchanged } from '@utils/reconcile';
 import { usePolling } from '@hooks/usePolling';
 
 export interface ColumnState {
@@ -57,21 +58,31 @@ export function useBoard(token: string | null, scope: BoardScope, pollIntervalMs
     if (mine !== generation.current) {
       return;
     }
+    // Unchanged orders, columns and the board itself keep their identity, so
+    // an idle poll sets no new state and renders nothing.
     setColumns(current => {
+      let changed = false;
       const next = { ...current };
       BOARD_COLUMNS.forEach((column, index) => {
         const result = results[index];
-        next[column.status] =
-          result.status === 'fulfilled'
-            ? {
-                orders: inServiceOrder(result.value.rows),
-                hidden: hiddenCount(result.value.total, result.value.rows.length),
-                loading: false,
-                failed: false,
-              }
-            : { ...current[column.status], loading: false, failed: true };
+        const before = current[column.status];
+        let after: ColumnState;
+        if (result.status === 'fulfilled') {
+          const orders = reuseUnchanged(before.orders, inServiceOrder(result.value.rows));
+          const hidden = hiddenCount(result.value.total, result.value.rows.length);
+          after =
+            orders === before.orders && hidden === before.hidden && !before.loading && !before.failed
+              ? before
+              : { orders, hidden, loading: false, failed: false };
+        } else {
+          after = before.failed && !before.loading ? before : { ...before, loading: false, failed: true };
+        }
+        if (after !== before) {
+          changed = true;
+          next[column.status] = after;
+        }
       });
-      return next;
+      return changed ? next : current;
     });
     // `scope` is captured through scopeKey; listing the object would refetch
     // on every render that rebuilt it.

@@ -6,13 +6,13 @@ import type { BoardRole, RealtimeStatus } from '@/types/app';
 import { ScreenContainer } from '@components/ScreenContainer';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { Icon } from '@components/Icon';
+import { IconTile } from '@components/IconTile';
 import { LiveIndicator } from '@components/LiveIndicator';
 import { Pill } from '@components/Pill';
 import { Skeleton } from '@components/Skeleton';
 import { useRealtimeStatus } from '@components/realtime/RealtimeProvider';
 import { useAppActions, useBoardScope, usePreferences, useSession } from '@hooks/useAppStore';
 import { useRestaurant } from '@hooks/useRestaurant';
-import useNavigationHook from '@navigation/hooks/useNavigation';
 import { playNewOrderAlert } from '@services/sound';
 import { createStyles } from './styles';
 
@@ -51,8 +51,8 @@ const initials = (name: string): string =>
 
 const SettingsScreen = () => {
   const styles = useThemedStyles(createStyles);
-  const { colors } = useTheme();
-  const navigation = useNavigationHook();
+  const theme = useTheme();
+  const { colors } = theme;
   const session = useSession();
   const scope = useBoardScope();
   const { soundOn, branchId } = usePreferences();
@@ -67,6 +67,7 @@ const SettingsScreen = () => {
   const pinned = session.restaurantLocationId;
   const pinnedBranch = restaurant?.locations.find(location => location.id === pinned);
   const connection = CONNECTION_COPY[realtime ?? 'connecting'];
+  const live = realtime === 'live';
 
   const confirmSignOut = () =>
     Alert.alert(
@@ -90,46 +91,52 @@ const SettingsScreen = () => {
         style={({ pressed }) => [
           styles.row,
           !first && styles.rowDivider,
-          selected && { backgroundColor: colors.accentSoft },
-          pressed && { opacity: 0.7 },
+          selected && styles.rowSelected,
+          pressed && styles.pressed,
         ]}>
+        <View style={[styles.radio, { borderColor: selected ? colors.accent : colors.border }]}>
+          {selected ? <View style={styles.radioDot} /> : null}
+        </View>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle}>{title}</Text>
         </View>
         {isOpen === undefined ? null : (
-          <Pill
-            label={isOpen ? 'Open' : 'Closed'}
-            color={isOpen ? colors.accent : colors.textMuted}
-            background={isOpen ? colors.accentSoft : colors.surfaceMuted}
-          />
+          // Wrapped: a Pill aligns itself to the start, which is right in a
+          // column but sits it at the top of this row.
+          <View style={styles.pillCell}>
+            <Pill
+              label={isOpen ? 'Open' : 'Closed'}
+              color={isOpen ? colors.accent : colors.textMuted}
+              background={isOpen ? colors.accentSoft : colors.surfaceMuted}
+            />
+          </View>
         )}
-        {selected ? <Icon name="checkmark" size={22} color={colors.accent} /> : null}
       </Pressable>
     );
   };
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Settings" onBack={navigation.goBack} />
+      <ScreenHeader title="Settings" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.column}>
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Signed in</Text>
-            <View style={styles.group}>
-              <View style={styles.row}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initials(session.user.fullName)}</Text>
-                </View>
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle}>{session.user.fullName}</Text>
-                  <Text style={styles.rowBody}>{session.user.email}</Text>
-                </View>
-                <Pill
-                  label={ROLE_LABEL[session.user.role]}
-                  color={colors.text}
-                  background={colors.surfaceMuted}
-                />
-              </View>
+          <View style={styles.profile}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials(session.user.fullName)}</Text>
+            </View>
+            <View style={styles.profileText}>
+              <Text numberOfLines={1} style={styles.profileName}>
+                {session.user.fullName}
+              </Text>
+              <Text numberOfLines={1} style={styles.profileEmail}>
+                {session.user.email}
+              </Text>
+              <Pill
+                label={ROLE_LABEL[session.user.role]}
+                icon="person-outline"
+                color={colors.text}
+                background={colors.surfaceMuted}
+              />
             </View>
           </View>
 
@@ -137,7 +144,7 @@ const SettingsScreen = () => {
             <Text style={styles.sectionTitle}>Kitchen</Text>
             <View style={styles.group}>
               <View style={styles.row}>
-                <Icon name="storefront-outline" size={22} color={colors.textMuted} />
+                <IconTile icon="storefront-outline" color={colors.accent} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowBody}>Restaurant</Text>
                   {restaurant ? (
@@ -149,7 +156,7 @@ const SettingsScreen = () => {
               </View>
               {pinned ? (
                 <View style={[styles.row, styles.rowDivider]}>
-                  <Icon name="location-outline" size={22} color={colors.textMuted} />
+                  <IconTile icon="location-outline" color={theme.status.ACCEPTED} />
                   <View style={styles.rowText}>
                     <Text style={styles.rowBody}>Branch</Text>
                     <Text style={styles.rowTitle}>{pinnedBranch?.branch_name ?? '…'}</Text>
@@ -175,8 +182,8 @@ const SettingsScreen = () => {
                 )}
               </View>
               <Text style={styles.footnote}>
-                Remembered on this tablet. A board set to one branch shows only that branch’s
-                orders and completed history.
+                Remembered on this tablet. A board set to one branch shows only that branch’s orders
+                and completed history.
               </Text>
             </View>
           ) : null}
@@ -185,11 +192,7 @@ const SettingsScreen = () => {
             <Text style={styles.sectionTitle}>Alerts</Text>
             <View style={styles.group}>
               <View style={styles.row}>
-                <Icon
-                  name={soundOn ? 'volume-high' : 'volume-mute'}
-                  size={22}
-                  color={colors.textMuted}
-                />
+                <IconTile icon={soundOn ? 'volume-high' : 'volume-mute'} color={theme.status.PLACED} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>New order sound</Text>
                   <Text style={styles.rowBody}>
@@ -205,7 +208,7 @@ const SettingsScreen = () => {
                 />
               </View>
               <View style={[styles.row, styles.rowDivider]}>
-                <Icon name="notifications-outline" size={22} color={colors.textMuted} />
+                <IconTile icon="notifications-outline" color={theme.status.OUT_FOR_DELIVERY} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>Check the volume</Text>
                   <Text style={styles.rowBody}>Plays the alert once, now.</Text>
@@ -213,7 +216,7 @@ const SettingsScreen = () => {
                 <Pressable
                   onPress={playNewOrderAlert}
                   accessibilityRole="button"
-                  style={({ pressed }) => [styles.testButton, pressed && { opacity: 0.7 }]}>
+                  style={({ pressed }) => [styles.testButton, pressed && styles.pressed]}>
                   <Text style={styles.testButtonText}>Test alert</Text>
                 </Pressable>
               </View>
@@ -224,16 +227,18 @@ const SettingsScreen = () => {
             <Text style={styles.sectionTitle}>Connection</Text>
             <View style={styles.group}>
               <View style={styles.row}>
+                <IconTile icon="wifi" color={live ? colors.accent : colors.warning} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{connection.title}</Text>
                   <Text style={styles.rowBody}>{connection.body}</Text>
                 </View>
-                <LiveIndicator state={realtime === 'live' ? 'live' : 'polling'} />
+                <LiveIndicator state={live ? 'live' : 'polling'} />
               </View>
               <View style={[styles.row, styles.rowDivider]}>
+                <IconTile icon="server-outline" color={colors.textMuted} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowBody}>Server</Text>
-                  <Text selectable style={styles.rowTitle}>
+                  <Text selectable numberOfLines={1} style={styles.rowTitle}>
                     {API_BASE_URL}
                   </Text>
                 </View>
@@ -245,7 +250,7 @@ const SettingsScreen = () => {
             testID="sign-out"
             onPress={confirmSignOut}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.7 }]}>
+            style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}>
             <Icon name="log-out-outline" size={22} color={colors.danger} />
             <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>

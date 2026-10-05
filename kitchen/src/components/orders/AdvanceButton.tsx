@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { useTheme } from '@/theme';
+import { radius, useTheme } from '@/theme';
 import type { KitchenOrder } from '@/types/app';
 import { inkOn } from '@/themePalette';
 import { Icon } from '@components/Icon';
@@ -17,13 +17,8 @@ interface AdvanceButtonProps {
 // The one action on a live order. Filled with the colour of the column the
 // order is about to move INTO — Accept is amber like Accepted, Start cooking
 // is orange like Cooking — so the button previews where the ticket will go.
-export const AdvanceButton = ({
-  order,
-  pending,
-  onPress,
-  size = 'md',
-  testID,
-}: AdvanceButtonProps) => {
+// A forward arrow on every step but the last, which gets a done-tick instead.
+const AdvanceButtonComponent = ({ order, pending, onPress, size = 'md', testID }: AdvanceButtonProps) => {
   const theme = useTheme();
   const next = nextStatus(order.status);
   const label = advanceLabel(order);
@@ -33,6 +28,7 @@ export const AdvanceButton = ({
   const background = theme.status[next];
   const ink = inkOn(background);
   const finishing = next === 'DELIVERED';
+  const iconSize = size === 'lg' ? 24 : 20;
   return (
     <Pressable
       testID={testID}
@@ -44,35 +40,38 @@ export const AdvanceButton = ({
       style={({ pressed }) => [
         styles.button,
         size === 'lg' && styles.large,
-        { backgroundColor: background, opacity: pending ? 0.75 : pressed ? 0.85 : 1 },
-        pressed && styles.pressed,
+        { backgroundColor: background },
+        pending && styles.pending,
+        pressed && !pending && styles.pressed,
       ]}>
       {pending ? (
         <ActivityIndicator color={ink} />
       ) : (
         <>
-          {finishing ? <Icon name="checkmark-done" size={size === 'lg' ? 24 : 20} color={ink} /> : null}
-          <Text style={[styles.label, size === 'lg' && styles.labelLarge, { color: ink }]}>
-            {label}
-          </Text>
+          {finishing ? <Icon name="checkmark-done" size={iconSize} color={ink} /> : null}
+          <Text style={[styles.label, size === 'lg' && styles.labelLarge, { color: ink }]}>{label}</Text>
+          {finishing ? null : <Icon name="arrow-forward" size={iconSize} color={ink} />}
         </>
       )}
     </Pressable>
   );
 };
 
+export const AdvanceButton = memo(AdvanceButtonComponent);
+
 const styles = StyleSheet.create({
   button: {
-    minHeight: 52,
-    borderRadius: 14,
+    minHeight: 54,
+    borderRadius: radius.md,
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
   },
-  large: { minHeight: 64, borderRadius: 16 },
-  pressed: { transform: [{ scale: 0.98 }] },
-  label: { fontSize: 17, fontWeight: '800' },
+  large: { minHeight: 64, borderRadius: radius.lg },
+  pending: { opacity: 0.75 },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
+  label: { fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
   labelLarge: { fontSize: 20 },
 });

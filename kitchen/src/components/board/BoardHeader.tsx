@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '@/theme';
+import { radius, space, useTheme } from '@/theme';
 import { Icon } from '@components/Icon';
 import { IconButton } from '@components/IconButton';
 import { LiveIndicator, type FreshnessState } from '@components/LiveIndicator';
@@ -19,11 +19,11 @@ interface BoardHeaderProps {
   onOpenSettings: () => void;
 }
 
-// Whose kitchen this is, whether it is current, and the three ways off the
-// board. One deployment serves every tenant, so the header always names the
+// Whose kitchen this is, whether it is current, and the ways off the board.
+// One deployment serves every tenant, so the header always names the
 // restaurant and branch: a board that cannot say whose queue it shows is a
 // board somebody eventually works the wrong queue from.
-export const BoardHeader = ({
+const BoardHeaderComponent = ({
   wide,
   restaurantName,
   branchName,
@@ -40,14 +40,14 @@ export const BoardHeader = ({
   const date = now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
   return (
-    <View style={[styles.bar, { borderBottomColor: colors.border }]}>
+    <View style={[styles.bar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
       <Pressable
         onPress={onOpenSettings}
         accessibilityRole="button"
         accessibilityLabel={`${restaurantName ?? 'Kitchen'}${branchName ? `, ${branchName}` : ''}. Open settings.`}
-        style={styles.where}>
+        style={({ pressed }) => [styles.where, pressed && styles.pressed]}>
         <View style={[styles.mark, { backgroundColor: colors.accent }]}>
-          <Icon name="restaurant" size={20} color={colors.onAccent} />
+          <Icon name="restaurant" size={22} color={colors.onAccent} />
         </View>
         <View style={styles.titles}>
           <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>
@@ -55,9 +55,12 @@ export const BoardHeader = ({
           </Text>
           <View style={styles.subRow}>
             {branchName ? (
-              <Text numberOfLines={1} style={[styles.branch, { color: colors.textMuted }]}>
-                {branchName}
-              </Text>
+              <>
+                <Icon name="location-outline" size={14} color={colors.textMuted} />
+                <Text numberOfLines={1} style={[styles.branch, { color: colors.textMuted }]}>
+                  {branchName}
+                </Text>
+              </>
             ) : null}
             {!wide ? <LiveDot state={freshness} /> : null}
           </View>
@@ -76,7 +79,7 @@ export const BoardHeader = ({
                 size="md"
               />
             )}
-            <View style={styles.clock}>
+            <View style={[styles.clock, { borderColor: colors.border }]}>
               <Text style={[styles.time, { color: colors.text }]}>{time}</Text>
               <Text style={[styles.date, { color: colors.textMuted }]}>{date}</Text>
             </View>
@@ -107,7 +110,9 @@ export const BoardHeader = ({
   );
 };
 
-// The phone header's compact freshness signal: a dot plus a word only when
+export const BoardHeader = memo(BoardHeaderComponent);
+
+// The phone header's compact freshness signal: a dot, plus a word only when
 // something is wrong — "Live" every few seconds is noise on a small screen.
 const LiveDot = ({ state }: { state: FreshnessState }) => {
   const { colors } = useTheme();
@@ -115,9 +120,7 @@ const LiveDot = ({ state }: { state: FreshnessState }) => {
   return (
     <View style={styles.dotRow} accessible accessibilityLabel={`Board status: ${state}`}>
       <View style={[styles.dot, { backgroundColor: color }]} />
-      {state === 'stale' ? (
-        <Text style={[styles.dotText, { color }]}>Not updating</Text>
-      ) : null}
+      {state === 'stale' ? <Text style={[styles.dotText, { color }]}>Not updating</Text> : null}
     </View>
   );
 };
@@ -126,19 +129,25 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  where: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
-  mark: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  titles: { flex: 1, minWidth: 0 },
-  title: { fontSize: 19, fontWeight: '800' },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  branch: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  where: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md, minWidth: 0 },
+  pressed: { opacity: 0.7 },
+  mark: { width: 46, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  titles: { flex: 1, minWidth: 0, gap: 2 },
+  title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.2 },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  branch: { fontSize: 14, fontWeight: '600', flexShrink: 1, marginRight: 6 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  clock: { alignItems: 'flex-end', marginHorizontal: 4 },
+  clock: {
+    alignItems: 'flex-end',
+    paddingHorizontal: space.md,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
   time: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   date: { fontSize: 12, fontWeight: '600' },
   dotRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },

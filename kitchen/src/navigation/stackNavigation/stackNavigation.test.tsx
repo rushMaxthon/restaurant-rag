@@ -3,7 +3,15 @@ import { fetchOrder, fetchOrdersByStatus } from '@services/orders';
 import { fetchRestaurant } from '@services/restaurants';
 import { navigationRef } from '@navigation/navigationService';
 import { kitchenSession, order } from '@/test/fixtures';
-import { currentRoute, renderApp, settle, unmount, type Tree } from '@/test/renderApp';
+import {
+  currentRoute,
+  hasTestId,
+  press,
+  renderApp,
+  settle,
+  unmount,
+  type Tree,
+} from '@/test/renderApp';
 
 jest.mock('@services/orders', () => ({
   fetchOrdersByStatus: jest.fn(),
@@ -40,7 +48,11 @@ test('a signed-in tablet opens on the board and can push and pop', async () => {
   (fetchOrder as jest.Mock).mockResolvedValue(ticket);
   tree = await renderApp(kitchenSession());
   expect(currentRoute()?.name).toBe('BoardScreen');
-  expect(navigationRef.getRootState()?.routeNames).not.toContain('LoginScreen');
+  expect(navigationRef.getRootState()?.routeNames).toEqual([
+    'MainTabs',
+    'OrderDetailScreen',
+    'OrderHistoryScreen',
+  ]);
 
   await ReactTestRenderer.act(async () => {
     navigationRef.navigate('OrderDetailScreen', { orderId: ticket.id });
@@ -51,4 +63,49 @@ test('a signed-in tablet opens on the board and can push and pop', async () => {
 
   await ReactTestRenderer.act(async () => navigationRef.goBack());
   expect(currentRoute()?.name).toBe('BoardScreen');
+});
+
+describe('the bottom tabs', () => {
+  test('offer Home and Settings, opening on Home', async () => {
+    tree = await renderApp(kitchenSession());
+    expect(hasTestId(tree, 'tab-BoardScreen')).toBe(true);
+    expect(hasTestId(tree, 'tab-SettingsScreen')).toBe(true);
+    expect(currentRoute()?.name).toBe('BoardScreen');
+  });
+
+  test('switching to Settings keeps the board mounted and polling', async () => {
+    tree = await renderApp(kitchenSession());
+    await press(tree, 'tab-SettingsScreen');
+
+    expect(currentRoute()?.name).toBe('SettingsScreen');
+    // The board's own header is still in the tree underneath.
+    expect(hasTestId(tree, 'toggle-sound')).toBe(true);
+    // Settings is a tab, not a pushed screen: nothing to go back to.
+    expect(hasTestId(tree, 'header-back')).toBe(false);
+
+    await press(tree, 'tab-BoardScreen');
+    expect(currentRoute()?.name).toBe('BoardScreen');
+  });
+
+  test('the board header’s settings button switches to the Settings tab', async () => {
+    tree = await renderApp(kitchenSession());
+    await press(tree, 'open-settings');
+    expect(currentRoute()?.name).toBe('SettingsScreen');
+    expect(navigationRef.getRootState()?.routes.at(-1)?.name).toBe('MainTabs');
+  });
+
+  test('order details opens over the tabs and comes back to Home', async () => {
+    const ticket = order({ id: 'tabs0000-0001' });
+    (fetchOrder as jest.Mock).mockResolvedValue(ticket);
+    tree = await renderApp(kitchenSession());
+
+    await ReactTestRenderer.act(async () => {
+      navigationRef.navigate('OrderDetailScreen', { orderId: ticket.id });
+    });
+    await settle();
+    expect(navigationRef.getRootState()?.routes.at(-1)?.name).toBe('OrderDetailScreen');
+
+    await press(tree, 'header-back');
+    expect(currentRoute()?.name).toBe('BoardScreen');
+  });
 });

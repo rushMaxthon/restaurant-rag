@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTheme, type AppTheme } from '@/theme';
+import { radius, space, useTheme, type AppTheme } from '@/theme';
 import type { KitchenOrder } from '@/types/app';
-import { Pill } from '@components/Pill';
+import { Icon } from '@components/Icon';
 import { AdvanceButton } from '@components/orders/AdvanceButton';
 import { InstructionsCallout } from '@components/orders/InstructionsCallout';
 import { OrderItemsList } from '@components/orders/OrderItemsList';
@@ -23,7 +23,7 @@ import { priorityLabel } from '@utils/metrics';
 interface TicketCardProps {
   order: KitchenOrder;
   now: Date;
-  // Arrived since the last load: pulses for a few seconds, then never again.
+  // Arrived since the last load: highlighted once, fading out.
   fresh: boolean;
   pending: boolean;
   error: string | null;
@@ -32,23 +32,27 @@ interface TicketCardProps {
   onOpen: (order: KitchenOrder) => void;
 }
 
-const urgencyColors = (urgency: Urgency, { colors }: AppTheme) => {
+// How long the arrival highlight takes to fade.
+const FRESH_FADE_MS = 4000;
+
+const toneOf = (urgency: Urgency, { colors }: AppTheme) => {
   switch (urgency) {
     case 'late':
-      return { border: colors.danger, wait: colors.danger, badge: colors.dangerSoft };
+      return { band: colors.dangerSoft, border: colors.danger, ink: colors.danger };
     case 'due':
-      return { border: colors.warning, wait: colors.warning, badge: colors.warningSoft };
+      return { band: colors.warningSoft, border: colors.warning, ink: colors.warning };
     default:
-      return { border: colors.border, wait: colors.text, badge: colors.surfaceMuted };
+      return { band: colors.surface, border: colors.border, ink: colors.text };
   }
 };
 
 // One order as a kitchen reads it: CODE → WAIT → DISHES → ACTION, top to
-// bottom. Tap anywhere but the button for the full order.
+// bottom. The header band carries urgency in colour, so a glance across a
+// column finds the late ones before reading a single word. Tap anywhere but
+// the button for the full order.
 //
 // Deliberately absent: prices, address, phone, a veg mark (the API carries
-// no is_veg, and a dot guessed from a dish name is how a plate gets sent
-// back), and a table number (fulfillment is delivery or pickup only).
+// no is_veg) and a table number (fulfillment is delivery or pickup only).
 const TicketCardComponent = ({
   order,
   now,
@@ -62,7 +66,7 @@ const TicketCardComponent = ({
   const theme = useTheme();
   const { colors } = theme;
   const urgency = urgencyOf(order, now);
-  const tone = urgencyColors(urgency, theme);
+  const tone = toneOf(urgency, theme);
   const flag = priorityLabel(order, now);
   const code = orderCode(order);
   // A booked order not yet due has not started waiting; "now" would read as
@@ -70,21 +74,22 @@ const TicketCardComponent = ({
   const dueIn = minutesUntilDue(order, now);
   const waitText = dueIn > 0 ? `in ${formatWait(dueIn)}` : formatWait(waitingMinutes(order, now));
 
-  const pulse = useRef(new Animated.Value(0)).current;
+  // One native-driven fade per arrival — not a loop — so a burst of new
+  // orders costs a handful of animations that finish on their own.
+  const highlight = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!fresh) {
-      pulse.setValue(0);
       return;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 450, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.25, duration: 450, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [fresh, pulse]);
+    highlight.setValue(1);
+    const fade = Animated.timing(highlight, {
+      toValue: 0,
+      duration: FRESH_FADE_MS,
+      useNativeDriver: true,
+    });
+    fade.start();
+    return () => fade.stop();
+  }, [fresh, highlight]);
 
   return (
     <View
@@ -94,19 +99,16 @@ const TicketCardComponent = ({
         urgency === 'calm' ? styles.cardCalm : styles.cardAlert,
         { backgroundColor: colors.surface, borderColor: tone.border },
       ]}>
-      {/* The arrival highlight, on its own layer so it animates natively. */}
       <Animated.View
         pointerEvents="none"
-        style={[styles.fresh, { borderColor: colors.accent, opacity: pulse }]}
+        style={[styles.fresh, { borderColor: colors.accent, opacity: highlight }]}
       />
       <Pressable
         onPress={() => onOpen(order)}
         accessibilityRole="button"
         accessibilityLabel={`Order ${code}, ${dueIn > 0 ? 'due' : 'waiting'} ${waitText}. Open details.`}
-        style={({ pressed }) => [styles.body, pressed && { opacity: 0.7 }]}>
-        {/* Code with its badge UNDER it, so a narrow tablet column never
-            has to clip the badge to fit the wait time beside them. */}
-        <View style={styles.head}>
+        style={({ pressed }) => pressed && styles.pressed}>
+        <View style={[styles.band, { backgroundColor: tone.band, borderBottomColor: colors.border }]}>
           <View style={styles.codeBlock}>
             {/* The code is what gets read down the phone; it shrinks to fit a
                 narrow column rather than ever being cut to "#C41D8…". */}
@@ -118,37 +120,33 @@ const TicketCardComponent = ({
               {code}
             </Text>
             {flag ? (
-              <Pill
-                label={flag}
-                color={tone.wait}
-                background={tone.badge}
-                icon={urgency === 'late' ? 'flame' : 'hourglass-outline'}
-              />
-            ) : null}
+              <View style={styles.flag}>
+                <Icon name={urgency === 'late' ? 'flame' : 'hourglass-outline'} size={13} color={tone.ink} />
+                <Text style={[styles.flagText, { color: tone.ink }]}>{flag}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.placedAt, { color: colors.textMuted }]}>
+                Placed {clockTime(order.placed_at)}
+              </Text>
+            )}
           </View>
           <View style={styles.wait}>
-            <Text style={[styles.waitValue, { color: dueIn > 0 ? colors.warning : tone.wait }]}>
+            <Text style={[styles.waitValue, { color: dueIn > 0 ? colors.warning : tone.ink }]}>
               {waitText}
             </Text>
-            <Text style={[styles.placedAt, { color: colors.textMuted }]}>
-              {clockTime(order.placed_at)}
-            </Text>
+            {flag ? (
+              <Text style={[styles.placedAt, { color: colors.textMuted }]}>{clockTime(order.placed_at)}</Text>
+            ) : null}
           </View>
         </View>
 
-        <OrderMeta order={order} branchName={branchName} />
-
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-        <OrderItemsList items={order.items} />
-
-        {order.special_instructions ? (
-          <InstructionsCallout text={order.special_instructions} />
-        ) : null}
+        <View style={styles.body}>
+          <OrderMeta order={order} branchName={branchName} />
+          <OrderItemsList items={order.items} />
+          {order.special_instructions ? <InstructionsCallout text={order.special_instructions} /> : null}
+        </View>
       </Pressable>
 
-      {/* Payment, then the action on its own full-width row: the button
-          keeps its whole label however narrow the column. */}
       <View style={styles.foot}>
         <PaymentPill status={order.payment_status} label={payLabel(order.payment_status)} />
         <AdvanceButton
@@ -161,36 +159,73 @@ const TicketCardComponent = ({
 
       {/* The server's own sentence, unparaphrased. */}
       {error ? (
-        <Text
-          accessibilityRole="alert"
-          style={[styles.error, { color: colors.danger, backgroundColor: colors.dangerSoft }]}>
-          {error}
-        </Text>
+        <View style={[styles.error, { backgroundColor: colors.dangerSoft }]} accessibilityRole="alert">
+          <Icon name="alert-circle" size={16} color={colors.danger} />
+          <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+        </View>
       ) : null}
     </View>
   );
 };
 
-export const TicketCard = memo(TicketCardComponent);
+// Re-render only when something the card SHOWS changes. The board's clock
+// ticks every 15 seconds; without this every card on every column redrew on
+// each tick, though the wait only changes once a minute.
+const sameMinute = (a: TicketCardProps, b: TicketCardProps) =>
+  waitingMinutes(a.order, a.now) === waitingMinutes(b.order, b.now) &&
+  minutesUntilDue(a.order, a.now) === minutesUntilDue(b.order, b.now);
+
+export const TicketCard = memo(
+  TicketCardComponent,
+  (prev, next) =>
+    prev.order === next.order &&
+    prev.fresh === next.fresh &&
+    prev.pending === next.pending &&
+    prev.error === next.error &&
+    prev.branchName === next.branchName &&
+    prev.onAdvance === next.onAdvance &&
+    prev.onOpen === next.onOpen &&
+    sameMinute(prev, next),
+);
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 18, overflow: 'hidden' },
+  card: { borderRadius: radius.xl, overflow: 'hidden' },
   cardCalm: { borderWidth: 1 },
   cardAlert: { borderWidth: 2 },
-  fresh: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: 4, borderRadius: 18 },
-  body: { padding: 16, gap: 10 },
-  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  codeBlock: { flex: 1, gap: 6, minWidth: 0 },
-  code: { fontSize: 20, fontWeight: '900', letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
-  wait: { alignItems: 'flex-end' },
-  waitValue: { fontSize: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  fresh: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderWidth: 4,
+    borderRadius: radius.xl,
+  },
+  pressed: { opacity: 0.75 },
+  band: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  codeBlock: { flex: 1, gap: 4, minWidth: 0 },
+  code: { fontSize: 21, fontWeight: '900', letterSpacing: 0.4, fontVariant: ['tabular-nums'] },
+  flag: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  flagText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.6 },
   placedAt: { fontSize: 12, fontWeight: '600' },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  foot: { gap: 10, paddingHorizontal: 16, paddingBottom: 16 },
+  wait: { alignItems: 'flex-end', gap: 2 },
+  waitValue: { fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  body: { paddingHorizontal: space.lg, paddingTop: 14, gap: 14 },
+  foot: { gap: 10, paddingHorizontal: space.lg, paddingTop: 14, paddingBottom: space.lg },
   error: {
-    fontSize: 14,
-    fontWeight: '600',
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: space.lg,
     paddingVertical: 10,
   },
+  errorText: { flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 19 },
 });

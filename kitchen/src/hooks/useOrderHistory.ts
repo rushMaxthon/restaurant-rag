@@ -3,6 +3,7 @@ import { fetchCompletedOrders } from '@services/orders';
 import type { BoardScope, KitchenOrder } from '@/types/app';
 import { HISTORY_PAGE_SIZE, localDayKey, startOfToday } from '@utils/history';
 import { usePolling } from '@hooks/usePolling';
+import { reuseUnchanged } from '@utils/reconcile';
 
 export interface HistoryState {
   rows: KitchenOrder[];
@@ -70,13 +71,15 @@ export function useOrderHistory(
     try {
       const page = await query(loadedCount.current, 0);
       if (mine === generation.current) {
-        setState(current => ({
-          ...current,
-          rows: page.rows,
-          total: page.total,
-          loading: false,
-          error: null,
-        }));
+        setState(current => {
+          const rows = reuseUnchanged(current.rows, page.rows);
+          // Nothing finished since the last poll: keep the state object, so
+          // the list does not re-render.
+          if (rows === current.rows && page.total === current.total && !current.loading && !current.error) {
+            return current;
+          }
+          return { ...current, rows, total: page.total, loading: false, error: null };
+        });
       }
     } catch (error) {
       if (mine === generation.current) {

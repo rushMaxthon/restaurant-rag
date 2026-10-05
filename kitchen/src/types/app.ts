@@ -97,6 +97,9 @@ export interface KitchenOrder {
   restaurant_location: { id: string; branch_name: string } | null;
   customer: { full_name: string; phone_number: string | null } | null;
   items: OrderLine[];
+  // Bumped by the server on every change; lets a poll keep an unchanged order
+  // as the same object, so nothing on screen re-renders for it.
+  updated_at?: string;
   // When it was delivered, from the status-event log. Only the LIST endpoint
   // fills it, and only on DELIVERED rows; GET /orders/{id} leaves it null.
   completed_at?: string | null;

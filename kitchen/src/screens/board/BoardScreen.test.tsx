@@ -207,8 +207,12 @@ describe('on a landscape tablet', () => {
   beforeEach(() => {
     Dimensions.set({ window: { ...phone, width: 1280, height: 800 } });
   });
-  afterEach(() => {
-    Dimensions.set({ window: phone });
+  // Inner afterEach runs before the outer unmount, so the board is still
+  // mounted and re-renders on the resize.
+  afterEach(async () => {
+    await ReactTestRenderer.act(async () => {
+      Dimensions.set({ window: phone });
+    });
   });
 
   test('all four stages sit side by side, with no stage tabs', async () => {
