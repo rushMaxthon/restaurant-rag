@@ -262,6 +262,12 @@ export const PAGE_HELP = {
     who: ADMIN_ONLY,
     action: "Filter by state and open a restaurant to manage it. A storefront can be suspended, offboarded or restored from its row, each with a reason.",
   },
+  "platform-watch": {
+    title: "Platform watch",
+    what: "One screen answering: is the platform running, and does any restaurant need you? Machinery health, problems across every restaurant, and today per restaurant.",
+    who: ADMIN_ONLY,
+    action: "Start at the coloured line at the top. Fix anything red first; each problem has an Open button that takes you to where it is fixed. It re-checks every minute.",
+  },
   commission: {
     title: "Commission",
     what: "What the platform earned from each restaurant: the commission inside menu prices, added up over the period you pick.",

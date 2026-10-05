@@ -17,6 +17,40 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 (platform watch, sidebar)
+
+**Goal:** give the super admin one place to see whether anything is wrong,
+and make the sidebar findable.
+
+**Changed:**
+- `services/platform_watch.py` + `GET /admin/platform-watch` + the admin-only
+  Platform watch page. Checks (database, Redis, worker, beat, queues, Ollama,
+  courier, realtime) run in parallel threads inside a 6-second budget while the
+  database questions run in the request thread. Issues across every restaurant,
+  worst first, each with a link to where it is fixed. Today per restaurant.
+- `tasks/platform.heartbeat_task`, beat every minute, writes
+  `platform:heartbeat:last_seen`; a fresh key proves beat AND a worker.
+- Sidebar: groups by job (Overview, Orders, Menu & offers, Restaurant,
+  Customers & growth, AI, Platform), none over five entries; folding remembered
+  in localStorage, the current page's group always open; a "Find a page" box
+  with keywords per route (`/` focuses it, Enter opens the best match); a badge
+  on Live orders with today's waiting count; Settings moved to the footer.
+
+**Verified:** backend 3,029, admin 436, build. Live as admin: all eight checks,
+9 issues (one high: Famous Fast Food Branch 2 has nothing on sale), 13
+restaurants. In the browser as admin and owner: groups, folding, search,
+Enter, the badge with a real waiting order, the collapsed rail.
+
+**Open:**
+- Celery beat is now running locally too (`logs/celery-beat.log`), so the
+  daily restock and the reaper run here.
+- Platform watch's first load after a server start is ~5 s; after that ~2 s.
+
+**Learned:**
+- On Windows `localhost` is tried as IPv6 first: the first Celery ping in a
+  process took 9 s and every new Redis connection 2 s. `127.0.0.1` fixes it;
+  the backend's own URLs still say localhost.
+
 ## 2026-10-05 (stock by hand, by size and by day; commission earned; live board actions)
 
 **Goal:** finish what the stock feature could not say, let the admin act from

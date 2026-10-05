@@ -38,6 +38,52 @@ class AdminUserUpdate(BaseModel):
     default_address: str | None = Field(default=None, max_length=2000)
 
 
+class PlatformCheck(BaseModel):
+    key: str
+    label: str
+    #: "ok", "warn" or "down".
+    status: str
+    detail: str
+    hint: str = ""
+
+
+class PlatformIssue(BaseModel):
+    key: str
+    #: "high", "medium" or "low".
+    severity: str
+    title: str
+    detail: str
+    count: int = 1
+    restaurant_id: uuid.UUID | None = None
+    restaurant_name: str | None = None
+    location_id: uuid.UUID | None = None
+    link: str | None = None
+
+
+class PlatformRestaurantToday(BaseModel):
+    restaurant_id: uuid.UUID
+    name: str
+    city: str
+    approved: bool
+    storefront: str | None = None
+    branches: int
+    branches_open: int
+    orders_today: int
+    sales_today: Decimal
+    awaiting_accept: int
+    out_of_stock: int
+    issues: int
+
+
+class PlatformWatchResponse(BaseModel):
+    """Is anything wrong, across the whole platform? See `platform_watch`."""
+
+    generated_at: datetime
+    checks: list[PlatformCheck] = Field(default_factory=list)
+    issues: list[PlatformIssue] = Field(default_factory=list)
+    restaurants: list[PlatformRestaurantToday] = Field(default_factory=list)
+
+
 class AdminCommissionRow(BaseModel):
     restaurant_id: uuid.UUID
     restaurant_name: str

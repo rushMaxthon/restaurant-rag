@@ -23,6 +23,7 @@ import type {
   PaymentGateway,
   PaymentGatewayPayload,
   CommissionReport,
+  PlatformWatch,
   RestaurantCapability,
   RestaurantPaymentSettings,
   TenantStatusPayload,
@@ -196,6 +197,10 @@ function scopeQuery(restaurantId?: string | null): string {
 export const api = {
   login(input: { email: string; password: string }): Promise<AuthResponse> {
     return request<AuthResponse>('/auth/login', { method: 'POST', body: input });
+  },
+  /** System health, what needs attention, and today per restaurant. ADMIN only. */
+  getPlatformWatch(token: string): Promise<PlatformWatch> {
+    return request<PlatformWatch>('/admin/platform-watch', { token });
   },
   /** What the platform earned per restaurant over the last `days`. ADMIN only. */
   getCommissionReport(token: string, days: number): Promise<CommissionReport> {

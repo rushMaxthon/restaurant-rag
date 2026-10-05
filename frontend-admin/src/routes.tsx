@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import {
   BadgeIndianRupee,
   BarChart3,
+  HeartPulse,
   BellRing,
   Bot,
   ChefHat,
@@ -57,6 +58,7 @@ import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
+import { PlatformWatchPage } from "./pages/PlatformWatchPage";
 import { MarketingPage } from "./pages/MarketingPage";
 import { MenuItemEditorPage } from "./pages/MenuItemEditorPage";
 import { MenuItemsPage } from "./pages/MenuItemsPage";
@@ -86,16 +88,26 @@ export interface RouteContext {
 }
 
 /**
- * "Platform" sits between Overview and Intelligence: it is the operator's
- * own scope, above the per-restaurant work, and only an admin ever sees it —
- * `navFor` drops a section nobody in this role can open.
+ * The sidebar's groups, by the job somebody came to do.
+ *
+ * There used to be a "Manage" group of eleven entries - orders, menus,
+ * people, marketing and storefront words in one column - and finding the one
+ * you wanted meant reading all of them. Each group here holds two to four,
+ * named for the question it answers.
+ *
+ * `navFor` drops a group nobody in this role can open, so an owner never sees
+ * a "Platform" heading. "Account" is not drawn as a group at all: the sidebar
+ * puts it in its footer, beside sign-out, where personal settings live.
  */
 export type NavSection =
   | "Overview"
+  | "Orders"
+  | "Menu & offers"
+  | "Restaurant"
+  | "Customers & growth"
+  | "AI"
   | "Platform"
-  | "Intelligence"
-  | "Manage"
-  | "System";
+  | "Account";
 
 export interface NavEntry {
   section: NavSection;
@@ -103,6 +115,11 @@ export interface NavEntry {
   icon: LucideIcon;
   /** An owner has one restaurant, so the link is named for theirs. */
   labelFor?: (role: UserRole) => string;
+  /**
+   * Other words somebody might type into the sidebar's search to find this
+   * page: "stock" finds Menu items, "payment" finds Restaurants.
+   */
+  keywords?: string[];
 }
 
 export interface RouteDef {
@@ -192,7 +209,7 @@ export const ROUTES: RouteDef[] = [
     id: "reports",
     pattern: "/reports",
     roles: BOTH,
-    nav: { section: "Overview", label: "Reports", icon: BarChart3 },
+    nav: { section: "Overview", label: "Reports", icon: BarChart3, keywords: ["revenue", "sales", "analytics", "charts"] },
     render: (ctx) => (
       <ReportsPage
         onToast={ctx.pushToast}
@@ -206,7 +223,7 @@ export const ROUTES: RouteDef[] = [
     id: "ai-manager",
     pattern: "/ai-manager",
     roles: BOTH,
-    nav: { section: "Intelligence", label: "AI Manager", icon: Sparkles },
+    nav: { section: "AI", label: "AI Manager", icon: Sparkles, keywords: ["assistant", "insights", "briefing", "ask"] },
     render: () => <AIManagerPage />,
   },
 
@@ -377,10 +394,18 @@ export const ROUTES: RouteDef[] = [
   // Above Restaurants on purpose: an operator opens the panel to look at the
   // platform, and a restaurant is something they drill into from here.
   {
+    // First in Platform: the question an operator opens the panel with.
+    id: "platform-watch",
+    pattern: "/platform-watch",
+    roles: ADMIN_ONLY,
+    nav: { section: "Overview", label: "Platform watch", icon: HeartPulse, keywords: ["health", "status", "alerts", "problems", "monitor", "worker", "scheduler"] },
+    render: (ctx) => <PlatformWatchPage onNavigate={ctx.navigate} token={ctx.token} />,
+  },
+  {
     id: "tenants",
     pattern: "/tenants",
     roles: ADMIN_ONLY,
-    nav: { section: "Platform", label: "Tenants", icon: Building2 },
+    nav: { section: "Platform", label: "Tenants", icon: Building2, keywords: ["storefront apps", "suspend", "domains"] },
     render: (ctx) => (
       <TenantsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
@@ -391,7 +416,7 @@ export const ROUTES: RouteDef[] = [
     id: "commission",
     pattern: "/commission",
     roles: ADMIN_ONLY,
-    nav: { section: "Platform", label: "Commission", icon: BadgeIndianRupee },
+    nav: { section: "Platform", label: "Commission", icon: BadgeIndianRupee, keywords: ["earnings", "revenue", "rate"] },
     render: (ctx) => (
       <CommissionPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
@@ -403,10 +428,11 @@ export const ROUTES: RouteDef[] = [
     pattern: "/restaurants",
     roles: BOTH,
     nav: {
-      section: "Manage",
+      section: "Restaurant",
       label: "Restaurants",
       icon: Store,
       labelFor: (role) => (role === "OWNER" ? "My Restaurant" : "Restaurants"),
+      keywords: ["branches", "locations", "hours", "payments", "delivery fee", "commission"],
     },
     // An owner has exactly one, so the list is their own branches. The
     // redirect in `redirectFor` normally gets there first; this is what
@@ -437,7 +463,7 @@ export const ROUTES: RouteDef[] = [
     // backend answers the same way for each — `_theme_restaurant_for` refuses
     // a restaurant_id from an owner that is not their own.
     roles: BOTH,
-    nav: { section: "Manage", label: "Storefront content", icon: Globe },
+    nav: { section: "Restaurant", label: "Storefront content", icon: Globe, keywords: ["website", "seo", "homepage", "words"] },
     render: (ctx) => (
       <WebsitePage
         onToast={ctx.pushToast}
@@ -451,7 +477,7 @@ export const ROUTES: RouteDef[] = [
     id: "branding",
     pattern: "/branding",
     roles: OWNER_ONLY,
-    nav: { section: "Manage", label: "Branding", icon: Palette },
+    nav: { section: "Restaurant", label: "Branding", icon: Palette, keywords: ["colour", "color", "theme", "logo"] },
     render: (ctx) => (
       <BrandingPage
         onToast={ctx.pushToast}
@@ -485,7 +511,7 @@ export const ROUTES: RouteDef[] = [
     id: "live-orders",
     pattern: "/live-orders",
     roles: BOTH,
-    nav: { section: "Manage", label: "Live orders", icon: Radio },
+    nav: { section: "Orders", label: "Live orders", icon: Radio, keywords: ["accept", "kitchen", "rider", "tracking", "now"] },
     render: (ctx) => (
       <LiveOrdersPage
         onNavigate={ctx.navigate}
@@ -499,7 +525,7 @@ export const ROUTES: RouteDef[] = [
     id: "orders",
     pattern: "/orders",
     roles: BOTH,
-    nav: { section: "Manage", label: "Orders", icon: ReceiptText },
+    nav: { section: "Orders", label: "Orders", icon: ReceiptText, keywords: ["history", "bills", "past", "search order"] },
     render: (ctx) => (
       <OrdersPage
         onNavigate={ctx.navigate}
@@ -517,7 +543,7 @@ export const ROUTES: RouteDef[] = [
     id: "kitchen-staff",
     pattern: "/kitchen-staff",
     roles: BOTH,
-    nav: { section: "Manage", label: "Kitchen Staff", icon: ChefHat },
+    nav: { section: "Restaurant", label: "Kitchen staff", icon: ChefHat, keywords: ["cook", "board", "login", "tablet"] },
     render: (ctx) => (
       <KitchenStaffPage
         onToast={ctx.pushToast}
@@ -531,7 +557,7 @@ export const ROUTES: RouteDef[] = [
     id: "menu-items",
     pattern: "/menu-items",
     roles: BOTH,
-    nav: { section: "Manage", label: "Menu Items", icon: UtensilsCrossed },
+    nav: { section: "Menu & offers", label: "Menu items", icon: UtensilsCrossed, keywords: ["dishes", "stock", "out of stock", "price", "food"] },
     render: (ctx) => (
       <MenuItemsPage
         onNavigate={ctx.navigate}
@@ -546,7 +572,7 @@ export const ROUTES: RouteDef[] = [
     id: "offers",
     pattern: "/offers",
     roles: BOTH,
-    nav: { section: "Manage", label: "Offers", icon: TicketPercent },
+    nav: { section: "Menu & offers", label: "Offers", icon: TicketPercent, keywords: ["discount", "deal", "coupon"] },
     render: (ctx) => (
       <OffersPage
         onNavigate={ctx.navigate}
@@ -561,7 +587,7 @@ export const ROUTES: RouteDef[] = [
     id: "marketing",
     pattern: "/marketing",
     roles: BOTH,
-    nav: { section: "Manage", label: "Marketing", icon: Megaphone },
+    nav: { section: "Customers & growth", label: "Marketing", icon: Megaphone, keywords: ["campaign", "whatsapp", "sms", "push", "promo code"] },
     render: (ctx) => <MarketingPage onNavigate={ctx.navigate} onToast={ctx.pushToast} />,
   },
   {
@@ -626,7 +652,7 @@ export const ROUTES: RouteDef[] = [
     id: "generated-combos",
     pattern: "/generated-combos",
     roles: BOTH,
-    nav: { section: "Manage", label: "Combo suggestions", icon: Layers3 },
+    nav: { section: "Menu & offers", label: "Combo suggestions", icon: Layers3, keywords: ["combos", "bundles", "together"] },
     render: (ctx) => (
       <GeneratedCombosPage
         onToast={ctx.pushToast}
@@ -641,9 +667,10 @@ export const ROUTES: RouteDef[] = [
     pattern: "/users",
     roles: BOTH,
     nav: {
-      section: "Manage",
+      section: "Customers & growth",
       label: "Users",
       icon: Users,
+      keywords: ["customers", "accounts", "people", "deactivate"],
       // An owner is shown their customers and nobody else, and the page says so.
       labelFor: (role) => (role === "OWNER" ? "Customers" : "Users"),
     },
@@ -660,7 +687,7 @@ export const ROUTES: RouteDef[] = [
     id: "preferences",
     pattern: "/preferences",
     roles: BOTH,
-    nav: { section: "Manage", label: "Taste questions", icon: ListChecks },
+    nav: { section: "Customers & growth", label: "Taste questions", icon: ListChecks, keywords: ["preferences", "onboarding", "questions"] },
     render: (ctx) => (
       <PreferencesPage onToast={ctx.pushToast} role={ctx.role} token={ctx.token} />
     ),
@@ -669,21 +696,21 @@ export const ROUTES: RouteDef[] = [
     id: "ai-logs",
     pattern: "/ai-logs",
     roles: ADMIN_ONLY,
-    nav: { section: "System", label: "AI Logs", icon: Bot },
+    nav: { section: "AI", label: "AI logs", icon: Bot, keywords: ["chat logs", "traces", "rag"] },
     render: (ctx) => <AILogsPage onToast={ctx.pushToast} token={ctx.token} />,
   },
   {
     id: "notifications",
     pattern: "/notifications",
     roles: ADMIN_ONLY,
-    nav: { section: "System", label: "Notifications", icon: BellRing },
+    nav: { section: "Customers & growth", label: "Notifications", icon: BellRing, keywords: ["push", "broadcast", "send"] },
     render: (ctx) => <NotificationsPage onToast={ctx.pushToast} />,
   },
   {
     id: "settings",
     pattern: "/settings",
     roles: BOTH,
-    nav: { section: "System", label: "Settings", icon: SlidersHorizontal },
+    nav: { section: "Account", label: "Settings", icon: SlidersHorizontal, keywords: ["theme", "dark mode", "account", "preferences"] },
     render: (ctx) => <SettingsPage onToast={ctx.pushToast} />,
   },
 ];
@@ -770,20 +797,34 @@ export interface NavItem {
   path: string;
   label: string;
   icon: LucideIcon;
+  keywords: string[];
 }
 
 export interface NavGroup {
-  label: NavSection;
+  /** The group's identity, stable across roles: what open/closed is keyed on. */
+  section: NavSection;
+  /** What the heading says, which can differ by role. */
+  label: string;
   items: NavItem[];
 }
 
 const SECTION_ORDER: NavSection[] = [
   "Overview",
+  "Orders",
+  "Menu & offers",
+  "Restaurant",
+  "Customers & growth",
+  "AI",
   "Platform",
-  "Intelligence",
-  "Manage",
-  "System",
+  "Account",
 ];
+
+/** An owner has one restaurant; an admin looks after many. */
+function sectionLabel(section: NavSection, role: UserRole): string {
+  if (section === "Restaurant") return role === "OWNER" ? "My restaurant" : "Restaurants";
+  if (section === "Customers & growth" && role === "OWNER") return "Customers & growth";
+  return section;
+}
 
 /**
  * The sidebar, built from the same routes it links to.
@@ -801,12 +842,18 @@ export function navFor(role: UserRole): NavGroup[] {
     }
     const literal = route.nav.labelFor ? route.nav.labelFor(role) : route.nav.label;
     const items = groups.get(route.nav.section) ?? [];
-    items.push({ path: pathOf(route), label: literal, icon: route.nav.icon });
+    items.push({
+      path: pathOf(route),
+      label: literal,
+      icon: route.nav.icon,
+      keywords: route.nav.keywords ?? [],
+    });
     groups.set(route.nav.section, items);
   }
 
   return SECTION_ORDER.filter((section) => groups.get(section)?.length).map((section) => ({
-    label: section,
+    section,
+    label: sectionLabel(section, role),
     items: groups.get(section) ?? [],
   }));
 }

@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.tasks.marketing",
         "app.tasks.notifications",
         "app.tasks.payments",
+        "app.tasks.platform",
         "app.tasks.stock",
         "app.tasks.whatsapp",
     ],
@@ -61,6 +62,12 @@ celery_app.conf.update(
         # The morning's bake: every count with a daily amount goes back to it.
         # 04:30 in the business timezone - after the latest kitchen has shut
         # and before the earliest opens, so no order is placed across it.
+        # A pulse for the admin's Platform watch: proves beat and a worker are
+        # both alive. See `tasks/platform.py`.
+        "platform-heartbeat": {
+            "task": "app.tasks.platform.heartbeat_task",
+            "schedule": crontab(minute="*"),
+        },
         "restock-daily": {
             "task": "app.tasks.stock.restock_daily_task",
             "schedule": crontab(hour="4", minute="30"),

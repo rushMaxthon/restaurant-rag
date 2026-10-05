@@ -1683,3 +1683,49 @@ export interface CommissionReport {
   counted_from: string | null;
   restaurants: CommissionRow[];
 }
+
+/** One piece of the platform's machinery, from `GET /admin/platform-watch`. */
+export interface PlatformCheck {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "down";
+  detail: string;
+  /** What to do about it, when it is not OK. */
+  hint: string;
+}
+
+/** Something that needs a person, in one restaurant or across the platform. */
+export interface PlatformIssue {
+  key: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  count: number;
+  restaurant_id: string | null;
+  restaurant_name: string | null;
+  location_id: string | null;
+  /** Where in this panel it is fixed. */
+  link: string | null;
+}
+
+export interface PlatformRestaurantToday {
+  restaurant_id: string;
+  name: string;
+  city: string;
+  approved: boolean;
+  storefront: string | null;
+  branches: number;
+  branches_open: number;
+  orders_today: number;
+  sales_today: number | string;
+  awaiting_accept: number;
+  out_of_stock: number;
+  issues: number;
+}
+
+export interface PlatformWatch {
+  generated_at: string;
+  checks: PlatformCheck[];
+  issues: PlatformIssue[];
+  restaurants: PlatformRestaurantToday[];
+}

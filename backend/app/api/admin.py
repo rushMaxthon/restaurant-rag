@@ -21,6 +21,10 @@ from app.models.user import User
 from app.models.app_client import AppClient
 from app.models.enums import UserRole
 from app.schemas.admin import (
+    PlatformCheck,
+    PlatformIssue,
+    PlatformRestaurantToday,
+    PlatformWatchResponse,
     AdminCommissionReport,
     AdminCommissionRow,
     AdminUserResponse,
@@ -86,6 +90,30 @@ def _generate_unique_slug(db: Session, restaurant_name: str, *, exclude_restaura
             return candidate
         candidate = f"{base_slug}-{suffix}"
         suffix += 1
+
+
+@router.get("/platform-watch", response_model=PlatformWatchResponse)
+def get_platform_watch(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> PlatformWatchResponse:
+    """System health, what needs attention, and today per restaurant.
+
+    Admin only: it reads every restaurant at once. Read-only - nothing here
+    changes anything.
+    """
+
+    from dataclasses import asdict
+
+    from app.services import platform_watch
+
+    watch = platform_watch.build(db)
+    return PlatformWatchResponse(
+        generated_at=watch.generated_at,
+        checks=[PlatformCheck(**asdict(check)) for check in watch.checks],
+        issues=[PlatformIssue(**asdict(issue)) for issue in watch.issues],
+        restaurants=[PlatformRestaurantToday(**asdict(row)) for row in watch.restaurants],
+    )
 
 
 @router.get("/commission", response_model=AdminCommissionReport)
