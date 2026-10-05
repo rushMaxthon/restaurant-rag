@@ -816,6 +816,9 @@ Kept because the notes are hard-won, not because they apply here.
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
+- **`0075` follows `0074_print_agents`, not `0073`.** `feat/print-agent` and
+  this branch both continued from `0073`; merged 2026-10-05 by re-pointing
+  `0075`'s `down_revision`, so the chain is linear again to `0082`.
 - **Stamp Supabase whenever a migration is applied there by hand.** Render's
   API runs `alembic upgrade head` before every deploy, so a schema applied
   through the Supabase MCP but not stamped is re-run on the next deploy. It

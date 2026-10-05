@@ -118,6 +118,65 @@ def record_order_status_event(
         occurred_at=occurred_at,
     )
 
+    # And the ticket, for the two transitions a printer cares about.
+    #
+    # Here for the same reason the push is: every transition on the platform
+    # passes through this function, so a path that advances an order cannot
+    # forget to print. Unlike the push, the rows are written INSIDE the
+    # caller's transaction — a database row becomes visible exactly when that
+    # transaction commits, which is the "only after commit" property the push
+    # needs an outbox to get. A rolled-back order takes its tickets with it.
+    _queue_print_jobs(db, order=order, to_status=to_status, reason=cancellation_reason)
+
+
+def _queue_print_jobs(
+    db: Session,
+    *,
+    order: Order,
+    to_status: OrderStatus,
+    reason: OrderCancellationReason | None,
+) -> None:
+    """Which transitions put paper in a kitchen.
+
+    PLACED and nothing earlier. `PAYMENT_PENDING` deliberately prints nothing:
+    an order whose money has not arrived is not an order, and a docket for one
+    has a kitchen cooking food nobody has paid for. That is the single most
+    expensive mistake this feature could make, so it is a condition here
+    rather than a filter somewhere downstream.
+
+    CANCELLED prints a void slip, because by then a docket may already be in
+    somebody's hand and the only way to recall it is another piece of paper.
+
+    ACCEPTED, PREPARING and the rest print nothing. The kitchen is the thing
+    moving them along; telling it what it just did is noise with a cost in
+    paper.
+
+    Never raises: `enqueue_for_order` swallows everything, and this adds a
+    second guard around the import and the dispatch so a packaging mistake
+    cannot reach an order either.
+    """
+
+    try:
+        from app.models.enums import PrintJobKind
+        from app.services.print.queue import enqueue_for_order
+
+        if to_status == OrderStatus.PLACED:
+            enqueue_for_order(db, order, kind=PrintJobKind.KITCHEN_DOCKET)
+            enqueue_for_order(db, order, kind=PrintJobKind.CUSTOMER_BILL)
+        elif to_status == OrderStatus.CANCELLED:
+            enqueue_for_order(
+                db,
+                order,
+                kind=PrintJobKind.VOID_SLIP,
+                reason=reason.value.replace("_", " ").title() if reason else None,
+            )
+    except Exception:  # noqa: BLE001 - a ticket is never worth an order
+        logger.exception(
+            "Could not queue print jobs for order %s at %s",
+            getattr(order, "id", None),
+            to_status,
+        )
+
 
 def mark_order_cancelled(
     db: Session,

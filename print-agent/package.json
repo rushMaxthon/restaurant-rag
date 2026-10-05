@@ -1,0 +1,24 @@
+{
+  "name": "quickbite-print-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prints a kitchen ticket the moment a paid order arrives, with no browser open.",
+  "main": "dist/agent.cjs",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/agent.cjs --banner:js=\"#!/usr/bin/env node\"",
+    "dev": "tsx src/index.ts run --console",
+    "pair": "tsx src/index.ts pair",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}

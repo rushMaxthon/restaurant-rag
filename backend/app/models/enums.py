@@ -606,3 +606,77 @@ class PreferenceSignalRole(StrEnum):
     BUDGET = "BUDGET"
     FAVORITE_ITEM = "FAVORITE_ITEM"
     NONE = "NONE"
+
+
+class PrinterTransport(StrEnum):
+    """How an agent reaches one printer.
+
+    Two, because restaurants have both and the agent is installed into whatever
+    is already on the counter.
+
+    `TCP` is ESC/POS straight to the printer's own address on port 9100. It
+    needs no driver, produces identical bytes everywhere, and a Windows service
+    can do it, which is the whole reason it is built first.
+
+    `WINDOWS` goes through the print spooler, for a printer attached to the PC
+    by USB. It carries a constraint that is easy to miss and expensive to
+    discover: a Windows service runs in Session 0, which has no user profile
+    and therefore cannot see per-user installed printers. An agent configured
+    this way has to run as a logged-in user's startup task instead.
+    """
+
+    TCP = "TCP"
+    WINDOWS = "WINDOWS"
+
+
+class PrintJobKind(StrEnum):
+    """What a ticket is for.
+
+    The kinds are separate because they are different documents with different
+    audiences, not one document with a flag: a kitchen docket omits money and
+    shouts the items, a bill shows the money and is handed to a customer, and a
+    void slip exists to contradict a docket somebody is already holding.
+
+    Which printer takes which is `printers.docket_kinds` — data, so one PC can
+    drive a kitchen printer and a counter printer without the agent branching
+    on anything.
+    """
+
+    KITCHEN_DOCKET = "KITCHEN_DOCKET"
+    CUSTOMER_BILL = "CUSTOMER_BILL"
+    VOID_SLIP = "VOID_SLIP"
+    TEST = "TEST"
+
+
+class PrintJobSource(StrEnum):
+    """Whether the platform decided to print this, or a person did.
+
+    Load-bearing rather than descriptive: the partial unique index that makes
+    automatic printing idempotent is scoped to `AUTO`, so one order yields one
+    docket per printer however many times an enqueue fires. A reprint is
+    `MANUAL` and deliberately unconstrained, because asking for a second copy
+    is the entire point of pressing the button.
+    """
+
+    AUTO = "AUTO"
+    MANUAL = "MANUAL"
+
+
+class PrintJobStatus(StrEnum):
+    """Where a ticket is between being decided on and being on paper.
+
+    `CLAIMED` is not decoration. An agent takes a job under a short lease, so a
+    second poll cannot serve the same ticket twice, and an agent that dies
+    mid-print hands it back by doing nothing at all — the lease simply expires
+    and the job is claimable again.
+
+    `FAILED` is not terminal in the way the others are: it carries a sentence
+    written for the owner, and it is excluded from the idempotency index so a
+    ticket that failed can be enqueued again.
+    """
+
+    QUEUED = "QUEUED"
+    CLAIMED = "CLAIMED"
+    PRINTED = "PRINTED"
+    FAILED = "FAILED"
+

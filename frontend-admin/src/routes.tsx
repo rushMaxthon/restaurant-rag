@@ -25,6 +25,7 @@ import {
   BellRing,
   Bot,
   ChefHat,
+  Printer,
   Layers3,
   Globe,
   LayoutDashboard,
@@ -53,6 +54,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { GeneratedCombosPage } from "./pages/GeneratedCombosPage";
 import { LocationDetailPage } from "./pages/LocationDetailPage";
 import { KitchenStaffPage } from "./pages/KitchenStaffPage";
+import { PrintersPage } from "./pages/PrintersPage";
+
 import { LocationsPage } from "./pages/LocationsPage";
 import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
@@ -546,6 +549,24 @@ export const ROUTES: RouteDef[] = [
     nav: { section: "Restaurant", label: "Kitchen staff", icon: ChefHat, keywords: ["cook", "board", "login", "tablet"] },
     render: (ctx) => (
       <KitchenStaffPage
+        onToast={ctx.pushToast}
+        restaurantId={ctx.restaurantId}
+        role={ctx.role}
+        token={ctx.token}
+      />
+    ),
+  },
+  {
+    // Beside Kitchen Staff, because both answer "what equipment does this
+    // branch run on". An ADMIN chooses a restaurant and an OWNER is pinned to
+    // their own, which `resolve_insights_scope` enforces and the page reads
+    // through `useMarketingScope` rather than growing a fifth copy of it.
+    id: "printers",
+    pattern: "/printers",
+    roles: BOTH,
+    nav: { section: "Restaurant", label: "Printers", icon: Printer },
+    render: (ctx) => (
+      <PrintersPage
         onToast={ctx.pushToast}
         restaurantId={ctx.restaurantId}
         role={ctx.role}
