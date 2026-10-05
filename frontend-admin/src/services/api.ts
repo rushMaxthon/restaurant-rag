@@ -958,6 +958,10 @@ export const api = {
     return request<OrderDelivery | null>(`/orders/${orderId}/delivery/cancel`, { method: 'POST', token });
   },
   /** Book another rider after the last trip failed or was called off. */
+  /** Ask the courier's networks again for a rider, for a booking nobody took. */
+  allocateOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/allocate`, { method: 'POST', token });
+  },
   rebookOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
     return request<OrderDelivery | null>(`/orders/${orderId}/delivery/rebook`, { method: 'POST', token });
   },

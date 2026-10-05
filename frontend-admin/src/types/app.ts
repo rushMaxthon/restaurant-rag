@@ -1629,6 +1629,8 @@ export interface OrderDelivery {
   /** What the courier invoices. Sent to the platform admin only. */
   courier_charge?: number | string | null;
   can_rebook?: boolean;
+  /** Booked, no rider yet: the courier can be asked again. */
+  can_allocate?: boolean;
   /** The server's answer: a rider booked, not yet collected, and the order still stands. */
   can_cancel?: boolean;
   /** Platform admin, on the courier's sandbox: the simulate buttons. */

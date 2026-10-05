@@ -801,6 +801,11 @@ class Settings(BaseSettings):
     pidge_brand_code: str = ""
     pidge_brand_location_code: str = ""
     pidge_brand_name: str = ""
+    # Which rider network to ask first when Pidge leaves an order unallocated,
+    # by its `network_name` ("pidge", "zomato", ...). Empty means the cheapest
+    # one that can take the order. A preference that cannot take it is passed
+    # over rather than leaving the order with nobody.
+    pidge_preferred_network: str = ""
     # Defence in depth, not the guarantee. Pidge signs nothing, so the webhook
     # confirms every push by fetching the order over our own authenticated
     # connection; this secret only keeps casual noise out, and it travels in a

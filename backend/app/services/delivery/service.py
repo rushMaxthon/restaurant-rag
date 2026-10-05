@@ -286,6 +286,70 @@ def dispatch(db: Session, order: Order) -> OrderDelivery | None:
     logger.info(
         "Dispatched order %s to %s as %s", order.id, provider.name, result.provider_order_id
     )
+    _ask_for_a_rider(row, provider)
+    return row
+
+
+def _ask_for_a_rider(row: OrderDelivery, provider) -> None:
+    """Ask a rider network to carry an order the courier now holds.
+
+    Never raises. The courier HAS the order by this point, so a refusal here
+    must not unwind the booking or send the task into a retry that would
+    create a second one; it is written to `last_error`, which the owner sees
+    beside a "Find a rider" button. A provider with no allocation step (the
+    rehearsal one) simply has nothing to do.
+    """
+
+    allocate_with = getattr(provider, "allocate", None)
+    if allocate_with is None or not row.provider_order_id:
+        return
+    try:
+        chosen = allocate_with(row.provider_order_id)
+    except DeliveryProviderError as error:
+        row.last_error = str(error)[:2000]
+        logger.warning("No rider network took delivery %s: %s", row.provider_order_id, error)
+        return
+    row.last_error = ""
+    if chosen:
+        logger.info("Delivery %s offered to %s", row.provider_order_id, chosen)
+
+
+def can_allocate(order: Order, row: OrderDelivery | None) -> bool:
+    """Whether "Find a rider" means anything: booked, nobody assigned, order still open."""
+
+    if row is None or not row.provider_order_id:
+        return False
+    if row.state != DeliveryState.PENDING.value or row.rider_name:
+        return False
+    return order.status not in {OrderStatus.DELIVERED, OrderStatus.CANCELLED}
+
+
+def allocate(db: Session, order: Order) -> OrderDelivery:
+    """Ask again for a rider, for a booking no network has taken. The caller commits.
+
+    Raises `DeliveryProviderError` when there is nothing to ask about or the
+    courier still finds nobody - a person pressed a button and is owed the
+    reason, not a silent no-op.
+    """
+
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    if not can_allocate(order, row):
+        raise DeliveryProviderError("This delivery is not waiting for a rider", retryable=False)
+    provider = delivery_provider()
+    if provider is None or getattr(provider, "allocate", None) is None:
+        raise DeliveryProviderError("No courier is configured to ask", retryable=False)
+    try:
+        provider.allocate(row.provider_order_id)
+    except DeliveryProviderError as error:
+        row.last_error = str(error)[:2000]
+        raise
+    row.last_error = ""
+    # Read it back at once, so the card shows what the courier now says
+    # rather than waiting a minute for the sweep.
+    try:
+        record(db, row, provider.fetch(row.provider_order_id))
+    except DeliveryProviderError as error:
+        logger.info("Allocated %s but could not read it back yet: %s", row.provider_order_id, error)
     return row
 
 

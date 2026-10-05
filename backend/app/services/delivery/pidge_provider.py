@@ -124,15 +124,61 @@ def _address(address: DeliveryAddress) -> dict[str, Any]:
     return payload
 
 
+def pidge_mobile(value: str) -> str:
+    """An Indian mobile as the ten digits Pidge's own examples use.
+
+    Stored three ways here - a branch as "0" + ten digits, a customer as
+    "+91" + ten, some with spaces - and a rider dialling "+919876543210" from
+    a courier app built for ten is a call that may never connect. Anything
+    that is not recognisably an Indian mobile is passed through untouched:
+    refusing it here would lose the order, and Pidge says what it dislikes.
+    """
+
+    digits = "".join(character for character in value or "" if character.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) == 10 and digits[0] in "6789":
+        return digits
+    return value or ""
+
+
 def _party(address: DeliveryAddress) -> dict[str, Any]:
     party: dict[str, Any] = {
         "address": _address(address),
         "name": address.name,
-        "mobile": address.mobile,
+        "mobile": pidge_mobile(address.mobile),
     }
     if address.email:
         party["email"] = address.email
     return party
+
+
+def pick_network(items: list[dict[str, Any]], *, preferred: str = "") -> dict[str, Any] | None:
+    """Which of the networks Pidge offered should carry this order.
+
+    Only one that answered without an error AND gave a price: a network with
+    no price is one we would be booking blind. The preferred network wins if
+    it qualifies; otherwise the cheapest that does.
+    """
+
+    usable = []
+    for item in items:
+        if item.get("error"):
+            continue
+        price = _money((item.get("quote") or {}).get("price"))
+        if price is None:
+            continue
+        usable.append((price, item))
+    if not usable:
+        return None
+    wanted = preferred.strip().lower()
+    if wanted:
+        for _, item in usable:
+            if str(item.get("network_name") or item.get("service") or "").lower() == wanted:
+                return item
+    return min(usable, key=lambda pair: pair[0])[1]
 
 
 class PidgeProvider:
@@ -156,6 +202,7 @@ class PidgeProvider:
         brand_code: str = "",
         brand_location_code: str = "",
         brand_name: str = "",
+        preferred_network: str = "",
         timeout_seconds: float = 30.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -164,6 +211,7 @@ class PidgeProvider:
         self._brand_code = brand_code
         self._brand_location_code = brand_location_code
         self._brand_name = brand_name
+        self._preferred_network = preferred_network
         self._timeout = timeout_seconds
         self._token: str | None = None
         # Two workers refreshing the same dead token would each log in; the
@@ -358,7 +406,7 @@ class PidgeProvider:
             "sender_detail": _party(request.pickup),
             "poc_detail": {
                 "name": request.pickup.name,
-                "mobile": request.pickup.mobile,
+                "mobile": pidge_mobile(request.pickup.mobile),
                 **({"email": request.pickup.email} if request.pickup.email else {}),
             },
             "trips": [trip],
@@ -393,6 +441,64 @@ class PidgeProvider:
             reference=request.reference,
             raw=body,
         )
+
+    def allocate(self, provider_order_id: str) -> str:
+        """Ask a rider network to take an order Pidge is holding. Idempotent.
+
+        Create Order leaves an order in Pending unless the account's token is
+        set to auto-allocate, and nothing else asks anybody to carry it - the
+        delivery used to sit on "Waiting for a rider" until it was cancelled.
+
+        So: read the order once, and if Pidge already gave it to a network,
+        stop - that is the auto-allocating account, and a second fulfil would
+        be refused or, worse, book twice. Otherwise ask which networks can
+        take it and fulfil with one (`pick_network`). The services call is
+        CHARGED by Pidge, so this is called once at dispatch and again only
+        when a person presses "Find a rider"; it never loops.
+
+        Returns a short description of what was chosen ("pidge, Rs 70.8"), or
+        "" when the order was already allocated. Raises `DeliveryProviderError`
+        (retryable) when no network can take it right now.
+        """
+
+        status = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
+        data = status.get("data") if isinstance(status.get("data"), dict) else status
+        if isinstance(data, dict) and data.get("fulfillment"):
+            return ""
+
+        offered = self._call(
+            "GET",
+            "/v1.0/store/channel/vendor/order/fulfillment/services",
+            params={"ids": provider_order_id},
+        )
+        body = offered.get("data")
+        items = body.get("items") if isinstance(body, dict) else body
+        items = [item for item in (items or []) if isinstance(item, dict)]
+        chosen = pick_network(items, preferred=self._preferred_network)
+        if chosen is None:
+            reasons = sorted({
+                str((item.get("error") or {}).get("message") or item.get("error"))
+                for item in items
+                if item.get("error")
+            })
+            detail = "; ".join(reasons) if reasons else "no network offered a price"
+            raise DeliveryProviderError(
+                f"No rider network can take this order right now ({detail})",
+                retryable=True,
+            )
+
+        request: dict[str, Any] = {
+            "ids": [provider_order_id],
+            "service": chosen.get("service"),
+            "pickup_now": bool(chosen.get("pickup_now", True)),
+            "network_id": str(chosen.get("network_id")),
+        }
+        # Their own captive riders need no token; every partner network does.
+        if chosen.get("token"):
+            request["token"] = chosen["token"]
+        self._call("POST", "/v1.0/store/channel/vendor/order/fulfill", json=request)
+        price = (chosen.get("quote") or {}).get("price")
+        return f"{chosen.get('network_name') or chosen.get('service')}, Rs {price}"
 
     def fetch(self, provider_order_id: str, *, simulate: str | None = None) -> DeliveryResult:
         """What Pidge says about one delivery now.

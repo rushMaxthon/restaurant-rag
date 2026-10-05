@@ -510,6 +510,8 @@ class OrderDeliveryResponse(BaseModel):
     #: Whether a staff member may ask for another rider right now.
     can_rebook: bool = False
     can_cancel: bool = False
+    # Booked with the courier, no rider assigned yet: "Find a rider" can ask again.
+    can_allocate: bool = False
     #: Platform admin, on the courier's sandbox only: the simulate buttons.
     can_simulate: bool = False
 

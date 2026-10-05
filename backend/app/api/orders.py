@@ -529,6 +529,11 @@ def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User
         and str(viewer.role) in {"ADMIN", "OWNER"}
         and delivery_service.can_cancel(order, delivery)
     )
+    response.can_allocate = (
+        order is not None
+        and str(viewer.role) in {"ADMIN", "OWNER"}
+        and delivery_service.can_allocate(order, delivery)
+    )
     response.can_simulate = str(viewer.role) == "ADMIN" and delivery_service.simulate_allowed()
     return response.for_viewer(viewer)
 
@@ -601,6 +606,25 @@ def rebook_order_delivery(
 
     order = _staff_order(db, current_user, order_id, app_scope)
     return _delivery_action(db, current_user, order, lambda: delivery_service.rebook(db, order))
+
+
+@router.post("/{order_id}/delivery/allocate", response_model=OrderDeliveryResponse | None)
+def allocate_order_delivery(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+) -> OrderDeliveryResponse | None:
+    """Ask the courier's networks again for a rider, for a booking nobody took.
+
+    By hand only: the call it makes is charged by Pidge per request, so it is
+    never retried on a timer.
+    """
+
+    from app.services.delivery import service as delivery_service
+
+    order = _staff_order(db, current_user, order_id, app_scope)
+    return _delivery_action(db, current_user, order, lambda: delivery_service.allocate(db, order))
 
 
 @router.post("/{order_id}/delivery/simulate", response_model=OrderDeliveryResponse | None)

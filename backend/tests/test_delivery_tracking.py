@@ -349,6 +349,63 @@ class WhatAnUpdateDoesToTheOrderTests(unittest.TestCase):
             self.assertFalse(service.can_cancel(order, row))
             self.assertFalse(service.can_cancel(order, None))
 
+    # --- asking a network to take it ---------------------------------------
+
+    def _unbooked(self) -> uuid.UUID:
+        order_id = self._order(OrderStatus.ACCEPTED)
+        with self.session_factory() as session:
+            row = session.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order_id))
+            row.provider_order_id = ""
+            session.commit()
+        return order_id
+
+    def _dispatch(self, order_id: uuid.UUID, provider) -> OrderDelivery:
+        with self.session_factory() as session,                 mock.patch.object(service, "delivery_provider", return_value=provider),                 mock.patch.object(service, "should_dispatch", return_value=True),                 mock.patch.object(service, "build_request", return_value=SimpleNamespace(reference="r")):
+            service.dispatch(session, session.get(Order, order_id))
+            session.commit()
+            return session.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order_id))
+
+    def test_booking_asks_a_network_to_carry_the_order(self) -> None:
+        order_id = self._unbooked()
+        provider = mock.Mock(name="pidge")
+        provider.create.return_value = DeliveryResult(provider_order_id="P9", state=DeliveryState.PENDING)
+        provider.allocate.return_value = "pidge, Rs 70.8"
+        row = self._dispatch(order_id, provider)
+        provider.allocate.assert_called_once_with("P9")
+        self.assertEqual((row.provider_order_id, row.last_error), ("P9", ""))
+
+    def test_a_booking_nobody_will_carry_is_kept_and_says_why(self) -> None:
+        order_id = self._unbooked()
+        provider = mock.Mock(name="pidge")
+        provider.create.return_value = DeliveryResult(provider_order_id="P9", state=DeliveryState.PENDING)
+        provider.allocate.side_effect = DeliveryProviderError("No rider network can take this order right now (Rider Not Available)")
+        row = self._dispatch(order_id, provider)  # does not raise: Pidge has the order
+        self.assertEqual(row.provider_order_id, "P9")
+        self.assertIn("Rider Not Available", row.last_error)
+        with self.session_factory() as session:
+            self.assertTrue(service.can_allocate(session.get(Order, order_id), row))
+
+    def test_find_a_rider_tries_again_and_records_what_came_back(self) -> None:
+        order_id = self._order(OrderStatus.PREPARING)
+        provider = mock.Mock(name="pidge")
+        provider.allocate.return_value = "pidge, Rs 70.8"
+        provider.fetch.return_value = read("fulfilled|out for pickup")
+        with self.session_factory() as session,                 mock.patch.object(service, "delivery_provider", return_value=provider):
+            row = service.allocate(session, session.get(Order, order_id))
+            session.commit()
+            provider.allocate.assert_called_once_with("P1")
+            self.assertEqual(row.state, "ASSIGNED")
+            self.assertEqual(row.last_error, "")
+
+    def test_a_rider_already_on_the_way_is_not_offered_again(self) -> None:
+        order_id = self._order(OrderStatus.PREPARING)
+        self._apply(order_id, "fulfilled|out for pickup")
+        with self.session_factory() as session:
+            row = session.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order_id))
+            self.assertFalse(service.can_allocate(session.get(Order, order_id), row))
+            with self.assertRaises(DeliveryProviderError):
+                service.allocate(session, session.get(Order, order_id))
+
 
 if __name__ == "__main__":
     unittest.main()

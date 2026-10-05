@@ -340,8 +340,20 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPan
         </ol>
       )}
 
-      {(canCancelRider(delivery) || delivery.can_rebook) && (
+      {(canCancelRider(delivery) || delivery.can_rebook || delivery.can_allocate) && (
         <div className="courier-actions">
+          {delivery.can_allocate && (
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => void act(() => api.allocateOrderDelivery(token, orderId), 'Asked for a rider')}
+              title="Ask the courier's rider networks again to take this order."
+              type="button"
+            >
+              <RotateCcw size={15} strokeWidth={2.1} />
+              Find a rider
+            </button>
+          )}
           {canCancelRider(delivery) && (
             <button
               className="secondary-button"
