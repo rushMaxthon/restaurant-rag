@@ -96,13 +96,30 @@ CAPABILITIES: dict[str, Capability] = {
         global_flag=None,
         client_visible=True,
     ),
+    # On by default, which is what every restaurant had before this was a
+    # switch — so adding the switch changes nobody's checkout. It exists to be
+    # turned OFF: the box says "Promo code" to every customer at the moment
+    # they are about to pay, and a restaurant that never posts a code is then
+    # asked for a discount that does not exist.
+    "promo_code": Capability(
+        key="promo_code",
+        label="Promo code at checkout",
+        owner_description=(
+            "Customers see a box at checkout for a code from one of your posts. "
+            "The code gives no discount; it tells you which post an order came "
+            "from. Turned off, the box is hidden and no code is recorded."
+        ),
+        default=True,
+        global_flag=None,
+        client_visible=True,
+    ),
 }
 
 CAPABILITY_KEYS = frozenset(CAPABILITIES)
 
 # Bumped when a default changes, to invalidate every cached resolution at
 # once. A stale "on" after a default flips to off is the expensive direction.
-CATALOG_VERSION = 1
+CATALOG_VERSION = 2
 
 
 @dataclass(frozen=True)

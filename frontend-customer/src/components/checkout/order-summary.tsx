@@ -45,6 +45,7 @@ export function OrderSummary({
   postalName,
   unserviceable,
   total,
+  showPromoCode,
   promoCode,
   onPromoCodeChange,
   submitting,
@@ -71,6 +72,8 @@ export function OrderSummary({
   postalName: string;
   unserviceable: boolean;
   total: number;
+  /** The restaurant's `promo_code` capability. Off, the box is not drawn. */
+  showPromoCode: boolean;
   promoCode: string;
   onPromoCodeChange: (next: string) => void;
   submitting: boolean;
@@ -212,20 +215,22 @@ export function OrderSummary({
           which made the one block a customer has to get right read as a form
           with an advert in it — and put a field nobody has a code for in
           front of everybody. */}
-      <div className="promo-row mt-4 space-y-1.5">
-        <Label htmlFor="promo_code">Promo code (optional)</Label>
-        <div className="field-wrap">
-          <TicketPercent className="size-4" />
-          <Input
-            id="promo_code"
-            autoCapitalize="characters"
-            placeholder="Seen one on Instagram?"
-            value={promoCode}
-            onChange={(e) => onPromoCodeChange(e.target.value.toUpperCase())}
-            className="h-11"
-          />
+      {showPromoCode ? (
+        <div className="promo-row mt-4 space-y-1.5">
+          <Label htmlFor="promo_code">Promo code (optional)</Label>
+          <div className="field-wrap">
+            <TicketPercent className="size-4" />
+            <Input
+              id="promo_code"
+              autoCapitalize="characters"
+              placeholder="Seen one on Instagram?"
+              value={promoCode}
+              onChange={(e) => onPromoCodeChange(e.target.value.toUpperCase())}
+              className="h-11"
+            />
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="total-row mt-4 flex items-end justify-between border-t border-border pt-4">
         <span className="text-lg font-extrabold">{deliveryKnown ? "Total" : "So far"}</span>
@@ -301,7 +306,10 @@ export function MobilePayBar({
           rather than `detail` for the same reason — this bar has one line to
           spare, and the labels are written to be that line. */}
       {!submitting && payBlock ? (
-        <p aria-live="polite" className="pay-reason mx-auto mb-2 max-w-2xl text-xs font-bold text-muted">
+        <p
+          aria-live="polite"
+          className="pay-reason mx-auto mb-2 max-w-2xl text-xs font-bold text-muted"
+        >
           {payBlock.label}
         </p>
       ) : null}

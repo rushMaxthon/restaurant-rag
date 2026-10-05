@@ -124,7 +124,31 @@ class TheGlobalFlagCanOnlySubtractTests(unittest.TestCase):
 class WhatTheClientIsToldTests(unittest.TestCase):
     def test_only_the_answer_travels(self) -> None:
         told = client_capabilities(FakeSession([("ask_ai", False)]), restaurant_id=uuid.uuid4())
-        self.assertEqual(told, {"ask_ai": False})
+        self.assertEqual(told, {"ask_ai": False, "promo_code": True})
+
+    def test_the_promo_code_box_is_on_until_an_admin_turns_it_off(self) -> None:
+        # On by default, so making it a switch changed nobody's checkout.
+        restaurant_id = uuid.uuid4()
+        self.assertTrue(client_capabilities(FakeSession(), restaurant_id=restaurant_id)["promo_code"])
+        decision = resolve_capabilities(FakeSession(), restaurant_id=restaurant_id)["promo_code"]
+        self.assertEqual(decision.reason, CapabilityReason.DEFAULT_ON)
+        told = client_capabilities(FakeSession([("promo_code", False)]), restaurant_id=restaurant_id)
+        self.assertFalse(told["promo_code"])
+
+    def test_a_code_is_only_kept_where_the_box_is_on(self) -> None:
+        # The server's half of the same switch. A client that still has the
+        # box - an older build of the mobile app - must not be able to write
+        # a code onto an order for a restaurant that has it switched off.
+        from app.services.orders import promo_code_to_record
+
+        restaurant_id = uuid.uuid4()
+        off = FakeSession([("promo_code", False)])
+        on = FakeSession()
+        self.assertIsNone(promo_code_to_record(off, restaurant_id=restaurant_id, typed="INSTA20"))
+        self.assertEqual(
+            promo_code_to_record(on, restaurant_id=restaurant_id, typed="INSTA20"), "INSTA20"
+        )
+        self.assertIsNone(promo_code_to_record(on, restaurant_id=restaurant_id, typed=None))
 
     def test_operator_only_capabilities_never_leave_the_admin_api(self) -> None:
         told = client_capabilities(FakeSession(), restaurant_id=uuid.uuid4())

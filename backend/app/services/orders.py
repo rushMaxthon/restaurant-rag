@@ -33,6 +33,7 @@ from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
 from app.services import order_charges
+from app.services.capabilities import resolve_capabilities
 from app.services.delivery.quoting import delivery_fee_for
 from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
@@ -787,6 +788,25 @@ def _contact_phone_for(customer: User, payload: OrderCreateRequest) -> str:
     return (customer.phone_number or "").strip()
 
 
+def promo_code_to_record(
+    db: Session, *, restaurant_id: uuid.UUID | None, typed: str | None
+) -> str | None:
+    """The code to store on an order, or nothing where the box is switched off.
+
+    The storefront hides the box when the restaurant's `promo_code` capability
+    is off — but a hidden field is not a rule. A client that still shows it, an
+    older build of the mobile app for one, would go on writing codes onto
+    orders, and the campaign report would count attribution for a restaurant
+    that is not collecting any.
+    """
+
+    if not typed:
+        return None
+    decision = resolve_capabilities(db, restaurant_id=restaurant_id)["promo_code"]
+    # Only the answer is needed here; the reason is for the screens.
+    return typed if decision.enabled else None
+
+
 def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> OrderResponse:
     draft = _prepare_order_draft(
         db,
@@ -857,7 +877,9 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         # would be a discount the server never validated, typed by the
         # customer — the offer system exists for that and this is only the
         # attribution trail for a public post.
-        marketing_promo_code=payload.promo_code,
+        marketing_promo_code=promo_code_to_record(
+            db, restaurant_id=draft.restaurant.id, typed=payload.promo_code
+        ),
         items=draft.order_items,
         # Credit the offer that produced this order. The draft has already
         # validated it, so this only records what was applied — pricing and

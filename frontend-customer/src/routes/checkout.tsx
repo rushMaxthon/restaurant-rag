@@ -11,7 +11,7 @@ import { PaymentStep } from "@/components/checkout/payment-step";
 import { ScheduleStep } from "@/components/checkout/schedule-step";
 import { StepRail } from "@/components/checkout/step-rail";
 import { orderCode } from "@/lib/bangkok-data";
-import { useBangkokStore } from "@/lib/bangkok-store";
+import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { payBlock as payBlockFor } from "@/lib/pay-gate";
 import {
   canResumePayment,
@@ -89,6 +89,8 @@ function Checkout() {
   // not an error the customer should be stopped for. It buys nothing, so a
   // typo costs them nothing — it only means one post goes uncredited.
   const [promoCode, setPromoCode] = useState("");
+  // A per-restaurant switch, set by the platform admin. Off by default.
+  const promoCodeOffered = hasCapability(s.capabilities, "promo_code");
   const [address, setAddress] = useState<AddressFields>({
     house: "",
     line1: "",
@@ -803,7 +805,9 @@ function Checkout() {
       contact_phone: phone.trim(),
       // Upper-cased to match how the campaign stored it, so "insta20" off a
       // phone screen credits "INSTA20".
-      promo_code: promoCode.trim().toUpperCase() || null,
+      // Nothing is sent when the box is off, even if a code was typed before
+      // it was switched off. The server drops it too; this keeps the two agreeing.
+      promo_code: promoCodeOffered ? promoCode.trim().toUpperCase() || null : null,
       // Previously never sent, so the backend defaulted every order to COD and
       // marked it PLACED immediately — which is why "Place order" looked like
       // it skipped payment. A CARD order is created PAYMENT_PENDING instead and
@@ -1104,6 +1108,7 @@ function Checkout() {
           postalName={postalName}
           unserviceable={unserviceable}
           total={total}
+          showPromoCode={promoCodeOffered}
           promoCode={promoCode}
           onPromoCodeChange={setPromoCode}
           submitting={submitting}
