@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from unittest import mock
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -226,6 +227,14 @@ class TheMatchIgnoresWhatIsNotThePlace(unittest.TestCase):
 class SavingItAgainReturnsTheOneYouHave(unittest.TestCase):
     def setUp(self) -> None:
         self.user = make_user()
+        # Placing a new address on the map is its own subsystem, with its own
+        # tests. Left live, it called the real geocoder and wrote a cache row
+        # into this session - or did not, when an earlier test had already
+        # left the answer in Redis - so "one row written" passed alone and
+        # failed in the full suite.
+        patcher = mock.patch("app.services.profile.locate_saved_address")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_no_second_row_is_written(self) -> None:
         saved = make_saved(self.user)

@@ -816,12 +816,13 @@ Kept because the notes are hard-won, not because they apply here.
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
-- **Supabase's Alembic stamp is behind its schema.** `alembic_version` reads
-  `0074_print_agents` (checked 2026-10-05), but `0075`-`0082` were all applied
-  there by hand through the Supabase MCP and never stamped. Every one of them
-  is guarded to no-op when its objects exist, so `alembic stamp head` (or an
-  `upgrade head`, which will no-op through them) is the fix - do it before the
-  server deploy runs migrations, and check the stamp after.
+- **Stamp Supabase whenever a migration is applied there by hand.** Render's
+  API runs `alembic upgrade head` before every deploy, so a schema applied
+  through the Supabase MCP but not stamped is re-run on the next deploy. It
+  happened: the stamp sat at `0074` with the schema at `0082` until
+  2026-10-05, and re-running `0076`/`0077` would have reset and re-applied
+  every price's commission (now refused by a guard in `0076`). Verify the
+  objects exist, then `UPDATE alembic_version`, then `alembic current`.
 - **Six restaurants are demo data** (`restaurants.is_demo`, 2026-10-05): the
   CAD kitchens seeded on 2026-09-13 - Bangkok Bowl, Momo Mountain, Luigi's,
   Dragon Wok, Stacked Grill House, Spice Route. Kept because the Bangkok Bowl
