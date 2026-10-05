@@ -112,6 +112,20 @@ function DishPage() {
   const store = useBangkokStore();
   const itemQuery = useMenuItem(itemId);
   const item = itemQuery.data;
+  // The tab said "Dish" for every dish: the loader that writes the head runs
+  // before the dish is known. So the name goes on once it has arrived — in a
+  // row of open tabs, and in the browser's history, "Brun Pav" is the one
+  // somebody can find again. The server-rendered title is left as it is.
+  useEffect(() => {
+    if (!item?.name) return;
+    const previous = document.title;
+    document.title = previous.startsWith("Dish")
+      ? item.name + previous.slice("Dish".length)
+      : previous;
+    return () => {
+      document.title = previous;
+    };
+  }, [item?.name]);
   const { isAuthenticated } = useAuth();
   const favorites = useFavoriteIds(isAuthenticated);
   const toggleFavorite = useToggleFavorite();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  soleSize,
   activeOptions,
   activeSizes,
   requiresChoosing,
@@ -140,6 +141,38 @@ describe("activeSizes", () => {
     const on = size({ id: "on" });
     const off = size({ id: "off", is_active: false });
     expect(activeSizes(item({ sizes: [on, off] })).map((s) => s.id)).toEqual(["on"]);
+  });
+});
+
+describe("soleSize", () => {
+  it("is the size when a dish has exactly one and nothing else to choose", () => {
+    const only = size({ id: "pack-4", name: "Pack of 4" });
+    expect(soleSize(item({ has_sizes: true, sizes: [only] }))?.id).toBe("pack-4");
+  });
+
+  it("ignores a size the owner switched off when counting", () => {
+    const on = size({ id: "on" });
+    const off = size({ id: "off", is_active: false });
+    expect(soleSize(item({ has_sizes: true, sizes: [on, off] }))?.id).toBe("on");
+  });
+
+  it("is nothing when there is a real choice of size", () => {
+    expect(
+      soleSize(item({ has_sizes: true, sizes: [size({ id: "a" }), size({ id: "b" })] })),
+    ).toBeUndefined();
+  });
+
+  it("is nothing when the dish, or its one size, has options to pick", () => {
+    const only = size({ id: "only" });
+    expect(
+      soleSize(item({ has_sizes: true, has_customizations: true, sizes: [only] })),
+    ).toBeUndefined();
+    const withGroups = size({ id: "only", customization_groups: [group()] });
+    expect(soleSize(item({ has_sizes: true, sizes: [withGroups] }))).toBeUndefined();
+  });
+
+  it("is nothing for a dish with no sizes at all", () => {
+    expect(soleSize(item())).toBeUndefined();
   });
 });
 

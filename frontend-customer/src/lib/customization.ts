@@ -32,6 +32,26 @@ export function activeSizes(item: MenuItem | undefined): MenuSize[] {
   return (item?.sizes ?? []).filter((size) => size.is_active);
 }
 
+/**
+ * The size of a dish that has one size and nothing else to decide.
+ *
+ * "Brun Pav — Pack of 4" is a dish with a size, in the data. To a customer it
+ * is a dish with a price: there is no second pack to compare it with. The
+ * menu card treated it like a pizza — "From ₹44" and a Choose button leading
+ * to a page with nothing on it to choose — so adding it took two screens.
+ * With this the card can add it directly, carrying the size the order needs.
+ *
+ * Nothing when the size brings option groups of its own: then there IS a
+ * decision, and it belongs on the dish page.
+ */
+export function soleSize(item: MenuItem | undefined): MenuSize | undefined {
+  if (!item || item.has_customizations) return undefined;
+  const sizes = activeSizes(item);
+  if (sizes.length !== 1) return undefined;
+  const [only] = sizes;
+  return only && (only.customization_groups ?? []).length === 0 ? only : undefined;
+}
+
 /** Options the customer may actually pick. */
 export function activeOptions(group: CustomizationGroup): CustomizationOption[] {
   return (group.options ?? []).filter((option) => option.is_active);

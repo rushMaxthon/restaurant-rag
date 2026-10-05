@@ -1424,6 +1424,19 @@ html {
     position: static;
   }
 }
+/* Nothing above it to be a seam with. A dish with no size to pick and no
+   options has no choice cards, so the bar is the panel's only child — and its
+   top margin, border and shadow drew an empty white box over the buttons. */
+.dish-actions:first-child {
+  margin-top: calc(var(--panel-pad) * -1);
+  border-top: 0;
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: none;
+  padding-top: var(--panel-pad);
+}
+.dish-actions:first-child::before {
+  display: none;
+}
 /* A short fade above the seam, so the card the bar is covering reads as
    continuing underneath rather than as having been sliced through. */
 .dish-actions::before {

@@ -6,6 +6,7 @@ import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
 import { type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { soleSize } from "@/lib/customization";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import { useMoney } from "@/lib/storefront";
@@ -28,7 +29,14 @@ function DishCardImpl({ item }: { item: MenuItem }) {
   // A dish with sizes or add-ons cannot be added from a card — there is nothing
   // here to choose them with. Sending it to the detail page is honest; adding a
   // silent default and surprising them at checkout is not.
-  const needsChoices = item.has_sizes || item.has_customizations;
+  // One size and no options is not a choice — see `soleSize`. The card adds
+  // it directly, with that size on the line.
+  const only = soleSize(item);
+  const needsChoices = !only && (item.has_sizes || item.has_customizations);
+  const add = () =>
+    only
+      ? addItem(item, { unitPrice: Number(only.price), sizeId: only.id, sizeName: only.name })
+      : addItem(item);
 
   // Lines for this dish, so the card can show what is already in the cart
   // instead of an inert + that gives no feedback. Sized variants make several
@@ -116,7 +124,11 @@ function DishCardImpl({ item }: { item: MenuItem }) {
 
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">
-            {item.has_sizes ? `From ${money(item.price)}` : money(item.price)}
+            {only
+              ? money(only.price)
+              : item.has_sizes
+                ? `From ${money(item.price)}`
+                : money(item.price)}
           </span>
 
           {!item.is_available ? (
@@ -142,13 +154,13 @@ function DishCardImpl({ item }: { item: MenuItem }) {
                 type="button"
                 className="qty-step"
                 aria-label={`Add another ${item.name}`}
-                onClick={() => addItem(item)}
+                onClick={add}
               >
                 <Plus className="size-4" />
               </button>
             </div>
           ) : (
-            <Button aria-label={`Add ${item.name}`} size="icon" onClick={() => addItem(item)}>
+            <Button aria-label={`Add ${item.name}`} size="icon" onClick={add}>
               <Plus />
             </Button>
           )}
