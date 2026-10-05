@@ -91,6 +91,7 @@ def summarise(db: Session, *, since: datetime) -> list[RestaurantCommission]:
             Order.placed_at >= since,
             Order.commission_amount.is_not(None),
             Order.status.not_in(NOT_EARNED),
+            Restaurant.is_demo.is_(False),
         )
         .group_by(Restaurant.id, Restaurant.name)
         .order_by(earned.desc(), Restaurant.name.asc())

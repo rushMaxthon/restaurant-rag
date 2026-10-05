@@ -38,6 +38,8 @@ class TenantSummaryResponse(BaseModel):
     cuisine_type: str | None
     city: str | None
     is_approved: bool | None
+    # The restaurant is seeded demo data; hidden from the switcher by default.
+    is_demo: bool = False
 
     # The address the storefront answers on. `primary_host` is the subdomain
     # this platform issued; a tenant that has since attached its own domain

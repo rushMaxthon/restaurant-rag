@@ -377,6 +377,10 @@ def find_issues(db: Session, *, now: datetime) -> list[Issue]:
             select(Restaurant).options(selectinload(Restaurant.locations))
         )
     }
+    # Demo kitchens are not watched: what is wrong with seeded data is not
+    # something anybody has to act on.
+    demo = {rid for rid, r in restaurants.items() if r.is_demo}
+    restaurants = {rid: r for rid, r in restaurants.items() if rid not in demo}
     name = lambda rid: restaurants[rid].name if rid in restaurants else None  # noqa: E731
     issues: list[Issue] = []
 
@@ -518,6 +522,7 @@ def find_issues(db: Session, *, now: datetime) -> list[Issue]:
             int(count), rid, name(rid), link="/menu-items",
         ))
 
+    issues = [issue for issue in issues if issue.restaurant_id not in demo]
     issues.sort(key=lambda issue: (_SEVERITY_ORDER[issue.severity], -issue.count, issue.restaurant_name or ""))
     return issues
 
@@ -560,7 +565,9 @@ def restaurants_today(db: Session, *, now: datetime, issues: list[Issue]) -> lis
             issue_count[issue.restaurant_id] = issue_count.get(issue.restaurant_id, 0) + 1
 
     rows = []
-    for restaurant in db.scalars(select(Restaurant).options(selectinload(Restaurant.locations))):
+    for restaurant in db.scalars(
+        select(Restaurant).where(Restaurant.is_demo.is_(False)).options(selectinload(Restaurant.locations))
+    ):
         active = [location for location in restaurant.locations if location.is_active]
         count, total = sales.get(restaurant.id, (0, Decimal("0")))
         status = storefronts.get(restaurant.id)

@@ -5199,3 +5199,48 @@ still PENDING — fixed by the server-side `can_cancel`.
 
 **Learned:** the local env points at live Pidge, so simulate is refused
 locally; it needs a sandbox `PIDGE_BASE_URL`.
+
+## 2026-10-05 — Super admin in rupees, demo restaurants hidden, sidebar polish
+
+**Goal:** the super admin dashboard showed "$47,866.53" and read as dummy data.
+
+**Found:** the data was live, but six seeded CAD demo restaurants (427 orders)
+sat beside the seven real INR ones, so the panel fell back to USD and the
+revenue total added dollars to rupees - and counted unpaid and cancelled
+orders too.
+
+**Changed:**
+- `restaurants.is_demo` (migration `0082`, applied to Supabase by hand; the six
+  marked). Left out of `/admin/dashboard`, admin `/orders` + live board
+  (`_scope_orders`), Platform watch, commission, `/admin/restaurants` and
+  `/app-clients` unless `include_demo=true`. `PATCH /admin/restaurants/{id}/demo`.
+- Dashboard revenue = paid, not cancelled; abandoned checkouts not counted as
+  orders; response carries `currency`.
+- Admin: `DEFAULT_CURRENCY` INR; paise always two digits ("₹8,412.50");
+  Restaurants page "Show demo (6)" + Demo pill + Toggle demo action.
+- Sidebar: one focus ring on search (override must be unlayered in
+  `index.css`), owner header shows their restaurant name/logo, thin scrollbar
+  without arrows (Chrome ignores ::-webkit-scrollbar once `scrollbar-width`
+  is set), icon-only settings/theme buttons.
+
+**Verified:** backend 3059 (6 tenant-lifecycle fakes fixed after, re-run
+green), `test_demo_restaurants` 8/8; admin 451, build, lint at 67. Browser:
+dashboard ₹8,412.50 / 100 orders / 7 restaurants, no mixed-currency banner.
+
+**Open:** Supabase Alembic stamp is `0074` while schema is at `0082`.
+
+## 2026-10-05 — Dashboard period filter (admin and owner)
+
+**Changed:** `services/dashboardPeriod.ts` (+test, 19 cases) resolves Today /
+Yesterday / Last 7 / Last 30 / This month / Last month / a month / a year /
+custom dates into a range, a comparison period and chart buckets (hours for
+one day, days up to ~a quarter, months beyond). An in-progress period is
+compared with the same elapsed stretch of the one before; a finished one with
+the whole previous period (a 31-day month was first compared with 30 days).
+`DashboardPeriodPicker` in both dashboard headers, remembered per role in
+localStorage. Tiles, charts, top dishes and top restaurants all follow the
+period; revenue counts sales only (not PAYMENT_PENDING / CANCELLED).
+
+**Verified:** admin 471 tests, build, lint at 67; browser as admin through
+every period. Owner view not walked in the browser (no owner session on
+hand) - same code path, typechecked.

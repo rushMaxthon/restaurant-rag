@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -126,6 +126,7 @@ def _summarize(
         cuisine_type=restaurant.cuisine_type if restaurant else None,
         city=restaurant.city if restaurant else None,
         is_approved=restaurant.is_approved if restaurant else None,
+        is_demo=bool(restaurant.is_demo) if restaurant else False,
         primary_host=platform_host,
         custom_host_count=custom_hosts,
         brand_primary_color=app_client.brand_primary_color,
@@ -167,8 +168,9 @@ def _name_of(names: dict[uuid.UUID, str], user_id: uuid.UUID | None) -> str | No
 def list_tenants(
     db: Annotated[Session, Depends(get_db)],
     _current_user: Annotated[User, Depends(require_admin)],
+    include_demo: bool = Query(default=False),
 ) -> list[TenantSummaryResponse]:
-    """Every tenant, by name.
+    """Every tenant, by name - leaving out demo restaurants unless asked.
 
     Unfiltered and unpaginated, like the other admin listings here: search and
     paging happen in the browser, and the tenant switcher needs the whole set
@@ -183,6 +185,12 @@ def list_tenants(
             .order_by(AppClient.display_name.asc())
         ).all()
     )
+
+    if not include_demo:
+        app_clients = [
+            client for client in app_clients
+            if client.restaurant is None or not client.restaurant.is_demo
+        ]
 
     counts = _counts_by_app_client(db)
     changed_by = _changed_by_names(db, app_clients)

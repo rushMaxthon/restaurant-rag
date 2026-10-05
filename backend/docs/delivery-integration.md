@@ -33,7 +33,7 @@ kitchen accepts the order
   -> the task calls Pidge and writes an order_deliveries row
   -> Pidge pushes status changes to /api/delivery/webhook
   -> the webhook ASKS Pidge what really happened, and records that
-  -> IN_TRANSIT and DELIVERED move the order; nothing else does
+  -> PICKED_UP / IN_TRANSIT and DELIVERED move the order; nothing else does
 ```
 
 Verified end to end against Pidge's sandbox. A forged webhook claiming

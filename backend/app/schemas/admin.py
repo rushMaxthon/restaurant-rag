@@ -15,6 +15,14 @@ class AdminDashboardStats(BaseModel):
     total_revenue: float
     total_restaurants: int
     total_users: int
+    # The one currency every counted restaurant charges in, or None when they
+    # do not share one - in which case `total_revenue` adds unlike money and
+    # the screen says so rather than printing it under one symbol.
+    currency: str | None = None
+
+
+class RestaurantDemoUpdate(BaseModel):
+    is_demo: bool
 
 
 class RestaurantApprovalUpdate(BaseModel):

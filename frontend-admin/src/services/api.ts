@@ -329,8 +329,20 @@ export const api = {
       { method: 'POST', token, body: { ids } },
     );
   },
-  getAdminRestaurants(token: string): Promise<Restaurant[]> {
-    return request<Restaurant[]>('/admin/restaurants', { token });
+  /**
+   * Every restaurant, leaving out demo ones unless `includeDemo` - which only
+   * the Restaurants page asks for, so a demo kitchen can be found and unmarked.
+   */
+  getAdminRestaurants(token: string, options?: { includeDemo?: boolean }): Promise<Restaurant[]> {
+    const query = options?.includeDemo ? '?include_demo=true' : '';
+    return request<Restaurant[]>(`/admin/restaurants${query}`, { token });
+  },
+  updateRestaurantDemo(token: string, restaurantId: string, isDemo: boolean): Promise<Restaurant> {
+    return request<Restaurant>(`/admin/restaurants/${restaurantId}/demo`, {
+      method: 'PATCH',
+      token,
+      body: { is_demo: isDemo },
+    });
   },
   getAdminMenuItems(token: string): Promise<AdminMenuItem[]> {
     return request<AdminMenuItem[]>('/admin/menu-items', { token });
@@ -1459,8 +1471,15 @@ const CURRENCY_FORMATS: Record<string, { locale: string; minDigits: number }> = 
   AED: { locale: 'en-AE', minDigits: 2 },
 };
 
-/** What the panel writes money in when nothing has told it otherwise. */
-export const DEFAULT_CURRENCY = 'USD';
+/**
+ * What the panel writes money in when nothing has told it otherwise.
+ *
+ * Rupees, because the platform is launching in India: every real restaurant
+ * on it charges in INR. It was USD from the days of one Bangkok kitchen, and
+ * a super admin looking at the platform as a whole read rupee takings under a
+ * "$".
+ */
+export const DEFAULT_CURRENCY = 'INR';
 
 function formatFor(code: string | null | undefined) {
   const resolved = (code || DEFAULT_CURRENCY).toUpperCase();
@@ -1478,12 +1497,16 @@ function formatFor(code: string | null | undefined) {
  */
 export function formatCurrency(value: number | string, currency?: string | null): string {
   const format = formatFor(currency);
+  const numeric = toNumber(value);
+  // A currency written without its minor unit (rupees: "₹120") still shows
+  // BOTH digits once there are paise - "₹8,412.50", never "₹8,412.5".
+  const fraction = Math.round(numeric * 100) % 100 !== 0 ? 2 : format.minDigits;
   return new Intl.NumberFormat(format.locale, {
     style: 'currency',
     currency: format.code,
-    minimumFractionDigits: format.minDigits,
+    minimumFractionDigits: fraction,
     maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  }).format(numeric);
 }
 
 /**

@@ -75,6 +75,12 @@ class Restaurant(TimestampMixin, Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Seeded to develop against, not a real kitchen. Kept - an app client and
+    # a WhatsApp setup still point at one - and left out of everything the
+    # platform admin reads across restaurants, where its orders made the
+    # dashboard read as dummy data and its dollars were added to rupees.
+    # Naming one explicitly still answers, so the mark can be undone.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     logo_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # The restaurant's own look, owned by the owner rather than by whoever

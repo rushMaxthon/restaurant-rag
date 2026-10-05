@@ -162,7 +162,16 @@ button {
   box-shadow: var(--shadow-brand-md);
 }
 
+.admin-sidebar__brand-mark img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .admin-sidebar__brand-mark {
+  flex-shrink: 0;
+  overflow: hidden;
   width: 38px;
   height: 38px;
   border-radius: var(--radius-3);
@@ -246,12 +255,28 @@ button {
   padding-right: var(--space-1);
   /* Firefox has no ::-webkit-scrollbar; these two are how it gets the same
      treatment, and `thin` is the narrowest it offers. */
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--sidebar-ink) 26%, transparent) transparent;
+  /* A short fade at the foot says "more below" without a hard cut, which
+     is how the last group used to read: sliced off under the account card. */
+  /* Only the alpha of a mask counts; any opaque token will do. */
+  mask-image: linear-gradient(to bottom, var(--sidebar) calc(100% - var(--space-5)), transparent);
+}
+
+/* Firefox only. Chrome 121+ also understands these two, and once either is
+   set it IGNORES the ::-webkit-scrollbar rules below - which drew the bulky
+   Windows scrollbar, arrows and all, beside the menu. */
+@supports not selector(::-webkit-scrollbar) {
+  .admin-sidebar__sections {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--sidebar-ink) 26%, transparent) transparent;
+  }
 }
 
 .admin-sidebar__sections::-webkit-scrollbar {
   width: 6px;
+}
+
+.admin-sidebar__sections::-webkit-scrollbar-button {
+  display: none;
 }
 
 .admin-sidebar__sections::-webkit-scrollbar-thumb {
@@ -16807,18 +16832,32 @@ optgroup {
   transition: border-color var(--dur-fast) var(--ease-out);
 }
 
-/* Settings, theme, sign out: the first is an icon, the other two say what
-   they do. */
+/* Settings and theme are icons; sign out says what it does, because it is
+   the one that cannot be undone with a second press. Square icon buttons
+   rather than "Light mode" squeezed against its own border. */
 .admin-sidebar__actions {
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: auto auto 1fr;
 }
 
-.admin-sidebar__actions > .admin-sidebar__action:first-child {
-  padding: 0 var(--space-2);
+.admin-sidebar__actions > .admin-sidebar__action:not(.admin-sidebar__action--danger) {
+  width: 32px;
+  padding: 0;
 }
 
+/* One ring, on the box. The shared input focus style drew a second,
+   rounded one around the bare input inside it. */
 .admin-sidebar__search:focus-within {
   border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  box-shadow:
+    0 0 0 var(--space-1) var(--sidebar),
+    0 0 0 calc(var(--space-1) + 2px) color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* In the drawer the icon buttons are pressed with a thumb. */
+@media (max-width: 1024px) {
+  .admin-sidebar__actions > .admin-sidebar__action:not(.admin-sidebar__action--danger) {
+    width: 44px;
+  }
 }
 
 .admin-sidebar__search input {
@@ -17039,4 +17078,66 @@ optgroup {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* ==========================================================================
+   The dashboard's period: a menu, and beside it only the detail that kind
+   needs - a month, a year, or two dates. Each piece is the same pill as the
+   "last updated" stamp beside it, so the row reads as one set of controls.
+   ========================================================================== */
+
+.period-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.period-picker__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+.period-picker__field:focus-within {
+  border-color: var(--primary);
+}
+
+.period-picker__field select,
+.period-picker__field input {
+  align-self: stretch;
+  min-height: var(--control-h-sm);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--fw-strong);
+  outline: none;
+  color-scheme: light dark;
+}
+
+@media (max-width: 720px) {
+  .period-picker,
+  .period-picker__field {
+    width: 100%;
+  }
+
+  .period-picker__field {
+    min-height: 44px;
+  }
+
+  .period-picker__field select,
+  .period-picker__field input {
+    flex: 1;
+    min-width: 0;
+  }
 }

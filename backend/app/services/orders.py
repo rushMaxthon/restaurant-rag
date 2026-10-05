@@ -1078,6 +1078,12 @@ def _scope_orders(
         query = query.where(Order.restaurant_id == owner_restaurant_id)
     elif restaurant_id is not None:
         query = query.where(Order.restaurant_id == restaurant_id)
+    elif app_scope_restaurant_id is None:
+        # The platform admin across every restaurant: demo kitchens are left
+        # out, as on the dashboard. Naming one (above) still answers.
+        query = query.where(
+            Order.restaurant_id.not_in(select(Restaurant.id).where(Restaurant.is_demo.is_(True)))
+        )
 
     # Applied on top of the role filter rather than as part of it: a
     # single-restaurant app must narrow a customer's own order history too,

@@ -1,4 +1,4 @@
-import { BadgeCheck, CheckCircle2, Clock3, Eye, Pencil, Smartphone, Store, Trash2 } from 'lucide-react';
+import { BadgeCheck, CheckCircle2, Clock3, Eye, FlaskConical, Pencil, Smartphone, Store, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Checkbox } from '../components/common/Checkbox';
 import { Modal } from '../components/Modal';
@@ -108,6 +108,10 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(restaurantsKey));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
+  // Demo restaurants are seeded data, left out of every platform total. They
+  // are loaded here - the one screen that does - so one can be found and
+  // marked real again, but hidden until asked for.
+  const [showDemo, setShowDemo] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
 
@@ -140,7 +144,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
 
     setIsLoading(true);
     try {
-      const rows = await api.getAdminRestaurants(token);
+      const rows = await api.getAdminRestaurants(token, { includeDemo: true });
       setRestaurants(rows);
       setLoadError(null);
       setPageSnapshot(restaurantsKey, rows);
@@ -159,15 +163,16 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   }, [token, restaurantsKey]);
 
   const approvalTiles = useMemo<Array<StatTileItem<'ALL' | 'APPROVED' | 'PENDING'>>>(() => {
-    const approved = restaurants.filter((restaurant) => restaurant.is_approved);
-    const pending = restaurants.filter((restaurant) => !restaurant.is_approved);
+    const real = restaurants.filter((restaurant) => !restaurant.is_demo);
+    const approved = real.filter((restaurant) => restaurant.is_approved);
+    const pending = real.filter((restaurant) => !restaurant.is_approved);
     return [
       {
         key: 'ALL',
         label: 'All restaurants',
         icon: Store,
-        value: restaurants.length,
-        hint: `${restaurants.filter((restaurant) => restaurant.is_open).length} open now`,
+        value: real.length,
+        hint: `${real.filter((restaurant) => restaurant.is_open).length} open now`,
       },
       {
         key: 'APPROVED',
@@ -193,16 +198,18 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
         [restaurant.name, restaurant.city, restaurant.cuisine_type, restaurant.slug].some((value) =>
           value.toLowerCase().includes(normalized),
         )) &&
-      (statusFilter === 'ALL' || (statusFilter === 'APPROVED' ? restaurant.is_approved : !restaurant.is_approved)),
+      (statusFilter === 'ALL' || (statusFilter === 'APPROVED' ? restaurant.is_approved : !restaurant.is_approved)) &&
+      (showDemo || !restaurant.is_demo),
     );
-  }, [query, restaurants, statusFilter]);
+  }, [query, restaurants, showDemo, statusFilter]);
+  const demoCount = restaurants.filter((restaurant) => restaurant.is_demo).length;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
     setPage(1);
-  }, [pageSize, query, statusFilter]);
+  }, [pageSize, query, showDemo, statusFilter]);
 
   const columns: Array<TableColumn<Restaurant>> = [
     {
@@ -233,6 +240,7 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
       header: 'Status',
       render: (restaurant) => (
         <div className="status-stack">
+          {restaurant.is_demo ? <StatusPill status="DEMO" /> : null}
           <StatusPill status={restaurant.is_approved ? 'APPROVED' : 'PENDING'} />
           <StatusPill status={restaurant.is_open ? 'OPEN' : 'CLOSED'} />
         </div>
@@ -246,6 +254,23 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
       mobileLabel: 'Created',
     },
   ];
+
+  const toggleDemo = async (restaurant: Restaurant) => {
+    if (!token) return;
+    try {
+      const updated = await api.updateRestaurantDemo(token, restaurant.id, !restaurant.is_demo);
+      syncRestaurant(updated);
+      onToast(
+        updated.is_demo ? 'Marked as demo' : 'Marked as real',
+        updated.is_demo
+          ? `${updated.name} is now left out of platform totals and lists.`
+          : `${updated.name} now counts in platform totals and lists.`,
+        'success',
+      );
+    } catch (error: unknown) {
+      onToast('Could not change it', error instanceof ApiError ? error.message : 'Please try again.', 'error');
+    }
+  };
 
   const syncRestaurant = (updated: Restaurant) => {
     setRestaurants((current) => {
@@ -497,15 +522,25 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
             </>
           }
           filters={
-            <select
-              className="page-search page-search--select"
-              onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-              value={statusFilter}
-            >
-              <option value="ALL">All statuses</option>
-              <option value="APPROVED">Approved</option>
-              <option value="PENDING">Pending</option>
-            </select>
+            <>
+              <select
+                className="page-search page-search--select"
+                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+                value={statusFilter}
+              >
+                <option value="ALL">All statuses</option>
+                <option value="APPROVED">Approved</option>
+                <option value="PENDING">Pending</option>
+              </select>
+              {demoCount > 0 ? (
+                <Checkbox
+                  checked={showDemo}
+                  label={`Show demo (${demoCount})`}
+                  onChange={setShowDemo}
+                  size="sm"
+                />
+              ) : null}
+            </>
           }
           onSearchChange={setQuery}
           searchPlaceholder="Filter by name, city, cuisine"
@@ -540,6 +575,12 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
                   ? setPendingApprovalRevoke(restaurant)
                   : void toggleApproval(restaurant),
               tone: 'success',
+            },
+            {
+              id: 'demo',
+              label: 'Toggle demo',
+              icon: FlaskConical,
+              onClick: (restaurant) => void toggleDemo(restaurant),
             },
             {
               id: 'delete',

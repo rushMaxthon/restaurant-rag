@@ -93,6 +93,38 @@ function isItemActive(currentPath: string, itemPath: string): boolean {
   return activeNavPathFor(currentPath) === itemPath;
 }
 
+/**
+ * The owner's own restaurant, for the brand block.
+ *
+ * The block used to read "Restaurant RAG / Restaurant workspace" under an
+ * "RR" mark - the codebase's name, shown to a bakery owner as if it were
+ * theirs. Null until loaded and on any error, when the block falls back to a
+ * neutral "Your restaurant" rather than a wrong name.
+ */
+function useOwnRestaurant(
+  token: string | null,
+  restaurantId: string | null,
+  enabled: boolean,
+): { name: string; logo: string | null } | null {
+  const [restaurant, setRestaurant] = useState<{ name: string; logo: string | null } | null>(null);
+  useEffect(() => {
+    if (!enabled || !token || !restaurantId) return;
+    let live = true;
+    api
+      .getRestaurant(token, restaurantId)
+      .then((detail) => {
+        if (live) setRestaurant({ name: detail.name, logo: detail.logo_image_url ?? null });
+      })
+      .catch(() => {
+        if (live) setRestaurant(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [enabled, restaurantId, token]);
+  return restaurant;
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -137,8 +169,6 @@ function ThemeToggle() {
       ) : (
         <Moon size={15} strokeWidth={2.1} />
       )}
-      {/* Names what the button will DO, like its aria-label. */}
-      <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
     </button>
   );
 }
@@ -166,6 +196,7 @@ export function Sidebar({
   const [closed, setClosed] = useState<Set<NavSection>>(readClosedGroups);
   const searchRef = useRef<HTMLInputElement>(null);
   const waiting = useWaitingOrders(token, role === "ADMIN" ? activeRestaurantId : null);
+  const ownRestaurant = useOwnRestaurant(token, restaurantId, role === "OWNER");
 
   // A rail of icons has no room for a search box or group headings: every
   // entry is shown, ungrouped, whatever was folded.
@@ -249,9 +280,15 @@ export function Sidebar({
               }}
               type="button"
             >
-              <div className="admin-sidebar__brand-mark">RR</div>
+              <div className="admin-sidebar__brand-mark">
+                {ownRestaurant?.logo ? (
+                  <img alt="" src={ownRestaurant.logo} />
+                ) : (
+                  getInitials(ownRestaurant?.name ?? "Your restaurant")
+                )}
+              </div>
               <div className="admin-sidebar__brand-copy">
-                <strong>Restaurant RAG</strong>
+                <strong title={ownRestaurant?.name}>{ownRestaurant?.name ?? "Your restaurant"}</strong>
                 <span>Restaurant workspace</span>
               </div>
             </button>

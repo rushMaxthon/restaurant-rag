@@ -816,6 +816,20 @@ Kept because the notes are hard-won, not because they apply here.
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
+- **Supabase's Alembic stamp is behind its schema.** `alembic_version` reads
+  `0074_print_agents` (checked 2026-10-05), but `0075`-`0082` were all applied
+  there by hand through the Supabase MCP and never stamped. Every one of them
+  is guarded to no-op when its objects exist, so `alembic stamp head` (or an
+  `upgrade head`, which will no-op through them) is the fix - do it before the
+  server deploy runs migrations, and check the stamp after.
+- **Six restaurants are demo data** (`restaurants.is_demo`, 2026-10-05): the
+  CAD kitchens seeded on 2026-09-13 - Bangkok Bowl, Momo Mountain, Luigi's,
+  Dragon Wok, Stacked Grill House, Spice Route. Kept because the Bangkok Bowl
+  app client and WhatsApp setup point at one; left out of everything the
+  platform admin reads across restaurants (dashboard, `/orders`, live board,
+  Platform watch, commission, tenant switcher, Restaurants page unless "Show
+  demo" is ticked). Naming one by id still answers. The seven real kitchens
+  are all INR, which is also the admin's `DEFAULT_CURRENCY` now.
 - Migration numbering also skips `0033`-`0035` (jumps `0032` to `0036`).
   Intentional or not, do not "fix" it; the chain is defined by `down_revision`.
 - The whole Marketing Hub, the half-and-half feature and several other surfaces

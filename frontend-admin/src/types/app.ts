@@ -262,6 +262,8 @@ export interface AdminDashboardStats {
   total_revenue: number;
   total_restaurants: number;
   total_users: number;
+  /** The one currency every counted restaurant shares, or null when they do not. */
+  currency?: string | null;
 }
 
 export interface ReportsFiltersApplied {
@@ -446,6 +448,8 @@ export interface Restaurant {
   is_approved: boolean;
   is_open: boolean;
   is_active: boolean;
+  /** Seeded demo data, left out of every platform total and list. */
+  is_demo?: boolean;
   created_at: string;
   updated_at: string;
   locations?: RestaurantLocation[];
