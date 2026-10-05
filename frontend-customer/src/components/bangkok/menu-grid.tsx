@@ -12,6 +12,7 @@ import type { MenuItem } from "@/lib/bangkok-data";
 import { activeSection, buildSections, countItems } from "@/lib/menu-sections";
 import { sortsFor } from "@/lib/menu-sorts";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { menuPhase } from "@/lib/menu-phase";
 import { useMenuItems } from "@/lib/queries";
 import { DishCard } from "./dish-card";
 
@@ -321,7 +322,8 @@ export function MenuGrid({
   const [active, setActive] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
 
-  const { restaurantId, branchId, isRestaurantLoading, isRestaurantError } = useBangkokStore();
+  const { restaurantId, branchId, locations, isRestaurantLoading, isRestaurantError } =
+    useBangkokStore();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   // `?? []` alone builds a fresh array on every render, so every memo below
   // would recompute every time and the memoisation would buy nothing.
@@ -338,12 +340,22 @@ export function MenuGrid({
   );
   const total = countItems(sections);
 
-  const loading = isRestaurantLoading || menuQuery.isLoading;
   // A request that never happened is not an empty menu. When /app-config fails
   // the menu query is disabled, so it reports neither loading nor error and the
   // screen used to say "Nothing matches that" — telling the customer something
   // false about the restaurant instead of that we could not reach it.
   const failed = isRestaurantError || menuQuery.isError;
+  // One answer for the four panels below, so they cannot both show or both
+  // hide. See `menuPhase` for why "not loading" was never enough to mean
+  // "loaded".
+  const phase = menuPhase({
+    failed,
+    restaurantPending: isRestaurantLoading,
+    hasBranch: locations.length > 0,
+    menuPending: menuQuery.isPending,
+    shown: total,
+  });
+  const loading = phase === "loading";
   const filtered = vegOnly || query.trim().length > 0;
 
   /**
@@ -644,7 +656,7 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && failed && (
+      {phase === "failed" && (
         <div className="state-panel elevated-panel px-6 py-16 text-center">
           <h3 className="font-display text-xl font-extrabold">The menu didn't load</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
@@ -653,7 +665,7 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && !failed && sections.length > 0 && (
+      {phase === "ready" && (
         <div className="menu-sections">
           {sections.map((section) => (
             <section className="menu-section" key={section.slug}>
@@ -684,11 +696,17 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && !failed && sections.length === 0 && (
+      {phase === "empty" && (
         <div className="state-panel elevated-panel px-6 py-20 text-center">
-          <h3 className="font-display text-2xl font-extrabold">Nothing matches that</h3>
+          {/* Two different facts. With nothing typed and no filter on, "try a
+              different word" is advice about a search nobody made. */}
+          <h3 className="font-display text-2xl font-extrabold">
+            {filtered ? "Nothing matches that" : "The menu is empty right now"}
+          </h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
-            Try a different word, or clear the filters to see the whole menu.
+            {filtered
+              ? "Try a different word, or clear the filters to see the whole menu."
+              : "This branch has no dishes on sale at the moment. Please check back soon."}
           </p>
           {filtered && (
             <button type="button" onClick={reset} className="clear-filters mt-5">
