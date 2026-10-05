@@ -5,6 +5,7 @@ const KEYS = {
   session: 'kitchen.session',
   soundOn: 'kitchen.soundOn',
   branchId: 'kitchen.branchId',
+  pushInstallationId: 'kitchen.pushInstallationId',
 } as const;
 
 // Every read degrades to "nothing stored" and every write to "remembered for
@@ -64,4 +65,18 @@ export const storage = {
 
   loadBranchId: () => read(KEYS.branchId),
   saveBranchId: (branchId: string | null) => write(KEYS.branchId, branchId),
+
+  // This device's id for push registration, made once and kept: the backend
+  // keys device tokens on (account, installation), so the same tablet signing
+  // in again updates its row rather than adding another.
+  async loadOrCreatePushInstallationId(prefix: string): Promise<string> {
+    const existing = await read(KEYS.pushInstallationId);
+    if (existing) {
+      return existing;
+    }
+    const created = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await write(KEYS.pushInstallationId, created);
+    return created;
+  },
+  loadPushInstallationId: () => read(KEYS.pushInstallationId),
 };

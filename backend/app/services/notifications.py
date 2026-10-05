@@ -172,6 +172,39 @@ def upsert_device_token(
     return token_record
 
 
+def deactivate_device_token(
+    db: Session,
+    *,
+    current_user: User,
+    installation_id: str,
+) -> int:
+    """Stop pushes to one device for the signed-in account; returns rows changed.
+
+    Called by an app on sign-out, while its token is still valid. Only the
+    caller's own row is touched, so one account cannot silence another's
+    device by guessing an installation id. Deactivated rather than deleted:
+    the next sign-in on the device re-activates it through `upsert_device_token`.
+    """
+
+    rows = db.scalars(
+        select(UserDeviceToken).where(
+            UserDeviceToken.user_id == current_user.id,
+            UserDeviceToken.installation_id == installation_id.strip(),
+            UserDeviceToken.is_active.is_(True),
+        )
+    ).all()
+    for row in rows:
+        row.is_active = False
+    db.commit()
+    logger.info(
+        "Deactivated FCM token user_id=%s installation_id=%s rows=%s",
+        current_user.id,
+        installation_id,
+        len(rows),
+    )
+    return len(rows)
+
+
 def list_notification_history(db: Session, *, limit: int = 20) -> list[NotificationHistoryResponse]:
     rows = db.scalars(
         select(PushNotificationCampaign)

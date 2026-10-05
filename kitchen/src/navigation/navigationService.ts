@@ -1,9 +1,11 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
 import type { RootStackParamList } from '@navigation/hooks/useNavigation';
 
-// Lets code outside the React tree (an alert for a new ticket, a revoked
-// session) move the board. Anything asked before the container is ready is
-// held and replayed, so an early request is not lost.
+// Lets code outside the React tree — a tapped notification above all — move
+// the app. A request is held until BOTH the navigator is ready AND someone is
+// signed in: the order screen is only registered for a signed-in stack, so a
+// tap that arrives during launch, or on a signed-out tablet, waits and is
+// replayed the moment it can land (after sign-in, straight onto the order).
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 type PendingRoute = {
@@ -11,23 +13,36 @@ type PendingRoute = {
 }[keyof RootStackParamList];
 
 let pending: PendingRoute | null = null;
+let signedIn = false;
+
+const go = (route: PendingRoute) =>
+  // The union is spread back into navigate's overloads one member at a time.
+  (navigationRef.navigate as (name: string, params?: object) => void)(route.name, route.params);
 
 export const navigateFromOutside = (route: PendingRoute): void => {
-  if (navigationRef.isReady()) {
-    // The union is spread back into navigate's overloads one member at a time.
-    (navigationRef.navigate as (name: string, params?: object) => void)(
-      route.name,
-      route.params,
-    );
+  if (navigationRef.isReady() && signedIn) {
+    go(route);
   } else {
     pending = route;
   }
 };
 
 export const flushPendingNavigation = (): void => {
-  if (pending) {
+  if (pending && navigationRef.isReady() && signedIn) {
     const route = pending;
     pending = null;
-    navigateFromOutside(route);
+    go(route);
   }
+};
+
+// Called once the signed-in (or signed-out) stack has rendered.
+export const setNavigationSignedIn = (value: boolean): void => {
+  signedIn = value;
+  flushPendingNavigation();
+};
+
+// Test seam: forget a held request between tests.
+export const resetNavigationServiceForTests = (): void => {
+  pending = null;
+  signedIn = false;
 };

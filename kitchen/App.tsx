@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppStoreProvider } from './src/store/AppStore';
 import { AppThemeProvider, useTheme } from './src/theme';
 import { RealtimeProvider } from './src/components/realtime/RealtimeProvider';
+import { PushNotificationBootstrap } from './src/components/notifications/PushNotificationBootstrap';
 import StackNavigation from './src/navigation/stackNavigation';
 import {
   flushPendingNavigation,
@@ -32,6 +33,7 @@ const App = (): React.JSX.Element => {
       <AppStoreProvider>
         <AppThemeProvider>
           <RealtimeProvider>
+            <PushNotificationBootstrap />
             <AppContent />
           </RealtimeProvider>
         </AppThemeProvider>

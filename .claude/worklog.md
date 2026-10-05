@@ -17,6 +17,32 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 — Kitchen push notifications (app + backend)
+
+**Goal:** complete new-order push for the kitchen app, modelled on mobile's
+setup; the user owns Firebase/native config (not touched).
+
+**Changed:**
+- Backend: `services/kitchen_push.py` (after-commit queue on entering PLACED,
+  board-scoped recipients, FCM multicast with channel `kitchen-new-orders` +
+  sound, dead-token deactivation, skip if no longer PLACED); hook in
+  `record_order_status_event`; task + `notifications` routing; flag
+  `enable_kitchen_push` (default off); `DELETE /notifications/device-tokens/{installation_id}`
+  + `deactivate_device_token`. `tests/test_kitchen_push.py` (13).
+- Kitchen: `services/pushNotifications.ts`, `services/devices.ts`,
+  `components/notifications/PushNotificationBootstrap.tsx`, background handlers
+  in `index.js`, sign-in-gated `navigationService`, installation id in storage,
+  `request` handles DELETE/204, Settings push-status row. Firebase/Notifee jest
+  mocks. 16 new tests.
+
+**Verified:** kitchen tsc/eslint/jest 20 suites 140 tests; backend
+test_kitchen_push + every order-path suite OK. NOT verified on a device (needs
+the user's Firebase native config, a worker, and the flag on).
+
+**Open:** mobile still does not unregister on logout (endpoint now exists).
+Foreground push only nudges the board — so a muted board stays silent for
+foreground pushes, by design.
+
 ## 2026-10-05 — kitchen/: the whole native kitchen app
 
 **Goal:** design the complete native Kitchen app with `frontend-kitchen` as

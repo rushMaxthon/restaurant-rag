@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -17,6 +17,7 @@ from app.schemas.notifications import (
 from app.services.auth import get_current_user, require_admin
 from app.services.notifications import (
     build_notification_history_response,
+    deactivate_device_token,
     list_notification_history,
     send_admin_notification,
     upsert_device_token,
@@ -41,6 +42,21 @@ def register_device_token(
         payload=payload,
     )
     return DeviceTokenRegisterResponse.model_validate(token_record)
+
+
+@router.delete(
+    "/notifications/device-tokens/{installation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unregister_device_token(
+    installation_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    # Idempotent: an app signing out twice, or a device that never
+    # registered, gets the same 204.
+    deactivate_device_token(db, current_user=current_user, installation_id=installation_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

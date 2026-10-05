@@ -9,6 +9,8 @@ import { navigationRef } from '@navigation/navigationService';
 import { AppStoreProvider } from '@store/AppStore';
 import { AppThemeProvider } from '@/theme';
 import { RealtimeProvider } from '@components/realtime/RealtimeProvider';
+import { PushNotificationBootstrap } from '@components/notifications/PushNotificationBootstrap';
+import { flushPendingNavigation } from '@navigation/navigationService';
 import type { KitchenSession } from '@/types/app';
 
 // Test harness only: the real provider tree, with a session already saved
@@ -33,6 +35,9 @@ export const renderApp = async (
   session: KitchenSession | null,
   // A stored value as some earlier build might have left it.
   rawSession?: string,
+  // Mount the push bootstrap too, as App.tsx does. Off by default so screen
+  // tests do not register devices they never asked about.
+  options: { push?: boolean } = {},
 ): Promise<Tree> => {
   await AsyncStorage.clear();
   if (session) {
@@ -47,7 +52,8 @@ export const renderApp = async (
         <AppStoreProvider>
           <AppThemeProvider>
             <RealtimeProvider>
-              <NavigationContainer ref={navigationRef}>
+              {options.push ? <PushNotificationBootstrap /> : null}
+              <NavigationContainer ref={navigationRef} onReady={flushPendingNavigation}>
                 <StackNavigation />
               </NavigationContainer>
             </RealtimeProvider>

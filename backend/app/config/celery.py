@@ -38,6 +38,8 @@ celery_app.conf.update(
         "app.tasks.insights.generate_owner_briefings_task": {"queue": "analytics"},
         "app.tasks.insights.measure_action_outcomes_task": {"queue": "analytics"},
         "app.tasks.notifications.send_order_status_notification": {"queue": "notifications"},
+        # A kitchen page is time-critical in the same way an order update is.
+        "app.tasks.notifications.send_kitchen_new_order_notification": {"queue": "notifications"},
         # Same queue as the order push: both talk to Firebase, and a campaign
         # send must queue behind order notifications rather than compete with
         # them for a separate worker's attention.

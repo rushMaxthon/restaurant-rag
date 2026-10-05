@@ -32,6 +32,7 @@ from app.models.menu_availability_event import MenuItemAvailabilityEvent
 from app.models.menu_item import MenuItem
 from app.models.order import Order
 from app.models.user import User
+from app.services.kitchen_push import queue_kitchen_new_order
 from app.services.realtime.outbox import queue_order_updated
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,13 @@ def record_order_status_event(
         from_status=from_status,
         occurred_at=occurred_at,
     )
+
+    # Arriving on the board is the moment a kitchen wants to hear about. Every
+    # path that makes an order PLACED (created as COD, paid by card) records
+    # it here, so this one line covers all of them. After-commit, flagged, and
+    # never raises — see `kitchen_push`.
+    if to_status == OrderStatus.PLACED:
+        queue_kitchen_new_order(db, order_id=order.id)
 
 
 def mark_order_cancelled(

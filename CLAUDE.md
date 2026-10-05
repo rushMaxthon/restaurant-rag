@@ -402,6 +402,18 @@ file, the explicit AVFoundation link and the Ionicons fonts each fail
 silently or at link time when missed. Tested with jest against the real
 store and navigation, with only `src/services` mocked.
 
+**Kitchen push (`services/kitchen_push.py`, `enable_kitchen_push`, default
+off).** When an order enters PLACED — recorded by `record_order_status_event`,
+which every path goes through — the kitchen is paged after the commit (same
+after-commit/soft-rollback pattern as `realtime/outbox.py`) by the Celery task
+`send_kitchen_new_order_notification` on the `notifications` queue. Recipients
+are exactly the board scope: KITCHEN accounts of that restaurant on that branch
+or unpinned, plus the restaurant's OWNER; never ADMIN, never another branch's
+pinned cook. The worker skips an order no longer PLACED. Android channel
+`kitchen-new-orders` and sound names must match the kitchen app. Not recorded
+as a notification campaign. `DELETE /notifications/device-tokens/{installation_id}`
+deactivates the caller's own device on sign-out (mobile does not call it yet).
+
 ---
 
 ## Realtime (Socket.IO)

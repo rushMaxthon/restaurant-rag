@@ -38,3 +38,41 @@ jest.mock('socket.io-client', () => ({
     active: true,
   })),
 }));
+
+// Firebase is configured in these tests (one app), with every messaging call
+// a spy; a test that needs "not configured" overrides getApps.
+jest.mock('@react-native-firebase/app', () => ({
+  getApps: jest.fn(() => [{ name: '[DEFAULT]' }]),
+}));
+
+jest.mock('@react-native-firebase/messaging', () => {
+  const unsubscribe = () => undefined;
+  return {
+    AuthorizationStatus: { NOT_DETERMINED: -1, DENIED: 0, AUTHORIZED: 1, PROVISIONAL: 2, EPHEMERAL: 3 },
+    getMessaging: jest.fn(() => ({})),
+    getToken: jest.fn(async () => 'fcm-token-1'),
+    deleteToken: jest.fn(async () => undefined),
+    getInitialNotification: jest.fn(async () => null),
+    hasPermission: jest.fn(async () => 1),
+    requestPermission: jest.fn(async () => 1),
+    registerDeviceForRemoteMessages: jest.fn(async () => undefined),
+    onMessage: jest.fn(() => unsubscribe),
+    onNotificationOpenedApp: jest.fn(() => unsubscribe),
+    onTokenRefresh: jest.fn(() => unsubscribe),
+    setBackgroundMessageHandler: jest.fn(),
+  };
+});
+
+jest.mock('@notifee/react-native', () => ({
+  __esModule: true,
+  default: {
+    createChannel: jest.fn(async () => 'kitchen-new-orders'),
+    displayNotification: jest.fn(async () => 'id'),
+    onForegroundEvent: jest.fn(() => () => undefined),
+    onBackgroundEvent: jest.fn(),
+    getInitialNotification: jest.fn(async () => null),
+    requestPermission: jest.fn(async () => ({ authorizationStatus: 1 })),
+  },
+  AndroidImportance: { HIGH: 4 },
+  EventType: { PRESS: 1, ACTION_PRESS: 2, DISMISSED: 0 },
+}));

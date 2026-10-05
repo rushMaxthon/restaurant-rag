@@ -19,7 +19,7 @@ const REQUEST_TIMEOUT_MS = 15000;
 type Query = Record<string, string | number | null | undefined>;
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   token?: string | null;
   body?: unknown;
   query?: Query;
@@ -104,6 +104,10 @@ const send = async (
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await send(path, options);
+  // 204 No Content (an unregister, say) has no body to parse.
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 

@@ -59,3 +59,25 @@ def send_order_status_notification(
 
     logger.info("Order status notification payload: %s", payload)
     return {"status": "queued", "order_id": order_uuid, "new_status": normalized_status}
+
+
+@celery_app.task(name="app.tasks.notifications.send_kitchen_new_order_notification")
+def send_kitchen_new_order_notification(order_id: str) -> dict[str, Any]:
+    """Page the kitchen accounts that can see a newly PLACED order.
+
+    Queued after the order's commit by `services.kitchen_push`; loads the order
+    in its own session, so it always sees committed state. Never raises and is
+    not retried: a page that arrives minutes late is worse than none, and the
+    board finds the order by itself the moment anyone looks at it.
+    """
+
+    from app.config.database import SessionLocal
+    from app.services.kitchen_push import send_kitchen_new_order_push
+
+    try:
+        order_uuid = uuid.UUID(order_id)
+    except ValueError:
+        return {"status": "skipped", "reason": "invalid_order_id"}
+
+    with SessionLocal() as db:
+        return send_kitchen_new_order_push(db, order_id=order_uuid)

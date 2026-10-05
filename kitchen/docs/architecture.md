@@ -109,6 +109,34 @@ pieces every screen is built from.
 - **Lists** render tickets in small batches with a modest window, and
   detach off-screen rows on Android.
 
+## Push notifications
+
+Modelled on `mobile/` (FCM delivers, Notifee draws, a tap opens the order),
+with the kitchen's own behaviour. `services/pushNotifications.ts` holds it all;
+`components/notifications/PushNotificationBootstrap.tsx` follows the session;
+`index.js` registers the background handlers before the app.
+
+- **Registration** after sign-in (and for a session restored at launch):
+  permission, FCM token, `POST /notifications/device-tokens` with a stable
+  installation id. Re-registered when FCM rotates the token.
+- **Foreground**: a `kitchen_new_order` push draws nothing — it calls
+  `ordersChanged()` and the board refetches and chimes itself, so one order
+  rings once. Anything else is drawn by Notifee.
+- **Background / closed**: the OS draws the push on the `kitchen-new-orders`
+  Android channel (sound `new_order`, vibration) or with iOS sound
+  `new_order.wav`; data-only messages are drawn by the background handler.
+- **Taps** from any state open `OrderDetailScreen`; `navigationService` holds
+  the request until the navigator is ready AND someone is signed in.
+- **Sign-out** calls `DELETE /notifications/device-tokens/{installation_id}`
+  with the outgoing token, then deletes the FCM token on the device, so even a
+  forced sign-out stops pushes there.
+- **Settings** shows whether notifications are on, with a link to the system
+  settings when they are off.
+- Everything is a no-op on a build without Firebase configured.
+
+Backend: `services/kitchen_push.py`, behind `enable_kitchen_push` (default
+off), sent by a Celery task on the `notifications` queue.
+
 ## Native setup that is easy to break
 
 - **The chime** is `new_order.wav`, generated (two tones, 0.4s) into

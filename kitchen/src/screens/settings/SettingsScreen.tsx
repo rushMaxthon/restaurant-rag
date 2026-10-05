@@ -1,5 +1,5 @@
-import React from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, AppState, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { API_BASE_URL } from '@/config/api';
 import { useTheme, useThemedStyles } from '@/theme';
 import type { BoardRole, RealtimeStatus } from '@/types/app';
@@ -14,6 +14,11 @@ import { useRealtimeStatus } from '@components/realtime/RealtimeProvider';
 import { useAppActions, useBoardScope, usePreferences, useSession } from '@hooks/useAppStore';
 import { useRestaurant } from '@hooks/useRestaurant';
 import { playNewOrderAlert } from '@services/sound';
+import {
+  getPushStatus,
+  openNotificationSettings,
+  type PushStatus,
+} from '@services/pushNotifications';
 import { createStyles } from './styles';
 
 const ROLE_LABEL: Record<BoardRole, string> = {
@@ -49,6 +54,48 @@ const initials = (name: string): string =>
     .map(part => part[0]?.toUpperCase() ?? '')
     .join('') || '?';
 
+const PUSH_COPY: Record<PushStatus, { title: string; body: string }> = {
+  on: {
+    title: 'Notifications on',
+    body: 'New orders ring this device even when the app is closed or the screen is off.',
+  },
+  off: {
+    title: 'Notifications off',
+    body: 'New orders only ring while the board is open. Turn notifications on to be alerted when it is not.',
+  },
+  unavailable: {
+    title: 'Notifications unavailable',
+    body: 'This build is not set up for push notifications. The board still alerts while it is open.',
+  },
+};
+
+// Re-read when the app returns to the foreground: the usual way back from
+// the system settings screen this row links to.
+const usePushStatus = (): PushStatus | null => {
+  const [status, setStatus] = useState<PushStatus | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      getPushStatus().then(next => {
+        if (active) {
+          setStatus(next);
+        }
+      });
+    };
+    refresh();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        refresh();
+      }
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+  return status;
+};
+
 const SettingsScreen = () => {
   const styles = useThemedStyles(createStyles);
   const theme = useTheme();
@@ -59,6 +106,7 @@ const SettingsScreen = () => {
   const { setSoundOn, setBranchId, signOut } = useAppActions();
   const realtime = useRealtimeStatus();
   const restaurant = useRestaurant(scope.restaurantId);
+  const pushStatus = usePushStatus();
 
   if (!session) {
     return null;
@@ -191,7 +239,27 @@ const SettingsScreen = () => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Alerts</Text>
             <View style={styles.group}>
-              <View style={styles.row}>
+              {pushStatus ? (
+                <View style={styles.row} testID={`push-status-${pushStatus}`}>
+                  <IconTile
+                    icon="notifications-outline"
+                    color={pushStatus === 'on' ? colors.accent : colors.warning}
+                  />
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle}>{PUSH_COPY[pushStatus].title}</Text>
+                    <Text style={styles.rowBody}>{PUSH_COPY[pushStatus].body}</Text>
+                  </View>
+                  {pushStatus === 'off' ? (
+                    <Pressable
+                      onPress={openNotificationSettings}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.testButton, pressed && styles.pressed]}>
+                      <Text style={styles.testButtonText}>Turn on</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+              <View style={[styles.row, pushStatus ? styles.rowDivider : null]}>
                 <IconTile icon={soundOn ? 'volume-high' : 'volume-mute'} color={theme.status.PLACED} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>New order sound</Text>
@@ -208,7 +276,7 @@ const SettingsScreen = () => {
                 />
               </View>
               <View style={[styles.row, styles.rowDivider]}>
-                <IconTile icon="notifications-outline" color={theme.status.OUT_FOR_DELIVERY} />
+                <IconTile icon="play-circle-outline" color={theme.status.OUT_FOR_DELIVERY} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>Check the volume</Text>
                   <Text style={styles.rowBody}>Plays the alert once, now.</Text>

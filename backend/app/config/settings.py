@@ -440,6 +440,20 @@ class Settings(BaseSettings):
     # service. That is a dry run an owner can inspect, not a silent no-op.
     enable_marketing_dispatch: bool = False
 
+    # --- Kitchen push (new-order alerts to the kitchen app) -----------------
+    #
+    # When an order reaches PLACED — the moment it appears on the board — the
+    # kitchen accounts that can see it (and the restaurant's owner) get a push,
+    # so a tablet that is asleep or backgrounded still rings. The recipients are
+    # exactly the board's scope: a cook pinned to one branch hears that branch.
+    #
+    # Off by default, like every flag that makes the platform reach a device
+    # unprompted: a deployment must decide to page its kitchens. With it off
+    # nothing is queued and Firebase is never called; the board still finds new
+    # orders by realtime and polling exactly as before. Delivery also needs a
+    # Celery worker on the `notifications` queue.
+    enable_kitchen_push: bool = False
+
     # --- Realtime (Socket.IO) -----------------------------------------------
     #
     # Pushes "this order changed" to the kitchen board, the admin panel and the
