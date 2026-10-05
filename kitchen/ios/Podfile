@@ -8,11 +8,12 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
+# React Native Firebase: its Swift pods (FirebaseCoreInternal and friends)
+# import GoogleUtilities, which defines no module map as a plain static
+# library. Building every pod as a static FRAMEWORK gives each one a module,
+# which is the setup @react-native-firebase documents and mobile/ios uses.
+$RNFirebaseAsStaticFramework = true
+use_frameworks! :linkage => :static
 
 target 'kitchen' do
   config = use_native_modules!
@@ -30,5 +31,20 @@ target 'kitchen' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # The settings static frameworks need alongside React Native Firebase,
+    # matching mobile/ios/Podfile: React headers are not modular, and the
+    # RNFB pods must not define a module of their own or they clash with
+    # React's when built as frameworks.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['SWIFT_VERSION'] = '5.0'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+        if target.name.start_with?('RNFB')
+          config.build_settings['DEFINES_MODULE'] = 'NO'
+        end
+      end
+    end
   end
 end

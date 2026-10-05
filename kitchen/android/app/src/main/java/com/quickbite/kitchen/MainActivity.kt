@@ -1,4 +1,4 @@
-package com.kitchen
+package com.quickbite.kitchen
 
 import android.os.Bundle
 import com.facebook.react.ReactActivity
