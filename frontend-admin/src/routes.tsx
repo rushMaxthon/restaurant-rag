@@ -19,6 +19,7 @@
 
 import type { ReactNode } from "react";
 import {
+  BadgeIndianRupee,
   BarChart3,
   BellRing,
   Bot,
@@ -55,6 +56,7 @@ import { LocationsPage } from "./pages/LocationsPage";
 import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
+import { CommissionPage } from "./pages/CommissionPage";
 import { MarketingPage } from "./pages/MarketingPage";
 import { MenuItemEditorPage } from "./pages/MenuItemEditorPage";
 import { MenuItemsPage } from "./pages/MenuItemsPage";
@@ -381,6 +383,17 @@ export const ROUTES: RouteDef[] = [
     nav: { section: "Platform", label: "Tenants", icon: Building2 },
     render: (ctx) => (
       <TenantsPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
+    ),
+  },
+  {
+    // Admin only, like the rate it reports on. An owner is not told the
+    // commission rate, and what it added up to would tell them by division.
+    id: "commission",
+    pattern: "/commission",
+    roles: ADMIN_ONLY,
+    nav: { section: "Platform", label: "Commission", icon: BadgeIndianRupee },
+    render: (ctx) => (
+      <CommissionPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
   },
 

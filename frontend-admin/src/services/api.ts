@@ -22,6 +22,7 @@ import type {
   AppClientUpsertPayload,
   PaymentGateway,
   PaymentGatewayPayload,
+  CommissionReport,
   RestaurantCapability,
   RestaurantPaymentSettings,
   TenantStatusPayload,
@@ -195,6 +196,10 @@ function scopeQuery(restaurantId?: string | null): string {
 export const api = {
   login(input: { email: string; password: string }): Promise<AuthResponse> {
     return request<AuthResponse>('/auth/login', { method: 'POST', body: input });
+  },
+  /** What the platform earned per restaurant over the last `days`. ADMIN only. */
+  getCommissionReport(token: string, days: number): Promise<CommissionReport> {
+    return request<CommissionReport>(`/admin/commission?days=${days}`, { token });
   },
   getAdminDashboard(token: string): Promise<AdminDashboardStats> {
     return request<AdminDashboardStats>('/admin/dashboard', { token });
@@ -1031,6 +1036,21 @@ export const api = {
       method: 'PATCH',
       token,
       body: { is_available: isAvailable },
+    });
+  },
+  /**
+   * The one-tap stock change: mark a dish out of stock or back in, or set
+   * its count. Only what is sent is changed.
+   */
+  updateMenuItemStock(
+    token: string,
+    menuItemId: string,
+    change: { out_of_stock?: boolean; stock_quantity?: number | null },
+  ): Promise<MenuItem> {
+    return request<MenuItem>(`/menu-items/${menuItemId}/stock`, {
+      method: 'PATCH',
+      token,
+      body: change,
     });
   },
   deleteMenuItem(token: string, menuItemId: string): Promise<void> {

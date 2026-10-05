@@ -24,6 +24,7 @@ import {
   safeTrackingUrl,
   startOfToday,
   summarise,
+  nextAction,
 } from "./liveOrders";
 
 const NOW = new Date("2026-10-05T12:00:00Z");
@@ -42,6 +43,7 @@ function order(status: OrderStatus, over: Partial<LiveOrder> = {}): LiveOrder {
     contact_name: null,
     status,
     fulfillment_type: "DELIVERY",
+    payment_status: "PAID",
     schedule_type: "ASAP",
     scheduled_at: minutesAgo(10),
     placed_at: minutesAgo(10),
@@ -457,5 +459,38 @@ describe("the words on the board", () => {
       expect(entry.what.length).toBeGreaterThan(20);
       expect(entry.action.length).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("nextAction", () => {
+  it("offers the one step an order can take next", () => {
+    expect(nextAction(order("PLACED"))?.to).toBe("ACCEPTED");
+    expect(nextAction(order("ACCEPTED"))?.to).toBe("PREPARING");
+    expect(nextAction(order("PREPARING"))?.to).toBe("OUT_FOR_DELIVERY");
+    expect(nextAction(order("OUT_FOR_DELIVERY"))?.to).toBe("DELIVERED");
+  });
+
+  it("offers nothing for an order that is finished", () => {
+    expect(nextAction(order("DELIVERED"))).toBeNull();
+    expect(nextAction(order("CANCELLED"))).toBeNull();
+  });
+
+  it("offers nothing until the money is committed", () => {
+    // The server refuses to advance an unpaid order. A button that can only
+    // answer with an error is worse than no button.
+    expect(nextAction(order("PLACED", { payment_status: "PENDING" }))).toBeNull();
+    expect(nextAction(order("PLACED", { payment_status: "COD" }))?.to).toBe("ACCEPTED");
+  });
+
+  it("says a rider will be booked before somebody accepts a delivery", () => {
+    const delivery = nextAction(order("PLACED", { fulfillment_type: "DELIVERY" }));
+    const pickup = nextAction(order("PLACED", { fulfillment_type: "PICKUP" }));
+    expect(delivery?.help).toMatch(/rider/i);
+    expect(pickup?.help).not.toMatch(/rider/i);
+  });
+
+  it("uses the counter's words for a pickup and the rider's for a delivery", () => {
+    expect(nextAction(order("PREPARING", { fulfillment_type: "DELIVERY" }))?.label).toMatch(/rider/i);
+    expect(nextAction(order("PREPARING", { fulfillment_type: "PICKUP" }))?.label).toMatch(/collect/i);
   });
 });

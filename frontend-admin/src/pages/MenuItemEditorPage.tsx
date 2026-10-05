@@ -576,7 +576,25 @@ export function MenuItemEditorPage({
             <small className="hint-text">
               How many you can still sell. It goes down with every order and customers cannot
               order more than this. Leave it empty if you do not count this dish; 0 shows it as
-              sold out.
+              out of stock.
+            </small>
+          </label>
+          <label className="field">
+            <span>Refill every morning to</span>
+            <input
+              inputMode="numeric"
+              placeholder="Restocked by hand"
+              value={form.stock_daily_quantity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  stock_daily_quantity: event.target.value,
+                }))
+              }
+            />
+            <small className="hint-text">
+              What you make each day. Stock left is set back to this number every morning at
+              4:30. Leave it empty to restock by hand.
             </small>
           </label>
 
@@ -626,6 +644,16 @@ export function MenuItemEditorPage({
                 setForm((current) => ({
                   ...current,
                   is_available: checked,
+                }))
+              }
+            />
+            <Checkbox
+              checked={form.out_of_stock}
+              label="Out of stock"
+              onChange={(checked) =>
+                setForm((current) => ({
+                  ...current,
+                  out_of_stock: checked,
                 }))
               }
             />

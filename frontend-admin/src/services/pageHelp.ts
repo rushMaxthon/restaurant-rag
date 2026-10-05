@@ -262,6 +262,12 @@ export const PAGE_HELP = {
     who: ADMIN_ONLY,
     action: "Filter by state and open a restaurant to manage it. A storefront can be suspended, offboarded or restored from its row, each with a reason.",
   },
+  commission: {
+    title: "Commission",
+    what: "What the platform earned from each restaurant: the commission inside menu prices, added up over the period you pick.",
+    who: ADMIN_ONLY,
+    action: "Pick a period at the top right. Open a restaurant to change its rate; a new rate applies to orders placed after it, never to past ones.",
+  },
   "ai-logs": {
     title: "AI logs",
     what: "A record of what customers asked the food chat, what it found on the menu and what it answered.",

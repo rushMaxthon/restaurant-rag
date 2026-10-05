@@ -38,6 +38,28 @@ class AdminUserUpdate(BaseModel):
     default_address: str | None = Field(default=None, max_length=2000)
 
 
+class AdminCommissionRow(BaseModel):
+    restaurant_id: uuid.UUID
+    restaurant_name: str
+    #: Orders that carry a recorded commission and were paid for.
+    orders: int
+    #: What those orders sold, at menu prices, before fees and tax.
+    sales: Decimal
+    commission: Decimal
+    currency: str
+
+
+class AdminCommissionReport(BaseModel):
+    """What the platform earned, per restaurant, over a window."""
+
+    days: int
+    since: datetime
+    #: When the first order with a recorded commission was placed. The report
+    #: cannot count anything older, and the screen says so.
+    counted_from: datetime | None = None
+    restaurants: list[AdminCommissionRow] = Field(default_factory=list)
+
+
 class AdminMenuItemResponse(BaseModel):
     id: uuid.UUID
     restaurant_id: uuid.UUID
@@ -59,6 +81,7 @@ class AdminMenuItemResponse(BaseModel):
     recent_valid_order_window_days: int = 30
     #: How many are left. Null is "not counted".
     stock_quantity: int | None = None
+    out_of_stock: bool = False
     popularity_score: Decimal
     launched_at: datetime
     created_at: datetime

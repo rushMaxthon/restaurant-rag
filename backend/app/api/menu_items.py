@@ -24,6 +24,7 @@ from app.schemas.menu_item import (
     MenuItemCustomizationGroupPayload,
     MenuItemCustomizationOptionPayload,
     MenuItemAvailabilityUpdate,
+    MenuItemStockUpdate,
     MenuItemBulkCreate,
     MenuItemBulkCreateResponse,
     MenuItemBulkSkippedLocation,
@@ -322,6 +323,14 @@ def _sync_menu_item_customizations(
         size.price = size_payload.price
         size.is_active = size_payload.is_active
         size.sort_order = size_payload.sort_order
+        # Only what the request mentioned, for the reason given beside the
+        # dish's own count: this replaces a dish whole, and a client that has
+        # never heard of stock would otherwise erase a size's count by
+        # saving its name.
+        if "stock_quantity" in size_payload.model_fields_set:
+            size.stock_quantity = size_payload.stock_quantity
+        if "stock_daily_quantity" in size_payload.model_fields_set:
+            size.stock_daily_quantity = size_payload.stock_daily_quantity
         live_sizes.append((size, size_payload))
 
     # Groups are scoped: one set hangs off the item, one off each size, and
@@ -412,6 +421,8 @@ def create_menu_item(
         is_veg=payload.is_veg,
         is_available=payload.is_available,
         stock_quantity=payload.stock_quantity,
+        out_of_stock=payload.out_of_stock,
+        stock_daily_quantity=payload.stock_daily_quantity,
         is_bestseller=_resolve_featured_flag(payload),
         image_url=payload.image_url,
         launched_at=payload.launched_at or datetime.now(UTC),
@@ -512,6 +523,8 @@ def create_menu_item_bulk(
             # Each branch gets its own count of the same number: the dish is a
             # row per branch, and a loaf sold in one is not gone from another.
             stock_quantity=payload.stock_quantity,
+            out_of_stock=payload.out_of_stock,
+            stock_daily_quantity=payload.stock_daily_quantity,
             is_bestseller=_resolve_featured_flag(payload),
             image_url=payload.image_url,
             launched_at=launched_at,
@@ -684,6 +697,10 @@ def update_menu_item(
     # Sending null on purpose is how an owner stops counting.
     if "stock_quantity" in payload.model_fields_set:
         menu_item.stock_quantity = payload.stock_quantity
+    if "out_of_stock" in payload.model_fields_set:
+        menu_item.out_of_stock = payload.out_of_stock
+    if "stock_daily_quantity" in payload.model_fields_set:
+        menu_item.stock_daily_quantity = payload.stock_daily_quantity
     record_menu_availability_event(
         db,
         menu_item=menu_item,
@@ -712,6 +729,42 @@ def update_menu_item(
         menu_item_id=menu_item.id,
     )
     _queue_embedding_job(menu_item.id)
+    hydrate_dynamic_bestseller_flags(db, [menu_item])
+    hydrate_recent_valid_order_counts(db, [menu_item])
+    return serialize_menu_item(menu_item, viewer=current_user)
+
+
+@router.patch("/{menu_item_id}/stock", response_model=MenuItemResponse)
+def update_menu_item_stock(
+    menu_item_id: uuid.UUID,
+    payload: MenuItemStockUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> MenuItemResponse:
+    """Mark a dish out of stock or back in, or set its count, in one tap.
+
+    The whole-dish PUT can do both, but it needs the whole dish. This is for
+    the moment the tray empties: somebody at the counter, a phone, one button.
+
+    Only what is sent is changed. Marking a dish back in stock does not
+    invent a count for it - a counted dish at zero stays at zero and the
+    response says so, because "in stock" with none left would be a lie the
+    next customer pays for.
+    """
+
+    if current_user.role not in {UserRole.ADMIN, UserRole.OWNER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage menu items")
+    menu_item = _get_manageable_menu_item(db, menu_item_id, current_user)
+    if payload.out_of_stock is not None:
+        menu_item.out_of_stock = payload.out_of_stock
+    if "stock_quantity" in payload.model_fields_set:
+        menu_item.stock_quantity = payload.stock_quantity
+
+    db.add(menu_item)
+    db.commit()
+    db.refresh(menu_item)
+    # What can be suggested to a customer has just changed.
+    _invalidate_discovery_caches()
     hydrate_dynamic_bestseller_flags(db, [menu_item])
     hydrate_recent_valid_order_counts(db, [menu_item])
     return serialize_menu_item(menu_item, viewer=current_user)

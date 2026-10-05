@@ -93,6 +93,10 @@ class MenuItemSizePayload(BaseModel):
     price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     is_active: bool = True
     sort_order: int = Field(default=0, ge=0)
+    #: This size's own count. Null: it has none and draws on the dish's. Left
+    #: OUT on an update, whatever is stored is kept.
+    stock_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
+    stock_daily_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
     customization_groups: list[MenuItemCustomizationGroupPayload] = Field(default_factory=list)
 
 
@@ -135,6 +139,8 @@ class MenuItemSizeResponse(BaseModel):
     base_price: Decimal | None = None
     is_active: bool
     sort_order: int
+    stock_quantity: int | None = None
+    stock_daily_quantity: int | None = None
     customization_groups: list[MenuItemCustomizationGroupResponse] = Field(default_factory=list)
 
 
@@ -151,6 +157,10 @@ class MenuItemRequestBase(BaseModel):
     #: - so a client that has never heard of stock cannot switch counting off
     #: by saving a dish's name.
     stock_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
+    #: Marked out of stock by hand: shown on the menu, cannot be added.
+    out_of_stock: bool = False
+    #: What the count is set back to each morning. Null: restocked by hand.
+    stock_daily_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_bestseller: bool = False
     is_featured: bool = False
     image_url: str | None = Field(default=None, max_length=500)
@@ -208,6 +218,18 @@ class MenuItemAvailabilityUpdate(BaseModel):
     is_available: bool
 
 
+class MenuItemStockUpdate(BaseModel):
+    """The one-tap stock change from the menu list.
+
+    Each field is optional and only what is sent is changed, so "mark out of
+    stock" does not have to know the count and "set the count" does not have
+    to know whether somebody marked it by hand.
+    """
+
+    out_of_stock: bool | None = None
+    stock_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
 class MenuItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -230,6 +252,8 @@ class MenuItemResponse(BaseModel):
     #: Sent to everybody, customers included: a storefront cannot say "only 2
     #: left" or stop a stepper at 2 without it. Null is "not counted".
     stock_quantity: int | None = None
+    out_of_stock: bool = False
+    stock_daily_quantity: int | None = None
     is_bestseller: bool
     is_featured: bool = False
     image_url: str | None = None

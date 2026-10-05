@@ -1,4 +1,5 @@
 import {
+  ArrowRight,
   Bike,
   CalendarClock,
   ChefHat,
@@ -39,6 +40,8 @@ import {
   restaurantBreakdown,
   startOfToday,
   summarise,
+  nextAction,
+  type NextAction,
 } from "../services/liveOrders";
 import type { LiveOrder, LiveOrdersBoard, UserRole } from "../types/app";
 
@@ -102,9 +105,33 @@ interface LiveCardProps {
   /** In the backlog section, where "late" has stopped meaning anything. */
   stale?: boolean;
   onOpen: (order: LiveOrder) => void;
+  /** Moves the order one step on. Resolves when the server has answered. */
+  onAdvance: (order: LiveOrder, action: NextAction) => Promise<void>;
 }
 
-function LiveCard({ order, column, now, showRestaurant, amount, stale, onOpen }: LiveCardProps) {
+function LiveCard({
+  order,
+  column,
+  now,
+  showRestaurant,
+  amount,
+  stale,
+  onOpen,
+  onAdvance,
+}: LiveCardProps) {
+  const action = nextAction(order);
+  // Two presses, not one. A board is a wall of near-identical cards being
+  // poked at in a hurry, and "Accept" on a delivery books a rider that costs
+  // money to call off. The first press arms the button and says what it will
+  // do; the second does it. Disarmed again after a few seconds, so an armed
+  // button is never left lying about for the next person to lean on.
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
   const clock = orderClock(order, column, now);
   const delivery = deliveryLine(order);
   const payment = paymentTag(order);
@@ -226,6 +253,29 @@ function LiveCard({ order, column, now, showRestaurant, amount, stale, onOpen }:
           </a>
         ) : null}
       </div>
+      {action ? (
+        <button
+          className={`live-card__advance${armed ? " live-card__advance--armed" : ""}`}
+          disabled={busy}
+          onClick={() => {
+            if (!armed) {
+              setArmed(true);
+              return;
+            }
+            setArmed(false);
+            setBusy(true);
+            void onAdvance(order, action).finally(() => setBusy(false));
+          }}
+          title={action.help}
+          type="button"
+        >
+          {busy ? "Working…" : armed ? `Tap again: ${action.label}` : action.label}
+          {!busy && !armed ? <ArrowRight aria-hidden="true" size={14} /> : null}
+        </button>
+      ) : null}
+      {/* Said in the card rather than only in a tooltip, at the moment it
+          matters: a phone has no hover, and this is the press that spends. */}
+      {action && armed ? <p className="live-card__advance-note">{action.help}</p> : null}
     </article>
   );
 }
@@ -314,6 +364,31 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
     : null;
   const staleDays = Math.max(1, Math.round((board?.stale_after_minutes ?? 1440) / 1440));
   const staleWords = staleDays === 1 ? "a day" : `${staleDays} days`;
+
+  const advanceOrder = useCallback(
+    async (order: LiveOrder, action: NextAction) => {
+      try {
+        await api.updateOrderStatus(token, order.id, action.to);
+        onToastRef.current(
+          "Order updated",
+          `#${order.id.slice(0, 8)} is now ${humanizeEnum(action.to).toLowerCase()}.`,
+          "success",
+        );
+      } catch (error) {
+        // The server's own sentence: it knows whether the order was already
+        // moved by the kitchen, is unpaid, or is not this account's to touch.
+        onToastRef.current(
+          "Could not update the order",
+          error instanceof ApiError ? error.message : "Please try again.",
+          "error",
+        );
+      } finally {
+        // Either way the card may be somewhere else now.
+        await load("silent");
+      }
+    },
+    [load, token],
+  );
 
   const openOrder = (order: LiveOrder) => onNavigate(`/orders/${order.id}`);
 
@@ -644,6 +719,7 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
                         column={column}
                         key={order.id}
                         now={now}
+                        onAdvance={advanceOrder}
                         onOpen={openOrder}
                         order={order}
                         showRestaurant={isAdmin}
@@ -668,6 +744,7 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
                           column={column}
                           key={order.id}
                           now={now}
+                          onAdvance={advanceOrder}
                           onOpen={openOrder}
                           order={order}
                           showRestaurant={isAdmin}

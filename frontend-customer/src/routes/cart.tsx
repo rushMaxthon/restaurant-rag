@@ -18,7 +18,7 @@ import { WaiterPrompt } from "@/components/bangkok/waiter-prompt";
 
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { useCartCharges, useMenuItems } from "@/lib/queries";
-import { inCartOf, roomLeft, stockNote } from "@/lib/stock";
+import { heldFor, roomLeft, stockLeft, stockNote } from "@/lib/stock";
 import { chosenLabels } from "@/lib/customization";
 import { BranchHours } from "@/components/bangkok/branch-hours";
 import {
@@ -215,16 +215,18 @@ function CartPage() {
                     <p className="money mt-2 text-sm text-muted">{money(line.unitPrice)} each</p>
                     {(() => {
                       const dish = dishes.get(line.itemId);
-                      const held = inCartOf(s.cart, line.itemId);
-                      const note = stockNote(dish, held);
-                      const left = dish?.stock_quantity;
+                      // With the line's own size: it may keep its own count.
+                      const size = dish?.sizes.find((each) => each.id === line.sizeId);
+                      const held = heldFor(s.cart, dish, size);
+                      const note = stockNote(dish, held, size);
+                      const left = stockLeft(dish, size);
                       // More in the cart than the kitchen has: said here, in
                       // words, before the order is refused for it.
-                      if (typeof left === "number" && held > left) {
+                      if (left !== null && held > left) {
                         return (
                           <p className="inline-error mt-1 text-xs">
                             {left === 0
-                              ? "Sold out since you added it. Please remove it."
+                              ? "Out of stock since you added it. Please remove it."
                               : `Only ${left} left. Please reduce the quantity.`}
                           </p>
                         );
@@ -255,9 +257,11 @@ function CartPage() {
                       type="button"
                       className="qty-step"
                       aria-label={`Add another ${line.name}`}
-                      disabled={
-                        roomLeft(dishes.get(line.itemId), inCartOf(s.cart, line.itemId)) === 0
-                      }
+                      disabled={(() => {
+                        const dish = dishes.get(line.itemId);
+                        const size = dish?.sizes.find((each) => each.id === line.sizeId);
+                        return roomLeft(dish, heldFor(s.cart, dish, size), size) === 0;
+                      })()}
                       onClick={() => s.changeQuantity(line.lineId, 1)}
                     >
                       <Plus className="size-4" />

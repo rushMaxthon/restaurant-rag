@@ -319,6 +319,7 @@ class WhatACustomerIsSentTests(unittest.TestCase):
         row = SimpleNamespace(
             id="00000000-0000-0000-0000-000000000001", name="Large", price=D("110.00"),
             base_price=D("100.00"), is_active=True, sort_order=0, customization_groups=[],
+            stock_quantity=None, stock_daily_quantity=None,
         )
         self.assertIsNone(size_of(row).base_price)
         self.assertEqual(size_of(row, typed=True).base_price, D("100.00"))

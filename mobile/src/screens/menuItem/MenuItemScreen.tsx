@@ -66,6 +66,7 @@ import {
   splitSummary,
   validateCustomizationSelection,
 } from '@/utils/menuItemCustomization';
+import { isOnSale } from '@/utils/stock';
 
 type MenuItemDetailRoute = RouteProp<RootStackParamList, 'MenuItemDetail'>;
 
@@ -1071,7 +1072,7 @@ export function MenuItemDetailScreen(): React.JSX.Element {
                       </Text>
                     </View>
                   ) : null}
-                  {!item.is_available ? (
+                  {!isOnSale(item) ? (
                     <View style={styles.badgeMuted}>
                       <Text style={styles.badgeMutedText}>Out of stock</Text>
                     </View>
@@ -1263,17 +1264,17 @@ export function MenuItemDetailScreen(): React.JSX.Element {
               </Pressable>
               <Text style={styles.stepperCount}>{footerQuantity}</Text>
               <Pressable
-                disabled={!item.is_available}
+                disabled={!isOnSale(item)}
                 onPress={handleIncreaseQuantity}
                 style={[
                   styles.stepperButton,
-                  !item.is_available ? styles.stepperButtonDisabled : null,
+                  !isOnSale(item) ? styles.stepperButtonDisabled : null,
                 ]}
               >
                 <Text
                   style={[
                     styles.stepperButtonText,
-                    !item.is_available
+                    !isOnSale(item)
                       ? styles.stepperButtonTextDisabled
                       : null,
                   ]}
@@ -1303,24 +1304,24 @@ export function MenuItemDetailScreen(): React.JSX.Element {
               becomes the way back to it rather than a second add. */}
           <View style={styles.actionControls}>
             <Pressable
-              disabled={!isInCart && !item.is_available}
+              disabled={!isInCart && !isOnSale(item)}
               onPress={isInCart ? handleOpenCart : handleAdd}
               style={[
                 styles.addCta,
-                !isInCart && !item.is_available ? styles.addCtaDisabled : null,
+                !isInCart && !isOnSale(item) ? styles.addCtaDisabled : null,
               ]}
             >
               <Text
                 style={[
                   styles.addCtaText,
-                  !isInCart && !item.is_available
+                  !isInCart && !isOnSale(item)
                     ? styles.addCtaTextDisabled
                     : null,
                 ]}
               >
                 {isInCart
                   ? 'View Cart'
-                  : item.is_available
+                  : isOnSale(item)
                   ? `Add to cart • ${formatCurrency(footerTotalPrice)}`
                   : 'Out of stock'}
               </Text>

@@ -17,7 +17,7 @@ import { VegMark } from "@/components/bangkok/veg-mark";
 import { DishCard } from "@/components/bangkok/dish-card";
 
 import { useBangkokStore } from "@/lib/bangkok-store";
-import { canBuy, inCartOf, roomLeft, stockNote } from "@/lib/stock";
+import { canBuy, heldFor, isSoldOut, roomLeft, stockNote } from "@/lib/stock";
 import type { OptionPortion } from "@/lib/bangkok-store";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
@@ -147,14 +147,6 @@ function DishPage() {
   // that is decided, once, rather than inferred from each topping's portion.
   const [split, setSplit] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
-  // What is left for THIS customer: the count, less what their cart already
-  // holds. The server makes the same sum when the order is placed; doing it
-  // here is what stops the stepper at 3 instead of the checkout at the end.
-  const inCart = inCartOf(store.cart, item?.id ?? "");
-  const room = roomLeft(item, inCart);
-  const buyable = canBuy(item);
-  const overStock = room !== null && quantity > room;
-  const stockLine = stockNote(item, inCart);
   const [added, setAdded] = useState(false);
 
   // Related dishes come from THIS dish's restaurant, not whichever one the app
@@ -173,13 +165,28 @@ function DishPage() {
   // belongs to another size is not shown. All of it mirrors the server; see
   // lib/customization.ts for what went wrong when it did not.
   const sizes = activeSizes(item);
-  const chosenSize = sizes.find((s) => s.id === (size || sizes[0]?.id));
+  // What the customer picked; failing that, the first size that can still be
+  // had. Defaulting to the first size whatever its stock opened the page on
+  // "Out of stock" for a dish with three other packs on the shelf.
+  const chosenSize =
+    sizes.find((s) => s.id === size) ?? sizes.find((s) => !isSoldOut(item, s)) ?? sizes[0];
   const groups = visibleGroups(item, chosenSize);
   const chosenOptionIds = groups.flatMap((g) => selected[g.id] ?? []);
   const unitPrice = unitPriceFor(item, chosenSize, chosenOptionIds, portions);
   const halves = splitSummary(item, chosenSize, chosenOptionIds, portions);
   const total = unitPrice * quantity;
   const problem = selectionProblem(item, chosenSize, selected, portions);
+  // What is left for THIS customer: the count, less what their cart already
+  // holds. The server makes the same sum when the order is placed; doing it
+  // here is what stops the stepper at 3 instead of the checkout at the end.
+  //
+  // Asked with the chosen size, because a size may keep a count of its own:
+  // the pack of four can be gone while the pack of eight is not.
+  const held = heldFor(store.cart, item, chosenSize);
+  const room = roomLeft(item, held, chosenSize);
+  const buyable = canBuy(item, chosenSize);
+  const overStock = room !== null && quantity > room;
+  const stockLine = stockNote(item, held, chosenSize);
   const valid = problem === null;
   // The options the customer can actually see and has actually chosen. Derived
   // from the same visible set as the price, so what is charged, what is shown
@@ -475,15 +482,23 @@ function DishPage() {
                 <div className="size-tiles">
                   {sizes.map((s) => {
                     const active = chosenSize?.id === s.id;
+                    // Still shown, so the customer can see it exists and is
+                    // gone - a size that silently vanishes reads as "they
+                    // stopped doing the big one". Just not pickable.
+                    const gone = isSoldOut(item, s);
                     return (
                       <button
                         type="button"
                         className="size-tile"
                         data-on={active}
+                        disabled={gone}
                         onClick={() => setSize(s.id)}
                         key={s.id}
                       >
-                        <span className="size-tile__name">{s.name}</span>
+                        <span className="size-tile__name">
+                          {s.name}
+                          {gone ? " · Out of stock" : ""}
+                        </span>
                         {/* The absolute price, not "+". A size REPLACES the
                             base price, so a plus sign said the opposite of what
                             the customer would be charged. */}
@@ -799,7 +814,7 @@ function DishPage() {
                     {!item.is_available
                       ? "Currently unavailable"
                       : !buyable
-                        ? "Sold out"
+                        ? "Out of stock"
                         : overStock
                           ? "No more left to add"
                           : `Add to cart · ${money(total)}`}

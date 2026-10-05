@@ -52,6 +52,7 @@ from app.config import get_settings  # noqa: E402
 from app.models.base import Base  # noqa: E402
 from app.models.enums import UserRole  # noqa: E402
 from app.models.menu_item import MenuItem  # noqa: E402
+from app.models.menu_item_size import MenuItemSize  # noqa: E402
 from app.models.restaurant import Restaurant  # noqa: E402
 from app.models.restaurant_location import RestaurantLocation  # noqa: E402
 from app.models.user import User  # noqa: E402
@@ -81,12 +82,42 @@ def postgres_available() -> bool:
             engine.dispose()
 
 
-def a_dish(name: str, left: int | None, *, dish_id: uuid.UUID | None = None):
-    return SimpleNamespace(id=dish_id or uuid.uuid4(), name=name, stock_quantity=left)
+def a_size(name: str, left: int | None):
+    return SimpleNamespace(id=uuid.uuid4(), name=name, stock_quantity=left)
 
 
-def a_line(dish_id: uuid.UUID, quantity: int, *, reserved: bool = False):
-    return SimpleNamespace(menu_item_id=dish_id, quantity=quantity, stock_reserved=reserved)
+def a_dish(
+    name: str,
+    left: int | None,
+    *,
+    dish_id: uuid.UUID | None = None,
+    out_of_stock: bool = False,
+    sizes: tuple = (),
+):
+    return SimpleNamespace(
+        id=dish_id or uuid.uuid4(),
+        name=name,
+        stock_quantity=left,
+        out_of_stock=out_of_stock,
+        sizes=list(sizes),
+    )
+
+
+def a_line(
+    dish_id: uuid.UUID,
+    quantity: int,
+    *,
+    reserved: bool = False,
+    size_id: uuid.UUID | None = None,
+    reserved_size: bool = False,
+):
+    return SimpleNamespace(
+        menu_item_id=dish_id,
+        menu_item_size_id=size_id,
+        quantity=quantity,
+        stock_reserved=reserved,
+        stock_reserved_size=reserved_size,
+    )
 
 
 class WhatTheCustomerIsToldTests(unittest.TestCase):
@@ -117,13 +148,43 @@ class WhatTheCustomerIsToldTests(unittest.TestCase):
     def test_none_left_reads_as_sold_out_not_as_only_zero(self) -> None:
         bread = a_dish("Brown Bread", 0)
         said = self._refusal([bread], [a_line(bread.id, 1)])
-        self.assertIn("sold out", said)
+        self.assertIn("out of stock", said)
         self.assertNotIn("Only 0", said)
 
     def test_two_lines_of_one_dish_are_counted_together(self) -> None:
         pav = a_dish("Brun Pav", 5)
         self.assertIsNotNone(self._refusal([pav], [a_line(pav.id, 3), a_line(pav.id, 3)]))
         self.assertIsNone(self._refusal([pav], [a_line(pav.id, 3), a_line(pav.id, 2)]))
+
+    def test_a_dish_marked_out_of_stock_by_hand_is_refused_whatever_its_count(self) -> None:
+        # Nobody is counting it, and there are forty by the count - but the
+        # owner said none, and the owner is standing next to the tray.
+        for left in (None, 40):
+            bread = a_dish("Brown Bread", left, out_of_stock=True)
+            said = self._refusal([bread], [a_line(bread.id, 1)])
+            self.assertIn("out of stock", said)
+
+    def test_a_size_with_its_own_count_is_checked_against_that_count(self) -> None:
+        four, eight = a_size("Pack of 4", 2), a_size("Pack of 8", 10)
+        pav = a_dish("Brun Pav", None, sizes=(four, eight))
+        said = self._refusal([pav], [a_line(pav.id, 3, size_id=four.id)])
+        # Named with its size: "Brun Pav" alone would send them to the wrong pack.
+        self.assertIn("Only 2 Brun Pav (Pack of 4)", said)
+        self.assertIsNone(self._refusal([pav], [a_line(pav.id, 3, size_id=eight.id)]))
+
+    def test_a_size_without_a_count_draws_on_the_dishs_count(self) -> None:
+        four, eight = a_size("Pack of 4", None), a_size("Pack of 8", None)
+        pav = a_dish("Brun Pav", 5, sizes=(four, eight))
+        lines = [a_line(pav.id, 3, size_id=four.id), a_line(pav.id, 3, size_id=eight.id)]
+        self.assertIn("Only 5 Brun Pav", self._refusal([pav], lines))
+
+    def test_a_counted_size_does_not_use_up_the_dishs_count(self) -> None:
+        four, eight = a_size("Pack of 4", 10), a_size("Pack of 8", None)
+        pav = a_dish("Brun Pav", 3, sizes=(four, eight))
+        # Six of the counted size, three of the other: the dish's 3 is asked
+        # for 3, not 9.
+        lines = [a_line(pav.id, 6, size_id=four.id), a_line(pav.id, 3, size_id=eight.id)]
+        self.assertIsNone(self._refusal([pav], lines))
 
     def test_every_short_dish_is_named_not_just_the_first(self) -> None:
         bread, pav = a_dish("Brown Bread", 1), a_dish("Brun Pav", 0)
@@ -201,6 +262,20 @@ class TakingAndGivingBackTests(unittest.TestCase):
     def _left(self, dish_id: uuid.UUID) -> int | None:
         with self.session_factory() as session:
             return session.get(MenuItem, dish_id).stock_quantity
+
+    def _size(self, dish_id: uuid.UUID, left: int | None, *, daily: int | None = None) -> uuid.UUID:
+        with self.session_factory() as session:
+            row = MenuItemSize(
+                id=uuid.uuid4(), menu_item_id=dish_id, name=f"Pack {uuid.uuid4().hex[:4]}",
+                price=Decimal("44.00"), stock_quantity=left, stock_daily_quantity=daily,
+            )
+            session.add(row)
+            session.commit()
+            return row.id
+
+    def _size_left(self, size_id: uuid.UUID) -> int | None:
+        with self.session_factory() as session:
+            return session.get(MenuItemSize, size_id).stock_quantity
 
     def test_an_order_takes_what_it_ordered(self) -> None:
         dish = self._dish(10)
@@ -282,6 +357,142 @@ class TakingAndGivingBackTests(unittest.TestCase):
             stock.release(session, [line])
             session.commit()
         self.assertIsNone(self._left(dish))
+
+    def test_a_dish_marked_out_of_stock_by_hand_takes_no_order(self) -> None:
+        dish = self._dish(10)
+        with self.session_factory() as session:
+            session.get(MenuItem, dish).out_of_stock = True
+            session.commit()
+        with self.session_factory() as session:
+            with self.assertRaises(HTTPException) as refused:
+                stock.reserve(session, [a_line(dish, 1)])
+            self.assertEqual(refused.exception.status_code, 409)
+            session.rollback()
+        self.assertEqual(self._left(dish), 10)
+
+    def test_a_dish_marked_out_of_stock_by_hand_is_not_suggested(self) -> None:
+        dish = self._dish(None)
+        with self.session_factory() as session:
+            row = session.get(MenuItem, dish)
+            row.out_of_stock = True
+            session.commit()
+            self.assertFalse(row.is_on_sale)
+
+    def test_a_counted_size_is_taken_from_its_own_count(self) -> None:
+        dish = self._dish(10)
+        size = self._size(dish, 4)
+        line = a_line(dish, 3, size_id=size)
+        with self.session_factory() as session:
+            stock.reserve(session, [line])
+            session.commit()
+        self.assertEqual(self._size_left(size), 1)
+        # The dish's own count is somebody else's tray.
+        self.assertEqual(self._left(dish), 10)
+        self.assertTrue(line.stock_reserved and line.stock_reserved_size)
+
+    def test_a_size_without_a_count_is_taken_from_the_dish(self) -> None:
+        dish = self._dish(10)
+        size = self._size(dish, None)
+        line = a_line(dish, 3, size_id=size)
+        with self.session_factory() as session:
+            stock.reserve(session, [line])
+            session.commit()
+        self.assertEqual(self._left(dish), 7)
+        self.assertIsNone(self._size_left(size))
+        self.assertTrue(line.stock_reserved)
+        self.assertFalse(line.stock_reserved_size)
+
+    def test_the_last_of_a_size_cannot_be_sold_twice(self) -> None:
+        dish = self._dish(None)
+        size = self._size(dish, 1)
+        with self.session_factory() as first, self.session_factory() as second:
+            stock.reserve(first, [a_line(dish, 1, size_id=size)])
+            first.commit()
+            with self.assertRaises(HTTPException):
+                stock.reserve(second, [a_line(dish, 1, size_id=size)])
+        self.assertEqual(self._size_left(size), 0)
+
+    def test_a_cancelled_order_returns_stock_to_the_count_it_came_from(self) -> None:
+        dish = self._dish(10)
+        size = self._size(dish, 4)
+        from_size, from_dish = a_line(dish, 2, size_id=size), a_line(dish, 3)
+        with self.session_factory() as session:
+            stock.reserve(session, [from_size, from_dish])
+            session.commit()
+        self.assertEqual((self._size_left(size), self._left(dish)), (2, 7))
+        with self.session_factory() as session:
+            stock.release(session, [from_size, from_dish])
+            session.commit()
+        self.assertEqual((self._size_left(size), self._left(dish)), (4, 10))
+
+    def test_the_morning_refill_sets_counts_back_to_their_daily_amount(self) -> None:
+        with self.session_factory() as session:
+            # Everything else in this database first, so only these rows move.
+            session.execute(MenuItem.__table__.update().values(stock_daily_quantity=None))
+            session.execute(MenuItemSize.__table__.update().values(stock_daily_quantity=None))
+            session.commit()
+        sold_down, by_hand, overfull = self._dish(3), self._dish(2), self._dish(60)
+        size = self._size(sold_down, 0, daily=12)
+        with self.session_factory() as session:
+            session.get(MenuItem, sold_down).stock_daily_quantity = 40
+            session.get(MenuItem, overfull).stock_daily_quantity = 40
+            session.commit()
+        with self.session_factory() as session:
+            changed = stock.restock_daily(session)
+            session.commit()
+        self.assertEqual(changed, 3)
+        self.assertEqual(self._left(sold_down), 40)
+        # Set TO forty, not topped up by forty: yesterday's loaves are gone.
+        self.assertEqual(self._left(overfull), 40)
+        # No daily amount: restocked by hand, so left exactly as it was.
+        self.assertEqual(self._left(by_hand), 2)
+        self.assertEqual(self._size_left(size), 12)
+
+    def test_the_morning_refill_does_not_undo_a_manual_out_of_stock(self) -> None:
+        dish = self._dish(0)
+        with self.session_factory() as session:
+            row = session.get(MenuItem, dish)
+            row.out_of_stock = True
+            row.stock_daily_quantity = 40
+            session.commit()
+        with self.session_factory() as session:
+            stock.restock_daily(session)
+            session.commit()
+            row = session.get(MenuItem, dish)
+            self.assertEqual(row.stock_quantity, 40)
+            # A person said it. A person takes it back.
+            self.assertTrue(row.out_of_stock)
+            self.assertFalse(row.is_on_sale)
+
+    def test_what_is_suggested_to_a_customer_leaves_out_the_sold_out_dish(self) -> None:
+        # The chat, the recommendations and the cart's suggestions all filter
+        # on `is_on_sale`. A dish at zero that is still recommended is tapped,
+        # added, and refused at checkout.
+        from sqlalchemy import select
+
+        plenty, last_one, gone, uncounted = (
+            self._dish(40), self._dish(1), self._dish(0), self._dish(None)
+        )
+        with self.session_factory() as session:
+            on_sale = set(
+                session.scalars(
+                    select(MenuItem.id).where(
+                        MenuItem.id.in_([plenty, last_one, gone, uncounted]), MenuItem.is_on_sale
+                    )
+                )
+            )
+            self.assertEqual(on_sale, {plenty, last_one, uncounted})
+            # And the same answer from a loaded row as from the query.
+            self.assertFalse(session.get(MenuItem, gone).is_on_sale)
+            self.assertTrue(session.get(MenuItem, uncounted).is_on_sale)
+
+    def test_a_dish_the_owner_switched_off_is_not_on_sale_whatever_its_count(self) -> None:
+        dish = self._dish(10)
+        with self.session_factory() as session:
+            row = session.get(MenuItem, dish)
+            row.is_available = False
+            session.commit()
+            self.assertFalse(row.is_on_sale)
 
 
 if __name__ == "__main__":

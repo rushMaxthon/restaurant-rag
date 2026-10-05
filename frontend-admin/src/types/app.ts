@@ -392,6 +392,10 @@ export interface AdminMenuItem {
   is_available: boolean;
   /** How many are left to sell. Null means the dish is not counted. */
   stock_quantity?: number | null;
+  /** Marked out of stock by hand: on the menu, cannot be added. */
+  out_of_stock?: boolean;
+  /** What the count is set back to each morning. Null: restocked by hand. */
+  stock_daily_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -698,6 +702,9 @@ export interface MenuItemSize {
   base_price?: number | string | null;
   is_active: boolean;
   sort_order: number;
+  /** This size's own count. Null: it draws on the dish's count instead. */
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
   customization_groups: MenuItemCustomizationGroup[];
 }
 
@@ -724,6 +731,10 @@ export interface MenuItem {
   is_available: boolean;
   /** How many are left to sell. Null means the dish is not counted. */
   stock_quantity?: number | null;
+  /** Marked out of stock by hand: on the menu, cannot be added. */
+  out_of_stock?: boolean;
+  /** What the count is set back to each morning. Null: restocked by hand. */
+  stock_daily_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -771,6 +782,8 @@ export interface MenuItemSizePayload {
   price: number;
   is_active: boolean;
   sort_order: number;
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
   customization_groups: MenuItemCustomizationGroupPayload[];
 }
 
@@ -784,6 +797,8 @@ export interface MenuItemUpsertPayload {
   is_available: boolean;
   /** Null stops the count. Leaving it out keeps whatever is stored. */
   stock_quantity?: number | null;
+  out_of_stock?: boolean;
+  stock_daily_quantity?: number | null;
   is_new_launch: boolean;
   image_url?: string | null;
   launched_at?: string | null;
@@ -1650,3 +1665,21 @@ export type BranchLocationLookup = {
   matched: string;
   provider: string;
 };
+
+/** One restaurant's line on the admin's commission report. */
+export interface CommissionRow {
+  restaurant_id: string;
+  restaurant_name: string;
+  orders: number;
+  sales: number | string;
+  commission: number | string;
+  currency: string;
+}
+
+export interface CommissionReport {
+  days: number;
+  since: string;
+  /** When the first order with a recorded commission was placed, if any. */
+  counted_from: string | null;
+  restaurants: CommissionRow[];
+}

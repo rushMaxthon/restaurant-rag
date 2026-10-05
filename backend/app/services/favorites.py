@@ -115,6 +115,8 @@ def _serialize_menu_item_size(size: MenuItemSize, *, typed: bool = False) -> Men
         ),
         is_active=size.is_active,
         sort_order=size.sort_order,
+        stock_quantity=size.stock_quantity,
+        stock_daily_quantity=size.stock_daily_quantity,
         customization_groups=[
             _serialize_menu_item_customization_group(group, typed=typed)
             for group in sorted_groups
@@ -224,6 +226,8 @@ def serialize_menu_item(
         is_veg=menu_item.is_veg,
         is_available=menu_item.is_available,
         stock_quantity=menu_item.stock_quantity,
+        out_of_stock=menu_item.out_of_stock,
+        stock_daily_quantity=menu_item.stock_daily_quantity,
         is_bestseller=is_menu_item_bestseller(menu_item),
         is_featured=get_menu_item_featured_flag(menu_item),
         image_url=menu_item.image_url,

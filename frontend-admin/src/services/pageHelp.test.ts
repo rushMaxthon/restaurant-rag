@@ -31,7 +31,9 @@ describe("pageHelp", () => {
     expect(pageHelp("menu-item-editor", "ADMIN").action).toMatch(/commission/i);
     // The rate is the platform's own figure. An owner's help text naming it
     // would tell them what the hidden tile no longer does.
-    for (const id of IDS) {
+    // Except the Commission page itself, which an owner cannot open: the
+    // route is admin-only and the endpoint refuses them.
+    for (const id of IDS.filter((page) => page !== "commission")) {
       const help = pageHelp(id, "OWNER");
       expect(`${help.what} ${help.who} ${help.action}`, id).not.toMatch(/commission/i);
     }

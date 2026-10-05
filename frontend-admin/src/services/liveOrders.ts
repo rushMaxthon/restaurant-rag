@@ -395,6 +395,66 @@ const DELIVERY_STATES: Record<string, { label: string; tone: DeliveryTone; help:
  * http(s) address is ever put in an `href`; anything else — empty, a bare
  * id, a `javascript:` URL — is not a link.
  */
+export interface NextAction {
+  /** The status the order moves to. */
+  to: OrderStatus;
+  /** The button, in the words a kitchen uses. */
+  label: string;
+  /** What pressing it sets off, for the tooltip and the confirm step. */
+  help: string;
+}
+
+/**
+ * The one step this order can take next, or null when there is none to offer.
+ *
+ * The board could only watch: to accept an order somebody had to open it,
+ * press the button there and come back, once per order, on the screen whose
+ * whole job is the queue. This is the same step, on the card.
+ *
+ * Null for an order whose payment is not committed. The server refuses to
+ * advance one, so the button could only ever answer with an error.
+ *
+ * The backend is the rule - `PATCH /orders/{id}/status` re-checks the scope,
+ * the payment and the order of the steps. This decides what to OFFER.
+ */
+export function nextAction(order: LiveOrder): NextAction | null {
+  const settled = order.payment_status === "PAID" || order.payment_status === "COD";
+  if (!settled) return null;
+  const isDelivery = order.fulfillment_type === "DELIVERY";
+  switch (order.status) {
+    case "PLACED":
+      return {
+        to: "ACCEPTED",
+        label: "Accept order",
+        help: isDelivery
+          ? "Confirms the order to the customer and books a rider straight away."
+          : "Confirms the order to the customer and sends it to the kitchen.",
+      };
+    case "ACCEPTED":
+      return {
+        to: "PREPARING",
+        label: "Start preparing",
+        help: "Tells the customer the kitchen has started on their order.",
+      };
+    case "PREPARING":
+      return {
+        to: "OUT_FOR_DELIVERY",
+        label: isDelivery ? "Hand to the rider" : "Ready to collect",
+        help: isDelivery
+          ? "Tells the customer their order has left the kitchen."
+          : "Tells the customer their order is ready at the counter.",
+      };
+    case "OUT_FOR_DELIVERY":
+      return {
+        to: "DELIVERED",
+        label: "Mark delivered",
+        help: "Closes the order. It moves to Done today.",
+      };
+    default:
+      return null;
+  }
+}
+
 export function safeTrackingUrl(value: string | null | undefined): string | null {
   if (!value) return null;
   try {

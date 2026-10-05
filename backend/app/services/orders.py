@@ -34,6 +34,7 @@ from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
 from app.services import order_charges, stock
 from app.services.capabilities import resolve_capabilities
+from app.services.commission import commission_in
 from app.services.delivery.quoting import delivery_fee_for
 from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
@@ -794,6 +795,22 @@ def _contact_phone_for(customer: User, payload: OrderCreateRequest) -> str:
     return (customer.phone_number or "").strip()
 
 
+def _commission_for(draft: "PreparedOrderDraft") -> dict[str, Decimal]:
+    """The rate in force for this order, and what it earned the platform.
+
+    Read from the branch at the moment the order is made and stored on the
+    order, so turning the rate later changes later orders only.
+    """
+
+    from app.services import menu_pricing
+
+    percent = menu_pricing.commission_percent_of(draft.restaurant_location)
+    return {
+        "commission_percent": percent,
+        "commission_amount": commission_in(draft.subtotal, percent),
+    }
+
+
 def promo_code_to_record(
     db: Session, *, restaurant_id: uuid.UUID | None, typed: str | None
 ) -> str | None:
@@ -883,6 +900,7 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         # would be a discount the server never validated, typed by the
         # customer — the offer system exists for that and this is only the
         # attribution trail for a public post.
+        **_commission_for(draft),
         marketing_promo_code=promo_code_to_record(
             db, restaurant_id=draft.restaurant.id, typed=payload.promo_code
         ),

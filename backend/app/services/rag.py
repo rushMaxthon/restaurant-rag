@@ -2998,7 +2998,7 @@ def menu_vocabulary(
 
     items = scoped(
         select(MenuItem.name, MenuItem.description, MenuItem.category).where(
-            MenuItem.is_available.is_(True)
+            MenuItem.is_on_sale
         )
     )
     # Sizes and customization options too, because they are things the menu
@@ -3450,7 +3450,7 @@ def _retrieve_candidates(
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
         )
         .order_by(distance.asc())
         .limit(limit)
@@ -3515,7 +3515,7 @@ def _fetch_keyword_candidates(
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             or_(*conditions),
         )
         .order_by(
@@ -4346,7 +4346,7 @@ def _fetch_customizable_items(
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             or_(MenuItem.has_customizations.is_(True), MenuItem.has_sizes.is_(True)),
         )
         .order_by(MenuItem.popularity_score.desc())
@@ -4449,7 +4449,7 @@ def _fetch_fuzzy_candidates(
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             score > FUZZY_NAME_THRESHOLD,
         )
         .order_by(score.desc(), MenuItem.popularity_score.desc())
@@ -4497,7 +4497,7 @@ def _fetch_popular_candidates(
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
         )
         .order_by(
             MenuItem.popularity_score.desc(),
@@ -4764,7 +4764,7 @@ def _filter_candidates(
     available_candidates = [
         candidate
         for candidate in candidates
-        if candidate.menu_item.is_available
+        if candidate.menu_item.is_on_sale
         and candidate.menu_item.id not in excluded_ids
         and _menu_item_dish_key(candidate.menu_item.restaurant_id, candidate.menu_item.name)
         not in excluded_dishes

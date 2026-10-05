@@ -4,6 +4,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { formatCurrency } from '@services/api';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { MenuItem } from '@/types/app';
+import { isOnSale } from '@/utils/stock';
 
 const MENU_GRID_GAP = 10;
 const MENU_GRID_COLUMNS = 3;
@@ -102,7 +103,7 @@ function MenuGridCardComponent({
           <View style={[styles.dietDot, { backgroundColor: dietColor }]} />
         </View>
 
-        {!item.is_available ? (
+        {!isOnSale(item) ? (
           <View style={styles.soldOutOverlay}>
             <Text style={styles.soldOutText}>Sold out</Text>
           </View>

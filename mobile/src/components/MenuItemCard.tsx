@@ -12,6 +12,7 @@ import { FavoriteIconButton } from '@components/FavoriteIconButton';
 import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { MenuItem } from '@/types/app';
 import { getNewItemBadgeMeta } from '@utils/newItemBadges';
+import { isOnSale } from '@/utils/stock';
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -138,17 +139,17 @@ function MenuItemCardComponent({
             </Pressable>
             <Text style={styles.quantityCount}>{quantity}</Text>
             <Pressable
-              disabled={!item.is_available}
+              disabled={!isOnSale(item)}
               onPress={handleAdd}
               style={[
                 styles.quantityButton,
-                !item.is_available ? styles.quantityButtonDisabled : null,
+                !isOnSale(item) ? styles.quantityButtonDisabled : null,
               ]}
             >
               <Text
                 style={[
                   styles.quantityAction,
-                  !item.is_available ? styles.quantityActionDisabled : null,
+                  !isOnSale(item) ? styles.quantityActionDisabled : null,
                 ]}
               >
                 +
@@ -157,20 +158,20 @@ function MenuItemCardComponent({
           </View>
         ) : (
           <Pressable
-            disabled={!item.is_available}
+            disabled={!isOnSale(item)}
             onPress={handleAdd}
             style={[
               styles.addButton,
-              !item.is_available ? styles.addButtonDisabled : null,
+              !isOnSale(item) ? styles.addButtonDisabled : null,
             ]}
           >
             <Text
               style={[
                 styles.addButtonText,
-                !item.is_available ? styles.addButtonTextDisabled : null,
+                !isOnSale(item) ? styles.addButtonTextDisabled : null,
               ]}
             >
-              {item.is_available ? '+ ADD' : 'Sold out'}
+              {isOnSale(item) ? '+ ADD' : 'Out of stock'}
             </Text>
           </Pressable>
         )}

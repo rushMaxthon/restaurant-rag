@@ -44,6 +44,12 @@ class OrderItem(TimestampMixin, Base):
     stock_reserved: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    #: ...and it was the SIZE's count rather than the dish's. Recorded so a
+    #: cancellation returns the stock to the shelf it came off, even if the
+    #: owner has started or stopped counting the size since.
+    stock_reserved_size: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     base_unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0.00"))
     customization_total_price: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),

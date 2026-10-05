@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -20,6 +21,8 @@ from app.models.user import User
 from app.models.app_client import AppClient
 from app.models.enums import UserRole
 from app.schemas.admin import (
+    AdminCommissionReport,
+    AdminCommissionRow,
     AdminUserResponse,
     AdminUserUpdate,
     AdminAILogResponse,
@@ -83,6 +86,50 @@ def _generate_unique_slug(db: Session, restaurant_name: str, *, exclude_restaura
             return candidate
         candidate = f"{base_slug}-{suffix}"
         suffix += 1
+
+
+@router.get("/commission", response_model=AdminCommissionReport)
+def get_commission_report(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+    days: int = Query(default=30, ge=1, le=366),
+) -> AdminCommissionReport:
+    """What the platform earned from each restaurant in the last `days`.
+
+    Admin only. The commission is the platform's own figure - an owner is not
+    told the rate (`menu_pricing.sees_commission_rate`), and a report of what
+    it added up to would tell them by division.
+    """
+
+    from app.services import commission
+    from app.services.orders import normalize_stored_currency
+
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = commission.summarise(db, since=since)
+    currencies = {
+        restaurant_id: normalize_stored_currency(code)
+        for restaurant_id, code in db.execute(
+            select(Restaurant.id, Restaurant.currency).where(
+                Restaurant.id.in_([row.restaurant_id for row in rows])
+            )
+        )
+    }
+    return AdminCommissionReport(
+        days=days,
+        since=since,
+        counted_from=commission.first_recorded_at(db),
+        restaurants=[
+            AdminCommissionRow(
+                restaurant_id=row.restaurant_id,
+                restaurant_name=row.restaurant_name,
+                orders=row.orders,
+                sales=row.sales,
+                commission=row.commission,
+                currency=currencies.get(row.restaurant_id, ""),
+            )
+            for row in rows
+        ],
+    )
 
 
 @router.get("/dashboard", response_model=AdminDashboardStats)
@@ -573,6 +620,7 @@ def list_admin_menu_items(
             is_veg=menu_item.is_veg,
             is_available=menu_item.is_available,
             stock_quantity=menu_item.stock_quantity,
+            out_of_stock=menu_item.out_of_stock,
             is_bestseller=is_menu_item_bestseller(menu_item),
             is_featured=get_menu_item_featured_flag(menu_item),
             image_url=menu_item.image_url,

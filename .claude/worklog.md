@@ -17,6 +17,62 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 (stock by hand, by size and by day; commission earned; live board actions)
+
+**Goal:** finish what the stock feature could not say, let the admin act from
+the live board and see what the commission earned, and clear the demo data.
+
+**Changed:**
+- **Stock, three more ways** (migration `0080_stock_sizes_manual_daily`).
+  `menu_items.out_of_stock` is a manual switch: on the menu, marked, cannot be
+  added. `menu_item_sizes.stock_quantity` is a size's own count; a size without
+  one draws on the dish's. `stock_daily_quantity` on both is set back each
+  morning by `tasks/stock.restock_daily_task` (beat, 04:30 business time).
+  `order_items.stock_reserved_size` records which count a line took from.
+  `PATCH /menu-items/{id}/stock` is the one-tap change.
+- `MenuItem.is_on_sale` (hybrid) is what the chat, the recommendations and the
+  cart suggestions filter on, so none of them offers an out-of-stock dish.
+- **Commission earned** (migration `0079_order_commission`). Each order stores
+  `commission_percent` and `commission_amount` at creation.
+  `GET /admin/commission` and the admin-only Commission page add them up.
+- **Live board:** each card has its next step, two taps, the first saying what
+  it will do. Rule in `liveOrders.nextAction`.
+- Owners: the commission rate, its tile and its field are not shown, and their
+  menu list shows the typed price (`menuListPrice`).
+- Mobile: `utils/stock.ts` `isOnSale` replaces `is_available` on six screens;
+  the promo field follows the `promo_code` capability - and is now actually
+  sent, which it never was (`CartScreen` navigated to Payment without it).
+
+**Verified:** backend 3,013 tests (one stand-in size without the new fields,
+fixed). Admin 415, storefront 500, kitchen 84, mobile 181 + `tsc`. Live: a dish
+marked by hand was refused and came back; a size at 0 was refused by name while
+its sibling sold its 2; the refill task took a 2 back to its daily 7; an order
+recorded 10.00 at 10% and the report showed it; a pickup was accepted from the
+board. In a browser: the size tile disabled and labelled, the admin's list
+actions, the editor's new fields.
+
+**Open:**
+- **`0079` and `0080` were applied to Supabase by hand**, like `0077`/`0078`.
+- **The mobile app does not read per-size stock.** The server refuses it.
+- **Beat is not running locally**, so the morning refill only fires where a
+  beat process runs. Not exercised on a schedule, only by calling the task.
+- The admin's 57 structural lint errors are untouched on purpose: 46 are
+  data-loading effects (`set-state-in-effect`) and each fix is a rewrite of how
+  a page loads, days before a demo, for nothing a user can see.
+- A real payment and the order tracking page have still not been looked at.
+- `mobile/__tests__/App.test.tsx` fails to run, with or without this work.
+- Supabase's session pool is still mostly held from elsewhere.
+
+**Learned:**
+- **The storefront's Playwright suite places real orders** in whatever
+  database the backend points at - "Playwright Tester", paid in test mode,
+  delivery. Left alone they sit in New on the live board, one Accept away
+  from a real rider on the live Pidge account. Clean them after every run.
+- `git stash` to measure a baseline reverts files under running dev servers.
+  It was harmless here and is not a habit to keep.
+- A `sed` that rewrites `item.is_available` also rewrites `result.item.
+  is_available` into nonsense. Run the type checker before believing a rename.
+
 ## 2026-10-05 (stock, phone layout, delivery GST, promo switch)
 
 **Goal:** stop a dish being sold past what the kitchen has; give the phone

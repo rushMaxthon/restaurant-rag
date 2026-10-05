@@ -7,7 +7,7 @@ import { VegMark } from "./veg-mark";
 import { type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
 import { soleSize } from "@/lib/customization";
-import { canBuy, roomLeft, stockNote } from "@/lib/stock";
+import { canBuy, heldFor, roomLeft, stockNote } from "@/lib/stock";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import { useMoney } from "@/lib/storefront";
@@ -49,9 +49,14 @@ function DishCardImpl({ item }: { item: MenuItem }) {
   // The server refuses an order for more than is left; this is the same rule
   // told early. `buyable` folds "sold out" into "switched off", because to a
   // customer they are one fact: it cannot be had right now.
-  const buyable = canBuy(item);
-  const room = roomLeft(item, inCart);
-  const note = stockNote(item, inCart);
+  //
+  // Asked with the dish's one size where it has exactly one, because that
+  // size may keep a count of its own. A dish with several sizes is asked as a
+  // whole: it is out of stock here only when every size is.
+  const buyable = canBuy(item, only);
+  const held = heldFor(cart, item, only);
+  const room = roomLeft(item, held, only);
+  const note = stockNote(item, held, only);
 
   return (
     <article className="dish-card group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
@@ -90,7 +95,7 @@ function DishCardImpl({ item }: { item: MenuItem }) {
         {!buyable && (
           <div className="absolute inset-0 grid place-items-center bg-overlay">
             <span className="rounded-full bg-surface px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide">
-              {item.is_available ? "Sold out" : "Unavailable"}
+              {item.is_available ? "Out of stock" : "Unavailable"}
             </span>
           </div>
         )}
@@ -144,7 +149,9 @@ function DishCardImpl({ item }: { item: MenuItem }) {
           </span>
 
           {!buyable ? (
-            <span className="text-sm font-semibold text-muted">Sold out</span>
+            <span className="text-sm font-semibold text-muted">
+              {item.is_available ? "Out of stock" : "Unavailable"}
+            </span>
           ) : conflicts || needsChoices ? (
             <Button variant="outline" size="sm" asChild>
               <Link to="/menu/$itemId" params={{ itemId: item.id }}>

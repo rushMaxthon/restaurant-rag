@@ -130,6 +130,13 @@ class Order(TimestampMixin, Base):
         server_default="0.00",
     )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    #: The branch's commission rate when this order was placed, and what that
+    #: rate put inside `subtotal`. Written once, in `create_order`, because
+    #: the rate is a dial and an order must not be re-costed when it turns.
+    #: NULL on every order older than migration 0079: not recorded, which is
+    #: not the same as zero. See `services/commission.py`.
+    commission_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    commission_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     # Real orders stamp this from the RESTAURANT's own currency at creation
     # (`services/orders.py`), not from `payment_currency` — that global was
     # right while the platform served one restaurant, and would have a Surat

@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.tasks.marketing",
         "app.tasks.notifications",
         "app.tasks.payments",
+        "app.tasks.stock",
         "app.tasks.whatsapp",
     ],
 )
@@ -56,6 +57,13 @@ celery_app.conf.update(
         "reap-unpaid-orders": {
             "task": "app.tasks.payments.reap_unpaid_orders_task",
             "schedule": crontab(minute="*/5"),
+        },
+        # The morning's bake: every count with a daily amount goes back to it.
+        # 04:30 in the business timezone - after the latest kitchen has shut
+        # and before the earliest opens, so no order is placed across it.
+        "restock-daily": {
+            "task": "app.tasks.stock.restock_daily_task",
+            "schedule": crontab(hour="4", minute="30"),
         },
         # Scheduled campaigns are picked up on an interval rather than at an
         # exact instant, which is why quiet hours and reach are re-checked when

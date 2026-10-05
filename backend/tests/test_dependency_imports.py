@@ -61,6 +61,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.delivery",
             "app.tasks.notifications",
             "app.tasks.payments",
+            "app.tasks.stock",
             "app.tasks.whatsapp",
         ):
             with self.subTest(module=module):
@@ -86,6 +87,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.marketing.send_marketing_campaign",
             "app.tasks.notifications.send_order_status_notification",
             "app.tasks.payments.reap_unpaid_orders_task",
+            "app.tasks.stock.restock_daily_task",
             "app.tasks.whatsapp.answer_whatsapp_message",
         }
         result = run_in_fresh_interpreter(
