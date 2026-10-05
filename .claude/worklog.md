@@ -17,6 +17,48 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+## 2026-10-05 (page help, storefront review)
+
+**Goal:** make the admin explain itself without spending the screen on it, then
+walk the customer site in a browser and fix what the walk turned up.
+
+**Changed:**
+- `frontend-admin`: the live board's guide panel is gone. `InfoTip` opens on
+  click only, as an "i", and caps itself to the room on screen. Every page has
+  one beside its title via `PageHelpTip`; the copy for all 26 pages, per role,
+  is `services/pageHelp.ts`, and `PageIntro` takes `help="<id>"`.
+- `frontend-customer`: `lib/menu-phase.ts` decides skeleton / failed / empty /
+  ready for the menu; `isRestaurantLoading` is `isPending`-based. A one-branch
+  restaurant no longer shows the branch gate. `soleSize` lets a card add a
+  one-size dish directly, and the dish page loses its empty choices box. The
+  dish page's tab carries the dish name; the phone placeholder names no
+  national format; the login headline no longer implies the menu is gated.
+- `backend/.env` (untracked): `DB_POOL_SIZE=2`, `DB_MAX_OVERFLOW=0`.
+
+**Verified:** admin 378 tests, build, lint delta zero. Storefront 480 tests,
+`tsc`, build, lint delta zero. In the browser: 22 admin pages as the owner; on
+the storefront the menu, a one-size dish, the card add, the cart and login.
+
+**Open:**
+- **12 of Supabase's 15 session-pool slots are held from somewhere else.**
+  Measured with both local processes stopped: the fourth connection is refused.
+  Nothing in this checkout holds them. Until that is found, or the pool size is
+  raised in the dashboard, this machine has three connections to live on.
+- Not walked: checkout and order tracking signed in, the phone layout, dark
+  mode, the concierge. Admin tips not seen as ADMIN or on the admin-only pages.
+- Four tip titles use the sidebar's name where the page heading differs.
+
+**Learned:**
+- `EMAXCONNSESSION` on a 500 arrives with no CORS headers, so the browser
+  reports a network failure and TanStack Query retries — and a retry PAUSES
+  while the tab is hidden. An automation tab is always hidden, so one refused
+  connection there is a query pending for good, which is what "0 dishes"
+  was. A visible tab retries after a second and nobody notices.
+- Screenshots of a hidden tab time out about one time in three. Read the DOM
+  with JavaScript first and screenshot only what has to be seen.
+- A Python `"\b"` written through a quoted heredoc reached the file as a
+  backspace, not a word boundary. eslint's `no-control-regex` caught it.
+
 ## 2026-10-05 (live orders) — A live orders board for the admin and the owner
 
 **Goal:** the platform admin sees every restaurant's orders in progress — what
