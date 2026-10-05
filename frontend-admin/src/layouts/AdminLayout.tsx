@@ -1,6 +1,7 @@
 import { type PropsWithChildren, useEffect, useState } from "react";
 import { Menu, TriangleAlert } from "lucide-react";
 import { Sidebar } from "../components/Sidebar";
+import { storedSidebarCollapsed, storeSidebarCollapsed } from "../services/sidebarState";
 import {
   WORKSPACE_SETTINGS_EVENT,
   readWorkspaceSettings,
@@ -28,6 +29,16 @@ export function AdminLayout({
     () => readWorkspaceSettings().maintenanceBanner,
   );
   const [compact, setCompact] = useState(() => readWorkspaceSettings().compactDashboard);
+  // Held here rather than in the sidebar, because two things move with it:
+  // the sidebar's own contents and the width of the grid column it sits in.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(storedSidebarCollapsed);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((was) => {
+      storeSidebarCollapsed(!was);
+      return !was;
+    });
+  };
 
   useEffect(() => {
     setIsMobileSidebarOpen(false);
@@ -48,16 +59,22 @@ export function AdminLayout({
   }, []);
 
   return (
-    <div className="admin-layout" data-density={compact ? "compact" : undefined}>
+    <div
+      className="admin-layout"
+      data-density={compact ? "compact" : undefined}
+      data-sidebar={sidebarCollapsed ? "collapsed" : undefined}
+    >
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
       <Sidebar
+        collapsed={sidebarCollapsed}
         currentPath={currentPath}
         isMobileOpen={isMobileSidebarOpen}
         onNavigate={onNavigate}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         onLogout={onLogout}
+        onToggleCollapsed={toggleSidebar}
         role={role}
         restaurantId={restaurantId}
       />

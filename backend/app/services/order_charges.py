@@ -211,17 +211,26 @@ def for_location(
     else.
     """
 
+    # The one place the GST switch is read. On, the owner has said the prices
+    # they typed already contain GST, so the subtotal is tax-inclusive and
+    # adding `tax_percent` would tax the customer twice. Off, the menu is
+    # before tax and the branch's own rate goes on the bill. `is True` rather than
+    # truthiness, because this is also called with stand-in objects whose
+    # every attribute is truthy.
+    if getattr(location, "gst_in_menu_prices", False) is True:
+        tax_percent = Decimal("0.00")
+    elif getattr(location, "tax_percent", None) is not None:
+        tax_percent = location.tax_percent
+    else:
+        tax_percent = Decimal("5.00")
+
     return compute(
         subtotal=subtotal,
         delivery_fee=delivery_fee,
         discount_amount=discount_amount,
         packaging_fee=getattr(location, "packaging_fee", None) or Decimal("0.00"),
         platform_fee=getattr(location, "platform_fee", None) or Decimal("0.00"),
-        tax_percent=(
-            location.tax_percent
-            if getattr(location, "tax_percent", None) is not None
-            else Decimal("5.00")
-        ),
+        tax_percent=tax_percent,
         delivery_tax_percent=getattr(location, "delivery_tax_percent", None) or Decimal("0.00"),
     )
 

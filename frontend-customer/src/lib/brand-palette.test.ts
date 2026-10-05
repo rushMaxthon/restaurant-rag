@@ -159,9 +159,33 @@ describe("the lift for dark mode", () => {
 });
 
 describe("readableInk", () => {
-  it("is white on the platform orange and dark on a pale brand", () => {
-    expect(readableInk(parseHex("#ff5200")!)).toBe("#ffffff");
+  it("keeps white wherever white is legible", () => {
+    // Ten of the twelve presets. White on these is 4.99:1 or better, so the
+    // design — white on a brand fill — stands.
+    for (const hex of ["#B45309", "#C0392B", "#C2185B", "#7B3FA0", "#4338CA",
+                       "#0F766E", "#2E7D32", "#4D7C0F", "#334155", "#78350F"]) {
+      expect(readableInk(parseHex(hex)!)).toBe("#ffffff");
+    }
+  });
+
+  it("goes dark where white fails AA, including on the platform's own orange", () => {
+    // This is the change. White on #ff5200 is 3.25:1 — fine for large text and
+    // not for a 12px Add button, which is where it was being used.
+    expect(readableInk(parseHex("#ff5200")!)).toBe("#14171f");
+    expect(readableInk(parseHex("#2D7FF9")!)).toBe("#14171f");
+    // And the pale brands the old luminance threshold existed to catch still
+    // land on dark ink, by a different route.
     expect(readableInk(parseHex("#ffd166")!)).toBe("#14171f");
+  });
+
+  it("whatever it picks, the label clears AA", () => {
+    // The guard that matters: it is not asserted to be white or dark, only to
+    // be readable. A future change to the rule is free as long as this holds.
+    for (const [name, hex] of PRESETS) {
+      const fill = parseHex(hex)!;
+      const ink = parseHex(readableInk(fill))!;
+      expect(contrast(ink, fill), `${name} (${hex}) button label`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 
@@ -217,7 +241,9 @@ describe("the platform default specifically", () => {
     // tenant would render differently from every static mock and screenshot.
     const palette = brandPalette("#FF5200")!;
     expect(palette.primary).toBe("#ff5200");
-    expect(palette.onPrimary).toBe("#ffffff");
+    // Dark, not white, and that is the one value in this block that moved:
+    // white on this orange is 3.25:1. See `readableInk`.
+    expect(palette.onPrimary).toBe("#14171f");
     // Within a shade of the hand-measured #cf4300 — the walk is in 1% steps so
     // it is allowed to land a step either side, not anywhere.
     const strong = parseHex(palette.primaryStrong)!;

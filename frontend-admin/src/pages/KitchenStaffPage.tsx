@@ -394,6 +394,7 @@ export function KitchenStaffPage({ token, role, restaurantId, onToast }: Kitchen
     return (
       <div className="page-stack">
         <PageIntro
+          help="kitchen-staff"
           eyebrow="Kitchen"
           title="Kitchen staff"
           description="The logins your kitchen order board runs on."
@@ -417,6 +418,7 @@ export function KitchenStaffPage({ token, role, restaurantId, onToast }: Kitchen
   return (
     <div className="page-stack">
       <PageIntro
+        help="kitchen-staff"
         actions={
           <button className="primary-button" onClick={openCreate} type="button">
             <UserPlus size={16} strokeWidth={2.2} />

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -33,6 +34,70 @@ logger = logging.getLogger(__name__)
 def _normalize_address_label(value: str) -> str:
     normalized = (value or "OTHER").strip().upper()
     return normalized if normalized in {"HOME", "WORK", "OTHER"} else "OTHER"
+
+
+def _address_fingerprint(
+    line1: str | None,
+    line2: str | None,
+    landmark: str | None,
+    city: str | None,
+    state: str | None,
+    postal_code: str | None,
+) -> tuple[str, ...]:
+    """What makes two saved addresses the same place.
+
+    Case-folded and whitespace-collapsed, because "Velanja - Gothan Road" and
+    "velanja  -  gothan road " are one street, and a customer who re-picks the
+    same Google suggestion gets subtly different spacing each time.
+
+    The label and the phone number are deliberately NOT part of this: the same
+    doorstep saved once as HOME and once as WORK is still one doorstep, and a
+    customer correcting their phone number should not acquire a second copy of
+    their house.
+    """
+
+    def part(value: str | None) -> str:
+        return " ".join((value or "").split()).casefold()
+
+    return (part(line1), part(line2), part(landmark), part(city), part(state), part(postal_code))
+
+
+def _matching_saved_address(
+    existing: Sequence[UserSavedAddress],
+    payload: SavedAddressCreateRequest,
+) -> UserSavedAddress | None:
+    """The row this payload would duplicate, if there is one.
+
+    This runs on the server because the client cannot be the one to decide it.
+    The checkout screen does compare the typed address against the picker's
+    list, but that list is a cached query: place one order, and the row exists
+    before the cache knows about it, so a second order the same evening wrote a
+    byte-identical second row — two cards reading "12 Velanja - Gothan Road"
+    with the same coordinates, observed in the database on 2026-10-03. Any
+    client can lose that race, and there are three of them.
+    """
+    wanted = _address_fingerprint(
+        payload.address_line_1,
+        payload.address_line_2,
+        payload.landmark,
+        payload.city,
+        payload.state,
+        payload.postal_code,
+    )
+    for address in existing:
+        if (
+            _address_fingerprint(
+                address.address_line_1,
+                address.address_line_2,
+                address.landmark,
+                address.city,
+                address.state,
+                address.postal_code,
+            )
+            == wanted
+        ):
+            return address
+    return None
 
 
 def _format_address(address: UserSavedAddress) -> str:
@@ -219,6 +284,44 @@ def create_user_saved_address(
     payload: SavedAddressCreateRequest,
 ) -> SavedAddressResponse:
     existing_addresses = _load_saved_addresses(db, user, fail_open=True)
+
+    # Saving the same place twice is a no-op that returns what is already
+    # there, rather than a second row. The caller gets a 201 with the existing
+    # address, which is what it wanted: an id it can attach to the order.
+    #
+    # The `fail_open=True` above cannot smuggle a duplicate past this. It
+    # returns an empty list only for a STORAGE error — a missing table or
+    # column, per `_is_saved_address_storage_error` — and in that state the
+    # insert below fails against the same missing table, so the request ends
+    # as a clean 503 rather than as a second row written blind.
+    duplicate = _matching_saved_address(existing_addresses, payload)
+    if duplicate is not None:
+        # Two things the re-save is still allowed to carry. A phone number
+        # fills a gap rather than overwriting one, because the stored number
+        # may be the one a courier has already used. An explicit default
+        # request is honoured, since that is the only way to promote an
+        # address that happens to be a duplicate.
+        changed = False
+        if payload.phone_number and not duplicate.phone_number:
+            duplicate.phone_number = payload.phone_number.strip() or None
+            changed = True
+        if payload.is_default and not duplicate.is_default:
+            _set_default_address(db, user, duplicate)
+            changed = True
+        # Only when something actually moved. A re-save of an unchanged
+        # address — which is the common case, since the checkout sends it on
+        # every order — then writes nothing at all.
+        if changed:
+            try:
+                db.commit()
+            except SQLAlchemyError as exc:
+                db.rollback()
+                if _is_saved_address_storage_error(exc):
+                    _raise_saved_address_unavailable(exc)
+                raise
+            db.refresh(duplicate)
+        return _serialize_saved_address(duplicate)
+
     next_address = UserSavedAddress(
         user_id=user.id,
         label=_normalize_address_label(payload.label),

@@ -102,6 +102,16 @@ export type SavedAddress = {
   phone_number: string | null;
   is_default: boolean;
   formatted_address: string;
+  /** Where this address actually is.
+   *
+   * The server has returned these all along and this type did not declare
+   * them, so the checkout could not read them — which meant picking a saved
+   * address sent no coordinates and the order was refused with "choose your
+   * address from the suggestions". A returning customer could not place a
+   * delivery order at all. Null for an address saved before coordinates were
+   * captured, which is why the checkout still has to cope without them. */
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type SavedAddressCreate = {
@@ -488,6 +498,12 @@ export type OrderCreateRequest = {
   // typed line — which resolves to a neighbourhood and is free to differ.
   latitude?: number | undefined;
   longitude?: number | undefined;
+  /** The saved address this is going to, when one was chosen from the list.
+   *
+   * The server reads its stored coordinates when the two above are missing, so
+   * an address saved before this build — or one whose coordinates never came
+   * back — is still a located address rather than a refusal. */
+  saved_address_id?: string | undefined;
   contact_name?: string;
   contact_phone?: string;
   special_instructions?: string | null;

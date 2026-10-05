@@ -7,6 +7,7 @@ import type {
   StorefrontCopyKey,
   BranchLocationLookup,
   OrderDelivery,
+  LiveOrdersBoard,
   AdminAILog,
   AdminPreferenceOption,
   AdminPreferenceQuestion,
@@ -21,6 +22,8 @@ import type {
   AppClientUpsertPayload,
   PaymentGateway,
   PaymentGatewayPayload,
+  CommissionReport,
+  PlatformWatch,
   RestaurantCapability,
   RestaurantPaymentSettings,
   TenantStatusPayload,
@@ -194,6 +197,14 @@ function scopeQuery(restaurantId?: string | null): string {
 export const api = {
   login(input: { email: string; password: string }): Promise<AuthResponse> {
     return request<AuthResponse>('/auth/login', { method: 'POST', body: input });
+  },
+  /** System health, what needs attention, and today per restaurant. ADMIN only. */
+  getPlatformWatch(token: string): Promise<PlatformWatch> {
+    return request<PlatformWatch>('/admin/platform-watch', { token });
+  },
+  /** What the platform earned per restaurant over the last `days`. ADMIN only. */
+  getCommissionReport(token: string, days: number): Promise<CommissionReport> {
+    return request<CommissionReport>(`/admin/commission?days=${days}`, { token });
   },
   getAdminDashboard(token: string): Promise<AdminDashboardStats> {
     return request<AdminDashboardStats>('/admin/dashboard', { token });
@@ -1032,6 +1043,21 @@ export const api = {
       body: { is_available: isAvailable },
     });
   },
+  /**
+   * The one-tap stock change: mark a dish out of stock or back in, or set
+   * its count. Only what is sent is changed.
+   */
+  updateMenuItemStock(
+    token: string,
+    menuItemId: string,
+    change: { out_of_stock?: boolean; stock_quantity?: number | null },
+  ): Promise<MenuItem> {
+    return request<MenuItem>(`/menu-items/${menuItemId}/stock`, {
+      method: 'PATCH',
+      token,
+      body: change,
+    });
+  },
   deleteMenuItem(token: string, menuItemId: string): Promise<void> {
     return request<void>(`/menu-items/${menuItemId}`, { method: 'DELETE', token });
   },
@@ -1101,6 +1127,20 @@ export const api = {
     }
     await response.json().catch(() => null);
     return Number(response.headers.get('X-Total-Count') ?? 0);
+  },
+  /**
+   * The live board: every open order in scope and what was delivered since
+   * `completedFrom` — the viewer's own midnight, which the server cannot know.
+   */
+  getLiveOrders(
+    token: string,
+    opts: { completedFrom: Date; restaurantId?: string | null },
+  ): Promise<LiveOrdersBoard> {
+    const params = new URLSearchParams({ completed_from: opts.completedFrom.toISOString() });
+    if (opts.restaurantId) {
+      params.set('restaurant_id', opts.restaurantId);
+    }
+    return request<LiveOrdersBoard>(`/orders/live?${params.toString()}`, { token });
   },
   getOrder(token: string, orderId: string): Promise<Order> {
     return request<Order>(`/orders/${orderId}`, { token });

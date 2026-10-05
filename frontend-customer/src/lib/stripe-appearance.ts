@@ -40,10 +40,15 @@ export function stripeAppearance(dark: boolean): Appearance {
   // The surface the Element sits on, which is also what its inputs should be:
   // this storefront's own fields are `bg-transparent` over a border, so a
   // filled white box inside a dark card is doubly out of place.
-  const surface = token("--surface", dark ? "#191b20" : "#ffffff");
-  const text = token("--text", dark ? "#f8fafc" : "#14171f");
-  const muted = token("--muted", dark ? "#a7adb7" : "#6b7280");
-  const border = token("--border", dark ? "#343740" : "#e5e7eb");
+  // The fallbacks mirror the storefront's own neutrals in `styles.css`. They
+  // are only reached on the server or before the theme script runs, but a
+  // stale one is a flash of the OLD palette inside the card form, which is the
+  // single place on this site that cannot read a token — so they move whenever
+  // the palette does.
+  const surface = token("--surface", dark ? "#1a1e19" : "#ffffff");
+  const text = token("--text", dark ? "#f2f5f0" : "#161a14");
+  const muted = token("--muted", dark ? "#a8b0a3" : "#5b6356");
+  const border = token("--border", dark ? "#2b3129" : "#dce2d8");
   const primary = token("--primary", "#ff5200");
   const danger = token("--danger", dark ? "#f87171" : "#dc2626");
   const radius = token("--radius", "0.5rem");

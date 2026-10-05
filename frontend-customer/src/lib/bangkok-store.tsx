@@ -268,6 +268,15 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!locations.length) return;
     setState((s) => {
+      // One branch is not a choice. Asking "which branch?" with a single
+      // answer on offer put a modal between a new visitor and the menu for
+      // nothing, at most restaurants on the platform — so it is settled here.
+      const only = locations.length === 1 ? locations[0] : undefined;
+      if (only) {
+        return s.branchId === only.id && s.branchChosen
+          ? s
+          : { ...s, branchId: only.id, branchChosen: true };
+      }
       if (s.branchId && locations.some((l) => l.id === s.branchId)) return s;
       const preferred = pickDefaultLocation(locations);
       return preferred ? { ...s, branchId: preferred.id } : s;
@@ -443,7 +452,15 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
         locations.find((l) => l.id === (state.cart[0]?.restaurantLocationId ?? state.branchId)) ??
         locations.find((l) => l.id === state.branchId),
       branchChosen: state.branchChosen,
-      isRestaurantLoading: appConfigQuery.isLoading || restaurantQuery.isLoading,
+      // `isPending`, not `isLoading`. `isLoading` is "fetching for the first
+      // time", which a query that has not started yet is not — on the server,
+      // and on the first client render, both of these are idle and so "not
+      // loading" with no data. Screens read that as "loaded and empty". The
+      // error is excluded because a failed /app-config leaves the restaurant
+      // query disabled, and so pending, for good.
+      isRestaurantLoading:
+        !(appConfigQuery.isError || restaurantQuery.isError) &&
+        (appConfigQuery.isPending || restaurantQuery.isPending),
       // Distinguished from "loading" and from "empty": a menu screen that
       // says "nothing matches that" because the server was unreachable is
       // telling the customer something false about the restaurant.
@@ -475,8 +492,8 @@ export function BangkokStoreProvider({ children }: { children: ReactNode }) {
       clearCart,
       applyCartActions,
       undoLastChatTurn,
-      appConfigQuery.isLoading,
-      restaurantQuery.isLoading,
+      appConfigQuery.isPending,
+      restaurantQuery.isPending,
       appConfigQuery.isError,
       restaurantQuery.isError,
     ],

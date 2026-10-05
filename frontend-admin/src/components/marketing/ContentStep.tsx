@@ -17,7 +17,7 @@ import { BadgePercent, Check, Hash, Image, Link2, Tag } from 'lucide-react';
 import { CampaignNotices } from './CampaignNotices';
 import { getChannel, messageParts } from './channels';
 import { MERGE_FIELDS, findUnknownTokens } from './mergeFields';
-import { formatCurrency } from '../../services/api';
+import { useMarketingMoney } from '../../hooks/useMarketingMoney';
 import { marketingReference } from '../../services/marketing/marketingApi';
 import type {
   CampaignContent,
@@ -58,6 +58,8 @@ export function ContentStep({
   onExtra,
   onOffer,
 }: ContentStepProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   const definition = getChannel(channel);
   const spec = definition.content;
   const isSocial = definition.family === 'SOCIAL';

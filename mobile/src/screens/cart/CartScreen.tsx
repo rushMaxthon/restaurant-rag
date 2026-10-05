@@ -95,7 +95,10 @@ export function CartScreen(): React.JSX.Element {
   const { width: screenWidth } = useWindowDimensions();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token, user } = useSession();
+  const { token, user, appConfig } = useSession();
+  // A per-restaurant switch the platform admin sets. Absent - an older
+  // backend, or app config not loaded yet - means on, as it always was.
+  const promoOffered = appConfig?.capabilities?.promo_code !== false;
   // The restaurant's clock. Undefined until /app-config lands, which every
   // formatter below reads as "use the device's" - the old behaviour.
   const timeZone = useBusinessTimeZone();
@@ -1378,6 +1381,13 @@ export function CartScreen(): React.JSX.Element {
 
       navigation.navigate('Payment', {
         instructions,
+        // Carried to where the order is created. It was typed here and then
+        // dropped: the Payment screen reads `route.params.promoCode` and this
+        // call never set it, so no code typed in the app ever reached an
+        // order. Left out when the box is switched off for this restaurant.
+        ...(promoOffered && promoCode.trim()
+          ? { promoCode: promoCode.trim() }
+          : {}),
         validatedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -1666,7 +1676,9 @@ export function CartScreen(): React.JSX.Element {
               <View style={styles.formAccordionCopy}>
                 <Text style={styles.formTitle}>Order details</Text>
                 <Text style={styles.formSubtitle}>
-                  Instructions, and a promo code if you have one
+                  {promoOffered
+                    ? 'Instructions, and a promo code if you have one'
+                    : 'Instructions for the kitchen or rider'}
                 </Text>
               </View>
               <Animated.View
@@ -1687,15 +1699,17 @@ export function CartScreen(): React.JSX.Element {
                   style={[styles.input, styles.notesInput]}
                   value={instructions}
                 />
-                <TextInput
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  onChangeText={next => setPromoCode(next.toUpperCase())}
-                  placeholder="Promo code from a post (optional)"
-                  placeholderTextColor={theme.colors.hint}
-                  style={styles.input}
-                  value={promoCode}
-                />
+                {promoOffered ? (
+                  <TextInput
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    onChangeText={next => setPromoCode(next.toUpperCase())}
+                    placeholder="Promo code from a post (optional)"
+                    placeholderTextColor={theme.colors.hint}
+                    style={styles.input}
+                    value={promoCode}
+                  />
+                ) : null}
               </View>
             ) : null}
           </View>

@@ -303,7 +303,11 @@ export function RestaurantDetailPage({
         icon: typeof Store;
       }> = [
         { key: "details", label: "Details", icon: Store },
-        { key: "settings", label: "Settings", icon: Settings2 },
+        // "Payments & features", not "Settings". The branch screen one level down
+        // has its own Settings tab AND a General Settings tab, so three unrelated
+        // things shared one word — and the one holding the gateway keys was the
+        // hardest of the three to guess.
+        { key: "settings", label: "Payments & features", icon: Settings2 },
         { key: "offers", label: "Offers", icon: ReceiptText },
       ];
 
@@ -318,7 +322,7 @@ export function RestaurantDetailPage({
           { key: "locations", label: "Locations", icon: Eye },
           {
             key: "generated_combos",
-            label: "Generated Combos",
+            label: "Combo suggestions",
             icon: Layers3,
           },
           { key: "menu", label: "Menu Items", icon: UtensilsCrossed },
@@ -920,6 +924,7 @@ export function RestaurantDetailPage({
         />
       ) : null}
       <PageIntro
+        help="restaurant-detail"
         eyebrow={isAdmin ? "Restaurant workspace" : "Assigned restaurant"}
         title={restaurant.name}
         description={

@@ -236,7 +236,7 @@ def _build_candidate_query() -> Select[tuple[MenuItem, Restaurant, RestaurantLoc
         .join(Restaurant, MenuItem.restaurant_id == Restaurant.id)
         .join(RestaurantLocation, MenuItem.restaurant_location_id == RestaurantLocation.id)
         .where(
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             Restaurant.is_active.is_(True),
             Restaurant.is_approved.is_(True),
             RestaurantLocation.is_active.is_(True),

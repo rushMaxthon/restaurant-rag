@@ -29,8 +29,10 @@ import {
   statusClass,
   statusLabel,
 } from '../components/marketing/meta';
-import { formatCompactCurrency, formatCurrency, formatDate } from '../services/api';
-import { pluralize } from '../services/format';
+import { useMarketingScope } from '../hooks/useMarketingScope';
+import { formatDate } from '../services/api';
+import { useMarketingMoney } from '../hooks/useMarketingMoney';
+import { pluralize, shortDay } from '../services/format';
 import {
   cancelCampaign,
   duplicateCampaign,
@@ -43,6 +45,7 @@ import {
   subscribeToDemoMode,
 } from '../services/marketing/marketingApi';
 import type { Campaign } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface CampaignDetailPageProps {
   campaignId: string;
@@ -90,14 +93,24 @@ export function CampaignDetailPage({
   onNavigate,
   onToast,
 }: CampaignDetailPageProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency, compact: formatCompactCurrency } = useMarketingMoney();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
+  // Called before `load` on purpose: the hook's effect writes the scope the
+  // request is sent with, and effects run in the order they are declared.
+  // Without it this page relied on the Hub having been visited first in this
+  // browser, and a link opened cold answered `restaurant_id is required`.
+  const scope = useMarketingScope();
 
   const load = useCallback(async () => {
+    if (!scope.ready) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -108,7 +121,8 @@ export function CampaignDetailPage({
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+    // The restaurant is a dependency: switching it in the sidebar refetches.
+  }, [campaignId, scope.ready, scope.selectedRestaurantId]);
 
   useEffect(() => {
     void load();
@@ -264,7 +278,10 @@ export function CampaignDetailPage({
             <GoalIcon size={12} strokeWidth={2.6} />
             {goal.label}
           </span>
-          <h1 className="mkt-hero__title">{campaign.name}</h1>
+          <div className="tip-row">
+            <h1 className="mkt-hero__title">{campaign.name}</h1>
+            <PageHelpTip page="campaign-detail" />
+          </div>
           <p className="mkt-hero__lead">
             {segment.name} · {branchLabel(campaign.branch_ids)} ·{' '}
             {getChannel(primaryChannel(campaign.channels)).label}
@@ -491,9 +508,9 @@ export function CampaignDetailPage({
                   <VerticalBarsChart
                     className="dashboard-admin-bars"
                     data={attribution.daily.map((day) => ({
-                      label: day.label,
+                      label: shortDay(day.label),
                       value: day.revenue,
-                      meta: `${day.label} · ${pluralize(day.orders, 'order')}`,
+                      meta: `${shortDay(day.label)} · ${pluralize(day.orders, 'order')}`,
                     }))}
                     valueFormatter={(value) => formatCurrency(value)}
                   />

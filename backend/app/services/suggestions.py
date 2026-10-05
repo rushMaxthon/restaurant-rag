@@ -604,7 +604,7 @@ def suggestion_for_cart(
         for item in db.scalars(
             select(MenuItem).where(
                 MenuItem.restaurant_location_id == restaurant_location_id,
-                MenuItem.is_available.is_(True),
+                MenuItem.is_on_sale,
             )
         ).all()
     }
@@ -643,7 +643,7 @@ def suggestion_for_cart(
             menu_item_id=item.id,
             category=item.category,
             is_veg=item.is_veg,
-            is_available=item.is_available,
+            is_available=item.is_on_sale,
         )
         for item_id, item in menu_items.items()
     }

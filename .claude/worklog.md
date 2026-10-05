@@ -17,6 +17,16 @@ Running log of what each session did. Newest entry at the top.
 **Template**
 
 ```
+
+## YYYY-MM-DD — short title
+
+**Goal:** what was asked.
+**Changed:** files/areas touched, one line each.
+**Verified:** exact commands run and their result. "Not verified" if not run.
+**Open:** anything unfinished, deferred, or uncertain.
+**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
+```
+
 ## 2026-10-05 — Kitchen push notifications (app + backend)
 
 **Goal:** complete new-order push for the kitchen app, modelled on mobile's
@@ -91,6 +101,367 @@ will 401 against a real backend and land on login with the expired notice.
 - `react-native-sound` 0.13 dropped `require()` assets and does not link
   AVFoundation itself.
 
+## 2026-10-05 (platform watch, sidebar)
+
+**Goal:** give the super admin one place to see whether anything is wrong,
+and make the sidebar findable.
+
+**Changed:**
+- `services/platform_watch.py` + `GET /admin/platform-watch` + the admin-only
+  Platform watch page. Checks (database, Redis, worker, beat, queues, Ollama,
+  courier, realtime) run in parallel threads inside a 6-second budget while the
+  database questions run in the request thread. Issues across every restaurant,
+  worst first, each with a link to where it is fixed. Today per restaurant.
+- `tasks/platform.heartbeat_task`, beat every minute, writes
+  `platform:heartbeat:last_seen`; a fresh key proves beat AND a worker.
+- Sidebar: groups by job (Overview, Orders, Menu & offers, Restaurant,
+  Customers & growth, AI, Platform), none over five entries; folding remembered
+  in localStorage, the current page's group always open; a "Find a page" box
+  with keywords per route (`/` focuses it, Enter opens the best match); a badge
+  on Live orders with today's waiting count; Settings moved to the footer.
+
+**Verified:** backend 3,029, admin 436, build. Live as admin: all eight checks,
+9 issues (one high: Famous Fast Food Branch 2 has nothing on sale), 13
+restaurants. In the browser as admin and owner: groups, folding, search,
+Enter, the badge with a real waiting order, the collapsed rail.
+
+**Open:**
+- Celery beat is now running locally too (`logs/celery-beat.log`), so the
+  daily restock and the reaper run here.
+- Platform watch's first load after a server start is ~5 s; after that ~2 s.
+
+**Learned:**
+- On Windows `localhost` is tried as IPv6 first: the first Celery ping in a
+  process took 9 s and every new Redis connection 2 s. `127.0.0.1` fixes it;
+  the backend's own URLs still say localhost.
+
+## 2026-10-05 (stock by hand, by size and by day; commission earned; live board actions)
+
+**Goal:** finish what the stock feature could not say, let the admin act from
+the live board and see what the commission earned, and clear the demo data.
+
+**Changed:**
+- **Stock, three more ways** (migration `0080_stock_sizes_manual_daily`).
+  `menu_items.out_of_stock` is a manual switch: on the menu, marked, cannot be
+  added. `menu_item_sizes.stock_quantity` is a size's own count; a size without
+  one draws on the dish's. `stock_daily_quantity` on both is set back each
+  morning by `tasks/stock.restock_daily_task` (beat, 04:30 business time).
+  `order_items.stock_reserved_size` records which count a line took from.
+  `PATCH /menu-items/{id}/stock` is the one-tap change.
+- `MenuItem.is_on_sale` (hybrid) is what the chat, the recommendations and the
+  cart suggestions filter on, so none of them offers an out-of-stock dish.
+- **Commission earned** (migration `0079_order_commission`). Each order stores
+  `commission_percent` and `commission_amount` at creation.
+  `GET /admin/commission` and the admin-only Commission page add them up.
+- **Live board:** each card has its next step, two taps, the first saying what
+  it will do. Rule in `liveOrders.nextAction`.
+- Owners: the commission rate, its tile and its field are not shown, and their
+  menu list shows the typed price (`menuListPrice`).
+- Mobile: `utils/stock.ts` `isOnSale` replaces `is_available` on six screens;
+  the promo field follows the `promo_code` capability - and is now actually
+  sent, which it never was (`CartScreen` navigated to Payment without it).
+
+**Verified:** backend 3,013 tests (one stand-in size without the new fields,
+fixed). Admin 415, storefront 500, kitchen 84, mobile 181 + `tsc`. Live: a dish
+marked by hand was refused and came back; a size at 0 was refused by name while
+its sibling sold its 2; the refill task took a 2 back to its daily 7; an order
+recorded 10.00 at 10% and the report showed it; a pickup was accepted from the
+board. In a browser: the size tile disabled and labelled, the admin's list
+actions, the editor's new fields.
+
+**Open:**
+- **`0079` and `0080` were applied to Supabase by hand**, like `0077`/`0078`.
+- **The mobile app does not read per-size stock.** The server refuses it.
+- **Beat is not running locally**, so the morning refill only fires where a
+  beat process runs. Not exercised on a schedule, only by calling the task.
+- The admin's 57 structural lint errors are untouched on purpose: 46 are
+  data-loading effects (`set-state-in-effect`) and each fix is a rewrite of how
+  a page loads, days before a demo, for nothing a user can see.
+- A real payment and the order tracking page have still not been looked at.
+- `mobile/__tests__/App.test.tsx` fails to run, with or without this work.
+- Supabase's session pool is still mostly held from elsewhere.
+
+**Learned:**
+- **The storefront's Playwright suite places real orders** in whatever
+  database the backend points at - "Playwright Tester", paid in test mode,
+  delivery. Left alone they sit in New on the live board, one Accept away
+  from a real rider on the live Pidge account. Clean them after every run.
+- `git stash` to measure a baseline reverts files under running dev servers.
+  It was harmless here and is not a habit to keep.
+- A `sed` that rewrites `item.is_available` also rewrites `result.item.
+  is_available` into nonsense. Run the type checker before believing a rename.
+
+## 2026-10-05 (stock, phone layout, delivery GST, promo switch)
+
+**Goal:** stop a dish being sold past what the kitchen has; give the phone
+layout the care the desktop had; stop taxing a courier's fee twice; make the
+promo code box a switch.
+
+**Changed:**
+- **Stock.** `menu_items.stock_quantity` (NULL = not counted) and
+  `order_items.stock_reserved`, migration `0078_menu_item_stock`.
+  `services/stock.py` owns it: `ensure_in_stock` in `_prepare_order_draft`,
+  `reserve` in `create_order`, `release` in `mark_order_cancelled`. Admin:
+  "Stock left" in the dish editor, a Stock column in the menu list. Storefront:
+  `lib/stock.ts`, used by the dish card, the dish page and the cart.
+- **Phone.** Menu is two cards to a row under 640px; the branch row is not
+  drawn for a one-branch restaurant; the cart's bill comes before its
+  suggestions; login starts at the top.
+- **Delivery GST.** `quoting.before_delivery_tax` takes the branch's delivery
+  tax back out of a courier's quote, so the tax line charges it once.
+- **Promo code.** A `promo_code` capability, on by default; off, the box is
+  hidden and `promo_code_to_record` stores nothing.
+- Admin page descriptions and sidebar names tidied; checkout's pre-address
+  total no longer adds a guessed 5%.
+
+**Verified:** backend 2,988 tests (the 4 that broke were stand-in orders with
+no `items`, fixed in `test_delivery_cancel`). Admin 382, storefront 492,
+kitchen 84; both builds. Live, against the running backend: stock 3 refused an
+order of 4 by name, an order of 2 left 1, a second 2 was refused, cancelling
+the first gave 2 back; a PUT without the field kept the count. In a browser:
+the card, dish page and cart all stop at the count and say why.
+
+**Open:**
+- **`0078` was applied to Supabase by hand** (migration `menu_item_stock`),
+  as `0077` was. The stamp is still behind; the revision is guarded.
+- **One count per dish.** Sizes share it and each takes one. Per-size stock
+  is not built.
+- **The chat and the recommendation rows do not read stock.** They can still
+  suggest a sold-out dish; the order is refused when it is placed. The mobile
+  app shows no stock either, and is refused the same way.
+- An owner sets a count and it only ever goes down. There is no daily reset
+  and no low-stock alert.
+- Supabase's session pool had no free slot at one point today. See the entry
+  below; still not found.
+- Two throwaway "Review Walkthrough" customers and two cancelled test orders
+  are in the shared database.
+
+**Learned:**
+- `PUT /menu-items/{id}` replaces a dish whole, so any new optional field
+  arrives as its default from a client that has never heard of it. Read
+  `model_fields_set` or the first old client to save a dish erases it.
+- A heredoc carrying Python with triple-quoted strings and apostrophes fails
+  in Git Bash with "unexpected EOF". Write the script with the Write tool.
+- A test that passes a `SimpleNamespace` order to `mark_order_cancelled`
+  breaks the moment that function reads one more attribute. Three suites do.
+
+## 2026-10-05 (page help, storefront review)
+
+**Goal:** make the admin explain itself without spending the screen on it, then
+walk the customer site in a browser and fix what the walk turned up.
+
+**Changed:**
+- `frontend-admin`: the live board's guide panel is gone. `InfoTip` opens on
+  click only, as an "i", and caps itself to the room on screen. Every page has
+  one beside its title via `PageHelpTip`; the copy for all 26 pages, per role,
+  is `services/pageHelp.ts`, and `PageIntro` takes `help="<id>"`.
+- `frontend-customer`: `lib/menu-phase.ts` decides skeleton / failed / empty /
+  ready for the menu; `isRestaurantLoading` is `isPending`-based. A one-branch
+  restaurant no longer shows the branch gate. `soleSize` lets a card add a
+  one-size dish directly, and the dish page loses its empty choices box. The
+  dish page's tab carries the dish name; the phone placeholder names no
+  national format; the login headline no longer implies the menu is gated.
+- `backend/.env` (untracked): `DB_POOL_SIZE=2`, `DB_MAX_OVERFLOW=0`.
+
+**Verified:** admin 378 tests, build, lint delta zero. Storefront 480 tests,
+`tsc`, build, lint delta zero. In the browser: 22 admin pages as the owner; on
+the storefront the menu, a one-size dish, the card add, the cart and login.
+
+**Open:**
+- **12 of Supabase's 15 session-pool slots are held from somewhere else.**
+  Measured with both local processes stopped: the fourth connection is refused.
+  Nothing in this checkout holds them. Until that is found, or the pool size is
+  raised in the dashboard, this machine has three connections to live on.
+- Not walked: checkout and order tracking signed in, the phone layout, dark
+  mode, the concierge. Admin tips not seen as ADMIN or on the admin-only pages.
+- Four tip titles use the sidebar's name where the page heading differs.
+
+**Learned:**
+- `EMAXCONNSESSION` on a 500 arrives with no CORS headers, so the browser
+  reports a network failure and TanStack Query retries — and a retry PAUSES
+  while the tab is hidden. An automation tab is always hidden, so one refused
+  connection there is a query pending for good, which is what "0 dishes"
+  was. A visible tab retries after a second and nobody notices.
+- Screenshots of a hidden tab time out about one time in three. Read the DOM
+  with JavaScript first and screenshot only what has to be seen.
+- A Python `"\b"` written through a quoted heredoc reached the file as a
+  backspace, not a word boundary. eslint's `no-control-regex` caught it.
+
+## 2026-10-05 (live orders) — A live orders board for the admin and the owner
+
+**Goal:** the platform admin sees every restaurant's orders in progress — what
+is waiting, cooking, on the road, done — and an owner sees their own, with the
+rider and the courier's tracking link.
+
+**Changed:**
+- `GET /orders/live` (`services/live_orders.py`): `list_orders` asked once per
+  status, so the board cannot show a row the Orders page would not; deliveries
+  read once for the whole board; `restaurants` is an exact per-restaurant count
+  from one grouped query (`count_live_orders_by_restaurant`). The scope part of
+  `list_orders` was lifted into `_scope_orders` so both readers share it.
+- `frontend-admin`: `/live-orders` ("Live orders" in the sidebar, above Orders,
+  both staff roles). `LiveOrdersPage`, rules in `services/liveOrders.ts`,
+  styles under the `live-` family at the end of `legacy.css`.
+- The admin's restaurant pick is sent to the server, not filtered in the
+  browser: a column carries its first 100 cards, so a quieter restaurant's
+  orders were not in the list to be filtered (seen live: chip said 4 new,
+  column showed 0). The picker strip itself is deliberately not narrowed.
+
+**Verified:** `test_live_orders` (13); full backend suite 2,966 run, 1 failure,
+the pre-existing Celery task-list check. Admin 361 tests, build and lint clean.
+In the browser as owner and as admin, dark and light, and at 390px in a frame:
+counts, the restaurant pick, the Track link (`_blank`, `noopener`), no
+horizontal overflow, 44px targets on the phone layout.
+
+**Second pass, same day — backlog, and a board that explains itself:**
+- Open stages are now sent NEWEST first and anything waiting more than 24h is
+  counted apart (`stale_total`, `restaurants[].stale`, `stale_after_minutes`).
+  Oldest-first with a cap of 100 meant that with 213 stale PLACED rows in the
+  database, tonight's new order was not on the board at all. Backlog sits in a
+  folded section under each column; the headline numbers are today's work.
+- `components/InfoTip.tsx`: a "?" with a portalled bubble (hover, focus, tap),
+  answering what it is / who handles it / what you do. On every stat tile,
+  every column, the progress tile and the admin's restaurant strip. The copy
+  is in `services/liveOrders.ts` and differs by role — an admin is told to call
+  the restaurant, not to accept an order they have no button for.
+- A "How to read this board" guide, open until closed (remembered in
+  localStorage), and a `title` on every badge, tag and button on a card.
+
+**Verified (second pass):** `test_live_orders` 14; backend suite 2,967 run, the
+same 1 pre-existing failure. Admin 374 tests, build and lint clean. In the
+browser as owner and admin: tips open on hover and on tap and close on Escape,
+the backlog section folds, phone width has no overflow and 44px targets.
+
+**Open:**
+- Not committed or pushed.
+- Every open order in the shared database is more than a day old (233 of
+  them), so the live columns read 0 with the backlog folded underneath. The
+  board is right; a fresh order is needed to see a live card.
+- The board has no "advance status" action; it opens the order page for that.
+- `Refresh` is the shared `secondary-button`, 40px tall on a phone.
+
+## 2026-10-04 (commission) — The platform's commission goes into the menu price
+
+**Goal:** "our commission" as an editable percent, 10 by default, added to the
+menu price.
+
+**Changed:**
+- `restaurant_locations.commission_percent` (default 10). The customer price is
+  the typed price plus the rate; `price` stays "what the customer pays" and the
+  typed figure is kept in `base_price` / `base_extra_price`.
+- `services/menu_pricing.py` is back (deleted in 0076 as the GST markup), now
+  driven by the rate. Prices are rewritten on an item save and when the rate
+  changes; the GST switch still rewrites nothing.
+- Only an ADMIN may change the rate — `_apply_location_changes` refuses an
+  owner with 403; an owner opening a branch gets the default.
+- Admin: "Our commission (%)" on the branch's Fulfilment & fees form (read-only
+  for an owner), a hero tile, and the item editor loads the typed price again.
+- `0077_commission_percent` marks up every existing price by its branch's rate.
+
+**Verified:** `test_menu_commission` (22) and `test_gst_menu_prices` pass; full
+backend suite 2,948 run, 2 failures, both there before this work
+(`test_celery_loads_every_task_module_the_way_a_worker_does`,
+`test_a_figure_the_model_was_not_shown_is_still_rejected`). Admin 336 tests and
+build pass. 0077 run up, up again and down on a throwaway local database.
+Live through the API on Bhagwati: 50 -> 55 at 10%, 56 at 12%, back to 55; a new
+item typed 100 lists at 110 and stays 110 after a second save; a non-admin
+changing the rate is 403.
+
+**Supabase:** 0077 applied by hand (MCP migration `commission_percent`), the
+user having chosen "add 10% to all": 2,065 items across 32 branches repriced,
+caches flushed, combos refreshed, re-embeds queued. The stamp is still
+`0074_print_agents`.
+
+**Open:**
+- Done 2026-10-05: the rate and the typed prices are sent to ADMIN and OWNER
+  only (`menu_pricing.sees_typed_prices`); `build_location_response` and
+  `serialize_menu_item` take a `viewer` and hide by default. Checked live:
+  anonymous and customer get none on the restaurant, branch and menu routes.
+- Nothing reports the commission earned per order; the order keeps only the
+  customer price.
+- `seed.py` inserts items with no base, so a seeded menu is not marked up until
+  the branch's rate is next changed.
+
+## 2026-10-04 (GST) — The GST switch no longer changes prices
+
+The switch was built backwards. The owner meant "my menu prices already
+include GST"; `0075` made ON add 18% to every typed price. Now:
+
+- ON: typed price is what the customer pays, no food tax at checkout.
+- OFF: menu is before tax, the branch's `tax_percent` is added on the bill.
+
+`services/menu_pricing.py`, `base_price` / `base_extra_price` (models, schemas,
+favorites, admin types and editor) and the reprice hooks in both branch PATCH
+routes are gone. `order_charges.for_location` is the only reader of the flag.
+Admin wording rewritten ("Menu prices already include GST").
+
+**Applied to Supabase** the same day, by hand through the Supabase MCP (the
+stamp there is still `0074_print_agents`, so alembic did not run it): Bhagwati
+Bakery's 187 items and 298 sizes are back at the typed price, the base columns
+are gone, caches flushed, 187 re-embeds queued (no Celery worker was running).
+The OFF rate is the branch's own `tax_percent` (default 5), not a fixed 18.
+
+## 2026-10-04 — Rider cancel, GST inside menu prices, admin panel visual refresh (Windows checkout, branch `redesign`)
+
+**Goal:** three asks before a client demo: make sure Pidge's four vendor calls
+are all wired, add a per-branch "18% GST in menu prices" switch, and make the
+admin panel look like one product.
+
+**Changed:**
+- **Delivery** — `cancel` on the courier contract, the Pidge and rehearsal
+  providers, `service.cancel`, `cancel_order_delivery_task`, queued after commit
+  from `mark_order_cancelled`. See `backend/docs/delivery-integration.md`.
+- **GST** — `restaurant_locations.gst_in_menu_prices`; `base_price` beside every
+  price (`menu_items`, `menu_item_sizes`, `…options.base_extra_price`);
+  `services/menu_pricing.py` rewrites `price` when an item is saved or the
+  switch moves; `order_charges.for_location` charges no food tax when it is on.
+  Migration `0075_gst_in_menu_prices`. Admin: `GstPriceSwitch` on the Menu Items
+  page and the branch's Menu Items tab.
+- **Admin refresh** — spec and plan in `docs/superpowers/`. Tokens for weight,
+  role spacing and role radius in `frontend-admin/src/index.css`;
+  `styleBudget.test.ts` is a ratchet over `legacy.css`; every class family
+  except the branding phone preview is on the spacing and weight scales.
+
+**Verified:** backend `test_gst_menu_prices` + menu + order suites; admin
+`npm run test` (312) and `npm run build`; GST switched on and off against the
+live API on one branch, prices restored exactly, order validation total
+checked. The refresh was verified with `scripts/audit-pages.js` in dark and
+light on the owner's screens.
+
+**Open:**
+- **The refresh was looked at late, and only as OWNER.** Tasks 3-10 were done
+  with the browser window hidden and checked by the audit's numbers alone. A
+  visual pass followed (dark and light at desktop, eight screens at 390px) and
+  a fresh-context review, which found what the audit could not: literal whites
+  swapped for `--on-primary` on grounds that do not theme. Fixed in `de52e78`.
+  The padding-longhand snap in that commit came AFTER the visual pass.
+- ADMIN-only screens (Restaurants list, Storefront apps, AI Logs,
+  Notifications) and Login were not viewed at all.
+- `0075` parents on `0073`; the print branch has `0074_print_agents` on the
+  same parent, and Supabase is stamped `0074`. Re-point `0075` at `0074` when
+  the print branch merges. The columns were applied to Supabase through its
+  own migration tool, not alembic.
+- No real cancel was sent to live Pidge, and no real payment was taken with
+  the GST switch on.
+- Full backend suite still not run on this branch.
+
+**Learned:**
+- **A literal offset equal to an old gap is a coupling.** Snapping `gap: 10px`
+  to a token left the order timeline's connector (`right: -10px; width: 10px`)
+  2px short. After moving any spacing, grep for the old number as an offset.
+- **`.field span` outranks a bare class.** `.web-tag`, `.web-hint` and
+  `.web-count` never got their own size or ink for that reason; the same
+  trap as `.admin-table__cell-content span` and the doubled badge tones.
+- **A hidden browser tab freezes CSS transitions**, so the audit read after a
+  theme toggle reports the OLD theme's colours as leaks. Navigate after
+  toggling; freshly mounted elements have the right values.
+- **`git checkout -- file` on this machine hands back CRLF** (autocrlf), and a
+  patch anchor written with `
+` then matches nothing.
+- Marketing (`.mkt`, `.mkt-hub`) has its own scoped tokens with `.dark` twins;
+  its literals are definitions, not strays. The phone preview (`ph-`) is a
+  drawing of the customer app and is not on the panel's scale on purpose.
+
 ## 2026-10-03 — kitchen/ (RN app) given mobile's file architecture
 
 **Goal:** lay out the new React Native kitchen app (`kitchen/`, untracked here,
@@ -146,14 +517,217 @@ placeholders — no data fetching or order actions yet.
 - Jest needs `@react-navigation` and `standard-navigation` added to
   `transformIgnorePatterns` — they ship untranspiled ES modules.
 
-## YYYY-MM-DD — short title
+## 2026-10-03 (4) — A disabled Pay button now says why
 
-**Goal:** what was asked.
-**Changed:** files/areas touched, one line each.
-**Verified:** exact commands run and their result. "Not verified" if not run.
-**Open:** anything unfinished, deferred, or uncertain.
-**Learned:** non-obvious things worth keeping (promote permanent ones to CLAUDE.md).
-```
+**Goal:** "if the button is disable then we need to show user what's the issue
+why it's disable right".
+
+**This had already happened in production once.** The comment above the old
+`canSubmit` says so: the gate asked whether STRIPE was available, which was the
+same question back when card was the only way to pay and silently stopped being
+it — so a restaurant settling through Razorpay alone showed a complete checkout
+with both Pay buttons dead and nothing on screen to say why. The gate was fixed
+at the time. The silence was not.
+
+**Changed:**
+- `frontend-customer/src/lib/pay-gate.ts` (new) — `payBlock` returns a reason
+  rather than a boolean, for all four states (empty cart, no method the branch
+  can settle, no time while scheduling, no address). `canSubmit` is derived
+  from it. `payButtonLabel` owns every label the button has, so the two copies
+  cannot drift — the same argument the old `canSubmit` comment makes.
+- `frontend-customer/src/components/checkout/order-summary.tsx` — the detail
+  under the desktop button, the short label above the phone bar's row, both
+  `aria-live="polite"`.
+- `frontend-customer/src/routes/checkout.tsx` — computes it once, passes it to
+  both buttons.
+
+**Two decisions worth keeping:**
+
+Reasons are ordered by what the customer should do NEXT, not by how the checks
+are written. With two problems at once the quicker one is named first: being
+told to type an address and then that no time is picked is two round trips for
+one order. And the no-payment-method case does not blame them — there is
+nothing for them to fix, so it says the cart is saved and offers the phone.
+
+On a phone the reason goes ABOVE the row rather than in the button. That button
+is `flex-1` at 393px, so a sentence inside it would either shrink the tap
+target below the 44px floor `mobile-layout.spec.ts` enforces or run off the
+edge — either one worse than the silence. `e2e/disabled-pay-says-why.spec.ts`
+asserts both.
+
+**Verified:** `src/lib/pay-gate.test.ts` (new, 13) — including one asserting no
+block can be returned without words in it, since a truthy block with an empty
+label is the same bug with extra steps. Storefront vitest 464 pass;
+`tsc --noEmit` clean; `npm run build` clean. Backend `unittest discover`:
+**2900 tests, OK** — the three `test_delivery_dispatch` failures earlier today
+were the live-host interlock reacting to the Pidge credentials in `.env`, and
+are fixed by pinning the courier host in that test's own environment.
+
+**Learned:** I hand-rolled the "Schedule for later" toggle in the new spec as a
+`tab` (it is a `button`) and skipped `openScheduling`. The helper exists
+because that control races with session hydration — a bare `isVisible()` right
+after sign-in answers false, the click is skipped, and the test then waits 20s
+for slots nobody asked for. Use the helper.
+
+## 2026-10-03 (3) — A paid Razorpay order went nowhere, and a reload lost it
+
+**Goal:** "when i do payment done in razorpay it give me success but after that
+not moving to confirm screen it's still back me to checkout page", and "if i do
+page refresh then still keep me on last screen right? current one is going back
+to address screen".
+
+**One cause for both: the payment sheet was component state and nothing else.**
+
+`onPaid={s.clearCart}` was correct for Stripe and wrong for Razorpay, and the
+difference is the bug. Stripe is handed a `returnUrl` and redirects the browser
+itself, so clearing the cart is all the handler has to do. Razorpay is a modal
+over the page — there is no redirect — so when its handler resolved, the cart
+emptied and nothing moved. The checkout re-rendered with an empty cart, which
+is the address step. **A successful payment looked exactly like being thrown
+out of the flow.**
+
+The reload was the same `useState` from the other side: refreshing dropped the
+order id and the gateway's, and because the cart had already been cleared the
+customer landed on an empty address form with a paid order they could no longer
+reach from anywhere on the page.
+
+**Changed:**
+- `frontend-customer/src/lib/pending-payment.ts` (new) — the payment under way,
+  written to tenant-scoped storage. Stored values are checked field by field on
+  read: this comes out of a store the customer can edit, and a half-written one
+  would render a Pay button with no order behind it. Extra keys are dropped
+  rather than passed through.
+- `frontend-customer/src/lib/tenant-storage.ts` — `STORAGE.pendingPayment`.
+  `LEGACY` became `Partial<Record<...>>`, because a key added after the rename
+  has no previous name and inventing one would mean reading a `bangkok-bowl-`
+  key that never existed.
+- `frontend-customer/src/routes/checkout.tsx` — `leaveForOrder` (clear, empty
+  the cart, navigate), used by Razorpay's `onPaid`; Stripe's clears the stored
+  payment but still relies on its own redirect. A restore effect resumes a
+  payment after a reload, and `abandonPayment` clears the stored one.
+- `frontend-customer/e2e/helpers.ts` — `chooseCardPayment`. Third copy of the
+  same two lines in one afternoon, so it became a helper with the incident in
+  its docstring.
+- `frontend-customer/e2e/order-flow.spec.ts`, `mobile-layout.spec.ts`,
+  `payment-settles.spec.ts` — all three go through it.
+
+**`canResumePayment` is deliberately stricter than the order page's test.**
+`/orders/$orderId` shows "confirming payment" for `PAYMENT_PENDING` and not
+COD, which is right for a screen that WATCHES an order and wrong for one that
+would charge it again: `PAYMENT_PENDING` with `payment_status: PAID` is the gap
+between a settled payment and the status advancing, and in that gap the
+customer has already paid. I wrote the loose version first and the test caught
+it — reopening a gateway over a paid order is the one outcome worse than the
+bug being fixed.
+
+**Verified:** `src/lib/pending-payment.test.ts` (new, 13); storefront vitest
+451 pass; `tsc --noEmit` clean; `npm run build` clean.
+`e2e/payment-survives-reload.spec.ts` (new) drives card, because Razorpay's
+window cannot be paid by a test — the persistence is the same code either way,
+and `method` only decides which component renders.
+
+**Open:** the Razorpay navigation itself is not covered end to end, for that
+reason. It is one function (`leaveForOrder`) called from one place, and the
+user confirmed the payment succeeds, so what was missing was only the
+navigation — but a real UPI payment is the only way to see it.
+
+## 2026-10-03 (2) — A saved address was refused and saved twice
+
+**Goal:** two bugs from one screenshot of `/checkout`: the page said "Please
+choose your address from the suggestions" while a saved address card was
+selected, and the picker showed "12 Velanja - Gothan Road, Surat, Gujarat,
+394150" twice.
+
+**What was actually wrong:** three separate gaps, all in the same seam between
+a saved address and the order.
+
+1. `SavedAddress` in `frontend-customer/src/lib/api.ts` did not declare
+   `latitude`/`longitude`. The server has returned them all along
+   (`SavedAddressResponse` in `app/schemas/profile.py`), so the checkout could
+   not read coordinates it was being given.
+2. Neither the initial prefill nor `applySavedAddress` set `pickedPoint`. The
+   prefill is the worse half: a returning customer lands on checkout with
+   their default address already filled, so the FIRST attempt to pay was
+   refused, about an address they had not typed.
+3. `OrderCreateRequest` had no `saved_address_id` at all, though
+   `DeliveryQuoteRequest` has taken one since the autocomplete was built. So
+   the quote priced a saved address from its stored rooftop and the order
+   refused the very same address for carrying no coordinates.
+
+The duplicate was a cached list. `isSameAddress` compares the typed address
+against the picker's contents, but that list is a TanStack query: the first
+order writes the row, the cache does not know yet, and the second order the
+same evening writes it again. Confirmed in the database — two rows
+byte-identical in every column including their coordinates, which is why the
+comparison "should" have matched and did not. The rule moved to the server,
+where there is one list and no cache in front of it.
+
+**Changed:**
+- `frontend-customer/src/lib/api.ts` — `latitude`/`longitude` on
+  `SavedAddress`; `saved_address_id` on `OrderCreateRequest`.
+- `frontend-customer/src/lib/delivery-address.ts` — new `pointFromSaved`
+  beside `addressFromSaved`, because the two are always used together and were
+  not. Refuses half a coordinate; keeps a real zero (Greenwich). Corrected
+  `isSameAddress`'s docstring, which claimed to be the duplicate guard.
+- `frontend-customer/src/routes/checkout.tsx` — both the prefill effect and
+  `applySavedAddress` set the point through that one helper; the order carries
+  `saved_address_id`.
+- `backend/app/services/profile.py` — `_address_fingerprint` and
+  `_matching_saved_address`; `create_user_saved_address` returns the existing
+  row instead of inserting a second. A re-save may fill a MISSING phone number
+  and may promote to default, nothing else.
+- `backend/app/schemas/order.py` + `app/services/orders.py` — the order path
+  falls back to the saved row's stored point, scoped to the caller, exactly as
+  the quote endpoint already did. The refusal became
+  `if known_drop is None and require_payment_validation` — it hung off the
+  coordinate test, which is why a located saved address was refused.
+- `frontend-admin/src/components/PaymentSettingsPanel.tsx` — the webhook
+  secret hint said "Payments work without it; confirmations arrive late".
+  Both providers raise `WebhookVerificationError` with no secret
+  (`razorpay_provider.py:417`, `stripe_provider.py:276`), so every update is
+  rejected unread and a paid order stays unpaid. Rewritten to say so.
+- `frontend-customer/e2e/order-flow.spec.ts` — selects card explicitly.
+  Pre-existing breakage from enabling Razorpay earlier today, same as the
+  mobile-layout fix: the spec asserted card was the only method.
+
+**Verified:**
+- `tests/test_saved_address_is_saved_once.py` (new, 16) and
+  `test_order_picked_address` / `test_delivery_quotes` /
+  `test_profile_update_is_a_patch` — 67 pass, three consecutive runs.
+- `frontend-customer` vitest 434 pass (4 new in `delivery-address.test.ts`);
+  `tsc --noEmit` clean; `npm run build` clean. `frontend-admin` 246 pass,
+  build clean.
+- `e2e/saved-address.spec.ts` (new, 3) pass, and **each was proven to fail
+  against its bug** by reverting the fix and restarting the API.
+
+**Learned — two ways an e2e test can be green against the bug it is for.**
+Worth knowing before writing another one here.
+
+- `/orders/validate` runs `_prepare_order_draft` with
+  `require_payment_validation=False`, so it never reaches the coordinate
+  refusal. A first version of the test asked validation and passed with the
+  fix removed.
+- `_prepare_order_draft` checks the payment method (line ~400) BEFORE the
+  address (line ~510). An unsupported method returns 503 and the address rule
+  is never exercised. The spec now reads `/payments/config` and sends a method
+  the branch actually takes.
+- A customer token is bound to the app client the HOST resolves to, so a dish
+  from another restaurant is a 403 that arrives before any address rule. The
+  spec resolves its restaurant through `/app-config` with `TENANT_HEADER`.
+
+**Open:**
+- **One duplicate row is still in Supabase**, on the phone account
+  `6353100362@phone.example.com`: id `5730a9fc-0e9e-4c08-89f9-9d8becb9e7b9`,
+  byte-identical to `1395f976-118d-455f-9d8f-69d69f9709e7` and referenced by
+  nothing (no FK anywhere points at `user_saved_addresses`). The DELETE was
+  refused by this environment's sandbox; the SQL was handed to the user.
+- `test_order_picked_address.py` pins source text. It now pins the new shape;
+  anything that moves that block has to update it again.
+- Still outstanding from earlier today: `refund.created` / `refund.processed`
+  to be ticked in the Razorpay dashboard; per-branch `service_radius_km` unset
+  (₹157 delivery on a ₹150 order); Famous Chinese Cuisine missing 44 of 65
+  dishes, phone, logo, cover photo, established year; the admin half of the
+  redesign not started.
 
 ## 2026-10-02 (6) — White bands in dark mode, a bill that did not add up, and a third restaurant
 

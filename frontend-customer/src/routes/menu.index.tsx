@@ -54,8 +54,11 @@ function MenuPage() {
   // person nothing they cannot see for themselves, so it is the one that goes.
   return (
     <div className="page-pad pb-24 pt-6 sm:pt-10">
-      <p className="eyebrow">Cooked to order</p>
-      <h1 className="font-display text-3xl font-extrabold sm:text-6xl">The {copy.name} menu</h1>
+      {/* No eyebrow. A tracked-out capitalised label above a heading is
+          decoration dressed as structure — it told a hungry person nothing
+          the heading did not already say, and it is the single most common
+          tell of a templated page. The heading carries itself. */}
+      <h1 className="font-display text-3xl font-extrabold sm:text-5xl">The {copy.name} menu</h1>
       <p className="mt-3 hidden max-w-2xl text-muted sm:block">
         Made fresh to order. Pick a favourite or discover something new.
       </p>

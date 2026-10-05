@@ -19,6 +19,7 @@ import { ChannelPreview } from '../components/marketing/ChannelPreview';
 import { ContentStep } from '../components/marketing/ContentStep';
 import { contentBlocker } from '../components/marketing/contentRules';
 import { useAdminStore } from '../hooks/useAdminStore';
+import { useMarketingScope } from '../hooks/useMarketingScope';
 import { ReachSummary } from '../components/marketing/ReachSummary';
 import { ReviewStep } from '../components/marketing/ReviewStep';
 import { SocialAudienceStep } from '../components/marketing/SocialAudienceStep';
@@ -31,7 +32,8 @@ import {
   primaryChannel,
 } from '../components/marketing/channels';
 import { FALLBACK_ICON, GOAL_ICONS, SEGMENT_ICONS } from '../components/marketing/meta';
-import { formatCurrency, formatDate } from '../services/api';
+import { formatDate } from '../services/api';
+import { useMarketingMoney } from '../hooks/useMarketingMoney';
 import { pluralize } from '../services/format';
 import {
   createDraftId,
@@ -59,6 +61,7 @@ import type {
   ReachEstimate,
   SegmentKey,
 } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface CampaignEditorPageProps {
   /** Null when creating. Otherwise the draft or scheduled campaign to resume. */
@@ -215,9 +218,13 @@ export function CampaignEditorPage({
   onNavigate,
   onToast,
 }: CampaignEditorPageProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   // The signed-in staff member, because a test send goes to *their* address
   // rather than to the one the channel sends from.
   const { user: currentUser } = useAdminStore();
+  // Before every effect that fetches, for the reason on `CampaignDetailPage`.
+  const scope = useMarketingScope();
   const [draft, setDraft] = useState<CampaignDraft>(() => emptyDraft());
   const [step, setStep] = useState(STEP_CHANNEL);
   const [furthest, setFurthest] = useState(STEP_CHANNEL);
@@ -282,7 +289,7 @@ export function CampaignEditorPage({
   /* ---------------------------------------------------------------- load -- */
 
   const load = useCallback(async () => {
-    if (!campaignId) {
+    if (!campaignId || !scope.ready) {
       return;
     }
     setLoading(true);
@@ -306,7 +313,7 @@ export function CampaignEditorPage({
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+  }, [campaignId, scope.ready, scope.selectedRestaurantId]);
 
   useEffect(() => {
     void load();
@@ -824,7 +831,10 @@ export function CampaignEditorPage({
             <ChevronLeft size={14} strokeWidth={2.5} />
             Marketing
           </button>
-          <h1 className="mkt-h1">{draft.name.trim() || 'New campaign'}</h1>
+          <div className="tip-row">
+            <h1 className="mkt-h1">{draft.name.trim() || 'New campaign'}</h1>
+            <PageHelpTip page="campaign-editor" />
+          </div>
         </div>
         {step > STEP_CHANNEL ? (
           <button

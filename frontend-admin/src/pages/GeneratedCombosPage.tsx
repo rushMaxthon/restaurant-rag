@@ -622,6 +622,7 @@ function GeneratedCombosWorkspace({
   return (
     <div className="page-stack">
       <PageIntro
+        help="generated-combos"
         actions={
           isAdmin ? (
             <button
@@ -654,9 +655,9 @@ function GeneratedCombosWorkspace({
             </button>
           ) : undefined
         }
-        description="Review customer ordering patterns and manage combo visibility across lifecycle stages."
+        description="Meal combos built from what customers order together. Decide which ones they see."
         eyebrow={isAdmin ? 'AI Combos' : 'Assigned restaurant'}
-        title="Generated Combos"
+        title="Combo suggestions"
       />
 
       <MixedCurrencyNotice subject="Revenue influence" />

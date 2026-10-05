@@ -317,6 +317,7 @@ export function MenuItemEditorPage({
     return (
       <div className="page-stack">
         <PageIntro
+          help="menu-item-editor"
           eyebrow="Menu management"
           title={isEditing ? "Edit menu item" : "Add menu item"}
           description="Loading the editor inside the current restaurant workspace."
@@ -345,6 +346,7 @@ export function MenuItemEditorPage({
     return (
       <div className="page-stack">
         <PageIntro
+          help="menu-item-editor"
           eyebrow="Menu management"
           title="Menu item editor unavailable"
           description="The editor could not be opened inside this location workspace."
@@ -395,14 +397,15 @@ export function MenuItemEditorPage({
         onNavigate={onNavigate}
       />
       <PageIntro
+        help="menu-item-editor"
         eyebrow="Menu management"
         title={isEditing ? `Edit ${item?.name ?? "menu item"}` : "Add menu item"}
         description={
           isEditing
-            ? "Update pricing, launch details, sizes, and customization groups without leaving the dashboard."
+            ? "Change the price, photo, sizes and the choices a customer can make."
             : isMultiLocationCreate
-              ? "Create a menu item once and publish it to every selected branch in a single action."
-              : "Create a new menu item for this location with the same catalog structure used across the admin workspace."
+              ? "Add a dish once and put it on the menu at every branch you select."
+              : "Add a new dish to this branch's menu."
         }
         actions={
           <button
@@ -555,7 +558,45 @@ export function MenuItemEditorPage({
             </small>
           </label>
 
-          <MenuItemCustomizationEditor form={form} onChange={setForm} />
+          <MenuItemCustomizationEditor form={form} onChange={setForm} restaurantId={restaurantId} />
+
+          <label className="field">
+            <span>Stock left</span>
+            <input
+              inputMode="numeric"
+              placeholder="Not counted"
+              value={form.stock_quantity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  stock_quantity: event.target.value,
+                }))
+              }
+            />
+            <small className="hint-text">
+              How many you can still sell. It goes down with every order and customers cannot
+              order more than this. Leave it empty if you do not count this dish; 0 shows it as
+              out of stock.
+            </small>
+          </label>
+          <label className="field">
+            <span>Refill every morning to</span>
+            <input
+              inputMode="numeric"
+              placeholder="Restocked by hand"
+              value={form.stock_daily_quantity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  stock_daily_quantity: event.target.value,
+                }))
+              }
+            />
+            <small className="hint-text">
+              What you make each day. Stock left is set back to this number every morning at
+              4:30. Leave it empty to restock by hand.
+            </small>
+          </label>
 
           <label className="field form-grid__wide">
             <span>Image URL</span>
@@ -603,6 +644,16 @@ export function MenuItemEditorPage({
                 setForm((current) => ({
                   ...current,
                   is_available: checked,
+                }))
+              }
+            />
+            <Checkbox
+              checked={form.out_of_stock}
+              label="Out of stock"
+              onChange={(checked) =>
+                setForm((current) => ({
+                  ...current,
+                  out_of_stock: checked,
                 }))
               }
             />

@@ -34,12 +34,28 @@ venv/
 # replacing it, so every developer on a different minor version adds a second
 # full set of files that no one reviews.
 #
-# NOTE: ~283 `*.cpython-313.pyc` files were committed before this rule existed.
-# Ignoring a path does not untrack what is already tracked, so those stay in the
-# index until someone runs `git rm -r --cached` on them. This rule only stops the
-# next interpreter from adding to them.
+# 283 `*.cpython-313.pyc` files were committed before this rule existed, and
+# ignoring a path does not untrack what is already tracked. They were removed
+# from the index on 2026-10-04 with `git rm -r --cached`, which leaves every
+# file on disk and only stops git following them. They churned on every run, so
+# the working tree was never clean and a real change had to be picked out of
+# three hundred regenerated ones.
 __pycache__/
 *.pyc
+
+# --- Celery beat state ---------------------------------------------------------
+# `celerybeat-schedule.{bak,dat,dir}` is a shelve of when each periodic task
+# last ran. Beat rewrites it on every start, so it is runtime state and not
+# configuration - there is nothing in it another machine could use, and the
+# three files were committed by accident in the V2 merge. Untracked on
+# 2026-10-04 for the same reason as the bytecode above.
+backend/celerybeat-schedule*
+
+# --- local scratch -------------------------------------------------------------
+# Git bundles and suite logs produced while working here. Large, regenerable,
+# and meaningful only on the machine that made them.
+*.bundle
+backend/.suite.log
 
 # --- agent scratch -------------------------------------------------------------
 # Per-plan working directory for subagent-driven execution: ledger, task briefs,

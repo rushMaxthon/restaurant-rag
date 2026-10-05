@@ -28,6 +28,7 @@ import type {
   ConnectionField,
   MarketingChannel,
 } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface ChannelsPageProps {
   onNavigate: (path: string) => void;
@@ -242,7 +243,10 @@ export function ChannelsPage({ onNavigate, onToast }: ChannelsPageProps) {
           <ChevronLeft size={14} strokeWidth={2.5} />
           Marketing
         </button>
-        <h1 className="mkt-h1">Where you can send from</h1>
+        <div className="tip-row">
+          <h1 className="mkt-h1">Where you can send from</h1>
+          <PageHelpTip page="channels" />
+        </div>
         <p className="mkt-sub">
           Push notifications work out of the box. Everything else needs to be linked to the
           account you already have with them — once, and then it stays.

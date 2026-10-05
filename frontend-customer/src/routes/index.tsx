@@ -8,7 +8,8 @@ import {
   BrandStandards,
   BrandStory,
 } from "@/components/bangkok/brand-story";
-import { BrandHighlights, BrandSpecialities } from "@/components/bangkok/brand-facts";
+import { BrandSpecialities } from "@/components/bangkok/brand-facts";
+import { BrandPicks } from "@/components/bangkok/brand-picks";
 import { HowToOrder } from "@/components/bangkok/how-to-order";
 import { KitchenGallery } from "@/components/bangkok/kitchen-gallery";
 import { StorefrontHero } from "@/components/bangkok/storefront-hero";
@@ -137,11 +138,26 @@ function Home() {
               </span>
             )}
             {branch && (
-              <span
-                // The chip sits on `--success` or `--muted`, neither of which
-                // is the brand, so the brand's ink token was never right here.
-                className={`hero-chip text-white ${openNow.available ? "bg-success" : "bg-muted"}`}
-              >
+              // The same surface as the two chips beside it, with a coloured
+              // dot carrying the status.
+              //
+              // It used to be white on `--success` or on `--muted`. Measured,
+              // that was 3.3:1 in light — under AA at this size — and in dark
+              // it was worse in two ways at once: `--success` lifts to a
+              // brighter green there, so the chip became a pale box on a dark
+              // hero at 1.74:1, which the audit flags as a theme leak as well
+              // as unreadable.
+              //
+              // A dot does the same job with none of that. The colour it
+              // carries is never read AS text, so it cannot fail a contrast
+              // rule, and the label inherits the surface ink that the rest of
+              // the row already uses and that both themes already define.
+              <span className="hero-chip bg-surface text-foreground">
+                <span
+                  aria-hidden="true"
+                  className="status-dot"
+                  data-open={openNow.available || undefined}
+                />
                 {openNow.available ? "Open now" : "Closed right now"}
               </span>
             )}
@@ -186,15 +202,23 @@ function Home() {
           food) → what that gets you (the services) → how they say they work
           (the statement). Each block is absent when the owner wrote nothing
           for it, and the ones around it close up. */}
-      <BrandStory photos={photos} />
+      <BrandStory />
 
-      {/* Straight after the story that earns them. These arrived fourth once,
-          behind a closing statement, which put "since 1999" below the fold. */}
-      <BrandHighlights />
+      {/* The "at a glance" band that stood here has moved INTO the story, as
+          the column pinned beside it — see `BrandRail`. A band of figures
+          between two blocks of prose is a thing you scroll past; the same
+          figures held in view while the story moves are the frame it is read
+          inside. `BrandHighlights` is still exported for any page that wants
+          the band shape back. */}
 
       {/* Not the menu's categories — the four or five things somebody in this
           neighbourhood would actually name. See `BrandSpecialities`. */}
       <BrandSpecialities />
+
+      {/* The shop window. Everything above says who this restaurant is;
+          nothing said what anything costs, so the question a first-time
+          customer actually has could only be answered by leaving. */}
+      <BrandPicks />
 
       {/* Their own food, as photography rather than as a shop. The lead story
           has taken the first three, so the mosaic starts after them and

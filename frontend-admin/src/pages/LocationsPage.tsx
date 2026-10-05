@@ -523,9 +523,10 @@ export function LocationsPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="locations"
         eyebrow="Branch management"
         title="Locations"
-        description="Review every branch for the current restaurant, then open a location workspace for settings, menu items, and orders."
+        description="The branches of this restaurant. Open one to manage its settings, menu and orders."
         actions={
           selectedRestaurantSummary ? (
             <button

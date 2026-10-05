@@ -38,6 +38,7 @@ import type { MenuItem, RecommendationItem, Restaurant } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/AppNavigator';
 import { isCustomizableMenuItem } from '@utils/menuItemCustomization';
 import { buildPreferencesKey } from '@utils/preferencesKey';
+import { isOnSale } from '@/utils/stock';
 
 type SearchNavigation = NativeStackNavigationProp<RootStackParamList>;
 
@@ -540,20 +541,20 @@ function DishResultCardComponent({
             </View>
           </View>
           <Pressable
-            disabled={!item.is_available}
+            disabled={!isOnSale(item)}
             onPress={onAddToCart}
             style={[
               styles.addButton,
-              !item.is_available ? styles.addButtonDisabled : null,
+              !isOnSale(item) ? styles.addButtonDisabled : null,
             ]}
           >
             <Text
               style={[
                 styles.addButtonText,
-                !item.is_available ? styles.addButtonTextDisabled : null,
+                !isOnSale(item) ? styles.addButtonTextDisabled : null,
               ]}
             >
-              {item.is_available ? 'ADD' : 'Sold out'}
+              {isOnSale(item) ? 'ADD' : 'Out of stock'}
             </Text>
           </Pressable>
         </View>
@@ -678,23 +679,23 @@ function DiscoveryDishCarouselCardComponent({
             {formatCurrency(result.item.price)}
           </Text>
           <Pressable
-            disabled={!result.item.is_available}
+            disabled={!isOnSale(result.item)}
             onPress={event => {
               event.stopPropagation();
               onAddToCart();
             }}
             style={[
               styles.discoveryAddButton,
-              !result.item.is_available ? styles.addButtonDisabled : null,
+              !isOnSale(result.item) ? styles.addButtonDisabled : null,
             ]}
           >
             <Text
               style={[
                 styles.discoveryAddButtonText,
-                !result.item.is_available ? styles.addButtonTextDisabled : null,
+                !isOnSale(result.item) ? styles.addButtonTextDisabled : null,
               ]}
             >
-              {result.item.is_available ? 'Add' : 'Sold'}
+              {isOnSale(result.item) ? 'Add' : 'Sold'}
             </Text>
           </Pressable>
         </View>
@@ -1024,9 +1025,9 @@ export function SearchScreen(): React.JSX.Element {
         if (right.matchScore !== left.matchScore) {
           return right.matchScore - left.matchScore;
         }
-        if (left.item.is_available !== right.item.is_available) {
+        if (isOnSale(left.item) !== isOnSale(right.item)) {
           return (
-            Number(right.item.is_available) - Number(left.item.is_available)
+            Number(isOnSale(right.item)) - Number(isOnSale(left.item))
           );
         }
         if (left.source !== right.source) {

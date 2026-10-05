@@ -148,7 +148,12 @@ main > * {
   transition: transform var(--dur) var(--ease-out);
 }
 .mobile-nav[data-status="active"] {
-  color: var(--primary);
+  /* The ink tier. At 12px on the bar's pale ground the brand FILL measures
+     3.25:1, and this is the label telling somebody which screen they are on
+     — the one word in the bar that has to be legible at a glance. The icon
+     beside it keeps the fill, because an icon is not text and carries the
+     same meaning through its shape. */
+  color: var(--primary-text);
 }
 .mobile-nav[data-status="active"] svg {
   transform: translateY(-1px);
@@ -255,14 +260,32 @@ textarea.flex:focus-visible {
 /* --- Typography rhythm -----------------------------------------------------
    Section eyebrows were 16px bold caps typed by hand, so they weighed as much
    as the heading beneath. Small, tracked and lighter reads as a label. */
+/* Sentence case, and no tracking.
+   -----------------------------------------------------------------------
+   This was 0.76rem, weight 800, 0.12em of letter-spacing and UPPERCASE, in
+   the brand colour, above almost every heading on the site: "WHAT WE ARE
+   KNOWN FOR", "FROM OUR KITCHEN", "HOW IT WORKS", "BEFORE YOU ORDER". A
+   tracked-out capitalised label above a heading is the single commonest
+   tell of a templated page, and capitals are hardest to read at exactly
+   the size this is set at.
+
+   Restyled rather than deleted everywhere, because several of these do say
+   something the heading does not, and a label that earns its place is worth
+   keeping. The ones that only repeated the heading beneath them are gone
+   from their own components. */
 .eyebrow {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--primary);
+  margin-bottom: 0.35rem;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--muted);
+  /* Stated rather than simply dropped. `frontend-shared/components.css` also
+     declares `.eyebrow`, and the operator's panel still wants the uppercase
+     version — so removing the properties here left the shared ones applying
+     unopposed and the labels still shouting. They are reset explicitly, and
+     the admin keeps what it had until its own turn. */
+  text-transform: none;
+  letter-spacing: normal;
 }
 .eyebrow--inherit {
   color: inherit;
@@ -434,12 +457,63 @@ textarea.flex:focus-visible {
 
 /* --- Cards -----------------------------------------------------------------
    The grid wraps each card in a .rise-in div for the stagger; a block wrapper
-   left short cards sat above their row-mates' bottoms. Grid stretches them. */
+   left short cards sat above their row-mates' bottoms. Grid stretches them.
+
+   The row layout that briefly replaced these is gone. It was the wrong read
+   of this product: the photographs were treated as a weakness to design
+   around, when on a bakery with 187 of them they are the thing being sold.
+   A price list suits a dense text menu; it does not suit a shop whose
+   customers are deciding with their eyes. */
 .menu-grid > .rise-in {
   display: grid;
 }
 .dish-card {
   border-radius: 0.75rem;
+}
+
+/* Two to a row on a phone. One to a row made each card a screen tall, so a
+   menu of 187 dishes was 187 screens and the fourth dish was three swipes
+   away — while the same menu on a laptop shows eight at a glance. This is
+   still the photograph-first card, not the row layout the note above
+   retired: the picture stays on top and stays the largest thing on it.
+
+   Everything inside is tightened to fit ~170px, and the price row may wrap,
+   because a stepper beside a price is wider than the card. */
+@media (max-width: 639px) {
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+  .menu-grid .dish-card > a > * {
+    aspect-ratio: 4 / 3;
+  }
+  .menu-grid .dish-card > div {
+    gap: 0.25rem;
+    padding: 0.625rem;
+  }
+  .menu-grid .dish-card .dish-title {
+    font-size: 0.95rem;
+  }
+  .menu-grid .dish-card p {
+    min-height: 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+  .menu-grid .dish-card > div > div:last-child {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .menu-grid .dish-card .money {
+    font-size: 0.95rem;
+  }
+  /* Pushed to the right when it wraps onto its own line. */
+  .menu-grid .dish-card .qty-pill {
+    margin-left: auto;
+  }
+  .menu-grid .dish-card .heart {
+    right: 0.35rem;
+    top: 0.35rem;
+  }
 }
 .dish-card .dish-title {
   transition: color var(--dur-fast) ease;
@@ -846,6 +920,9 @@ textarea.flex:focus-visible {
   .segmented-option {
     min-height: 44px;
   }
+  /* The dish title is the largest tap target on a card and was 24px tall.
+     Padding rather than font-size: the type scale is right, the hit area was
+     not. */
   /* The dish title is the largest tap target on a card and was 24px tall.
      Padding rather than font-size: the type scale is right, the hit area was
      not. */
@@ -1392,6 +1469,19 @@ html {
     position: static;
   }
 }
+/* Nothing above it to be a seam with. A dish with no size to pick and no
+   options has no choice cards, so the bar is the panel's only child — and its
+   top margin, border and shadow drew an empty white box over the buttons. */
+.dish-actions:first-child {
+  margin-top: calc(var(--panel-pad) * -1);
+  border-top: 0;
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: none;
+  padding-top: var(--panel-pad);
+}
+.dish-actions:first-child::before {
+  display: none;
+}
 /* A short fade above the seam, so the card the bar is covering reads as
    continuing underneath rather than as having been sliced through. */
 .dish-actions::before {
@@ -1423,7 +1513,10 @@ html {
   max-width: 100%;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--primary);
+  /* `--primary-text`, not `--primary`. The brand fill is a FILL; as ink
+     on a pale ground it measures 3.25:1. The text tier is the same hue
+     walked down until it clears 4.5 against the page. */
+  color: var(--primary-text);
 }
 
 /* One tile per saved address, shown only when there is more than one — with
@@ -1576,9 +1669,19 @@ html {
 }
 
 /* --- the rail --------------------------------------------------------------- */
+/* A panel, not a caption.
+   -----------------------------------------------------------------------
+   This was bare text and two underlined links floating in white beside a
+   column of solid cards, which read as a column that had not finished
+   loading. It holds the same quiet content; it just sits on something now,
+   so the page has two halves rather than one half and a margin. */
 .rail {
   display: grid;
   gap: 0.9rem;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
 }
 @media (min-width: 900px) {
   .rail {
@@ -1600,17 +1703,29 @@ html {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
+/* Buttons rather than underlined words. Two orange underlines stacked in a
+   column read as a footnote; these are the only two things this half of the
+   page can actually do. */
 .rail__action {
-  justify-self: start;
+  justify-self: stretch;
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.35rem;
-  border-bottom: 1.5px solid currentColor;
-  padding-bottom: 1px;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
   font-size: 0.88rem;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--text);
   cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.rail__action:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--surface-alt);
 }
 .rail__action:disabled {
   opacity: 0.5;
@@ -1746,7 +1861,10 @@ html {
   color: var(--primary);
 }
 .line__state {
-  color: var(--primary);
+  /* `--primary-text`, not `--primary`. The brand fill is a FILL; as ink
+     on a pale ground it measures 3.25:1. The text tier is the same hue
+     walked down until it clears 4.5 against the page. */
+  color: var(--primary-text);
   font-weight: 600;
 }
 
@@ -1933,7 +2051,9 @@ html {
   margin-top: 0.2rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--primary);
+  /* The text tier, not the fill. `--primary` on a white card is 3.25:1 at
+     this size, which `e2e/contrast.spec.ts` measures and refuses. */
+  color: var(--primary-text);
 }
 .pair__price {
   display: flex;
@@ -2373,12 +2493,13 @@ html {
 .info-page__intro p {
   margin: 0;
 }
+/* Sentence case. A date is a fact, not a heading, and "LAST UPDATED 1
+   OCTOBER 2026" set in tracked capitals was the loudest line on a page whose
+   whole job is being readable. */
 .info-page__updated {
   margin: var(--space-5) 0 0;
   color: var(--muted);
-  font-size: var(--fs-tiny);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
+  font-size: var(--fs-caption);
   font-weight: 700;
 }
 .info-page__body {
@@ -2677,14 +2798,15 @@ html {
     font-size: var(--fs-title);
   }
 }
+/* Sentence case. "13 DISHES" shouted a number nobody needed shouted, and
+   uppercase small text is harder to read at exactly the size it was set. */
 .menu-section__count {
   margin-left: auto;
   flex-shrink: 0;
   color: var(--muted);
-  font-size: var(--fs-tiny);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2726,12 +2848,109 @@ html {
 }
 @media (min-width: 900px) {
   .brand-lead__inner {
-    /* The copy leads. An even split makes the collage argue with the words
-       for the first read, and the words are what this block is for. */
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    /* Asymmetric, and the narrow column comes first. A fixed rail against a
+       fluid story is what makes this read as a page about a shop rather than
+       as two equal blocks of content; an even split would have the facts
+       arguing with the prose for the first read, and the prose is what this
+       block is for.
+
+       `align-items: start` rather than `center`, or the rail centres itself
+       against a long story and its sticky position has nowhere to travel. */
+    grid-template-columns: 17.5rem minmax(0, 1fr);
     gap: var(--space-12);
-    align-items: center;
+    align-items: start;
   }
+}
+
+/* --- The facts, pinned ----------------------------------------------------
+   Sticky only where there is a second column to be beside. On a phone this is
+   one block above the story, which is the order someone reads anyway: what
+   this place is, then why. */
+.brand-rail__inner {
+  display: grid;
+  gap: var(--space-5);
+}
+@media (min-width: 900px) {
+  .brand-rail__inner {
+    position: sticky;
+    /* Clears the sticky header rather than tucking under it. */
+    top: calc(var(--header-h) + var(--space-6));
+  }
+}
+.brand-rail__name {
+  font-size: var(--fs-title);
+  font-weight: 800;
+  line-height: 1.15;
+}
+.brand-rail__since {
+  display: grid;
+  gap: 0.15rem;
+  font-size: var(--fs-body-lg);
+  font-weight: 700;
+}
+.brand-rail__since span {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+}
+
+.brand-rail__facts {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.brand-rail__facts dt {
+  font-size: var(--fs-display-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.brand-rail__facts dd {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+/* Attribution, and deliberately quieter than the label it sits under: a
+   rating earned on a listing site is a real fact but not our measurement. */
+.brand-rail__facts dd small {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.brand-rail__where {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+}
+.brand-rail__where svg {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
+
+.brand-rail__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+  transition: filter var(--dur-fast) var(--ease-out);
+}
+.brand-rail__cta:hover {
+  filter: brightness(1.06);
 }
 .brand-lead__title {
   margin: var(--space-2) 0 0;
@@ -3361,7 +3580,20 @@ html {
    accent along the top so the one panel that is about money reads as the
    anchor of the page rather than as a fourth step. */
 .order-summary {
-  position: relative;
+  /* No `position` here, and that is the fix for a misalignment that was
+     visible on every checkout: the panel sat 96px below the form beside it.
+     ----------------------------------------------------------------------
+     The markup asks for `sticky` with a `top` of 96px, so the summary follows
+     you down the form. This rule declared `position: relative` and, being
+     unlayered, beat the utility — leaving the element relative with a `top`
+     of 96px, which does not stick to anything and simply shoves it down the
+     page by 96 pixels. The offset meant to hold it clear of the header while
+     scrolling became a permanent gap at the top instead.
+
+     `relative` was here to anchor the 3px accent bar back when that was an
+     absolutely positioned `::before`. It is a background now, so nothing in
+     this panel needs a positioning context, and the breakdown popover brings
+     its own. */
   padding: var(--space-5);
   /* The accent is painted as a background rather than as a clipped
      pseudo-element, and this panel does NOT clip its overflow.
@@ -3716,7 +3948,7 @@ html {
 @keyframes reveal-rise {
   from {
     opacity: 0;
-    transform: translate3d(0, 38px, 0) scale(0.97);
+    transform: translate3d(0, 16px, 0);
   }
   to {
     opacity: 1;
@@ -3805,7 +4037,6 @@ html {
     .reveal-right,
     .reveal-settle,
     .reveal-group > *,
-    .reveal-group--sides > *,
     .reveal-group--settle > * {
       animation: reveal-rise both;
       animation-timeline: view();
@@ -3819,9 +4050,8 @@ html {
        genuinely reach the fold at different moments — no index variable, and
        it stays right when the grid reflows to one column on a phone. */
     .reveal-group > *,
-    .reveal-group--sides > *,
     .reveal-group--settle > * {
-      animation-range: entry 4% cover 34%;
+      animation-range: entry 8% cover 20%;
     }
 
     .reveal-settle,
@@ -3840,12 +4070,6 @@ html {
         animation-name: reveal-from-left;
       }
       .reveal-right {
-        animation-name: reveal-from-right;
-      }
-      .reveal-group--sides > :nth-child(odd) {
-        animation-name: reveal-from-left;
-      }
-      .reveal-group--sides > :nth-child(even) {
         animation-name: reveal-from-right;
       }
     }
@@ -3889,7 +4113,6 @@ html {
   .reveal-right,
   .reveal-settle,
   .reveal-group > *,
-  .reveal-group--sides > *,
   .reveal-group--settle > *,
   .reveal-wipe > span,
   .parallax-img img {
@@ -3897,5 +4120,404 @@ html {
     opacity: 1 !important;
     transform: none !important;
     filter: none !important;
+  }
+}
+
+/* --- Add something else, under the cart -----------------------------------
+   Sits in the line-item column, so it fills the space a short cart leaves
+   beside the summary rather than pushing the summary down. Quiet by
+   construction: outline buttons, no badges, no "recommended for you" claim
+   this page has no scoring behind. */
+.cart-more {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+.cart-more__title {
+  font-size: var(--fs-title);
+  font-weight: 800;
+}
+.cart-more__note {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: var(--fs-body);
+}
+.cart-more__grid {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .cart-more__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.cart-more__item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+}
+.cart-more__shot {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-3);
+}
+.cart-more__body {
+  min-width: 0;
+}
+.cart-more__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+/* One line. A second line here pushes the row taller than the thumbnail and
+   the grid stops reading as a row of equals. */
+.cart-more__name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cart-more__price {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- What people order ----------------------------------------------------
+   The shop window: real dishes, real prices, one tap to the cart. It is the
+   only block on this page that can be bought from, so it is the only one
+   with a filled button on it — everything else here is reading. */
+.picks {
+  background: var(--surface-alt);
+}
+.picks__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.picks__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.picks__title {
+  margin: 0;
+  font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.12;
+}
+.picks__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  color: var(--primary-text);
+  font-weight: 700;
+}
+.picks__all svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.picks__grid {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-8);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .picks__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1000px) {
+  .picks__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.picks__card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+@media (hover: hover) {
+  .picks__card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px) translateZ(0);
+  }
+}
+/* The photograph is the point of this block, so it gets the room: a 4:3 crop
+   rather than the menu card's 16:10, which is closer to how food is shot. */
+.picks__shot {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+.picks__shot > * {
+  width: 100%;
+  height: 100%;
+}
+
+.picks__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: var(--space-4);
+}
+.picks__name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: var(--fs-title-sm);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.picks__desc {
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.picks__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+.picks__price {
+  font-size: var(--fs-title-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- The three steps ------------------------------------------------------
+   The one place on this page where a stagger says something: these are
+   numbered, so they genuinely are a sequence and arriving in order reads as
+   the order you do them in. Everywhere else a stagger is just delay.
+
+   The number settles a beat after its own card rather than with it, which is
+   the whole effect — one small deliberate moment instead of three boxes
+   flying in from alternating edges. Its own `view()` timeline, so it stays
+   correct when the row reflows to a column on a phone. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .how__steps--seq .how__n {
+      animation: step-number both;
+      animation-timeline: view();
+      animation-range: entry 14% cover 26%;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+}
+@keyframes step-number {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- The address suggestions ----------------------------------------------
+   A Google place search behind a box somebody is typing an address into, so
+   two things matter more than looks: it must not move the form while it
+   thinks, and it must not look empty while it does.
+
+   The waiting is shown HERE rather than under the field. Placeholder rows
+   open the panel the moment a search starts, so the list grows into place
+   instead of appearing under the cursor a beat after you stop typing — and
+   the form below never shifts, because the panel is positioned out of flow. */
+.addr-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  margin-top: 0.3rem;
+  max-height: 17rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-4);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.addr-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  border-radius: var(--radius-3);
+  cursor: pointer;
+}
+.addr-row[data-active] {
+  background: var(--surface-alt);
+}
+.addr-row__pin {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
+.addr-row__text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.addr-row__primary {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.addr-row__secondary {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  line-height: 1.35;
+}
+
+/* The placeholder rows. Two bars at the widths a real result tends to take,
+   so the panel does not visibly change shape when the answers land. */
+.addr-row--waiting {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  cursor: default;
+}
+.addr-row__skeleton {
+  height: 0.7rem;
+  width: 62%;
+  border-radius: 999px;
+  background: var(--skeleton);
+}
+.addr-row__skeleton--sub {
+  height: 0.6rem;
+  width: 84%;
+  background: var(--skeleton);
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .addr-row__skeleton {
+    animation: addr-pulse 1.1s var(--ease-out) infinite;
+  }
+  .addr-row--waiting:nth-child(2) .addr-row__skeleton {
+    animation-delay: 0.12s;
+  }
+  .addr-row--waiting:nth-child(3) .addr-row__skeleton {
+    animation-delay: 0.24s;
+  }
+}
+@keyframes addr-pulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The open/closed dot on the hero chip. A colour that is never read as text,
+   so it carries the status without owing anything to a contrast rule — which
+   is the whole reason this replaced a white-on-green label. */
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.status-dot[data-open] {
+  background: var(--success);
+}
+
+/* --- The hero arrives ------------------------------------------------------
+   One orchestrated moment when a page opens, and the only non-user-triggered
+   motion on the site that is allowed to be noticeable.
+
+   The photograph settles from 1.05 to rest while the scrim lifts off it, so
+   the picture reads as arriving rather than as already having been there. The
+   copy was already staggering in on top; it now starts after the picture has
+   begun moving, so the two read as one sequence instead of two things that
+   happen to overlap.
+
+   This is a SETTLE, not a zoom. The note above `.hero-full` rules out a slow
+   drift across a photograph this size, and it is right — that is a
+   screensaver. The distinction is that this one finishes: 900ms, decelerating
+   hard, and then the image never moves again.
+
+   Deliberately not a splash screen. One of those was built here and removed,
+   because it held the page back from somebody who already knew what they
+   wanted. This costs nobody anything: the content is on screen and readable
+   from the first frame, and the motion plays over it.
+
+   `both` with no delay on the image so there is no frame where the hero is
+   blank — a fill-mode gap on the largest paint of the page is a flash. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-arrive__shot {
+    animation: hero-settle 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    /* Its own layer for the duration, so scaling a full-bleed photograph does
+       not repaint the copy sitting on it every frame. */
+    will-change: transform;
+  }
+  .hero-arrive::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: #000;
+    animation: hero-lift 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  /* The copy follows the picture rather than racing it. The per-child stagger
+     above this is untouched; this only moves the whole group back far enough
+     that the image has visibly started first. */
+  .hero-arrive .hero-copy > * {
+    animation-delay: calc(var(--hero-step, 0ms) + 160ms);
+  }
+  .hero-arrive .hero-copy > :nth-child(1) { --hero-step: 60ms; }
+  .hero-arrive .hero-copy > :nth-child(2) { --hero-step: 140ms; }
+  .hero-arrive .hero-copy > :nth-child(3) { --hero-step: 220ms; }
+  .hero-arrive .hero-copy > :nth-child(4) { --hero-step: 300ms; }
+  .hero-arrive .hero-copy > :nth-child(5) { --hero-step: 380ms; }
+}
+
+@keyframes hero-settle {
+  from {
+    transform: scale(1.05);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes hero-lift {
+  from {
+    opacity: 0.38;
+  }
+  to {
+    opacity: 0;
   }
 }

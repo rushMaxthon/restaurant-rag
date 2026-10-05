@@ -72,6 +72,51 @@ def fee_from(quote: DeliveryQuote) -> Decimal | None:
     return Decimal(chosen).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def before_delivery_tax(courier_fee: Decimal, location) -> Decimal:
+    """The courier's figure with the delivery tax taken back out of it.
+
+    A courier quotes what it will invoice, and the invoice includes GST. The
+    bill then adds its own "GST on delivery fee" at the branch's rate
+    (`order_charges.compute`), so charging the courier's figure as the fee
+    taxed one delivery twice: a trip Pidge prices at 59.00 reached the
+    customer as 59.00 plus 10.62.
+
+    So the fee is the part before tax, and the tax line puts the rest back.
+    The customer pays the courier's figure; the two rows show what it is made
+    of. The rate is the branch's own, the same one the tax line will use —
+    which is what makes the two add back up, and why a branch that adds no
+    delivery tax (the default) has nothing taken out: it would be handing the
+    customer a tax the platform then pays.
+
+    **To the paisa, where there is one.** Dividing by 1.18 and multiplying
+    back does not always return the figure started from, so the neighbouring
+    paisa is tried and the one that adds back exactly is kept. Some figures
+    cannot be reached at all — a fee and 18% of it, each rounded, make 9.99
+    or 10.01 and never 10.00 — and there the nearest stands, a paisa out.
+
+    Only ever applied to a courier's quote. The branch's flat fee is a number
+    an owner typed, and what it includes is theirs to say.
+    """
+
+    rate = getattr(location, "delivery_tax_percent", None)
+    rate = Decimal(str(rate)) if rate is not None else Decimal("0")
+    if rate <= 0 or courier_fee <= 0:
+        return courier_fee
+
+    paisa = Decimal("0.01")
+
+    def tax_on(fee: Decimal) -> Decimal:
+        return (fee * rate / Decimal("100")).quantize(paisa, rounding=ROUND_HALF_UP)
+
+    nearest = (courier_fee * Decimal("100") / (Decimal("100") + rate)).quantize(
+        paisa, rounding=ROUND_HALF_UP
+    )
+    for candidate in (nearest, nearest - paisa, nearest + paisa):
+        if candidate + tax_on(candidate) == courier_fee:
+            return candidate
+    return nearest
+
+
 def points_for(
     location: RestaurantLocation,
     delivery_address: AddressQuery | str,
@@ -292,12 +337,14 @@ def delivery_fee_for(
     fee = fee_from(quote)
     if fee is None:
         logger.info("Courier will not serve this address; charging the branch fee")
-    return fee
+        return None
+    return before_delivery_tax(fee, location)
 
 
 __all__ = [
     "QuoteAttempt",
     "attempt_quote",
+    "before_delivery_tax",
     "delivery_fee_for",
     "fee_from",
     "points_for",

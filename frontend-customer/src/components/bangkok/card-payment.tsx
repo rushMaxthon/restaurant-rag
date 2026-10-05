@@ -113,7 +113,17 @@ function PayForm({
         disabled={!stripe || !elements || busy}
       >
         <Lock className="size-4" />
-        {busy ? "Confirming…" : `Pay ${money(amount)}`}
+        {/* The label follows the disabled state, rather than promising a
+            payment the button cannot take. Until Stripe's SDK has loaded this
+            said "Pay ₹157.50" and did nothing — and the SDK is third-party
+            script on a third-party domain, so a blocker, a captive portal or
+            a bad minute leaves a customer pressing a dead button with no idea
+            whether the problem is them, us, or their card. */}
+        {busy
+          ? "Confirming…"
+          : !stripe || !elements
+            ? "Preparing the card form…"
+            : `Pay ${money(amount)}`}
       </Button>
       <Button type="button" variant="ghost" className="h-10" onClick={onCancel} disabled={busy}>
         Cancel and keep my cart

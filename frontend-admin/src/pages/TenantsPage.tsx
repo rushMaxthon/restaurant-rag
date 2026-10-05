@@ -334,6 +334,7 @@ export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
   return (
     <div className="page-stack">
       <PageIntro
+        help="tenants"
         description="Every restaurant running on this platform, what it is carrying, and whether its storefront is answering."
         eyebrow="Platform"
         title="Tenants"
@@ -347,6 +348,11 @@ export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
         tiles={tiles}
       />
 
+      {/* One surface for the search, the table and its paging, like every
+          other list page. The search used to float above the table's card on
+          the bare page, which read as a different control from a different
+          screen. */}
+      <section className="admin-surface">
       <DataToolbar
         onSearchChange={setSearch}
         searchLabel="Search tenants"
@@ -419,6 +425,7 @@ export function TenantsPage({ token, onNavigate, onToast }: TenantsPageProps) {
           totalPages={totalPages}
         />
       ) : null}
+      </section>
 
       {lifecycle && copy ? (
         <Modal busy={saving} labelledBy="tenant-lifecycle-title" onClose={() => setLifecycle(null)}>

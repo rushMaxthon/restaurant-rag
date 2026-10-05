@@ -59,6 +59,17 @@ class FakeProvider:
         self.cancelled: list[str] = []
         self.retrieve_result: payments_base.PaymentIntentResult | None = None
 
+    @property
+    def public_key(self) -> str:
+        """The key the browser opens this gateway with.
+
+        Distinctive on purpose: a test that asserts on it should fail loudly
+        if the service ever goes back to reading the deployment's own Stripe
+        key instead of asking the provider that made the intent.
+        """
+
+        return "pk_test_fake_provider"
+
     def is_configured(self) -> bool:
         return self._configured
 

@@ -34,8 +34,11 @@ export function BranchGate() {
   const initials = brandInitials(useStorefrontCopy().name);
 
   // Nothing to choose between yet. Rendering a gate with no options would trap
-  // the visitor behind a screen that cannot be satisfied.
-  if (store.branchChosen || store.isRestaurantLoading || store.locations.length === 0) {
+  // the visitor behind a screen that cannot be satisfied — and one with a
+  // single option is a question with one answer, which the store has already
+  // given. Checked here too so the gate cannot flash for the one render
+  // before that effect lands.
+  if (store.branchChosen || store.isRestaurantLoading || store.locations.length <= 1) {
     return null;
   }
 

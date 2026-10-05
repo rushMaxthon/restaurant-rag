@@ -80,6 +80,20 @@ _EVENT_STATUS = {
     "payment_link.paid": "succeeded",
     "payment_link.expired": "cancelled",
     "payment_link.cancelled": "cancelled",
+    # Refunds. Stripe has acted on `charge.refunded` since this shipped and
+    # Razorpay acted on nothing, so a refund issued from their dashboard moved
+    # the money and left this app still showing the order as paid.
+    #
+    # BOTH of Razorpay's refund events map here, on purpose. `refund.created`
+    # fires the moment one is issued; `refund.processed` when the bank settles
+    # it, which can be days later. Waiting for the second would leave an order
+    # reading "paid" long after the customer had their money back, and acting
+    # on the first is what Stripe's single event already amounts to. Arriving
+    # twice is harmless: the second is the same outcome applied to a row
+    # already in it, and each carries its own event id so neither is dropped
+    # as a duplicate of the other.
+    "refund.created": "refunded",
+    "refund.processed": "refunded",
 }
 
 #: What a restaurant subscribes its webhook to in the Razorpay dashboard, and
@@ -171,6 +185,33 @@ class RazorpayProvider:
             raise PaymentProviderError("Razorpay returned a response that was not JSON") from error
 
     # --- The contract -------------------------------------------------------
+
+    @property
+    def public_key(self) -> str:
+        """The key the browser opens Razorpay Checkout with — its `key_id`."""
+
+        return self._key_id
+
+    def verify_credentials(self) -> None:
+        """Ask Razorpay whether this key pair is real, before anything depends on it.
+
+        A wrong secret is indistinguishable from a right one until the first
+        customer tries to pay — the keys store, the screen says Live, and the
+        checkout then fails with "Authentication failed" at the moment somebody
+        is trying to give the restaurant money.
+
+        That happened: a webhook secret was pasted into the Key Secret field,
+        because the two sit next to each other and both are called a secret. A
+        Razorpay API secret is 24 characters of letters and digits; the webhook
+        secret is whatever the owner typed. Nothing in the shape of either one
+        makes the mistake obvious, so the only honest check is to ask Razorpay.
+
+        `GET /payments?count=1` is the cheapest authenticated call there is: it
+        reads nothing that matters, creates nothing, and a brand-new account
+        with no payments still answers 200 with an empty list.
+        """
+
+        self._request("GET", "/payments", params={"count": 1})
 
     def create_intent(
         self,

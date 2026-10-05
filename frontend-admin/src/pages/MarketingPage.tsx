@@ -33,7 +33,9 @@ import { DemoStateSelect } from '../components/marketing/DemoStateSelect';
 import { FALLBACK_ICON, GOAL_ICONS, statusLabel } from '../components/marketing/meta';
 import { RestaurantScopePicker } from '../components/marketing/RestaurantScopePicker';
 import { useMarketingScope } from '../hooks/useMarketingScope';
-import { formatCompactCurrency, formatCurrency, formatDate } from '../services/api';
+import { formatDate } from '../services/api';
+import { useMarketingMoney } from '../hooks/useMarketingMoney';
+import { shortDay } from '../services/format';
 import {
   cancelCampaign,
   deleteDraft,
@@ -45,6 +47,7 @@ import {
   subscribeToDemoMode,
 } from '../services/marketing/marketingApi';
 import type { Campaign, MarketingDashboard } from '../services/marketing/types';
+import { PageHelpTip } from "../components/PageHelpTip";
 
 interface MarketingPageProps {
   onNavigate: (path: string) => void;
@@ -91,6 +94,8 @@ function DeltaPill({ value }: { value: number }) {
 }
 
 export function MarketingPage({ onNavigate, onToast }: MarketingPageProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency, compact: formatCompactCurrency } = useMarketingMoney();
   // An owner is pinned to their own restaurant by the backend and must not name
   // one; an admin has no implicit restaurant, so every call they made arrived
   // unscoped and came back `restaurant_id is required for admin insights
@@ -166,7 +171,9 @@ export function MarketingPage({ onNavigate, onToast }: MarketingPageProps) {
   // rather than relabelling the same line.
   const trendData = useMemo(() => {
     const trend = dashboard?.revenue_trend ?? [];
-    return trend.slice(Math.max(trend.length - trendWindow, 0));
+    return trend
+      .slice(Math.max(trend.length - trendWindow, 0))
+      .map((point) => ({ ...point, label: shortDay(point.label) }));
   }, [dashboard, trendWindow]);
 
   const runAction = async (
@@ -267,7 +274,10 @@ export function MarketingPage({ onNavigate, onToast }: MarketingPageProps) {
       <section className="hub-top">
         <div className="hub-banner">
           <div className="hub-banner__copy">
-            <span className="hub-eyebrow">Marketing Hub</span>
+            <span className="hub-eyebrow">
+              Marketing Hub
+              <PageHelpTip page="marketing" />
+            </span>
             <h1 className="hub-banner__title">
               Reach your customers,
               <em>and see what it earned.</em>

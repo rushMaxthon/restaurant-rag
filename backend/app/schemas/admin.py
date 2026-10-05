@@ -38,6 +38,74 @@ class AdminUserUpdate(BaseModel):
     default_address: str | None = Field(default=None, max_length=2000)
 
 
+class PlatformCheck(BaseModel):
+    key: str
+    label: str
+    #: "ok", "warn" or "down".
+    status: str
+    detail: str
+    hint: str = ""
+
+
+class PlatformIssue(BaseModel):
+    key: str
+    #: "high", "medium" or "low".
+    severity: str
+    title: str
+    detail: str
+    count: int = 1
+    restaurant_id: uuid.UUID | None = None
+    restaurant_name: str | None = None
+    location_id: uuid.UUID | None = None
+    link: str | None = None
+
+
+class PlatformRestaurantToday(BaseModel):
+    restaurant_id: uuid.UUID
+    name: str
+    city: str
+    approved: bool
+    storefront: str | None = None
+    branches: int
+    branches_open: int
+    orders_today: int
+    sales_today: Decimal
+    awaiting_accept: int
+    out_of_stock: int
+    issues: int
+
+
+class PlatformWatchResponse(BaseModel):
+    """Is anything wrong, across the whole platform? See `platform_watch`."""
+
+    generated_at: datetime
+    checks: list[PlatformCheck] = Field(default_factory=list)
+    issues: list[PlatformIssue] = Field(default_factory=list)
+    restaurants: list[PlatformRestaurantToday] = Field(default_factory=list)
+
+
+class AdminCommissionRow(BaseModel):
+    restaurant_id: uuid.UUID
+    restaurant_name: str
+    #: Orders that carry a recorded commission and were paid for.
+    orders: int
+    #: What those orders sold, at menu prices, before fees and tax.
+    sales: Decimal
+    commission: Decimal
+    currency: str
+
+
+class AdminCommissionReport(BaseModel):
+    """What the platform earned, per restaurant, over a window."""
+
+    days: int
+    since: datetime
+    #: When the first order with a recorded commission was placed. The report
+    #: cannot count anything older, and the screen says so.
+    counted_from: datetime | None = None
+    restaurants: list[AdminCommissionRow] = Field(default_factory=list)
+
+
 class AdminMenuItemResponse(BaseModel):
     id: uuid.UUID
     restaurant_id: uuid.UUID
@@ -57,6 +125,9 @@ class AdminMenuItemResponse(BaseModel):
     image_url: str | None
     recent_valid_order_count: int = 0
     recent_valid_order_window_days: int = 30
+    #: How many are left. Null is "not counted".
+    stock_quantity: int | None = None
+    out_of_stock: bool = False
     popularity_score: Decimal
     launched_at: datetime
     created_at: datetime

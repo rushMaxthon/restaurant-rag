@@ -6,6 +6,8 @@ import { DishImage } from "./dish-image";
 import { VegMark } from "./veg-mark";
 import { type MenuItem } from "@/lib/bangkok-data";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { soleSize } from "@/lib/customization";
+import { canBuy, heldFor, roomLeft, stockNote } from "@/lib/stock";
 import { useAuth } from "@/lib/auth";
 import { useFavoriteIds, useToggleFavorite } from "@/lib/queries";
 import { useMoney } from "@/lib/storefront";
@@ -28,7 +30,14 @@ function DishCardImpl({ item }: { item: MenuItem }) {
   // A dish with sizes or add-ons cannot be added from a card — there is nothing
   // here to choose them with. Sending it to the detail page is honest; adding a
   // silent default and surprising them at checkout is not.
-  const needsChoices = item.has_sizes || item.has_customizations;
+  // One size and no options is not a choice — see `soleSize`. The card adds
+  // it directly, with that size on the line.
+  const only = soleSize(item);
+  const needsChoices = !only && (item.has_sizes || item.has_customizations);
+  const add = () =>
+    only
+      ? addItem(item, { unitPrice: Number(only.price), sizeId: only.id, sizeName: only.name })
+      : addItem(item);
 
   // Lines for this dish, so the card can show what is already in the cart
   // instead of an inert + that gives no feedback. Sized variants make several
@@ -36,6 +45,18 @@ function DishCardImpl({ item }: { item: MenuItem }) {
   const lines = cart.filter((line) => line.itemId === item.id);
   const inCart = lines.reduce((sum, line) => sum + line.quantity, 0);
   const lastLine = lines[lines.length - 1];
+
+  // The server refuses an order for more than is left; this is the same rule
+  // told early. `buyable` folds "sold out" into "switched off", because to a
+  // customer they are one fact: it cannot be had right now.
+  //
+  // Asked with the dish's one size where it has exactly one, because that
+  // size may keep a count of its own. A dish with several sizes is asked as a
+  // whole: it is out of stock here only when every size is.
+  const buyable = canBuy(item, only);
+  const held = heldFor(cart, item, only);
+  const room = roomLeft(item, held, only);
+  const note = stockNote(item, held, only);
 
   return (
     <article className="dish-card group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
@@ -71,10 +92,10 @@ function DishCardImpl({ item }: { item: MenuItem }) {
             {item.is_new && <span className="dish-badge dish-badge--new">New</span>}
           </div>
         )}
-        {!item.is_available && (
+        {!buyable && (
           <div className="absolute inset-0 grid place-items-center bg-overlay">
             <span className="rounded-full bg-surface px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide">
-              Unavailable
+              {item.is_available ? "Out of stock" : "Unavailable"}
             </span>
           </div>
         )}
@@ -114,13 +135,23 @@ function DishCardImpl({ item }: { item: MenuItem }) {
           </p>
         ) : null}
 
+        {/* Only while it can still be bought: "Sold out" is already said on
+            the photograph and in place of the button. */}
+        {buyable && note ? <p className="text-xs font-bold text-primary-text">{note}</p> : null}
+
         <div className="mt-auto flex items-center justify-between gap-3 pt-1">
           <span className="money font-bold">
-            {item.has_sizes ? `From ${money(item.price)}` : money(item.price)}
+            {only
+              ? money(only.price)
+              : item.has_sizes
+                ? `From ${money(item.price)}`
+                : money(item.price)}
           </span>
 
-          {!item.is_available ? (
-            <span className="text-sm font-semibold text-muted">Sold out</span>
+          {!buyable ? (
+            <span className="text-sm font-semibold text-muted">
+              {item.is_available ? "Out of stock" : "Unavailable"}
+            </span>
           ) : conflicts || needsChoices ? (
             <Button variant="outline" size="sm" asChild>
               <Link to="/menu/$itemId" params={{ itemId: item.id }}>
@@ -142,13 +173,15 @@ function DishCardImpl({ item }: { item: MenuItem }) {
                 type="button"
                 className="qty-step"
                 aria-label={`Add another ${item.name}`}
-                onClick={() => addItem(item)}
+                // The cart holds the last of them. The note above says so.
+                disabled={room === 0}
+                onClick={add}
               >
                 <Plus className="size-4" />
               </button>
             </div>
           ) : (
-            <Button aria-label={`Add ${item.name}`} size="icon" onClick={() => addItem(item)}>
+            <Button aria-label={`Add ${item.name}`} size="icon" onClick={add}>
               <Plus />
             </Button>
           )}

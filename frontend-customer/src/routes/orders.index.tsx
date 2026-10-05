@@ -53,7 +53,7 @@ function placedAt(iso: string): string {
 function OrderRow({ order, index }: { order: Order; index: number }) {
   // Prices in whatever this restaurant charges in.
   const money = useMoney();
-  const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary";
+  const tone = STATUS_TONE[order.status] ?? "bg-primary/15 text-primary-text";
   // An unpaid order has not started, so it gets no pulse and no progress bar.
   const unpaid = order.status === "PAYMENT_PENDING" && order.payment_status !== "COD";
   const live = !SETTLED.has(order.status) && !unpaid;
@@ -91,41 +91,49 @@ function OrderRow({ order, index }: { order: Order; index: number }) {
           {/* A booked time is the single most important fact about a scheduled
               order, and it was shown nowhere after checkout. */}
           {booked && (
-            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary-text">
               <CalendarClock className="size-4 shrink-0" />
               {isDelivery ? "Arriving" : "Ready"} {booked}
             </p>
           )}
 
-          <p className="mt-2 truncate text-sm text-muted">
-            <span className="font-semibold text-foreground">
-              {itemCount} {itemCount === 1 ? "item" : "items"}
-            </span>{" "}
-            ·{" "}
-            {order.items
-              .map((item) => {
-                // The chosen size and options, so two lines of the same dish
-                // read as the different things they are.
-                const chosen = lineSelections(item);
-                return `${item.quantity}× ${item.item_name_snapshot}${chosen ? ` (${chosen})` : ""}`;
-              })
-              .join(", ")}
-          </p>
+          {/* The pictures sit WITH the line they describe, not on a row of
+              their own underneath it. Most orders here are one dish bought
+              several times, so that row held a single 48px square adrift in a
+              wide card, which read as a layout waiting for something else to
+              load. Beside the text it is obviously a thumbnail of what was
+              ordered, and four of them still line up. */}
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2">
+              {order.items.slice(0, 4).map((item) => (
+                <OrderItemThumb
+                  key={item.id}
+                  menuItemId={item.menu_item_id}
+                  name={item.item_name_snapshot}
+                  className="size-12 rounded-lg text-sm ring-1 ring-border"
+                />
+              ))}
+              {order.items.length > 4 && (
+                <span className="grid size-12 place-items-center rounded-lg bg-surface-alt text-xs font-extrabold text-muted">
+                  +{order.items.length - 4}
+                </span>
+              )}
+            </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {order.items.slice(0, 4).map((item) => (
-              <OrderItemThumb
-                key={item.id}
-                menuItemId={item.menu_item_id}
-                name={item.item_name_snapshot}
-                className="size-12 rounded-lg text-sm ring-1 ring-border"
-              />
-            ))}
-            {order.items.length > 4 && (
-              <span className="grid size-12 place-items-center rounded-lg bg-surface-alt text-xs font-extrabold text-muted">
-                +{order.items.length - 4}
-              </span>
-            )}
+            <p className="min-w-0 truncate text-sm text-muted">
+              <span className="font-semibold text-foreground">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </span>{" "}
+              ·{" "}
+              {order.items
+                .map((item) => {
+                  // The chosen size and options, so two lines of the same dish
+                  // read as the different things they are.
+                  const chosen = lineSelections(item);
+                  return `${item.quantity}× ${item.item_name_snapshot}${chosen ? ` (${chosen})` : ""}`;
+                })
+                .join(", ")}
+            </p>
           </div>
         </div>
 

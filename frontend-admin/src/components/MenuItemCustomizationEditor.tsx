@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { Plus } from "lucide-react";
 import { Checkbox } from "./common/Checkbox";
+import { useMoney } from "../hooks/useMoney";
 
 import type {
   MenuItem,
@@ -10,6 +11,7 @@ import type {
   MenuItemSizePayload,
   MenuItemUpsertPayload,
 } from "../types/app";
+import { countChange, countText, stockChange } from "../services/menuStock";
 
 type MenuItemCustomizationOptionFormState = {
   id: string;
@@ -40,6 +42,10 @@ type MenuItemSizeFormState = {
   price: string;
   is_active: boolean;
   sort_order: string;
+  /** This size's own count, as typed. Empty: it draws on the dish's count. */
+  stock_quantity: string;
+  /** What `stock_quantity` held when the dish was opened; null for a new size. */
+  stock_loaded: string | null;
   customization_groups: MenuItemCustomizationGroupFormState[];
 };
 
@@ -52,6 +58,18 @@ export type MenuItemFormState = {
   launched_at: string;
   is_veg: boolean;
   is_available: boolean;
+  /** As typed. Empty is "not counted", which is not the same as 0. */
+  stock_quantity: string;
+  /**
+   * What the box held when the dish was opened; null for a new dish. Compared
+   * on save so an untouched count is not written back - see `stockChange`.
+   */
+  stock_loaded: string | null;
+  /** Marked out of stock by hand. */
+  out_of_stock: boolean;
+  /** The morning refill amount, as typed. Empty: restocked by hand. */
+  stock_daily_quantity: string;
+  stock_daily_loaded: string | null;
   image_url: string;
   is_new_launch: boolean;
   has_sizes: boolean;
@@ -63,6 +81,8 @@ export type MenuItemFormState = {
 type MenuItemCustomizationEditorProps = {
   form: MenuItemFormState;
   onChange: (nextForm: MenuItemFormState) => void;
+  /** Whose menu this is, so a price is written in that restaurant's money. */
+  restaurantId?: string | null;
 };
 
 function createId(prefix: string): string {
@@ -166,6 +186,8 @@ function createEmptySize(): MenuItemSizeFormState {
     price: "",
     is_active: true,
     sort_order: "0",
+    stock_quantity: "",
+    stock_loaded: null,
     customization_groups: [],
   };
 }
@@ -224,7 +246,7 @@ function mapOptionToForm(
   return {
     id: option.id,
     name: option.name,
-    extra_price: toStringNumber(option.extra_price),
+    extra_price: toStringNumber(option.base_extra_price ?? option.extra_price),
     is_active: option.is_active,
     is_countable: option.is_countable,
     sort_order: String(option.sort_order),
@@ -296,6 +318,11 @@ export function createEmptyMenuItemFormState(): MenuItemFormState {
     launched_at: "",
     is_veg: true,
     is_available: true,
+    stock_quantity: "",
+    stock_loaded: null,
+    out_of_stock: false,
+    stock_daily_quantity: "",
+    stock_daily_loaded: null,
     image_url: "",
     is_new_launch: false,
     has_sizes: false,
@@ -343,10 +370,16 @@ export function createMenuItemFormStateFromItem(item: MenuItem): MenuItemFormSta
     category: item.category,
     cuisine_type: item.cuisine_type ?? "",
     description: item.description ?? "",
-    price: toStringNumber(item.price),
+    // The typed price, not the listed one — see `MenuItem.base_price`.
+    price: toStringNumber(item.base_price ?? item.price),
     launched_at: toDateTimeLocalValue(item.launched_at),
     is_veg: item.is_veg,
     is_available: item.is_available,
+    stock_quantity: item.stock_quantity == null ? "" : String(item.stock_quantity),
+    stock_loaded: item.stock_quantity == null ? "" : String(item.stock_quantity),
+    out_of_stock: Boolean(item.out_of_stock),
+    stock_daily_quantity: countText(item.stock_daily_quantity),
+    stock_daily_loaded: countText(item.stock_daily_quantity),
     image_url: item.image_url ?? "",
     is_new_launch: item.is_new_launch,
     has_sizes: item.has_sizes,
@@ -354,9 +387,11 @@ export function createMenuItemFormStateFromItem(item: MenuItem): MenuItemFormSta
     sizes: item.sizes.map((size) => ({
       id: size.id,
       name: size.name,
-      price: toStringNumber(size.price),
+      price: toStringNumber(size.base_price ?? size.price),
       is_active: size.is_active,
       sort_order: String(size.sort_order),
+      stock_quantity: countText(size.stock_quantity),
+      stock_loaded: countText(size.stock_quantity),
       customization_groups: [],
     })),
     customization_groups: item.has_sizes
@@ -457,6 +492,7 @@ function buildSizePayload(
     price: parsePrice(size.price, `${name} price`),
     is_active: size.is_active,
     sort_order: parseInteger(size.sort_order, `${name} sort order`),
+    ...countChange("stock_quantity", size.stock_quantity, size.stock_loaded),
     customization_groups: customizationGroups,
   };
 }
@@ -541,6 +577,9 @@ export function buildMenuItemUpsertPayload(
     price: fallbackPrice,
     is_veg: form.is_veg,
     is_available: form.is_available,
+    ...stockChange(form.stock_quantity, form.stock_loaded),
+    ...countChange("stock_daily_quantity", form.stock_daily_quantity, form.stock_daily_loaded),
+    out_of_stock: form.out_of_stock,
     is_new_launch: form.is_new_launch,
     image_url: form.image_url.trim() || null,
     launched_at: toApiDateTimeValue(form.launched_at),
@@ -589,11 +628,15 @@ function updateTextField<T extends keyof MenuItemFormState>(
 export function MenuItemCustomizationEditor({
   form,
   onChange,
+  restaurantId,
 }: MenuItemCustomizationEditorProps) {
+  // The two read-only price cells below wrote a literal `$` in front of the
+  // number, so a Surat bakery's ₹40 size read "$40" in its own editor.
+  const money = useMoney();
   const [sizeDraft, setSizeDraft] = useState({ name: "", price: "" });
   const [sizeDraftError, setSizeDraftError] = useState<string | null>(null);
   const [editingSizeId, setEditingSizeId] = useState<string | null>(null);
-  const [editingSizeDraft, setEditingSizeDraft] = useState({ name: "", price: "" });
+  const [editingSizeDraft, setEditingSizeDraft] = useState({ name: "", price: "", stock: "" });
   const [editingSizeError, setEditingSizeError] = useState<string | null>(null);
   const [groupDrafts, setGroupDrafts] = useState<
     Record<string, MenuItemCustomizationGroupDraftState>
@@ -690,7 +733,7 @@ export function MenuItemCustomizationEditor({
   useEffect(() => {
     if (editingSizeId && !form.sizes.some((size) => size.id === editingSizeId)) {
       setEditingSizeId(null);
-      setEditingSizeDraft({ name: "", price: "" });
+      setEditingSizeDraft({ name: "", price: "", stock: "" });
       setEditingSizeError(null);
     }
   }, [editingSizeId, form.sizes]);
@@ -864,13 +907,14 @@ export function MenuItemCustomizationEditor({
     setEditingSizeDraft({
       name: size.name,
       price: size.price,
+      stock: size.stock_quantity,
     });
     setEditingSizeError(null);
   };
 
   const cancelEditingSize = () => {
     setEditingSizeId(null);
-    setEditingSizeDraft({ name: "", price: "" });
+    setEditingSizeDraft({ name: "", price: "", stock: "" });
     setEditingSizeError(null);
   };
 
@@ -891,6 +935,7 @@ export function MenuItemCustomizationEditor({
         ...size,
         name: editingSizeDraft.name.trim(),
         price: editingSizeDraft.price.trim(),
+        stock_quantity: editingSizeDraft.stock.trim(),
       })),
     });
     cancelEditingSize();
@@ -1955,7 +2000,7 @@ export function MenuItemCustomizationEditor({
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Extra price</span>
-                                      <span>${option.extra_price}</span>
+                                      <span>{money.format(option.extra_price || 0, restaurantId)}</span>
                                     </div>
                                     <div className="menu-option-list__cell">
                                       <span className="menu-size-list__cell-label">Countable</span>
@@ -2179,6 +2224,20 @@ export function MenuItemCustomizationEditor({
                                 }}
                               />
                             </label>
+                            <label className="field">
+                              <span>Stock left</span>
+                              <input
+                                inputMode="numeric"
+                                placeholder="Uses the dish's count"
+                                value={editingSizeDraft.stock}
+                                onChange={(event) =>
+                                  setEditingSizeDraft((current) => ({
+                                    ...current,
+                                    stock: event.target.value,
+                                  }))
+                                }
+                              />
+                            </label>
                           </div>
                           {editingSizeError ? (
                             <p className="menu-size-inline-error">{editingSizeError}</p>
@@ -2208,7 +2267,13 @@ export function MenuItemCustomizationEditor({
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Price</span>
-                            <span>{size.price ? `$${size.price}` : "Pending"}</span>
+                            <span>
+                              {size.price ? money.format(size.price, restaurantId) : "Pending"}
+                              {/* Only where this size keeps a count of its own. */}
+                              {size.stock_quantity.trim() !== ""
+                                ? ` · ${size.stock_quantity.trim()} left`
+                                : ""}
+                            </span>
                           </div>
                           <div className="menu-size-list__cell">
                             <span className="menu-size-list__cell-label">Status</span>

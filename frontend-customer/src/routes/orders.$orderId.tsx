@@ -181,7 +181,12 @@ function OrderDetail() {
 
       <header className="mt-2 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-extrabold uppercase tracking-wider text-primary">
+          {/* Sentence case, and the order reference is not a brand moment.
+              It was tracked-out capitals in the accent colour above a heading
+              that already says what happened — the same shouted-label pattern
+              being removed across the site. The code still reads as a code,
+              because tabular figures do that work without shouting. */}
+          <p className="text-sm font-semibold tabular-nums text-muted">
             Order {orderCode(o)}
           </p>
           <h1 className="mt-2 font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">

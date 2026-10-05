@@ -929,12 +929,13 @@ export function OffersPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="offers"
         eyebrow="Campaign control"
         title="Offers"
         description={
           role === "ADMIN"
-            ? "Manage manual restaurant and branch campaigns across the platform."
-            : "Manage reusable templates and AI-generated campaigns for your restaurant."
+            ? "Discounts and deals for any restaurant or branch."
+            : "Discounts and deals for your restaurant, including the ones the AI suggests."
         }
         actions={
           <>

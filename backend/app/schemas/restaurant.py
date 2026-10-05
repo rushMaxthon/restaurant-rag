@@ -449,6 +449,12 @@ class RestaurantLocationBase(BaseModel):
     tax_percent: Decimal = Field(default=Decimal("5.00"), ge=0, le=100)
     #: Percent on the delivery fee, at its own rate.
     delivery_tax_percent: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    #: The typed menu prices already contain GST, so `tax_percent` is not
+    #: charged on food at checkout. Off, it is. No price changes either way.
+    gst_in_menu_prices: bool = False
+    #: The platform's commission, added to every typed menu price. Capped
+    #: at 100 for the reason `tax_percent` is. Only an ADMIN may change it.
+    commission_percent: Decimal = Field(default=Decimal("10.00"), ge=0, le=100)
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     estimated_delivery_time: int = Field(default=30, ge=1, le=240)
     estimated_pickup_time: int = Field(default=20, ge=1, le=240)
@@ -499,6 +505,8 @@ class RestaurantLocationUpdate(BaseModel):
     platform_fee: Decimal | None = Field(default=None, ge=0)
     tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    gst_in_menu_prices: bool | None = None
+    commission_percent: Decimal | None = Field(default=None, ge=0, le=100)
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)
@@ -563,6 +571,8 @@ class RestaurantLocationGeneralSettingsUpdate(BaseModel):
     platform_fee: Decimal | None = Field(default=None, ge=0)
     tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
     delivery_tax_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    gst_in_menu_prices: bool | None = None
+    commission_percent: Decimal | None = Field(default=None, ge=0, le=100)
     minimum_order_amount: Decimal | None = Field(default=None, ge=0)
     estimated_delivery_time: int | None = Field(default=None, ge=1, le=240)
     estimated_pickup_time: int | None = Field(default=None, ge=1, le=240)
@@ -645,6 +655,9 @@ class LocationScheduleOptionsResponse(BaseModel):
 class RestaurantLocationResponse(RestaurantLocationBase):
     model_config = ConfigDict(from_attributes=True)
 
+    #: Null for everyone but the staff who manage the branch. See
+    #: `menu_pricing.sees_typed_prices`.
+    commission_percent: Decimal | None = None  # type: ignore[assignment]
     id: uuid.UUID
     restaurant_id: uuid.UUID
     delivery_available_now: bool = False

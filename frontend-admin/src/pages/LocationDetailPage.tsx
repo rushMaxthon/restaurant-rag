@@ -20,6 +20,7 @@ import { Checkbox } from "../components/common/Checkbox";
 import { DataToolbar } from "../components/DataToolbar";
 import { EmptyPanel } from "../components/EmptyPanel";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { GstPriceSwitch } from "../components/GstPriceSwitch";
 import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
@@ -100,8 +101,10 @@ type LocationGeneralSettingsForm = {
   // the person typing it.
   packaging_fee: string;
   platform_fee: string;
+  commission_percent: string;
   tax_percent: string;
   delivery_tax_percent: string;
+  gst_in_menu_prices: boolean;
   minimum_order_amount: string;
   estimated_delivery_time: string;
   estimated_pickup_time: string;
@@ -226,8 +229,10 @@ function toGeneralSettingsForm(location: RestaurantLocation): LocationGeneralSet
     delivery_fee: String(location.delivery_fee),
     packaging_fee: String(location.packaging_fee ?? 0),
     platform_fee: String(location.platform_fee ?? 0),
+    commission_percent: String(Number(location.commission_percent ?? 10)),
     tax_percent: String(location.tax_percent ?? 5),
     delivery_tax_percent: String(location.delivery_tax_percent ?? 0),
+    gst_in_menu_prices: Boolean(location.gst_in_menu_prices),
     minimum_order_amount: String(location.minimum_order_amount),
     estimated_delivery_time: String(location.estimated_delivery_time),
     estimated_pickup_time: String(location.estimated_pickup_time),
@@ -304,6 +309,9 @@ export function LocationDetailPage({
   // instead of a skeleton.
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(detailKey));
   const [activeTab, setActiveTab] = useState<LocationTab>("details");
+  // Remounts the menu table after the commission changes, because every
+  // price in it has just changed on the server.
+  const [menuVersion, setMenuVersion] = useState(0);
   const [settingsForm, setSettingsForm] = useState<LocationSettingsForm | null>(
     () => (cachedLocation ? toLocationSettingsForm(cachedLocation) : null),
   );
@@ -605,6 +613,12 @@ export function LocationDetailPage({
           platform_fee: amountOrZero(generalSettingsForm.platform_fee),
           tax_percent: amountOrZero(generalSettingsForm.tax_percent),
           delivery_tax_percent: amountOrZero(generalSettingsForm.delivery_tax_percent),
+          gst_in_menu_prices: generalSettingsForm.gst_in_menu_prices,
+          // The platform's rate. An owner's save leaves it out: the server
+          // refuses an owner who changes it, and the field is read-only here.
+          ...(role === "ADMIN"
+            ? { commission_percent: amountOrZero(generalSettingsForm.commission_percent) }
+            : {}),
           minimum_order_amount: Number(generalSettingsForm.minimum_order_amount),
           estimated_delivery_time: Number(generalSettingsForm.estimated_delivery_time),
           estimated_pickup_time: Number(generalSettingsForm.estimated_pickup_time),
@@ -621,8 +635,19 @@ export function LocationDetailPage({
               : Number(generalSettingsForm.service_radius_km),
         },
       );
+      const commissionMoved =
+        Number(updated.commission_percent ?? 10) !== Number(location.commission_percent ?? 10);
       syncLocation(updated);
-      onToast("General settings saved", `${updated.branch_name} fulfillment rules were updated.`, "success");
+      if (commissionMoved) {
+        setMenuVersion((version) => version + 1);
+      }
+      onToast(
+        "General settings saved",
+        commissionMoved
+          ? `${updated.branch_name} now adds ${Number(updated.commission_percent ?? 10)}% commission. Every menu price was updated.`
+          : `${updated.branch_name} fulfillment rules were updated.`,
+        "success",
+      );
     } catch (error: unknown) {
       const message =
         error instanceof ApiError
@@ -902,6 +927,7 @@ export function LocationDetailPage({
         onNavigate={onNavigate}
       />
       <PageIntro
+        help="location-detail"
         eyebrow="Branch workspace"
         title={location.branch_name}
         description={`Manage branch settings, slots, menu items, and orders for ${restaurant.name}.`}
@@ -935,6 +961,25 @@ export function LocationDetailPage({
             <span>Pickup ETA</span>
           </div>
           <div className="restaurant-metric-card">
+            <strong>
+              {location.gst_in_menu_prices
+                ? "GST in prices"
+                : `${Number(location.tax_percent ?? 5)}% tax`}
+            </strong>
+            <span>
+              {location.gst_in_menu_prices ? "No tax added at checkout" : "Added at checkout"}
+            </span>
+          </div>
+          {/* The platform admin's own figure. The server does not send an
+              owner the rate at all; without this guard the tile would still
+              draw, reading the fallback 10 as if it were theirs. */}
+          {role === "ADMIN" ? (
+            <div className="restaurant-metric-card">
+              <strong>{Number(location.commission_percent ?? 10)}% commission</strong>
+              <span>Added to menu prices</span>
+            </div>
+          ) : null}
+          <div className="restaurant-metric-card">
             <strong>{location.is_open ? "Open" : "Closed"}</strong>
             <span>{location.is_active ? "Active branch" : "Inactive branch"}</span>
           </div>
@@ -944,9 +989,12 @@ export function LocationDetailPage({
       <nav className="segmented-tabs" aria-label="Location detail tabs">
         {[
           { key: "details", label: "Details", icon: Store },
-          { key: "settings", label: "Settings", icon: Settings2 },
-          { key: "slots", label: "Slots", icon: Clock3 },
-          { key: "general_settings", label: "General Settings", icon: Truck },
+          { key: "settings", label: "Address & contact", icon: Settings2 },
+          { key: "slots", label: "Opening hours", icon: Clock3 },
+          // "Fulfilment & fees" rather than "General Settings", which described
+          // nothing. This is where delivery, pickup, the payment toggles and
+          // the four charges live.
+          { key: "general_settings", label: "Fulfilment & fees", icon: Truck },
           { key: "menu", label: "Menu Items", icon: UtensilsCrossed },
           { key: "orders", label: "Orders", icon: ReceiptText },
         ].map((tab) => {
@@ -1494,6 +1542,13 @@ export function LocationDetailPage({
             </div>
           </div>
           <form className="form-grid" onSubmit={submitGeneralSettings}>
+            {/* Twenty-odd controls in one grid read as a wall. The headings group
+                what was already adjacent; no field has moved, so nothing an owner
+                learned the position of is somewhere else. */}
+            <div className="form-grid__section">
+              <h3>Status and fulfilment</h3>
+              <p>Whether this branch is taking orders, and how it hands them over.</p>
+            </div>
             <div className="field form-grid__wide field--inline">
               <Checkbox
                 checked={generalSettingsForm.is_open}
@@ -1548,6 +1603,10 @@ export function LocationDetailPage({
                 toggles stay visible but disabled rather than being deleted,
                 so the column values remain legible and re-enabling them is a
                 one-line change once a provider exists. */}
+            <div className="form-grid__section">
+              <h3>Payment methods</h3>
+              <p>What a customer can pay with at this branch.</p>
+            </div>
             <div className="field form-grid__wide field--inline">
               <Checkbox
                 checked={generalSettingsForm.card_payment_enabled}
@@ -1573,18 +1632,39 @@ export function LocationDetailPage({
                 label="Google Pay (not available)"
                 onChange={() => undefined}
               />
+              {/* Razorpay is live and this box was disabled, with copy saying
+                  it was "not supported yet" and "ignored at checkout". Both
+                  were false: `SUPPORTED_PAYMENT_METHODS` in the payments
+                  registry is card, Razorpay and cash, and
+                  `available_payment_methods` reads this very flag. The screen
+                  was telling an owner their UPI switch did nothing.
+
+                  Google Pay above stays disabled, because that one is true —
+                  the registry leaves it out on purpose, since Razorpay's own
+                  checkout already covers UPI and wallets behind one button. */}
               <Checkbox
                 checked={generalSettingsForm.razorpay_enabled}
-                disabled
-                label="Razorpay (not available)"
-                onChange={() => undefined}
+                label="Razorpay (UPI, cards, wallets)"
+                onChange={(checked) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, razorpay_enabled: checked } : current,
+                  )
+                }
               />
             </div>
             <p className="field form-grid__wide hint-text">
-              Customers can pay by card (Stripe) or cash on delivery. Google Pay
-              and Razorpay are not supported yet — their saved values are shown
-              for reference only and are ignored at checkout.
+              Customers can pay by card, by cash on delivery, or through Razorpay
+              — which covers UPI, netbanking and wallets behind one button. A
+              method only appears at checkout once this branch has it switched on
+              AND the restaurant has that gateway&rsquo;s keys saved, so a
+              customer is never shown a button that cannot take their money. Add
+              keys under the restaurant&rsquo;s Settings tab. Google Pay is not
+              supported; its saved value is kept for reference and ignored.
             </p>
+            <div className="form-grid__section">
+              <h3>Taxes and charges</h3>
+              <p>What is added to the food on a customer&rsquo;s bill.</p>
+            </div>
             <label className="field">
               <span>Packaging fee</span>
               <input
@@ -1613,12 +1693,60 @@ export function LocationDetailPage({
                 }
               />
             </label>
+            {role === "ADMIN" ? (
             <label className="field">
-              <span>Tax on food (%)</span>
+              <span>Our commission (%)</span>
               <input
                 max="100"
                 min="0"
                 step="0.01"
+                type="number"
+                value={generalSettingsForm.commission_percent}
+                onChange={(event) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, commission_percent: event.target.value } : current,
+                  )
+                }
+              />
+              <span className="hint-text">
+                Added to every menu price on this branch: a dish typed at 100
+                is shown to customers at{" "}
+                {(100 + amountOrZero(generalSettingsForm.commission_percent)).toFixed(2)}. Saving a
+                new rate updates every price on the menu.
+              </span>
+            </label>
+            ) : null}
+            <div className="field form-grid__wide">
+              <Checkbox
+                checked={generalSettingsForm.gst_in_menu_prices}
+                label="Menu prices already include GST"
+                onChange={(checked) =>
+                  setGeneralSettingsForm((current) =>
+                    current ? { ...current, gst_in_menu_prices: checked } : current,
+                  )
+                }
+              />
+              <p className="hint-text">
+                On: the prices you typed already have GST in them, so
+                customers pay exactly the menu price and no tax on food is
+                added at checkout. Off: your prices are before tax, and
+                &ldquo;Tax on food&rdquo; below is added on the bill. Either
+                way your menu prices stay exactly as you typed them. The same
+                switch is on the Menu Items tab.
+              </p>
+            </div>
+            <label className="field">
+              <span>Tax on food (%)</span>
+              <input
+                disabled={generalSettingsForm.gst_in_menu_prices}
+                max="100"
+                min="0"
+                step="0.01"
+                title={
+                  generalSettingsForm.gst_in_menu_prices
+                    ? "Not charged while menu prices already include GST"
+                    : undefined
+                }
                 type="number"
                 value={generalSettingsForm.tax_percent}
                 onChange={(event) =>
@@ -1627,6 +1755,11 @@ export function LocationDetailPage({
                   )
                 }
               />
+              {generalSettingsForm.gst_in_menu_prices ? (
+                <small className="hint-text">
+                  Not charged while menu prices already include GST.
+                </small>
+              ) : null}
             </label>
             <label className="field">
               <span>Tax on delivery (%)</span>
@@ -1652,6 +1785,10 @@ export function LocationDetailPage({
               never taxed again. Leave them at 0 and 5% to charge exactly what
               this branch charged before.
             </p>
+            <div className="form-grid__section">
+              <h3>Delivery, timing and limits</h3>
+              <p>The fee, the minimum, and the times a customer is quoted.</p>
+            </div>
             <label className="field">
               <span>Delivery fee</span>
               <input
@@ -1815,7 +1952,22 @@ export function LocationDetailPage({
               </p>
             </div>
           </div>
+          <GstPriceSwitch
+            location={location}
+            onChanged={(updated) => {
+              syncLocation(updated);
+              setGeneralSettingsForm((current) =>
+                current
+                  ? { ...current, gst_in_menu_prices: Boolean(updated.gst_in_menu_prices) }
+                  : current,
+              );
+            }}
+            onToast={onToast}
+            restaurantId={restaurant.id}
+            token={token}
+          />
           <RestaurantMenuTable
+            key={menuVersion}
             token={token}
             role={role}
             restaurant={restaurant}

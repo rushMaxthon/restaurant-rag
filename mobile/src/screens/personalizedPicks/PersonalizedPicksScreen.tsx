@@ -42,6 +42,7 @@ import type {
   RecommendationItem,
 } from '@/types/app';
 import type { RootStackParamList } from '@/navigation/navigationTypes';
+import { isOnSale } from '@/utils/stock';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PersonalizedPicks'>;
 
@@ -132,7 +133,7 @@ const PersonalizedPickCard = memo(function PersonalizedPickCard({
   const matchPercent = Math.max(1, Math.round(item.score * 100));
   const priceLabel =
     item.price_label ?? formatCurrency(item.display_price ?? item.price);
-  const isAvailable = item.is_available !== false;
+  const isAvailable = isOnSale(item);
   const categoryLabel = item.category || 'Recommended';
   const recommendedLabel = item.ai_badge || 'Recommended';
   const supportingReason = item.ai_reason || item.recommendation_reason;
@@ -218,7 +219,7 @@ const PersonalizedPickCard = memo(function PersonalizedPickCard({
                   !isAvailable ? styles.addButtonTextDisabled : null,
                 ]}
               >
-                {isAvailable ? 'Add' : 'Sold out'}
+                {isAvailable ? 'Add' : 'Out of stock'}
               </Text>
             </Pressable>
           </View>

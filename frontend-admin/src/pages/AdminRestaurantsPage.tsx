@@ -472,9 +472,10 @@ export function AdminRestaurantsPage({ token, onNavigate, onToast }: AdminRestau
   return (
     <div className="page-stack">
       <PageIntro
+        help="restaurants"
         eyebrow="Moderation"
         title="Restaurants"
-        description="Approve, edit, and manage every restaurant with better search, filtering, and lifecycle controls."
+        description="Every restaurant on the platform. Approve new ones, and open any restaurant to manage it."
       />
 
       <StatTiles<'ALL' | 'APPROVED' | 'PENDING'>

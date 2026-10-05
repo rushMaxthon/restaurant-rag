@@ -77,7 +77,7 @@ export function StatsCounter({
     if (!node || !animate) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return;
+        if (!entry?.isIntersecting) return;
         motionValue.set(value);
         observer.disconnect();
       },

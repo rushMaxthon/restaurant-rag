@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from collections.abc import Iterable
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -10,6 +11,7 @@ from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
+from app.services import menu_pricing
 from app.models.enums import (
     LocationDayOfWeek,
     OrderFulfillmentType,
@@ -901,6 +903,7 @@ def build_location_response(
     *,
     include_slots: bool = True,
     reference_dt: datetime | None = None,
+    viewer: Any = None,
 ) -> RestaurantLocationResponse:
     delivery_available_now, delivery_reason = get_location_fulfillment_status(
         location,
@@ -919,6 +922,13 @@ def build_location_response(
             "delivery_unavailable_reason": None if delivery_available_now else delivery_reason,
             "pickup_unavailable_reason": None if pickup_available_now else pickup_reason,
             "enabled_payment_methods": get_enabled_payment_methods(location),
+            # The platform's rate goes to the staff who manage the branch and
+            # to nobody else; this route also answers the storefront.
+            "commission_percent": (
+                location.commission_percent
+                if menu_pricing.sees_commission_rate(viewer)
+                else None
+            ),
             "fulfillment_slots": (
                 [_serialize_slot(slot) for slot in sorted_slots(location.fulfillment_slots)]
                 if include_slots

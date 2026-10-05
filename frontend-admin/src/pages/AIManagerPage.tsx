@@ -21,6 +21,7 @@ import type {
   OwnerInsightStatus,
   Restaurant,
 } from "../types/app";
+import { PageHelpTip } from "../components/PageHelpTip";
 
 
 interface AIManagerSnapshot {
@@ -307,6 +308,8 @@ export function AIManagerPage() {
             </button>
           ))}
         </div>
+
+        <PageHelpTip page="ai-manager" />
 
         <span className="ai-bar__spacer" />
 

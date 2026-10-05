@@ -230,6 +230,34 @@ export type SavedAddressFields = {
   postal_code: string;
 };
 
+/** Where a saved address actually is, when the row knows. */
+export type SavedAddressPoint = {
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+/**
+ * The coordinates to price and drive to, from a saved address.
+ *
+ * Beside `addressFromSaved` because the two are always used together and were
+ * not: the checkout filled the form from a saved address and left the point
+ * null, so the server saw an address with no coordinates and refused the
+ * order — "Please choose your address from the suggestions", shown to a
+ * customer whose address was already on the screen.
+ *
+ * Returns null rather than a partial point for an address saved before
+ * coordinates were captured, or one whose geocode never came back. The server
+ * then falls back to the row's own stored point by id, and failing that prices
+ * the branch's flat rate; what it must never get is one half of a coordinate.
+ */
+export function pointFromSaved(
+  saved: SavedAddressPoint,
+): { latitude: number; longitude: number } | null {
+  const { latitude, longitude } = saved;
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  return { latitude, longitude };
+}
+
 export function addressFromSaved(saved: SavedAddressFields): AddressFields {
   return {
     // Saved addresses hold one line, so everything lands in `line1` and the
@@ -306,8 +334,15 @@ export function looseAddressFields(value: string | null | undefined): AddressFie
  * Is the address in the form one the customer has already saved?
  *
  * Compared part by part, case-folded and trimmed, because "washington" and
- * "Washington " are the same place. Without this, every order re-saves the
- * address it was given and the picker fills up with copies of one street.
+ * "Washington " are the same place.
+ *
+ * This is no longer what PREVENTS a duplicate, and reading it as such is how
+ * one got written: it compares against the picker's list, which is a cached
+ * query, so the first order writes the row and the second order the same
+ * evening still sees no match. The rule that holds lives on the server
+ * (`_matching_saved_address` in `app/services/profile.py`), which has only one
+ * copy of the list and no cache in front of it. This stays as a way to skip a
+ * save that would plainly be a no-op — one fewer request, not a guarantee.
  */
 export function isSameAddress(fields: AddressFields, saved: SavedAddressFields): boolean {
   const same = (a: string | null | undefined, b: string | null | undefined) =>

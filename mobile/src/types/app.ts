@@ -253,6 +253,10 @@ export interface MenuItem {
   price: DecimalValue;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left. Null or absent: not counted. See `utils/stock.ts`. */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand. */
+  out_of_stock?: boolean;
   is_bestseller: boolean;
   image_url: string | null;
   popularity_score: DecimalValue;
@@ -397,6 +401,10 @@ export interface GeneratedComboItem {
   image_url: string | null;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left. Null or absent: not counted. See `utils/stock.ts`. */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand. */
+  out_of_stock?: boolean;
   is_favorite: boolean;
 }
 
@@ -449,6 +457,10 @@ export interface ChatSuggestionItem {
   price: DecimalValue;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left. Null or absent: not counted. See `utils/stock.ts`. */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand. */
+  out_of_stock?: boolean;
   is_bestseller: boolean;
   image_url: string | null;
   launched_at: string;
@@ -877,6 +889,12 @@ export interface AppConfig {
    * the app on a missing property.
    */
   business_timezone?: string;
+  /**
+   * Optional features this restaurant has switched on or off, by key.
+   * Absent from an older backend, and a missing key means "on" - the same
+   * reading the storefront's `hasCapability` gives it.
+   */
+  capabilities?: Record<string, boolean>;
 }
 
 /**

@@ -77,6 +77,18 @@ class PaymentProvider(Protocol):
 
     def is_configured(self) -> bool: ...
 
+    @property
+    def public_key(self) -> str:
+        """The key the BROWSER needs to open this gateway.
+
+        Stripe's publishable key, Razorpay's `key_id`. It belongs to the
+        provider because it belongs to the same account as the secret that
+        created the intent — and the one time that was assumed rather than
+        asked for, a Razorpay checkout was opened with a Stripe publishable
+        key and every customer got a 401.
+        """
+        ...
+
     def create_intent(
         self,
         *,

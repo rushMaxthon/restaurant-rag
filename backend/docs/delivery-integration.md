@@ -136,6 +136,40 @@ retry storm over a payload we deliberately ignored helps nobody. An unknown
 delivery id is accepted and ignored rather than refused, so the endpoint cannot
 be used to probe which ids exist.
 
+## Calling a rider off
+
+`POST /v1.0/store/channel/vendor/{id}/cancel` — the fourth of Pidge's core
+calls, after login, create and status. This document used to say no cancel
+endpoint was documented. It is; it had not been looked for, because nothing
+needed it.
+
+Nothing needed it because every cancellation on this platform is of an UNPAID
+order (`OrderCancellationReason`), and dispatch happens when the kitchen
+accepts — so no order that can be cancelled today has ever had a rider. The
+call is wired in anyway, at the one place an order is cancelled:
+
+```
+mark_order_cancelled
+  -> if the order has a delivery row carrying Pidge's id,
+     queue cancel_order_delivery_task               (after the commit)
+  -> the task RE-READS the order and stops unless it is CANCELLED
+  -> service.cancel asks Pidge, and marks the row CANCELLED only if they agree
+```
+
+Three things about it that are easy to get wrong:
+
+- **The path has no `/order/` segment.** Every other call is
+  `/vendor/order/...`. Written by analogy it 404s, which reads like an unknown
+  order rather than an unknown route.
+- **Pidge refuses once the food is collected** — only `PENDING` and
+  `FULFILLED` may be cancelled; after that it is 400
+  `order.action.cancel.not-allowed`. That refusal is stored in `last_error` and
+  the row keeps its real state. A row that said CANCELLED while a rider was
+  riding to a door would be worse than no cancel at all.
+- **It is not behind `enable_delivery_dispatch` or the live-host interlock.**
+  Those stop a rider being booked. Turned off after one was sent, they must
+  not also stop the rider being recalled.
+
 ## Three things that cost money if you change them
 
 **A second rider.** `order_deliveries.order_id` is `UNIQUE`, and `dispatch`
@@ -225,6 +259,26 @@ agreed to charge.
 distance formula of our own. The only figures that reach a customer are the
 branch's own fee or the courier's own quote — the stand-in is in the
 COORDINATES, never in the price.
+
+### The courier's figure already contains GST
+
+Pidge quotes what it will invoice, and that is inclusive of 18%. The bill has
+its own "GST on delivery fee" line at the branch's `delivery_tax_percent`, so
+charging the quote as the fee taxed one delivery twice — a 59.00 trip reached
+the customer as 69.62.
+
+`quoting.before_delivery_tax` takes the tax back out before the fee is stored:
+59.00 becomes a fee of 50.00, the tax line adds 9.00, and the customer pays
+what the courier charges. Both the quote endpoint and `create_order` go
+through it, so the checkout and the order cannot disagree.
+
+It uses the branch's own rate, and takes nothing out when that rate is zero —
+which it is by default. So for the customer to see the split, the branch must
+have `delivery_tax_percent` set to 18. It is never applied to the branch's
+flat fee, which is a number the owner typed.
+
+Checked live on 2026-10-05 against Bhagwati Bakery: courier 50.00, fee 42.37,
+GST 7.63.
 
 ## The tracking link is a code, not a URL
 
@@ -469,9 +523,10 @@ Point Pidge's webhook at `POST /api/delivery/webhook`.
 ## Still open
 
 - **An aggregator account from Pidge.** Blocks per-tenant brand mapping.
-- **No cancel endpoint** is documented. If an order is cancelled after a rider
-  is dispatched, there is no way to call it off from code — ask Pidge whether
-  one exists.
+- **Nothing a person can press to call a rider off.** The cancel call exists
+  and fires when an order is cancelled (see "Calling a rider off"), but the
+  platform has no human cancellation flow, so an owner who wants a rider
+  recalled for an order that still stands has no button for it.
 - **A Google Maps key for the India deployment.** Built and wired; see
   "Where an address becomes a point" above. Without it the OpenStreetMap
   fallback answers, and measured against real Ahmedabad addresses it finds

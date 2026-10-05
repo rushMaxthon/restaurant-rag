@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 import sqlalchemy as sa
 from sqlalchemy import Select, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config.celery import celery_app
@@ -31,10 +32,13 @@ from app.services.order_events import actor_for_user, record_order_status_event
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.services.currency import currency_for
-from app.services import order_charges
+from app.services import order_charges, stock
+from app.services.capabilities import resolve_capabilities
+from app.services.commission import commission_in
 from app.services.delivery.quoting import delivery_fee_for
 from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
+from app.models.user_saved_address import UserSavedAddress
 from app.schemas.order import (
     ChargeLineResponse,
     OrderChargesResponse,
@@ -435,6 +439,12 @@ def _prepare_order_draft(
         menu_item_ids=[item.menu_item_id for item in payload.items],
     )
 
+    # Before any pricing, so a cart that cannot be filled is told so in words
+    # - on the cart's own validate call as well as at checkout. This is the
+    # courteous half; `stock.reserve` in `create_order` is the half that
+    # actually keeps the last loaf from being sold twice.
+    stock.ensure_in_stock(menu_items, payload.items)
+
     subtotal = Decimal("0.00")
     order_items: list[OrderItem] = []
     for cart_item in payload.items:
@@ -514,7 +524,51 @@ def _prepare_order_draft(
                 payload.longitude,
                 GeocodeConfidence.ROOFTOP.value,
             )
-        elif require_payment_validation:
+        elif payload.saved_address_id is not None:
+            # An address out of the customer's own list. It was geocoded when
+            # it was saved, so the rooftop is already on the row and asking the
+            # map provider again would be a paid call for a worse answer.
+            #
+            # The quote endpoint has always done this; the order did not, which
+            # is how a customer could be priced for an address and then refused
+            # for it. Scoped to the caller: an address id is a guessable
+            # handle, and pricing against somebody else's row would leak where
+            # they live by way of a delivery distance.
+            # Wrapped because this lookup is NEW on the order path, and an
+            # order is the last thing that should fail over it. The table can
+            # be absent on an environment that has not run the migrations —
+            # `services/profile.py` has a whole fail-open path for exactly
+            # that — and before this fallback existed, placing an order never
+            # touched it. Letting the error through would turn a clean 422
+            # ("choose your address from the suggestions") into a 500 on the
+            # Pay button.
+            #
+            # Degrading to "no point from here" is safe: the refusal below
+            # still fires, so nothing is ever priced or driven to a place
+            # nobody chose.
+            saved: UserSavedAddress | None = None
+            try:
+                saved = db.get(UserSavedAddress, payload.saved_address_id)
+            except SQLAlchemyError:
+                logger.exception(
+                    "Could not read saved address %s for order pricing; "
+                    "continuing without its coordinates",
+                    payload.saved_address_id,
+                )
+                db.rollback()
+            if (
+                saved is not None
+                and saved.user_id == customer.id
+                and saved.latitude is not None
+                and saved.longitude is not None
+            ):
+                known_drop = (
+                    saved.latitude,
+                    saved.longitude,
+                    saved.geocode_confidence or GeocodeConfidence.ROOFTOP.value,
+                )
+
+        if known_drop is None and require_payment_validation:
             # No coordinate means the address was typed and never resolved to a
             # building. Pricing it would mean quoting from the middle of a
             # neighbourhood and sending a rider to the same place.
@@ -741,6 +795,41 @@ def _contact_phone_for(customer: User, payload: OrderCreateRequest) -> str:
     return (customer.phone_number or "").strip()
 
 
+def _commission_for(draft: "PreparedOrderDraft") -> dict[str, Decimal]:
+    """The rate in force for this order, and what it earned the platform.
+
+    Read from the branch at the moment the order is made and stored on the
+    order, so turning the rate later changes later orders only.
+    """
+
+    from app.services import menu_pricing
+
+    percent = menu_pricing.commission_percent_of(draft.restaurant_location)
+    return {
+        "commission_percent": percent,
+        "commission_amount": commission_in(draft.subtotal, percent),
+    }
+
+
+def promo_code_to_record(
+    db: Session, *, restaurant_id: uuid.UUID | None, typed: str | None
+) -> str | None:
+    """The code to store on an order, or nothing where the box is switched off.
+
+    The storefront hides the box when the restaurant's `promo_code` capability
+    is off — but a hidden field is not a rule. A client that still shows it, an
+    older build of the mobile app for one, would go on writing codes onto
+    orders, and the campaign report would count attribution for a restaurant
+    that is not collecting any.
+    """
+
+    if not typed:
+        return None
+    decision = resolve_capabilities(db, restaurant_id=restaurant_id)["promo_code"]
+    # Only the answer is needed here; the reason is for the screens.
+    return typed if decision.enabled else None
+
+
 def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> OrderResponse:
     draft = _prepare_order_draft(
         db,
@@ -811,7 +900,10 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         # would be a discount the server never validated, typed by the
         # customer — the offer system exists for that and this is only the
         # attribution trail for a public post.
-        marketing_promo_code=payload.promo_code,
+        **_commission_for(draft),
+        marketing_promo_code=promo_code_to_record(
+            db, restaurant_id=draft.restaurant.id, typed=payload.promo_code
+        ),
         items=draft.order_items,
         # Credit the offer that produced this order. The draft has already
         # validated it, so this only records what was applied — pricing and
@@ -823,6 +915,11 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
     order.payment_reference = None
 
     db.add(order)
+    # Taken now, in the transaction that creates the order, so the two commit
+    # or fail together. It raises 409 if somebody else took the last one
+    # between the check above and here; nothing has been committed, so the
+    # order goes with it.
+    stock.reserve(db, draft.order_items)
     # The opening event, with no `from_status`: it records the state the order
     # was created in, so the history starts at creation rather than at the
     # first transition.
@@ -949,23 +1046,22 @@ def _completion_times(db: Session, order_ids: list[uuid.UUID]) -> dict[uuid.UUID
     return {order_id: occurred_at for order_id, occurred_at in rows}
 
 
-def list_orders(
-    db: Session,
+def _scope_orders(
+    query: Select,
     current_user: User,
     *,
-    owner_restaurant_id: uuid.UUID | None = None,
-    restaurant_id: uuid.UUID | None = None,
-    restaurant_location_id: uuid.UUID | None = None,
-    app_scope_restaurant_id: uuid.UUID | None = None,
-    search: str | None = None,
-    status_filter: OrderStatus | None = None,
-    due_from: datetime | None = None,
-    completed_from: datetime | None = None,
-    sort: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-) -> tuple[list[OrderResponse], int]:
-    query = _order_base_query()
+    owner_restaurant_id: uuid.UUID | None,
+    restaurant_id: uuid.UUID | None,
+    restaurant_location_id: uuid.UUID | None,
+    app_scope_restaurant_id: uuid.UUID | None,
+) -> Select:
+    """Narrow any query over `orders` to what this account may see.
+
+    Lifted out of `list_orders` unchanged so a second reader — the live
+    board's per-restaurant count — applies the same rule rather than a copy of
+    it. Whatever this allows, both allow.
+    """
+
     if current_user.role == UserRole.CUSTOMER:
         query = query.where(Order.customer_id == current_user.id)
     elif current_user.role in (UserRole.OWNER, UserRole.KITCHEN):
@@ -991,6 +1087,89 @@ def list_orders(
 
     if restaurant_location_id is not None:
         query = query.where(Order.restaurant_location_id == restaurant_location_id)
+    return query
+
+
+def count_live_orders_by_restaurant(
+    db: Session,
+    current_user: User,
+    *,
+    owner_restaurant_id: uuid.UUID | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+    open_statuses: tuple[OrderStatus, ...],
+    completed_from: datetime,
+    stale_before: datetime,
+) -> list[tuple[uuid.UUID, str, str, OrderStatus, int, int]]:
+    """How many orders each restaurant has in each live status.
+
+    `(restaurant_id, name, city, status, count, stale)` rows: every order in one of
+    `open_statuses`, plus those DELIVERED at or after `completed_from`. One
+    grouped query, so the live board's "who has what" strip is exact even when
+    a column of cards has been capped — counting the cards instead told an
+    admin a restaurant had 99 new orders when it had 213.
+
+    `stale` is how many of `count` have been waiting since before
+    `stale_before`. Waiting is measured from the slot for a scheduled order
+    and from `placed_at` otherwise — the same clock the board's cards show —
+    so an order placed last week for tonight is not backlog.
+    """
+
+    waiting_since = sa.case(
+        (Order.schedule_type == OrderScheduleType.SCHEDULED, Order.scheduled_at),
+        else_=Order.placed_at,
+    )
+
+    query = _scope_orders(
+        select(
+            Order.restaurant_id,
+            Restaurant.name,
+            Restaurant.city,
+            Order.status,
+            sa.func.count(),
+            sa.func.count().filter(waiting_since < stale_before),
+        )
+        .select_from(Order)
+        .join(Restaurant, Restaurant.id == Order.restaurant_id),
+        current_user,
+        owner_restaurant_id=owner_restaurant_id,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        app_scope_restaurant_id=app_scope_restaurant_id,
+    ).where(
+        sa.or_(
+            Order.status.in_(open_statuses),
+            sa.and_(Order.status == OrderStatus.DELIVERED, _completed_at >= completed_from),
+        )
+    ).group_by(Order.restaurant_id, Restaurant.name, Restaurant.city, Order.status)
+    return [tuple(row) for row in db.execute(query).all()]
+
+
+def list_orders(
+    db: Session,
+    current_user: User,
+    *,
+    owner_restaurant_id: uuid.UUID | None = None,
+    restaurant_id: uuid.UUID | None = None,
+    restaurant_location_id: uuid.UUID | None = None,
+    app_scope_restaurant_id: uuid.UUID | None = None,
+    search: str | None = None,
+    status_filter: OrderStatus | None = None,
+    due_from: datetime | None = None,
+    completed_from: datetime | None = None,
+    sort: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[OrderResponse], int]:
+    query = _scope_orders(
+        _order_base_query(),
+        current_user,
+        owner_restaurant_id=owner_restaurant_id,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=restaurant_location_id,
+        app_scope_restaurant_id=app_scope_restaurant_id,
+    )
 
     if status_filter is not None:
         query = query.where(Order.status == status_filter)

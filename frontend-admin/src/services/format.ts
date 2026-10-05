@@ -8,6 +8,30 @@ const ENUM_LABEL_OVERRIDES: Record<string, string> = {
   UPI: 'UPI',
 };
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * "2026-09-21" → "21 Sep", for a chart axis.
+ *
+ * Read from the string rather than through `Date`: `new Date("2026-01-01")`
+ * is midnight UTC, which is still the previous day anywhere west of
+ * Greenwich, and a chart whose bars are labelled a day early is wrong in a
+ * way nobody reports. Anything that is not a real ISO date is returned as it
+ * came, so a label the API already wrote for a person is left alone.
+ */
+export function shortDay(label: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(label);
+  if (!match) {
+    return label;
+  }
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return label;
+  }
+  return `${day} ${MONTHS[month - 1]}`;
+}
+
 /** "1 order" / "3 orders" — count always included. */
 export function pluralize(count: number, singular: string, plural?: string): string {
   const label = count === 1 ? singular : (plural ?? `${singular}s`);

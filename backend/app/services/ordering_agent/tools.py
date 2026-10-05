@@ -526,7 +526,7 @@ def _load_branch_menu_items(db: Session, scope: OrderingScope) -> dict[uuid.UUID
             menu_item_query_with_customizations().where(
                 MenuItem.restaurant_id == scope.restaurant_id,
                 MenuItem.restaurant_location_id == scope.restaurant_location_id,
-                MenuItem.is_available.is_(True),
+                MenuItem.is_on_sale,
             )
         ).all()
     }
@@ -946,7 +946,7 @@ def _browse_menu(db: Session, scope: OrderingScope, args: SearchMenuArgs) -> dic
         select(MenuItem)
         .where(
             MenuItem.restaurant_location_id == scope.restaurant_location_id,
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
         )
         .order_by(MenuItem.category, MenuItem.name)
     )
@@ -995,7 +995,7 @@ def _find_exact_name_match(db: Session, scope: OrderingScope, name: str) -> Menu
         .where(
             MenuItem.restaurant_id == scope.restaurant_id,
             MenuItem.restaurant_location_id == scope.restaurant_location_id,
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             func.lower(MenuItem.name) == name.strip().lower(),
         )
         .limit(1)
@@ -1041,7 +1041,7 @@ def dishes_matching_words(
         return []
     stmt = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
-        MenuItem.is_available.is_(True),
+        MenuItem.is_on_sale,
     )
     if is_veg is not None:
         # A vegetarian asking for pizza wants the vegetarian pizzas. The
@@ -1075,7 +1075,7 @@ def prices_of(
 
     stmt = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
-        MenuItem.is_available.is_(True),
+        MenuItem.is_on_sale,
     )
     if menu_item_id:
         try:
@@ -1128,7 +1128,7 @@ def cheapest_dishes(
 
     query = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
-        MenuItem.is_available.is_(True),
+        MenuItem.is_on_sale,
     )
     if is_veg is not None:
         query = query.where(MenuItem.is_veg.is_(is_veg))
@@ -1158,7 +1158,7 @@ def dishes_to_suggest(
 
     base = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
-        MenuItem.is_available.is_(True),
+        MenuItem.is_on_sale,
     )
     if is_veg is not None:
         base = base.where(MenuItem.is_veg.is_(is_veg))
@@ -1224,7 +1224,7 @@ def menu_categories(db: Session, scope: OrderingScope) -> list[str]:
         select(MenuItem.category)
         .where(
             MenuItem.restaurant_location_id == scope.restaurant_location_id,
-            MenuItem.is_available.is_(True),
+            MenuItem.is_on_sale,
             MenuItem.category.is_not(None),
         )
         .distinct()
@@ -1318,7 +1318,7 @@ def branch_sections(db: Session, scope: OrderingScope) -> list[str]:
             select(MenuItem.category)
             .where(
                 MenuItem.restaurant_location_id == scope.restaurant_location_id,
-                MenuItem.is_available.is_(True),
+                MenuItem.is_on_sale,
                 MenuItem.category.is_not(None),
             )
             .distinct()
@@ -1420,7 +1420,7 @@ def dishes_to_show(
 
     at_this_branch = select(MenuItem).where(
         MenuItem.restaurant_location_id == scope.restaurant_location_id,
-        MenuItem.is_available.is_(True),
+        MenuItem.is_on_sale,
     )
     if is_veg is not None:
         at_this_branch = at_this_branch.where(MenuItem.is_veg.is_(is_veg))

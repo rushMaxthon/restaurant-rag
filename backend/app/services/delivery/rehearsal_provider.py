@@ -211,6 +211,18 @@ class RehearsalProvider:
             raw={"provider": PROVIDER_NAME, "simulated": True, "elapsed_seconds": int(elapsed)},
         )
 
+    def cancel(self, provider_order_id: str) -> None:
+        """Always succeeds, and remembers nothing.
+
+        This courier keeps no state — where a delivery "is" is worked out from
+        the booking time inside its id — so there is nowhere to record a
+        cancellation. That is safe only because the caller marks the row
+        CANCELLED, and a terminal row is never asked about again.
+        """
+
+        if not provider_order_id:
+            raise DeliveryProviderError("No delivery named", retryable=False)
+
     def parse_webhook(self, payload: dict[str, Any]) -> DeliveryResult:
         """Nothing pushes here, so a push is read as a request to re-read."""
 

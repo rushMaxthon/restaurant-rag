@@ -18,12 +18,13 @@
  * anyway is exactly what turns "pick a restaurant" into "it didn't load".
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAdminStore } from './useAdminStore';
 import { api } from '../services/api';
 import { getPageSnapshot, setPageSnapshot, tokenScope } from '../services/pageCache';
 import { buildAdminRestaurantsCacheKeyPrefix } from '../pages/AdminRestaurantsPage';
 import { getRestaurantScope, setRestaurantScope } from '../services/marketing/marketingApi';
+import { scopedRestaurant } from '../services/marketing/scopeRule';
 import type { Restaurant } from '../types/app';
 
 export interface MarketingScope {
@@ -36,7 +37,12 @@ export interface MarketingScope {
 }
 
 export function useMarketingScope(): MarketingScope {
-  const { token: sessionToken, role } = useAdminStore();
+  const {
+    token: sessionToken,
+    role,
+    activeRestaurantId,
+    setActiveRestaurantId,
+  } = useAdminStore();
   const token = sessionToken ?? '';
   const isAdmin = role === 'ADMIN';
   const restaurantsKey = buildAdminRestaurantsCacheKeyPrefix(tokenScope(token));
@@ -47,7 +53,9 @@ export function useMarketingScope(): MarketingScope {
   const [restaurants, setRestaurants] = useState<Restaurant[]>(() =>
     isAdmin ? (getPageSnapshot<Restaurant[]>(restaurantsKey) ?? []) : [],
   );
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>(() => {
+  // What THIS screen's picker last chose. Only the answer while the sidebar
+  // says "All restaurants" — see `scopedRestaurant`.
+  const [pickedRestaurantId, setPickedRestaurantId] = useState<string>(() => {
     if (!isAdmin) {
       return '';
     }
@@ -63,6 +71,24 @@ export function useMarketingScope(): MarketingScope {
   // The scope is written before any fetch reads it. An owner writes null and
   // is pinned server-side to their own restaurant — sending one would be
   // refused, which is the other half of the same rule.
+  // Derived, not stored: the sidebar switcher scopes the whole panel, and a
+  // copy of it held here is how the two came to disagree — Bangkok Bowl in
+  // the sidebar, another restaurant's empty Hub on the page.
+  const selectedRestaurantId = isAdmin
+    ? scopedRestaurant(activeRestaurantId, pickedRestaurantId)
+    : '';
+
+  // Choosing here moves the sidebar too, so there is one answer on screen.
+  const setSelectedRestaurantId = useCallback(
+    (id: string) => {
+      setPickedRestaurantId(id);
+      if (isAdmin && id) {
+        setActiveRestaurantId(id);
+      }
+    },
+    [isAdmin, setActiveRestaurantId],
+  );
+
   useEffect(() => {
     setRestaurantScope(isAdmin ? selectedRestaurantId || null : null);
   }, [isAdmin, selectedRestaurantId]);
@@ -81,7 +107,7 @@ export function useMarketingScope(): MarketingScope {
         }
         setPageSnapshot(restaurantsKey, rows);
         setRestaurants(rows);
-        setSelectedRestaurantId((current) =>
+        setPickedRestaurantId((current) =>
           (rows.some((row) => row.id === current) ? current : '') || rows[0]?.id || '',
         );
       })

@@ -1,9 +1,20 @@
-import { Eye, EyeOff, Flame, Pencil, Trash2, UtensilsCrossed } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Flame,
+  PackageCheck,
+  PackageMinus,
+  PackageX,
+  Pencil,
+  Trash2,
+  UtensilsCrossed,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataToolbar } from "../components/DataToolbar";
 import { StatTiles, type StatTileItem } from "../components/StatTiles";
 import { EmptyPanel } from "../components/EmptyPanel";
+import { GstPriceSwitch } from "../components/GstPriceSwitch";
 import { PageIntro } from "../components/PageIntro";
 import { Pagination } from "../components/Pagination";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
@@ -27,6 +38,7 @@ import type {
   RestaurantLocation,
   UserRole,
 } from "../types/app";
+import { menuListPrice } from "../services/menuPrice";
 
 interface MenuItemsPageProps {
   token: string;
@@ -55,6 +67,10 @@ type MenuRow = {
   isNew: boolean;
   isVeg: boolean;
   isAvailable: boolean;
+  /** Null when the dish is not counted. */
+  stockQuantity: number | null;
+  /** Marked out of stock by hand. */
+  outOfStock: boolean;
   isBestseller: boolean;
   recentValidOrderCount: number;
   recentValidOrderWindowDays: number;
@@ -93,6 +109,14 @@ function buildMenuItemsCacheKey(
   return `${buildMenuItemsCacheKeyPrefix(scope)}${isAdmin ? "admin" : restaurantId ?? ""}`;
 }
 
+/** At or under this many left, a counted dish is on the restocking list. */
+const LOW_STOCK_AT = 5;
+
+/** Counted, and nearly or entirely gone. The same line the storefront draws. */
+function isLowStock(row: { stockQuantity: number | null; outOfStock: boolean }): boolean {
+  return row.outOfStock || (row.stockQuantity !== null && row.stockQuantity <= LOW_STOCK_AT);
+}
+
 export function MenuItemsPage({
   token,
   role,
@@ -121,7 +145,7 @@ export function MenuItemsPage({
   const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(menuItemsKey));
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState<
-    "ALL" | "AVAILABLE" | "HIDDEN"
+    "ALL" | "AVAILABLE" | "HIDDEN" | "LOW_STOCK"
   >("ALL");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => readWorkspaceSettings().defaultPageSize);
@@ -139,12 +163,15 @@ export function MenuItemsPage({
     category: item.category,
     cuisineType: item.cuisine_type,
     description: item.description,
-    price: item.price,
+    // The typed price for an owner - see `menuListPrice`.
+    price: menuListPrice(item, role),
     launchedAt: item.launched_at,
     isNewLaunch: item.is_new_launch,
     isNew: item.is_new,
     isVeg: item.is_veg,
     isAvailable: item.is_available,
+    stockQuantity: item.stock_quantity ?? null,
+    outOfStock: Boolean(item.out_of_stock),
     isBestseller: item.is_bestseller,
     recentValidOrderCount: item.recent_valid_order_count,
     recentValidOrderWindowDays: item.recent_valid_order_window_days,
@@ -167,6 +194,8 @@ export function MenuItemsPage({
     isNew: item.is_new,
     isVeg: item.is_veg,
     isAvailable: item.is_available,
+    stockQuantity: item.stock_quantity ?? null,
+    outOfStock: Boolean(item.out_of_stock),
     isBestseller: item.is_bestseller,
     recentValidOrderCount: item.recent_valid_order_count,
     recentValidOrderWindowDays: item.recent_valid_order_window_days,
@@ -248,7 +277,7 @@ export function MenuItemsPage({
     void load();
   }, [isAdmin, restaurantId, token, menuItemsKey]);
 
-  const availabilityTiles = useMemo<Array<StatTileItem<"ALL" | "AVAILABLE" | "HIDDEN">>>(() => {
+  const availabilityTiles = useMemo<Array<StatTileItem<"ALL" | "AVAILABLE" | "HIDDEN" | "LOW_STOCK">>>(() => {
     const available = rows.filter((row) => row.isAvailable).length;
     const bestsellers = rows.filter((row) => row.isBestseller).length;
     return [
@@ -273,6 +302,15 @@ export function MenuItemsPage({
         value: rows.length - available,
         hint: "Not currently orderable",
       },
+      {
+        // The restocking list. Counted dishes only: a dish nobody counts is
+        // never "low", and listing it here would bury the ones that are.
+        key: "LOW_STOCK",
+        label: "Low stock",
+        icon: PackageMinus,
+        value: rows.filter(isLowStock).length,
+        hint: `${rows.filter((row) => row.outOfStock || row.stockQuantity === 0).length} out of stock`,
+      },
     ];
   }, [rows]);
 
@@ -290,7 +328,11 @@ export function MenuItemsPage({
         ].some((value) => value.toLowerCase().includes(normalized));
       const matchesAvailability =
         availability === "ALL" ||
-        (availability === "AVAILABLE" ? item.isAvailable : !item.isAvailable);
+        (availability === "LOW_STOCK"
+          ? isLowStock(item)
+          : availability === "AVAILABLE"
+            ? item.isAvailable
+            : !item.isAvailable);
       return matchesQuery && matchesAvailability;
     });
   }, [availability, query, rows]);
@@ -352,6 +394,25 @@ export function MenuItemsPage({
       header: "Price",
       render: (item) => money.format(item.price, item.restaurantId),
       mobileLabel: "Price",
+      align: "right",
+    },
+    {
+      id: "stock",
+      header: "Stock",
+      // Three different facts, and the difference matters to whoever restocks:
+      // not counted is not a problem, sold out is one right now.
+      render: (item) =>
+        item.outOfStock || item.stockQuantity === 0 ? (
+          <StatusPill status="OUT OF STOCK" />
+        ) : item.stockQuantity === null ? (
+          <span>Not counted</span>
+        ) : (
+          <>
+            <strong>{item.stockQuantity}</strong>
+            <span>left</span>
+          </>
+        ),
+      mobileLabel: "Stock",
       align: "right",
     },
     {
@@ -447,6 +508,42 @@ export function MenuItemsPage({
     }
   };
 
+  /**
+   * Mark a dish out of stock, or back in, from the list.
+   *
+   * The tray has just emptied and somebody is at the counter with a phone:
+   * one tap, no form. It stays on the menu, marked, and cannot be added.
+   */
+  const setOutOfStock = async (item: MenuRow, outOfStock: boolean) => {
+    if (isAdmin) {
+      return;
+    }
+    try {
+      const updated = await api.updateMenuItemStock(token, item.id, { out_of_stock: outOfStock });
+      setRows((current) =>
+        current.map((entry) =>
+          entry.id === updated.id ? mapOwnerItem(updated, restaurant) : entry,
+        ),
+      );
+      invalidatePageSnapshotsByPrefix(buildMenuItemsCacheKeyPrefix(scope));
+      // Said honestly: marking it back in does not conjure stock. A counted
+      // dish at zero is still out until somebody types a number.
+      const stillEmpty = !outOfStock && updated.stock_quantity === 0;
+      onToast(
+        outOfStock ? "Marked out of stock" : stillEmpty ? "Still out of stock" : "Back in stock",
+        outOfStock
+          ? `${updated.name} stays on the menu, and customers cannot add it.`
+          : stillEmpty
+            ? `${updated.name} has 0 left. Edit it and set Stock left to put it back on sale.`
+            : `Customers can order ${updated.name} again.`,
+        stillEmpty ? "info" : "success",
+      );
+    } catch (error: unknown) {
+      const message = error instanceof ApiError ? error.message : "Unable to update stock.";
+      onToast("Stock update failed", message, "error");
+    }
+  };
+
   const requestRemoveItem = (item: MenuRow) => {
     if (isAdmin) {
       return;
@@ -481,16 +578,17 @@ export function MenuItemsPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="menu-items"
         eyebrow="Menu catalog"
         title="Menu items"
         description={
           isAdmin
-            ? "Same menu workspace, but with full platform visibility across all restaurants."
-            : `Same menu workspace, filtered automatically to ${restaurant?.name ?? "your assigned restaurant"}.`
+            ? "Every dish, across every restaurant."
+            : `Every dish at ${restaurant?.name ?? "your restaurant"}.`
         }
       />
 
-      <StatTiles<"ALL" | "AVAILABLE" | "HIDDEN">
+      <StatTiles<"ALL" | "AVAILABLE" | "HIDDEN" | "LOW_STOCK">
         active={availability}
         ariaLabel="Availability distribution"
         loading={isLoading}
@@ -504,6 +602,25 @@ export function MenuItemsPage({
             title="Restaurant not assigned"
             description="This owner account cannot create restaurants. Ask an admin to assign one restaurant."
           />
+        </section>
+      ) : null}
+
+      {/* Here because this is where an owner comes to look at prices. One
+          per branch: the switch is a branch's, and this page lists them all.
+          Not for an ADMIN, whose view spans restaurants and loads no branches. */}
+      {!isAdmin && restaurant && ownerLocations.length > 0 ? (
+        <section className="admin-surface page-stack">
+          {ownerLocations.map((branch) => (
+            <GstPriceSwitch
+              key={branch.id}
+              location={branch}
+              onChanged={() => void load(true)}
+              onToast={onToast}
+              restaurantId={restaurant.id}
+              showBranchName={ownerLocations.length > 1}
+              token={token}
+            />
+          ))}
         </section>
       ) : null}
 
@@ -573,6 +690,21 @@ export function MenuItemsPage({
                       label: "Toggle availability",
                       icon: Eye,
                       onClick: toggleAvailability,
+                      tone: "success",
+                    },
+                    {
+                      id: "out-of-stock",
+                      label: "Mark out of stock",
+                      icon: PackageX,
+                      hidden: (item) => item.outOfStock,
+                      onClick: (item) => void setOutOfStock(item, true),
+                    },
+                    {
+                      id: "in-stock",
+                      label: "Mark in stock",
+                      icon: PackageCheck,
+                      hidden: (item) => !item.outOfStock,
+                      onClick: (item) => void setOutOfStock(item, false),
                       tone: "success",
                     },
                     {

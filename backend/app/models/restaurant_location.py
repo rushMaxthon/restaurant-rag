@@ -91,6 +91,22 @@ class RestaurantLocation(TimestampMixin, Base):
     delivery_tax_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0.00"), server_default="0.00"
     )
+    #: Whether the prices the owner typed already contain GST. On, the
+    #: customer pays the menu price and `tax_percent` is not charged on food
+    #: at checkout. Off, the menu is before tax and `tax_percent` is added on
+    #: the bill. It never changes a price — only `order_charges.for_location`
+    #: reads it.
+    gst_in_menu_prices: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    #: The platform's commission, as a percent ADDED to every price the owner
+    #: types: typed 100 at 10 is 110 on the menu. Set per branch by an ADMIN —
+    #: an owner may read it and may not change it. The prices themselves are
+    #: rewritten when this moves; see services/menu_pricing.py. Unrelated to
+    #: `platform_fee`, which is a flat amount per order on the bill.
+    commission_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("10.00"), server_default="10.00"
+    )
 
     minimum_order_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),

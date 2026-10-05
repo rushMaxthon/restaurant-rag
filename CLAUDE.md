@@ -75,6 +75,55 @@ localStorage. Omitting it is not a subtle failure: every call comes back
 `400 restaurant_id is required for admin insights requests`, and the screen
 renders it as "this feature is broken".
 
+**A disabled button says why, in the button or beside it.** The cart screen
+has always done this — "Closed right now", "Minimum ₹150 to order" — and the
+checkout did not, which produced a complete-looking page with two dead Pay
+buttons for any restaurant settling through Razorpay alone. The rule lives in
+`frontend-customer/src/lib/pay-gate.ts` and returns a REASON rather than a
+boolean, ordered by what the customer should do next; `canSubmit` is derived
+from it. There are two Pay buttons — the sticky summary and the phone bar — so
+a gate written inside a component is one the other copy cannot read. On a phone
+the reason goes ABOVE the row, never inside the button: it is `flex-1` at
+393px, so a sentence there breaks the 44px touch floor `e2e/mobile-layout.
+spec.ts` enforces.
+
+**A payment under way is persisted, and resumed only after asking the server.**
+`src/lib/pending-payment.ts`. Stripe is handed a `returnUrl` and redirects the
+browser itself; Razorpay is a modal with no redirect, so its `onPaid` must
+navigate — `leaveForOrder` — or a successful payment leaves the customer on a
+checkout whose cart is now empty, which renders as the address step. The stored
+value is never trusted: `canResumePayment` is deliberately STRICTER than the
+order page's "confirming payment" test, because `PAYMENT_PENDING` with
+`payment_status: PAID` is the gap between a settled payment and the status
+advancing, and reopening a gateway there would charge somebody twice. The
+persist effect must not clear on null — `pending` starts null on the very load
+that is about to restore it, which is the same race `bangkok-store.tsx` guards
+with `hydrated`.
+
+**A delivery order needs a POINT, and a saved address is one.** The backend
+refuses a delivery order from a checkout that carries no coordinates
+(`orders.py`, `if known_drop is None and require_payment_validation`) — a typed
+line geocodes to a neighbourhood, which prices the wrong trip and sends a rider
+to the wrong place. There are two ways to satisfy it, and both must work:
+`latitude`/`longitude` from the autocomplete, or `saved_address_id`, whose row
+carries the rooftop it was geocoded to when it was saved. The quote endpoint
+read the second from the start and the order path did not, so the two
+disagreed about the same address — priced, then refused. If you add a third
+client, send one of the two or it cannot place a delivery order. On the
+storefront side `pointFromSaved` is the only way the point gets set, from both
+the prefill effect and the picker, so they cannot drift.
+
+**Saved addresses are de-duplicated on the SERVER.**
+`_matching_saved_address` in `services/profile.py` fingerprints the six
+address parts, case-folded and whitespace-collapsed, and `create_user_saved_
+address` returns the row you already have rather than inserting a second. The
+label and the phone number are not part of the fingerprint: one doorstep saved
+as HOME and as WORK is one doorstep. `isSameAddress` in
+`frontend-customer/src/lib/delivery-address.ts` looks like the guard and is
+not — it compares against a cached query, so the first order writes the row
+and the second order the same evening still sees no match. That is how a
+duplicate got written. Client-side checks there only save a request.
+
 **Half-and-half is a group flag, not an item flag.** Only a customization group
 the owner marked `supports_halves` may be split, a half costs half the listed
 extra, a group is split OR the same all over (never both), and a lone half is
@@ -114,6 +163,23 @@ Tailwind v4 `@theme inline` bridge plus the storefront's own component
 classes; `src/polish.css` is the later layer on top of it. There is no
 PostCSS step and no `tailwind.config` — all configuration is inside
 `styles.css`.
+
+**The admin panel has three more scales, and a ratchet.** Weight (`--fw-regular`
+500, `--fw-medium` 600, `--fw-strong` 700, `--fw-heavy` 800 — the last for a
+page title and a stat figure only), role spacing (`--pad-*`, `--gap-*`) and
+role radius (`--radius-control`, `--radius-card`, `--radius-modal`) live in
+`frontend-admin/src/index.css`, written to be promoted into the shared file.
+`src/styleBudget.test.ts` counts off-token padding, gap, weight and colour in
+`legacy.css` per class family; a number there may be lowered and never raised.
+Four families are deliberately not zero, each with its reason beside its
+number: marketing (`mkt`, `hub`) for its scoped token definitions and the
+phone and message mock-ups, the branding phone preview (`ph`), which draws
+another app, and one white tick on a brand swatch (`bp`).
+
+**`--on-primary` is the ink for a BRAND fill and nothing else.** It inverts in
+dark mode, so it is wrong on any ground that does not flip with the theme: a
+mock-up screen, a preset swatch, a dark-mode hairline. Replacing a literal
+white with it broke all three at once; `styleBudget.test.ts` now names them.
 
 **Colour is written at runtime and beats the stylesheet.** `src/lib/theme.ts`
 (`applyBrandColor`) sets `--primary`, `--primary-soft`, `--on-primary` and the

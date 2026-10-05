@@ -390,6 +390,12 @@ export interface AdminMenuItem {
   price: number | string;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left to sell. Null means the dish is not counted. */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand: on the menu, cannot be added. */
+  out_of_stock?: boolean;
+  /** What the count is set back to each morning. Null: restocked by hand. */
+  stock_daily_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -468,6 +474,18 @@ export interface RestaurantLocation {
   platform_fee?: number | string;
   tax_percent?: number | string;
   delivery_tax_percent?: number | string;
+  /**
+   * The typed menu prices already contain GST: the customer pays the menu
+   * price and `tax_percent` is not charged on food at checkout. Off, it is.
+   * No price changes either way.
+   */
+  gst_in_menu_prices?: boolean;
+  /**
+   * The platform's commission, added to every menu price the owner types:
+   * typed 100 at 10 is 110 for the customer. Changing it rewrites every price
+   * the branch sells at, on the server. Only an ADMIN may change it.
+   */
+  commission_percent?: number | string;
   longitude: number | string | null;
   phone_number: string | null;
   delivery_fee: number | string;
@@ -645,6 +663,8 @@ export interface MenuItemCustomizationOption {
   id: string;
   name: string;
   extra_price: number | string;
+  /** What the owner typed. See `MenuItem.base_price`. */
+  base_extra_price?: number | string | null;
   is_active: boolean;
   is_countable: boolean;
   sort_order: number;
@@ -678,8 +698,13 @@ export interface MenuItemSize {
   id: string;
   name: string;
   price: number | string;
+  /** What the owner typed. See `MenuItem.base_price`. */
+  base_price?: number | string | null;
   is_active: boolean;
   sort_order: number;
+  /** This size's own count. Null: it draws on the dish's count instead. */
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
   customization_groups: MenuItemCustomizationGroup[];
 }
 
@@ -693,9 +718,23 @@ export interface MenuItem {
   category: string;
   cuisine_type: string | null;
   description: string | null;
+  /** What the customer pays: the typed price plus the branch's commission.
+   *  It is the figure to SHOW and never the one to edit. */
   price: number | string;
+  /**
+   * What the owner typed. The editor loads this, not `price`: a save sends
+   * the figure back as the typed price, and loading 110 for an item typed as
+   * 100 would mark it up again on every save.
+   */
+  base_price?: number | string | null;
   is_veg: boolean;
   is_available: boolean;
+  /** How many are left to sell. Null means the dish is not counted. */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand: on the menu, cannot be added. */
+  out_of_stock?: boolean;
+  /** What the count is set back to each morning. Null: restocked by hand. */
+  stock_daily_quantity?: number | null;
   is_bestseller: boolean;
   image_url: string | null;
   recent_valid_order_count: number;
@@ -743,6 +782,8 @@ export interface MenuItemSizePayload {
   price: number;
   is_active: boolean;
   sort_order: number;
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
   customization_groups: MenuItemCustomizationGroupPayload[];
 }
 
@@ -754,6 +795,10 @@ export interface MenuItemUpsertPayload {
   price: number;
   is_veg: boolean;
   is_available: boolean;
+  /** Null stops the count. Leaving it out keeps whatever is stored. */
+  stock_quantity?: number | null;
+  out_of_stock?: boolean;
+  stock_daily_quantity?: number | null;
   is_new_launch: boolean;
   image_url?: string | null;
   launched_at?: string | null;
@@ -1568,6 +1613,45 @@ export interface OrderDelivery {
 }
 
 
+/** An order as a card on the live board: the order, and its courier. */
+export interface LiveOrder extends Order {
+  /** Null for a pickup order, and for a delivery nobody has been booked for. */
+  delivery: OrderDelivery | null;
+  /** When it reached DELIVERED, from the event log. Null for an open order. */
+  completed_at?: string | null;
+}
+
+/** One status on the live board. `total` is the true count; `orders` is capped. */
+export interface LiveOrdersStage {
+  status: OrderStatus;
+  total: number;
+  /** How many of `total` have been open longer than the board's stale line. */
+  stale_total?: number;
+  orders: LiveOrder[];
+}
+
+/** One restaurant's share of the live board, counted by the database. */
+export interface LiveRestaurantLoad {
+  restaurant_id: string;
+  name: string;
+  city: string;
+  counts: Partial<Record<OrderStatus, number>>;
+  /** The part of each count that is backlog. */
+  stale?: Partial<Record<OrderStatus, number>>;
+}
+
+/** `GET /orders/live`: everything in flight, and what was delivered today. */
+export interface LiveOrdersBoard {
+  generated_at: string;
+  completed_from: string;
+  stage_limit: number;
+  /** After how long an open order counts as backlog rather than tonight's work. */
+  stale_after_minutes?: number;
+  stages: LiveOrdersStage[];
+  /** Exact per-restaurant counts, which the capped card lists cannot give. */
+  restaurants: LiveRestaurantLoad[];
+}
+
 /** What a geocoder made of a branch's own address. */
 export type BranchLocationLookup = {
   found: boolean;
@@ -1581,3 +1665,67 @@ export type BranchLocationLookup = {
   matched: string;
   provider: string;
 };
+
+/** One restaurant's line on the admin's commission report. */
+export interface CommissionRow {
+  restaurant_id: string;
+  restaurant_name: string;
+  orders: number;
+  sales: number | string;
+  commission: number | string;
+  currency: string;
+}
+
+export interface CommissionReport {
+  days: number;
+  since: string;
+  /** When the first order with a recorded commission was placed, if any. */
+  counted_from: string | null;
+  restaurants: CommissionRow[];
+}
+
+/** One piece of the platform's machinery, from `GET /admin/platform-watch`. */
+export interface PlatformCheck {
+  key: string;
+  label: string;
+  status: "ok" | "warn" | "down";
+  detail: string;
+  /** What to do about it, when it is not OK. */
+  hint: string;
+}
+
+/** Something that needs a person, in one restaurant or across the platform. */
+export interface PlatformIssue {
+  key: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  count: number;
+  restaurant_id: string | null;
+  restaurant_name: string | null;
+  location_id: string | null;
+  /** Where in this panel it is fixed. */
+  link: string | null;
+}
+
+export interface PlatformRestaurantToday {
+  restaurant_id: string;
+  name: string;
+  city: string;
+  approved: boolean;
+  storefront: string | null;
+  branches: number;
+  branches_open: number;
+  orders_today: number;
+  sales_today: number | string;
+  awaiting_accept: number;
+  out_of_stock: number;
+  issues: number;
+}
+
+export interface PlatformWatch {
+  generated_at: string;
+  checks: PlatformCheck[];
+  issues: PlatformIssue[];
+  restaurants: PlatformRestaurantToday[];
+}

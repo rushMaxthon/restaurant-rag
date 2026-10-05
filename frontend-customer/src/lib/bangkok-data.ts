@@ -4,6 +4,8 @@ export type MenuSize = {
   name: string;
   price: Money;
   is_active: boolean;
+  /** This size's own count. Null or absent: it draws on the dish's. */
+  stock_quantity?: number | null;
   /** Groups that exist only for this size. See lib/customization.ts. */
   customization_groups?: CustomizationGroup[];
 };
@@ -61,6 +63,13 @@ export type MenuItem = {
   price: Money;
   is_veg: boolean;
   is_available: boolean;
+  /**
+   * How many are left. Null, or absent from an older server, means the dish
+   * is not counted. Read it through `lib/stock.ts`, never directly.
+   */
+  stock_quantity?: number | null;
+  /** Marked out of stock by hand: on the menu, cannot be added. */
+  out_of_stock?: boolean;
   is_bestseller: boolean;
   image_url: string | null;
   rating: Money | null;

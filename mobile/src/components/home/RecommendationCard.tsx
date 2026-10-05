@@ -13,6 +13,7 @@ import { useTheme, useThemedStyles, type AppTheme } from '@/theme';
 import type { RecommendationItem } from '@/types/app';
 import type { GestureResponderEvent } from 'react-native';
 import { getNewItemBadgeMeta } from '@utils/newItemBadges';
+import { isOnSale } from '@/utils/stock';
 
 interface RecommendationCardProps {
   item: RecommendationItem;
@@ -34,7 +35,7 @@ function RecommendationCardComponent({
   const theme = useTheme();
   const styles = useThemedStyles(createStyles);
   const { width: screenWidth } = useWindowDimensions();
-  const isAvailable = item.is_available !== false;
+  const isAvailable = isOnSale(item);
   const newItemMeta = getNewItemBadgeMeta(item);
   const primaryBadge = newItemMeta.label;
   const priceLabel =

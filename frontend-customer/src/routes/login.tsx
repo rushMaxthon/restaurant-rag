@@ -158,7 +158,7 @@ function LoginPage() {
           <Sparkles className="mb-4 size-10" />
           <p className="eyebrow eyebrow--inherit">{copy.name}</p>
           <h1 className="font-display text-5xl font-extrabold leading-[.98] sm:text-6xl">
-            Sign in for the full menu
+            Sign in to place your order
           </h1>
           <p className="mt-5 max-w-md text-lg font-medium">
             Save favourites, track live orders and reorder what you always get, in a tap.
@@ -166,7 +166,7 @@ function LoginPage() {
         </div>
       </StorefrontHero>
 
-      <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-center py-16">
+      <div className="page-pad flex min-h-[calc(100svh-4rem)] flex-col justify-start py-8 lg:justify-center lg:py-16">
         <div className="mx-auto w-full max-w-md">
           <h1 className="auth-heading font-display text-5xl font-extrabold sm:text-6xl">
             {step === "code" && isNewAccount ? "Almost there" : "Welcome back"}
@@ -198,7 +198,7 @@ function LoginPage() {
                         inputMode="tel"
                         autoComplete="tel-national"
                         autoFocus
-                        placeholder="(555) 000-0000"
+                        placeholder="Mobile number"
                         value={phone}
                         onChange={(e) => setPhone(formatPhoneAsTyped(e.target.value))}
                         className="h-12"

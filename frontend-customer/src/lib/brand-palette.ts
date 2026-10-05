@@ -156,20 +156,46 @@ export function walkToContrast(
 }
 
 /**
- * The ink that reads on a fill — white unless the fill is pale.
+ * The ink that reads on a fill: white wherever white is legible, dark where it
+ * is not.
  *
- * Deliberately a LUMINANCE THRESHOLD and not "whichever has more contrast",
- * which is the obvious implementation and the wrong one. Dark ink on the
- * platform orange measures 5.36:1 against white's 3.24:1, so maximising
- * contrast would put near-black text on every primary button in the product
- * and quietly redesign it. White on a brand fill is the design; this function
- * only has to catch the brands pale enough that white genuinely disappears.
+ * This was a luminance threshold, and the reasoning it carried was sound as
+ * far as it went. White on a brand fill IS the design, and "whichever has more
+ * contrast" would put near-black on nine brands that do not need it. That
+ * argument is kept; only its conclusion moves.
  *
- * 0.6 is where that happens — above it a fill is reading as a highlight rather
- * than a button. It is the threshold the storefront already shipped.
+ * What it missed is that white on the platform's own orange measures
+ * **3.25:1**, and AA wants 4.5 for text at the size these labels are actually
+ * set — 12px on a dish's Add button, 16px on the rest. The comment above this
+ * function quoted that 3.24 and treated it as acceptable. It is acceptable for
+ * LARGE text only, and none of these buttons are large.
+ *
+ * So the rule is now: prefer white, and fall back to dark ink only when white
+ * genuinely fails. Measured across all twelve presets a restaurant can pick,
+ * that changes exactly two:
+ *
+ *     sunset  #FF5200   white 3.25  dark 5.51   -> dark
+ *     ocean   #2D7FF9   white 3.81  dark 4.71   -> dark
+ *     the other ten     white 4.99 to 10.35     -> white, unchanged
+ *
+ * Which is the point. It is not "maximise contrast", which would have flipped
+ * all twelve; it is "keep the design until the design stops being readable".
+ * And because it is derived rather than listed, a restaurant that types its
+ * own hex into the branding panel gets a legible button too — including the
+ * pale brands the luminance threshold was written to catch, which still land
+ * on dark ink because white on them is nowhere near 4.5.
+ *
+ * The last clause is for a fill where NEITHER reaches 4.5, a mid-tone that is
+ * equally awkward for both. Nothing can rescue that from here, so it takes the
+ * better of the two and `everyPresetHasReadableInk` in the tests is what stops
+ * such a colour reaching the preset list.
  */
 export function readableInk(fill: Rgb): string {
-  return luminance(fill) > 0.6 ? "#14171f" : "#ffffff";
+  const DARK = "#14171f";
+  const darkInk = parseHex(DARK) as Rgb;
+  if (contrast(WHITE, fill) >= 4.5) return "#ffffff";
+  if (contrast(darkInk, fill) >= 4.5) return DARK;
+  return contrast(WHITE, fill) >= contrast(darkInk, fill) ? "#ffffff" : DARK;
 }
 
 /**
@@ -215,8 +241,25 @@ export type BrandPalette = {
   darkOnPrimary: string;
 };
 
-/** The page each value is read against. `--bg` light, `--bg` dark. */
-const LIGHT_PAGE: Rgb = { r: 250, g: 250, b: 250 };
+/**
+ * The DARKEST light-mode ground that orange text can land on — `--surface-alt`,
+ * not `--bg`.
+ *
+ * It was `#fafafa`, the old page colour, and two things were wrong with that
+ * even before the palette moved. The page became `#f2f5f0`, so every value
+ * walked against the stale number came out a shade too light and the text tier
+ * slipped to 4.39:1. And a tier derived against the PAGE is not safe on a
+ * section tinted with `--surface-alt`, which is darker again — the "See all
+ * dishes" link on the picks block landed at 4.24:1 for exactly that reason.
+ *
+ * Walking against the darkest of the three grounds makes the one value safe on
+ * all of them, at the cost of being a shade darker than strictly needed on
+ * white. That is the right trade: too much contrast is not a defect.
+ *
+ * Must track `--surface-alt` in `styles.css`. `e2e/contrast.spec.ts` is what
+ * catches it if either moves, before anybody has to remember this comment.
+ */
+const LIGHT_PAGE: Rgb = { r: 232, g: 237, b: 228 };
 
 /**
  * AA for small text. The fills only ever need 3:1 and already have it; it is

@@ -344,5 +344,39 @@ class WhatTheCustomerIsOfferedTests(unittest.TestCase):
         )
 
 
+class BrowserKeyTests(unittest.TestCase):
+    """The key the browser opens a gateway with belongs to that gateway.
+
+    A real failure, found by reading a customer's console. `create_payment_intent`
+    returned `settings.stripe_publishable_key` whatever had made the intent,
+    which was indistinguishable from correct while Stripe was the only gateway.
+    With Razorpay switched on, the browser opened Razorpay Checkout with a
+    `pk_test_…` Stripe key; Razorpay answered 401 to its own preferences call,
+    the window failed to initialise, and no payment was ever attempted. The
+    order was right, the credentials were right, and nothing in our logs was
+    wrong — the browser was simply handed the wrong account's key.
+    """
+
+    def test_razorpay_reports_its_key_id_not_a_stripe_key(self) -> None:
+        provider = RazorpayProvider(
+            key_id="rzp_test_abc123",
+            key_secret="secret",
+            webhook_secret="hook",
+        )
+        self.assertEqual(provider.public_key, "rzp_test_abc123")
+        self.assertFalse(provider.public_key.startswith("pk_"))
+
+    def test_every_provider_can_name_the_key_the_browser_needs(self) -> None:
+        # The property is on the protocol, so a third gateway cannot ship
+        # without answering this question.
+        from app.services.payments.stripe_provider import StripeProvider
+
+        for provider in (
+            RazorpayProvider(key_id="rzp_test_x", key_secret="s", webhook_secret=None),
+            StripeProvider(secret_key="sk_test_x", publishable_key="pk_test_x"),
+        ):
+            self.assertIsInstance(provider.public_key, str)
+
+
 if __name__ == "__main__":
     unittest.main()

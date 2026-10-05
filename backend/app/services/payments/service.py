@@ -216,7 +216,7 @@ def create_payment_intent(
                 client_secret=remote.client_secret,
                 amount=remote.amount,
                 currency=remote.currency,
-                publishable_key=settings.stripe_publishable_key,
+                publishable_key=provider.public_key,
             )
 
     attempt = _attempt_count(db, order.id) + 1
@@ -260,7 +260,18 @@ def create_payment_intent(
         client_secret=result.client_secret,
         amount=result.amount,
         currency=result.currency,
-        publishable_key=settings.stripe_publishable_key,
+        # The key belonging to the gateway that just created this intent, not
+        # the deployment's Stripe key.
+        #
+        # This returned `settings.stripe_publishable_key` unconditionally,
+        # which was indistinguishable from correct while Stripe was the only
+        # gateway. With Razorpay switched on, the browser opened Razorpay
+        # Checkout with a `pk_test_…` Stripe key and Razorpay answered 401 to
+        # its own preferences call — so the window appeared, failed to
+        # initialise, and no payment was ever attempted. The order was fine,
+        # the credentials were fine; the browser was simply handed the wrong
+        # account's key.
+        publishable_key=provider.public_key,
     )
 
 

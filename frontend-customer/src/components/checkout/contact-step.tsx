@@ -150,7 +150,7 @@ export function ContactStep({
               type="tel"
               inputMode="tel"
               autoComplete="tel-national"
-              placeholder="(555) 000-0000"
+              placeholder="Mobile number"
               value={phone}
               onChange={(e) => onPhoneChange(e.target.value)}
               onBlur={() => onTouch("phone")}

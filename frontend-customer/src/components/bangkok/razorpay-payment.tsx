@@ -87,7 +87,6 @@ interface RazorpayPaymentProps {
   customerEmail?: string | null;
   customerPhone?: string | null;
   onPaid: () => void;
-  onCancel: () => void;
 }
 
 export function RazorpayPayment({
@@ -101,7 +100,6 @@ export function RazorpayPayment({
   customerEmail,
   customerPhone,
   onPaid,
-  onCancel,
 }: RazorpayPaymentProps) {
   // Prices in whatever this restaurant charges in — the same formatter every
   // other amount on the site goes through.
@@ -175,9 +173,11 @@ export function RazorpayPayment({
       modal: {
         ondismiss: () => {
           openRef.current = false;
-          // Closing the window is not abandoning the order: it is held, and
-          // the customer can pay again or leave. `onCancel` is the explicit
-          // "I do not want to pay now" further down.
+          // Closing the Razorpay window is not abandoning the order: it is
+          // held either way, and the button behind it reopens the window. The
+          // explicit "Pay later" that used to sit under this was removed — on
+          // a screen whose whole job is taking a payment, a second button
+          // offering not to was the louder of the two reasons to leave.
           setError(null);
         },
       },
@@ -201,7 +201,10 @@ export function RazorpayPayment({
       ) : null}
 
       <Button className="w-full" disabled={!ready || busy} onClick={open} size="lg">
-        {busy ? "Confirming…" : `Pay ${money(amount)}`}
+        {/* Same rule as the card sheet: a disabled button does not offer to
+            take a payment. A failed script already sets `error` above, but
+            the seconds BEFORE either outcome were a dead "Pay ₹157.50". */}
+        {busy ? "Confirming…" : !ready ? "Opening the payment window…" : `Pay ${money(amount)}`}
       </Button>
 
       <p className="flex items-center gap-2 text-sm text-muted">
@@ -209,9 +212,6 @@ export function RazorpayPayment({
         Your payment details go straight to Razorpay — this app never sees them.
       </p>
 
-      <Button className="w-full" disabled={busy} onClick={onCancel} variant="ghost">
-        Pay later
-      </Button>
     </div>
   );
 }

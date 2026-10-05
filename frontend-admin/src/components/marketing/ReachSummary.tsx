@@ -1,5 +1,5 @@
 import { Users } from 'lucide-react';
-import { formatCurrency } from '../../services/api';
+import { useMarketingMoney } from '../../hooks/useMarketingMoney';
 import { pluralize } from '../../services/format';
 import { CHANNEL_META } from './meta';
 import type { ChannelReach } from '../../services/marketing/types';
@@ -25,6 +25,8 @@ export function ReachSummary({
   channels,
   loading = false,
 }: ReachSummaryProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   return (
     <div className="mkt-section">
       <div className="mkt-reach-head">

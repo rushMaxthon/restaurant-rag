@@ -438,12 +438,13 @@ export function OrdersPage({ token, role, onNavigate, onToast }: OrdersPageProps
   return (
     <div className="page-stack">
       <PageIntro
+        help="orders"
         eyebrow="Operations"
         title="Orders"
         description={
           isAdmin
-            ? "Same orders workspace, but with platform-wide visibility across every restaurant."
-            : "Same orders workspace, automatically filtered to your assigned restaurant and its customers."
+            ? "Every order across every restaurant. Search or filter, then open one for its details."
+            : "Every order for your restaurant. Search or filter, then open one for its details."
         }
       />
 

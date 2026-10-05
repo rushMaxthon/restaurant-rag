@@ -104,6 +104,20 @@ class OrderCreateRequest(BaseModel):
     #: rather than a chosen number.
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    #: The saved address this order is going to, when the customer chose one
+    #: from their own list instead of typing.
+    #:
+    #: Here because the delivery QUOTE has taken it since the autocomplete was
+    #: built and the order never did, so the two paths disagreed about what
+    #: counts as a located address: the quote priced a saved address from its
+    #: stored rooftop, and the order refused the very same address for
+    #: carrying no coordinates — "choose your address from the suggestions",
+    #: shown to a customer who had chosen it. Reported 2026-10-03.
+    #:
+    #: Coordinates still win when both arrive. This is the fallback, and it is
+    #: scoped to the caller in the service, because an address id is a
+    #: guessable handle.
+    saved_address_id: uuid.UUID | None = None
     # Who to ring about this delivery. Optional so the mobile client, which
     # does not send them yet, keeps working; the web checkout requires them.
     contact_name: str | None = Field(default=None, max_length=255)
@@ -460,3 +474,58 @@ class OrderDeliveryResponse(BaseModel):
     last_error: str
     created_at: datetime
     updated_at: datetime
+
+
+class LiveOrderResponse(OrderResponse):
+    """An order as a card on the live board: the order, and its courier.
+
+    `delivery` is null for a pickup order and for a delivery nobody has been
+    asked to carry yet. It is the same shape `/orders/{id}/delivery` returns,
+    so the rider's name, phone and tracking link reach the board in the one
+    request rather than in one more per card.
+    """
+
+    delivery: OrderDeliveryResponse | None = None
+
+
+class LiveOrdersStage(BaseModel):
+    """One column of the board.
+
+    `total` is how many orders are in this status; `orders` is capped. They
+    differ on a busy night, and the board says so instead of looking complete.
+    """
+
+    status: OrderStatus
+    total: int
+    #: How many of `total` have waited longer than the board's stale line.
+    #: Backlog, counted apart so the headline is tonight's work.
+    stale_total: int = 0
+    orders: list[LiveOrderResponse]
+
+
+class LiveRestaurantLoad(BaseModel):
+    """One restaurant's share of the board, counted by the database.
+
+    Counted there and not from the cards because the cards are capped: a
+    restaurant with 213 new orders must not read as 99 because 100 were sent.
+    """
+
+    restaurant_id: uuid.UUID
+    name: str
+    city: str
+    counts: dict[OrderStatus, int]
+    #: The part of each count that is backlog. Absent means none.
+    stale: dict[OrderStatus, int] = Field(default_factory=dict)
+
+
+class LiveOrdersResponse(BaseModel):
+    """Everything in flight, and what was delivered since `completed_from`."""
+
+    generated_at: datetime
+    completed_from: datetime
+    stage_limit: int
+    #: After how long an open order counts as backlog. Sent, so the screen
+    #: draws its line where these counts drew theirs.
+    stale_after_minutes: int = 1440
+    stages: list[LiveOrdersStage]
+    restaurants: list[LiveRestaurantLoad] = Field(default_factory=list)

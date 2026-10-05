@@ -228,6 +228,16 @@ class DeliveryProvider(Protocol):
         """A pushed status update, in the same shape as `fetch`."""
         ...
 
+    def cancel(self, provider_order_id: str) -> None:
+        """Call the rider off. Raises `DeliveryProviderError` if it is too late.
+
+        Returns nothing because there is nothing to read: a courier that
+        accepts a cancellation says so and no more. "Too late" is a refusal
+        rather than a state — the food is already on a bike — and it is raised
+        non-retryable, because asking again will not put it back.
+        """
+        ...
+
 
 __all__ = [
     "DeliveryAddress",

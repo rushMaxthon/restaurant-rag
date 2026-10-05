@@ -14,7 +14,8 @@
  */
 
 import { AlertTriangle, PencilLine } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../services/api';
+import { formatDate } from '../../services/api';
+import { useMarketingMoney } from '../../hooks/useMarketingMoney';
 import { pluralize } from '../../services/format';
 import { getChannel, estimateSpend } from './channels';
 import type {
@@ -52,6 +53,8 @@ export function ReviewStep({
   onName,
   onEdit,
 }: ReviewStepProps) {
+  // In this restaurant's currency. See `useMarketingMoney`.
+  const { format: formatCurrency } = useMarketingMoney();
   const definition = getChannel(draft.channel);
   const isSocial = definition.family === 'SOCIAL';
   const spend = estimateSpend(definition, reachable, draft.content.body);

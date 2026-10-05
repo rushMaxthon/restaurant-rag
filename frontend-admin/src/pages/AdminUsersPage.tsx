@@ -286,12 +286,13 @@ export function AdminUsersPage({
   return (
     <div className="page-stack">
       <PageIntro
+        help="users"
         eyebrow={isOwnerView ? 'My restaurant' : 'Access control'}
         title={isOwnerView ? 'Customers' : 'Users'}
         description={
           isOwnerView
             ? 'Customers who signed up in your restaurant app.'
-            : 'Manage account status, scan role distribution, and keep platform access clean and controlled.'
+            : 'Everyone who can sign in. Search by name or role, and switch an account off when it should no longer have access.'
         }
       />
 

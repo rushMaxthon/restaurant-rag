@@ -12,6 +12,7 @@ import type { MenuItem } from "@/lib/bangkok-data";
 import { activeSection, buildSections, countItems } from "@/lib/menu-sections";
 import { sortsFor } from "@/lib/menu-sorts";
 import { useBangkokStore } from "@/lib/bangkok-store";
+import { menuPhase } from "@/lib/menu-phase";
 import { useMenuItems } from "@/lib/queries";
 import { DishCard } from "./dish-card";
 
@@ -321,7 +322,8 @@ export function MenuGrid({
   const [active, setActive] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
 
-  const { restaurantId, branchId, isRestaurantLoading, isRestaurantError } = useBangkokStore();
+  const { restaurantId, branchId, locations, isRestaurantLoading, isRestaurantError } =
+    useBangkokStore();
   const menuQuery = useMenuItems(restaurantId, branchId || undefined);
   // `?? []` alone builds a fresh array on every render, so every memo below
   // would recompute every time and the memoisation would buy nothing.
@@ -338,12 +340,22 @@ export function MenuGrid({
   );
   const total = countItems(sections);
 
-  const loading = isRestaurantLoading || menuQuery.isLoading;
   // A request that never happened is not an empty menu. When /app-config fails
   // the menu query is disabled, so it reports neither loading nor error and the
   // screen used to say "Nothing matches that" — telling the customer something
   // false about the restaurant instead of that we could not reach it.
   const failed = isRestaurantError || menuQuery.isError;
+  // One answer for the four panels below, so they cannot both show or both
+  // hide. See `menuPhase` for why "not loading" was never enough to mean
+  // "loaded".
+  const phase = menuPhase({
+    failed,
+    restaurantPending: isRestaurantLoading,
+    hasBranch: locations.length > 0,
+    menuPending: menuQuery.isPending,
+    shown: total,
+  });
+  const loading = phase === "loading";
   const filtered = vegOnly || query.trim().length > 0;
 
   /**
@@ -485,13 +497,46 @@ export function MenuGrid({
    *
    * The rail scrolls horizontally and a long menu's chips run well past the
    * right edge, so without this the highlight is frequently off-screen and the
-   * rail looks like it is doing nothing. `nearest` rather than `center` so it
-   * only moves when it has to.
+   * rail looks like it is doing nothing.
+   *
+   * **The rail is scrolled directly. `scrollIntoView` cannot be used here.**
+   * It scrolls EVERY scrollable ancestor, and the last of those is the
+   * document — so each time a section boundary passed during an ordinary
+   * scroll, the browser also moved the page vertically to tidy up a chip that
+   * was a few pixels under the sticky header, with `behavior: "smooth"`
+   * animating it against the reader's own scrolling. That is the stutter: the
+   * page appeared to catch and settle at the top of each category, once per
+   * boundary, and `block: "nearest"` did not prevent it because the chip
+   * genuinely was clipped.
+   *
+   * Writing `scrollLeft` touches one axis of one element and cannot reach the
+   * document at all, which is the property that matters rather than the
+   * saving.
+   *
+   * Still only moves when it has to, which is what `nearest` was for: a rail
+   * that re-centres on every boundary is its own kind of noise.
    */
   useEffect(() => {
-    if (!active || !railRef.current) return;
-    const chip = railRef.current.querySelector<HTMLElement>(`[data-slug="${active}"]`);
-    chip?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    const rail = railRef.current;
+    if (!active || !rail) return;
+    const chip = rail.querySelector<HTMLElement>(`[data-slug="${active}"]`);
+    if (!chip) return;
+
+    // A chip's width of breathing room, so the highlighted one never sits
+    // flush against an edge looking like the end of the list.
+    const pad = 24;
+    const viewLeft = rail.scrollLeft;
+    const viewRight = viewLeft + rail.clientWidth;
+    const chipLeft = chip.offsetLeft;
+    const chipRight = chipLeft + chip.offsetWidth;
+
+    let left: number | null = null;
+    if (chipLeft < viewLeft + pad) left = chipLeft - pad;
+    else if (chipRight > viewRight - pad) left = chipRight - rail.clientWidth + pad;
+    if (left === null) return;
+
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    rail.scrollTo({ left: Math.max(0, left), behavior: still ? "auto" : "smooth" });
   }, [active]);
 
   function reset() {
@@ -611,7 +656,7 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && failed && (
+      {phase === "failed" && (
         <div className="state-panel elevated-panel px-6 py-16 text-center">
           <h3 className="font-display text-xl font-extrabold">The menu didn't load</h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
@@ -620,7 +665,7 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && !failed && sections.length > 0 && (
+      {phase === "ready" && (
         <div className="menu-sections">
           {sections.map((section) => (
             <section className="menu-section" key={section.slug}>
@@ -651,11 +696,17 @@ export function MenuGrid({
         </div>
       )}
 
-      {!loading && !failed && sections.length === 0 && (
+      {phase === "empty" && (
         <div className="state-panel elevated-panel px-6 py-20 text-center">
-          <h3 className="font-display text-2xl font-extrabold">Nothing matches that</h3>
+          {/* Two different facts. With nothing typed and no filter on, "try a
+              different word" is advice about a search nobody made. */}
+          <h3 className="font-display text-2xl font-extrabold">
+            {filtered ? "Nothing matches that" : "The menu is empty right now"}
+          </h3>
           <p className="mx-auto mt-2 max-w-sm text-muted">
-            Try a different word, or clear the filters to see the whole menu.
+            {filtered
+              ? "Try a different word, or clear the filters to see the whole menu."
+              : "This branch has no dishes on sale at the moment. Please check back soon."}
           </p>
           {filtered && (
             <button type="button" onClick={reset} className="clear-filters mt-5">

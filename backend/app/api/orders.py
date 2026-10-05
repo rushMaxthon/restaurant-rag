@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -15,6 +15,7 @@ from app.models.enums import OrderStatus, UserRole
 from app.models.order_delivery import OrderDelivery
 from app.models.user import User
 from app.schemas.order import (
+    LiveOrdersResponse,
     DeliveryQuoteRequest,
     DeliveryQuoteResponse,
     OrderCreateRequest,
@@ -39,9 +40,10 @@ from app.services.auth import (
 )
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
-from app.services.delivery.quoting import attempt_quote, fee_from, points_for, usable_in
+from app.services.delivery.quoting import attempt_quote, before_delivery_tax, fee_from, points_for, usable_in
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services import order_charges
+from app.services.live_orders import build_live_board
 from app.services.orders import (
     charges_response,
     create_order,
@@ -238,6 +240,10 @@ def quote_delivery(
         )
 
     fee = fee_from(quote)
+    if fee is not None:
+        # The same step the order path takes, or the checkout would quote one
+        # delivery fee and the order would charge another.
+        fee = before_delivery_tax(fee, location)
     if fee is None:
         # Unserviceable, or priced at nothing. The branch's fee stands and the
         # flag travels, so the page can warn without the fee disappearing.
@@ -261,6 +267,54 @@ def quote_delivery(
         travel_seconds=quote.travel_seconds,
         **_priced(location, payload, fee),
         **located,
+    )
+
+
+@router.get("/live", response_model=LiveOrdersResponse)
+def get_live_orders(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    app_scope: AppScopeDep,
+    restaurant_id: uuid.UUID | None = Query(default=None),
+    restaurant_location_id: uuid.UUID | None = Query(default=None),
+    # "Today" is the operator's own midnight, which only their browser knows.
+    # Unset, the board falls back to the last 24 hours rather than guessing a
+    # timezone.
+    completed_from: datetime | None = Query(default=None),
+) -> LiveOrdersResponse:
+    """Every open order in scope, and the ones delivered today.
+
+    Declared before `/{order_id}` on purpose: registered after it, "live"
+    would be read as an order id. Staff only — a customer has their own order
+    history and no business with a board.
+
+    The scope is `resolve_order_board_scope`, the same resolver `GET /orders`
+    uses, so an admin may name a restaurant or see all of them, an owner sees
+    their own, and a pinned kitchen account its own branch.
+    """
+
+    if current_user.role not in ORDER_BOARD_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view the live orders board",
+        )
+    scope = resolve_order_board_scope(
+        db,
+        current_user,
+        requested_restaurant_id=restaurant_id,
+        requested_restaurant_location_id=restaurant_location_id,
+    )
+    owner_restaurant_id = (
+        scope.restaurant_id if current_user.role in (UserRole.OWNER, UserRole.KITCHEN) else None
+    )
+    return build_live_board(
+        db,
+        current_user,
+        owner_restaurant_id=owner_restaurant_id,
+        restaurant_id=restaurant_id,
+        restaurant_location_id=scope.restaurant_location_id,
+        app_scope_restaurant_id=app_scope.restaurant_filter_id,
+        completed_from=completed_from or datetime.now(timezone.utc) - timedelta(hours=24),
     )
 
 
