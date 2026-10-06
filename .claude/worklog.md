@@ -5374,3 +5374,23 @@ period; revenue counts sales only (not PAYMENT_PENDING / CANCELLED).
 **Verified:** admin 471 tests, build, lint at 67; browser as admin through
 every period. Owner view not walked in the browser (no owner session on
 hand) - same code path, typechecked.
+
+## 2026-10-06 — Merge redesign (print agent) into marketing
+
+**Found:** `git pull` of `redesign` (`413d59b`, the print-queue merge) left one
+conflict in `services/order_events.py`: this branch queues the kitchen push on
+PLACED after the realtime push, redesign queues print jobs (`_queue_print_jobs`)
+at the same spot. `settings.py` had the same shape (kitchen-push flags beside
+the print flags) and was already resolved keeping both.
+
+**Changed:** `order_events.py` keeps both — kitchen push first, then the print
+jobs — since both were pure additions to the common base. No duplicate
+settings fields; no import cycle between `kitchen_push`, `print.queue` and
+`order_events`. Removed the `*_BACKUP/BASE/LOCAL/REMOTE_9344.py` and
+`settings.py.orig` copies mergetool left behind (the BACKUP one broke
+`compileall`).
+
+**Verified:** `compileall`; `test_order_events`, `test_kitchen_push`,
+`test_print_queue`, `test_kitchen_staff_scope`, `test_delivery_cancel`,
+`test_realtime` 147/147; full backend suite (see below). Not committed —
+the merge is staged and left for the owner to commit.
