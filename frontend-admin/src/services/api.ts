@@ -29,6 +29,9 @@ import type {
   PaymentGateway,
   PaymentGatewayPayload,
   CommissionReport,
+  PayoutAccount,
+  PayoutAccountInput,
+  PayoutList,
   PlatformWatch,
   RestaurantCapability,
   RestaurantPaymentSettings,
@@ -209,6 +212,30 @@ export const api = {
     return request<PlatformWatch>('/admin/platform-watch', { token });
   },
   /** What the platform earned per restaurant over the last `days`. ADMIN only. */
+  getPayouts(token: string, query: { restaurant_id?: string; date_from?: string; date_to?: string }): Promise<PayoutList> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value) params.set(key, value);
+    }
+    return request<PayoutList>(`/payouts?${params.toString()}`, { token });
+  },
+  retryPayout(token: string, payoutId: string): Promise<{ status: string; last_error: string | null }> {
+    return request(`/payouts/${payoutId}/retry`, { method: "POST", token });
+  },
+  /** An owner passes no restaurant: the server pins them to their own. */
+  getPayoutAccount(token: string, restaurantId?: string): Promise<PayoutAccount | null> {
+    const query = restaurantId ? `?restaurant_id=${restaurantId}` : "";
+    return request<PayoutAccount | null>(`/payouts/account${query}`, { token });
+  },
+  savePayoutAccount(token: string, restaurantId: string, body: PayoutAccountInput): Promise<PayoutAccount> {
+    return request<PayoutAccount>(`/payouts/account?restaurant_id=${restaurantId}`, { method: "PUT", token, body });
+  },
+  submitPayoutAccount(token: string, restaurantId: string): Promise<PayoutAccount> {
+    return request<PayoutAccount>(`/payouts/account/submit?restaurant_id=${restaurantId}`, { method: "POST", token });
+  },
+  refreshPayoutAccount(token: string, restaurantId: string): Promise<PayoutAccount> {
+    return request<PayoutAccount>(`/payouts/account/refresh?restaurant_id=${restaurantId}`, { method: "POST", token });
+  },
   getCommissionReport(token: string, days: number): Promise<CommissionReport> {
     return request<CommissionReport>(`/admin/commission?days=${days}`, { token });
   },

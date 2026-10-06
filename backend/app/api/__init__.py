@@ -18,6 +18,7 @@ from app.api.orders import router as orders_router
 from app.api.print_agents import router as print_agents_router
 from app.api.printing import router as printing_router
 from app.api.payments import router as payments_router
+from app.api.payouts import router as payouts_router
 from app.api.short_links import router as short_links_router
 from app.api.personalized_offers import router as personalized_offers_router
 from app.api.preferences import router as preferences_router
@@ -47,6 +48,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(orders_router)
 api_router.include_router(addresses_router)
 api_router.include_router(payments_router)
+api_router.include_router(payouts_router)
 api_router.include_router(print_agents_router)
 api_router.include_router(printing_router)
 api_router.include_router(short_links_router)

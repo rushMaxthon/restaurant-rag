@@ -48,6 +48,7 @@ from app.services.payments.registry import (
     available_payment_methods,
     build_provider,
     platform_provider_for,
+    platform_razorpay_provider,
     provider_for,
     provider_name_for,
 )
@@ -90,6 +91,22 @@ def _load_customer_order(
     if app_scope_restaurant_id is not None and order.restaurant_id != app_scope_restaurant_id:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Order not found")
     return order
+
+
+def provider_for_transaction(db: Session, *, order: Order, transaction: PaymentTransaction | None):
+    """The account that took THIS attempt, whatever the restaurant uses now.
+
+    An attempt the platform collected (Route) is confirmed, reconciled and
+    cancelled on the platform's account even after payouts are switched off,
+    and even after the restaurant moves to its own keys; anything else goes
+    to the restaurant's account as before. Lives here rather than in the
+    registry so it resolves through this module's `provider_for`, the seam
+    the payment tests stub.
+    """
+
+    if transaction is not None and getattr(transaction, "on_platform_account", False):
+        return platform_razorpay_provider(require_enabled=False)
+    return provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
 
 
 def _latest_transaction(db: Session, order_id: uuid.UUID) -> PaymentTransaction | None:
@@ -247,6 +264,7 @@ def create_payment_intent(
         status=PaymentStatus.PENDING,
         amount=result.amount,
         currency=result.currency,
+        on_platform_account=bool(getattr(provider, "is_platform", False)),
     )
     db.add(transaction)
     order.payment_reference = result.intent_id
@@ -369,6 +387,7 @@ def create_payment_link(
                 status=PaymentStatus.PENDING,
                 amount=result.amount,
                 currency=result.currency,
+                on_platform_account=bool(getattr(provider, "is_platform", False)),
             )
         )
     order.payment_reference = result.intent_id
@@ -417,7 +436,7 @@ def cancel_payment(
 
     transaction = _latest_transaction(db, order.id)
     if transaction is not None and transaction.status in RETRYABLE_PAYMENT_STATUSES:
-        provider = provider_for(db, restaurant_id=order.restaurant_id, method=order.payment_method)
+        provider = provider_for_transaction(db, order=order, transaction=transaction)
         if provider is not None and provider.is_configured():
             provider.cancel_intent(transaction.provider_intent_id)
         transaction.status = PaymentStatus.CANCELLED
@@ -503,6 +522,18 @@ def _mark_paid(db: Session, order: Order, transaction: PaymentTransaction, event
             note="payment confirmed",
         )
         order.status = OrderStatus.PLACED
+    # The restaurant's share, written in the same transaction as PAID so the
+    # two cannot disagree, and the transfer queued for after the commit. In a
+    # savepoint and a try: a payout problem must never cost a sale, and a
+    # half-written payout row must not take the payment down with it.
+    try:
+        from app.services.payouts.service import queue_payout_step, record_paid_order
+
+        with db.begin_nested():
+            record_paid_order(db, order, transaction)
+        queue_payout_step(db, "transfer", order.id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not record the payout for order %s", order.id)
     db.add_all([order, transaction])
     db.commit()
 
@@ -536,10 +567,42 @@ def _mark_cancelled(db: Session, order: Order, transaction: PaymentTransaction) 
     db.commit()
 
 
-def _mark_refunded(db: Session, order: Order, transaction: PaymentTransaction) -> None:
+def _refunded_amount(event: WebhookEvent) -> Decimal | None:
+    """How much THIS refund returned, from the gateway's own body, or None.
+
+    Not `event.amount`, which is the payment's amount: a 30-rupee goodwill
+    refund on a 600-rupee order arrives carrying 600.
+    """
+
+    body = event.payload or {}
+    refund = ((body.get("payload") or {}).get("refund") or {}).get("entity") or {}
+    if refund.get("amount") is not None:  # Razorpay, in paise
+        return (Decimal(int(refund["amount"])) / 100).quantize(Decimal("0.01"))
+    charge = (body.get("data") or {}).get("object") or {}
+    if charge.get("amount_refunded") is not None:  # Stripe, in minor units
+        return (Decimal(int(charge["amount_refunded"])) / 100).quantize(Decimal("0.01"))
+    return None
+
+
+def _mark_refunded(
+    db: Session, order: Order, transaction: PaymentTransaction, *, refunded: Decimal | None = None
+) -> None:
     transaction.status = PaymentStatus.REFUNDED
     order.payment_status = PaymentStatus.REFUNDED
     db.add_all([order, transaction])
+    # The restaurant's share is taken back only for a refund of the whole
+    # order. A partial one (a goodwill 30 rupees) is a person's decision about
+    # who bears it, so it is written on the payout row for the admin instead
+    # of reversing a share the restaurant mostly earned.
+    try:
+        from app.services.payouts.service import note_partial_refund, queue_payout_step
+
+        if refunded is not None and refunded >= order.total_amount:
+            queue_payout_step(db, "reverse", order.id)
+        else:
+            note_partial_refund(db, order.id, refunded)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not handle the payout for the refund on order %s", order.id)
     db.commit()
 
 
@@ -576,9 +639,9 @@ def _reconcile_with_provider(db: Session, order: Order) -> None:
     if transaction is None or not transaction.provider_intent_id:
         return
 
-    provider = provider_for(
-        db, restaurant_id=order.restaurant_id, method=order.payment_method
-    )
+    # The account that took this attempt, which since Route may be the
+    # platform's rather than the restaurant's own.
+    provider = provider_for_transaction(db, order=order, transaction=transaction)
     if provider is None or not provider.is_configured():
         return
 
@@ -714,7 +777,7 @@ def _apply_webhook_event(
                 handled = "cancelled"
                 announce = partial(_report_cancelled_in_chat, order)
             elif event.event_type in _REFUNDED_EVENTS:
-                _mark_refunded(db, order, transaction)
+                _mark_refunded(db, order, transaction, refunded=_refunded_amount(event))
                 handled = "refunded"
                 announce = partial(_report_refunded_in_chat, order)
 
@@ -816,16 +879,22 @@ def confirm_razorpay_checkout(
     and both routes end at `_mark_paid`, which is idempotent.
     """
 
-    credentials = read_credentials(
-        db, restaurant_id=order.restaurant_id, gateway=PaymentGateway.RAZORPAY
-    )
-    if credentials is None:
+    transaction = _latest_transaction(db, order.id)
+    if transaction is None or transaction.provider_intent_id != razorpay_order_id:
+        # The signature may be genuine but name an order that is not this one.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="That payment belongs to a different order.",
+        )
+
+    # The account that created this attempt, which since Route may be the
+    # platform's rather than the restaurant's.
+    provider = provider_for_transaction(db, order=order, transaction=transaction)
+    if provider is None or not hasattr(provider, "verify_checkout_signature"):
         raise HTTPException(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Razorpay is not available for this restaurant.",
         )
-
-    provider = build_provider(PaymentGateway.RAZORPAY, credentials)
     if not provider.verify_checkout_signature(
         razorpay_order_id=razorpay_order_id,
         razorpay_payment_id=razorpay_payment_id,
@@ -836,14 +905,6 @@ def confirm_razorpay_checkout(
             detail="That payment could not be verified.",
         )
 
-    transaction = _latest_transaction(db, order.id)
-    if transaction is None or transaction.provider_intent_id != razorpay_order_id:
-        # The signature was genuine but names an order that is not this one.
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail="That payment belongs to a different order.",
-        )
-
     _mark_paid(
         db,
         order,
@@ -852,6 +913,9 @@ def confirm_razorpay_checkout(
             event_id=f"checkout:{razorpay_payment_id}",
             event_type="succeeded",
             intent_id=razorpay_order_id,
+            # A Route transfer is made from the payment id, and this path
+            # never recorded one.
+            payment_id=razorpay_payment_id,
             amount=order.total_amount,
             currency=order.currency,
         ),
@@ -859,6 +923,34 @@ def confirm_razorpay_checkout(
     db.commit()
     _confirm_in_chat(order)
     return {"status": "paid", "order_id": str(order.id)}
+
+
+def handle_platform_razorpay_webhook(
+    db: Session, *, payload: bytes, signature: str | None, event_id: str | None = None
+) -> dict[str, str]:
+    """Events for the platform's own Razorpay account.
+
+    Payments the platform collected for a restaurant on Route, and Route's own
+    events: transfers, settlements, linked accounts. Verified with the
+    platform's webhook secret before anything in the body is believed.
+    """
+
+    provider = platform_razorpay_provider(require_enabled=False)
+    if provider is None:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST,
+                            detail="The platform has no Razorpay account configured.")
+    try:
+        event = provider.parse_webhook(payload=payload, signature=signature, event_id=event_id)
+    except WebhookVerificationError as error:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    result = _apply_webhook_event(db, provider_name="razorpay_platform", event=event)
+    if result.get("status") != "duplicate":
+        # Imported lazily: payouts imports this module's registry.
+        from app.services.payouts.webhooks import handle_route_event
+
+        handle_route_event(db, event.payload)
+    return result
 
 
 def handle_stripe_webhook(db: Session, *, payload: bytes, signature: str | None) -> dict[str, str]:
@@ -1130,8 +1222,8 @@ def reap_expired_unpaid_orders(db: Session, *, now: datetime | None = None) -> i
         # every restaurant on the platform and each one settles through its
         # own gateway account — a single provider hoisted out of the loop
         # would cancel one restaurant's intents against another's account.
-        provider = provider_for(
-            db, restaurant_id=order.restaurant_id, method=order.payment_method
+        provider = provider_for_transaction(
+            db, order=order, transaction=_latest_transaction(db, order.id)
         )
         # Confirm with the provider before cancelling. Cancelling an order whose
         # webhook was merely lost would leave the customer charged for an order
@@ -1189,6 +1281,15 @@ def payment_config(
         ):
             gateway = GATEWAY_FOR_METHOD.get(method)
             if gateway is None:
+                continue
+            if gateway == PaymentGateway.RAZORPAY:
+                # Whichever account will take the payment: the restaurant's
+                # own, or the platform's when it collects for this restaurant
+                # (Route). Read through `provider_for` so the key and the
+                # account that creates the order cannot disagree.
+                provider = provider_for(db, restaurant_id=restaurant_id, method=method)
+                if provider is not None and provider.public_key:
+                    gateway_keys[gateway.value] = provider.public_key
                 continue
             credentials = read_credentials(db, restaurant_id=restaurant_id, gateway=gateway)
             if credentials is not None and credentials.public_key:

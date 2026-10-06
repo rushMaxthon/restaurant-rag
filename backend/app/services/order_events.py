@@ -128,6 +128,17 @@ def record_order_status_event(
     # needs an outbox to get. A rolled-back order takes its tickets with it.
     _queue_print_jobs(db, order=order, to_status=to_status, reason=cancellation_reason)
 
+    # And the restaurant's share: released when the food is handed over,
+    # taken back when the order is called off. Queued after commit like the
+    # push, and never raising: history and payouts must not break an order.
+    if to_status in (OrderStatus.DELIVERED, OrderStatus.CANCELLED):
+        try:
+            from app.services.payouts.service import queue_payout_step
+
+            queue_payout_step(db, "release" if to_status == OrderStatus.DELIVERED else "reverse", order.id)
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not queue the payout step for order %s", getattr(order, "id", None))
+
 
 def _queue_print_jobs(
     db: Session,

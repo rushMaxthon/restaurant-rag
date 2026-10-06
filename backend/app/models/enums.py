@@ -680,3 +680,31 @@ class PrintJobStatus(StrEnum):
     PRINTED = "PRINTED"
     FAILED = "FAILED"
 
+
+class PayoutStatus(StrEnum):
+    """Where one order's share for the restaurant is. See `services/payouts`."""
+
+    # Paid, but nothing has gone to the restaurant yet: no active linked
+    # account, payouts switched off, or the payment id not known yet.
+    WAITING_ACCOUNT = "WAITING_ACCOUNT"
+    HELD = "HELD"  # transferred, on hold until the order is delivered
+    RELEASED = "RELEASED"  # hold lifted; Razorpay settles it on its schedule
+    SETTLED = "SETTLED"  # in the restaurant's bank
+    REVERSED = "REVERSED"  # taken back: cancelled or refunded
+    FAILED = "FAILED"  # Razorpay refused; Retry once the cause is fixed
+    BLOCKED = "BLOCKED"  # the split did not reconcile, nothing is transferred
+    # COD, Stripe, or the restaurant's own keys: the money never passed
+    # through the platform, so there is nothing to send. Recorded anyway so
+    # the screen shows every order's split.
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class PayoutAccountStatus(StrEnum):
+    """A restaurant's Razorpay linked account, as Razorpay last described it."""
+
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"

@@ -853,6 +853,19 @@ class Settings(BaseSettings):
     payment_intent_ttl_minutes: int = 30
     razorpay_key_id: str = "rzp_test_mock"
     razorpay_key_secret: str = "razorpay_mock_secret"
+    # The platform's own Razorpay webhook secret, for payments it collects for
+    # restaurants on Route, and for transfer, settlement and linked-account
+    # events. Different from each restaurant's own webhook secret.
+    razorpay_webhook_secret: str = ""
+    # Pay restaurants their share through Razorpay Route. Off: the payout
+    # ledger is still written, so the admin can see exactly what would be
+    # paid, and Razorpay is never called. Also gates the platform collecting
+    # a restaurant's payments at all: without payouts there is no way to pass
+    # the money on.
+    enable_restaurant_payouts: bool = False
+    # How many times a refused or unreachable transfer is retried by the
+    # hourly sweep before it waits for a person.
+    payouts_retry_limit: int = 5
 
     # --- delivery dispatch --------------------------------------------------
     #

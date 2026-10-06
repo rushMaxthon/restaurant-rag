@@ -99,6 +99,56 @@ def platform_provider_for(method: PaymentMethod) -> PaymentProvider | None:
     return None
 
 
+#: The Razorpay key `settings.py` ships with so a fresh checkout boots. It is
+#: not an account, and treating it as one would put a Razorpay button on a
+#: checkout that cannot take a payment.
+_MOCK_RAZORPAY_KEY = "rzp_test_mock"
+
+
+def platform_razorpay_provider(*, require_enabled: bool = True) -> RazorpayProvider | None:
+    """The platform's own Razorpay account, used for Route.
+
+    `require_enabled=False` is for money ALREADY taken on it: confirming,
+    reconciling and webhooks must keep working after payouts are switched off,
+    or a paid order would sit unpaid here.
+    """
+
+    settings = get_settings()
+    if require_enabled and not settings.enable_restaurant_payouts:
+        return None
+    key_id = (settings.razorpay_key_id or "").strip()
+    if not key_id or key_id == _MOCK_RAZORPAY_KEY:
+        return None
+    provider = RazorpayProvider(
+        key_id=key_id,
+        key_secret=settings.razorpay_key_secret,
+        webhook_secret=settings.razorpay_webhook_secret,
+        is_platform=True,
+    )
+    return provider if provider.is_configured() else None
+
+
+def platform_collects(db: Session, restaurant_id: uuid.UUID | None) -> bool:
+    """Whether the platform may take this restaurant's Razorpay payments.
+
+    Only when it can pay them out: payouts on, platform keys real, and the
+    restaurant's linked account ACTIVE. Anything less and the money would
+    land with the platform with no way to pass it on.
+    `payments_require_restaurant_account` is deliberately not consulted: it
+    guards against the platform silently keeping a restaurant's money, and
+    Route is the opposite of that.
+    """
+
+    # No session, no account to read: several callers (and their tests) ask
+    # what a restaurant can take without one, and the answer is "not this".
+    if db is None or restaurant_id is None:
+        return False
+
+    from app.services.payouts.accounts import payout_account_active
+
+    return platform_razorpay_provider() is not None and payout_account_active(db, restaurant_id)
+
+
 def provider_for(
     db: Session,
     *,
@@ -134,6 +184,11 @@ def provider_for(
         if credentials is not None:
             provider = build_provider(gateway, credentials)
             return provider if provider.is_configured() else None
+
+        # No keys of its own: the platform collects, if it can pay this
+        # restaurant out. See `platform_collects`.
+        if method == PaymentMethod.RAZORPAY and platform_collects(db, restaurant_id):
+            return platform_razorpay_provider()
 
     if get_settings().payments_require_restaurant_account:
         return None
@@ -230,6 +285,8 @@ __all__ = [
     "SUPPORTED_PAYMENT_METHODS",
     "available_payment_methods",
     "is_method_supported",
+    "platform_collects",
+    "platform_razorpay_provider",
     "platform_provider_for",
     "provider_for",
     "provider_name_for",

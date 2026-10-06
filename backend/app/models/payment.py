@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +44,13 @@ class PaymentTransaction(TimestampMixin, Base):
     # for any event that carries no payment.
     provider_payment_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
+    )
+    # Which Razorpay account took this payment: the platform's (Route, paid
+    # out to the restaurant) or the restaurant's own. Confirming, reconciling
+    # and cancelling use THIS, not what the restaurant is set to now, so
+    # moving a restaurant onto Route cannot strand its earlier orders.
+    on_platform_account: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status"),

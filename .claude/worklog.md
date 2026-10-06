@@ -5244,3 +5244,51 @@ period; revenue counts sales only (not PAYMENT_PENDING / CANCELLED).
 **Verified:** admin 471 tests, build, lint at 67; browser as admin through
 every period. Owner view not walked in the browser (no owner session on
 hand) - same code path, typechecked.
+
+## 2026-10-06 — Restaurant payouts through Razorpay Route
+
+**Spec / plan:** `docs/superpowers/specs/2026-10-05-restaurant-payouts-design.md`,
+`docs/superpowers/plans/2026-10-06-restaurant-payouts.md`. Write-up:
+`backend/docs/payouts.md`.
+
+**Found while planning:** the registry had no platform Razorpay at all, so the
+six real kitchens without their own keys could not take Razorpay; only
+Bhagwati (own keys) ever had. The browser's Razorpay confirmation never
+recorded the payment id, which a transfer needs.
+
+**Changed:**
+- `services/payouts/`: split (only place the arithmetic lives), Route client
+  (v1 transfers, v2 linked accounts), ledger service, linked-account
+  onboarding, webhook handling.
+- Migration `0083_restaurant_payouts`: two tables with RLS, plus
+  `payment_transactions.on_platform_account`.
+- Platform collects only for a restaurant it can pay (`platform_collects`).
+- `provider_for_transaction` routes confirm, reconcile, cancel and the reaper
+  to the account that took the attempt.
+- Platform webhook `POST /payments/razorpay/webhook`.
+- `_mark_paid` writes the ledger row in a savepoint. DELIVERED, CANCELLED and
+  refunds queue release or reverse after commit.
+- Celery tasks, plus an hourly retry sweep.
+- `/payouts` API (owner pinned, never sees `platform_keeps`; admin-only
+  writes).
+- Admin Payouts page and bank-account panel. Payout statuses added to
+  `resolveStatusPillTone`.
+- `ENABLE_RESTAURANT_PAYOUTS` defaults off. With it off, the ledger is still
+  written.
+
+**Verified:** backend 3219 (72 new) green, after a fresh-context review whose 1 critical + 4 important findings were fixed test-first (double transfer after a timeout, webhooks deduped as one, partial refunds reversing the whole share, no order-state guard, storefront missing the platform key); the payment, Razorpay and delivery
+suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
+506. Migration up/down/up on a local throwaway DB.
+
+**Not done / open:**
+- Page not walked in a browser: the local API points at Supabase, which is
+  still at `0082`.
+- `0083` must reach Supabase (Render's pre-deploy upgrade, or by hand with a
+  stamp) before any API runs this code against it.
+- Nothing committed.
+- User actions:
+  - enable Route;
+  - collect PAN and bank details;
+  - set `RAZORPAY_WEBHOOK_SECRET` and the webhook;
+  - run the test-mode checklist in `backend/docs/payouts.md`;
+  - then turn the flag on.
