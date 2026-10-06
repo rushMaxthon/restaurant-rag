@@ -272,6 +272,35 @@ class StripeProvider:
             # want to propagate to a customer dismissing a sheet.
             logger.warning("Stripe intent cancel failed intent_id=%s error=%s", intent_id, error)
 
+    def refund(
+        self,
+        *,
+        intent_id: str,
+        payment_id: str,
+        amount: Decimal,
+        currency: str,
+        order_id: uuid.UUID,
+    ) -> str:
+        """Refund a PaymentIntent, in full or part. Returns the refund id.
+
+        Keyed on our order id so a retried task returns the same refund
+        rather than making a second one.
+        """
+
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=intent_id,
+                amount=to_minor_units(amount, currency),
+                metadata={"order_id": str(order_id), "reason": "cancelled by the restaurant"},
+                idempotency_key=f"refund:{order_id}",
+                **self._client_kwargs(),
+            )
+        except stripe.APIConnectionError as error:
+            raise PaymentProviderError(f"Could not reach Stripe: {error}", retryable=True) from error
+        except stripe.StripeError as error:
+            raise PaymentProviderError(f"Stripe refused the refund: {error.user_message or error}", retryable=False) from error
+        return str(refund["id"])
+
     def parse_webhook(self, *, payload: bytes, signature: str | None) -> WebhookEvent:
         if not self._webhook_secret:
             raise WebhookVerificationError("Stripe webhook secret is not configured")

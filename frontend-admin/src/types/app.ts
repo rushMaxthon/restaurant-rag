@@ -979,6 +979,16 @@ export interface Order {
   created_at: string;
   updated_at: string;
   items: OrderItem[];
+  /** Why and by whom it was cancelled, and where its refund stands. */
+  cancellation_reason?: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancellation_note?: string | null;
+  /** PENDING, REFUNDED or FAILED; null when nothing was owed back. */
+  refund_status?: string | null;
+  refund_error?: string | null;
+  /** The server's answer: Cancel may be offered on this order right now. */
+  can_be_cancelled?: boolean;
 }
 
 export interface ToastMessage {

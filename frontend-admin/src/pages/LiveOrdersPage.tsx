@@ -44,6 +44,7 @@ import {
   type NextAction,
 } from "../services/liveOrders";
 import type { LiveOrder, LiveOrdersBoard, UserRole } from "../types/app";
+import { CancelOrderDialog } from "../components/CancelOrderDialog";
 
 interface LiveOrdersPageProps {
   token: string;
@@ -107,6 +108,8 @@ interface LiveCardProps {
   onOpen: (order: LiveOrder) => void;
   /** Moves the order one step on. Resolves when the server has answered. */
   onAdvance: (order: LiveOrder, action: NextAction) => Promise<void>;
+  /** Opens the cancel dialog; offered only while the server says it may be. */
+  onCancel: (order: LiveOrder) => void;
 }
 
 function LiveCard({
@@ -118,6 +121,7 @@ function LiveCard({
   stale,
   onOpen,
   onAdvance,
+  onCancel,
 }: LiveCardProps) {
   const action = nextAction(order);
   // Two presses, not one. A board is a wall of near-identical cards being
@@ -277,6 +281,16 @@ function LiveCard({
       {/* Said in the card rather than only in a tooltip, at the moment it
           matters: a phone has no hover, and this is the press that spends. */}
       {action && armed ? <p className="live-card__advance-note">{action.help}</p> : null}
+      {order.can_be_cancelled ? (
+        <button
+          className="secondary-button live-card__cancel"
+          onClick={() => onCancel(order)}
+          title="Cancel this order. A prepaid order is refunded in full and a booked rider is called off."
+          type="button"
+        >
+          Cancel order
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -392,6 +406,7 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
   );
 
   const openOrder = (order: LiveOrder) => onNavigate(`/orders/${order.id}`);
+  const [cancelling, setCancelling] = useState<LiveOrder | null>(null);
 
   const emptyCopy = (column: LiveColumn): { title: string; text: string } => {
     if (filtering) {
@@ -721,6 +736,7 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
                         key={order.id}
                         now={now}
                         onAdvance={advanceOrder}
+                        onCancel={setCancelling}
                         onOpen={openOrder}
                         order={order}
                         showRestaurant={isAdmin}
@@ -746,6 +762,7 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
                           key={order.id}
                           now={now}
                           onAdvance={advanceOrder}
+                          onCancel={setCancelling}
                           onOpen={openOrder}
                           order={order}
                           showRestaurant={isAdmin}
@@ -778,6 +795,19 @@ export function LiveOrdersPage({ token, role, onNavigate, onToast }: LiveOrdersP
           No orders in progress and none finished today. New orders appear here as soon as they
           are paid for.
         </p>
+      ) : null}
+      {cancelling ? (
+        <CancelOrderDialog
+          amount={money.format(cancelling.total_amount, cancelling.restaurant_id)}
+          onCancelled={() => {
+            setCancelling(null);
+            void load("silent");
+          }}
+          onClose={() => setCancelling(null)}
+          onToast={onToast}
+          order={cancelling}
+          token={token}
+        />
       ) : null}
     </div>
   );

@@ -411,6 +411,41 @@ class RazorpayProvider:
             expires_at=link.get("expire_by"),
         )
 
+    def refund(
+        self,
+        *,
+        intent_id: str,
+        payment_id: str,
+        amount: Decimal,
+        currency: str,
+        order_id: uuid.UUID,
+    ) -> str:
+        """Refund a captured payment, in full or part. Returns the refund id.
+
+        Razorpay refunds a PAYMENT (`pay_`), not the order we created. The
+        browser's confirmation records the payment id; an older attempt that
+        only has the order id is looked up through the order's payments.
+        """
+
+        if not payment_id:
+            payments = self._request("GET", f"/orders/{intent_id}/payments")
+            captured = [p for p in payments.get("items") or [] if p.get("status") == "captured"]
+            if not captured:
+                raise PaymentProviderError("Razorpay has no captured payment for this order to refund.", retryable=False)
+            payment_id = str(captured[0]["id"])
+        refunded = self._request(
+            "POST",
+            f"/payments/{payment_id}/refund",
+            json={
+                "amount": _to_minor_units(amount),
+                "speed": "normal",
+                # Our order id, so the refund is traceable from the dashboard.
+                "notes": {"order_id": str(order_id), "reason": "cancelled by the restaurant"},
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        return str(refunded.get("id") or "")
+
     def parse_webhook(
         self, *, payload: bytes, signature: str | None, event_id: str | None = None
     ) -> WebhookEvent:

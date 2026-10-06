@@ -1331,6 +1331,18 @@ export const api = {
   getOrder(token: string, orderId: string): Promise<Order> {
     return request<Order>(`/orders/${orderId}`, { token });
   },
+  /** Cancel an order the rider has not collected; a prepaid one is refunded. */
+  cancelOrder(token: string, orderId: string, reason: string, note: string): Promise<Order> {
+    return request<Order>(`/orders/${orderId}/cancel`, {
+      method: "POST",
+      token,
+      body: { reason, note },
+    });
+  },
+  /** Try a refund the gateway refused again. */
+  retryOrderRefund(token: string, orderId: string): Promise<Order> {
+    return request<Order>(`/orders/${orderId}/refund/retry`, { method: "POST", token });
+  },
   updateOrderStatus(token: string, orderId: string, status: OrderStatus): Promise<Order> {
     return request<Order>(`/orders/${orderId}/status`, {
       method: 'PATCH',

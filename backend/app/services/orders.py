@@ -155,6 +155,8 @@ def _order_base_query() -> Select[tuple[Order]]:
             selectinload(Order.restaurant),
             selectinload(Order.restaurant_location),
             selectinload(Order.customer),
+            # Read by `can_be_cancelled` for every order a list returns.
+            selectinload(Order.delivery),
         )
         .order_by(Order.placed_at.desc(), Order.created_at.desc())
     )
@@ -197,6 +199,12 @@ def _stored_charges(order: Order) -> OrderChargesResponse | None:
         # invented ones.
         lines = [ChargeLineResponse(key="tax", label="Taxes", amount=order.tax_amount)]
     return OrderChargesResponse(total=order.tax_amount, lines=lines)
+
+
+def _can_be_cancelled(order: Order) -> bool:
+    from app.services.order_cancellation import can_be_cancelled
+
+    return can_be_cancelled(order)
 
 
 def _serialize_order(order: Order) -> OrderResponse:
@@ -256,6 +264,13 @@ def _serialize_order(order: Order) -> OrderResponse:
         placed_at=order.placed_at,
         created_at=order.created_at,
         updated_at=order.updated_at,
+        cancellation_reason=order.cancellation_reason,
+        cancelled_by=order.cancelled_by,
+        cancelled_at=order.cancelled_at,
+        cancellation_note=order.cancellation_note,
+        refund_status=order.refund_status,
+        refund_error=order.refund_error,
+        can_be_cancelled=_can_be_cancelled(order),
         items=[
             OrderItemResponse(
                 id=item.id,
@@ -1278,6 +1293,15 @@ def get_order_for_user(
             query = query.where(Order.restaurant_location_id == owner_restaurant_location_id)
 
     order = db.scalar(query)
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return _serialize_order(order)
+
+
+def serialize_order_by_id(db: Session, order_id: uuid.UUID) -> OrderResponse:
+    """One order, read fresh and in the shape every order route returns."""
+
+    order = db.scalar(_order_base_query().where(Order.id == order_id))
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     return _serialize_order(order)

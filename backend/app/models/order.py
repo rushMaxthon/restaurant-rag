@@ -174,6 +174,13 @@ class Order(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # What the staff member wrote beside their reason ("Paneer finished").
+    cancellation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where the refund of a cancelled, prepaid order stands: PENDING, REFUNDED
+    # or FAILED (with the gateway's words in `refund_error`). Null when nothing
+    # was ever owed back - cash, or never paid.
+    refund_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    refund_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_by: Mapped[OrderEventActor | None] = mapped_column(
         Enum(OrderEventActor, name="order_event_actor"),
         nullable=True,

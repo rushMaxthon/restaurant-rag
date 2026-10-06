@@ -36,6 +36,8 @@ import {
 import { humanizeEnum } from "../services/format";
 import { buildOrdersCacheKeyPrefix } from "./OrdersPage";
 import { useMoney } from '../hooks/useMoney';
+import { CancelOrderDialog } from '../components/CancelOrderDialog';
+import { cancellationSummary, refundLine } from '../services/orderCancellation';
 import {
   getPageSnapshot,
   hasPageSnapshot,
@@ -223,6 +225,8 @@ export function OrderDetailPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   // Bumped by the error panel's Try again, which re-runs the fetch effect.
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [showCancel, setShowCancel] = useState(false);
+  const [isRetryingRefund, setIsRetryingRefund] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const onToastRef = useRef(onToast);
 
@@ -335,6 +339,31 @@ export function OrderDetailPage({
     }
   };
 
+  // After a cancel or a refund retry: the same bookkeeping as an advance, so
+  // the Orders list does not keep showing the order as it was.
+  const showUpdated = (updated: Order) => {
+    setOrder(updated);
+    setPageSnapshot(orderKey, updated);
+    invalidatePageSnapshotsByPrefix(buildOrdersCacheKeyPrefix(scope));
+  };
+
+  const retryRefund = async () => {
+    if (!order || isRetryingRefund) return;
+    setIsRetryingRefund(true);
+    try {
+      showUpdated(await api.retryOrderRefund(token, order.id));
+      onToastRef.current("Refund queued", "The refund is being tried again.", "success");
+    } catch (error: unknown) {
+      onToastRef.current(
+        "Could not retry the refund",
+        error instanceof ApiError ? error.message : "Please try again.",
+        "error",
+      );
+    } finally {
+      setIsRetryingRefund(false);
+    }
+  };
+
   // The other three detail screens use breadcrumbs; this one had a bespoke
   // back button. Same navigation, one pattern.
   const backButton = (
@@ -398,6 +427,7 @@ export function OrderDetailPage({
   const contactName = order.contact_name?.trim() || order.customer.full_name;
 
   const nextStep = nextStepFor(order.status, order.fulfillment_type === "DELIVERY");
+  const refund = refundLine(order);
   const discount = toNumber(order.discount_amount);
   const customizationTotals = order.items.reduce(
     (sum, item) => sum + toNumber(item.customization_total_price) * item.quantity,
@@ -411,6 +441,19 @@ export function OrderDetailPage({
   return (
     <div className="page-stack order-detail">
       <div className="order-detail__topbar">{backButton}</div>
+      {showCancel ? (
+        <CancelOrderDialog
+          amount={money.format(order.total_amount, order.restaurant_id)}
+          onCancelled={(updated) => {
+            setShowCancel(false);
+            showUpdated(updated);
+          }}
+          onClose={() => setShowCancel(false)}
+          onToast={onToast}
+          order={order}
+          token={token}
+        />
+      ) : null}
 
       <header className="admin-surface order-detail__hero">
         <div className="order-detail__hero-copy">
@@ -483,6 +526,16 @@ export function OrderDetailPage({
             <h2>{nextStep.heading}</h2>
             <p className="order-detail__next-detail">{nextStep.detail}</p>
           </div>
+          {canAdvance && order.can_be_cancelled ? (
+            <button
+              className="secondary-button"
+              onClick={() => setShowCancel(true)}
+              title="Cancel this order. A prepaid order is refunded in full and a booked rider is called off."
+              type="button"
+            >
+              Cancel order
+            </button>
+          ) : null}
           {canAdvance && nextStatus ? (
             <button
               className="primary-button order-detail__next-action"
@@ -525,8 +578,23 @@ export function OrderDetailPage({
             <span>
               {order.status === "PAYMENT_PENDING"
                 ? "The customer has not completed the card payment yet, so this order is not in the kitchen queue and cannot be advanced."
-                : "This order was cancelled and will not be prepared."}
+                : cancellationSummary(order)}
             </span>
+            {order.status === "CANCELLED" && refund ? (
+              <span className={`order-detail__refund order-detail__refund--${refund.tone}`}>
+                {refund.text}
+                {refund.tone === "failed" && canAdvance ? (
+                  <button
+                    className="secondary-button"
+                    disabled={isRetryingRefund}
+                    onClick={() => void retryRefund()}
+                    type="button"
+                  >
+                    {isRetryingRefund ? "Trying again…" : "Try the refund again"}
+                  </button>
+                ) : null}
+              </span>
+            ) : null}
           </div>
         ) : (
         <ol className="order-timeline">

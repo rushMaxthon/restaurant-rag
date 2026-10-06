@@ -23,6 +23,7 @@ from app.schemas.order import (
     OrderDeliveryResponse,
     OrderResponse,
     OrderStatusUpdateRequest,
+    OrderCancelRequest,
     OrderValidationResponse,
 )
 from app.schemas.payment import PaymentIntentResponse, PaymentLinkResponse, PaymentStatusResponse
@@ -491,6 +492,56 @@ def get_order(
     app_scope: AppScopeDep,
 ) -> OrderResponse:
     return _read_order(db, current_user, order_id, app_scope)
+
+
+@router.post("/{order_id}/cancel", response_model=OrderResponse)
+def cancel_order(
+    order_id: uuid.UUID,
+    payload: OrderCancelRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_order_board)],
+    restaurant_id: uuid.UUID | None = Query(default=None),
+) -> OrderResponse:
+    """Cancel an order the rider has not collected, and refund it if prepaid.
+
+    The platform admin or the restaurant's owner only; a cook is refused in
+    `order_cancellation`, which also holds every other rule. Scoped by
+    `resolve_order_board_scope` like every board route, so an order outside
+    the caller's restaurant is a 404.
+    """
+
+    from app.services import order_cancellation
+    from app.services.orders import serialize_order_by_id
+
+    scope = resolve_order_board_scope(db, current_user, requested_restaurant_id=restaurant_id)
+    order = order_cancellation.cancel_by_staff(
+        db,
+        current_user,
+        order_id=order_id,
+        scope_restaurant_id=scope.restaurant_id,
+        reason=payload.reason,
+        note=payload.note,
+    )
+    return serialize_order_by_id(db, order.id)
+
+
+@router.post("/{order_id}/refund/retry", response_model=OrderResponse)
+def retry_order_refund(
+    order_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_order_board)],
+    restaurant_id: uuid.UUID | None = Query(default=None),
+) -> OrderResponse:
+    """Try a refund the gateway refused again, once its cause is fixed."""
+
+    from app.services import order_cancellation
+    from app.services.orders import serialize_order_by_id
+
+    scope = resolve_order_board_scope(db, current_user, requested_restaurant_id=restaurant_id)
+    order = order_cancellation.retry_refund(
+        db, current_user, order_id=order_id, scope_restaurant_id=scope.restaurant_id
+    )
+    return serialize_order_by_id(db, order.id)
 
 
 @router.get("/{order_id}/delivery", response_model=OrderDeliveryResponse | None)

@@ -285,9 +285,10 @@ class InsightNarrationSource(StrEnum):
 class OrderCancellationReason(StrEnum):
     """Why an order was cancelled.
 
-    Every value here is system-derived. The platform has no human cancellation
-    flow — `ORDER_STATUS_FLOW` is strictly linear and refuses anything else —
-    so a cancellation is always one of these, and never a free-text guess.
+    The first four are system-derived. The last five are a person's: since
+    2026-10-06 the platform admin or the restaurant's owner may cancel an
+    order the rider has not collected yet (`services/order_cancellation.py`),
+    choosing one of these, never free text - a note rides beside it.
     """
 
     # The card intent was never completed within its TTL, so the reaper closed it.
@@ -298,6 +299,12 @@ class OrderCancellationReason(StrEnum):
     PAYMENT_FAILED = "PAYMENT_FAILED"
     # Recorded when history predates reason tracking and no path can be inferred.
     UNKNOWN = "UNKNOWN"
+    # Cancelled by staff (admin or owner). `STAFF_CANCELLATION_REASONS`.
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+    KITCHEN_UNAVAILABLE = "KITCHEN_UNAVAILABLE"  # closed, or too busy to cook it
+    CUSTOMER_REQUEST = "CUSTOMER_REQUEST"
+    DUPLICATE_OR_TEST = "DUPLICATE_OR_TEST"
+    OTHER_BY_STAFF = "OTHER_BY_STAFF"  # needs a note saying what
 
 
 class OrderEventActor(StrEnum):
