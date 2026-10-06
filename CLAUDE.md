@@ -844,6 +844,24 @@ Kept because the notes are hard-won, not because they apply here.
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
+- **`0075` follows `0074_print_agents`, not `0073`.** `feat/print-agent` and
+  this branch both continued from `0073`; merged 2026-10-05 by re-pointing
+  `0075`'s `down_revision`, so the chain is linear again to `0082`.
+- **Stamp Supabase whenever a migration is applied there by hand.** Render's
+  API runs `alembic upgrade head` before every deploy, so a schema applied
+  through the Supabase MCP but not stamped is re-run on the next deploy. It
+  happened: the stamp sat at `0074` with the schema at `0082` until
+  2026-10-05, and re-running `0076`/`0077` would have reset and re-applied
+  every price's commission (now refused by a guard in `0076`). Verify the
+  objects exist, then `UPDATE alembic_version`, then `alembic current`.
+- **Six restaurants are demo data** (`restaurants.is_demo`, 2026-10-05): the
+  CAD kitchens seeded on 2026-09-13 - Bangkok Bowl, Momo Mountain, Luigi's,
+  Dragon Wok, Stacked Grill House, Spice Route. Kept because the Bangkok Bowl
+  app client and WhatsApp setup point at one; left out of everything the
+  platform admin reads across restaurants (dashboard, `/orders`, live board,
+  Platform watch, commission, tenant switcher, Restaurants page unless "Show
+  demo" is ticked). Naming one by id still answers. The seven real kitchens
+  are all INR, which is also the admin's `DEFAULT_CURRENCY` now.
 - Migration numbering also skips `0033`-`0035` (jumps `0032` to `0036`).
   Intentional or not, do not "fix" it; the chain is defined by `down_revision`.
 - The whole Marketing Hub, the half-and-half feature and several other surfaces

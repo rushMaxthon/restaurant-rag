@@ -33,7 +33,7 @@ kitchen accepts the order
   -> the task calls Pidge and writes an order_deliveries row
   -> Pidge pushes status changes to /api/delivery/webhook
   -> the webhook ASKS Pidge what really happened, and records that
-  -> IN_TRANSIT and DELIVERED move the order; nothing else does
+  -> PICKED_UP / IN_TRANSIT and DELIVERED move the order; nothing else does
 ```
 
 Verified end to end against Pidge's sandbox. A forged webhook claiming
@@ -498,6 +498,73 @@ fields. Right-clicking a spot in Google Maps puts the pair on the clipboard.
 This is the escape hatch that always works, and for a society or a mall in India
 it is faster than arguing with a geocoder.
 
+## What the courier tells us, and where it lands
+
+Captured from the sandbox on 2026-10-05, eight stages from booked to
+delivered, stripped of personal fields and kept as
+`tests/fixtures/pidge_sandbox_states.json` — `test_delivery_tracking` reads
+every expectation below from those real bodies, not from the documentation.
+
+| Pidge field | Stored as | Used for |
+|---|---|---|
+| `fulfillment.status` | `state` | the delivery's own state machine |
+| `fulfillment.pickup.eta` / `drop.eta` | `pickup_eta` / `drop_eta` | "Arriving by 8:16 pm" for the customer, the ETA on the live board |
+| `fulfillment.pickup.timestamp` | `picked_up_at` | the real collection time |
+| `fulfillment.drop.timestamp` | `delivered_at` | only when DELIVERED — an undelivered trip has a drop timestamp too |
+| `fulfillment.delivery_charge` | `courier_charge` | what Pidge bills us. **ADMIN only** — `for_viewer` removes it for an owner |
+| `fulfillment.logs[]` | `timeline` | every step, oldest first: the admin's trip history and the customer's "Your rider is at the restaurant" |
+| the last log carrying a location | `rider_latitude/longitude/_at` | "last seen" map link in the admin |
+| the remark on an UNDELIVERED/RTO log | `failure_reason` | why a trip failed, said to the owner |
+
+The rider's live position also comes from `GET /fulfillment/tracking`, which
+Pidge rate-limits to **once per 30 seconds per order**. The minute sweep asks
+it only for ASSIGNED, PICKED_UP and IN_TRANSIT rows, so it stays inside that.
+
+### A courier step moves the order the same way a kitchen does
+
+The courier used to set `order.status` and nothing else. No status event was
+written, so the order vanished from "Done today" and its history; no push went
+to the customer; no realtime hint reached the board. A rider's DELIVERED was
+quieter than a cook's tap.
+
+Now `record` calls `record_order_status_event` (actor SYSTEM, note
+`courier: <status>`, `metadata.source = "courier"`, `occurred_at` = Pidge's
+own drop timestamp for DELIVERED) and queues the customer notification
+**after commit**, through the same task the kitchen path uses. `PICKED_UP`
+now moves the order to OUT_FOR_DELIVERY — before, the order sat at PREPARING
+while the food was on a bike.
+
+### A failed trip can be re-booked
+
+`POST /orders/{id}/delivery/rebook` (ADMIN, OWNER), offered only when the row
+is FAILED or CANCELLED and the order is still ACCEPTED, PREPARING or
+OUT_FOR_DELIVERY. It reuses the row, bumps `attempt`, and books under the
+reference `{order_id}-{attempt}` — Pidge refuses a reference it has seen, and
+the original would be a duplicate. The `should_dispatch` guards still apply, so
+a re-book cannot get round the live-host interlock.
+
+`POST /orders/{id}/delivery/cancel` is the button the "Still open" list used to
+ask for: the owner can call a rider off while the order stands. Pidge's own
+refusal after collection comes back as a 409 with their sentence.
+
+### Simulating a trip
+
+`POST /orders/{id}/delivery/simulate` (ADMIN) asks Pidge's sandbox to move the
+order with `?dummy_status=fulfilled|picked up` and records the answer. It is
+refused unless `PIDGE_BASE_URL` is the sandbox host, so it cannot exist against
+a real rider. The admin shows the stage buttons only when the API says
+`can_simulate`.
+
+### What Pidge offers that we still do not use
+
+- **Update order details** after booking (a corrected address or phone).
+- **Ticket management** — raising a dispute about a trip from inside the
+  platform rather than Pidge's dashboard.
+- **Rider Task Webhook** — for a restaurant's own captive riders on Pidge.
+- **Partial delivery and route allocation** — multi-drop batching.
+- **Webhook registration** — still not an API; the push URL is set on their
+  side, which is why the minute sweep is the mechanism.
+
 ## Switching it on
 
 Off by default. Nothing calls Pidge until `ENABLE_DELIVERY_DISPATCH` is true
@@ -523,10 +590,6 @@ Point Pidge's webhook at `POST /api/delivery/webhook`.
 ## Still open
 
 - **An aggregator account from Pidge.** Blocks per-tenant brand mapping.
-- **Nothing a person can press to call a rider off.** The cancel call exists
-  and fires when an order is cancelled (see "Calling a rider off"), but the
-  platform has no human cancellation flow, so an owner who wants a rider
-  recalled for an order that still stands has no button for it.
 - **A Google Maps key for the India deployment.** Built and wired; see
   "Where an address becomes a point" above. Without it the OpenStreetMap
   fallback answers, and measured against real Ahmedabad addresses it finds

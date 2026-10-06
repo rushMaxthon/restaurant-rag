@@ -84,11 +84,13 @@ STAGE_LIMIT = 100
 STALE_AFTER = timedelta(hours=24)
 
 
-def _as_card(order: OrderResponse, delivery: OrderDelivery | None) -> LiveOrderResponse:
+def _as_card(order: OrderResponse, delivery: OrderDelivery | None, viewer: User) -> LiveOrderResponse:
     return LiveOrderResponse(
         **order.model_dump(),
         delivery=(
-            OrderDeliveryResponse.model_validate(delivery) if delivery is not None else None
+            OrderDeliveryResponse.model_validate(delivery).for_viewer(viewer)
+            if delivery is not None
+            else None
         ),
     )
 
@@ -188,7 +190,7 @@ def build_live_board(
                 status=status,
                 total=total,
                 stale_total=min(stale_by_status.get(status, 0), total),
-                orders=[_as_card(order, deliveries.get(order.id)) for order in rows],
+                orders=[_as_card(order, deliveries.get(order.id), current_user) for order in rows],
             )
             for status, rows, total in fetched
         ],

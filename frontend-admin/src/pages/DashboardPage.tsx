@@ -1,7 +1,7 @@
 import {
   Activity,
   Bot,
-  DollarSign,
+  IndianRupee,
   Flame,
   RefreshCw,
   ShieldCheck,
@@ -18,11 +18,22 @@ import {
   type ChartDatum,
 } from "../components/AnimatedCharts";
 import { EmptyPanel } from "../components/EmptyPanel";
+import { DashboardPeriodPicker } from "../components/DashboardPeriodPicker";
+import {
+  DEFAULT_PERIOD,
+  inRange,
+  isSale,
+  parsePeriod,
+  periodBuckets,
+  resolvePeriod,
+  type DashboardPeriod,
+} from "../services/dashboardPeriod";
 import { ResponsiveTable, type TableColumn } from "../components/ResponsiveTable";
 import { StatusPill } from "../components/StatusPill";
 import {
   ApiError,
   api,
+  formatCurrency,
   formatDate,
   toNumber,
 } from "../services/api";
@@ -58,8 +69,6 @@ interface DashboardPageProps {
   ) => void;
 }
 
-type DashboardWindow = "7d" | "30d";
-
 function formatTimestamp(value: Date | null): string {
   if (!value) {
     return "Not refreshed yet";
@@ -70,48 +79,42 @@ function formatTimestamp(value: Date | null): string {
   }).format(value);
 }
 
-function getWindowDays(window: DashboardWindow): number {
-  return window === "30d" ? 30 : 7;
-}
-
-function getWindowStart(days: number): Date {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  return start;
-}
-
-function getPreviousWindowStart(days: number): Date {
-  const start = getWindowStart(days);
-  start.setDate(start.getDate() - days);
-  return start;
-}
-
-function isBetween(dateValue: string, start: Date, end: Date) {
-  const date = new Date(dateValue);
-  return date >= start && date < end;
-}
-
-function formatTrend(current: number, previous: number): string {
+function formatTrend(current: number, previous: number, comparison: string): string {
   if (previous === 0) {
-    return current > 0 ? "+100% vs previous period" : "No change vs previous period";
+    // "+100%" against nothing claimed a doubling that never happened.
+    return current > 0 ? `Up from 0 ${comparison}` : `No change ${comparison}`;
   }
   const percentage = ((current - previous) / previous) * 100;
   const sign = percentage >= 0 ? "+" : "";
-  return `${sign}${percentage.toFixed(1)}% vs previous period`;
+  return `${sign}${percentage.toFixed(1)}% ${comparison}`;
+}
+
+function sumOf(rows: Array<{ total_amount: number | string }>): number {
+  return rows.reduce((total, order) => total + toNumber(order.total_amount), 0);
+}
+
+/** Where the dashboard's period is remembered, per role: an owner's choice is not the admin's. */
+function periodKey(isAdmin: boolean): string {
+  return `restaurant-rag-dashboard-period:${isAdmin ? "admin" : "owner"}`;
+}
+
+function readPeriod(isAdmin: boolean): DashboardPeriod {
+  try {
+    return parsePeriod(window.localStorage.getItem(periodKey(isAdmin))) ?? DEFAULT_PERIOD;
+  } catch {
+    return DEFAULT_PERIOD;
+  }
 }
 
 function DashboardHeader({
   loading,
   lastUpdatedAt,
-  timeWindow,
-  onChangeWindow,
+  picker,
   onRefresh,
 }: {
   loading: boolean;
   lastUpdatedAt: Date | null;
-  timeWindow: DashboardWindow;
-  onChangeWindow: (value: DashboardWindow) => void;
+  picker: ReactNode;
   onRefresh: () => void;
 }) {
   return (
@@ -127,15 +130,7 @@ function DashboardHeader({
         </p>
       </div>
       <div className="dashboard-admin-hero__actions">
-        <label className="dashboard-admin-hero__window">
-          <select
-            onChange={(event) => onChangeWindow(event.target.value as DashboardWindow)}
-            value={timeWindow}
-          >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-        </label>
+        {picker}
         <div className="dashboard-admin-hero__status">{formatTimestamp(lastUpdatedAt)}</div>
         <button
           className="secondary-button dashboard-admin-hero__refresh"
@@ -292,7 +287,18 @@ export function DashboardPage({
   // in this session — not on every mount. Revisiting the dashboard after
   // already loading it once keeps showing that data instead of a skeleton.
   const [loading, setLoading] = useState(() => !hasPageSnapshot(dashboardKey));
-  const [timeWindow, setTimeWindow] = useState<DashboardWindow>("7d");
+  const [period, setPeriod] = useState<DashboardPeriod>(() => readPeriod(isAdmin));
+  const choosePeriod = useCallback(
+    (next: DashboardPeriod) => {
+      setPeriod(next);
+      try {
+        window.localStorage.setItem(periodKey(isAdmin), JSON.stringify(next));
+      } catch {
+        // Remembering the choice is a convenience; the dashboard works without it.
+      }
+    },
+    [isAdmin],
+  );
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(
     () => cachedDashboard?.lastUpdatedAt ?? null,
   );
@@ -528,93 +534,65 @@ export function DashboardPage({
     };
   }, [isAdmin, onToast, restaurantId, token, dashboardKey]);
 
-  const windowDays = getWindowDays(timeWindow);
-  const currentWindowStart = useMemo(() => getWindowStart(windowDays), [windowDays]);
-  const previousWindowStart = useMemo(() => getPreviousWindowStart(windowDays), [windowDays]);
-  const currentWindowEnd = useMemo(() => lastUpdatedAt ?? new Date(), [lastUpdatedAt]);
+  // Resolved against the moment the data was fetched, so the figures and the
+  // window they describe are taken at the same instant.
+  const range = useMemo(() => resolvePeriod(period, lastUpdatedAt ?? new Date()), [lastUpdatedAt, period]);
+  const buckets = useMemo(() => periodBuckets(range), [range]);
 
-  const chartDays = useMemo(() => {
-    const labelFormatter = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    const metaFormatter = new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-    return Array.from({ length: windowDays }, (_, index) => {
-      const date = new Date(currentWindowStart);
-      date.setDate(currentWindowStart.getDate() + index);
-      return {
-        key: date.toDateString(),
-        label: labelFormatter.format(date),
-        meta: metaFormatter.format(date),
-      };
-    });
-  }, [currentWindowStart, windowDays]);
+  const windowOrders = useMemo(
+    () => orders.filter((order) => inRange(order.placed_at, range.start, range.end)),
+    [orders, range],
+  );
+  const previousWindowOrders = useMemo(
+    () => orders.filter((order) => inRange(order.placed_at, range.previousStart, range.previousEnd)),
+    [orders, range],
+  );
+  // What was sold: an abandoned checkout or a cancelled order is not revenue,
+  // the same rule the server's own totals use.
+  const windowSales = useMemo(() => windowOrders.filter(isSale), [windowOrders]);
+  const previousSales = useMemo(() => previousWindowOrders.filter(isSale), [previousWindowOrders]);
+  const windowRevenue = useMemo(() => sumOf(windowSales), [windowSales]);
+  const previousRevenue = useMemo(() => sumOf(previousSales), [previousSales]);
+  // Placed orders, cancelled included - a cancelled order was still an order -
+  // but never a checkout that was abandoned before paying.
+  const windowOrderCount = windowOrders.filter((order) => order.status !== "PAYMENT_PENDING").length;
+  const previousOrderCount = previousWindowOrders.filter((order) => order.status !== "PAYMENT_PENDING").length;
 
   const ordersByDay = useMemo(
     () =>
-      chartDays.map((day) => ({
-        label: day.label,
-        meta: day.meta,
-        value: orders.filter(
-          (order) => new Date(order.placed_at).toDateString() === day.key,
+      buckets.map((bucket) => ({
+        label: bucket.label,
+        meta: bucket.meta,
+        value: windowOrders.filter(
+          (order) => order.status !== "PAYMENT_PENDING" && inRange(order.placed_at, bucket.start, bucket.end),
         ).length,
       })),
-    [chartDays, orders],
+    [buckets, windowOrders],
   );
 
   const revenueByDay = useMemo(
     () =>
-      chartDays.map((day) => ({
-        label: day.label,
-        meta: day.meta,
+      buckets.map((bucket) => ({
+        label: bucket.label,
+        meta: bucket.meta,
         value: Math.round(
-          orders
-            .filter(
-              (order) => new Date(order.placed_at).toDateString() === day.key,
-            )
-            .reduce((total, order) => total + toNumber(order.total_amount), 0),
+          sumOf(windowSales.filter((order) => inRange(order.placed_at, bucket.start, bucket.end))),
         ),
       })),
-    [chartDays, orders],
+    [buckets, windowSales],
   );
 
-  const todayKey = new Date().toDateString();
-  const todaysOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => new Date(order.placed_at).toDateString() === todayKey,
-      ),
-    [orders, todayKey],
-  );
+  // The years there is anything to look at, newest first, for "Pick a year".
+  const years = useMemo(() => {
+    const thisYear = new Date().getFullYear();
+    const first = orders.reduce(
+      (earliest, order) => Math.min(earliest, new Date(order.placed_at).getFullYear()),
+      thisYear,
+    );
+    return Array.from({ length: thisYear - first + 1 }, (_, index) => thisYear - index);
+  }, [orders]);
 
-  const todaysRevenue = useMemo(
-    () =>
-      todaysOrders.reduce(
-        (total, order) => total + toNumber(order.total_amount),
-        0,
-      ),
-    [todaysOrders],
-  );
-
-  const windowOrders = useMemo(
-    () =>
-      orders.filter((order) =>
-        isBetween(order.placed_at, currentWindowStart, currentWindowEnd),
-      ),
-    [currentWindowEnd, currentWindowStart, orders],
-  );
-
-  const previousWindowOrders = useMemo(
-    () =>
-      orders.filter((order) =>
-        isBetween(order.placed_at, previousWindowStart, currentWindowStart),
-      ),
-    [currentWindowStart, orders, previousWindowStart],
-  );
+  const picker = <DashboardPeriodPicker onChange={choosePeriod} period={period} years={years} />;
 
   const pendingRestaurants = useMemo(
     () =>
@@ -660,18 +638,14 @@ export function DashboardPage({
 
   const windowAiLogs = useMemo(
     () =>
-      aiLogs.filter((entry) =>
-        isBetween(entry.created_at, currentWindowStart, currentWindowEnd),
-      ),
-    [aiLogs, currentWindowEnd, currentWindowStart],
+      aiLogs.filter((entry) => inRange(entry.created_at, range.start, range.end)),
+    [aiLogs, range],
   );
 
   const previousWindowAiLogs = useMemo(
     () =>
-      aiLogs.filter((entry) =>
-        isBetween(entry.created_at, previousWindowStart, currentWindowStart),
-      ),
-    [aiLogs, currentWindowStart, previousWindowStart],
+      aiLogs.filter((entry) => inRange(entry.created_at, range.previousStart, range.previousEnd)),
+    [aiLogs, range],
   );
 
   const recentAiLogs = useMemo(
@@ -692,7 +666,7 @@ export function DashboardPage({
       { name: string; revenue: number; orders: number; cuisine: string }
     >();
 
-    for (const order of windowOrders) {
+    for (const order of windowSales) {
       const current = map.get(order.restaurant_id);
       map.set(order.restaurant_id, {
         name: order.restaurant.name,
@@ -709,7 +683,7 @@ export function DashboardPage({
       .map(([restaurantId, value]) => ({ restaurantId, ...value }))
       .sort((left, right) => right.revenue - left.revenue)
       .slice(0, 5);
-  }, [windowOrders]);
+  }, [windowSales]);
 
   const topItems = useMemo(() => {
     const counts = new Map<
@@ -724,7 +698,7 @@ export function DashboardPage({
       }
     >();
 
-    for (const order of orders) {
+    for (const order of windowSales) {
       for (const item of order.items) {
         const current = counts.get(item.menu_item_id);
         const sourceMenu = menuItems.find(
@@ -747,7 +721,7 @@ export function DashboardPage({
       .map(([id, value]) => ({ id, ...value }))
       .sort((left, right) => right.quantity - left.quantity)
       .slice(0, 5);
-  }, [menuItems, orders]);
+  }, [menuItems, windowSales]);
 
   const aiStats = useMemo(() => {
     const total = aiLogs.length;
@@ -781,28 +755,17 @@ export function DashboardPage({
     };
   }, [aiLogs, previousWindowAiLogs, windowAiLogs]);
 
-  const ordersTrend = useMemo(
-    () =>
-      formatTrend(windowOrders.length, previousWindowOrders.length),
-    [previousWindowOrders.length, windowOrders.length],
-  );
-
-  const revenueTrend = useMemo(
-    () =>
-      formatTrend(
-        windowOrders.reduce((total, order) => total + toNumber(order.total_amount), 0),
-        previousWindowOrders.reduce((total, order) => total + toNumber(order.total_amount), 0),
-      ),
-    [previousWindowOrders, windowOrders],
-  );
+  const ordersTrend = formatTrend(windowOrderCount, previousOrderCount, range.comparison);
+  const revenueTrend = formatTrend(windowRevenue, previousRevenue, range.comparison);
 
   const aiTrend = useMemo(
     () =>
       formatTrend(
         aiStats.uniqueSessionsWindow,
         aiStats.uniqueSessionsPrevious,
+        range.comparison,
       ),
-    [aiStats.uniqueSessionsPrevious, aiStats.uniqueSessionsWindow],
+    [aiStats.uniqueSessionsPrevious, aiStats.uniqueSessionsWindow, range.comparison],
   );
 
   const topItemColumns: Array<
@@ -855,30 +818,35 @@ export function DashboardPage({
         <DashboardHeader
           lastUpdatedAt={lastUpdatedAt}
           loading={loading}
-          onChangeWindow={setTimeWindow}
           onRefresh={() => {
             void loadDashboard();
           }}
-          timeWindow={timeWindow}
+          picker={picker}
         />
         <MixedCurrencyNotice subject="Revenue and order values" />
 
         <section className="dashboard-admin-metrics">
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--orders"
-            description="Platform-wide order volume from the current backend snapshot."
+            description="Orders placed on the real restaurants in this period, cancelled ones included."
             icon={<ShoppingBag size={18} />}
-            label="Total platform orders"
+            label={`Orders · ${range.label}`}
             trend={ordersTrend}
-            value={String(stats?.total_orders ?? 0)}
+            value={String(windowOrderCount)}
           />
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--revenue"
-            description="Gross paid order value captured across accessible restaurants."
-            icon={<DollarSign size={18} />}
-            label="Revenue"
+            description="What was sold - paid, not cancelled - across the real restaurants. Demo ones are left out."
+            icon={<IndianRupee size={18} />}
+            label={`Revenue · ${range.label}`}
             trend={revenueTrend}
-            value={money.format(stats?.total_revenue ?? 0)}
+            // The server says which currency the real restaurants share; the
+            // panel's own guess is only the fallback for an older API.
+            value={
+              stats?.currency
+                ? formatCurrency(windowRevenue, stats.currency)
+                : money.format(windowRevenue)
+            }
           />
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--approvals"
@@ -890,11 +858,11 @@ export function DashboardPage({
           />
           <DashboardMetricCard
             accentClass="dashboard-admin-metric--ai"
-            description="Unique AI chat sessions recorded from current assistant activity."
+            description="Unique AI chat sessions in this period."
             icon={<Bot size={18} />}
             label="AI chat sessions"
             trend={aiTrend}
-            value={String(aiStats.uniqueSessions)}
+            value={String(aiStats.uniqueSessionsWindow)}
           />
         </section>
 
@@ -902,13 +870,13 @@ export function DashboardPage({
           <div className="dashboard-admin-grid__main">
             <DashboardAreaChart
               data={ordersByDay}
-              subtitle={`Order volume over the selected ${timeWindow === "30d" ? "30-day" : "7-day"} window`}
+              subtitle={`Orders placed · ${range.label}`}
               title="Orders trend"
             />
 
             <DashboardBarsChart
               data={revenueByDay}
-              subtitle={`Revenue performance across the selected ${timeWindow === "30d" ? "30-day" : "7-day"} window`}
+              subtitle={`What was sold · ${range.label}`}
               title="Revenue trend"
             />
 
@@ -1173,11 +1141,12 @@ export function DashboardPage({
             <PageHelpTip page="dashboard" />
           </div>
           <p>
-            Today's orders, revenue, menu health, and top dishes for your
-            restaurant in one focused view.
+            Orders, revenue, menu health, and top dishes for your restaurant -
+            for today, yesterday, any month or year, or dates you choose.
           </p>
         </div>
         <div className="dashboard-admin-hero__actions">
+          {picker}
           {assignedRestaurant ? (
             <StatusPill status={assignedRestaurant.is_open ? "OPEN" : "CLOSED"} />
           ) : null}
@@ -1210,19 +1179,19 @@ export function DashboardPage({
       <section className="dashboard-admin-metrics">
         <DashboardMetricCard
           accentClass="dashboard-admin-metric--orders"
-          description="Orders placed today for your assigned restaurant."
+          description="Orders placed in this period, cancelled ones included."
           icon={<ShoppingBag size={18} />}
-          label="Today's orders"
-          trend="Live orders placed today"
-          value={String(todaysOrders.length)}
+          label={`Orders · ${range.label}`}
+          trend={ordersTrend}
+          value={String(windowOrderCount)}
         />
         <DashboardMetricCard
           accentClass="dashboard-admin-metric--revenue"
-          description="Gross order value captured today."
-          icon={<DollarSign size={18} />}
-          label="Today's revenue"
-          trend="Gross value for today"
-          value={money.format(todaysRevenue)}
+          description="What was sold in this period - paid, not cancelled."
+          icon={<IndianRupee size={18} />}
+          label={`Revenue · ${range.label}`}
+          trend={revenueTrend}
+          value={money.format(windowRevenue)}
         />
         <DashboardMetricCard
           accentClass="dashboard-admin-metric--approvals"
@@ -1234,10 +1203,10 @@ export function DashboardPage({
         />
         <DashboardMetricCard
           accentClass="dashboard-admin-metric--ai"
-          description="Best performing dish by recent sales."
+          description="The dish sold most in this period."
           icon={<Flame size={18} />}
           label="Top seller"
-          trend="Best performing dish"
+          trend={topItems[0] ? `${topItems[0].quantity} sold · ${range.label}` : range.label}
           value={topItems[0]?.name ?? "No sales yet"}
         />
       </section>
@@ -1246,12 +1215,12 @@ export function DashboardPage({
         <div className="dashboard-admin-grid__main">
           <DashboardAreaChart
             data={ordersByDay}
-            subtitle="Order volume over the last 7 days"
+            subtitle={`Orders placed · ${range.label}`}
             title="Orders trend"
           />
           <DashboardBarsChart
             data={revenueByDay}
-            subtitle="Daily restaurant revenue"
+            subtitle={`What was sold · ${range.label}`}
             title="Revenue trend"
           />
 

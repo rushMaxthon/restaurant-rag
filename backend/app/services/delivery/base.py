@@ -144,6 +144,22 @@ class DeliveryResult:
     #: surprise in production can be diagnosed without a replay.
     provider_status: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+    #: When the courier expects the rider at the restaurant, and at the door.
+    pickup_eta: datetime | None = None
+    drop_eta: datetime | None = None
+    #: What the courier will invoice for this trip.
+    courier_charge: Decimal | None = None
+    #: Where the rider was last seen, and when.
+    rider_latitude: float | None = None
+    rider_longitude: float | None = None
+    rider_location_at: datetime | None = None
+    #: Why a delivery did not arrive, in the courier's words ("Customer
+    #: reject order"). Empty while nothing has gone wrong.
+    failure_reason: str = ""
+    #: Every step the courier reported, oldest first:
+    #: {"status", "at", "remark"}. The courier's statuses, unmapped, because
+    #: "Reached pickup" is worth showing even though it moves nothing here.
+    timeline: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)

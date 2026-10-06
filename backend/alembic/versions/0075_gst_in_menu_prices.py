@@ -30,7 +30,11 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0075_gst_in_menu_prices"
-down_revision = "0073_restaurant_brand"
+# Re-pointed from 0073 when feat/print-agent was merged (2026-10-05): both
+# branches had continued from 0073, and the shared database carries both
+# halves. Re-pointed rather than renumbered, for the reason 0063/0064 were -
+# Supabase is stamped with an id downstream of this one.
+down_revision = "0074_print_agents"
 branch_labels = None
 depends_on = None
 

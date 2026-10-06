@@ -87,6 +87,7 @@ def delivery_provider() -> DeliveryProvider | None:
             brand_code=settings.pidge_brand_code,
             brand_location_code=settings.pidge_brand_location_code,
             brand_name=settings.pidge_brand_name,
+            preferred_network=settings.pidge_preferred_network,
         )
         if not candidate.is_configured():
             logger.warning("Delivery dispatch is on but %s has no credentials", PROVIDER_NAME)

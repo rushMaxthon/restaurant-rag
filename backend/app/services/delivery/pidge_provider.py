@@ -124,15 +124,61 @@ def _address(address: DeliveryAddress) -> dict[str, Any]:
     return payload
 
 
+def pidge_mobile(value: str) -> str:
+    """An Indian mobile as the ten digits Pidge's own examples use.
+
+    Stored three ways here - a branch as "0" + ten digits, a customer as
+    "+91" + ten, some with spaces - and a rider dialling "+919876543210" from
+    a courier app built for ten is a call that may never connect. Anything
+    that is not recognisably an Indian mobile is passed through untouched:
+    refusing it here would lose the order, and Pidge says what it dislikes.
+    """
+
+    digits = "".join(character for character in value or "" if character.isdigit())
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) == 10 and digits[0] in "6789":
+        return digits
+    return value or ""
+
+
 def _party(address: DeliveryAddress) -> dict[str, Any]:
     party: dict[str, Any] = {
         "address": _address(address),
         "name": address.name,
-        "mobile": address.mobile,
+        "mobile": pidge_mobile(address.mobile),
     }
     if address.email:
         party["email"] = address.email
     return party
+
+
+def pick_network(items: list[dict[str, Any]], *, preferred: str = "") -> dict[str, Any] | None:
+    """Which of the networks Pidge offered should carry this order.
+
+    Only one that answered without an error AND gave a price: a network with
+    no price is one we would be booking blind. The preferred network wins if
+    it qualifies; otherwise the cheapest that does.
+    """
+
+    usable = []
+    for item in items:
+        if item.get("error"):
+            continue
+        price = _money((item.get("quote") or {}).get("price"))
+        if price is None:
+            continue
+        usable.append((price, item))
+    if not usable:
+        return None
+    wanted = preferred.strip().lower()
+    if wanted:
+        for _, item in usable:
+            if str(item.get("network_name") or item.get("service") or "").lower() == wanted:
+                return item
+    return min(usable, key=lambda pair: pair[0])[1]
 
 
 class PidgeProvider:
@@ -156,6 +202,7 @@ class PidgeProvider:
         brand_code: str = "",
         brand_location_code: str = "",
         brand_name: str = "",
+        preferred_network: str = "",
         timeout_seconds: float = 30.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -164,6 +211,7 @@ class PidgeProvider:
         self._brand_code = brand_code
         self._brand_location_code = brand_location_code
         self._brand_name = brand_name
+        self._preferred_network = preferred_network
         self._timeout = timeout_seconds
         self._token: str | None = None
         # Two workers refreshing the same dead token would each log in; the
@@ -358,7 +406,7 @@ class PidgeProvider:
             "sender_detail": _party(request.pickup),
             "poc_detail": {
                 "name": request.pickup.name,
-                "mobile": request.pickup.mobile,
+                "mobile": pidge_mobile(request.pickup.mobile),
                 **({"email": request.pickup.email} if request.pickup.email else {}),
             },
             "trips": [trip],
@@ -394,9 +442,98 @@ class PidgeProvider:
             raw=body,
         )
 
-    def fetch(self, provider_order_id: str) -> DeliveryResult:
-        body = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
+    def allocate(self, provider_order_id: str) -> str:
+        """Ask a rider network to take an order Pidge is holding. Idempotent.
+
+        Create Order leaves an order in Pending unless the account's token is
+        set to auto-allocate, and nothing else asks anybody to carry it - the
+        delivery used to sit on "Waiting for a rider" until it was cancelled.
+
+        So: read the order once, and if Pidge already gave it to a network,
+        stop - that is the auto-allocating account, and a second fulfil would
+        be refused or, worse, book twice. Otherwise ask which networks can
+        take it and fulfil with one (`pick_network`). The services call is
+        CHARGED by Pidge, so this is called once at dispatch and again only
+        when a person presses "Find a rider"; it never loops.
+
+        Returns a short description of what was chosen ("pidge, Rs 70.8"), or
+        "" when the order was already allocated. Raises `DeliveryProviderError`
+        (retryable) when no network can take it right now.
+        """
+
+        status = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
+        data = status.get("data") if isinstance(status.get("data"), dict) else status
+        if isinstance(data, dict) and data.get("fulfillment"):
+            return ""
+
+        offered = self._call(
+            "GET",
+            "/v1.0/store/channel/vendor/order/fulfillment/services",
+            params={"ids": provider_order_id},
+        )
+        body = offered.get("data")
+        items = body.get("items") if isinstance(body, dict) else body
+        items = [item for item in (items or []) if isinstance(item, dict)]
+        chosen = pick_network(items, preferred=self._preferred_network)
+        if chosen is None:
+            reasons = sorted({
+                str((item.get("error") or {}).get("message") or item.get("error"))
+                for item in items
+                if item.get("error")
+            })
+            detail = "; ".join(reasons) if reasons else "no network offered a price"
+            raise DeliveryProviderError(
+                f"No rider network can take this order right now ({detail})",
+                retryable=True,
+            )
+
+        request: dict[str, Any] = {
+            "ids": [provider_order_id],
+            "service": chosen.get("service"),
+            "pickup_now": bool(chosen.get("pickup_now", True)),
+            "network_id": str(chosen.get("network_id")),
+        }
+        # Their own captive riders need no token; every partner network does.
+        if chosen.get("token"):
+            request["token"] = chosen["token"]
+        self._call("POST", "/v1.0/store/channel/vendor/order/fulfill", json=request)
+        price = (chosen.get("quote") or {}).get("price")
+        return f"{chosen.get('network_name') or chosen.get('service')}, Rs {price}"
+
+    def fetch(self, provider_order_id: str, *, simulate: str | None = None) -> DeliveryResult:
+        """What Pidge says about one delivery now.
+
+        `simulate` is the sandbox's `dummy_status`: the same response, as it
+        would read at that stage of a trip ("fulfilled|picked up"). Pidge
+        honours it on staging only, and the caller refuses it anywhere else.
+        """
+
+        params = {"dummy_status": simulate} if simulate else None
+        body = self._call(
+            "GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}", params=params
+        )
         return self._read(body.get("data") or body)
+
+    def track(self, provider_order_id: str) -> tuple[float, float] | None:
+        """Where the rider is right now, or None.
+
+        Pidge rate-limits this to once per 30 seconds per order, across every
+        caller, so it is asked from the one-minute sweep and nowhere else. It
+        answers nulls before a rider moves and for a finished trip; both are
+        None here rather than a point at 0,0 in the sea off West Africa.
+        """
+
+        try:
+            body = self._call(
+                "GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}/fulfillment/tracking"
+            )
+        except DeliveryProviderError:
+            return None
+        location = ((body.get("data") or {}).get("location")) or {}
+        latitude, longitude = _float(location.get("latitude")), _float(location.get("longitude"))
+        if latitude is None or longitude is None:
+            return None
+        return latitude, longitude
 
     def cancel(self, provider_order_id: str) -> None:
         """Cancel the whole order at Pidge.
@@ -426,19 +563,78 @@ class PidgeProvider:
         rider = fulfillment.get("rider")
         rider = rider if isinstance(rider, dict) else {}
         fulfillment_status = fulfillment.get("status") or data.get("fulfillment_status")
+        state = state_for(fulfillment_status, data.get("status"))
+        # The pickup and drop blocks carry an `eta` from the moment a rider is
+        # assigned, and a `timestamp` once the event has happened. Read from
+        # the sandbox, not the Postman page: the fields this used to look for,
+        # `picked_up_at` and `delivered_at`, are not anything Pidge sends.
+        pickup = fulfillment.get("pickup") if isinstance(fulfillment.get("pickup"), dict) else {}
+        drop = fulfillment.get("drop") if isinstance(fulfillment.get("drop"), dict) else {}
+        timeline, located, failure = _timeline(fulfillment.get("logs"))
         return DeliveryResult(
             provider_order_id=str(data.get("id") or ""),
-            state=state_for(fulfillment_status, data.get("status")),
+            state=state,
             reference=str(data.get("reference_id") or ""),
             rider_name=str(rider.get("name") or ""),
             rider_mobile=str(rider.get("mobile") or ""),
             tracking_url=_tracking_url(data, fulfillment),
             distance_metres=_float(data.get("pickup_drop_distance")),
-            picked_up_at=_moment(fulfillment.get("picked_up_at")),
-            delivered_at=_moment(fulfillment.get("delivered_at")),
+            picked_up_at=_moment(pickup.get("timestamp")) or _moment(fulfillment.get("picked_up_at")),
+            # The drop block gets a timestamp on an RTO too - the rider "dropped"
+            # the food back at the restaurant. Only a delivery is a delivery.
+            delivered_at=(
+                _moment(drop.get("timestamp")) or _moment(fulfillment.get("delivered_at"))
+                if state == DeliveryState.DELIVERED
+                else None
+            ),
             provider_status=str(fulfillment_status or data.get("status") or ""),
             raw=data,
+            pickup_eta=_moment(pickup.get("eta")),
+            drop_eta=_moment(drop.get("eta")),
+            courier_charge=_money(fulfillment.get("delivery_charge")),
+            rider_latitude=located[0] if located else None,
+            rider_longitude=located[1] if located else None,
+            rider_location_at=located[2] if located else None,
+            failure_reason=failure if state == DeliveryState.FAILED else "",
+            timeline=timeline,
         )
+
+
+#: Where a trip went wrong, as opposed to a step along the way.
+_FAILURE_STATUSES = {"UNDELIVERED", "RTO_OUT_FOR_DELIVERY", "RTO_UNDELIVERED", "RTO_DELIVERED", "LOST", "DAMAGED", "DISPOSED"}
+
+
+def _timeline(
+    logs: Any,
+) -> tuple[list[dict[str, Any]], tuple[float, float, datetime | None] | None, str]:
+    """The courier's steps, the rider's last known point, and why it failed.
+
+    Pidge's `logs` hold every status with a time, a remark ("Start for
+    Pickup", "Customer reject order - DRTO") and the rider's position at that
+    moment. Returned oldest first. Duplicated statuses are kept: a rider who
+    reached the door twice did reach it twice.
+    """
+
+    steps: list[dict[str, Any]] = []
+    located: tuple[float, float, datetime | None] | None = None
+    failure = ""
+    for log in logs if isinstance(logs, list) else []:
+        if not isinstance(log, dict):
+            continue
+        status = str(log.get("status") or "").strip().upper()
+        if not status:
+            continue
+        at = _moment(log.get("timestamp"))
+        remark = str(log.get("remark") or "").strip()
+        steps.append({"status": status, "at": at.isoformat() if at else None, "remark": remark})
+        where = log.get("location") if isinstance(log.get("location"), dict) else {}
+        latitude, longitude = _float(where.get("latitude")), _float(where.get("longitude"))
+        if latitude is not None and longitude is not None:
+            located = (latitude, longitude, at)
+        if status in _FAILURE_STATUSES and remark and not failure:
+            failure = remark
+    steps.sort(key=lambda step: step["at"] or "")
+    return steps, located, failure
 
 
 def _money(value: Any) -> Decimal | None:

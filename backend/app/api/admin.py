@@ -19,8 +19,9 @@ from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user import User
 from app.models.app_client import AppClient
-from app.models.enums import UserRole
+from app.models.enums import OrderStatus, UserRole
 from app.schemas.admin import (
+    RestaurantDemoUpdate,
     PlatformCheck,
     PlatformIssue,
     PlatformRestaurantToday,
@@ -165,15 +166,35 @@ def get_dashboard_stats(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_admin)],
 ) -> AdminDashboardStats:
-    total_orders = db.scalar(select(func.count(Order.id))) or 0
-    total_revenue = db.scalar(select(func.coalesce(func.sum(Order.total_amount), 0))) or 0
-    total_restaurants = db.scalar(select(func.count(Restaurant.id))) or 0
+    """The platform's headline numbers, over the real restaurants only.
+
+    Revenue used to be the sum of every order ever created: abandoned
+    checkouts, cancelled orders, and the demo kitchens' Canadian dollars added
+    to Indian rupees. It is now what was sold - neither unpaid nor cancelled,
+    the same rule Platform watch and the commission report use - and an
+    abandoned checkout is not counted as an order at all.
+    """
+
+    real = Restaurant.is_demo.is_(False)
+    total_orders = db.scalar(
+        select(func.count(Order.id))
+        .join(Restaurant, Restaurant.id == Order.restaurant_id)
+        .where(real, Order.status != OrderStatus.PAYMENT_PENDING)
+    ) or 0
+    total_revenue = db.scalar(
+        select(func.coalesce(func.sum(Order.total_amount), 0))
+        .join(Restaurant, Restaurant.id == Order.restaurant_id)
+        .where(real, Order.status.not_in((OrderStatus.PAYMENT_PENDING, OrderStatus.CANCELLED)))
+    ) or 0
+    total_restaurants = db.scalar(select(func.count(Restaurant.id)).where(real)) or 0
     total_users = db.scalar(select(func.count(User.id))) or 0
+    currencies = set(db.scalars(select(Restaurant.currency).where(real).distinct()))
     return AdminDashboardStats(
         total_orders=int(total_orders),
         total_revenue=float(total_revenue),
         total_restaurants=int(total_restaurants),
         total_users=int(total_users),
+        currency=next(iter(currencies)) if len(currencies) == 1 else None,
     )
 
 
@@ -347,9 +368,31 @@ def get_ai_offer_generation_status(
 def list_all_restaurants(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_admin)],
+    include_demo: bool = Query(default=False),
 ) -> list[RestaurantResponse]:
-    restaurants = db.scalars(select(Restaurant).order_by(Restaurant.created_at.desc())).all()
+    query = select(Restaurant).order_by(Restaurant.created_at.desc())
+    if not include_demo:
+        query = query.where(Restaurant.is_demo.is_(False))
+    restaurants = db.scalars(query).all()
     return [RestaurantResponse.model_validate(restaurant) for restaurant in restaurants]
+
+
+@router.patch("/restaurants/{restaurant_id}/demo", response_model=RestaurantResponse)
+def update_restaurant_demo(
+    restaurant_id: uuid.UUID,
+    payload: RestaurantDemoUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> RestaurantResponse:
+    """Mark a restaurant as seeded demo data, or as real again."""
+
+    restaurant = db.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found")
+    restaurant.is_demo = payload.is_demo
+    db.commit()
+    db.refresh(restaurant)
+    return RestaurantResponse.model_validate(restaurant)
 
 
 @router.patch("/restaurants/{restaurant_id}/approval", response_model=RestaurantResponse)

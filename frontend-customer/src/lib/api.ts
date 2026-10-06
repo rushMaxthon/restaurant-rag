@@ -553,6 +553,12 @@ export type OrderDelivery = {
   /** The courier's live map for this delivery. Empty until they send one. */
   tracking_url: string;
   distance_metres: number | null;
+  /** When the courier expects the rider at the restaurant, and at the door. */
+  pickup_eta?: string | null;
+  drop_eta?: string | null;
+  /** Every step the courier reported, oldest first. */
+  timeline?: Array<{ status: string; at: string | null; remark: string }>;
+  failure_reason?: string;
 };
 
 // `ChargeLine` and `OrderCharges` now live in `bangkok-data`, because the

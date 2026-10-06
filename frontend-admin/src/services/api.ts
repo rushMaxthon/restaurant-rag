@@ -1,4 +1,10 @@
 import type {
+  PairingCode as PairingCodeDto,
+  PrintAgent as PrintAgentDto,
+  PrintJob as PrintJobDto,
+  Printer as PrinterDto,
+} from '../types/printing';
+import type {
   BrandFaq,
   BrandHighlight,
   BrandSection,
@@ -329,8 +335,20 @@ export const api = {
       { method: 'POST', token, body: { ids } },
     );
   },
-  getAdminRestaurants(token: string): Promise<Restaurant[]> {
-    return request<Restaurant[]>('/admin/restaurants', { token });
+  /**
+   * Every restaurant, leaving out demo ones unless `includeDemo` - which only
+   * the Restaurants page asks for, so a demo kitchen can be found and unmarked.
+   */
+  getAdminRestaurants(token: string, options?: { includeDemo?: boolean }): Promise<Restaurant[]> {
+    const query = options?.includeDemo ? '?include_demo=true' : '';
+    return request<Restaurant[]>(`/admin/restaurants${query}`, { token });
+  },
+  updateRestaurantDemo(token: string, restaurantId: string, isDemo: boolean): Promise<Restaurant> {
+    return request<Restaurant>(`/admin/restaurants/${restaurantId}/demo`, {
+      method: 'PATCH',
+      token,
+      body: { is_demo: isDemo },
+    });
   },
   getAdminMenuItems(token: string): Promise<AdminMenuItem[]> {
     return request<AdminMenuItem[]>('/admin/menu-items', { token });
@@ -415,6 +433,127 @@ export const api = {
   getKitchenStaff(token: string, restaurantId: string | null): Promise<KitchenStaff[]> {
     const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
     return request<KitchenStaff[]>(`/kitchen-staff${suffix}`, { token });
+  },
+
+  // --- Printing -----------------------------------------------------------
+  //
+  // `restaurantId` is the same asymmetry as everywhere else in this panel: an
+  // ADMIN must name a restaurant and an OWNER must not, because
+  // `resolve_insights_scope` requires one from the first and refuses one from
+  // the second. See CLAUDE.md.
+
+  getPrintAgents(token: string, restaurantId: string | null): Promise<PrintAgentDto[]> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<PrintAgentDto[]>(`/printing/agents${suffix}`, { token });
+  },
+
+  /**
+   * A six-digit code for somebody standing at the kitchen PC.
+   *
+   * Short-lived and single-use, because this is the one moment a long-lived
+   * agent credential comes into existence.
+   */
+  createPairingCode(
+    token: string,
+    payload: { restaurant_location_id: string; name: string; restaurant_id: string | null },
+  ): Promise<PairingCodeDto> {
+    return request<PairingCodeDto>('/printing/pairing-code', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
+
+  addPrinter(
+    token: string,
+    agentId: string,
+    payload: Record<string, unknown>,
+    restaurantId: string | null,
+  ): Promise<PrinterDto> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<PrinterDto>(`/printing/agents/${agentId}/printers${suffix}`, {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
+
+  updatePrinter(
+    token: string,
+    printerId: string,
+    payload: Record<string, unknown>,
+    restaurantId: string | null,
+  ): Promise<PrinterDto> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<PrinterDto>(`/printing/printers/${printerId}${suffix}`, {
+      method: 'PATCH',
+      token,
+      body: payload,
+    });
+  },
+
+  /** Queue a page that proves this printer works. Always a second copy. */
+  testPrint(
+    token: string,
+    printerId: string,
+    restaurantId: string | null,
+  ): Promise<PrintJobDto> {
+    const suffix = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : '';
+    return request<PrintJobDto>(`/printing/printers/${printerId}/test${suffix}`, {
+      method: 'POST',
+      token,
+      body: {},
+    });
+  },
+
+  /** Recent tickets, including the ones that failed and why. */
+  getPrintJobs(
+    token: string,
+    restaurantId: string | null,
+    limit = 50,
+  ): Promise<PrintJobDto[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (restaurantId) query.set('restaurant_id', restaurantId);
+    return request<PrintJobDto[]>(`/printing/jobs?${query.toString()}`, { token });
+  },
+
+  reprintOrder(
+    token: string,
+    orderId: string,
+    kind: string,
+    restaurantId: string | null,
+  ): Promise<PrintJobDto[]> {
+    const query = new URLSearchParams({ kind });
+    if (restaurantId) query.set('restaurant_id', restaurantId);
+    return request<PrintJobDto[]>(`/printing/orders/${orderId}/reprint?${query.toString()}`, {
+      method: 'POST',
+      token,
+      body: {},
+    });
+  },
+
+  /**
+   * Rename or switch off an agent.
+   *
+   * Switching off bumps `token_version`, so the PC stops on its next poll
+   * rather than whenever its token would have expired. There is no delete:
+   * `print_jobs` points at these rows.
+   */
+  updatePrintAgent(
+    token: string,
+    agentId: string,
+    params: { is_enabled?: boolean; name?: string },
+    restaurantId: string | null,
+  ): Promise<PrintAgentDto> {
+    const query = new URLSearchParams();
+    if (params.is_enabled !== undefined) query.set('is_enabled', String(params.is_enabled));
+    if (params.name !== undefined) query.set('name', params.name);
+    if (restaurantId) query.set('restaurant_id', restaurantId);
+    return request<PrintAgentDto>(`/printing/agents/${agentId}?${query.toString()}`, {
+      method: 'PATCH',
+      token,
+      body: {},
+    });
   },
 
   createKitchenStaff(
@@ -941,6 +1080,26 @@ export const api = {
   getOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
     return request<OrderDelivery | null>(`/orders/${orderId}/delivery`, { token });
   },
+  /** Call the rider off while the order stands. Refused once the food is collected. */
+  cancelOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/cancel`, { method: 'POST', token });
+  },
+  /** Book another rider after the last trip failed or was called off. */
+  /** Ask the courier's networks again for a rider, for a booking nobody took. */
+  allocateOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/allocate`, { method: 'POST', token });
+  },
+  rebookOrderDelivery(token: string, orderId: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/rebook`, { method: 'POST', token });
+  },
+  /** Sandbox only, admin only: make the courier report a stage. */
+  simulateOrderDelivery(token: string, orderId: string, status: string): Promise<OrderDelivery | null> {
+    return request<OrderDelivery | null>(`/orders/${orderId}/delivery/simulate`, {
+      method: 'POST',
+      token,
+      body: { status },
+    });
+  },
   /** What this restaurant has switched on, and why. Owners may read it too. */
   getRestaurantCapabilities(token: string, restaurantId: string): Promise<RestaurantCapability[]> {
     return request<RestaurantCapability[]>(`/restaurants/${restaurantId}/capabilities`, { token });
@@ -1443,8 +1602,15 @@ const CURRENCY_FORMATS: Record<string, { locale: string; minDigits: number }> = 
   AED: { locale: 'en-AE', minDigits: 2 },
 };
 
-/** What the panel writes money in when nothing has told it otherwise. */
-export const DEFAULT_CURRENCY = 'USD';
+/**
+ * What the panel writes money in when nothing has told it otherwise.
+ *
+ * Rupees, because the platform is launching in India: every real restaurant
+ * on it charges in INR. It was USD from the days of one Bangkok kitchen, and
+ * a super admin looking at the platform as a whole read rupee takings under a
+ * "$".
+ */
+export const DEFAULT_CURRENCY = 'INR';
 
 function formatFor(code: string | null | undefined) {
   const resolved = (code || DEFAULT_CURRENCY).toUpperCase();
@@ -1462,12 +1628,16 @@ function formatFor(code: string | null | undefined) {
  */
 export function formatCurrency(value: number | string, currency?: string | null): string {
   const format = formatFor(currency);
+  const numeric = toNumber(value);
+  // A currency written without its minor unit (rupees: "₹120") still shows
+  // BOTH digits once there are paise - "₹8,412.50", never "₹8,412.5".
+  const fraction = Math.round(numeric * 100) % 100 !== 0 ? 2 : format.minDigits;
   return new Intl.NumberFormat(format.locale, {
     style: 'currency',
     currency: format.code,
-    minimumFractionDigits: format.minDigits,
+    minimumFractionDigits: fraction,
     maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  }).format(numeric);
 }
 
 /**

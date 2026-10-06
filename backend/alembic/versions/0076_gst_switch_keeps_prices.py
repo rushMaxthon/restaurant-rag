@@ -48,6 +48,15 @@ _COLUMNS = (
 
 def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
+    # Already past 0077, whose commission put the base columns back with a
+    # NEW meaning (the owner's typed price, before commission). Running this
+    # then would set every price back to that base and drop it - the
+    # commission gone from every menu until 0077 re-applied it. Only reachable
+    # through a stale stamp, which Supabase had (0074 with the schema at 0082,
+    # found 2026-10-05), so it is refused rather than trusted not to happen.
+    branch = {c["name"] for c in inspector.get_columns("restaurant_locations")}
+    if "commission_percent" in branch:
+        return
     for table, price, base in _COLUMNS:
         existing = {c["name"] for c in inspector.get_columns(table)}
         if base not in existing:

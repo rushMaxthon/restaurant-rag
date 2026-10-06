@@ -229,6 +229,7 @@ function LiveCard({
         <span className="live-card__delivery-text">
           <strong>{delivery.label}</strong>
           {delivery.riderName ? <span>Rider: {delivery.riderName}</span> : null}
+          {delivery.eta ? <span>{delivery.eta}</span> : null}
         </span>
         {delivery.riderPhone ? (
           <a

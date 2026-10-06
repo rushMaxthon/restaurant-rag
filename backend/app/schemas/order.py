@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -449,6 +450,21 @@ class OrderResponse(BaseModel):
     completed_at: datetime | None = None
 
 
+class DeliveryStep(BaseModel):
+    """One thing the courier reported, as it reported it."""
+
+    #: The courier's own word: OUT_FOR_PICKUP, REACHED_DELIVERY, UNDELIVERED.
+    status: str
+    at: datetime | None = None
+    remark: str = ""
+
+
+class DeliverySimulateRequest(BaseModel):
+    """A sandbox stage, as Pidge's `dummy_status` names it."""
+
+    status: str = Field(min_length=3, max_length=40)
+
+
 class OrderDeliveryResponse(BaseModel):
     """What the courier is doing with this order, for the admin.
 
@@ -474,6 +490,42 @@ class OrderDeliveryResponse(BaseModel):
     last_error: str
     created_at: datetime
     updated_at: datetime
+    #: When the courier expects the rider at the restaurant, and at the door.
+    pickup_eta: datetime | None = None
+    drop_eta: datetime | None = None
+    #: The rider's last known position and when it was reported.
+    rider_latitude: float | None = None
+    rider_longitude: float | None = None
+    rider_location_at: datetime | None = None
+    #: Why the trip did not arrive, in the courier's words. Empty otherwise.
+    failure_reason: str = ""
+    #: Every step the courier reported, oldest first.
+    timeline: list[DeliveryStep] = Field(default_factory=list)
+    #: 1 for the first rider booked, 2 after a re-book.
+    attempt: int = 1
+    #: What the courier invoices for the trip. Sent to the platform admin
+    #: only (`for_viewer`): to an owner or a customer it is somebody else's
+    #: commercial term, and beside the delivery fee it is a margin.
+    courier_charge: Decimal | None = None
+    #: Whether a staff member may ask for another rider right now.
+    can_rebook: bool = False
+    can_cancel: bool = False
+    # Booked with the courier, no rider assigned yet: "Find a rider" can ask again.
+    can_allocate: bool = False
+    #: Platform admin, on the courier's sandbox only: the simulate buttons.
+    can_simulate: bool = False
+
+    @field_validator("timeline", mode="before")
+    @classmethod
+    def _no_timeline_is_empty(cls, value: Any) -> Any:
+        return value or []
+
+    def for_viewer(self, viewer: Any) -> "OrderDeliveryResponse":
+        """This response as one viewer may see it."""
+
+        if str(getattr(viewer, "role", "")) == "ADMIN":
+            return self
+        return self.model_copy(update={"courier_charge": None})
 
 
 class LiveOrderResponse(OrderResponse):

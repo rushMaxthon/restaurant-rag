@@ -357,3 +357,21 @@
      skeleton pair all moved to the shared file with their light-mode
      counterparts. Promoting only half a token is how a dark mode breaks. */
 }
+
+/* The sidebar search draws ONE focus ring, on its box. The shared input
+   focus style (frontend-shared/components.css) put a second, rounded ring
+   around the bare input inside it. It has to be overridden here, unlayered:
+   legacy.css is a layer, and an unlayered rule beats every layered one
+   whatever its specificity - a fix written there does nothing. */
+.admin-sidebar__search input:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Same reason as the sidebar search above: the dashboard period pill draws
+   the focus ring, so its bare select and inputs must not draw a second. */
+.period-picker__field select:focus-visible,
+.period-picker__field input:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+}

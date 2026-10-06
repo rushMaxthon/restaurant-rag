@@ -262,6 +262,8 @@ export interface AdminDashboardStats {
   total_revenue: number;
   total_restaurants: number;
   total_users: number;
+  /** The one currency every counted restaurant shares, or null when they do not. */
+  currency?: string | null;
 }
 
 export interface ReportsFiltersApplied {
@@ -446,6 +448,8 @@ export interface Restaurant {
   is_approved: boolean;
   is_open: boolean;
   is_active: boolean;
+  /** Seeded demo data, left out of every platform total and list. */
+  is_demo?: boolean;
   created_at: string;
   updated_at: string;
   locations?: RestaurantLocation[];
@@ -1610,6 +1614,27 @@ export interface OrderDelivery {
   last_error: string;
   created_at: string;
   updated_at: string;
+  /** When the courier expects the rider at the restaurant, and at the door. */
+  pickup_eta?: string | null;
+  drop_eta?: string | null;
+  rider_latitude?: number | null;
+  rider_longitude?: number | null;
+  rider_location_at?: string | null;
+  /** Why the trip did not arrive, in the courier's words. */
+  failure_reason?: string;
+  /** Every step the courier reported, oldest first. */
+  timeline?: Array<{ status: string; at: string | null; remark: string }>;
+  /** 1 for the first rider, 2 after a re-book. */
+  attempt?: number;
+  /** What the courier invoices. Sent to the platform admin only. */
+  courier_charge?: number | string | null;
+  can_rebook?: boolean;
+  /** Booked, no rider yet: the courier can be asked again. */
+  can_allocate?: boolean;
+  /** The server's answer: a rider booked, not yet collected, and the order still stands. */
+  can_cancel?: boolean;
+  /** Platform admin, on the courier's sandbox: the simulate buttons. */
+  can_simulate?: boolean;
 }
 
 

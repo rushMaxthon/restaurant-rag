@@ -682,6 +682,8 @@ class RestaurantResponse(RestaurantBase):
     is_approved: bool
     is_open: bool
     is_active: bool
+    # Seeded to develop against; the admin's cross-restaurant views leave it out.
+    is_demo: bool = False
     created_at: datetime
     updated_at: datetime
 

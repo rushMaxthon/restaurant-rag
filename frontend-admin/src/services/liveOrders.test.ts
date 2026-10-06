@@ -24,6 +24,7 @@ import {
   safeTrackingUrl,
   startOfToday,
   summarise,
+  etaText,
   nextAction,
 } from "./liveOrders";
 
@@ -492,5 +493,19 @@ describe("nextAction", () => {
   it("uses the counter's words for a pickup and the rider's for a delivery", () => {
     expect(nextAction(order("PREPARING", { fulfillment_type: "DELIVERY" }))?.label).toMatch(/rider/i);
     expect(nextAction(order("PREPARING", { fulfillment_type: "PICKUP" }))?.label).toMatch(/collect/i);
+  });
+});
+
+describe("etaText", () => {
+  const base = { pickup_eta: "2026-10-05T11:30:00Z", drop_eta: "2026-10-05T11:45:00Z" };
+  const delivery = (state: string) => ({ ...base, state }) as unknown as Parameters<typeof etaText>[0];
+
+  it("points at the restaurant until the food is collected, then at the door", () => {
+    expect(etaText(delivery("ASSIGNED"))).toMatch(/^Rider due /);
+    expect(etaText(delivery("IN_TRANSIT"))).toMatch(/^Due at the door /);
+  });
+
+  it("says nothing once the trip is over", () => {
+    expect(etaText(delivery("DELIVERED"))).toBe("");
   });
 });

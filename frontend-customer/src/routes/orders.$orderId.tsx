@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
+import { courierEta, courierNow } from "@/lib/courier";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, useOrderDelivery, usePaymentReconciliation } from "@/lib/queries";
 import { ORDER_FALLBACK_POLL_MS } from "@/lib/realtime";
@@ -169,6 +170,12 @@ function OrderDetail() {
   // The courier row itself, which carries a tracking link from the moment the
   // trip is booked — long before `rider` is set. See the card above it.
   const tracking = deliveryQuery.data ?? null;
+  // The courier's latest step and its clock time, in the customer's words.
+  // The order's own status moves on four of the courier's dozen steps; these
+  // fill the gaps ("Your rider is at the restaurant") between them.
+  const courierLine = isDelivery && !cancelled && o.status !== "DELIVERED" ? courierNow(tracking) : null;
+  const courierClock = isDelivery && !cancelled && o.status !== "DELIVERED" ? courierEta(tracking) : null;
+  const courierFailed = tracking?.state === "FAILED";
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
   const discount = Number(o.discount_amount ?? 0);
@@ -256,12 +263,28 @@ function OrderDetail() {
                * are side by side rather than stacked — two taps of equal
                * weight, neither buried.
                */}
+              {isDelivery && courierFailed && courierLine && (
+                <div className="mb-4 flex items-start gap-3 rounded-xl bg-danger/10 p-4">
+                  <XCircle className="mt-0.5 size-5 shrink-0 text-danger" />
+                  <p className="text-sm font-semibold">{courierLine}</p>
+                </div>
+              )}
+
               {isDelivery && rider && (
                 <div className="mb-7 rounded-xl bg-surface-alt p-4">
                   <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
                     Your rider
                   </p>
                   <p className="mt-1 text-lg font-extrabold leading-snug">{rider.rider_name}</p>
+                  {courierLine && !courierFailed && (
+                    <p className="mt-0.5 text-sm font-semibold">{courierLine}</p>
+                  )}
+                  {courierClock && (
+                    <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+                      <Clock className="size-4" />
+                      {courierClock}
+                    </p>
+                  )}
                   {rider.distance_metres != null && (
                     <p className="mt-0.5 text-sm text-muted">
                       {(rider.distance_metres / 1000).toFixed(1)} km from the restaurant to you.

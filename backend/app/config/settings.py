@@ -439,7 +439,6 @@ class Settings(BaseSettings):
     # recipient rows are real), marks the campaign SENT, and calls no external
     # service. That is a dry run an owner can inspect, not a silent no-op.
     enable_marketing_dispatch: bool = False
-
     # --- Kitchen push (new-order alerts to the kitchen app) -----------------
     #
     # When an order reaches PLACED — the moment it appears on the board — the
@@ -453,6 +452,76 @@ class Settings(BaseSettings):
     # orders by realtime and polling exactly as before. Delivery also needs a
     # Celery worker on the `notifications` queue.
     enable_kitchen_push: bool = False
+
+    # --- Auto-printing ------------------------------------------------------
+    #
+    # A paid order produces a ticket on the kitchen printer with no browser
+    # open and nobody signed in. See `docs/PRINT_AGENT_PLAN.md`.
+    #
+    # Off by default, and not because the feature is unfinished. Paper and a
+    # kitchen's attention are not recallable: a wrong docket at 9pm has a cook
+    # making food nobody ordered, which is the same posture
+    # `enable_marketing_dispatch` takes about a notification reaching a lock
+    # screen. A restaurant switches it on when its printer is paired and
+    # test-printed, not when the platform deploys.
+    #
+    # Deliberately NOT tied to `enable_realtime`. The socket only makes a
+    # ticket arrive sooner; the queue is what makes it arrive at all, and a
+    # restaurant that wants printing without realtime (or the reverse) is a
+    # reasonable thing to be.
+    #
+    # With it off, the whole path still runs and still writes job rows the
+    # owner can inspect - a dry run showing exactly what would have printed -
+    # and no agent is ever served them. Same shape as marketing dispatch, for
+    # the same reason.
+    enable_auto_print: bool = False
+
+    # How long a claimed job stays claimed before another poll may take it.
+    #
+    # The whole of the crash-recovery design: an agent that dies between
+    # claiming a ticket and printing it hands it back by doing nothing. Two
+    # minutes rather than seconds because a long docket on a slow thermal head
+    # or a TCP connect against an unplugged printer legitimately takes a
+    # while, and re-serving a job that is still printing is how a kitchen gets
+    # the same ticket twice.
+    print_job_claim_lease_seconds: int = 120
+
+    # How many jobs one poll may take. Enough that a burst of orders drains in
+    # one round trip; small enough that an agent which dies mid-batch leaves
+    # few tickets waiting out the lease.
+    print_job_poll_batch: int = 10
+
+    # How long an idle agent waits before asking again.
+    #
+    # Fifteen seconds, and the socket is what makes that acceptable: a ticket
+    # normally arrives within a second of the order because `order:updated`
+    # tells the agent to poll now. This interval is the floor for when the
+    # socket is down — the same division of labour as the kitchen board's
+    # 30-second refetch behind its live push.
+    #
+    # Server-controlled rather than baked into the agent, so a deployment can
+    # slow every installed agent down at once without anybody reinstalling
+    # anything.
+    print_agent_poll_seconds: int = 15
+
+    # How long a ticket keeps trying before it is given up on.
+    #
+    # One failed attempt used to be fatal: a printer switched off for thirty
+    # seconds - the commonest failure there is in a kitchen, along with someone
+    # unplugging it to vacuum - permanently killed the docket, and the order
+    # was cooked from nothing. Observed live.
+    #
+    # Measured from when the ticket was QUEUED rather than counted in
+    # attempts, because the honest question is "is this still worth printing",
+    # and that is about the age of the order. A docket produced half an hour
+    # late is a cook making food for a customer who has already left; a
+    # reprint is the right tool for that, with a person deciding.
+    print_job_retry_window_minutes: int = 30
+
+    # A ceiling underneath the window, so a ticket that fails instantly every
+    # time cannot spin for half an hour. At a fifteen-second poll this is
+    # roughly ten minutes of trying, whichever runs out first.
+    print_job_max_attempts: int = 40
 
     # --- Realtime (Socket.IO) -----------------------------------------------
     #
@@ -815,6 +884,11 @@ class Settings(BaseSettings):
     pidge_brand_code: str = ""
     pidge_brand_location_code: str = ""
     pidge_brand_name: str = ""
+    # Which rider network to ask first when Pidge leaves an order unallocated,
+    # by its `network_name` ("pidge", "zomato", ...). Empty means the cheapest
+    # one that can take the order. A preference that cannot take it is passed
+    # over rather than leaving the order with nobody.
+    pidge_preferred_network: str = ""
     # Defence in depth, not the guarantee. Pidge signs nothing, so the webhook
     # confirms every push by fetching the order over our own authenticated
     # connection; this secret only keeps casual noise out, and it travels in a

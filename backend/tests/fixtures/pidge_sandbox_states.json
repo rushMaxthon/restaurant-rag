@@ -1,0 +1,654 @@
+{
+ "cancelled": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "cancelled",
+  "updated_at": "2026-10-05T11:21:02.525Z"
+ },
+ "fulfilled|delivered": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "drop": {
+    "eta": "2026-10-05T11:43:02.525Z",
+    "location": {
+     "latitude": 28.442554,
+     "longitude": 77.08023
+    },
+    "proof": [],
+    "timestamp": "2026-10-05T11:33:02.525Z"
+   },
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "status": "CREATED",
+     "timestamp": "2026-10-05T11:22:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Pickup",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "admin quick scan",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "PICKED_UP",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Delivery",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_DELIVERY",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "DELIVERED",
+     "timestamp": "2026-10-05T11:43:02.525Z"
+    }
+   ],
+   "mtg": {
+    "bundle_id": 142707,
+    "group_id": 204359,
+    "rider_id": 306,
+    "sequence_number": 1,
+    "trip_id": 529719
+   },
+   "pickup": {
+    "eta": "2026-10-05T11:33:02.525Z",
+    "location": {
+     "latitude": 28.442554,
+     "longitude": 77.08023
+    },
+    "proof": [],
+    "timestamp": "2026-10-05T11:33:02.525Z"
+   },
+   "rider": {
+    "id": "306",
+    "mobile": "8887772221",
+    "name": "Rider name"
+   },
+   "status": "DELIVERED",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "completed",
+  "updated_at": "2026-10-05T11:43:02.525Z"
+ },
+ "fulfilled|ofd": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "drop": {
+    "eta": "2026-10-05T11:43:02.525Z",
+    "proof": []
+   },
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "status": "CREATED",
+     "timestamp": "2026-10-05T11:22:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Pickup",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "admin quick scan",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "PICKED_UP",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Delivery",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_DELIVERY",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    }
+   ],
+   "pickup": {
+    "eta": "2026-10-05T11:33:02.525Z",
+    "location": {
+     "latitude": 28.442554,
+     "longitude": 77.08023
+    },
+    "proof": [],
+    "timestamp": "2026-10-05T11:33:02.525Z"
+   },
+   "rider": {
+    "id": "306",
+    "mobile": "8887772221",
+    "name": "Rider name"
+   },
+   "status": "OUT_FOR_DELIVERY",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "fulfilled",
+  "updated_at": "2026-10-05T11:33:02.525Z"
+ },
+ "fulfilled|out for pickup": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "status": "CREATED",
+     "timestamp": "2026-10-05T11:22:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Pickup",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    }
+   ],
+   "pickup": {
+    "eta": "2026-10-05T11:33:02.525Z",
+    "proof": []
+   },
+   "rider": {
+    "id": "306",
+    "mobile": "8887772221",
+    "name": "Rider name"
+   },
+   "status": "OUT_FOR_PICKUP",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "fulfilled",
+  "updated_at": "2026-10-05T11:24:02.525Z"
+ },
+ "fulfilled|picked up": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "drop": {
+    "eta": "2026-10-05T11:43:02.525Z",
+    "proof": []
+   },
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "status": "CREATED",
+     "timestamp": "2026-10-05T11:22:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "Start for Pickup",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 28.442554,
+      "longitude": 77.08023
+     },
+     "remark": "admin quick scan",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "PICKED_UP",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    }
+   ],
+   "pickup": {
+    "eta": "2026-10-05T11:33:02.525Z",
+    "location": {
+     "latitude": 28.442554,
+     "longitude": 77.08023
+    },
+    "proof": [],
+    "timestamp": "2026-10-05T11:33:02.525Z"
+   },
+   "rider": {
+    "id": "306",
+    "mobile": "8887772221",
+    "name": "Rider name"
+   },
+   "status": "PICKED_UP",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "fulfilled",
+  "updated_at": "2026-10-05T11:33:02.525Z"
+ },
+ "fulfilled|rto delivered": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "drop": {
+    "eta": "2026-10-05T11:43:02.525Z",
+    "location": {
+     "latitude": 18.926636,
+     "longitude": 72.822464
+    },
+    "proof": [],
+    "timestamp": "2026-10-05T11:43:02.525Z"
+   },
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "status": "CREATED",
+     "timestamp": "2026-10-05T11:22:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.926632,
+      "longitude": 72.82251
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.926632,
+      "longitude": 72.82251
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "REACHED_PICKUP",
+     "timestamp": "2026-10-05T11:31:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.926626,
+      "longitude": 72.822525
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "PICKED_UP",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.926632,
+      "longitude": 72.82252
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "OUT_FOR_DELIVERY",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.92663,
+      "longitude": 72.82251
+     },
+     "remark": "Customer reschedule order",
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "UNDELIVERED",
+     "timestamp": "2026-10-05T11:43:02.525Z"
+    },
+    {
+     "attemptType": "UNDELIVERED",
+     "channel": {
+      "id": "-2",
+      "name": "captive",
+      "order_id": "114916"
+     },
+     "location": {
+      "latitude": 18.926636,
+      "longitude": 72.822464
+     },
+     "remark": null,
+     "rider": {
+      "id": "306",
+      "mobile": "8887772221",
+      "name": "Rider name"
+     },
+     "status": "RTO_DELIVERED",
+     "timestamp": "2026-10-05T11:52:02.525Z"
+    }
+   ],
+   "pickup": {
+    "eta": "2026-10-05T11:33:02.525Z",
+    "location": {
+     "latitude": 18.926626,
+     "longitude": 72.822525
+    },
+    "timestamp": "2026-10-05T11:33:02.525Z"
+   },
+   "rider": {
+    "id": "306",
+    "mobile": "8887772221",
+    "name": "Rider name"
+   },
+   "status": "RTO_DELIVERED",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "completed",
+  "updated_at": "2026-10-05T11:52:02.525Z"
+ },
+ "fulfilled|undelivered": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "fulfillment": {
+   "channel": {
+    "id": "-2",
+    "name": "captive",
+    "order_id": "114916"
+   },
+   "delivery_charge": 189,
+   "logs": [
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "pidge",
+      "order_id": "2453967"
+     },
+     "remark": "Started For Pickup",
+     "status": "OUT_FOR_PICKUP",
+     "timestamp": "2026-10-05T11:24:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "pidge",
+      "order_id": "2453967"
+     },
+     "remark": "updated by admin",
+     "status": "PICKED_UP",
+     "timestamp": "2026-10-05T11:33:02.525Z"
+    },
+    {
+     "attemptType": "FORWARD",
+     "channel": {
+      "id": "-2",
+      "name": "pidge",
+      "order_id": "2453967"
+     },
+     "remark": "Customer reject order - DRTO",
+     "status": "UNDELIVERED",
+     "timestamp": "2026-10-05T11:43:02.525Z"
+    }
+   ],
+   "status": "UNDELIVERED",
+   "track_code": "rk3vx7"
+  },
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "fulfilled",
+  "updated_at": "2026-10-05T11:43:02.525Z"
+ },
+ "pending": {
+  "bill_amount": 55,
+  "cod_amount": 0,
+  "created_at": "2026-10-05T11:21:02.525Z",
+  "id": "1791199262532GCC2F6Y9",
+  "parent_id": null,
+  "reference_id": "PROBE-165101",
+  "status": "pending",
+  "updated_at": "2026-10-05T11:21:02.525Z"
+ }
+}

@@ -218,11 +218,19 @@ class ACourierMayNotRewindAnOrderTests(unittest.TestCase):
 
     def test_the_early_states_move_nothing(self) -> None:
         # A rider being assigned is not the order leaving the kitchen.
-        for state in (DeliveryState.PENDING, DeliveryState.ASSIGNED, DeliveryState.PICKED_UP):
+        for state in (DeliveryState.PENDING, DeliveryState.ASSIGNED):
             with self.subTest(state=state):
                 order = an_order(status=OrderStatus.ACCEPTED)
                 self.assertFalse(advance_order(order, state))
                 self.assertEqual(order.status, OrderStatus.ACCEPTED)
+
+    def test_picked_up_is_the_food_leaving_the_kitchen(self) -> None:
+        # It used to wait for IN_TRANSIT. Pidge sends PICKED_UP and then
+        # OUT_FOR_DELIVERY seconds apart, and when the second push was lost the
+        # order sat in the kitchen column while a rider rode it across town.
+        order = an_order(status=OrderStatus.PREPARING)
+        self.assertTrue(advance_order(order, DeliveryState.PICKED_UP))
+        self.assertEqual(order.status, OrderStatus.OUT_FOR_DELIVERY)
 
 
 if __name__ == "__main__":
