@@ -475,7 +475,7 @@ export function etaText(delivery: NonNullable<LiveOrder["delivery"]>): string {
   const time = (value: string | null | undefined) =>
     value ? new Date(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "";
   if (delivery.state === "PICKED_UP" || delivery.state === "IN_TRANSIT") {
-    return delivery.drop_eta ? `Due at the door ${time(delivery.drop_eta)}` : "";
+    return delivery.drop_eta ? `Deliver by ${time(delivery.drop_eta)}` : "";
   }
   if (delivery.state === "ASSIGNED" || delivery.state === "PENDING") {
     return delivery.pickup_eta ? `Rider due ${time(delivery.pickup_eta)}` : "";

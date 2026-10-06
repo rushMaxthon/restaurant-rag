@@ -484,12 +484,23 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
         row.delivered_at = result.delivered_at
     if result.raw:
         row.raw = result.raw
-    # Kept once learned: a later answer without them (the sandbox's, or a
-    # finished trip's) must not blank what the screen already showed.
-    if result.pickup_eta is not None:
+    # A reading with a network on it is the courier's current word, so its
+    # pickup time replaces the old one even when it has none - that is how a
+    # network says the rider is past caring about the restaurant, and how a
+    # deadline saved as a pickup time (eb3e811c, 2026-10-06) gets cleared.
+    # A reading WITHOUT a network (the sandbox's, or a finished trip's, which
+    # Pidge strips of its fulfilment block) says nothing about either time,
+    # so what the screen already showed is kept.
+    if result.network_name:
+        row.pickup_eta = result.pickup_eta
+    elif result.pickup_eta is not None:
         row.pickup_eta = result.pickup_eta
     if result.drop_eta is not None:
         row.drop_eta = result.drop_eta
+    # One time for both ends is the network's deadline, whichever reading
+    # put it there (`PidgeProvider._read`).
+    if row.pickup_eta is not None and row.pickup_eta == row.drop_eta:
+        row.pickup_eta = None
     if result.courier_charge is not None:
         row.courier_charge = result.courier_charge
     if result.rider_latitude is not None and result.rider_longitude is not None:

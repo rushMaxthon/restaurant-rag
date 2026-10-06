@@ -127,7 +127,11 @@ def refresh_deliveries_task() -> dict[str, int]:
     however the news arrived, and a push that beats the poll costs nothing.
 
     Only unfinished deliveries are asked about. A terminal one cannot change,
-    and polling it forever would turn a fixed cost into a growing one.
+    and polling it forever would turn a fixed cost into a growing one. Nor is
+    a delivery whose ORDER is finished: one marked delivered or cancelled by
+    hand while the courier still said "pending" (2f54b50e, 2026-10-06) was
+    asked about every minute for hours, and Pidge strips a finished trip of
+    its fulfilment block, so there was nothing left to learn.
     """
 
     provider = delivery_provider()
@@ -139,8 +143,10 @@ def refresh_deliveries_task() -> dict[str, int]:
     with SessionLocal() as db:
         rows = db.scalars(
             select(OrderDelivery)
+            .join(Order, Order.id == OrderDelivery.order_id)
             .where(OrderDelivery.state.notin_(done))
             .where(OrderDelivery.provider_order_id != "")
+            .where(Order.status.notin_([OrderStatus.DELIVERED, OrderStatus.CANCELLED]))
             .limit(200)
         ).all()
         for row in rows:

@@ -502,7 +502,7 @@ describe("etaText", () => {
 
   it("points at the restaurant until the food is collected, then at the door", () => {
     expect(etaText(delivery("ASSIGNED"))).toMatch(/^Rider due /);
-    expect(etaText(delivery("IN_TRANSIT"))).toMatch(/^Due at the door /);
+    expect(etaText(delivery("IN_TRANSIT"))).toMatch(/^Deliver by /);
   });
 
   it("says nothing once the trip is over", () => {

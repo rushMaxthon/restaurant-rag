@@ -298,6 +298,9 @@ class PullingTheStatusRatherThanWaitingForIt(unittest.TestCase):
             def limit(self, n):
                 return self
 
+            def join(self, *a, **k):
+                return self
+
         class FakeSession:
             def __enter__(self_inner):
                 return self_inner
