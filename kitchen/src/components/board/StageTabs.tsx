@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { radius, useTheme } from '@/theme';
 import { BOARD_COLUMNS } from '@/data/boardColumns';
 import type { LiveStatus } from '@/types/app';
-import { inkOn } from '@/themePalette';
 
 interface StageTabsProps {
   value: LiveStatus;
@@ -16,19 +15,15 @@ interface StageTabsProps {
   arrived: Record<LiveStatus, boolean>;
 }
 
-// The phone's replacement for four columns: one stage at a time, with every
-// stage's count always visible. The selected stage takes its own colour as
-// an underline and count, so the tab matches the tickets' action buttons.
+// The phone's replacement for four columns: a segmented control, one stage
+// at a time, with every stage's count always visible. The selected segment
+// is raised and its count filled.
 const StageTabsComponent = ({ value, onChange, counts, late, arrived }: StageTabsProps) => {
-  const theme = useTheme();
-  const { colors } = theme;
+  const { colors } = useTheme();
   return (
-    <View
-      accessibilityRole="tablist"
-      style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View accessibilityRole="tablist" style={[styles.bar, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
       {BOARD_COLUMNS.map(column => {
         const active = column.status === value;
-        const stageColor = theme.status[column.status];
         return (
           <Pressable
             key={column.status}
@@ -41,25 +36,20 @@ const StageTabsComponent = ({ value, onChange, counts, late, arrived }: StageTab
             }`}
             style={[
               styles.tab,
-              active && { backgroundColor: colors.surfaceMuted },
+              active && [styles.active, { backgroundColor: colors.surface }],
               arrived[column.status] && !active && [styles.arrived, { borderColor: colors.accent }],
             ]}>
             <View style={styles.countRow}>
-              <View style={[styles.count, { backgroundColor: active ? stageColor : colors.surfaceMuted }]}>
-                <Text style={[styles.countText, { color: active ? inkOn(stageColor) : colors.text }]}>
+              <View style={[styles.count, { backgroundColor: active ? colors.accent : colors.surface }]}>
+                <Text style={[styles.countText, { color: active ? colors.onAccent : colors.text }]}>
                   {counts[column.status]}
                 </Text>
               </View>
-              {late[column.status] ? (
-                <View style={[styles.lateDot, { backgroundColor: colors.danger }]} />
-              ) : null}
+              {late[column.status] ? <View style={[styles.lateDot, { backgroundColor: colors.danger }]} /> : null}
             </View>
-            <Text
-              numberOfLines={1}
-              style={[styles.title, { color: active ? colors.text : colors.textMuted }]}>
+            <Text numberOfLines={1} style={[styles.title, { color: active ? colors.text : colors.textMuted }]}>
               {column.title}
             </Text>
-            <View style={[styles.underline, active ? { backgroundColor: stageColor } : styles.underlineIdle]} />
           </Pressable>
         );
       })}
@@ -70,30 +60,27 @@ const StageTabsComponent = ({ value, onChange, counts, late, arrived }: StageTab
 export const StageTabs = memo(StageTabsComponent);
 
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
-  },
+  bar: { flexDirection: 'row', borderRadius: radius.lg, borderWidth: 1, padding: 4, gap: 4 },
   tab: {
     flex: 1,
-    minHeight: 64,
+    minHeight: 60,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingTop: 8,
     paddingHorizontal: 2,
-    overflow: 'hidden',
+  },
+  active: {
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   arrived: { borderWidth: 2 },
   countRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  count: { minWidth: 30, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 2, alignItems: 'center' },
-  countText: { fontSize: 15, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  count: { minWidth: 26, borderRadius: radius.sm, paddingHorizontal: 7, paddingVertical: 2, alignItems: 'center' },
+  countText: { fontSize: 14, fontWeight: '900', fontVariant: ['tabular-nums'] },
   lateDot: { width: 8, height: 8, borderRadius: 4 },
-  title: { fontSize: 13, fontWeight: '800' },
-  underline: { alignSelf: 'stretch', height: 3, borderRadius: 2, marginHorizontal: 10, marginTop: 2 },
-  underlineIdle: { backgroundColor: 'transparent' },
+  title: { fontSize: 13, fontWeight: '700' },
 });

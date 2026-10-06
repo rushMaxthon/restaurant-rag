@@ -66,9 +66,10 @@ test('a signed-in tablet opens on the board and can push and pop', async () => {
 });
 
 describe('the bottom tabs', () => {
-  test('offer Home and Settings, opening on Home', async () => {
+  test('offer Home, Menu and Settings, opening on Home', async () => {
     tree = await renderApp(kitchenSession());
     expect(hasTestId(tree, 'tab-BoardScreen')).toBe(true);
+    expect(hasTestId(tree, 'tab-MenuScreen')).toBe(true);
     expect(hasTestId(tree, 'tab-SettingsScreen')).toBe(true);
     expect(currentRoute()?.name).toBe('BoardScreen');
   });

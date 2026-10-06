@@ -1,6 +1,6 @@
 import type { BoardFilter } from '@/data/boardFilters';
 import type { KitchenOrder } from '@/types/app';
-import { urgencyOf, waitingMinutes } from '@utils/board';
+import { customerName, urgencyOf, waitingMinutes } from '@utils/board';
 
 // The numbers above the board, counted from exactly the tickets on screen.
 // Nothing is fetched or estimated: a metric that disagrees with the column
@@ -14,6 +14,8 @@ export interface BoardMetrics {
   // start-of-cooking instant.
   medianWait: number | null;
   total: number;
+  // Live orders leaving with a rider — the ones with a hand-over to arrange.
+  deliveries: number;
 }
 
 const median = (values: number[]): number | null => {
@@ -34,6 +36,7 @@ export const boardMetrics = (
   overdue: orders.filter(order => urgencyOf(order, now) === 'late').length,
   medianWait: median(orders.map(order => waitingMinutes(order, now))),
   total: orders.length,
+  deliveries: orders.filter(order => order.fulfillment_type === 'DELIVERY').length,
 });
 
 // The badge a ticket wears. Derived from how long it has waited because the
@@ -52,16 +55,22 @@ export const priorityLabel = (order: KitchenOrder, now: Date = new Date()): stri
 
 // Whether a ticket survives the filter and search. The search matches the
 // order code as a person reads it aloud — with or without '#', any case —
-// because the receipt is what a customer is holding when they ring.
+// because the receipt is what a customer is holding when they ring; and the
+// customer's name, because a rider or a guest at the counter gives a name.
 export const matchesFilter = (
   order: KitchenOrder,
   filter: BoardFilter,
   search: string,
   now: Date = new Date(),
 ): boolean => {
-  const query = search.trim().replace(/^#/, '').toLowerCase();
-  if (query && !order.id.toLowerCase().startsWith(query)) {
-    return false;
+  const raw = search.trim().toLowerCase();
+  const code = raw.replace(/^#/, '');
+  if (raw) {
+    const byCode = order.id.toLowerCase().startsWith(code);
+    const byName = (customerName(order) ?? '').toLowerCase().includes(raw);
+    if (!byCode && !byName) {
+      return false;
+    }
   }
   switch (filter) {
     case 'DELIVERY':

@@ -71,6 +71,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 14,
   },
-  chipCompact: { paddingHorizontal: 12 },
+  chipCompact: { paddingHorizontal: 16 },
   label: { fontSize: 14, fontWeight: '700' },
 });

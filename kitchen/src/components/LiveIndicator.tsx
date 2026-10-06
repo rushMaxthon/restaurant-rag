@@ -28,7 +28,7 @@ export const LiveIndicator = ({ state }: { state: FreshnessState }) => {
     <View
       accessible
       accessibilityLabel={`Board status: ${FRESHNESS_LABEL[state]}`}
-      style={[styles.pill, { backgroundColor: background }]}>
+      style={[styles.pill, { backgroundColor: background, borderColor: color }]}>
       <View style={[styles.dot, { backgroundColor: color }]} />
       <Text style={[styles.text, { color }]}>{FRESHNESS_LABEL[state]}</Text>
     </View>
@@ -43,6 +43,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     height: 32,
+    borderWidth: 1,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
   text: { fontSize: 13, fontWeight: '800' },

@@ -86,6 +86,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.marketing.refresh_social_insights",
             "app.tasks.marketing.run_due_marketing_campaigns",
             "app.tasks.marketing.send_marketing_campaign",
+            "app.tasks.notifications.send_kitchen_new_order_notification",
             "app.tasks.notifications.send_order_status_notification",
             "app.tasks.payments.reap_unpaid_orders_task",
             "app.tasks.platform.heartbeat_task",

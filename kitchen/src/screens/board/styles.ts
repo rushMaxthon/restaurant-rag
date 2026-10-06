@@ -10,16 +10,19 @@ export const TWO_UP_MIN_WIDTH = 600;
 
 export const createStyles = ({ colors }: AppTheme) =>
   StyleSheet.create({
-    toolbar: {
+    // Tablet: search, filters and the three numbers on one row above the
+    // columns.
+    wideTools: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.md,
       paddingHorizontal: space.lg,
-      paddingBottom: space.md,
+      paddingTop: space.md,
+      paddingBottom: space.sm,
     },
     search: { width: 280 },
-    searchCompact: { flex: 1 },
-    chips: { flex: 1 },
+    chips: { flexShrink: 1 },
+    wideStats: { flex: 1, minWidth: 360 },
     columns: {
       flex: 1,
       flexDirection: 'row',
@@ -51,30 +54,9 @@ export const createStyles = ({ colors }: AppTheme) =>
       alignItems: 'center',
     },
     columnCountText: { fontSize: 15, fontWeight: '900', fontVariant: ['tabular-nums'] },
-    tabs: { paddingHorizontal: space.md, paddingTop: space.md },
-    phoneTools: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.sm,
-      paddingHorizontal: space.md,
-      paddingTop: space.md,
-    },
-    summary: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.sm,
-      paddingHorizontal: space.md,
-      paddingTop: space.md,
-    },
-    summaryPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-    },
-    summaryText: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    // Phone: stage tabs, search, filters and the numbers, stacked above the
+    // tickets.
+    phoneTools: { gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
     list: { flex: 1 },
+    downScroll: { flexGrow: 1 },
   });

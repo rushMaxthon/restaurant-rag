@@ -132,3 +132,42 @@ export interface BoardScope {
 
 // `disabled` means the server has realtime switched off.
 export type RealtimeStatus = 'connecting' | 'live' | 'offline' | 'disabled';
+
+// GET /kitchen/menu — a dish as the kitchen sees it: stock, never prices.
+export interface KitchenMenuSize {
+  id: string;
+  name: string;
+  // null: this size draws on the dish's count (or nobody counts it).
+  stock_quantity: number | null;
+  stock_daily_quantity: number | null;
+}
+
+export interface KitchenMenuItem {
+  id: string;
+  name: string;
+  category: string;
+  is_veg: boolean;
+  restaurant_location_id: string;
+  branch_name: string;
+  // The owner's switch. Read-only here: the kitchen cannot show a dish.
+  is_available: boolean;
+  out_of_stock: boolean;
+  // null is "not counted" (unlimited) — a different fact from 0 (sold out).
+  stock_quantity: number | null;
+  stock_daily_quantity: number | null;
+  is_on_sale: boolean;
+  sizes: KitchenMenuSize[];
+  updated_at: string;
+}
+
+// Only what is sent changes; null on a count means "stop counting".
+export interface DishStockChange {
+  out_of_stock?: boolean;
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
+}
+
+export interface SizeStockChange {
+  stock_quantity?: number | null;
+  stock_daily_quantity?: number | null;
+}

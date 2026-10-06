@@ -25,6 +25,9 @@ const AdvanceButtonComponent = ({ order, pending, onPress, size = 'md', testID }
   if (!next || !label) {
     return null;
   }
+  // "Accept" alone is ambiguous on a card full of words; the button says
+  // what it accepts. The verb itself stays `advanceLabel`'s.
+  const shown = label === 'Accept' ? 'Accept order' : label;
   const background = theme.status[next];
   const ink = inkOn(background);
   const finishing = next === 'DELIVERED';
@@ -35,7 +38,7 @@ const AdvanceButtonComponent = ({ order, pending, onPress, size = 'md', testID }
       onPress={onPress}
       disabled={pending}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={shown}
       accessibilityState={{ busy: pending, disabled: pending }}
       style={({ pressed }) => [
         styles.button,
@@ -49,8 +52,8 @@ const AdvanceButtonComponent = ({ order, pending, onPress, size = 'md', testID }
       ) : (
         <>
           {finishing ? <Icon name="checkmark-done" size={iconSize} color={ink} /> : null}
-          <Text style={[styles.label, size === 'lg' && styles.labelLarge, { color: ink }]}>{label}</Text>
-          {finishing ? null : <Icon name="arrow-forward" size={iconSize} color={ink} />}
+          <Text style={[styles.label, size === 'lg' && styles.labelLarge, { color: ink }]}>{shown}</Text>
+          {finishing ? null : <Icon name="chevron-forward" size={iconSize} color={ink} />}
         </>
       )}
     </Pressable>
@@ -61,9 +64,9 @@ export const AdvanceButton = memo(AdvanceButtonComponent);
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 54,
+    minHeight: 48,
     borderRadius: radius.md,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

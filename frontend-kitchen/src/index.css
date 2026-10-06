@@ -1624,3 +1624,372 @@ optgroup {
   background-color: var(--kds-card);
   color: var(--kds-text);
 }
+
+/* --- Menu & stock overlay --------------------------------------------------
+   Built on the completed-orders overlay's shell (.kds-history*). An inventory
+   LIST, not cards: one compact line per dish, rows divided by hairlines inside
+   one group per section, so a whole menu fits on screen. Colour only carries
+   meaning: red for out or sold out, amber for running low, faint for a dish
+   the owner hid. */
+.kds-menu {
+  width: min(100%, 760px);
+}
+
+.kds-menu__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 16px 0;
+}
+
+.kds-menu__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--kds-line);
+  color: var(--kds-dim);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.kds-menu__stat[data-tone='late'] {
+  color: var(--kds-late);
+  border-color: color-mix(in srgb, var(--kds-late) 45%, transparent);
+  background: color-mix(in srgb, var(--kds-late) 10%, transparent);
+}
+
+.kds-menu__stat[data-tone='warn'] {
+  color: var(--kds-warn);
+  border-color: color-mix(in srgb, var(--kds-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--kds-warn) 10%, transparent);
+}
+
+.kds-menu .kds-history__search {
+  margin: 8px 16px 2px;
+}
+
+.kds-menu__filters {
+  padding: 2px 16px 0;
+  flex-wrap: wrap;
+}
+
+.kds-menu .kds-history__list {
+  gap: 0;
+  padding: 4px 16px 16px;
+}
+
+.kds-menu .kds-history__list .kds-skeleton {
+  height: 40px;
+  margin-bottom: 4px;
+}
+
+.kds-menu__section {
+  display: flex;
+  flex-direction: column;
+}
+
+.kds-menu__section-title {
+  margin: 12px 0 4px;
+  padding: 0 2px;
+  color: var(--kds-faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The rows of one section read as one bordered group: hairlines between,
+   rounded only at the group's ends. */
+.kds-mrow {
+  background: var(--kds-card);
+  border: 1px solid var(--kds-line);
+  border-top-color: var(--kds-line-soft);
+}
+
+.kds-mrow:first-of-type {
+  border-top-color: var(--kds-line);
+  border-top-left-radius: var(--kds-radius-sm);
+  border-top-right-radius: var(--kds-radius-sm);
+}
+
+.kds-mrow:not(:last-of-type) {
+  border-bottom: none;
+}
+
+.kds-mrow:last-of-type {
+  border-bottom-left-radius: var(--kds-radius-sm);
+  border-bottom-right-radius: var(--kds-radius-sm);
+}
+
+.kds-mrow[data-state='hidden'] .kds-mrow__name {
+  color: var(--kds-faint);
+}
+
+.kds-mrow__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 10px;
+  min-height: 42px;
+}
+
+.kds-mrow__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.kds-mrow__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--kds-text);
+}
+
+.kds-veg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1.5px solid var(--kds-late);
+  background: radial-gradient(circle, var(--kds-late) 0 2px, transparent 2.5px);
+}
+
+.kds-veg[data-veg='true'] {
+  border-color: var(--kds-ok);
+  background: radial-gradient(circle, var(--kds-ok) 0 2px, transparent 2.5px);
+}
+
+.kds-mrow__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.kds-mrow__pill {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--kds-ok);
+}
+
+.kds-mrow__pill[data-state='out'],
+.kds-mrow__pill[data-state='sold_out'] {
+  color: var(--kds-late);
+}
+
+.kds-mrow__pill[data-state='low'] {
+  color: var(--kds-warn);
+}
+
+.kds-mrow__pill[data-state='hidden'] {
+  color: var(--kds-faint);
+}
+
+.kds-mrow__refill,
+.kds-mrow__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kds-faint);
+}
+
+.kds-mrow__size[data-sold-out='true'] {
+  color: var(--kds-late);
+}
+
+/* The long "hidden by owner" sentence lives in the editor; on the line the
+   status alone says it. */
+.kds-mrow__top .kds-mrow__note {
+  display: none;
+}
+
+.kds-mrow__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--kds-faint);
+}
+
+.kds-mrow__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.kds-mrow__actions .kds-iconbtn {
+  width: 30px;
+  height: 30px;
+}
+
+.kds-stepper {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid var(--kds-line);
+  border-radius: var(--kds-radius-sm);
+}
+
+.kds-stepper button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--kds-text);
+}
+
+.kds-stepper button:disabled {
+  color: var(--kds-faint);
+  cursor: not-allowed;
+}
+
+.kds-stepper__value {
+  min-width: 24px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.kds-mrow__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 74px;
+  padding: 0 8px;
+  border-radius: var(--kds-radius-sm);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--kds-late);
+  border: 1px solid color-mix(in srgb, var(--kds-late) 45%, transparent);
+  background: color-mix(in srgb, var(--kds-late) 10%, transparent);
+}
+
+.kds-mrow__toggle[data-kind='restore'] {
+  color: #04140a;
+  border-color: var(--kds-ok);
+  background: var(--kds-ok);
+}
+
+.kds-mrow__toggle:disabled {
+  opacity: 0.6;
+}
+
+.kds-mrow .kds-ticket__error {
+  margin: 0;
+  padding: 0 10px 6px;
+}
+
+.kds-mrow__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--kds-line);
+  background: var(--kds-panel);
+}
+
+.kds-mrow__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kds-mrow__sizes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kds-mrow__sizes > small,
+.kds-field small {
+  color: var(--kds-faint);
+  font-size: 11px;
+}
+
+.kds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kds-dim);
+}
+
+.kds-field input:not([type='checkbox']) {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--kds-radius-sm);
+  border: 1px solid var(--kds-line);
+  background: var(--kds-bg);
+  color: var(--kds-text);
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.kds-field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.kds-field--check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--kds-late);
+}
+
+.kds-mrow__editactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 680px) {
+  /* Narrow: the name and its details stack, still one row. */
+  .kds-mrow__main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+
+  .kds-mrow__name {
+    max-width: 100%;
+  }
+
+  .kds-mrow__actions .kds-iconbtn {
+    display: none;
+  }
+
+  .kds-mrow__fields {
+    grid-template-columns: 1fr;
+  }
+}

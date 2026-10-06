@@ -19,7 +19,11 @@ const OrderItemsListComponent = ({ items, large = false }: OrderItemsListProps) 
   return (
     <View style={styles.list}>
       {items.map(line => {
-        const mods = lineModifiers(line);
+        // The size reads with the name ("Butter Pav · Pack of 6"); every
+        // other choice keeps its own row beneath.
+        const all = lineModifiers(line);
+        const size = all.find(row => row.label === 'Size' && !row.half)?.text ?? null;
+        const mods = all.filter(row => !(row.label === 'Size' && !row.half));
         const many = line.quantity > 1;
         return (
           <View key={line.id} style={styles.line}>
@@ -41,6 +45,7 @@ const OrderItemsListComponent = ({ items, large = false }: OrderItemsListProps) 
             <View style={styles.body}>
               <Text style={[styles.name, large && styles.nameLarge, { color: colors.text }]}>
                 {line.item_name_snapshot}
+                {size ? <Text style={[styles.size, { color: colors.textMuted }]}>{`  ${size}`}</Text> : null}
               </Text>
               {mods.map((row, index) => (
                 <View key={index} style={styles.modRow}>
@@ -89,6 +94,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 4, paddingTop: 4 },
   name: { fontSize: 16, fontWeight: '800', lineHeight: 21 },
   nameLarge: { fontSize: 19, lineHeight: 25 },
+  size: { fontSize: 13, fontWeight: '600' },
   modRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   modLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
   half: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },

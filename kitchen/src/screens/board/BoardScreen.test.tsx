@@ -227,3 +227,38 @@ describe('on a landscape tablet', () => {
     expect(allText(tree)).toMatch(/Median wait/);
   });
 });
+
+test('the search finds a ticket by the guest’s name as well as its number', async () => {
+  board.PLACED = [
+    order({ id: 'aaaa1111-name', contact_name: 'Priya Shah' }),
+    order({ id: 'bbbb2222-name', contact_name: 'Marco' }),
+  ];
+  tree = await renderApp(kitchenSession());
+  const { typeInto } = jest.requireActual('@/test/renderApp');
+  await typeInto(tree, 'board-search', 'shah');
+  await settle();
+  expect(hasTestId(tree, 'ticket-aaaa1111-name')).toBe(true);
+  expect(hasTestId(tree, 'ticket-bbbb2222-name')).toBe(false);
+
+  await typeInto(tree, 'board-search', '#BBBB');
+  await settle();
+  expect(hasTestId(tree, 'ticket-bbbb2222-name')).toBe(true);
+  expect(hasTestId(tree, 'ticket-aaaa1111-name')).toBe(false);
+});
+
+test('a late ticket says so in words, a due one is flagged, and the phone heads the list', async () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+  board.PLACED = [
+    order({ id: 'late0000-0001', placed_at: minutesAgo(9) }),
+    order({ id: 'dueo0000-0002', placed_at: minutesAgo(3) }),
+  ];
+  tree = await renderApp(kitchenSession());
+  const text = allText(tree);
+  expect(text).toMatch(/New orders/);
+  expect(text).toMatch(/2 tickets on this board/);
+  expect(text).toMatch(/Overdue/);
+  expect(text).toMatch(/Needs attention/);
+  expect((text.match(/Priority/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  expect(text).toMatch(/Accept order/);
+  expect(text).toMatch(/Placed at/);
+});

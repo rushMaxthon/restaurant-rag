@@ -1,8 +1,7 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { radius, space, useTheme } from '@/theme';
-import { Icon } from '@components/Icon';
-import { IconButton } from '@components/IconButton';
+import { Icon, type IconName } from '@components/Icon';
 import { LiveIndicator, type FreshnessState } from '@components/LiveIndicator';
 import { Pill } from '@components/Pill';
 
@@ -17,12 +16,18 @@ interface BoardHeaderProps {
   onToggleSound: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  // Which half to draw. A phone keeps the top bar fixed and lets the title
+  // scroll away with the tickets; everywhere else both are drawn together.
+  part?: 'all' | 'bar' | 'title';
 }
 
-// Whose kitchen this is, whether it is current, and the ways off the board.
-// One deployment serves every tenant, so the header always names the
-// restaurant and branch: a board that cannot say whose queue it shows is a
-// board somebody eventually works the wrong queue from.
+// Two parts. A top bar that says whose kitchen this is — the restaurant and
+// branch, tappable through to Settings where the branch is chosen — with the
+// board's tools. Then the page title with whether the board is current.
+//
+// One deployment serves every tenant, so the restaurant and branch are always
+// named: a board that cannot say whose queue it shows is a board somebody
+// eventually works the wrong queue from.
 const BoardHeaderComponent = ({
   wide,
   restaurantName,
@@ -34,72 +39,74 @@ const BoardHeaderComponent = ({
   onToggleSound,
   onOpenHistory,
   onOpenSettings,
+  part = 'all',
 }: BoardHeaderProps) => {
   const { colors } = useTheme();
-  const time = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  const date = now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const time = now.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 
-  return (
-    <View style={[styles.bar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+  const bar = (
+    <View
+      style={[
+        styles.bar,
+        {
+          backgroundColor: colors.background,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <Pressable
+        testID="board-brand"
         onPress={onOpenSettings}
         accessibilityRole="button"
-        accessibilityLabel={`${restaurantName ?? 'Kitchen'}${branchName ? `, ${branchName}` : ''}. Open settings.`}
-        style={({ pressed }) => [styles.where, pressed && styles.pressed]}>
+        accessibilityLabel={`${restaurantName ?? 'Kitchen'}${
+          branchName ? `, ${branchName}` : ''
+        }. Open settings.`}
+        style={({ pressed }) => [styles.brand, pressed && styles.pressed]}
+      >
         <View style={[styles.mark, { backgroundColor: colors.accent }]}>
-          <Icon name="restaurant" size={22} color={colors.onAccent} />
+          <Icon name="storefront-outline" size={22} color={colors.onAccent} />
         </View>
-        <View style={styles.titles}>
-          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>
-            {restaurantName ?? 'Kitchen'}
-          </Text>
-          <View style={styles.subRow}>
-            {branchName ? (
-              <>
-                <Icon name="location-outline" size={14} color={colors.textMuted} />
-                <Text numberOfLines={1} style={[styles.branch, { color: colors.textMuted }]}>
-                  {branchName}
-                </Text>
-              </>
-            ) : null}
-            {!wide ? <LiveDot state={freshness} /> : null}
+        <View style={styles.brandText}>
+          <View style={styles.brandRow}>
+            <Text
+              numberOfLines={1}
+              style={[styles.restaurant, { color: colors.text }]}
+            >
+              {restaurantName ?? 'Kitchen'}
+            </Text>
+            <Icon name="chevron-forward" size={16} color={colors.text} />
           </View>
+          {branchName ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.branch, { color: colors.textMuted }]}
+            >
+              {branchName}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
-
-      <View style={styles.right}>
-        {wide ? (
-          <>
-            <LiveIndicator state={freshness} />
-            {isOpen === undefined ? null : (
-              <Pill
-                label={isOpen ? 'OPEN' : 'CLOSED'}
-                color={isOpen ? colors.accent : colors.danger}
-                background={isOpen ? colors.accentSoft : colors.dangerSoft}
-                size="md"
-              />
-            )}
-            <View style={[styles.clock, { borderColor: colors.border }]}>
-              <Text style={[styles.time, { color: colors.text }]}>{time}</Text>
-              <Text style={[styles.date, { color: colors.textMuted }]}>{date}</Text>
-            </View>
-          </>
-        ) : null}
-        <IconButton
+      <View style={styles.tools}>
+        <ToolButton
           testID="open-history"
           icon="receipt-outline"
           label={wide ? 'Completed' : undefined}
           accessibilityLabel="Completed orders"
           onPress={onOpenHistory}
         />
-        <IconButton
+        <ToolButton
           testID="toggle-sound"
           icon={soundOn ? 'volume-high' : 'volume-mute'}
           active={soundOn}
-          accessibilityLabel={soundOn ? 'Mute new order alerts' : 'Unmute new order alerts'}
+          accessibilityLabel={
+            soundOn ? 'Mute new order alerts' : 'Unmute new order alerts'
+          }
           onPress={onToggleSound}
         />
-        <IconButton
+        <ToolButton
           testID="open-settings"
           icon="settings-outline"
           accessibilityLabel="Settings"
@@ -108,20 +115,93 @@ const BoardHeaderComponent = ({
       </View>
     </View>
   );
+
+  const title = (
+    <View style={styles.titleBlock}>
+      <View style={styles.titleText}>
+        <Text style={[styles.overline, { color: colors.accent }]}>
+          Live order board
+        </Text>
+        <Text
+          accessibilityRole="header"
+          style={[styles.title, { color: colors.text }]}
+        >
+          Kitchen orders
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+          Keep every order moving, from ticket to handoff.
+          {wide ? ` · ${time}` : ''}
+        </Text>
+      </View>
+      <View style={styles.badges}>
+        <LiveIndicator state={freshness} />
+        {wide && isOpen !== undefined ? (
+          <Pill
+            label={isOpen ? 'OPEN' : 'CLOSED'}
+            color={isOpen ? colors.accent : colors.danger}
+            background={isOpen ? colors.accentSoft : colors.dangerSoft}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+
+  if (part === 'bar') {
+    return bar;
+  }
+  if (part === 'title') {
+    return title;
+  }
+  return (
+    <View>
+      {bar}
+      {title}
+    </View>
+  );
 };
 
 export const BoardHeader = memo(BoardHeaderComponent);
 
-// The phone header's compact freshness signal: a dot, plus a word only when
-// something is wrong — "Live" every few seconds is noise on a small screen.
-const LiveDot = ({ state }: { state: FreshnessState }) => {
+const ToolButton = ({
+  icon,
+  label,
+  active = false,
+  accessibilityLabel,
+  onPress,
+  testID,
+}: {
+  icon: IconName;
+  label?: string;
+  active?: boolean;
+  accessibilityLabel: string;
+  onPress: () => void;
+  testID: string;
+}) => {
   const { colors } = useTheme();
-  const color = state === 'live' ? colors.accent : state === 'stale' ? colors.danger : colors.warning;
+  const ink = active ? colors.accent : colors.text;
   return (
-    <View style={styles.dotRow} accessible accessibilityLabel={`Board status: ${state}`}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-      {state === 'stale' ? <Text style={[styles.dotText, { color }]}>Not updating</Text> : null}
-    </View>
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.tool,
+        label ? styles.toolLabelled : null,
+        {
+          backgroundColor: active ? colors.accentSoft : colors.surface,
+          borderColor: active ? colors.accent : colors.border,
+        },
+        pressed && styles.pressed,
+      ]}
+    >
+      <Icon name={icon} size={20} color={ink} />
+      {label ? (
+        <Text style={[styles.toolLabel, { color: ink }]}>{label}</Text>
+      ) : null}
+    </Pressable>
   );
 };
 
@@ -134,23 +214,58 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  where: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md, minWidth: 0 },
-  pressed: { opacity: 0.7 },
-  mark: { width: 46, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  titles: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.2 },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  branch: { fontSize: 14, fontWeight: '600', flexShrink: 1, marginRight: 6 },
-  right: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  clock: {
-    alignItems: 'flex-end',
-    paddingHorizontal: space.md,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderRightWidth: StyleSheet.hairlineWidth,
+  brand: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minWidth: 0,
   },
-  time: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  date: { fontSize: 12, fontWeight: '600' },
-  dotRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  dotText: { fontSize: 12, fontWeight: '800' },
+  pressed: { opacity: 0.7 },
+  mark: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandText: { flex: 1, minWidth: 0 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  restaurant: { fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  branch: { fontSize: 13, fontWeight: '500', marginTop: 1 },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tool: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  toolLabelled: { paddingHorizontal: 12 },
+  toolLabel: { fontSize: 14, fontWeight: '700' },
+  titleBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+  },
+  titleText: { flex: 1, minWidth: 0, gap: 2 },
+  overline: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  title: { fontSize: 26, fontWeight: '800', letterSpacing: -0.3 },
+  subtitle: { fontSize: 14, fontWeight: '500', marginTop: 2 },
+  badges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 2,
+  },
 });

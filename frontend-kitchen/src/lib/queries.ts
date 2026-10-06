@@ -18,7 +18,15 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 
-import { api, type KitchenOrder, type OrderStatus } from './api'
+import {
+  api,
+  menuApi,
+  type DishStockChange,
+  type KitchenMenuItem,
+  type KitchenOrder,
+  type OrderStatus,
+  type SizeStockChange,
+} from './api'
 import { BOARD_COLUMNS, hiddenCount, inServiceOrder, liveWindowStart } from './board'
 import { HISTORY_PAGE_SIZE, localDayKey, startOfToday } from './history'
 import { POLL_INTERVAL_MS } from './realtime'
@@ -152,5 +160,52 @@ export function useOrderHistory(
     placeholderData: keepPreviousData,
     staleTime: 0,
     retry: 1,
+  })
+}
+
+export function menuQueryKey(scope: BoardScope) {
+  return ['menu', scope.restaurantId ?? 'any', scope.locationId ?? 'any'] as const
+}
+
+/**
+ * The branch's menu as the kitchen manages it: stock only.
+ *
+ * Polled slower than the board — stock moves with orders, but a cook on this
+ * screen is usually the one changing it — and only while the overlay is open.
+ */
+export function useKitchenMenu(scope: BoardScope, enabled: boolean) {
+  return useQuery({
+    queryKey: menuQueryKey(scope),
+    queryFn: () => menuApi.list(scope),
+    enabled,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    retry: 1,
+  })
+}
+
+type StockChange =
+  | { kind: 'dish'; item: KitchenMenuItem; change: DishStockChange }
+  | { kind: 'size'; item: KitchenMenuItem; sizeId: string; change: SizeStockChange }
+
+/**
+ * Change one dish's (or one size's) stock. Not optimistic, like an advance:
+ * the row shows its own pending state and then the SERVER's answer, written
+ * straight into the cached list — "back in stock" on a dish counted down to
+ * zero is still sold out, and the row must say what is true.
+ */
+export function useStockChange(scope: BoardScope) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: StockChange) =>
+      input.kind === 'dish'
+        ? menuApi.updateDish(input.item.id, input.change, scope.restaurantId)
+        : menuApi.updateSize(input.item.id, input.sizeId, input.change, scope.restaurantId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<KitchenMenuItem[]>(menuQueryKey(scope), (current) =>
+        current?.map((item) => (item.id === updated.id ? updated : item)),
+      )
+    },
   })
 }

@@ -5,6 +5,17 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 // Every glyph this app draws. Narrowed from Ionicons' few thousand so a typo
 // is a type error instead of a "?" box on a kitchen wall.
 export type IconName =
+  | 'chevron-up'
+  | 'close'
+  | 'checkmark-circle-outline'
+  | 'ban-outline'
+  | 'infinite-outline'
+  | 'leaf'
+  | 'eye-off-outline'
+  | 'create-outline'
+  | 'remove'
+  | 'add'
+  | 'fast-food'
   | 'fast-food-outline'
   | 'chevron-down'
   | 'wifi'

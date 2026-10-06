@@ -1,4 +1,4 @@
-import { ChefHat, History as HistoryIcon, LogOut, Search, Volume2, VolumeX } from 'lucide-react'
+import { ChefHat, History as HistoryIcon, LogOut, Search, UtensilsCrossed, Volume2, VolumeX } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -9,6 +9,7 @@ import { boardMetrics, type BoardFilter } from './lib/metrics'
 import { isAudioReady, setEnabled, subscribeAudioReady, unlockOnAnyGesture } from './lib/sound'
 import { Board, type BoardColumn } from './components/Board'
 import { History } from './components/History'
+import { Menu } from './components/Menu'
 import { SignIn } from './components/SignIn'
 import { useBoard, type BoardScope } from './lib/queries'
 import { pollIntervalFor, type RealtimeStatus } from './lib/realtime'
@@ -60,6 +61,9 @@ export function App() {
 
   // Over the board, never instead of it — see `History` for why.
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Menu & stock, an overlay like the history for the same reason.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
   const closeHistory = useCallback(() => setHistoryOpen(false), [])
 
   const [branchId, setBranchId] = useState<string | null>(() => {
@@ -209,6 +213,7 @@ export function App() {
         // here: this app has nothing to set it with.
         isOpen={currentBranch?.is_open}
         onOpenHistory={() => setHistoryOpen(true)}
+        onOpenMenu={() => setMenuOpen(true)}
         onSignOut={signOut}
         onToggleSound={() => setSoundOn((on) => !on)}
         restaurantName={restaurantQuery.data?.name ?? null}
@@ -295,6 +300,17 @@ export function App() {
         search={search}
       />
 
+      {menuOpen ? (
+        <Menu
+          // A branch switch starts the menu over, like the history.
+          key={`menu:${scope.restaurantId ?? 'any'}:${scope.locationId ?? 'all'}`}
+          branchName={branchName}
+          onClose={closeMenu}
+          scope={scope}
+          showBranch={scope.locationId === null && branches.length > 1}
+        />
+      ) : null}
+
       {historyOpen ? (
         <History
           // A branch switch starts the history over — page 3 of one branch is
@@ -340,6 +356,7 @@ function Header({
   soundBlocked,
   onToggleSound,
   onOpenHistory,
+  onOpenMenu,
   onSignOut,
 }: {
   restaurantName: string | null
@@ -354,6 +371,8 @@ function Header({
   onToggleSound: () => void
   /** Absent where there is no board to have a history of (an admin with no restaurant). */
   onOpenHistory?: () => void
+  /** Menu & stock — absent with no restaurant, like the history. */
+  onOpenMenu?: () => void
   onSignOut: () => void
 }) {
   return (
@@ -409,6 +428,13 @@ function Header({
           >
             <HistoryIcon size={14} />
             <span className="kds-historybtn__label">Completed</span>
+          </button>
+        ) : null}
+
+        {onOpenMenu ? (
+          <button aria-label="Menu and stock" className="kds-historybtn" onClick={onOpenMenu} type="button">
+            <UtensilsCrossed size={14} />
+            <span className="kds-historybtn__label">Menu</span>
           </button>
         ) : null}
 

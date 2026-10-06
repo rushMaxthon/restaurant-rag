@@ -449,3 +449,76 @@ export const api = {
       locations: info.locations ?? [],
     })),
 }
+
+/**
+ * GET /kitchen/menu — a dish as the kitchen sees it: stock, never prices.
+ *
+ * `is_available` is the owner's switch and read-only here; the kitchen
+ * manages `out_of_stock` and the counts. A count of null is "not counted"
+ * (unlimited) — a different fact from 0, which is sold out.
+ */
+export type KitchenMenuSize = {
+  id: string
+  name: string
+  /** null: this size draws on the dish's count (or nobody counts it). */
+  stock_quantity: number | null
+  stock_daily_quantity: number | null
+}
+
+export type KitchenMenuItem = {
+  id: string
+  name: string
+  category: string
+  is_veg: boolean
+  restaurant_location_id: string
+  branch_name: string
+  is_available: boolean
+  out_of_stock: boolean
+  stock_quantity: number | null
+  stock_daily_quantity: number | null
+  is_on_sale: boolean
+  sizes: KitchenMenuSize[]
+  updated_at: string
+}
+
+/** Only what is sent changes; null on a count stops counting. */
+export type DishStockChange = {
+  out_of_stock?: boolean
+  stock_quantity?: number | null
+  stock_daily_quantity?: number | null
+}
+
+export type SizeStockChange = {
+  stock_quantity?: number | null
+  stock_daily_quantity?: number | null
+}
+
+export const menuApi = {
+  /** Scoped on the server by the board's own rule; a pinned cook gets one branch. */
+  list: (scope: { restaurantId?: string | null; locationId?: string | null }) =>
+    request<KitchenMenuItem[]>('/kitchen/menu', {
+      query: {
+        restaurant_id: scope.restaurantId ?? undefined,
+        location_id: scope.locationId ?? undefined,
+      },
+    }),
+
+  updateDish: (menuItemId: string, change: DishStockChange, restaurantId?: string | null) =>
+    request<KitchenMenuItem>(`/kitchen/menu/${menuItemId}/stock`, {
+      method: 'PATCH',
+      body: change,
+      query: { restaurant_id: restaurantId ?? undefined },
+    }),
+
+  updateSize: (
+    menuItemId: string,
+    sizeId: string,
+    change: SizeStockChange,
+    restaurantId?: string | null,
+  ) =>
+    request<KitchenMenuItem>(`/kitchen/menu/${menuItemId}/sizes/${sizeId}/stock`, {
+      method: 'PATCH',
+      body: change,
+      query: { restaurant_id: restaurantId ?? undefined },
+    }),
+}

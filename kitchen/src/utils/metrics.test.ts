@@ -19,7 +19,14 @@ describe('boardMetrics', () => {
 
   it('counts only late tickets as overdue, and has no median when empty', () => {
     expect(boardMetrics([order({ placed_at: ago(6) }), order({ placed_at: ago(1) })], now).overdue).toBe(1);
-    expect(boardMetrics([], now)).toEqual({ overdue: 0, medianWait: null, total: 0 });
+    expect(boardMetrics([], now)).toEqual({ overdue: 0, medianWait: null, total: 0, deliveries: 0 });
+  });
+});
+
+describe('deliveries', () => {
+  it('counts the live orders leaving with a rider', () => {
+    const orders = [order(), order({ fulfillment_type: 'PICKUP' }), order()];
+    expect(boardMetrics(orders, now).deliveries).toBe(2);
   });
 });
 
@@ -38,6 +45,13 @@ describe('matchesFilter', () => {
     expect(matchesFilter(pickup, 'ALL', '#ABCD', now)).toBe(true);
     expect(matchesFilter(pickup, 'ALL', 'abcd12', now)).toBe(true);
     expect(matchesFilter(pickup, 'ALL', 'bcd', now)).toBe(false);
+  });
+
+  it('finds a guest by name, any case, anywhere in it', () => {
+    const named = { ...pickup, contact_name: 'Priya Shah' };
+    expect(matchesFilter(named, 'ALL', 'shah', now)).toBe(true);
+    expect(matchesFilter(named, 'ALL', 'PRIYA', now)).toBe(true);
+    expect(matchesFilter(named, 'ALL', 'marco', now)).toBe(false);
   });
 
   it('filters by fulfillment and by priority', () => {

@@ -7,9 +7,10 @@ import {
 } from '@react-navigation/native';
 import type { KitchenOrder } from '@/types/app';
 
-// The two tabs a signed-in tablet lives in.
+// The tabs a signed-in tablet lives in.
 export type MainTabParamList = {
   BoardScreen: undefined;
+  MenuScreen: undefined;
   SettingsScreen: undefined;
 };
 

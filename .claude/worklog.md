@@ -18,6 +18,35 @@ Running log of what each session did. Newest entry at the top.
 
 ```
 
+## 2026-10-06 — Menu stock from the kitchen (backend, native app, web board)
+
+**Goal:** kitchen staff manage menu inventory per branch — out of stock,
+stock count and the daily refill — in both kitchen apps; menu visibility,
+pricing and dish creation/deletion stay owner/admin-only.
+
+**Changed:**
+- Backend: `api/kitchen_menu.py`, `services/kitchen_menu.py`,
+  `schemas/kitchen_menu.py` — `GET /kitchen/menu`, `PATCH /kitchen/menu/{id}/stock`,
+  `PATCH /kitchen/menu/{id}/sizes/{size_id}/stock`; board roles, board scope,
+  404 out of scope, no prices in the response, `extra="forbid"` on writes.
+  `tests/test_kitchen_menu.py` (18).
+- Kitchen app: Menu tab (`screens/menu`, `components/menu/MenuStockRow`,
+  `StockEditorSheet`, `hooks/useKitchenMenu`, `services/menu`,
+  `utils/menuStock` + tests). 21 new tests.
+- Web board: `components/Menu.tsx` overlay + header "Menu" button,
+  `lib/menu.ts` (+ 9 tests), `menuApi` in `lib/api.ts`, `useKitchenMenu` /
+  `useStockChange` in `lib/queries.ts`, CSS.
+
+**Verified:** backend test_kitchen_menu 18 OK + stock/menu/GST/kitchen-scope/
+push suites OK; kitchen tsc/eslint/jest 22 suites 161; web board lint/build/
+93 tests. Live: `/api/kitchen/menu` and the PATCH answer 401 without a token.
+NOT verified signed in against real data, nor on a device or in a browser.
+
+**Open:** stock changes are only logged, not stored in a history table. The
+web board has no DOM test environment (no jsdom), so its overlay is covered
+only through `lib/menu.ts`. The API on :8000 (pid 2240, user's) was replaced
+by a background one (pid 14632) to serve the new routes.
+
 ## YYYY-MM-DD — short title
 
 **Goal:** what was asked.
@@ -5392,5 +5421,8 @@ settings fields; no import cycle between `kitchen_push`, `print.queue` and
 
 **Verified:** `compileall`; `test_order_events`, `test_kitchen_push`,
 `test_print_queue`, `test_kitchen_staff_scope`, `test_delivery_cancel`,
-`test_realtime` 147/147; full backend suite (see below). Not committed —
-the merge is staged and left for the owner to commit.
+`test_realtime` 147/147; full backend suite 3160 with one failure, a merge
+gap: redesign's `test_dependency_imports` names every Celery task a worker
+loads and did not know this branch's `send_kitchen_new_order_notification`.
+Added it; the file is green again. The merge itself was committed by the
+owner as `8116a96`; the test fix is uncommitted in the working tree.

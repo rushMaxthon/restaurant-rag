@@ -480,6 +480,19 @@ pinned cook. The worker skips an order no longer PLACED. Android channel
 as a notification campaign. `DELETE /notifications/device-tokens/{installation_id}`
 deactivates the caller's own device on sign-out (mobile does not call it yet).
 
+**Kitchen menu stock (`/kitchen/menu`, `services/kitchen_menu.py`).** The
+kitchen manages STOCK, the owner manages the MENU. Board roles may list a
+branch's dishes (including ones the owner hid, flagged) and change
+`out_of_stock`, `stock_quantity` and `stock_daily_quantity` on a dish or a
+size — scoped by `resolve_order_board_scope`, out-of-scope is 404. Visibility
+(`is_available`), prices and creating/deleting dishes stay on `/menu-items`,
+ADMIN/OWNER only; the kitchen request schemas cannot even name those fields
+(`extra="forbid"` → 422). An empty count is "not counted" and is NOT zero;
+the rule is in three places that must agree: `kitchen/src/utils/menuStock.ts`,
+`frontend-kitchen/src/lib/menu.ts` and `frontend-admin/src/services/
+menuStock.ts`. Stock changes are logged (who, what) but not yet stored in a
+history table. Native app: the Menu tab; web board: the Menu overlay.
+
 ---
 
 ## Realtime (Socket.IO)

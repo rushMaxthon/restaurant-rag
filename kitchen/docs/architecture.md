@@ -137,6 +137,27 @@ with the kitchen's own behaviour. `services/pushNotifications.ts` holds it all;
 Backend: `services/kitchen_push.py`, behind `enable_kitchen_push` (default
 off), sent by a Celery task on the `notifications` queue.
 
+## Where the native board differs from the web board
+
+Two board rules exist only here, added with the 2026-10-06 redesign: the
+search also matches the guest's name (`matchesFilter` in `utils/metrics.ts`),
+and the summary counts live delivery orders (`BoardMetrics.deliveries`). The
+web board (`frontend-kitchen/src/lib/metrics.ts`) still searches by order
+number only. Port both, or neither, if the two are meant to agree again.
+
+## Menu & stock (the Menu tab)
+
+`screens/menu/MenuScreen.tsx`, `components/menu/` (row, editor sheet),
+`hooks/useKitchenMenu.ts`, `services/menu.ts`, rules in `utils/menuStock.ts`.
+Reads `GET /kitchen/menu` for the board's scope; changes go to
+`PATCH /kitchen/menu/{id}/stock` and `/sizes/{size_id}/stock`. The kitchen
+changes stock only — out of stock, the count, the morning refill, per size —
+never visibility or price. Not optimistic: a row shows its pending state and
+then the server's answer. An empty count box means "not counted", never zero;
+only changed boxes are sent, so orders taken while the editor was open are
+not undone. "Back in stock" on a dish counted down to zero opens the editor
+for a count instead.
+
 ## Native setup that is easy to break
 
 - **The chime** is `new_order.wav`, generated (two tones, 0.4s) into

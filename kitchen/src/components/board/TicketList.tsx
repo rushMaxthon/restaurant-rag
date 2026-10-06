@@ -1,5 +1,12 @@
 import React, { useCallback } from 'react';
-import { FlatList, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { radius, space, useTheme } from '@/theme';
 import type { BoardColumn } from '@/data/boardColumns';
 import type { KitchenOrder } from '@/types/app';
@@ -21,6 +28,13 @@ interface TicketListProps {
   refreshing: boolean;
   // Two tickets side by side — a tablet in portrait.
   numColumns?: number;
+  // "New orders · 2 tickets on this board" above the list — for the phone,
+  // where the stage tabs are the only other sign of which stage this is.
+  heading?: boolean;
+  // Everything above the tickets on a phone (top bar, title, tabs, search,
+  // filters, numbers), so the whole screen scrolls as one rather than only
+  // the tickets under a fixed block.
+  header?: React.ReactNode;
   branchNameOf: (order: KitchenOrder) => string | null;
   onRefresh: () => void;
   onAdvance: (order: KitchenOrder) => void;
@@ -43,12 +57,16 @@ export const TicketList = ({
   errors,
   refreshing,
   numColumns = 1,
+  heading = false,
+  header,
   branchNameOf,
   onRefresh,
   onAdvance,
   onOpen,
 }: TicketListProps) => {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
+  const stageColor = theme.status[column.status];
 
   const renderItem = useCallback(
     ({ item }: { item: KitchenOrder }) => (
@@ -127,22 +145,73 @@ export const TicketList = ({
       windowSize={7}
       // Detaching off-screen rows is a clear win on Android and buggy on iOS.
       removeClippedSubviews={Platform.OS === 'android'}
+      ListHeaderComponent={
+        <>
+          {header ? <View style={styles.screenHeader}>{header}</View> : null}
+          {heading ? (
+            <View style={styles.heading}>
+              <View style={styles.headingText}>
+                <Text
+                  accessibilityRole="header"
+                  style={[styles.headingTitle, { color: colors.text }]}
+                >
+                  {column.title} orders
+                </Text>
+                <Text
+                  style={[styles.headingCount, { color: colors.textMuted }]}
+                >
+                  {visible.length} {visible.length === 1 ? 'ticket' : 'tickets'}{' '}
+                  on this board
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.stagePill,
+                  { backgroundColor: colors.surface, borderColor: stageColor },
+                ]}
+              >
+                <View
+                  style={[styles.stageDot, { backgroundColor: stageColor }]}
+                />
+                <Text style={[styles.stagePillText, { color: colors.text }]}>
+                  {column.title}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+        </>
+      }
       ListEmptyComponent={empty}
+      // The search box scrolls with the list on a phone: a tap on a chip or
+      // a ticket while typing should land, not just close the keyboard.
+      keyboardShouldPersistTaps="handled"
       ListFooterComponent={
         state.hidden > 0 ? (
           <View
             accessibilityRole="alert"
-            style={[styles.overflow, { backgroundColor: colors.warningSoft, borderLeftColor: colors.warning }]}>
+            style={[
+              styles.overflow,
+              {
+                backgroundColor: colors.warningSoft,
+                borderLeftColor: colors.warning,
+              },
+            ]}
+          >
             <Icon name="alert-circle" size={18} color={colors.warning} />
             <Text style={[styles.overflowText, { color: colors.text }]}>
-              {state.hidden} more {state.hidden === 1 ? 'ticket is' : 'tickets are'} waiting and not
+              {state.hidden} more{' '}
+              {state.hidden === 1 ? 'ticket is' : 'tickets are'} waiting and not
               shown here. Work through these first, or ask your manager.
             </Text>
           </View>
         ) : null
       }
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textMuted} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.textMuted}
+        />
       }
     />
   );
@@ -151,6 +220,33 @@ export const TicketList = ({
 const Separator = () => <View style={styles.separator} />;
 
 const styles = StyleSheet.create({
+  // The screen's own header runs edge to edge; the list's padding is for
+  // the tickets.
+  screenHeader: {
+    marginHorizontal: -space.md,
+    marginTop: -space.md,
+    marginBottom: space.md,
+  },
+  heading: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: space.md,
+    paddingBottom: space.md,
+  },
+  headingText: { flex: 1, gap: 2 },
+  headingTitle: { fontSize: 20, fontWeight: '800' },
+  headingCount: { fontSize: 13, fontWeight: '500' },
+  stagePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  stageDot: { width: 8, height: 8, borderRadius: 4 },
+  stagePillText: { fontSize: 12, fontWeight: '800' },
   content: { padding: space.md, paddingBottom: space.xxxl, flexGrow: 1 },
   columnWrapper: { gap: space.md },
   cell: { flex: 1, marginBottom: space.md },
