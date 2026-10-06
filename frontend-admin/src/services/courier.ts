@@ -50,7 +50,9 @@ export function nextEta(delivery: Pick<OrderDelivery, "state" | "pickup_eta" | "
   at: string;
 } | null {
   if (delivery.state === "PICKED_UP" || delivery.state === "IN_TRANSIT") {
-    return delivery.drop_eta ? { label: "Expected at the customer", at: delivery.drop_eta } : null;
+    // The network sends its delivery deadline here, not an arrival estimate
+    // (wefast: about 70 minutes after booking for a 4 km trip).
+    return delivery.drop_eta ? { label: "Rider must deliver by", at: delivery.drop_eta } : null;
   }
   if (delivery.state === "ASSIGNED" || delivery.state === "PENDING") {
     return delivery.pickup_eta ? { label: "Rider expected at the restaurant", at: delivery.pickup_eta } : null;

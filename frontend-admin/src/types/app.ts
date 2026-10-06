@@ -979,6 +979,16 @@ export interface Order {
   created_at: string;
   updated_at: string;
   items: OrderItem[];
+  /** Why and by whom it was cancelled, and where its refund stands. */
+  cancellation_reason?: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancellation_note?: string | null;
+  /** PENDING, REFUNDED or FAILED; null when nothing was owed back. */
+  refund_status?: string | null;
+  refund_error?: string | null;
+  /** The server's answer: Cancel may be offered on this order right now. */
+  can_be_cancelled?: boolean;
 }
 
 export interface ToastMessage {
@@ -1626,6 +1636,10 @@ export interface OrderDelivery {
   timeline?: Array<{ status: string; at: string | null; remark: string }>;
   /** 1 for the first rider, 2 after a re-book. */
   attempt?: number;
+  /** The partner network carrying the trip, and its own order reference. */
+  network_name?: string;
+  network_order_id?: string;
+  allocated_at?: string | null;
   /** What the courier invoices. Sent to the platform admin only. */
   courier_charge?: number | string | null;
   can_rebook?: boolean;
@@ -1753,4 +1767,64 @@ export interface PlatformWatch {
   checks: PlatformCheck[];
   issues: PlatformIssue[];
   restaurants: PlatformRestaurantToday[];
+}
+
+export type PayoutStatus =
+  | "WAITING_ACCOUNT" | "HELD" | "RELEASED" | "SETTLED" | "REVERSED" | "FAILED" | "BLOCKED" | "NOT_APPLICABLE";
+export type PayoutAccountStatus =
+  | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_CLARIFICATION" | "ACTIVE" | "SUSPENDED";
+
+export interface PayoutRow {
+  id: string;
+  order_id: string;
+  order_placed_at: string | null;
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_share: string;
+  /** Null for an owner: with the share and the total it would give the commission away. */
+  platform_keeps: string | null;
+  currency: string;
+  status: PayoutStatus;
+  transfer_id: string;
+  last_error: string | null;
+  released_at: string | null;
+  settled_at: string | null;
+}
+
+export interface PayoutBucket {
+  count: number;
+  amount: string;
+}
+
+export interface PayoutList {
+  currency: string;
+  payouts_enabled: boolean;
+  summary: Record<"held" | "released" | "settled" | "waiting" | "problems" | "not_applicable", PayoutBucket>;
+  rows: PayoutRow[];
+}
+
+export interface PayoutAccountInput {
+  legal_business_name: string;
+  business_type: string;
+  pan: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  street: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  bank_account_number: string;
+  ifsc: string;
+  beneficiary_name: string;
+}
+
+export interface PayoutAccount extends Omit<PayoutAccountInput, "bank_account_number"> {
+  restaurant_id: string;
+  status: PayoutAccountStatus;
+  razorpay_account_id: string;
+  bank_account_last4: string;
+  requirements: string[];
+  last_error: string | null;
+  updated_at: string | null;
 }

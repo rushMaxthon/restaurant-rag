@@ -77,9 +77,22 @@ class OtpVerify(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
 
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
+    """An account as stored, for reading back.
+
+    Not `UserBase`: its rules (a two-letter name, an email that validates,
+    an eight-digit phone) are for what somebody types at sign-up. A customer
+    who signed in by phone OTP had no name yet, and inheriting them turned
+    `GET /admin/users` into a 500 for every admin - which a browser reports
+    as a CORS error. What is stored is shown as it is.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
+    full_name: str = ""
+    email: str = ""
+    phone_number: str | None = None
+    default_address: str | None = None
     id: uuid.UUID
     role: UserRole
     is_active: bool

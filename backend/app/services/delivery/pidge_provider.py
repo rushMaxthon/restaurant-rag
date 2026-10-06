@@ -496,7 +496,19 @@ class PidgeProvider:
         # Their own captive riders need no token; every partner network does.
         if chosen.get("token"):
             request["token"] = chosen["token"]
-        self._call("POST", "/v1.0/store/channel/vendor/order/fulfill", json=request)
+        try:
+            self._call("POST", "/v1.0/store/channel/vendor/order/fulfill", json=request)
+        except DeliveryProviderError:
+            # Pidge can allocate an auto-allocating account's order between
+            # our services call and this one, and then refuses the fulfil
+            # ("order.action.fulfill.not-allowed: Invalid order ids") - seen
+            # on the first live order, 0.1s apart. Read the order once more:
+            # if a network has it, that is the outcome we wanted, not an error.
+            again = self._call("GET", f"/v1.0/store/channel/vendor/order/{provider_order_id}")
+            data = again.get("data") if isinstance(again.get("data"), dict) else again
+            if isinstance(data, dict) and data.get("fulfillment"):
+                return ""
+            raise
         price = (chosen.get("quote") or {}).get("price")
         return f"{chosen.get('network_name') or chosen.get('service')}, Rs {price}"
 
@@ -571,7 +583,14 @@ class PidgeProvider:
         pickup = fulfillment.get("pickup") if isinstance(fulfillment.get("pickup"), dict) else {}
         drop = fulfillment.get("drop") if isinstance(fulfillment.get("drop"), dict) else {}
         timeline, located, failure = _timeline(fulfillment.get("logs"))
+        channel = fulfillment.get("channel") if isinstance(fulfillment.get("channel"), dict) else {}
+        logs = [log for log in fulfillment.get("logs") or [] if isinstance(log, dict)]
         return DeliveryResult(
+            network_name=str(channel.get("name") or ""),
+            network_order_id=str(channel.get("order_id") or ""),
+            # The first thing logged is the network creating its own order:
+            # that is the moment somebody took it.
+            allocated_at=_moment(logs[0].get("timestamp")) if logs and channel else None,
             provider_order_id=str(data.get("id") or ""),
             state=state,
             reference=str(data.get("reference_id") or ""),
@@ -589,7 +608,16 @@ class PidgeProvider:
             ),
             provider_status=str(fulfillment_status or data.get("status") or ""),
             raw=data,
-            pickup_eta=_moment(pickup.get("eta")),
+            # One time for both ends is the network's delivery DEADLINE, not
+            # when the rider reaches the shop: wefast sent 15:23 for both on
+            # an order booked at 14:14 with its rider already on the way.
+            # Shown as a pickup ETA it told the kitchen to wait an hour.
+            pickup_eta=(
+                None
+                if _moment(pickup.get("eta")) is not None
+                and _moment(pickup.get("eta")) == _moment(drop.get("eta"))
+                else _moment(pickup.get("eta"))
+            ),
             drop_eta=_moment(drop.get("eta")),
             courier_charge=_money(fulfillment.get("delivery_charge")),
             rider_latitude=located[0] if located else None,

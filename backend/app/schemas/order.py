@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.config import get_settings
 from app.models.enums import (
     MenuItemPortion,
+    OrderCancellationReason,
+    OrderEventActor,
     OrderFulfillmentType,
     OrderScheduleType,
     OrderStatus,
@@ -392,6 +394,17 @@ class OrderStatusUpdateRequest(BaseModel):
     status: OrderStatus
 
 
+class OrderCancelRequest(BaseModel):
+    """A person cancelling: one of the staff reasons, and a note.
+
+    The note is required for OTHER_BY_STAFF; `order_cancellation` checks it,
+    so the rule lives beside the others it belongs with.
+    """
+
+    reason: OrderCancellationReason
+    note: str = Field(default="", max_length=500)
+
+
 class OrderItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -448,6 +461,18 @@ class OrderResponse(BaseModel):
     # `list_orders` for DELIVERED rows only; null for every other status, and
     # for delivered orders older than event tracking, which have no such row.
     completed_at: datetime | None = None
+    #: Why and by whom an order was cancelled, and where its refund stands.
+    #: `refund_status` is PENDING, REFUNDED or FAILED; null when nothing was
+    #: owed back (cash, or never paid).
+    cancellation_reason: OrderCancellationReason | None = None
+    cancelled_by: OrderEventActor | None = None
+    cancelled_at: datetime | None = None
+    cancellation_note: str | None = None
+    refund_status: str | None = None
+    refund_error: str | None = None
+    #: For the staff screens: whether Cancel is offered right now. The server
+    #: checks again on the cancel itself (`order_cancellation`).
+    can_be_cancelled: bool = False
 
 
 class DeliveryStep(BaseModel):
@@ -503,6 +528,11 @@ class OrderDeliveryResponse(BaseModel):
     timeline: list[DeliveryStep] = Field(default_factory=list)
     #: 1 for the first rider booked, 2 after a re-book.
     attempt: int = 1
+    #: The partner network carrying the trip and its own order reference -
+    #: the one to quote when a delivery goes wrong - and when it took it.
+    network_name: str = ""
+    network_order_id: str = ""
+    allocated_at: datetime | None = None
     #: What the courier invoices for the trip. Sent to the platform admin
     #: only (`for_viewer`): to an owner or a customer it is somebody else's
     #: commercial term, and beside the delivery fee it is a margin.

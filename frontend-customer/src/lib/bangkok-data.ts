@@ -155,6 +155,10 @@ export type OrderCharges = {
 };
 
 export type Order = {
+  /** Why it was cancelled, and where its refund stands (PENDING, REFUNDED, FAILED). */
+  cancellation_reason?: string | null;
+  cancellation_note?: string | null;
+  refund_status?: string | null;
   id: string;
   status: string;
   payment_status: string;

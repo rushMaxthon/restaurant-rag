@@ -105,6 +105,9 @@ class OrderDelivery(TimestampMixin, Base):
     timeline: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     #: Which booking this is: 1 for the first rider, 2 after a re-book. Sent
     #: to the courier inside the reference, which it requires to be unique.
+    network_name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    network_order_id: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default="")
+    allocated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     order: Mapped["Order"] = relationship(back_populates="delivery")

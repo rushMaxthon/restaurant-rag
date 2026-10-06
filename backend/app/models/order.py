@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -150,6 +150,11 @@ class Order(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD", server_default="USD")
     special_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_address: Mapped[str] = mapped_column(Text, nullable=False)
+    # The rooftop the customer picked from the address suggestions, which the
+    # delivery was priced from and the rider is sent to. Null for pickup, for
+    # orders before 0084, and for the text-only channels (WhatsApp, mobile).
+    delivery_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    delivery_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Who to ring about THIS delivery. Not the account's own phone: someone
     # ordering for a parent, or to an office, gives the number that should
     # actually ring. Nullable because every order placed before 0058 has none
@@ -169,6 +174,13 @@ class Order(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # What the staff member wrote beside their reason ("Paneer finished").
+    cancellation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Where the refund of a cancelled, prepaid order stands: PENDING, REFUNDED
+    # or FAILED (with the gateway's words in `refund_error`). Null when nothing
+    # was ever owed back - cash, or never paid.
+    refund_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    refund_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_by: Mapped[OrderEventActor | None] = mapped_column(
         Enum(OrderEventActor, name="order_event_actor"),
         nullable=True,

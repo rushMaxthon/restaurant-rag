@@ -546,6 +546,38 @@ manager cannot disconnect anything (verified). A per-process sweep
 disconnected client, so the client reports a (re)connect as "anything may have
 changed" (`onChange(null)`).
 
+## Payouts (Razorpay Route)
+
+`app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The
+platform's Razorpay account collects, Route passes the restaurant's share to
+its bank: held on payment, released on DELIVERED, reversed on CANCELLED or a
+refund. Full write-up: `backend/docs/payouts.md`. Behind
+**`enable_restaurant_payouts`, default off** — off, the ledger
+(`restaurant_payouts`, one row per order) is still written and nothing calls
+Razorpay.
+
+Rules that fail silently:
+
+- **The split lives in `split.py` and nowhere else.** A split that does not
+  add back to `total_amount` is BLOCKED, never rounded. Discounts are the
+  restaurant's; delivery and Razorpay's fee are the platform's.
+- **The platform collects only for a restaurant it can pay** (flag on, real
+  platform keys, linked account ACTIVE, no own keys): `registry.
+  platform_collects`. Before this the registry had no platform Razorpay at
+  all, so six of the seven real kitchens could not take Razorpay.
+- **An attempt belongs to the account that took it**
+  (`payment_transactions.on_platform_account`), read through
+  `payments.service.provider_for_transaction` — confirm, reconcile, cancel
+  and the reaper all go through it, so turning the flag off or moving a
+  restaurant onto its own keys cannot strand a paid order.
+- **A row with a `transfer_id` is never transferred again,** under a row
+  lock. Razorpay would happily accept a second transfer from one payment.
+- **An owner never receives `platform_keeps`** — with their share and the
+  total it gives the commission away. Only an admin opens or edits a linked
+  account; bank numbers are encrypted and only the last four come back.
+- **Payout code never raises into the order path** (`_mark_paid` wraps it in
+  a savepoint and a try). A payout problem must not cost a sale.
+
 ---
 
 ## Where to make changes
@@ -857,6 +889,11 @@ Kept because the notes are hard-won, not because they apply here.
   re-runs: every object V2's 0063-0068 create already exists, and each of
   those migrations is guarded to return early when it does. New migrations take `0072+`.
 
+- **`0083_restaurant_payouts` is the head** (2026-10-06): the payout tables
+  and `payment_transactions.on_platform_account`, RLS on in the migration.
+  Not applied to Supabase by hand; Render's pre-deploy upgrade runs it. Do
+  not run code from 0083 on against a database still at 0082 — every
+  payment query selects the new column.
 - **`0075` follows `0074_print_agents`, not `0073`.** `feat/print-agent` and
   this branch both continued from `0073`; merged 2026-10-05 by re-pointing
   `0075`'s `down_revision`, so the chain is linear again to `0082`.
@@ -915,6 +952,7 @@ Kept because the notes are hard-won, not because they apply here.
 | `PROJECT_UNDERSTANDING.md` | broad product overview |
 | `backend/docs/chat-rag-workflow.md` | customer chat internals |
 | `backend/docs/delivery-integration.md` | getting the food to the customer: Pidge, the courier contract, and the webhook that does not trust its payload |
+| `backend/docs/payouts.md` | paying restaurants through Razorpay Route: the split, the ledger statuses, when the platform collects, the test-mode checklist |
 | `docs/per-app-identity.md` | the AppClient identity split |
 | `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |
 | `MENU_ITEM_CUSTOMIZATION_FLOW.md`, `STRIPE_PAYMENT_INTEGRATION_PLAN.md` | those flows |

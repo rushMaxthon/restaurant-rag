@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
+import { cancellationMessage } from "@/lib/cancellation";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
 import { courierEta, courierNow } from "@/lib/courier";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -239,9 +240,8 @@ function OrderDetail() {
               <XCircle className="mt-0.5 size-5 shrink-0 text-danger" />
               <div>
                 <p className="font-bold text-danger">Cancelled</p>
-                <p className="mt-0.5 text-sm text-muted">
-                  Cancellations here are system-derived — nothing further is needed from you.
-                </p>
+                <p className="mt-0.5 text-sm">{cancellationMessage(o).reason}</p>
+                <p className="mt-0.5 text-sm text-muted">{cancellationMessage(o).money}</p>
               </div>
             </div>
           ) : (

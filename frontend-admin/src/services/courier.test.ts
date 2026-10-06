@@ -30,7 +30,9 @@ describe("nextEta", () => {
 
   it("is the door once the food is on its way", () => {
     expect(nextEta({ state: "IN_TRANSIT", ...eta })?.at).toBe(eta.drop_eta);
-    expect(nextEta({ state: "PICKED_UP", ...eta })?.label).toMatch(/customer/);
+    // The network sends its delivery DEADLINE here (wefast: about 70
+    // minutes after booking), not an arrival estimate, so it says "by".
+    expect(nextEta({ state: "PICKED_UP", ...eta })?.label).toBe("Rider must deliver by");
   });
 
   it("is nothing once the trip is over, or when the courier gave none", () => {

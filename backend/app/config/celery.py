@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.tasks.marketing",
         "app.tasks.notifications",
         "app.tasks.payments",
+        "app.tasks.payouts",
         "app.tasks.platform",
         "app.tasks.stock",
         "app.tasks.whatsapp",
@@ -69,6 +70,14 @@ celery_app.conf.update(
         "platform-heartbeat": {
             "task": "app.tasks.platform.heartbeat_task",
             "schedule": crontab(minute="*"),
+        },
+        # The payout backstop: a transfer whose task was lost, a hold whose
+        # release was lost. Hourly rather than daily, because it is a
+        # restaurant's money waiting, and the sweep calls Razorpay only for a
+        # row that needs it.
+        "retry-payouts": {
+            "task": "app.tasks.payouts.retry_payouts_task",
+            "schedule": crontab(minute="17"),
         },
         "restock-daily": {
             "task": "app.tasks.stock.restock_daily_task",

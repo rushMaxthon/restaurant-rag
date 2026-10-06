@@ -42,6 +42,7 @@ import {
   TicketPercent,
   Users,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 
 import { AIManagerPage } from "./pages/AIManagerPage";
@@ -61,6 +62,7 @@ import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
+import { PayoutsPage } from "./pages/PayoutsPage";
 import { PlatformWatchPage } from "./pages/PlatformWatchPage";
 import { MarketingPage } from "./pages/MarketingPage";
 import { MenuItemEditorPage } from "./pages/MenuItemEditorPage";
@@ -423,6 +425,16 @@ export const ROUTES: RouteDef[] = [
     render: (ctx) => (
       <CommissionPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
+  },
+
+  {
+    // Both roles: an admin sees every restaurant and both halves; an owner
+    // their own share only. The server enforces both.
+    id: "payouts",
+    pattern: "/payouts",
+    roles: BOTH,
+    nav: { section: "Orders", label: "Payouts", icon: Wallet, keywords: ["settlement", "bank", "razorpay", "transfer", "money"] },
+    render: (ctx) => <PayoutsPage onToast={ctx.pushToast} token={ctx.token} />,
   },
 
   // --- everything else ------------------------------------------------------

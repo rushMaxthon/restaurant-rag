@@ -196,9 +196,14 @@ class TheReaperTests(unittest.TestCase):
         # restaurant is a different gateway's account or nothing at all.
         import inspect
 
-        source = inspect.getsource(service.reap_expired_unpaid_orders)
-        self.assertIn("method=order.payment_method", source)
-        self.assertNotIn("method=PaymentMethod.CARD", source)
+        # Since Route it resolves the account that took the attempt, through
+        # `provider_for_transaction`, which asks for the order's own method
+        # whenever the restaurant's account took it.
+        reaper = inspect.getsource(service.reap_expired_unpaid_orders)
+        helper = inspect.getsource(service.provider_for_transaction)
+        self.assertIn("provider_for_transaction(", reaper)
+        self.assertIn("method=order.payment_method", helper)
+        self.assertNotIn("method=PaymentMethod.CARD", reaper + helper)
 
 
 class TheSafetyNetTests(unittest.TestCase):

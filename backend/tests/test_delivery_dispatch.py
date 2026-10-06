@@ -79,6 +79,31 @@ def an_order(**over):
     return SimpleNamespace(**fields)
 
 
+
+class WhatTheRiderIsToldTests(unittest.TestCase):
+    """Found on the first live order, 2026-10-06: the rider was told to
+    collect from "Main Branch" (no restaurant named), and the customer's
+    picked rooftop never reached Pidge - it geocoded our text itself."""
+
+    def test_the_pickup_is_named_after_the_restaurant(self) -> None:
+        order = an_order(restaurant=SimpleNamespace(name="Bhagwati Bakery"),
+                         restaurant_location=a_location(branch_name="Main Branch"))
+        self.assertEqual(build_request(order).pickup.name, "Bhagwati Bakery")
+
+    def test_a_restaurant_with_branches_names_the_branch_too(self) -> None:
+        order = an_order(restaurant=SimpleNamespace(name="Radhe Dhokla"),
+                         restaurant_location=a_location(branch_name="Nanpura"))
+        self.assertEqual(build_request(order).pickup.name, "Radhe Dhokla - Nanpura")
+
+    def test_the_picked_point_goes_to_the_courier(self) -> None:
+        order = an_order(delivery_latitude=21.1981254, delivery_longitude=72.829748)
+        drop = build_request(order).drop
+        self.assertEqual((drop.latitude, drop.longitude), (21.1981254, 72.829748))
+
+    def test_an_order_without_a_point_sends_none(self) -> None:
+        drop = build_request(an_order()).drop
+        self.assertEqual((drop.latitude, drop.longitude), (None, None))
+
 # The environment `should_dispatch` is asked to answer in.
 #
 # Both entries are part of the answer, so these tests state them rather than
@@ -271,6 +296,9 @@ class PullingTheStatusRatherThanWaitingForIt(unittest.TestCase):
                 return self
 
             def limit(self, n):
+                return self
+
+            def join(self, *a, **k):
                 return self
 
         class FakeSession:

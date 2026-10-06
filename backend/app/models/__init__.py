@@ -38,6 +38,7 @@ from app.models.push_notification_campaign_recipient import (
 from app.models.push_notification_event import PushNotificationEvent
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
+from app.models.restaurant_payout import RestaurantPayout, RestaurantPayoutAccount
 from app.models.user import User
 from app.models.user_device_token import UserDeviceToken
 from app.models.user_saved_address import UserSavedAddress
@@ -57,6 +58,8 @@ __all__ = [
     "UserSavedAddress",
     "Restaurant",
     "RestaurantLocation",
+    "RestaurantPayout",
+    "RestaurantPayoutAccount",
     "AppClient",
     "AppClientDomain",
     "AppClientIdentifier",

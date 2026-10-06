@@ -364,3 +364,17 @@ export function isSameAddress(fields: AddressFields, saved: SavedAddressFields):
     same(fields.zip, saved.postal_code)
   );
 }
+
+/**
+ * Whether typing into this part of the address leaves the picked point true.
+ *
+ * The flat and the landmark say which door and what to look for; neither
+ * moves the building, and no provider geocodes them. Clearing the point for
+ * them refused real orders: a customer picked their street, typed "Second
+ * floor" into the flat box, and was told to choose their address from the
+ * suggestions - which they had just done. The street, area, city and PIN do
+ * move it, and a stale point there would price and route the wrong trip.
+ */
+export function editKeepsPickedPoint(part: keyof AddressFields): boolean {
+  return part === "house" || part === "landmark";
+}

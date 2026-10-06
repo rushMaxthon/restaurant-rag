@@ -21,6 +21,7 @@ from app.services.payments import handle_stripe_webhook, payment_config
 from app.services.payments.service import (
     confirm_razorpay_checkout,
     handle_gateway_webhook,
+    handle_platform_razorpay_webhook,
 )
 
 settings = get_settings()
@@ -88,6 +89,25 @@ async def stripe_webhook(
 
     payload = await request.body()
     return handle_stripe_webhook(db, payload=payload, signature=stripe_signature)
+
+
+@router.post("/razorpay/webhook", include_in_schema=False)
+async def platform_razorpay_webhook(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    razorpay_signature: Annotated[str | None, Header(alias="X-Razorpay-Signature")] = None,
+    razorpay_event_id: Annotated[str | None, Header(alias="X-Razorpay-Event-Id")] = None,
+) -> dict[str, str]:
+    """Event sink for the platform's own Razorpay account (Route).
+
+    Unauthenticated, like the other sinks: the signature is the
+    authentication, and the raw body is required for it.
+    """
+
+    payload = await request.body()
+    return handle_platform_razorpay_webhook(
+        db, payload=payload, signature=razorpay_signature, event_id=razorpay_event_id
+    )
 
 
 @router.post("/webhook/{gateway}/{restaurant_id}", include_in_schema=False)

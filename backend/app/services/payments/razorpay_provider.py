@@ -40,6 +40,8 @@ from app.services.payments.base import (
 
 PROVIDER_NAME = "razorpay"
 API_BASE = "https://api.razorpay.com/v1"
+#: Linked accounts (Route onboarding) live on v2; transfers stay on v1.
+V2_API_BASE = "https://api.razorpay.com/v2"
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +139,12 @@ class RazorpayProvider:
         key_secret: str,
         webhook_secret: str | None = None,
         timeout: float = 20.0,
+        is_platform: bool = False,
     ) -> None:
+        # True only for the platform's own account, which collects for
+        # restaurants on Route. Read when an attempt is recorded, so the
+        # attempt remembers which account took it.
+        self.is_platform = is_platform
         self._key_id = (key_id or "").strip()
         self._key_secret = (key_secret or "").strip()
         self._webhook_secret = (webhook_secret or "").strip()
@@ -148,14 +155,14 @@ class RazorpayProvider:
 
     # --- HTTP ---------------------------------------------------------------
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def _request(self, method: str, path: str, *, base: str = API_BASE, **kwargs: Any) -> dict[str, Any]:
         if not self.is_configured():
             raise PaymentProviderError("This restaurant's Razorpay account is not configured", retryable=False)
 
         try:
             response = httpx.request(
                 method,
-                f"{API_BASE}{path}",
+                f"{base}{path}",
                 auth=(self._key_id, self._key_secret),
                 timeout=self._timeout,
                 **kwargs,
@@ -404,7 +411,44 @@ class RazorpayProvider:
             expires_at=link.get("expire_by"),
         )
 
-    def parse_webhook(self, *, payload: bytes, signature: str | None) -> WebhookEvent:
+    def refund(
+        self,
+        *,
+        intent_id: str,
+        payment_id: str,
+        amount: Decimal,
+        currency: str,
+        order_id: uuid.UUID,
+    ) -> str:
+        """Refund a captured payment, in full or part. Returns the refund id.
+
+        Razorpay refunds a PAYMENT (`pay_`), not the order we created. The
+        browser's confirmation records the payment id; an older attempt that
+        only has the order id is looked up through the order's payments.
+        """
+
+        if not payment_id:
+            payments = self._request("GET", f"/orders/{intent_id}/payments")
+            captured = [p for p in payments.get("items") or [] if p.get("status") == "captured"]
+            if not captured:
+                raise PaymentProviderError("Razorpay has no captured payment for this order to refund.", retryable=False)
+            payment_id = str(captured[0]["id"])
+        refunded = self._request(
+            "POST",
+            f"/payments/{payment_id}/refund",
+            json={
+                "amount": _to_minor_units(amount),
+                "speed": "normal",
+                # Our order id, so the refund is traceable from the dashboard.
+                "notes": {"order_id": str(order_id), "reason": "cancelled by the restaurant"},
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        return str(refunded.get("id") or "")
+
+    def parse_webhook(
+        self, *, payload: bytes, signature: str | None, event_id: str | None = None
+    ) -> WebhookEvent:
         """Verify and normalise a Razorpay webhook.
 
         The signature is an HMAC-SHA256 of the **raw body** with the webhook
@@ -455,8 +499,24 @@ class RazorpayProvider:
             else payment.get("order_id") or order.get("id")
         )
 
+        # Razorpay sends the event's id in the `X-Razorpay-Event-Id` header,
+        # not the body. Without it the fallback must name the entity the
+        # event is about: keyed on the payment's order alone, every transfer,
+        # settlement and linked-account event read as "<event>:None" and all
+        # but the first were dropped as duplicates.
+        entity_id = next(
+            (
+                str(entities[name]["entity"]["id"])
+                for name in ("refund", "transfer", "settlement", "merchant_product")
+                if ((entities.get(name) or {}).get("entity") or {}).get("id")
+            ),
+            "",
+        )
+        fallback = f"{event_type}:{entity_id or intent_id}"
+        if event_type.startswith(("product.route.", "account.")):
+            fallback = f"{fallback}:{body.get('account_id', '')}:{body.get('created_at', '')}"
         return WebhookEvent(
-            event_id=body.get("id") or f"{event_type}:{intent_id}",
+            event_id=event_id or body.get("id") or fallback,
             event_type=_EVENT_STATUS.get(event_type, event_type),
             intent_id=intent_id,
             # Present on every event that involved an actual payment, whether

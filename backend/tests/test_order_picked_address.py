@@ -100,6 +100,13 @@ class TheRulesAreInTheSource(unittest.TestCase):
         self.assertIn("known_drop=known_drop", self.source)
         self.assertIn("GeocodeConfidence.ROOFTOP.value", self.source)
 
+    def test_the_picked_point_is_kept_on_the_order(self) -> None:
+        # Priced from it and then dropped: the courier was sent the text alone
+        # and geocoded it itself. The order now keeps the point it was priced
+        # from, which is what `delivery.build_request` sends the rider to.
+        self.assertIn("delivery_latitude=draft.drop_point[0] if draft.drop_point else None", self.source)
+        self.assertIn("drop_point=", self.source)
+
     def test_a_typed_address_is_refused_at_a_checkout(self) -> None:
         # Written as a check on `known_drop` rather than an `elif` on the
         # coordinates, because a coordinate is no longer the only way to be

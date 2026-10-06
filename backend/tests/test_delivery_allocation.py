@@ -104,6 +104,48 @@ class AllocatingTests(unittest.TestCase):
         self.assertTrue(raised.exception.retryable)
 
 
+    def test_an_order_pidge_allocated_while_we_asked_is_not_an_error(self) -> None:
+        # Live, 2026-10-06: the account auto-allocated the order 0.1s after our
+        # services call, so our fulfil was refused with 405 "Invalid order
+        # ids" and the delivery showed an error while a network had it.
+        services = {"data": {"items": [network("pidge", 70.8)]}}
+        refused = DeliveryProviderError(
+            'Pidge refused POST /v1.0/store/channel/vendor/order/fulfill: 405 '
+            '{"error":{"code":"order.action.fulfill.not-allowed","message":"Invalid order ids"}}',
+            retryable=False,
+        )
+        replies = [PENDING, services, refused, ALLOCATED]
+        calls = []
+
+        def fake(method, path, **kwargs):
+            calls.append((method, path))
+            reply = replies[len(calls) - 1]
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        with mock.patch.object(self.provider, "_call", side_effect=fake):
+            outcome = self.provider.allocate("P1")
+        self.assertEqual(outcome, "")
+        self.assertEqual(calls[-1][0], "GET")  # read the order again, did not retry the fulfil
+
+    def test_a_refusal_for_an_order_still_pending_is_still_raised(self) -> None:
+        services = {"data": {"items": [network("pidge", 70.8)]}}
+        refused = DeliveryProviderError("Pidge refused POST .../fulfill: 405 not-allowed", retryable=False)
+        replies = [PENDING, services, refused, PENDING]
+        calls = []
+
+        def fake(method, path, **kwargs):
+            calls.append((method, path))
+            reply = replies[len(calls) - 1]
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        with mock.patch.object(self.provider, "_call", side_effect=fake):
+            with self.assertRaises(DeliveryProviderError):
+                self.provider.allocate("P1")
+
 
 class PhoneNumbersTests(unittest.TestCase):
     """Pidge's own examples are ten digits. Ours were stored three ways: a

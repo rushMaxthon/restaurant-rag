@@ -82,6 +82,25 @@ export function resolveStatusPillTone(status: string | OrderStatus): StatusPillT
   if (normalized === 'SWITCHED OFF') {
     return 'muted';
   }
+  // Payouts and the restaurant's linked account (`services/payouts.ts`).
+  // HELD and WAITING are amber because money is owed and not yet moving;
+  // RELEASED is on its way, which is what OUT_FOR_DELIVERY already says in
+  // blue. REVERSED and NOT_APPLICABLE are settled facts, not problems.
+  if (normalized === 'HELD' || normalized === 'WAITING_ACCOUNT' || normalized === 'UNDER_REVIEW') {
+    return 'warning';
+  }
+  if (normalized === 'RELEASED' || normalized === 'SUBMITTED') {
+    return 'info';
+  }
+  if (normalized === 'SETTLED') {
+    return 'success';
+  }
+  if (normalized === 'BLOCKED' || normalized === 'NEEDS_CLARIFICATION') {
+    return 'danger';
+  }
+  if (normalized === 'REVERSED' || normalized === 'NOT_APPLICABLE') {
+    return 'muted';
+  }
   // The dashboard's AI-health indicator is `failures > 0 ? AMBER : CLEAR`. Both
   // fell through to `muted`, so the two opposite outcomes rendered identically
   // and the indicator said nothing at all.
