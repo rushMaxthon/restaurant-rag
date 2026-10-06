@@ -1626,6 +1626,10 @@ export interface OrderDelivery {
   timeline?: Array<{ status: string; at: string | null; remark: string }>;
   /** 1 for the first rider, 2 after a re-book. */
   attempt?: number;
+  /** The partner network carrying the trip, and its own order reference. */
+  network_name?: string;
+  network_order_id?: string;
+  allocated_at?: string | null;
   /** What the courier invoices. Sent to the platform admin only. */
   courier_charge?: number | string | null;
   can_rebook?: boolean;

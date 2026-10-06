@@ -94,6 +94,49 @@ class ReadingWhatPidgeSendsTests(unittest.TestCase):
         self.assertEqual(result.state, DeliveryState.DELIVERED)
         self.assertIsNotNone(result.delivered_at)
 
+    def test_the_network_carrying_it_and_its_own_reference_are_kept(self) -> None:
+        # The live order's shape, 2026-10-06: Pidge hands the trip to a
+        # partner network, which has its own order reference - the one to
+        # quote when a delivery goes wrong.
+        provider = PidgeProvider(base_url="https://api.pidge.in", username="u", password="p")
+        result = provider._read({
+            "id": "1791274333170MOQ7TYQN", "status": "fulfilled",
+            "fulfillment": {
+                "status": "CREATED",
+                "channel": {"name": "SA(2327)", "id": "-3", "order_id": "17912743353662YZLZPLE"},
+                "logs": [{"timestamp": "2026-10-06T08:12:15.500Z", "status": "CREATED"}],
+                "track_code": "BlzEuM",
+            },
+        })
+        self.assertEqual(result.network_name, "SA(2327)")
+        self.assertEqual(result.network_order_id, "17912743353662YZLZPLE")
+        self.assertEqual(result.allocated_at.isoformat(), "2026-10-06T08:12:15.500000+00:00")
+
+    def test_one_time_for_both_ends_is_a_deadline_not_a_pickup_eta(self) -> None:
+        # Live, 2026-10-06, wefast: pickup.eta and drop.eta both 15:23 for an
+        # order booked at 14:14 with a rider already heading to the shop. It
+        # is the network's delivery deadline; shown as "Rider reaches the
+        # restaurant by 3:23 PM" it told the restaurant to wait an hour.
+        provider = PidgeProvider(base_url="https://api.pidge.in", username="u", password="p")
+        result = provider._read({
+            "id": "1791276", "status": "fulfilled",
+            "fulfillment": {
+                "status": "OUT_FOR_PICKUP",
+                "channel": {"name": "wefast", "order_id": "95435557"},
+                "rider": {"name": "Mohit", "mobile": "9999999999"},
+                "pickup": {"eta": "2026-10-06T09:53:50.000Z"},
+                "drop": {"eta": "2026-10-06T09:53:50.000Z"},
+                "logs": [{"timestamp": "2026-10-06T08:44:20.389Z", "status": "CREATED"}],
+            },
+        })
+        self.assertIsNone(result.pickup_eta)
+        self.assertEqual(result.drop_eta.isoformat(), "2026-10-06T09:53:50+00:00")
+
+    def test_no_network_yet_is_nothing_invented(self) -> None:
+        provider = PidgeProvider(base_url="https://api.pidge.in", username="u", password="p")
+        result = provider._read({"id": "P1", "status": "pending"})
+        self.assertEqual((result.network_name, result.network_order_id, result.allocated_at), ("", "", None))
+
     def test_the_timeline_is_every_step_oldest_first(self) -> None:
         steps = read("fulfilled|delivered").timeline
         self.assertEqual(
@@ -284,6 +327,22 @@ class WhatAnUpdateDoesToTheOrderTests(unittest.TestCase):
             self.assertIsNotNone(row.picked_up_at)
             self.assertTrue(row.timeline)
             self.assertIsNotNone(row.rider_latitude)
+
+    def test_the_network_is_kept_and_an_allocation_error_is_cleared(self) -> None:
+        order_id = self._order(OrderStatus.PREPARING)
+        with self.session_factory() as session:
+            row = session.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order_id))
+            row.last_error = "Pidge refused POST /v1.0/store/channel/vendor/order/fulfill: 405"
+            service.record(session, row, DeliveryResult(
+                provider_order_id=row.provider_order_id, state=DeliveryState.PENDING,
+                provider_status="CREATED", network_name="SA(2327)", network_order_id="1791ZZ",
+                allocated_at=datetime(2026, 10, 6, 8, 12, tzinfo=UTC),
+            ))
+            session.commit()
+            session.refresh(row)
+            self.assertEqual((row.network_name, row.network_order_id), ("SA(2327)", "1791ZZ"))
+            self.assertIsNotNone(row.allocated_at)
+            self.assertEqual(row.last_error, "")
 
     def test_nothing_is_announced_if_the_update_is_rolled_back(self) -> None:
         order_id = self._order(OrderStatus.PREPARING)

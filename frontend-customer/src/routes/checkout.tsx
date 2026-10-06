@@ -36,6 +36,7 @@ import {
 import {
   addressFromSaved,
   pointFromSaved,
+  editKeepsPickedPoint,
   composeDeliveryAddress,
   isSameAddress,
   formatPhoneAsTyped,
@@ -550,8 +551,9 @@ function Checkout() {
     setAddress((a) => ({ ...a, [part]: next }));
     // The resolved coordinate described what was in the box a moment ago. Typed
     // over, it no longer does, and a stale point would price the wrong trip
-    // with complete confidence.
-    if (part !== "landmark") setPickedPoint(null);
+    // with complete confidence - except for the flat and the landmark, which
+    // do not move the building (`editKeepsPickedPoint`).
+    if (!editKeepsPickedPoint(part)) setPickedPoint(null);
     if (addressId) {
       setAddressId(null);
       setSaveAddress(true);

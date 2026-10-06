@@ -160,6 +160,13 @@ class DeliveryResult:
     #: {"status", "at", "remark"}. The courier's statuses, unmapped, because
     #: "Reached pickup" is worth showing even though it moves nothing here.
     timeline: list[dict[str, Any]] = field(default_factory=list)
+    #: The partner network actually carrying the trip ("SA(2327)") and its
+    #: own order reference - the one to quote when a delivery goes wrong,
+    #: because the courier's id is not the one their riders see.
+    network_name: str = ''
+    network_order_id: str = ''
+    #: When a network took the order.
+    allocated_at: datetime | None = None
 
 
 @dataclass(slots=True)

@@ -503,6 +503,11 @@ class OrderDeliveryResponse(BaseModel):
     timeline: list[DeliveryStep] = Field(default_factory=list)
     #: 1 for the first rider booked, 2 after a re-book.
     attempt: int = 1
+    #: The partner network carrying the trip and its own order reference -
+    #: the one to quote when a delivery goes wrong - and when it took it.
+    network_name: str = ""
+    network_order_id: str = ""
+    allocated_at: datetime | None = None
     #: What the courier invoices for the trip. Sent to the platform admin
     #: only (`for_viewer`): to an owner or a customer it is somebody else's
     #: commercial term, and beside the delivery fee it is a margin.

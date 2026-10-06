@@ -314,6 +314,18 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPan
           </div>
         )}
 
+        {/* Who actually has the trip. Their reference, not the courier's, is
+            the one their support desk can find. */}
+        {delivery.network_name && (
+          <div className="order-detail__fact">
+            <span>Carried by</span>
+            <strong>
+              {delivery.network_name}
+              {delivery.network_order_id ? ` · ${delivery.network_order_id}` : ''}
+            </strong>
+          </div>
+        )}
+
         {(delivery.attempt ?? 1) > 1 && (
           <div className="order-detail__fact">
             <span>Booking</span>

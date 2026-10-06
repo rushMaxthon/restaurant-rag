@@ -108,6 +108,9 @@ class PreparedOrderDraft:
     total_amount: Decimal
     order_items: list[OrderItem]
     applied_offer: object | None
+    #: The rooftop the customer picked, (latitude, longitude), when they
+    #: picked one. Kept on the order so the courier is sent to it.
+    drop_point: tuple[float, float] | None = None
     #: The itemised bill behind `tax_amount`, for the summary a customer can
     #: open and for the columns the order stores.
     charges: "order_charges.OrderCharges | None" = None
@@ -504,6 +507,7 @@ def _prepare_order_draft(
         )
 
     delivery_fee = Decimal("0.00")
+    drop_point: tuple[float, float] | None = None
     if payload.fulfillment_type == OrderFulfillmentType.DELIVERY:
         # The branch's own flat fee is the floor of this decision and the
         # answer whenever a courier does not produce one. A flat fee charges
@@ -568,6 +572,8 @@ def _prepare_order_draft(
                     saved.geocode_confidence or GeocodeConfidence.ROOFTOP.value,
                 )
 
+        if known_drop is not None:
+            drop_point = (float(known_drop[0]), float(known_drop[1]))
         if known_drop is None and require_payment_validation:
             # No coordinate means the address was typed and never resolved to a
             # building. Pricing it would mean quoting from the middle of a
@@ -685,6 +691,7 @@ def _prepare_order_draft(
         order_items=order_items,
         applied_offer=applied_offer,
         charges=charges,
+        drop_point=drop_point,
     )
 
 
@@ -891,6 +898,8 @@ def create_order(db: Session, customer: User, payload: OrderCreateRequest) -> Or
         currency=normalize_stored_currency(draft.restaurant.currency),
         special_instructions=payload.special_instructions,
         delivery_address=payload.delivery_address,
+        delivery_latitude=draft.drop_point[0] if draft.drop_point else None,
+        delivery_longitude=draft.drop_point[1] if draft.drop_point else None,
         # Who to ring about this delivery. Asked for at checkout since the
         # beginning and thrown away until 0058; enforced here since a courier
         # refused an order for the want of it. See `_contact_phone_for`.

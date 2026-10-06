@@ -33,6 +33,10 @@ from app.schemas.restaurant import (
     RestaurantLocationResponse,
 )
 
+#: Only for a restaurant that has no name yet. A first branch is named after
+#: its restaurant (`build_default_location_for_restaurant`): "Main Branch"
+#: was every restaurant's, and it reached the customer's branch picker, the
+#: kitchen board and the rider, none of whom learned whose kitchen it was.
 DEFAULT_BRANCH_NAME = "Main Branch"
 DEFAULT_SLOT_START_TIME = time(10, 30)
 DEFAULT_SLOT_END_TIME = time(22, 0)
@@ -56,7 +60,7 @@ DAY_SEQUENCE: tuple[LocationDayOfWeek, ...] = (
 def build_default_location_for_restaurant(restaurant: Restaurant) -> RestaurantLocation:
     return RestaurantLocation(
         restaurant_id=restaurant.id,
-        branch_name=DEFAULT_BRANCH_NAME,
+        branch_name=(restaurant.name or "").strip() or DEFAULT_BRANCH_NAME,
         address_line_1=restaurant.address_line_1,
         address_line_2=restaurant.address_line_2,
         city=restaurant.city,

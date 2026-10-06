@@ -415,3 +415,20 @@ describe("phoneWithoutCountryCode", () => {
     );
   });
 });
+
+describe("editKeepsPickedPoint", () => {
+  it("keeps the point when only the flat or the landmark changes", async () => {
+    const { editKeepsPickedPoint } = await import("./delivery-address");
+    // Picked "Sheri Limda Chowk", then typed "Second floor" into the flat box:
+    // the building did not move, so the point must not be thrown away.
+    expect(editKeepsPickedPoint("house")).toBe(true);
+    expect(editKeepsPickedPoint("landmark")).toBe(true);
+  });
+
+  it("drops the point when the street, area, city or PIN changes", async () => {
+    const { editKeepsPickedPoint } = await import("./delivery-address");
+    for (const part of ["line1", "line2", "city", "state", "zip"] as const) {
+      expect(editKeepsPickedPoint(part)).toBe(false);
+    }
+  });
+});

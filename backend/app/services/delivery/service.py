@@ -106,7 +106,7 @@ def build_request(order: Order) -> DeliveryRequest:
         city=getattr(location, "city", "") or "",
         state=getattr(location, "state", "") or "",
         pincode=getattr(location, "postal_code", "") or "",
-        name=getattr(location, "branch_name", "") or "Restaurant",
+        name=_pickup_name(order, location),
         mobile=(getattr(location, "phone_number", "") or "").strip(),
         latitude=_coord(getattr(location, "latitude", None)),
         longitude=_coord(getattr(location, "longitude", None)),
@@ -119,6 +119,10 @@ def build_request(order: Order) -> DeliveryRequest:
         name=order.contact_name or "Customer",
         mobile=(order.contact_phone or "").strip(),
         instructions=order.special_instructions or "",
+        # The rooftop the customer picked at checkout, which the order was
+        # priced from. Without it the courier geocoded our text itself.
+        latitude=_coord(getattr(order, "delivery_latitude", None)),
+        longitude=_coord(getattr(order, "delivery_longitude", None)),
     )
     items = [
         DeliveryItem(
@@ -146,6 +150,22 @@ def build_request(order: Order) -> DeliveryRequest:
         deliver_by=ready_at + timedelta(minutes=45) if ready_at else None,
         notes=order.special_instructions or "",
     )
+
+
+def _pickup_name(order: Order, location: object) -> str:
+    """What the rider is told to look for: the restaurant, then the branch.
+
+    It was the branch alone, and every first branch is "Main Branch" - the
+    first live rider was sent to collect from "Main Branch" with no
+    restaurant named. A restaurant with several branches needs both.
+    """
+
+    restaurant = getattr(order, "restaurant", None) or getattr(location, "restaurant", None)
+    brand = (getattr(restaurant, "name", "") or "").strip()
+    branch = (getattr(location, "branch_name", "") or "").strip()
+    if brand and branch and branch.lower() not in {"main branch", "main", brand.lower()}:
+        return f"{brand} - {branch}"
+    return brand or branch or "Restaurant"
 
 
 def _coord(value: object) -> float | None:
@@ -481,6 +501,16 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
             row.rider_location_at = result.rider_location_at
     if result.timeline:
         row.timeline = result.timeline
+    if result.network_name:
+        row.network_name = result.network_name
+        # A network has it: whatever error the asking produced is answered.
+        # The first live order kept a "405 fulfil not allowed" on screen
+        # while a network was carrying it (Pidge had auto-allocated it).
+        row.last_error = ""
+    if result.network_order_id:
+        row.network_order_id = result.network_order_id
+    if result.allocated_at is not None and row.allocated_at is None:
+        row.allocated_at = result.allocated_at
     if result.failure_reason:
         row.failure_reason = result.failure_reason
     order = row.order
