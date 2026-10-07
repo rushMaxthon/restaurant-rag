@@ -177,6 +177,10 @@ class QuoteAttempt:
     #: `no_courier`, `cannot_quote`, `coarse_point`, `courier_unavailable`,
     #: `out_of_range` or `declined`.
     reason: str = ""
+    #: How far the courier measured the trip it refused as `out_of_range`.
+    #: Slab pricing needs it: the quote is thrown away past the limit, and a
+    #: customer told "too far" deserves to be told how far.
+    distance_metres: float | None = None
 
 
 def quote_for(
@@ -284,7 +288,7 @@ def attempt_quote(
             "the address almost certainly resolved to the wrong place.",
             (quote.distance_metres or 0) / 1000,
         )
-        return QuoteAttempt(None, "out_of_range")
+        return QuoteAttempt(None, "out_of_range", distance_metres=quote.distance_metres)
     # A courier that answered with nothing has declined the trip, which is a
     # different thing from one that could not be reached.
     return QuoteAttempt(quote, "" if quote is not None else "declined")

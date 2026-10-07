@@ -36,6 +36,7 @@ from app.services import order_charges, stock
 from app.services.capabilities import resolve_capabilities
 from app.services.commission import commission_in
 from app.services.delivery.quoting import delivery_fee_for
+from app.services.delivery.slabs import price_trip, slab_pricing_on
 from app.services.geocoding.base import GeocodeConfidence
 from app.models.user import User
 from app.models.user_saved_address import UserSavedAddress
@@ -614,16 +615,41 @@ def _prepare_order_draft(
             )
 
         delivery_fee = _safe_decimal(restaurant_location.delivery_fee)
-        quoted = delivery_fee_for(
-            restaurant_location,
-            payload.delivery_address or "",
-            currency=normalize_stored_currency(restaurant.currency),
-            # The session is what makes the geocode real: it reads the durable
-            # cache, writes new lookups to it, and lets a branch's coordinates
-            # be stored back on its row the first time it is located.
-            db=db,
-            known_drop=known_drop,
-        )
+        if slab_pricing_on():
+            # The platform's own price for the distance (`delivery/slabs.py`),
+            # from the same function and the same point as the quote the
+            # customer was shown, so the two cannot disagree.
+            trip = price_trip(
+                restaurant_location,
+                payload.delivery_address or "",
+                db=db,
+                known_drop=known_drop,
+            )
+            if trip.reason == "out_of_range":
+                # Refused rather than charged the top slab: past the limit the
+                # top slab is not a price for this trip, and a rider asked to
+                # cross the city for Rs 100 is a rider who cancels.
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"This address is about {trip.distance_metres / 1000:.1f} km "
+                        f"from the restaurant, and it delivers up to "
+                        f"{trip.limit_km:g} km. Please choose a closer address, "
+                        "or pickup."
+                    ),
+                )
+            quoted = trip.fee
+        else:
+            quoted = delivery_fee_for(
+                restaurant_location,
+                payload.delivery_address or "",
+                currency=normalize_stored_currency(restaurant.currency),
+                # The session is what makes the geocode real: it reads the durable
+                # cache, writes new lookups to it, and lets a branch's coordinates
+                # be stored back on its row the first time it is located.
+                db=db,
+                known_drop=known_drop,
+            )
         if quoted is not None:
             delivery_fee = _quantize(quoted)
         elif delivery_fee <= 0:

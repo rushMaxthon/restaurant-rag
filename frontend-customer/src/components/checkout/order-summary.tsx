@@ -44,6 +44,7 @@ export function OrderSummary({
   fallback,
   postalName,
   unserviceable,
+  outOfRange = null,
   total,
   showPromoCode,
   promoCode,
@@ -71,6 +72,8 @@ export function OrderSummary({
   fallback: string;
   postalName: string;
   unserviceable: boolean;
+  /** Further than the restaurant delivers; the order cannot be placed. */
+  outOfRange?: { distanceKm: number; limitKm: number } | null;
   total: number;
   /** The restaurant's `promo_code` capability. Off, the box is not drawn. */
   showPromoCode: boolean;
@@ -154,16 +157,18 @@ export function OrderSummary({
             <div className="flex justify-between gap-3" key={String(label)}>
               <dt className="text-muted">{label}</dt>
               <dd className={unknown ? "text-right text-xs text-muted" : "money font-semibold"}>
-                {unknown
-                  ? deliveryFetching
-                    ? "Working it out…"
-                    : "Once you add your address"
-                  : // "Free" belongs to the delivery row ALONE, and only when
-                    // somebody actually decided delivery is free — never because
-                    // a lookup failed and the flat fee happened to be zero.
-                    Number(value) === 0 && !feeIsAGuess && String(label) !== "Subtotal"
-                    ? "Free"
-                    : money(Number(value))}
+                {label === "Delivery fee" && outOfRange
+                  ? "Too far"
+                  : unknown
+                    ? deliveryFetching
+                      ? "Working it out…"
+                      : "Once you add your address"
+                    : // "Free" belongs to the delivery row ALONE, and only when
+                      // somebody actually decided delivery is free — never because
+                      // a lookup failed and the flat fee happened to be zero.
+                      Number(value) === 0 && !feeIsAGuess && String(label) !== "Subtotal"
+                      ? "Free"
+                      : money(Number(value))}
               </dd>
             </div>
           );
@@ -173,7 +178,13 @@ export function OrderSummary({
         <ChargesBreakdown charges={charges} money={money} unknownText="Worked out at payment" />
       </dl>
 
-      {isDelivery && quotedByCourier ? (
+      {outOfRange ? (
+        <p className="inline-error mt-2 text-xs">
+          This address is about {outOfRange.distanceKm.toFixed(1)} km away, and the restaurant
+          delivers up to {outOfRange.limitKm} km. Choose a closer address, or pickup.
+        </p>
+      ) : null}
+      {isDelivery && quotedByCourier && !outOfRange ? (
         <p className="mt-2 text-xs text-muted">
           Priced for your address, not a flat rate.
           {travelSeconds

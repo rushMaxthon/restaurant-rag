@@ -198,6 +198,29 @@ describe('where the fee came from', () => {
     expect(deliveryFeeNote(quote({serviceable: false}))).toMatch(/courier/i);
   });
 
+  it('says how far, and how far they deliver, when the address is too far', () => {
+    // Slab pricing (2026-10-07) refuses an order past the branch's limit.
+    // "No courier will drive there" would be the wrong reason.
+    const note = deliveryFeeNote(
+      quote({
+        source: 'distance',
+        serviceable: false,
+        fallback_reason: 'out_of_range',
+        distance_metres: 12500,
+        max_distance_km: 10,
+      }),
+    );
+    expect(note).toContain('12.5 km');
+    expect(note).toContain('10 km');
+    expect(note).not.toMatch(/courier/i);
+  });
+
+  it('calls a distance-slab price what it is', () => {
+    expect(deliveryDistanceNote(quote({source: 'distance', distance_metres: 3400}))).toBe(
+      '3.4 km from the branch',
+    );
+  });
+
   it('has nothing to say about a quote that does not exist', () => {
     expect(deliveryFeeNote(null)).toBeNull();
   });

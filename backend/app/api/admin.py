@@ -40,6 +40,11 @@ from app.schemas.admin import (
     UserStatusUpdate,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.delivery_pricing import (
+    DeliveryPricingResponse,
+    DeliveryPricingUpdate,
+    DeliverySlab,
+)
 from app.schemas.insights import InsightGenerationTriggerResponse
 from app.schemas.restaurant import (
     AdminRestaurantUpdate,
@@ -115,6 +120,56 @@ def get_platform_watch(
         issues=[PlatformIssue(**asdict(issue)) for issue in watch.issues],
         restaurants=[PlatformRestaurantToday(**asdict(row)) for row in watch.restaurants],
     )
+
+
+def _delivery_pricing_response(db: Session, pricing) -> DeliveryPricingResponse:
+    updated_by_name = None
+    if pricing.updated_by is not None:
+        editor = db.get(User, pricing.updated_by)
+        updated_by_name = (editor.full_name or editor.email) if editor is not None else None
+    return DeliveryPricingResponse(
+        slabs=[DeliverySlab(up_to_km=limit, fee=fee) for limit, fee in pricing.slabs],
+        max_distance_km=pricing.max_distance_km,
+        gst_percent=pricing.gst_percent,
+        saved=pricing.saved,
+        updated_at=pricing.updated_at,
+        updated_by_user_id=pricing.updated_by,
+        updated_by_name=updated_by_name,
+    )
+
+
+@router.get("/delivery-pricing", response_model=DeliveryPricingResponse)
+def get_delivery_pricing(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> DeliveryPricingResponse:
+    """The delivery slabs every restaurant charges, the limit, and the GST.
+
+    Admin only. An owner is never shown it: beside what a courier charges it
+    is the platform's delivery margin.
+    """
+
+    from app.services.delivery import slabs
+
+    return _delivery_pricing_response(db, slabs.load_pricing(db))
+
+
+@router.put("/delivery-pricing", response_model=DeliveryPricingResponse)
+def put_delivery_pricing(
+    payload: DeliveryPricingUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(require_admin)],
+) -> DeliveryPricingResponse:
+    """Change the delivery pricing for every restaurant at once.
+
+    Takes effect on the next quote: nothing is cached. A list with a gap, a
+    backwards step or no open-ended last slab is refused with a 422 and the
+    saved pricing is left as it was (`slabs.validate_update`).
+    """
+
+    from app.services.delivery import slabs
+
+    return _delivery_pricing_response(db, slabs.save_pricing(db, current_user, payload))
 
 
 @router.get("/commission", response_model=AdminCommissionReport)

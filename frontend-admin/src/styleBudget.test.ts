@@ -27,6 +27,7 @@ const BUDGET: Record<string, Counts> = {
   "combo": { spacing: 0, weight: 0, colour: 0 },
   "confirm": { spacing: 0, weight: 0, colour: 0 },
   "dashboard": { spacing: 0, weight: 0, colour: 0 },
+  "delivery": { spacing: 0, weight: 0, colour: 0 },
   "data": { spacing: 0, weight: 0, colour: 0 },
   "detail": { spacing: 0, weight: 0, colour: 0 },
   "empty": { spacing: 0, weight: 0, colour: 0 },

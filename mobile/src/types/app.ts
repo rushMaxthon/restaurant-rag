@@ -641,7 +641,11 @@ export interface OrderCharges {
 export interface DeliveryQuote {
   delivery_fee: DecimalValue;
   currency: string;
-  /** "courier" when a courier priced this trip, "branch" for the flat fee. */
+  /**
+   * "distance" when the platform priced it from its distance slabs (the
+   * default since 2026-10-07), "courier" for a courier's quote, "branch" for
+   * the flat fee.
+   */
   source: string;
   /**
    * WHY it is the flat fee, when it is. `""` means a courier priced it;
@@ -651,6 +655,8 @@ export interface DeliveryQuote {
   fallback_reason: string;
   serviceable: boolean;
   distance_metres: number | null;
+  /** The furthest this branch delivers, in km. Set with `out_of_range`. */
+  max_distance_km?: number | null;
   assign_seconds: number | null;
   /** The drive only. NEVER show this as an ETA — it excludes the cooking. */
   travel_seconds: number | null;

@@ -215,6 +215,56 @@ The two we use **disagree about what a coordinate is called**, which is a 400
 if you assume they match. `estimate` answers with `minCost`, `maxCost`,
 `pickupToDropDistance`, `pickupToDropTime` and `timeToAssign`.
 
+## The platform sets the price: distance slabs (since 2026-10-07)
+
+The section after this one describes courier pricing, which is now the
+fallback mode (`DELIVERY_PRICING=courier`), not the default. Pidge
+auto-allocates on this account and its estimate did not survive allocation:
+two trips quoted at Rs 57 went to wefast at Rs 285.61. So the platform prices
+delivery itself, from the distance alone (`services/delivery/slabs.py`):
+
+| Distance (road) | Fee before GST | With 18% GST |
+|---|---|---|
+| up to 2 km | Rs 68 | Rs 80.24 |
+| over 2 km, up to 5 km | Rs 78 | Rs 92.04 |
+| over 5 km | Rs 100 | Rs 118.00 |
+| past the branch's `service_radius_km`, else 10 km | refused | |
+
+- **Distance is the courier's road distance**, from Pidge's free estimate,
+  which the checkout already called. If it does not answer, the straight line
+  times `DELIVERY_ROAD_FACTOR` (1.3). Measured on the real Bhagwati branch:
+  1 km in a straight line was 1.9 km by road. Nothing here calls the charged
+  `fulfillment/services` endpoint.
+- **GST is the platform's single rate** (`DELIVERY_GST_PERCENT`, 18), applied
+  in `order_charges.for_location` whatever the branch's `delivery_tax_percent`
+  says. Delivery is the platform's money (`payouts/split.py`), and six of nine
+  real branches had 0% set.
+- **The quote and the order call the same `price_trip` with the same point**,
+  so the checkout cannot show one fee and charge another. The amount sent to
+  Razorpay/Stripe is the order total, which includes it.
+- **Too far is refused, not charged the top slab.** The quote endpoint returns
+  `serviceable: false`, `fallback_reason: "out_of_range"`, fee 0.00 and
+  `max_distance_km`; the storefront blocks Pay ("Too far to deliver"); the
+  order path answers 422 with the distance and the limit.
+- **An unlocatable point still falls back to the branch's flat fee**, and a
+  branch with none still refuses, exactly as before.
+- **The platform admin edits all of it on the admin panel's Delivery pricing
+  page** (`/delivery-pricing`, Platform section, ADMIN only; owners get 403).
+  It is one `platform_settings` row, key `delivery_pricing` (migration
+  `0086`), read by `slabs.load_pricing` on every quote and order and by
+  `order_charges` for the GST, so a save applies to the next checkout at
+  every restaurant with no cache to wait out. `slabs.save_pricing` is the
+  only writer and refuses a list with a gap, a backwards step, a slab past
+  the limit or no open-ended last slab. With no row, the settings defaults
+  below apply.
+- The defaults are `DELIVERY_FEE_SLABS` ("2:68,5:78,*:100"),
+  `DELIVERY_MAX_DISTANCE_KM` (10) and `DELIVERY_GST_PERCENT` (18); a slab
+  value that does not parse falls back to that list rather than to free
+  delivery.
+
+What Pidge then charges is a separate number, recorded as `courier_charge`
+and flagged when it is far above what the customer paid (next sections).
+
 ## What delivery costs, before the order exists
 
 A flat `restaurant_location.delivery_fee` charged the customer next door and

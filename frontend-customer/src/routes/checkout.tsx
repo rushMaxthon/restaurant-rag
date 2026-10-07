@@ -446,7 +446,11 @@ function Checkout() {
     (addressIsQuotable && Boolean(deliveryQuote.data) && !deliveryQuote.isPlaceholderData);
   const delivery =
     deliveryKnown && deliveryQuote.data ? Number(deliveryQuote.data.delivery_fee) : 0;
-  const quotedByCourier = deliveryKnown && deliveryQuote.data?.source === "courier";
+  // Priced for THIS trip rather than a flat rate: by the courier, or by the
+  // platform's distance slabs. Either way the distance is worth showing.
+  const quotedByCourier =
+    deliveryKnown &&
+    (deliveryQuote.data?.source === "courier" || deliveryQuote.data?.source === "distance");
   /**
    * How far the food has to travel, in words.
    *
@@ -474,8 +478,17 @@ function Checkout() {
   // A courier that will not drive to this address at all. The fee falls back
   // to the branch's, so the total stays honest, but saying nothing would let
   // somebody pay for a delivery no rider is going to accept.
+  // Further than the restaurant delivers. The server refuses this order, so
+  // it blocks Pay (`pay-gate.ts`) rather than sitting beside a live button.
+  const outOfRange =
+    deliveryKnown && fallback === "out_of_range" && deliveryQuote.data
+      ? {
+          distanceKm: (deliveryQuote.data.distance_metres ?? 0) / 1000,
+          limitKm: deliveryQuote.data.max_distance_km ?? 10,
+        }
+      : null;
   const unserviceable = Boolean(
-    deliveryKnown && deliveryQuote.data && !deliveryQuote.data.serviceable,
+    deliveryKnown && deliveryQuote.data && !deliveryQuote.data.serviceable && !outOfRange,
   );
   // The bill, as the server worked it out — the same code that charges the
   // customer. The 5% this page used to multiply by is gone: it was a guess
@@ -975,6 +988,7 @@ function Checkout() {
     scheduling,
     hasSlot: Boolean(chosenSlot),
     deliveryKnown,
+    outOfRange,
   });
   const canSubmit = !submitting && payBlock === null;
 
@@ -1109,6 +1123,7 @@ function Checkout() {
           fallback={fallback}
           postalName={postalName}
           unserviceable={unserviceable}
+          outOfRange={outOfRange}
           total={total}
           showPromoCode={promoCodeOffered}
           promoCode={promoCode}

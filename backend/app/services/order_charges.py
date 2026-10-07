@@ -231,8 +231,36 @@ def for_location(
         packaging_fee=getattr(location, "packaging_fee", None) or Decimal("0.00"),
         platform_fee=getattr(location, "platform_fee", None) or Decimal("0.00"),
         tax_percent=tax_percent,
-        delivery_tax_percent=getattr(location, "delivery_tax_percent", None) or Decimal("0.00"),
+        delivery_tax_percent=_delivery_tax_percent(location),
     )
+
+
+def _delivery_tax_percent(location) -> Decimal:
+    """GST on delivery: the platform's rate while the platform sets the price.
+
+    Delivery is the platform's money, so while `delivery_pricing` is "slabs"
+    its tax is the platform's single rate. Most branches were left at 0%, and
+    reading theirs would have charged GST on delivery at three restaurants out
+    of nine. Under courier pricing the branch's own rate stands, as before.
+    """
+
+    from sqlalchemy.orm import Session, object_session
+    from sqlalchemy.orm.exc import UnmappedInstanceError
+
+    from app.services.delivery.slabs import load_pricing, slab_pricing_on
+
+    if slab_pricing_on():
+        # The rate the platform admin set on the Delivery pricing page, read
+        # through the branch's own session. A stand-in object has none and
+        # gets the settings default.
+        # A Mock branch (several suites price against one) answers
+        # `object_session` with another Mock, so only a real session counts.
+        try:
+            db = object_session(location)
+        except UnmappedInstanceError:
+            db = None
+        return load_pricing(db if isinstance(db, Session) else None).gst_percent
+    return getattr(location, "delivery_tax_percent", None) or Decimal("0.00")
 
 
 __all__ = ["ChargeLine", "OrderCharges", "compute", "for_location"]

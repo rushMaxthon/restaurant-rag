@@ -326,7 +326,9 @@ class DeliveryQuoteResponse(BaseModel):
 
     delivery_fee: Decimal
     currency: str
-    #: "courier" when a courier priced this trip, "branch" for the flat fee.
+    #: "distance" when the platform priced it from its slabs (the default
+    #: since 2026-10-07), "courier" when a courier priced this trip, "branch"
+    #: for the flat fee.
     source: str
     #: WHY it is the branch's flat fee, when it is. The field that stops a
     #: checkout printing "Free" because a lookup quietly failed — which is
@@ -349,13 +351,20 @@ class DeliveryQuoteResponse(BaseModel):
     #:   to fix something that is not broken.
     #: * `"currency_mismatch"` — the courier quoted a currency this order is not
     #:   charged in, so the quote was discarded rather than converted.
+    #: * `"out_of_range"` — further than the branch delivers. Under slab
+    #:   pricing the order will be REFUSED, so `serviceable` is False and the
+    #:   fee is 0.00 - not a price, the checkout must block Pay.
     fallback_reason: str = ""
     #: False when the courier will not serve the address at all. The fee then
     #: falls back to the branch's, because refusing an order on a courier's
     #: say-so is the restaurant's decision to make, not this endpoint's.
     serviceable: bool = True
-    #: Straight-line-ish distance as the courier measured it, when it said.
+    #: How far the trip is: the courier's road distance when it gave one,
+    #: otherwise the straight line stretched for roads (`delivery/slabs.py`).
     distance_metres: float | None = None
+    #: The furthest this branch delivers, in km, under slab pricing - so a
+    #: refusal can say "up to 10 km" rather than just "too far".
+    max_distance_km: float | None = None
     #: Seconds the courier expects to need to find a rider at all. Often
     #: larger than the drive, and the difference between an honest ETA and an
     #: optimistic one.

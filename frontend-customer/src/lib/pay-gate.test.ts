@@ -179,3 +179,28 @@ describe("payButtonLabel", () => {
     ).toBe("Opening payment…");
   });
 });
+
+describe("an address further than the restaurant delivers", () => {
+  // Under slab pricing (2026-10-07) the server REFUSES a delivery past the
+  // branch's limit, and the quote says so with a fee of 0.00. Leaving Pay live
+  // would let a customer press it and be refused after typing everything.
+  const tooFar: PayGateInput = { ...READY, outOfRange: { distanceKm: 12.5, limitKm: 10 } };
+
+  it("blocks Pay and says how far, and how far they deliver", () => {
+    const block = payBlock(tooFar);
+    expect(block?.label).toBe("Too far to deliver");
+    expect(block?.replacesLabel).toBe(true);
+    expect(block?.detail).toContain("12.5 km");
+    expect(block?.detail).toContain("10 km");
+  });
+
+  it("is not a block once the address is in range", () => {
+    expect(payBlock({ ...READY, outOfRange: null })).toBeNull();
+  });
+
+  it("an unknown address is still the first thing to fix", () => {
+    expect(payBlock({ ...tooFar, deliveryKnown: false })?.label).toBe(
+      "Add your address to continue",
+    );
+  });
+});

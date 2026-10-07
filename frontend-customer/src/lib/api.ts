@@ -580,7 +580,11 @@ export type { ChargeLine, OrderCharges } from "@/lib/bangkok-data";
 export type DeliveryQuote = {
   delivery_fee: Money;
   currency: string;
-  source: "courier" | "branch";
+  /**
+   * "distance" — the platform priced it from its distance slabs (the default
+   * since 2026-10-07); "courier" — a courier's quote; "branch" — the flat fee.
+   */
+  source: "distance" | "courier" | "branch";
   /**
    * Why it is the branch's flat fee, when it is. Empty when a courier priced
    * it. The field that stops the page printing "Free" over a failed lookup.
@@ -591,9 +595,13 @@ export type DeliveryQuote = {
     | "address_unknown"
     | "branch_unknown"
     | "unserviceable"
-    | "currency_mismatch";
+    | "currency_mismatch"
+    /** Further than the branch delivers. Not a price: the order is refused. */
+    | "out_of_range";
   serviceable: boolean;
   distance_metres: number | null;
+  /** The furthest this branch delivers, in km, under slab pricing. */
+  max_distance_km?: number | null;
   assign_seconds: number | null;
   /**
    * Seconds from the branch to the door, as the courier reckons the drive.

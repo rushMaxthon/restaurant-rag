@@ -16,9 +16,11 @@ import sys
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from app.config import get_settings  # noqa: E402
 from app.services import order_charges  # noqa: E402
 
 
@@ -55,12 +57,20 @@ class TheDefaultsChangeNobodysPrices(unittest.TestCase):
     def test_a_branch_row_missing_the_columns_still_prices(self) -> None:
         # A row written before the columns existed, or a test double. Falling
         # over in a checkout because a column is absent is not an option.
-        charges = order_charges.for_location(
-            SimpleNamespace(),
-            subtotal=Decimal("1000"),
-            delivery_fee=Decimal("50"),
-            discount_amount=Decimal("0"),
-        )
+        #
+        # Under courier pricing, where the branch's own delivery-tax column is
+        # the one read. Slab pricing (the default since 2026-10-07) puts the
+        # platform's GST on delivery whatever the row says - deliberately, and
+        # `test_delivery_slabs.GstOnTop` holds that rule.
+        with mock.patch.dict(os.environ, {"DELIVERY_PRICING": "courier"}):
+            get_settings.cache_clear()
+            self.addCleanup(get_settings.cache_clear)
+            charges = order_charges.for_location(
+                SimpleNamespace(),
+                subtotal=Decimal("1000"),
+                delivery_fee=Decimal("50"),
+                discount_amount=Decimal("0"),
+            )
         self.assertEqual(charges.food_tax, Decimal("50.00"))
         self.assertEqual(charges.total_amount, Decimal("1100.00"))
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -43,6 +44,7 @@ from app.services.auth import (
 from app.models.restaurant_location import RestaurantLocation
 from app.models.user_saved_address import UserSavedAddress
 from app.services.delivery.quoting import attempt_quote, before_delivery_tax, fee_from, points_for, usable_in
+from app.services.delivery.slabs import price_trip, slab_pricing_on
 from app.services.geocoding.base import AddressQuery, GeocodeConfidence
 from app.services import order_charges
 from app.services.live_orders import build_live_board
@@ -224,6 +226,37 @@ def quote_delivery(
         if not drop.usable
         else ""
     )
+
+    if slab_pricing_on() and not unusable:
+        # The platform's price for the distance - the same function, with the
+        # same points, as the order that will charge it.
+        trip = price_trip(location, query, db=db, points=(pickup, drop))
+        if trip.reason == "out_of_range":
+            no_fee = Decimal("0.00")
+            return DeliveryQuoteResponse(
+                delivery_fee=no_fee,
+                currency=currency,
+                source="distance",
+                serviceable=False,
+                fallback_reason="out_of_range",
+                distance_metres=trip.distance_metres,
+                max_distance_km=trip.limit_km,
+                **_priced(location, payload, no_fee),
+                **located,
+            )
+        if trip.fee is not None:
+            return DeliveryQuoteResponse(
+                delivery_fee=trip.fee,
+                currency=currency,
+                source="distance",
+                serviceable=trip.serviceable,
+                distance_metres=trip.distance_metres,
+                max_distance_km=trip.limit_km,
+                assign_seconds=trip.quote.assign_seconds if trip.quote else None,
+                travel_seconds=trip.quote.travel_seconds if trip.quote else None,
+                **_priced(location, payload, trip.fee),
+                **located,
+            )
 
     attempt = attempt_quote(location, query, db=db, points=(pickup, drop))
     quote = attempt.quote

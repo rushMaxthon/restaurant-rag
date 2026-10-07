@@ -138,6 +138,13 @@ export function deliveryFeeNote(quote: DeliveryQuote | null): string | null {
   if (!quote) {
     return null;
   }
+  if (quote.fallback_reason === 'out_of_range') {
+    // Slab pricing refuses an order past the branch's limit, so this is a
+    // refusal rather than a fallback fee: say how far, and how far they go.
+    const km = ((quote.distance_metres ?? 0) / 1000).toFixed(1);
+    const limit = quote.max_distance_km ?? 10;
+    return `This address is about ${km} km away and the restaurant delivers up to ${limit} km. Choose a closer address, or pickup.`;
+  }
   if (quote.serviceable === false) {
     return "No courier will drive there right now — the restaurant's own fee applies.";
   }

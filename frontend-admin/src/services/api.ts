@@ -29,6 +29,8 @@ import type {
   PaymentGateway,
   PaymentGatewayPayload,
   CommissionReport,
+  DeliveryPricing,
+  DeliveryPricingInput,
   PayoutAccount,
   PayoutAccountInput,
   PayoutList,
@@ -238,6 +240,12 @@ export const api = {
   },
   getCommissionReport(token: string, days: number): Promise<CommissionReport> {
     return request<CommissionReport>(`/admin/commission?days=${days}`, { token });
+  },
+  getDeliveryPricing(token: string): Promise<DeliveryPricing> {
+    return request<DeliveryPricing>('/admin/delivery-pricing', { token });
+  },
+  saveDeliveryPricing(token: string, body: DeliveryPricingInput): Promise<DeliveryPricing> {
+    return request<DeliveryPricing>('/admin/delivery-pricing', { method: "PUT", token, body });
   },
   getAdminDashboard(token: string): Promise<AdminDashboardStats> {
     return request<AdminDashboardStats>('/admin/dashboard', { token });

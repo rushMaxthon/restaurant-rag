@@ -1718,6 +1718,28 @@ export interface CommissionRow {
   currency: string;
 }
 
+/** One delivery slab. `up_to_km` is null on the last: everything further. */
+export interface DeliverySlab {
+  up_to_km: number | null;
+  /** Before GST. */
+  fee: number | string;
+}
+
+/** The input the admin's Delivery pricing page saves. */
+export interface DeliveryPricingInput {
+  slabs: DeliverySlab[];
+  max_distance_km: number;
+  gst_percent: number | string;
+}
+
+/** `GET /admin/delivery-pricing`: what every restaurant charges for delivery. */
+export interface DeliveryPricing extends DeliveryPricingInput {
+  /** False while nothing has been saved and the built-in defaults apply. */
+  saved: boolean;
+  updated_at: string | null;
+  updated_by_name: string | null;
+}
+
 export interface CommissionReport {
   days: number;
   since: string;

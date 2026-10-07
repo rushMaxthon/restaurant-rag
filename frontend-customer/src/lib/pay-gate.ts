@@ -60,6 +60,12 @@ export type PayGateInput = {
   hasSlot: boolean;
   /** False until the delivery fee is known, which needs a located address. */
   deliveryKnown: boolean;
+  /**
+   * Set when the address is further than the branch delivers. The server
+   * refuses that order, so Pay must not be offered. Optional so callers that
+   * never quote a delivery need not say so.
+   */
+  outOfRange?: { distanceKm: number; limitKm: number } | null;
 };
 
 /**
@@ -114,6 +120,17 @@ export function payBlock(input: PayGateInput): PayBlock | null {
     // the button over, reads as an instruction rather than a refusal, and
     // `order-flow.spec.ts` accounts for it by name.
     return { label: "Add your address to continue", replacesLabel: true, detail: null };
+  }
+
+  if (input.outOfRange) {
+    // After the address check, because it is a statement about the address
+    // they gave: there is nothing to say about distance until there is one.
+    const { distanceKm, limitKm } = input.outOfRange;
+    return {
+      label: "Too far to deliver",
+      replacesLabel: true,
+      detail: `This address is about ${distanceKm.toFixed(1)} km away and the restaurant delivers up to ${limitKm} km. Choose a closer address, or pickup.`,
+    };
   }
 
   return null;

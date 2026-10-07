@@ -17360,3 +17360,54 @@ optgroup {
   color: var(--text);
   font-size: var(--fs-body);
 }
+
+/* Delivery pricing (admin): one row per distance slab. Range, two inputs,
+ * what the customer pays with GST, and a remove button; wraps to a stack on
+ * a phone. */
+.delivery-slabs {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.delivery-slab {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(7rem, auto) auto;
+  gap: var(--space-3);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-alt);
+}
+
+.delivery-slab__range {
+  align-self: center;
+}
+
+.delivery-slab__paid {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+
+.delivery-slab__paid strong {
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+@media (max-width: 720px) {
+  .delivery-slab {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .delivery-slab__range {
+    grid-column: 1 / -1;
+  }
+}
+
+.delivery-pricing__save p[role="alert"] {
+  margin: 0 0 var(--space-2);
+  color: var(--danger);
+}

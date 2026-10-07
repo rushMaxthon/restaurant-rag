@@ -1022,10 +1022,39 @@ class Settings(BaseSettings):
     # fee. No amount of grading coordinates catches every variant of that;
     # a distance nobody would ever drive does.
     #
-    # 50 km is generous for any real order and tight enough to catch a lookup
-    # landing in another state. A branch's own `service_radius_km` overrides it
+    # It was 50 km, which was only ever a backstop. Since 2026-10-07 it is also
+    # the business rule: the platform delivers up to 10 km and refuses past it,
+    # because the top slab below is a price for a short city trip, not for one
+    # across the district. A branch's own `service_radius_km` overrides it
     # when set, because that is the restaurant's actual answer.
-    delivery_max_distance_km: float = 50.0
+    delivery_max_distance_km: float = 10.0
+    # Who sets the delivery price the customer pays.
+    #
+    # "slabs" (the default since 2026-10-07): the platform does, from the
+    # distance alone, using `delivery_fee_slabs`. Pidge auto-allocates on this
+    # account and its estimate did not hold: two trips quoted at Rs 57 were
+    # assigned to a network that charged Rs 285.61. A price the customer can
+    # predict, and that the platform has chosen, beats one that moves with a
+    # courier's mood - the courier is still asked, but only for its road
+    # distance.
+    #
+    # "courier": the old behaviour, the courier's quote is the fee
+    # (`quoting.delivery_fee_for`).
+    delivery_pricing: str = "slabs"
+    # The slabs, as "up-to-km:fee" pairs before GST, ending in "*:fee" for
+    # everything further. Inclusive at the top: exactly 2.0 km is Rs 68. Read
+    # by `services/delivery/slabs.py`, which falls back to this same list if
+    # an edited value does not parse - a typo must not make delivery free.
+    delivery_fee_slabs: str = "2:68,5:78,*:100"
+    # GST on the delivery fee while the platform prices it. Delivery is the
+    # platform's money (`payouts/split.py` gives it all to the platform), so
+    # its tax is the platform's rate rather than each branch's - and most
+    # branches were left at 0%, which would have charged no GST at all.
+    delivery_gst_percent: float = 18.0
+    # A straight line undercounts a trip by every bend in the road; 1.3 is the
+    # usual city detour factor. Only used when the courier does not give us
+    # its own road distance.
+    delivery_road_factor: float = 1.3
 
     # --- geocoding ----------------------------------------------------------
     #

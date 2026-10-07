@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import {
   BadgeIndianRupee,
   BarChart3,
+  Bike,
   HeartPulse,
   BellRing,
   Bot,
@@ -62,6 +63,7 @@ import { CampaignDetailPage } from "./pages/CampaignDetailPage";
 import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
+import { DeliveryPricingPage } from "./pages/DeliveryPricingPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
 import { PlatformWatchPage } from "./pages/PlatformWatchPage";
 import { MarketingPage } from "./pages/MarketingPage";
@@ -425,6 +427,15 @@ export const ROUTES: RouteDef[] = [
     render: (ctx) => (
       <CommissionPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />
     ),
+  },
+  {
+    // Admin only, like the endpoint. One price list for every restaurant, and
+    // beside what a courier charges it is the platform's delivery margin.
+    id: "delivery-pricing",
+    pattern: "/delivery-pricing",
+    roles: ADMIN_ONLY,
+    nav: { section: "Platform", label: "Delivery pricing", icon: Bike, keywords: ["delivery fee", "distance", "slabs", "km", "gst", "charges"] },
+    render: (ctx) => <DeliveryPricingPage onToast={ctx.pushToast} token={ctx.token} />,
   },
 
   {
