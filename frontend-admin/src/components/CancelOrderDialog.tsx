@@ -1,3 +1,4 @@
+import { Bell, Bike, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
 import { Modal } from "./Modal";
@@ -20,6 +21,10 @@ interface CancelOrderDialogProps {
  * plain statement of what will happen to the money and the rider before the
  * button is pressed. The server makes every decision; a refusal (the rider
  * collected it in the meantime) comes back as its own sentence.
+ *
+ * The reasons are rows a whole finger can hit, not bare radio buttons: inside
+ * `.field`, the panel's form rules stretched each radio to a full-height
+ * circle above its label (`.cancel-reason` in legacy.css says why).
  */
 export function CancelOrderDialog({ token, order, amount, onClose, onCancelled, onToast }: CancelOrderDialogProps) {
   const [reason, setReason] = useState<StaffCancelReason | null>(null);
@@ -29,6 +34,7 @@ export function CancelOrderDialog({ token, order, amount, onClose, onCancelled, 
 
   const prepaid = order.payment_method !== "COD" && order.payment_status === "PAID";
   const formError = cancelFormError(reason, note);
+  const noteRequired = reason === "OTHER_BY_STAFF";
 
   async function submit() {
     if (formError || !reason) {
@@ -53,50 +59,92 @@ export function CancelOrderDialog({ token, order, amount, onClose, onCancelled, 
   }
 
   return (
-    <Modal busy={busy} className="confirm-dialog" labelledBy="cancel-order-title" onClose={onClose}>
+    <Modal busy={busy} className="confirm-dialog cancel-order" labelledBy="cancel-order-title" onClose={onClose}>
       <div className="panel__header modal-card__header">
         <div>
           <span className="eyebrow">Order #{order.id.slice(0, 8)}</span>
           <h2 id="cancel-order-title">Cancel this order?</h2>
-          <p className="hint-text">
-            {prepaid
-              ? `The customer is refunded ${amount} in full, a booked rider is called off and the customer is told.`
-              : "A booked rider is called off and the customer is told. Nothing was paid online, so there is nothing to refund."}
-          </p>
         </div>
         <button aria-label="Close" className="modal-close" disabled={busy} onClick={onClose} type="button">
           ×
         </button>
       </div>
 
-      <div className="modal-card__body confirm-dialog__body">
-        <fieldset className="field">
+      <div className="modal-card__body confirm-dialog__body cancel-order__body">
+        <ul aria-label="What happens" className="cancel-order__effects">
+          <li>
+            <RotateCcw aria-hidden="true" size={16} />
+            {prepaid ? (
+              <span>
+                <strong>{amount}</strong> is refunded to the customer in full.
+              </span>
+            ) : (
+              <span>Nothing was paid online, so there is nothing to refund.</span>
+            )}
+          </li>
+          <li>
+            <Bike aria-hidden="true" size={16} />
+            <span>A rider already booked for it is called off.</span>
+          </li>
+          <li>
+            <Bell aria-hidden="true" size={16} />
+            <span>The customer is told it was cancelled, and why.</span>
+          </li>
+        </ul>
+
+        <fieldset className="cancel-reasons" disabled={busy}>
           <legend>Why is it being cancelled?</legend>
           {CANCEL_REASONS.map((option) => (
-            <label key={option.value}>
+            <label
+              className={`cancel-reason${reason === option.value ? " cancel-reason--chosen" : ""}`}
+              key={option.value}
+            >
               <input
                 checked={reason === option.value}
-                disabled={busy}
                 name="cancel-reason"
-                onChange={() => setReason(option.value)}
+                onChange={() => {
+                  setReason(option.value);
+                  setError(null);
+                }}
                 type="radio"
-              />{" "}
-              {option.label}
+                value={option.value}
+              />
+              <span>{option.label}</span>
             </label>
           ))}
         </fieldset>
-        <label className="field">
-          <span>Note {reason === "OTHER_BY_STAFF" ? "(required)" : "(optional)"}</span>
+
+        <label className="field cancel-order__note">
+          <span>
+            Note{" "}
+            <small className={noteRequired ? "cancel-order__required" : undefined}>
+              {noteRequired ? "(required)" : "(optional)"}
+            </small>
+          </span>
           <textarea
             disabled={busy}
             maxLength={500}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="e.g. Paneer finished for today"
+            onChange={(event) => {
+              setNote(event.target.value);
+              setError(null);
+            }}
+            placeholder={noteRequired ? "Say why, in a few words" : "e.g. Paneer finished for today"}
             rows={2}
             value={note}
           />
+          <small className="hint-text">The customer sees this note.</small>
         </label>
-        {error ? <p role="alert">{error}</p> : null}
+
+        {error ? (
+          <p className="cancel-order__error" role="alert">
+            {error}
+          </p>
+        ) : formError ? (
+          // Why the button is disabled, beside it (CLAUDE.md: a disabled
+          // button says why).
+          <p className="hint-text cancel-order__why">{formError}</p>
+        ) : null}
+
         <div className="modal-actions">
           <button className="secondary-button" disabled={busy} onClick={onClose} type="button">
             Keep the order
@@ -108,10 +156,9 @@ export function CancelOrderDialog({ token, order, amount, onClose, onCancelled, 
             title={formError ?? "Cancel the order"}
             type="button"
           >
-            {busy ? "Cancelling..." : "Cancel order"}
+            {busy ? "Cancelling..." : prepaid ? `Cancel and refund ${amount}` : "Cancel order"}
           </button>
         </div>
-        {formError ? <small>{formError}</small> : null}
       </div>
     </Modal>
   );

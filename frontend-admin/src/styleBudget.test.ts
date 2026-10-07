@@ -21,6 +21,7 @@ const BUDGET: Record<string, Counts> = {
   "bp": { spacing: 0, weight: 0, colour: 1 },
   "branch": { spacing: 0, weight: 0, colour: 0 },
   "breadcrumbs": { spacing: 0, weight: 0, colour: 0 },
+  "cancel": { spacing: 0, weight: 0, colour: 0 },
   "capability": { spacing: 0, weight: 0, colour: 0 },
   "chart": { spacing: 0, weight: 0, colour: 0 },
   "color": { spacing: 0, weight: 0, colour: 0 },

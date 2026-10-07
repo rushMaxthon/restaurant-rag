@@ -17435,3 +17435,126 @@ optgroup {
   border-radius: var(--radius-pill);
   background: var(--success);
 }
+
+/* Cancel order dialog (2026-10-07). Inside `.field` the panel's form rules
+ * gave every input full width and control height, so each radio came out a
+ * 40px circle stacked above its label in a bare fieldset box. The reasons are
+ * rows instead - the whole row is the target - and the radio is sized by an
+ * attribute selector, which out-specifies those rules (see `.checkbox-row`). */
+.cancel-order__body {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.cancel-order__effects {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-alt);
+}
+
+.cancel-order__effects li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  color: var(--text);
+  font-size: var(--fs-label);
+  line-height: 1.45;
+}
+
+.cancel-order__effects svg {
+  flex: 0 0 auto;
+  margin-top: var(--space-1);
+  color: var(--muted);
+}
+
+.cancel-reasons {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cancel-reasons legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+}
+
+.cancel-reason {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-label);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.cancel-reason:hover {
+  border-color: var(--border-strong);
+}
+
+.cancel-reason--chosen,
+.cancel-reason--chosen:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.cancel-reason > input[type="radio"] {
+  width: 1.05rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  min-height: 1.05rem;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--danger);
+}
+
+.cancel-reason:has(input:focus-visible) {
+  box-shadow: var(--shadow-ring);
+}
+
+.cancel-reasons:disabled .cancel-reason {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.cancel-order__note small {
+  color: var(--muted);
+  font-weight: var(--fw-regular);
+}
+
+.cancel-order__note .cancel-order__required {
+  color: var(--danger);
+}
+
+.cancel-order__why,
+.cancel-order__error {
+  margin: 0;
+  text-align: right;
+}
+
+.cancel-order__error {
+  color: var(--danger);
+  font-size: var(--fs-label);
+}
+
+.cancel-order .modal-actions {
+  margin-top: 0;
+}
+
