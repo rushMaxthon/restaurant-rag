@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
@@ -502,6 +503,8 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
     if row.pickup_eta is not None and row.pickup_eta == row.drop_eta:
         row.pickup_eta = None
     if result.courier_charge is not None:
+        if row.order is not None:
+            note_courier_price(row.order, row, result)
         row.courier_charge = result.courier_charge
     if result.rider_latitude is not None and result.rider_longitude is not None:
         if row.rider_location_at is None or result.rider_location_at is None or (
@@ -547,6 +550,49 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
             )
             _notify_after_commit(db, order, order.status)
     return row
+
+
+def paid_for_delivery(order) -> Decimal:
+    """What the customer paid for the trip: the fee and its own GST line.
+
+    The courier's charge already contains GST (`quoting.before_delivery_tax`
+    takes it back out of the fee), so this is the figure to hold it against.
+    """
+
+    return Decimal(order.delivery_fee or 0) + Decimal(getattr(order, "delivery_tax_amount", None) or 0)
+
+
+def courier_overpriced(order, row) -> bool:
+    """Whether the courier charges past `courier_overprice_ratio` x what was paid.
+
+    Free delivery is never flagged: it is a decision somebody made, and any
+    courier price is "over" zero, so every such order would bury the real
+    ones.
+    """
+
+    charge = getattr(row, "courier_charge", None)
+    paid = paid_for_delivery(order)
+    if charge is None or paid <= 0:
+        return False
+    ratio = Decimal(str(get_settings().courier_overprice_ratio))
+    return Decimal(charge) > paid * ratio
+
+
+def note_courier_price(order, row, result) -> None:
+    """Say so, once, when a courier's price arrives far above what was paid.
+
+    Called before the row takes the new charge, so the same price on the next
+    poll is recognised and not logged every minute.
+    """
+
+    if result.courier_charge is None or row.courier_charge == result.courier_charge:
+        return
+    if not courier_overpriced(order, SimpleNamespace(courier_charge=result.courier_charge)):
+        return
+    logger.warning(
+        "Courier charges Rs %s for order %s; the customer paid Rs %s for delivery",
+        result.courier_charge, order.id, f"{paid_for_delivery(order):.2f}",
+    )
 
 
 def can_cancel(order: Order, row: OrderDelivery | None) -> bool:

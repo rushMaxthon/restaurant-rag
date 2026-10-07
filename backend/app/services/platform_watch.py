@@ -425,6 +425,30 @@ def find_issues(db: Session, *, now: datetime) -> list[Issue]:
             int(count), rid, name(rid), link="/orders",
         ))
 
+    # A rider network that charges far more than the customer paid for the
+    # trip. Pidge auto-allocates, so it is Pidge's choice and nothing else
+    # would ever say so - two Rs 57 trips went at Rs 285.61 on 2026-10-06.
+    from app.services.delivery.service import courier_overpriced, paid_for_delivery
+
+    priced = db.execute(
+        select(Order, OrderDelivery)
+        .join(OrderDelivery, OrderDelivery.order_id == Order.id)
+        .where(OrderDelivery.courier_charge.is_not(None), OrderDelivery.created_at > now - timedelta(hours=24))
+    ).all()
+    over: dict[uuid.UUID, list[tuple[Decimal, Decimal]]] = {}
+    for order, delivery in priced:
+        if order.restaurant_id in demo or not courier_overpriced(order, delivery):
+            continue
+        over.setdefault(order.restaurant_id, []).append((Decimal(delivery.courier_charge), paid_for_delivery(order)))
+    for rid, trips in over.items():
+        charge, paid = max(trips)
+        issues.append(Issue(
+            "courier_overpriced", MEDIUM, f"{len(trips)} rider(s) charged far more than the customer paid",
+            f"Worst: Rs {charge:.2f} charged for a trip the customer paid Rs {paid:.2f} for. "
+            "Pidge chose the rider network; ask them to prefer a cheaper one.",
+            len(trips), rid, name(rid), link="/orders",
+        ))
+
     failed_payments = db.execute(
         select(Order.restaurant_id, func.count(PaymentTransaction.id))
         .join(Order, Order.id == PaymentTransaction.order_id)

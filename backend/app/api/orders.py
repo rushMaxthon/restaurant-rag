@@ -586,6 +586,9 @@ def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User
         and delivery_service.can_allocate(order, delivery)
     )
     response.can_simulate = str(viewer.role) == "ADMIN" and delivery_service.simulate_allowed()
+    if order is not None:
+        response.paid_for_delivery = delivery_service.paid_for_delivery(order)
+        response.courier_overpriced = delivery_service.courier_overpriced(order, delivery)
     return response.for_viewer(viewer)
 
 

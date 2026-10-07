@@ -280,6 +280,25 @@ flat fee, which is a number the owner typed.
 Checked live on 2026-10-05 against Bhagwati Bakery: courier 50.00, fee 42.37,
 GST 7.63.
 
+## What delivery costs, after a rider is assigned
+
+The estimate is not the bill. The account auto-allocates, so Pidge picks the
+rider network the moment the order is created, and that network's price is
+only known once a rider is on the way. On 2026-10-06 the same 3.7 km trip,
+estimated at about Rs 57, went to porter at Rs 76.69 and to wefast at
+Rs 285.61, twice. Our own `pick_network` (cheapest first) never ran: it only
+acts on an order Pidge left unallocated.
+
+So the guard is after the fact, and it flags rather than cancels - the food
+still goes out, and a cancel would cost a delay and maybe a fee, and an
+auto-allocating account could hand the retry to the same network.
+`courier_overpriced` holds `courier_charge` against what the customer paid
+(`delivery_fee` plus `delivery_tax_amount`) and flags it past
+`COURIER_OVERPRICE_RATIO` (1.5). Free delivery is never flagged. The flag is
+on the order's delivery card and in Platform Watch, and a warning is logged
+when the price first arrives. Like the charge itself, only the platform
+admin sees it: beside the fee it is the platform's margin.
+
 ## The tracking link is a code, not a URL
 
 Confirmed by Pidge directly. Their webhook carries a short code:

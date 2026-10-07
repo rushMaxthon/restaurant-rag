@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canCancelRider, isBadStep, nextEta, riderMapUrl, stepLabel } from "./courier";
+import { canCancelRider, isBadStep, nextEta, overpriceNote, riderMapUrl, stepLabel } from "./courier";
 
 describe("stepLabel", () => {
   it("says the courier's statuses in words", () => {
@@ -52,5 +52,20 @@ describe("riderMapUrl and canCancelRider", () => {
     expect(canCancelRider({ can_cancel: false })).toBe(false);
     // An older API that does not send the field offers nothing.
     expect(canCancelRider({})).toBe(false);
+  });
+});
+
+describe("overpriceNote", () => {
+  // 2026-10-06: a Rs 57 trip went to wefast at Rs 285.61, twice.
+  it("says how many times what the customer paid, when the server flagged it", () => {
+    expect(
+      overpriceNote({ courier_overpriced: true, courier_charge: "285.61", paid_for_delivery: "57.00" }),
+    ).toBe("5.0x what the customer paid for delivery. Pidge chose this rider network.");
+  });
+
+  it("is nothing when the server did not flag it, or sent no figures", () => {
+    expect(overpriceNote({ courier_overpriced: false, courier_charge: "76.69", paid_for_delivery: "57.00" })).toBeNull();
+    expect(overpriceNote({ courier_overpriced: true, courier_charge: null, paid_for_delivery: "57.00" })).toBeNull();
+    expect(overpriceNote({})).toBeNull();
   });
 });

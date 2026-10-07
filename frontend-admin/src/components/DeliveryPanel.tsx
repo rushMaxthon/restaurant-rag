@@ -7,6 +7,7 @@ import {
   canCancelRider,
   isBadStep,
   nextEta,
+  overpriceNote,
   riderMapUrl,
   stepLabel,
 } from '../services/courier';
@@ -171,6 +172,7 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPan
   }
 
   const state = STATES[delivery.state] ?? { label: delivery.state, tone: 'busy' as const };
+  const overprice = overpriceNote(delivery);
   const eta = nextEta({
     state: delivery.state,
     pickup_eta: delivery.pickup_eta ?? null,
@@ -312,6 +314,15 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPan
             <span>Courier charge</span>
             <strong>{money.format(Number(delivery.courier_charge))}</strong>
           </div>
+        )}
+        {/* Admin only, like the charge. Flagged, never cancelled: the food
+            still goes out, and the next step is a word with Pidge. */}
+        {overprice && (
+          <p className="order-detail__fact-inline" style={{ color: 'var(--warning)' }}>
+            <TriangleAlert size={14} strokeWidth={2.1} />
+            Customer paid {money.format(Number(delivery.paid_for_delivery))} for delivery. The courier
+            charges {overprice}
+          </p>
         )}
 
         {/* Who actually has the trip. Their reference, not the courier's, is

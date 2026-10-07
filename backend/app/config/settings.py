@@ -902,6 +902,14 @@ class Settings(BaseSettings):
     # one that can take the order. A preference that cannot take it is passed
     # over rather than leaving the order with nobody.
     pidge_preferred_network: str = ""
+    # How many times what the customer paid for delivery (fee plus its GST
+    # line) a courier may charge before the order is flagged to the platform
+    # admin. Pidge's account auto-allocates, so the network - and its price -
+    # is Pidge's choice and only known once a rider is on the way: on
+    # 2026-10-06 a Rs 57 trip went to wefast at Rs 285.61, twice, and nothing
+    # said so. 1.5 lets an ordinary spread through (porter's Rs 76.69 on the
+    # same trip is 1.35x). Flagged, never cancelled: the food still goes out.
+    courier_overprice_ratio: float = 1.5
     # Defence in depth, not the guarantee. Pidge signs nothing, so the webhook
     # confirms every push by fetching the order over our own authenticated
     # connection; this secret only keeps casual noise out, and it travels in a

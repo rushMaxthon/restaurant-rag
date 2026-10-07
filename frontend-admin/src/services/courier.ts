@@ -86,3 +86,17 @@ export const SIMULATE_STAGES: Array<{ status: string; label: string }> = [
   { status: "fulfilled|delivered", label: "Delivered" },
   { status: "fulfilled|undelivered", label: "Undelivered" },
 ];
+
+/**
+ * Why a courier's price deserves a second look, or null. The server decides
+ * (`courier_overprice_ratio`) and only ever tells the platform admin; this
+ * only puts the figure in words.
+ */
+export function overpriceNote(
+  delivery: Partial<Pick<OrderDelivery, "courier_overpriced" | "courier_charge" | "paid_for_delivery">>,
+): string | null {
+  const charge = Number(delivery.courier_charge);
+  const paid = Number(delivery.paid_for_delivery);
+  if (!delivery.courier_overpriced || delivery.courier_charge == null || !(paid > 0)) return null;
+  return `${(charge / paid).toFixed(1)}x what the customer paid for delivery. Pidge chose this rider network.`;
+}

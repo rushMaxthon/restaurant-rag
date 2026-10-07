@@ -262,6 +262,44 @@ class WhatNeedsAttentionTests(unittest.TestCase):
         self.assertIn("restaurant_pending", keys)
         self.assertNotIn("branch_empty_menu", keys)
 
+    def _delivered_at_a_price(self, rid, lid, uid, charge, *, hours_ago=1):
+        from app.models.order_delivery import OrderDelivery
+
+        placed = self.now - timedelta(hours=hours_ago)
+        with self.session_factory() as session:
+            order = Order(
+                id=uuid.uuid4(), customer_id=uid, restaurant_id=rid, restaurant_location_id=lid,
+                status=OrderStatus.DELIVERED, payment_status=PaymentStatus.PAID, payment_method=PaymentMethod.CARD,
+                fulfillment_type=OrderFulfillmentType.DELIVERY, schedule_type=OrderScheduleType.ASAP,
+                scheduled_at=placed, placed_at=placed, updated_at=placed, subtotal=Decimal("70"),
+                delivery_fee=Decimal("48.31"), delivery_tax_amount=Decimal("8.69"), tax_amount=Decimal("0"),
+                discount_amount=Decimal("0"), total_amount=Decimal("127.01"), delivery_address="1 St",
+            )
+            session.add(order)
+            session.flush()
+            session.add(OrderDelivery(
+                order_id=order.id, provider="pidge", provider_order_id=uuid.uuid4().hex[:12], state="DELIVERED",
+                courier_charge=Decimal(charge), created_at=placed, updated_at=placed,
+            ))
+            session.commit()
+
+    def test_a_rider_charging_far_more_than_the_customer_paid_is_raised(self) -> None:
+        # 2026-10-06: wefast took two Rs 57 trips at Rs 285.61 each.
+        rid, lid, uid = self._restaurant()
+        self._delivered_at_a_price(rid, lid, uid, "285.61")
+        self._delivered_at_a_price(rid, lid, uid, "285.61")
+        self._delivered_at_a_price(rid, lid, uid, "76.69")
+        issue = next(i for i in self._issues() if i.key == "courier_overpriced")
+        self.assertEqual(issue.count, 2)
+        self.assertEqual(issue.severity, platform_watch.MEDIUM)
+        self.assertIn("285.61", issue.detail)
+        self.assertIn("57.00", issue.detail)
+
+    def test_an_old_overpriced_trip_is_not_todays_problem(self) -> None:
+        rid, lid, uid = self._restaurant()
+        self._delivered_at_a_price(rid, lid, uid, "285.61", hours_ago=30)
+        self.assertNotIn("courier_overpriced", self._keys())
+
     def test_issues_come_worst_first(self) -> None:
         rid, lid, uid = self._restaurant(commission="0")
         self._order(rid, lid, uid, status=OrderStatus.PLACED, minutes_ago=30)

@@ -537,6 +537,11 @@ class OrderDeliveryResponse(BaseModel):
     #: only (`for_viewer`): to an owner or a customer it is somebody else's
     #: commercial term, and beside the delivery fee it is a margin.
     courier_charge: Decimal | None = None
+    #: Beside it, and to the same one viewer: what the customer paid for the
+    #: trip, and whether the courier charges past `courier_overprice_ratio`
+    #: times that (`delivery.service.courier_overpriced`).
+    paid_for_delivery: Decimal | None = None
+    courier_overpriced: bool = False
     #: Whether a staff member may ask for another rider right now.
     can_rebook: bool = False
     can_cancel: bool = False
@@ -555,7 +560,9 @@ class OrderDeliveryResponse(BaseModel):
 
         if str(getattr(viewer, "role", "")) == "ADMIN":
             return self
-        return self.model_copy(update={"courier_charge": None})
+        return self.model_copy(
+            update={"courier_charge": None, "paid_for_delivery": None, "courier_overpriced": False}
+        )
 
 
 class LiveOrderResponse(OrderResponse):

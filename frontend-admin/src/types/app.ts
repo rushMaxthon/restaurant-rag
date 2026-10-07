@@ -1642,6 +1642,9 @@ export interface OrderDelivery {
   allocated_at?: string | null;
   /** What the courier invoices. Sent to the platform admin only. */
   courier_charge?: number | string | null;
+  /** Platform admin only, like the charge: what the customer paid for the trip. */
+  paid_for_delivery?: number | string | null;
+  courier_overpriced?: boolean;
   can_rebook?: boolean;
   /** Booked, no rider yet: the courier can be asked again. */
   can_allocate?: boolean;
