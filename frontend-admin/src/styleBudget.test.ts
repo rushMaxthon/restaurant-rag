@@ -96,6 +96,7 @@ const BUDGET: Record<string, Counts> = {
   "toast": { spacing: 0, weight: 0, colour: 0 },
   "toggle": { spacing: 0, weight: 0, colour: 0 },
   "toolbar": { spacing: 0, weight: 0, colour: 0 },
+  "traffic": { spacing: 0, weight: 0, colour: 0 },
   "ui": { spacing: 0, weight: 0, colour: 0 },
   "usr": { spacing: 0, weight: 0, colour: 0 },
   "visually": { spacing: 0, weight: 0, colour: 0 },

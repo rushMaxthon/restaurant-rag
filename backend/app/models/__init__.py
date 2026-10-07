@@ -36,6 +36,7 @@ from app.models.push_notification_campaign_recipient import (
     PushNotificationCampaignRecipient,
 )
 from app.models.platform_setting import PlatformSetting
+from app.models.storefront_visit import StorefrontVisitorDay
 from app.models.push_notification_event import PushNotificationEvent
 from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
@@ -53,6 +54,7 @@ from app.models.preference import (
 
 __all__ = [
     "PlatformSetting",
+    "StorefrontVisitorDay",
     "Base",
     "TimestampMixin",
     "User",

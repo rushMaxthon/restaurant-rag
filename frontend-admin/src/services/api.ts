@@ -30,6 +30,8 @@ import type {
   PaymentGatewayPayload,
   CommissionReport,
   DeliveryPricing,
+  TrafficOverview,
+  TrafficSummary,
   DeliveryPricingInput,
   PayoutAccount,
   PayoutAccountInput,
@@ -240,6 +242,13 @@ export const api = {
   },
   getCommissionReport(token: string, days: number): Promise<CommissionReport> {
     return request<CommissionReport>(`/admin/commission?days=${days}`, { token });
+  },
+  getTrafficSummary(token: string, restaurantId?: string | null): Promise<TrafficSummary> {
+    const query = restaurantId ? `?restaurant_id=${restaurantId}` : '';
+    return request<TrafficSummary>(`/traffic/summary${query}`, { token });
+  },
+  getTrafficOverview(token: string): Promise<TrafficOverview> {
+    return request<TrafficOverview>('/traffic/overview', { token });
   },
   getDeliveryPricing(token: string): Promise<DeliveryPricing> {
     return request<DeliveryPricing>('/admin/delivery-pricing', { token });

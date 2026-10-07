@@ -15,6 +15,8 @@ import { reportError } from "../lib/error-reporting";
 import { BangkokStoreProvider } from "@/lib/bangkok-store";
 import { RealtimeProvider } from "@/lib/realtime-provider";
 import { AuthProvider } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { startVisitorHeartbeat } from "@/lib/visitor";
 import { AppShell } from "@/components/bangkok/app-shell";
 import { UNKNOWN_STOREFRONT, storefrontMeta } from "@/lib/storefront";
 import { fontTokenCss, resolveFonts } from "@/lib/fonts";
@@ -145,6 +147,9 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // Counts this visitor on the restaurant's Traffic page while a page is on
+  // screen. Mounted once at the root, so moving between pages is one visit.
+  useEffect(() => startVisitorHeartbeat(api.trafficBeat), []);
 
   return (
     <QueryClientProvider client={queryClient}>

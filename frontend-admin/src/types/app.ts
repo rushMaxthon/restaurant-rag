@@ -1740,6 +1740,52 @@ export interface DeliveryPricing extends DeliveryPricingInput {
   updated_by_name: string | null;
 }
 
+/** `GET /traffic/summary`: one restaurant's storefront traffic. */
+export interface TrafficDay {
+  /** The business day, YYYY-MM-DD. */
+  day: string;
+  visitors: number;
+  ordered: number;
+}
+
+export interface TrafficSummary {
+  restaurant_id: string;
+  /** Visitors with the storefront open in the last 2 minutes. */
+  online_now: number;
+  today: {
+    visitors: number;
+    new: number;
+    returning: number;
+    devices: { phone: number; tablet: number; desktop: number };
+    /** Visitors whose storefront account placed an order today here. */
+    ordered: number;
+    conversion_percent: number | null;
+    /** Every order placed today at this restaurant, from any channel. */
+    orders: number;
+  };
+  /** The last 30 days, oldest first. */
+  daily: TrafficDay[];
+  /** Unique visitors in each hour of the day, over the last 7 days. */
+  hours: number[];
+  generated_at: string;
+}
+
+/** `GET /traffic/overview`: every restaurant, for the platform admin. */
+export interface TrafficOverviewRow {
+  restaurant_id: string;
+  restaurant_name: string;
+  online_now: number;
+  visitors_today: number;
+  visitors_yesterday: number;
+  ordered_today: number;
+  conversion_percent: number | null;
+}
+
+export interface TrafficOverview {
+  generated_at: string;
+  restaurants: TrafficOverviewRow[];
+}
+
 export interface CommissionReport {
   days: number;
   since: string;

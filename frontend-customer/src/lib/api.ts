@@ -854,6 +854,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
   getAppConfig: () => request<AppConfig>("/app-config", { query: { host: storefrontHost() } }),
 
+  /**
+   * "This page is open and on screen" (`lib/visitor.ts`). Signed in when the
+   * customer is, which is what lets the Traffic page count who ordered.
+   * Short timeout: a slow beat is not worth holding a connection for.
+   */
+  trafficBeat: (visitorId: string) =>
+    request<null>("/traffic/beat", {
+      method: "POST",
+      body: { visitor_id: visitorId },
+      auth: true,
+      timeoutMs: 5000,
+    }),
+
   getRestaurant: (restaurantId: string) =>
     request<Restaurant & { locations: RestaurantLocation[] }>(`/restaurants/${restaurantId}`),
 

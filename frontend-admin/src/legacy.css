@@ -17411,3 +17411,24 @@ optgroup {
   margin: 0 0 var(--space-2);
   color: var(--danger);
 }
+
+/* Traffic: the online-now count, with a dot while anyone is on the site. */
+.traffic-online {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+
+.traffic-online--live {
+  color: var(--text);
+  font-weight: var(--fw-strong);
+}
+
+.traffic-online--live::before {
+  content: "";
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--success);
+}

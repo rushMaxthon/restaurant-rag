@@ -19,6 +19,7 @@
 
 import type { ReactNode } from "react";
 import {
+  Activity,
   BadgeIndianRupee,
   BarChart3,
   Bike,
@@ -64,6 +65,7 @@ import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
 import { DeliveryPricingPage } from "./pages/DeliveryPricingPage";
+import { TrafficPage } from "./pages/TrafficPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
 import { PlatformWatchPage } from "./pages/PlatformWatchPage";
 import { MarketingPage } from "./pages/MarketingPage";
@@ -211,6 +213,15 @@ export const ROUTES: RouteDef[] = [
         token={ctx.token}
       />
     ),
+  },
+  {
+    // Both roles: an admin sees every restaurant and can open any one, an
+    // owner sees their own website - the server refuses them anything else.
+    id: "traffic",
+    pattern: "/traffic",
+    roles: BOTH,
+    nav: { section: "Overview", label: "Traffic", icon: Activity, keywords: ["visitors", "online", "users", "website", "analytics", "conversion"] },
+    render: (ctx) => <TrafficPage token={ctx.token} />,
   },
   {
     id: "reports",

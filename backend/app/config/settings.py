@@ -1056,6 +1056,14 @@ class Settings(BaseSettings):
     # its own road distance.
     delivery_road_factor: float = 1.3
 
+    # --- storefront traffic -------------------------------------------------
+    # Whether a visit from localhost, *.localhost or a private-network address
+    # counts. Off, because `localhost` is mapped to a real restaurant and local
+    # development talks to the live database: a developer clicking around
+    # their own storefront would show up on that restaurant's Traffic page as
+    # a customer. Turn on for one run to see the page fill while testing.
+    traffic_count_local_hosts: bool = False
+
     # --- geocoding ----------------------------------------------------------
     #
     # No flag, because there is nothing to switch on: a geocoder is always
