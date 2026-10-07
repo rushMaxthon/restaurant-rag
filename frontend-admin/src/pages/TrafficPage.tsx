@@ -76,9 +76,11 @@ export function TrafficPage({ token }: TrafficPageProps) {
       align: "right",
       mobileLabel: "Online now",
       render: (row) => (
-        <span className={row.online_now > 0 ? "traffic-online traffic-online--live" : "traffic-online"}>
+        // A <strong>, not a <span>: the table styles every span in a cell as
+        // grey caption text.
+        <strong className={row.online_now > 0 ? "traffic-online traffic-online--live" : "traffic-online"}>
           {row.online_now}
-        </span>
+        </strong>
       ),
     },
     {

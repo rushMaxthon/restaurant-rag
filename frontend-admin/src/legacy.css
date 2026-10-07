@@ -17416,6 +17416,9 @@ optgroup {
 .traffic-online {
   display: inline-flex;
   align-items: center;
+  /* The cell is a grid that stretches this across it; push the number to
+     the right edge, under its right-aligned header. */
+  justify-content: flex-end;
   gap: var(--space-2);
   color: var(--muted);
 }
