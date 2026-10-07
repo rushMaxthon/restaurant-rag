@@ -55,20 +55,24 @@ class AnUnsafeDeploymentRefusesToStart(unittest.TestCase):
             safety.check(_settings())
         self.assertIn("JWT_SECRET_KEY", str(raised.exception))
 
-    def test_a_short_jwt_secret(self) -> None:
-        with self.assertRaises(safety.UnsafeConfiguration):
+    # Only the repository's own secret stops the server: it is a real hole
+    # (anyone can sign an admin login). A short secret or DEBUG left on are
+    # logged loudly but do not take a live API down on deploy, because this
+    # check ships to a Render service whose settings nobody could see first.
+    def test_a_short_jwt_secret_is_logged_not_fatal(self) -> None:
+        with self.assertLogs(safety.logger, level="ERROR") as logs:
             safety.check(_settings(jwt_secret_key="short-secret"))
+        self.assertIn("JWT_SECRET_KEY", " ".join(logs.output))
 
-    def test_debug_in_production(self) -> None:
-        with self.assertRaises(safety.UnsafeConfiguration) as raised:
-            safety.check(_settings(jwt_secret_key=STRONG, debug=True))
-        self.assertIn("DEBUG", str(raised.exception))
+    def test_debug_in_production_is_logged_and_switched_off(self) -> None:
+        settings = _settings(jwt_secret_key=STRONG, debug=True)
+        with self.assertLogs(safety.logger, level="ERROR") as logs:
+            safety.check(settings)
+        self.assertIn("DEBUG", " ".join(logs.output))
+        self.assertFalse(safety.effective_debug(settings))
 
-    def test_every_problem_is_named_at_once(self) -> None:
-        with self.assertRaises(safety.UnsafeConfiguration) as raised:
-            safety.check(_settings(debug=True))
-        self.assertIn("JWT_SECRET_KEY", str(raised.exception))
-        self.assertIn("DEBUG", str(raised.exception))
+    def test_debug_stays_on_locally_when_asked(self) -> None:
+        self.assertTrue(safety.effective_debug(_settings(environment="development", debug=True)))
 
     def test_a_safe_production_starts(self) -> None:
         safety.check(_settings(jwt_secret_key=STRONG))

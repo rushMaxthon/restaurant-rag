@@ -58,8 +58,10 @@ class FakeRedis:
         return 42
 
 
-def _request(*, forwarded: str | None = None, client: str = "10.0.0.9"):
+def _request(*, forwarded: str | None = None, client: str = "10.0.0.9", cloudflare: str | None = None):
     headers = {"x-forwarded-for": forwarded} if forwarded else {}
+    if cloudflare:
+        headers["cf-connecting-ip"] = cloudflare
     return SimpleNamespace(headers=headers, client=SimpleNamespace(host=client))
 
 
@@ -73,6 +75,19 @@ class WhoIsCalling(unittest.TestCase):
 
     def test_no_proxy(self) -> None:
         self.assertEqual(rate_limit.client_ip(_request()), "10.0.0.9")
+
+    def test_on_render_cloudflares_header_wins(self) -> None:
+        # Every request to a Render web service passes through Cloudflare,
+        # which appends to X-Forwarded-For - so its last entry can be a proxy
+        # shared by many customers, who would then share one login limit.
+        # Cloudflare overwrites CF-Connecting-IP with the real visitor, so a
+        # caller cannot set it.
+        request = _request(forwarded="1.1.1.1, 203.0.113.7, 172.71.0.5", cloudflare="203.0.113.7")
+        self.assertEqual(rate_limit.client_ip(request), "203.0.113.7")
+
+    def test_a_blank_cloudflare_header_is_ignored(self) -> None:
+        request = _request(forwarded="203.0.113.7", cloudflare="  ")
+        self.assertEqual(rate_limit.client_ip(request), "203.0.113.7")
 
 
 class Counting(unittest.TestCase):

@@ -63,7 +63,8 @@ _docs_url, _redoc_url, _openapi_url = safety.docs_urls(settings)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    debug=settings.debug,
+    # Never on outside local development, whatever DEBUG says (`safety`).
+    debug=safety.effective_debug(settings),
     lifespan=lifespan,
     # The API map is served locally only (`config/safety.py`).
     docs_url=_docs_url,

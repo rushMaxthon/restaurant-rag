@@ -13,9 +13,10 @@ Retry-After past it. Callers count per IP and, where there is one, per
 account or identifier, so neither many accounts from one machine nor one
 account from many machines gets around it.
 
-The IP is the one Render's proxy recorded: the LAST X-Forwarded-For entry.
-The first entry is whatever the caller sent, which is exactly what someone
-dodging a limit would rotate. If Redis is unreachable the request is allowed:
+The IP is Cloudflare's `CF-Connecting-IP` (every Render web service sits
+behind Cloudflare, which overwrites it), else the LAST X-Forwarded-For entry.
+Never the first entry: that is whatever the caller sent, which is exactly
+what someone dodging a limit would rotate. If Redis is unreachable the request is allowed:
 a cache outage must not take the login page down with it.
 """
 
@@ -34,6 +35,14 @@ logger = logging.getLogger(__name__)
 
 
 def client_ip(request) -> str:
+    # Render puts Cloudflare in front of every web service, and Cloudflare
+    # overwrites CF-Connecting-IP with the real visitor - a caller cannot set
+    # it. X-Forwarded-For is only appended to, so behind Cloudflare its last
+    # entry can be a proxy shared by many customers, who would then share one
+    # login limit. Locally there is no Cloudflare and the fallbacks apply.
+    cloudflare = (request.headers.get("cf-connecting-ip") or "").strip()
+    if cloudflare:
+        return cloudflare
     forwarded = [part.strip() for part in (request.headers.get("x-forwarded-for") or "").split(",") if part.strip()]
     if forwarded:
         return forwarded[-1]
