@@ -34,6 +34,7 @@ from app.schemas.menu_item import (
     MenuItemSizePayload,
     MenuItemUpdate,
 )
+from app.services import menu_cache
 from app.services.order_events import actor_for_user, record_menu_availability_event
 from app.services.auth import get_current_user, get_current_user_optional, resolve_owner_restaurant_id
 from app.services.bestsellers import (
@@ -622,7 +623,36 @@ def list_menu_items(
     elif not include_unavailable:
         query = query.where(MenuItem.is_available.is_(True))
 
-    menu_items = db.scalars(query.order_by(MenuItem.category.asc(), MenuItem.name.asc())).all()
+    ordered = query.order_by(MenuItem.category.asc(), MenuItem.name.asc())
+
+    customer_view = current_user is None or current_user.role == UserRole.CUSTOMER
+    if customer_view and location is not None:
+        # Every storefront page view used to read the whole branch from the
+        # database - the bulk of the project's Supabase egress (2026-10-07).
+        # Served from Redis until the menu itself changes (`menu_cache`). Only
+        # the customer view: staff see typed prices and commission.
+        def build() -> list[dict]:
+            items = db.scalars(ordered).all()
+            hydrate_dynamic_bestseller_flags(db, items)
+            hydrate_recent_valid_order_counts(db, items)
+            return [
+                response.model_dump(mode="json")
+                for response in serialize_menu_items(items, favorite_ids=set(), viewer=None)
+            ]
+
+        responses = [
+            MenuItemResponse.model_validate(row)
+            for row in menu_cache.cached_menu(db, location.id, variant="available", build=build)
+        ]
+        # Favourites are the customer's own, so they go on after the cache.
+        favorite_ids = get_user_favorite_ids(db, current_user, menu_item_ids=[row.id for row in responses])
+        if favorite_ids:
+            responses = [
+                row.model_copy(update={"is_favorite": row.id in favorite_ids}) for row in responses
+            ]
+        return responses
+
+    menu_items = db.scalars(ordered).all()
     hydrate_dynamic_bestseller_flags(db, menu_items)
     hydrate_recent_valid_order_counts(db, menu_items)
     favorite_ids = get_user_favorite_ids(db, current_user, menu_item_ids=[menu_item.id for menu_item in menu_items])
