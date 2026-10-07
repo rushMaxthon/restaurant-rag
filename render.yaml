@@ -386,6 +386,10 @@ envVarGroups:
       #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: SECRETS_ENCRYPTION_KEY
         sync: false
+      # Address suggestions and lookup (Ola Maps, free to 100,000 requests a
+      # month per API). Preferred over Google when set. From maps.olakrutrim.com.
+      - key: OLA_MAPS_API_KEY
+        sync: false
       - key: JWT_ALGORITHM
         value: HS256
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES

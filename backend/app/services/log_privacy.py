@@ -13,6 +13,8 @@ that is filtered out: the text is only worked out when the line is written.
 from __future__ import annotations
 
 import hashlib
+import logging
+import re
 
 from app.config import get_settings
 
@@ -61,4 +63,47 @@ class said:  # noqa: N801 - reads as a word in a log call: said(message)
     __repr__ = __str__
 
 
-__all__ = ["phone", "said", "token"]
+#: Query parameters and headers whose value is a credential.
+_SECRET_PARAM = re.compile(
+    r"(?i)\b(key|api_key|apikey|access_token|token|client_secret|secret|password|signature)=([^&\s\"']+)"
+)
+_BEARER = re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+")
+
+
+def redact(text: str) -> str:
+    """`text` with credential values blanked: `key=...`, `api_key=...`, bearer tokens."""
+
+    text = _SECRET_PARAM.sub(lambda m: f"{m.group(1)}=[redacted]", text)
+    return _BEARER.sub(lambda m: f"{m.group(1)} [redacted]", text)
+
+
+class RedactSecrets(logging.Filter):
+    """Blanks credentials in every record before a handler writes it.
+
+    The HTTP client logs each request URL at INFO, and Google's geocoding key
+    and Ola Maps' key both travel in the query string - a day of local logs
+    held Google's key 24 times (2026-10-07). Installed on every root handler
+    by `install()`, in the API and the worker.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - never lose a log line over this
+            return True
+        cleaned = redact(message)
+        if cleaned != message:
+            record.msg = cleaned
+            record.args = None
+        return True
+
+
+def install() -> None:
+    """Put `RedactSecrets` on every handler the root logger has."""
+
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(existing, RedactSecrets) for existing in handler.filters):
+            handler.addFilter(RedactSecrets())
+
+
+__all__ = ["RedactSecrets", "install", "phone", "redact", "said", "token"]

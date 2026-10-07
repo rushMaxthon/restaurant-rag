@@ -275,7 +275,10 @@ def _check_delivery() -> Check:
 
 
 def _google_configured() -> bool:
-    return bool(get_settings().google_maps_api_key)
+    """Whether a keyed maps provider (Ola Maps or Google) is configured."""
+
+    settings = get_settings()
+    return bool(settings.ola_maps_api_key or settings.google_maps_api_key)
 
 
 #: How long after Google refuses us the check stays red with no newer word.
@@ -293,17 +296,17 @@ def _check_maps(now: datetime) -> Check:
 
     from app.services.geocoding import health
 
-    label = "Maps and address search (Google)"
+    label = "Maps and address search"
     if not _google_configured():
-        return Check("maps", label, WARN, "No Google key: addresses use OpenStreetMap and there are no suggestions as you type.",
-                     "Set GOOGLE_MAPS_API_KEY for building-level accuracy and the address dropdown.")
+        return Check("maps", label, WARN, "No maps key: addresses use OpenStreetMap and there are no suggestions as you type.",
+                     "Set OLA_MAPS_API_KEY (free tier) or GOOGLE_MAPS_API_KEY for the address dropdown and accurate pricing.")
     refusal = health.last_refusal()
     if refusal and now - refusal["at"] <= MAPS_REFUSAL_WINDOW:
         minutes = max(0, int((now - refusal["at"]).total_seconds() // 60))
-        return Check("maps", label, DOWN, f"Google refused us {minutes} min ago: {refusal['message'][:140]}",
-                     "Turn billing back on for the key's Google Cloud project (or check the key's API "
-                     "restrictions). Until then addresses are found through OpenStreetMap, less precisely, "
-                     "and checkout has no address suggestions.")
+        return Check("maps", label, DOWN, f"The maps provider refused us {minutes} min ago: {refusal['message'][:140]}",
+                     "Check the key: for Google, billing on its Cloud project and its API restrictions; for "
+                     "Ola Maps, the key and the account. Until then addresses are found through OpenStreetMap, "
+                     "less precisely, and checkout has no address suggestions.")
     return Check("maps", label, OK, "Answering.")
 
 
@@ -326,7 +329,7 @@ _LABELS = {
     "ai": "AI model (Ollama)",
     "delivery": "Delivery partner",
     "realtime": "Live updates",
-    "maps": "Maps and address search (Google)",
+    "maps": "Maps and address search",
 }
 
 

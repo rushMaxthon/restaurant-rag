@@ -4,7 +4,7 @@ import sys
 
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import worker_ready
+from celery.signals import after_setup_logger, after_setup_task_logger, worker_ready
 
 from app.config import get_settings, safety
 
@@ -213,3 +213,17 @@ def _warm_models(**_kwargs: object) -> None:
 
 
 __all__ = ["celery_app"]
+
+
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def _redact_worker_logs(logger=None, **_kwargs) -> None:
+    """The worker writes its own log file; no API key may reach it either."""
+
+    from app.services.log_privacy import RedactSecrets
+
+    targets = list(getattr(logger, "handlers", [])) + list(__import__("logging").getLogger().handlers)
+    for handler in targets:
+        if not any(isinstance(existing, RedactSecrets) for existing in handler.filters):
+            handler.addFilter(RedactSecrets())
+

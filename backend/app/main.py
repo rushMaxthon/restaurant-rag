@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import api_router
 from app.config import safety
+from app.services import log_privacy
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.config import get_settings
 from app.services.model_warmup import start_model_warm_up
@@ -25,6 +26,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
 )
+# No API key in a log line, even inside a request URL (`log_privacy`).
+log_privacy.install()
 
 logger = logging.getLogger(__name__)
 
