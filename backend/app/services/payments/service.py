@@ -73,6 +73,12 @@ REUSABLE_INTENT_STATUSES = {
 }
 
 
+#: What a customer reads when the gateway would not start their payment.
+PAYMENT_START_FAILED = (
+    "We couldn't start the payment just now. Please try again in a moment, "
+    "or choose another way to pay."
+)
+
 def _load_customer_order(
     db: Session,
     customer: User,
@@ -252,9 +258,13 @@ def create_payment_intent(
             },
         )
     except PaymentProviderError as error:
+        # The gateway's own words stay in the log. They can carry an internal
+        # URL or say which credentials were refused, and a customer can act
+        # on none of it (2026-10-07 security review).
+        logger.warning("Payment provider refused to start a payment for order %s: %s", order.id, error)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
+            detail=PAYMENT_START_FAILED,
         ) from error
 
     transaction = PaymentTransaction(
@@ -366,9 +376,13 @@ def create_payment_link(
             metadata={"restaurant_location_id": str(order.restaurant_location_id)},
         )
     except PaymentProviderError as error:
+        # The gateway's own words stay in the log. They can carry an internal
+        # URL or say which credentials were refused, and a customer can act
+        # on none of it (2026-10-07 security review).
+        logger.warning("Payment provider refused to start a payment for order %s: %s", order.id, error)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
+            detail=PAYMENT_START_FAILED,
         ) from error
 
     # The same session comes back on a repeat, and with it the same intent —

@@ -665,7 +665,7 @@ class PersonalizedOffersTests(unittest.TestCase):
 
     @patch("app.services.personalized_offers._refresh_generated_offer_eligible_counts")
     @patch("app.services.personalized_offers.ensure_global_welcome_offer")
-    @patch("app.services.personalized_offers._latest_paid_order_at")
+    @patch("app.services.personalized_offers._latest_order_at")
     def test_sync_global_welcome_offer_for_user_attaches_reusable_match_for_new_user(
         self,
         mock_latest_paid_order_at: Mock,
@@ -727,7 +727,7 @@ class PersonalizedOffersTests(unittest.TestCase):
 
     @patch("app.services.personalized_offers._refresh_generated_offer_eligible_counts")
     @patch("app.services.personalized_offers.ensure_global_welcome_offer")
-    @patch("app.services.personalized_offers._latest_paid_order_at")
+    @patch("app.services.personalized_offers._latest_order_at")
     def test_sync_global_welcome_offer_for_user_deactivates_match_after_first_paid_order(
         self,
         mock_latest_paid_order_at: Mock,

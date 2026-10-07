@@ -610,14 +610,19 @@ export function LocationDetailPage({
           future_order_enabled: generalSettingsForm.future_order_enabled,
           delivery_fee: Number(generalSettingsForm.delivery_fee),
           packaging_fee: amountOrZero(generalSettingsForm.packaging_fee),
-          platform_fee: amountOrZero(generalSettingsForm.platform_fee),
           tax_percent: amountOrZero(generalSettingsForm.tax_percent),
           delivery_tax_percent: amountOrZero(generalSettingsForm.delivery_tax_percent),
           gst_in_menu_prices: generalSettingsForm.gst_in_menu_prices,
           // The platform's rate. An owner's save leaves it out: the server
           // refuses an owner who changes it, and the field is read-only here.
+          // The platform's rate and fee. An owner's save leaves both out: the
+          // server refuses an owner who changes either, and both are
+          // read-only for them here.
           ...(role === "ADMIN"
-            ? { commission_percent: amountOrZero(generalSettingsForm.commission_percent) }
+            ? {
+                commission_percent: amountOrZero(generalSettingsForm.commission_percent),
+                platform_fee: amountOrZero(generalSettingsForm.platform_fee),
+              }
             : {}),
           minimum_order_amount: Number(generalSettingsForm.minimum_order_amount),
           estimated_delivery_time: Number(generalSettingsForm.estimated_delivery_time),
@@ -1682,6 +1687,9 @@ export function LocationDetailPage({
             <label className="field">
               <span>Platform fee</span>
               <input
+                // The platform's per-order fee: the admin sets it, an owner
+                // sees it. The server refuses an owner who changes it.
+                disabled={role !== "ADMIN"}
                 min="0"
                 step="0.01"
                 type="number"
@@ -1692,6 +1700,7 @@ export function LocationDetailPage({
                   )
                 }
               />
+              {role !== "ADMIN" ? <small>Set by the platform.</small> : null}
             </label>
             {role === "ADMIN" ? (
             <label className="field">

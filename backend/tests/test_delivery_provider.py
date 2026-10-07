@@ -339,12 +339,14 @@ class TheTrackingLink(unittest.TestCase):
         self.assertIn("abc123", _tracking_url({"track_code": "abc123"}, {}))
 
     def test_a_url_they_actually_sent_wins(self) -> None:
-        # A link from them beats one we assembled, if they ever send one.
+        # A link from them beats one we assembled, if they ever send one - as
+        # long as it is on their tracking site. A link anywhere else is
+        # dropped: the webhook can be forged (`test_delivery_webhook_tracking_link`).
         from app.services.delivery.pidge_provider import _tracking_url
 
         self.assertEqual(
-            _tracking_url({}, {"tracking_url": "https://x.example/1", "track_code": "iaseov"}),
-            "https://x.example/1",
+            _tracking_url({}, {"tracking_url": "https://tracking.pidge.in/?t=xyz", "track_code": "iaseov"}),
+            "https://tracking.pidge.in/?t=xyz",
         )
 
     def test_no_code_means_no_link_rather_than_a_broken_one(self) -> None:

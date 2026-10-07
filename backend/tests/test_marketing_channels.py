@@ -214,9 +214,23 @@ class ChannelConnectionTests(unittest.TestCase):
             connection.commit()
         Base.metadata.create_all(cls.engine)
         cls.session_factory = sessionmaker(bind=cls.engine, expire_on_commit=False)
+        # The gateway URLs here are made up. Saving one now checks that its
+        # host resolves to a public address (`services/outbound_url.py`), so
+        # it is given one rather than looked up for real.
+        from unittest import mock as _mock
+
+        from app.services import outbound_url
+
+        cls._dns = _mock.patch.object(
+            outbound_url.socket,
+            "getaddrinfo",
+            return_value=[(2, 1, 6, "", ("104.18.20.1", 443))],
+        )
+        cls._dns.start()
 
     @classmethod
     def tearDownClass(cls) -> None:
+        cls._dns.stop()
         if cls.engine is not None:
             cls.engine.dispose()
         admin_engine = create_engine(_admin_url(), isolation_level="AUTOCOMMIT")
@@ -303,7 +317,9 @@ class ChannelConnectionTests(unittest.TestCase):
         connection = self._connect_sms()
 
         self.assertEqual(connection.config["sender_id"], "SPICER")
-        self.assertEqual(connection.credentials["api_key"], "secret-one")
+        # Stored encrypted (2026-10-07 review); the provider reads it back.
+        self.assertNotIn("secret-one", str(connection.credentials))
+        self.assertEqual(connection_service.open_credentials(connection.credentials)["api_key"], "secret-one")
         # The half an API response is allowed to carry must not contain it.
         self.assertNotIn("api_key", connection.config)
 
@@ -326,7 +342,7 @@ class ChannelConnectionTests(unittest.TestCase):
         updated = self._connect_sms(sender_id="SPICE2", api_key="")
 
         self.assertEqual(updated.config["sender_id"], "SPICE2")
-        self.assertEqual(updated.credentials["api_key"], "secret-one")
+        self.assertEqual(connection_service.open_credentials(updated.credentials)["api_key"], "secret-one")
 
     def test_a_missing_required_field_is_refused_by_name(self) -> None:
         with self.assertRaises(connection_service.ConnectionError_) as caught:
@@ -396,7 +412,7 @@ class ChannelConnectionTests(unittest.TestCase):
             self.session, restaurant_id=self.restaurant_id, channel=MarketingChannel.SMS
         )
         self.assertIs(row.status, ChannelConnectionStatus.DISABLED)
-        self.assertEqual(row.credentials["api_key"], "secret-one")
+        self.assertEqual(connection_service.open_credentials(row.credentials)["api_key"], "secret-one")
         self.assertNotIn(
             MarketingChannel.SMS,
             connection_service.live_channels(

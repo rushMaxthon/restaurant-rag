@@ -572,6 +572,7 @@ class RouteTests(unittest.TestCase):
 
         with patch.object(chat_api, "stream_chat_message", return_value=iter(())) as streamer:
             chat_api.stream_chat_message_route(
+                _rate_limited=None,
                 payload=payload,
                 db=Mock(),
                 current_user=None,

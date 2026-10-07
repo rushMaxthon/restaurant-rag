@@ -271,7 +271,7 @@ def trigger_ai_offer_generation(
             logger.exception("Admin AI offer generation inline run failed admin_user_id=%s", current_user.id)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unable to run AI offer generation right now: {error}",
+                detail="Unable to run AI offer generation right now. The cause is in the server log.",
             ) from error
         logger.info(
             "Admin AI offer generation completed inline admin_user_id=%s task_id=%s user_limit=%s batch_size=%s force_refresh=%s successful=%s",
@@ -308,7 +308,7 @@ def trigger_ai_offer_generation(
         logger.exception("Admin AI offer generation queue failed admin_user_id=%s", current_user.id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Unable to queue AI offer generation right now: {error}",
+            detail="Unable to queue AI offer generation right now. The cause is in the server log.",
         ) from error
 
     logger.info(
@@ -353,7 +353,7 @@ def trigger_owner_insight_generation(
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unable to run insight generation right now: {error}",
+                detail="Unable to run insight generation right now. The cause is in the server log.",
             ) from error
         return InsightGenerationTriggerResponse(
             task_id=str(result.id),
@@ -373,7 +373,7 @@ def trigger_owner_insight_generation(
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Unable to queue insight generation right now: {error}",
+            detail="Unable to queue insight generation right now. The cause is in the server log.",
         ) from error
 
     logger.info(
@@ -658,8 +658,20 @@ def update_user_details(
 
     user = _get_manageable_user(db, user_id, current_user)
 
+    # The phone is a login - password sign-in accepts it and phone sign-in
+    # matches on it - so an owner who could rewrite it could make a customer's
+    # account answer to their own number (2026-10-07 security review). Owners
+    # may correct a name or an address; the number is the customer's, or the
+    # platform admin's, to change.
+    new_phone = normalize_phone_number(payload.phone_number)
+    if current_user.role != UserRole.ADMIN and new_phone != normalize_phone_number(user.phone_number):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the customer, or the platform admin, can change a phone number: it is how they sign in.",
+        )
+
     user.full_name = payload.full_name
-    user.phone_number = normalize_phone_number(payload.phone_number)
+    user.phone_number = new_phone
     user.default_address = payload.default_address
     db.add(user)
 
@@ -769,11 +781,18 @@ def list_admin_menu_items(
 def list_admin_ai_logs(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_admin)],
+    # A window, not the whole table (2026-10-07 security review): this read
+    # every chat message ever written into memory on each call - customers'
+    # typed addresses and numbers included - which is a slow page today and
+    # an outage as the table grows.
+    days: int = Query(default=30, ge=1, le=365),
 ) -> list[AdminAILogResponse]:
+    since = datetime.now(UTC) - timedelta(days=days)
     rows = db.execute(
         select(ChatHistory, User, Restaurant)
         .join(User, ChatHistory.user_id == User.id)
         .outerjoin(Restaurant, ChatHistory.restaurant_id == Restaurant.id)
+        .where(ChatHistory.created_at >= since)
         .order_by(ChatHistory.session_id.asc(), ChatHistory.created_at.asc())
     ).all()
 

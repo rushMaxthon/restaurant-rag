@@ -26,6 +26,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.services import log_privacy
 from app.config import get_settings
 from app.config.celery import celery_app
 from app.config.database import SessionLocal
@@ -351,7 +352,7 @@ def answer_whatsapp_message(
     logger.info(
         "WhatsApp answered message_id=%s to=%s chars=%s as=%s sent=%s",
         message_id,
-        from_number,
+        log_privacy.phone(from_number),
         len(body),
         how,
         sent,

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import get_settings
 from app.models.enums import (
+    UserRole,
     MenuItemPortion,
     OrderCancellationReason,
     OrderEventActor,
@@ -54,7 +55,8 @@ class OrderCustomerSummary(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    email: str
+    #: None for a kitchen account (`OrderResponse.for_viewer`).
+    email: str | None
     phone_number: str | None
 
 
@@ -482,6 +484,23 @@ class OrderResponse(BaseModel):
     #: For the staff screens: whether Cancel is offered right now. The server
     #: checks again on the cancel itself (`order_cancellation`).
     can_be_cancelled: bool = False
+
+    def for_viewer(self, user) -> "OrderResponse":
+        """This order as `user` may see it.
+
+        A kitchen account gets no customer account details and no payment
+        internals (2026-10-07 security review): a board is a shared tablet,
+        neither kitchen app reads them, and its token could otherwise collect
+        every customer's email and phone in its branch. The order's own
+        contact name and phone, which the board shows, stay.
+        """
+
+        if getattr(user, "role", None) != UserRole.KITCHEN:
+            return self
+        customer = self.customer.model_copy(update={"email": None, "phone_number": None})
+        return self.model_copy(
+            update={"customer": customer, "payment_reference": None, "refund_error": None}
+        )
 
 
 class DeliveryStep(BaseModel):

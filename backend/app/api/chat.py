@@ -6,10 +6,13 @@ from time import perf_counter
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
+from app.models.chat_history import ChatHistory
 
+from app.services import log_privacy
 from app.api.deps import AppScopeDep, ensure_restaurant_writable
 from app.config.database import get_db
 from app.models.user import User
@@ -26,6 +29,7 @@ from app.schemas.chat import (
 from app.services.auth import get_current_user, get_current_user_optional, require_customer
 from app.services.chat_principal import ChatPrincipal, guest_principal_for_session
 from app.services.rag import clear_chat_history, get_chat_history, handle_chat_message, stream_chat_message
+from app.services.rate_limit import per_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -69,6 +73,8 @@ def _resolve_principal(
 
 @router.post("/message", response_model=ChatMessageResponse)
 def send_chat_message(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("chat", limit=30, window_seconds=60))],
     payload: ChatMessageRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User | None, Depends(get_current_user_optional)],
@@ -83,7 +89,7 @@ def send_chat_message(
         scoped_restaurant_id,
         payload.restaurant_location_id,
         payload.session_id,
-        payload.message,
+        log_privacy.said(payload.message),
     )
     response = handle_chat_message(
         db,
@@ -128,6 +134,8 @@ def _releasing(frames: Iterator[str], db: Session) -> Iterator[str]:
 
 @router.post("/message/stream")
 def stream_chat_message_route(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("chat", limit=30, window_seconds=60))],
     payload: ChatMessageRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User | None, Depends(get_current_user_optional)],
@@ -141,7 +149,7 @@ def stream_chat_message_route(
         scoped_restaurant_id,
         payload.restaurant_location_id,
         payload.session_id,
-        payload.message,
+        log_privacy.said(payload.message),
     )
     return StreamingResponse(
         _releasing(
@@ -220,8 +228,29 @@ def delete_chat_history(
         cleared_session_id=session_id,
     )
 
+def _require_own_conversation(db: Session, session_id, user) -> None:
+    """404 when this conversation's history belongs to another customer.
+
+    The delivery details the agent collected are stored under the
+    conversation id alone, and that id comes from the browser here
+    (2026-10-07 security review). 404 rather than 403, so the answer does not
+    confirm that someone else's conversation exists. A conversation with no
+    saved owner - a guest who signed in to order - is allowed.
+    """
+
+    if session_id is None:
+        return
+    owners = db.scalars(
+        select(ChatHistory.user_id).where(ChatHistory.session_id == session_id).distinct()
+    ).all()
+    if any(owner != user.id for owner in owners):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+
 @router.post("/place-order", response_model=ChatPlaceOrderResponse)
 def place_order_from_chat(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("chat-order", limit=20, window_seconds=60))],
     payload: ChatPlaceOrderRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_customer)],
@@ -241,6 +270,7 @@ def place_order_from_chat(
     conversation already collected and validated.
     """
 
+    _require_own_conversation(db, payload.session_id, current_user)
     scope = scope_for(
         current_user,
         _resolve_chat_restaurant_id(app_scope, payload.restaurant_id),

@@ -28,6 +28,7 @@ from app.schemas.order import (
     OrderValidationResponse,
 )
 from app.schemas.payment import PaymentIntentResponse, PaymentLinkResponse, PaymentStatusResponse
+from app.services.rate_limit import per_ip
 from app.services.payments import (
     cancel_payment,
     create_payment_intent,
@@ -142,6 +143,8 @@ def _why_no_quote(attempt, unusable: str, drop) -> str:
 
 @router.post("/delivery-quote", response_model=DeliveryQuoteResponse)
 def quote_delivery(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("delivery-quote", limit=30, window_seconds=60))],
     payload: DeliveryQuoteRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_customer)],
@@ -374,7 +377,11 @@ def get_orders(
     # the status-event log. See `list_orders` for why it is not `due_from`.
     completed_from: datetime | None = Query(default=None),
     sort: str | None = Query(default=None, max_length=40),
-    limit: int | None = Query(default=None, ge=1, le=200),
+    # 200 when unset, never unlimited (2026-10-07 security review): an
+    # admin's GET /orders with no limit returned every order on the platform,
+    # each with a customer's name, phone and address, in one response. 200
+    # is the most any screen asks for; a customer's own history fits in it.
+    limit: int | None = Query(default=200, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[OrderResponse]:
     # One resolver for every staff role, so the board a cook is shown and the
@@ -411,7 +418,8 @@ def get_orders(
         offset=offset,
     )
     response.headers["X-Total-Count"] = str(total)
-    return orders
+    # A kitchen tablet gets no customer account details (`for_viewer`).
+    return [order.for_viewer(current_user) for order in orders]
 
 
 @router.post("/{order_id}/payment-intent", response_model=PaymentIntentResponse)
@@ -524,7 +532,7 @@ def get_order(
     current_user: Annotated[User, Depends(get_current_user)],
     app_scope: AppScopeDep,
 ) -> OrderResponse:
-    return _read_order(db, current_user, order_id, app_scope)
+    return _read_order(db, current_user, order_id, app_scope).for_viewer(current_user)
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse)
@@ -772,4 +780,4 @@ def patch_order_status(
         new_status=payload.status,
         owner_restaurant_id=scope.restaurant_id,
         owner_restaurant_location_id=scope.restaurant_location_id,
-    )
+    ).for_viewer(current_user)

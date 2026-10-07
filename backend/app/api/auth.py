@@ -43,6 +43,8 @@ from app.services.otp import (
     subscriber_key,
 )
 from app.services.realtime.outbox import queue_session_revoked
+from app.services import rate_limit
+from app.services.rate_limit import per_ip
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -93,6 +95,8 @@ def _auth_response(db: Session, user: User) -> AuthResponse:
     status_code=status.HTTP_201_CREATED,
 )
 def register(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("register", limit=10, window_seconds=3600))],
     payload: UserRegister,
     db: Annotated[Session, Depends(get_db)],
     app_client_id: IdentityAppClientDep,
@@ -181,6 +185,8 @@ def register(
 
 @router.post("/login", response_model=AuthResponse)
 def login(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("login", limit=20, window_seconds=60))],
     payload: UserLogin,
     db: Annotated[Session, Depends(get_db)],
     app_scope: AppScopeDep,
@@ -189,6 +195,10 @@ def login(
     # A branded app never signs in staff, so only its own customers are
     # candidates. Callers without a bundle id (admin panel, customer web) may
     # also match platform staff.
+    # Per account as well as per IP: guessing one person's password from many
+    # machines is the attack the per-IP limit alone does not stop.
+    identifier = (payload.email or payload.phone_number or "").strip().lower()
+    rate_limit.hit("login-account", f"id:{identifier}", limit=10, window_seconds=900)
     allow_platform_users = app_scope.app_client_id is None
 
     user = authenticate_user(
@@ -253,6 +263,8 @@ def _require_otp_available() -> None:
 
 @router.post("/otp/request", response_model=OtpRequestResponse)
 def request_otp(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("otp-request", limit=10, window_seconds=3600))],
     payload: OtpRequest,
     db: Annotated[Session, Depends(get_db)],
     app_client_id: IdentityAppClientDep,
@@ -266,6 +278,10 @@ def request_otp(
 
     _require_otp_available()
     key = subscriber_key(payload.phone_number)
+    # Per number: a short code is guessable if it can be tried without end.
+    rate_limit.hit("otp-verify-phone", f"phone:{key}", limit=10, window_seconds=900)
+    # Per number: a code is a message somebody pays for and a phone that buzzes.
+    rate_limit.hit("otp-request-phone", f"phone:{key}", limit=5, window_seconds=3600)
     if not key:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -283,6 +299,8 @@ def request_otp(
 
 @router.post("/otp/verify", response_model=AuthResponse)
 def verify_otp(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("otp-verify", limit=20, window_seconds=600))],
     payload: OtpVerify,
     db: Annotated[Session, Depends(get_db)],
     app_client_id: IdentityAppClientDep,

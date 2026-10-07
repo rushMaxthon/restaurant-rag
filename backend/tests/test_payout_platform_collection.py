@@ -121,9 +121,20 @@ class PlatformCollectionTests(LedgerDatabase):
             signature = hmac.new(b"w", body, hashlib.sha256).hexdigest()
             ids.add(provider.parse_webhook(payload=body, signature=signature).event_id)
         self.assertEqual(len(ids), 2)
-        body = json.dumps({"event": "transfer.processed", "payload": {}}).encode()
+
+    def test_a_replay_with_a_new_header_is_still_the_same_event(self) -> None:
+        # The X-Razorpay-Event-Id header is not covered by the signature, so
+        # keying on it let a captured body be replayed past de-duplication
+        # under a fresh header - re-running transfers and reversals
+        # (2026-10-07 security review). The key now comes from the signed body.
+        from app.services.payments.razorpay_provider import RazorpayProvider
+        provider = RazorpayProvider(key_id="k", key_secret="s", webhook_secret="w")
+        body = json.dumps({"event": "transfer.reversed", "created_at": 1791000000,
+                           "payload": {"transfer": {"entity": {"id": "trf_9"}}}}).encode()
         signature = hmac.new(b"w", body, hashlib.sha256).hexdigest()
-        self.assertEqual(provider.parse_webhook(payload=body, signature=signature, event_id="evt_H").event_id, "evt_H")
+        first = provider.parse_webhook(payload=body, signature=signature, event_id="evt_A").event_id
+        replay = provider.parse_webhook(payload=body, signature=signature, event_id="evt_FORGED").event_id
+        self.assertEqual(first, replay)
 
 
 if __name__ == "__main__":

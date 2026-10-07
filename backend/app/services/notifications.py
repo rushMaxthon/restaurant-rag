@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.services import log_privacy
 from app.config import get_settings
 from app.models.push_notification_campaign import PushNotificationCampaign
 from app.models.user_device_token import UserDeviceToken
@@ -414,7 +415,7 @@ def _dispatch_push_campaign(
                 logger.warning(
                     "Firebase send failure notification_id=%s token=%s error=%s",
                     history.id,
-                    token_value,
+                    log_privacy.token(token_value),
                     exception,
                 )
                 reason = str(exception) if exception is not None else "Unknown Firebase send failure"

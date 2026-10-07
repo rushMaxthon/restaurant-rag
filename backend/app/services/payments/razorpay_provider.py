@@ -515,8 +515,17 @@ class RazorpayProvider:
         fallback = f"{event_type}:{entity_id or intent_id}"
         if event_type.startswith(("product.route.", "account.")):
             fallback = f"{fallback}:{body.get('account_id', '')}:{body.get('created_at', '')}"
+        # The de-duplication key comes from the SIGNED body only. The
+        # `X-Razorpay-Event-Id` header is not covered by the signature, and
+        # keying on it let a captured body be replayed under a fresh header
+        # past de-duplication, re-running transfers and reversals (2026-10-07
+        # security review). A genuine retry repeats the body, so it is still
+        # recognised; the header is kept only in the log.
+        signed_key = body.get("id") or f"{fallback}:{payment.get('id') or ''}:{body.get('created_at', '')}"
+        if event_id and event_id != signed_key:
+            logger.debug("Razorpay event header %s; de-duplicating on %s", event_id, signed_key)
         return WebhookEvent(
-            event_id=event_id or body.get("id") or fallback,
+            event_id=signed_key,
             event_type=_EVENT_STATUS.get(event_type, event_type),
             intent_id=intent_id,
             # Present on every event that involved an actual payment, whether

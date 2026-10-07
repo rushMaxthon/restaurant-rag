@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from app.models.enums import MarketingChannel
 from app.models.restaurant_channel_connection import RestaurantChannelConnection
+from app.services.marketing.connections import open_credentials
 from app.services.marketing.providers.base import (
     BatchMember,
     BatchResult,
@@ -73,7 +74,9 @@ def provider_for(
         )
     return builder(
         config=dict(connection.config or {}),
-        credentials=dict(connection.credentials or {}),
+        # Stored encrypted (`connections.seal_credentials`); a provider gets
+        # the plain values and never the column.
+        credentials=open_credentials(connection.credentials or {}),
     )
 
 

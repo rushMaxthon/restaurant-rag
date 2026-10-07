@@ -55,6 +55,12 @@ describe("sanitizeRedirect", () => {
     expect(sanitizeRedirect("")).toBeUndefined();
   });
 
+  it("refuses a backslash, which browsers read as a slash", () => {
+    // "/\\evil.com" is "//evil.com" to a browser (2026-10-07 review).
+    expect(sanitizeRedirect("/\\evil.com")).toBeUndefined();
+    expect(sanitizeRedirect("/menu\\..\\x")).toBeUndefined();
+  });
+
   it("is idempotent, so a second pass cannot grow the value", () => {
     const once = sanitizeRedirect("/checkout");
     expect(sanitizeRedirect(once)).toBe(once);

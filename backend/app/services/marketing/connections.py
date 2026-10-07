@@ -51,6 +51,50 @@ class ConnectionError_(Exception):
     """A connection could not be saved, with an owner-readable reason."""
 
 
+#: Marks a credential that is encrypted (`services/secrets.py`). A value
+#: without it was saved before encryption and is read as it is, until the
+#: connection is next saved (2026-10-07 security review: SMTP passwords, Meta
+#: tokens and SMS keys used to sit in this column as plain JSON).
+SEALED_PREFIX = "enc:v1:"
+
+
+def seal_credentials(credentials: dict) -> dict:
+    """Every credential encrypted for storage. Raises if there is no key.
+
+    Refusing is the point: a deployment without SECRETS_ENCRYPTION_KEY should
+    not accept somebody's access token, rather than keep it in the clear.
+    """
+
+    from app.services.secrets import SecretsUnavailable, encrypt_secret
+
+    sealed = {}
+    for key, value in credentials.items():
+        text = "" if value is None else str(value)
+        if not text or text.startswith(SEALED_PREFIX):
+            sealed[key] = text
+            continue
+        try:
+            sealed[key] = SEALED_PREFIX + encrypt_secret(text)
+        except SecretsUnavailable as error:
+            raise ConnectionError_(
+                "This platform cannot store channel passwords yet: SECRETS_ENCRYPTION_KEY "
+                "is not set. Ask the platform admin to set it."
+            ) from error
+    return sealed
+
+
+def open_credentials(credentials: dict) -> dict:
+    """The stored credentials as the provider needs them."""
+
+    from app.services.secrets import decrypt_secret
+
+    opened = {}
+    for key, value in (credentials or {}).items():
+        text = "" if value is None else str(value)
+        opened[key] = decrypt_secret(text[len(SEALED_PREFIX):]) if text.startswith(SEALED_PREFIX) else text
+    return opened
+
+
 @dataclass(frozen=True, slots=True)
 class FieldSpec:
     """One thing the owner has to supply to switch a channel on.
@@ -350,6 +394,15 @@ def connect(
             "Still needed: " + ", ".join(missing) + "."
         )
 
+    # A URL the server will call must be public https (`outbound_url`).
+    if config.get("api_url"):
+        from app.services.outbound_url import UnsafeUrl, require_public_https
+
+        try:
+            config["api_url"] = require_public_https(config["api_url"])
+        except UnsafeUrl as error:
+            raise ConnectionError_(f"Send URL: {error}") from error
+
     now = datetime.now(UTC)
     if existing is None:
         existing = RestaurantChannelConnection(
@@ -361,7 +414,8 @@ def connect(
         db.add(existing)
 
     existing.config = config
-    existing.credentials = credentials
+    # Encrypted at rest, including any value left from before encryption.
+    existing.credentials = seal_credentials(credentials)
     existing.status = ChannelConnectionStatus.CONNECTED
     existing.connected_at = existing.connected_at or now
     # Cleared, not kept: the owner has just changed something, so the previous

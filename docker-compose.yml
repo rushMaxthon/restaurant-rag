@@ -23,7 +23,9 @@ x-backend-image: &backend-image
 # environment. Sharing one anchor is what guarantees a worker cannot connect to
 # a different database from the API that queued its task.
 x-backend-env: &backend-env
-  ENVIRONMENT: ${ENVIRONMENT:-development}
+  # Production when unset: a stack that forgets this must not accept the
+  # fixed phone code or serve /docs (backend/app/config/safety.py).
+  ENVIRONMENT: ${ENVIRONMENT:-production}
   DEBUG: ${DEBUG:-false}
   APP_NAME: ${APP_NAME:-Restaurant RAG API}
   APP_VERSION: ${APP_VERSION:-1.0.0}

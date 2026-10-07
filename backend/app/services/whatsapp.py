@@ -30,6 +30,7 @@ from typing import Any
 
 import httpx
 
+from app.services import log_privacy
 from app.config import get_settings
 from app.services.currency import format_amount
 
@@ -466,14 +467,14 @@ def _send(to: str, message: dict[str, Any]) -> bool:
             timeout=20.0,
         )
     except httpx.HTTPError:
-        logger.exception("WhatsApp send failed for %s", to)
+        logger.exception("WhatsApp send failed for %s", log_privacy.phone(to))
         return False
 
     if response.status_code >= 400:
         # Body, not just status: Meta explains refusals (expired token, outside
         # the 24-hour window, unregistered recipient) only in the body.
         logger.error(
-            "WhatsApp send rejected for %s: %s %s", to, response.status_code, response.text[:400]
+            "WhatsApp send rejected for %s: %s %s", log_privacy.phone(to), response.status_code, response.text[:400]
         )
         return False
     return True

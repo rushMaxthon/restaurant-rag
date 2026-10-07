@@ -20,6 +20,8 @@ it travels in a URL, and URLs end up in logs and proxies.
 
 from __future__ import annotations
 
+import hmac
+
 import logging
 from typing import Annotated, Any
 
@@ -71,7 +73,10 @@ async def receive(
 ) -> dict[str, str]:
     """Take a status push, confirm it with the courier, and record the truth."""
 
-    if settings.delivery_webhook_secret and secret != settings.delivery_webhook_secret:
+    # Constant-time: a plain `!=` leaks how much of a guess was right.
+    if settings.delivery_webhook_secret and not hmac.compare_digest(
+        (secret or "").encode(), settings.delivery_webhook_secret.encode()
+    ):
         logger.warning("Delivery webhook refused: wrong secret")
         return Response(status_code=status.HTTP_403_FORBIDDEN)  # type: ignore[return-value]
 

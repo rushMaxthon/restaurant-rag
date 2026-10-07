@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api import api_router
+from app.config import safety
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.config import get_settings
 from app.services.model_warmup import start_model_warm_up
 from app.services.realtime.server import (
@@ -53,11 +55,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await stop_realtime()
 
 
+# Before anything is served: a real deployment configured unsafely stops here
+# with a sentence naming the setting, rather than running open.
+safety.check(settings)
+_docs_url, _redoc_url, _openapi_url = safety.docs_urls(settings)
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     debug=settings.debug,
     lifespan=lifespan,
+    # The API map is served locally only (`config/safety.py`).
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # Every API response left this server uncompressed. One branch's menu is
@@ -73,6 +84,10 @@ app = FastAPI(
 # response that already names an encoding. Compressing a stream would buffer
 # the tokens it exists to deliver one at a time.
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Every response tells the browser how to treat it: no framing, no sniffing,
+# no referrer, https only, and nothing signed-in cached (2026-10-07 review).
+app.add_middleware(SecurityHeadersMiddleware, local=safety.is_local(settings))
 
 app.add_middleware(
     CORSMiddleware,

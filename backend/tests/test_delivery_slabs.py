@@ -239,7 +239,7 @@ class TheCheckoutQuote(_Settings):
             else quoting.QuoteAttempt(DeliveryQuote(serviceable=True, distance_metres=road_metres))
         )
         with mock.patch.object(api_orders, "points_for", return_value=(_PICKUP, _DROP)),                 mock.patch.object(api_orders, "ensure_restaurant_writable"),                 mock.patch.object(slabs.quoting, "attempt_quote", return_value=attempt):
-            return api_orders.quote_delivery(payload, db, SimpleNamespace(id=uuid.uuid4()), None)
+            return api_orders.quote_delivery(None, payload, db, SimpleNamespace(id=uuid.uuid4()), None)
 
     def test_a_short_trip_is_68_plus_gst(self) -> None:
         response = self._quote(1800.0)

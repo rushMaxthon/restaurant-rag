@@ -15,9 +15,11 @@ class CartLinePayload(BaseModel):
     """
 
     menu_item_id: uuid.UUID
-    quantity: int = Field(default=1, ge=1)
+    # Same bounds as an order line (`OrderCreateItem`): past them the order
+    # path refused the cart with a 500 instead of a 422 (2026-10-07 review).
+    quantity: int = Field(default=1, ge=1, le=99)
     size_id: uuid.UUID | None = None
-    customization_option_ids: list[uuid.UUID] = Field(default_factory=list)
+    customization_option_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
 
 
 class SellSuggestionResponse(BaseModel):

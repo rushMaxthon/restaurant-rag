@@ -952,6 +952,7 @@ Kept because the notes are hard-won, not because they apply here.
 | `PROJECT_UNDERSTANDING.md` | broad product overview |
 | `backend/docs/chat-rag-workflow.md` | customer chat internals |
 | `backend/docs/delivery-integration.md` | getting the food to the customer: Pidge, the courier contract, and the webhook that does not trust its payload |
+| `backend/docs/security.md` | the security rules from the 2026-10-07 review: safe defaults, rate limits, headers, what each viewer sees, secrets at rest and in logs, and what is still open |
 | `backend/docs/payouts.md` | paying restaurants through Razorpay Route: the split, the ledger statuses, when the platform collects, the test-mode checklist |
 | `docs/per-app-identity.md` | the AppClient identity split |
 | `docs/recommendation-flow.md`, `docs/personalized-offers.md` | scoring rules |

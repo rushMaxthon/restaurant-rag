@@ -16,6 +16,10 @@ return-to-origin family is FAILED rather than CANCELLED.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
+import re
+
 import logging
 import threading
 from datetime import datetime
@@ -700,19 +704,34 @@ def _tracking_url(data: dict[str, Any], fulfillment: dict[str, Any]) -> str:
     one we assembled.
     """
 
+    # Only Pidge's own tracking page (2026-10-07 security review). This comes
+    # from the webhook payload, which anyone who knows a delivery id can forge,
+    # and it becomes the customer's "Track your rider" button - so a link to
+    # any other site, or a code that is more than a code, is dropped.
+    template = get_settings().pidge_tracking_url
+    allowed_host = urlsplit(template).hostname
+
     for source in (fulfillment, data):
         literal = str(source.get("tracking_url") or "").strip()
         if literal:
-            return literal
+            parts = urlsplit(literal)
+            if parts.scheme == "https" and allowed_host and parts.hostname == allowed_host:
+                return literal
+            return ""
 
     for source in (fulfillment, data):
         code = str(source.get("track_code") or "").strip()
         if code:
-            template = get_settings().pidge_tracking_url
+            if not _TRACK_CODE.fullmatch(code):
+                return ""
             # Formatted by hand rather than with `.format`, so a stray brace in
             # a misconfigured template cannot raise inside a webhook.
             return template.replace("{code}", code)
     return ""
+
+
+#: What a Pidge track code looks like ("iaseov"): short, letters and digits.
+_TRACK_CODE = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 
 def _float(value: Any) -> float | None:

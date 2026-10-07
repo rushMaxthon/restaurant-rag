@@ -20,6 +20,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, case, delete, desc, or_, select, func
 from sqlalchemy.orm import Session
 
+from app.services import log_privacy
 from app.config import get_settings
 from app.models.chat_history import ChatHistory
 from app.models.enums import ChatMessageRole
@@ -2335,8 +2336,8 @@ def _infer_cache_query_descriptor(message: str) -> CacheQueryDescriptor:
     )
     logger.info(
         "RAG cache descriptor raw_message=%s normalized_message=%s extracted_intent=%s extracted_topic=%s budget=%s diet=%s spicy=%s",
-        message,
-        normalized_message,
+        log_privacy.said(message),
+        log_privacy.said(normalized_message),
         descriptor.cache_intent,
         descriptor.topic,
         descriptor.budget,
@@ -3397,7 +3398,7 @@ def _embed_query(message: str) -> list[float] | None:
 
     normalized_message = _normalize_text(message)
     cache_before = _embed_query_cached.cache_info()
-    logger.info("RAG user query: %s", message)
+    logger.info("RAG user query: %s", log_privacy.said(message))
     redis_cache_key = _embedding_cache_key(normalized_message)
 
     cached_vector = cache_get_json(redis_cache_key)
@@ -3407,7 +3408,7 @@ def _embed_query(message: str) -> list[float] | None:
         except (TypeError, ValueError):
             vector = None
         if vector is not None:
-            logger.info("RAG embedding loaded from Redis cache query=%s", normalized_message)
+            logger.info("RAG embedding loaded from Redis cache query=%s", log_privacy.said(normalized_message))
             return vector
 
     try:
@@ -4476,7 +4477,7 @@ def _fetch_fuzzy_candidates(
     if candidates:
         logger.info(
             "RAG fuzzy name match query=%s names=%s",
-            _normalize_text(message),
+            log_privacy.said(_normalize_text(message)),
             _candidate_name_summary(candidates[:5]),
         )
     return candidates[:limit]
@@ -6067,8 +6068,8 @@ def _lookup_global_response_cache(
     )
     logger.info(
         "RAG response cache precheck raw_message=%s normalized_query=%s extracted_intent=%s extracted_topic=%s key=%s cacheable=%s reason=%s",
-        message,
-        normalized_query,
+        log_privacy.said(message),
+        log_privacy.said(normalized_query),
         descriptor.cache_intent,
         descriptor.topic,
         cache_key,
@@ -6081,9 +6082,9 @@ def _lookup_global_response_cache(
 
     payload = _deserialize_chat_response_cache_payload(cache_get_json(cache_key))
     if payload is None:
-        logger.info("RAG response cache miss key=%s normalized_query=%s", cache_key, normalized_query)
+        logger.info("RAG response cache miss key=%s normalized_query=%s", cache_key, log_privacy.said(normalized_query))
     else:
-        logger.info("RAG response cache hit key=%s normalized_query=%s", cache_key, normalized_query)
+        logger.info("RAG response cache hit key=%s normalized_query=%s", cache_key, log_privacy.said(normalized_query))
     return cache_key, payload, True, reason
 
 
@@ -6740,7 +6741,7 @@ def _prepare_safe_fallback_turn(
         failure_reason,
         active_session_id,
         extracted_intent.show_more,
-        effective_message,
+        log_privacy.said(effective_message),
         len(history_messages),
     )
 
@@ -6790,7 +6791,7 @@ def _prepare_chat_turn(
         prompt_started_at = perf_counter()
         prompt = _build_greeting_prompt(message)
         timings.prompt_ms = round((perf_counter() - prompt_started_at) * 1000, 2)
-        logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
+        logger.info("RAG greeting intent detected normalized_query=%s", log_privacy.said(_normalize_text(message)))
         return PreparedChatTurn(
             active_session_id=active_session_id,
             message=message,
@@ -6882,7 +6883,7 @@ def _prepare_chat_turn(
     )
     logger.info(
         "RAG topic resolution raw_message=%s detected_intent=%s extracted_topic=%s is_follow_up=%s previous_active_topic=%s final_active_topic=%s",
-        message,
+        log_privacy.said(message),
         resolved_intent.intent,
         _display_requested_topics(resolved_intent) or resolved_intent.cuisine or resolved_intent.category or resolved_intent.restaurant_query,
         is_follow_up,
@@ -6894,7 +6895,7 @@ def _prepare_chat_turn(
         prompt_started_at = perf_counter()
         prompt = f"{SMALL_TALK_PROMPT}\n\nUSER MESSAGE:\n{_trim_text(message, 220)}\n"
         timings.prompt_ms = round((perf_counter() - prompt_started_at) * 1000, 2)
-        logger.info("RAG small talk via LLM normalized_query=%s", _normalize_text(message))
+        logger.info("RAG small talk via LLM normalized_query=%s", log_privacy.said(_normalize_text(message)))
         return PreparedChatTurn(
             active_session_id=active_session_id,
             message=message,
@@ -6933,7 +6934,7 @@ def _prepare_chat_turn(
             restaurant_location_id=restaurant_location_id,
         )
         if service_reply is not None:
-            logger.info("RAG service info query user_id=%s message=%s", user.id, message)
+            logger.info("RAG service info query user_id=%s message=%s", user.id, log_privacy.said(message))
             return PreparedChatTurn(
                 active_session_id=active_session_id,
                 message=message,
@@ -6993,7 +6994,7 @@ def _prepare_chat_turn(
             restaurant_location_id=restaurant_location_id,
         )
         if hours_reply is not None:
-            logger.info("RAG hours query user_id=%s message=%s", user.id, message)
+            logger.info("RAG hours query user_id=%s message=%s", user.id, log_privacy.said(message))
             return PreparedChatTurn(
                 active_session_id=active_session_id,
                 message=message,
@@ -7031,7 +7032,7 @@ def _prepare_chat_turn(
         logger.info(
             "RAG instant domain reply intent=%s normalized_query=%s",
             resolved_intent.intent,
-            _normalize_text(message),
+            log_privacy.said(_normalize_text(message)),
         )
         return PreparedChatTurn(
             active_session_id=active_session_id,
@@ -7066,7 +7067,7 @@ def _prepare_chat_turn(
         logger.info(
             "RAG restaurant list reply restaurant_id=%s normalized_query=%s",
             restaurant_id,
-            _normalize_text(message),
+            log_privacy.said(_normalize_text(message)),
         )
         return PreparedChatTurn(
             active_session_id=active_session_id,
@@ -7194,7 +7195,7 @@ def _prepare_chat_turn(
         logger.info(
             "RAG offer query user_id=%s raw_message=%s detected_intent=%s restaurant_id=%s restaurant_location_id=%s active_offer_count=%d filtered_offer_count=%d requested_items=%s requested_cuisine=%s requested_restaurant=%s",
             user.id,
-            message,
+            log_privacy.said(message),
             resolved_intent.intent,
             restaurant_id,
             restaurant_location_id,
@@ -7242,7 +7243,7 @@ def _prepare_chat_turn(
         logger.info(
             "RAG customization query user_id=%s message=%s customizable_items=%d",
             user.id,
-            message,
+            log_privacy.said(message),
             len(customizable),
         )
         return PreparedChatTurn(
@@ -7313,7 +7314,7 @@ def _prepare_chat_turn(
         )
         logger.info(
             "RAG combo query raw_message=%s extracted_topic=%s combo_count=%d",
-            message,
+            log_privacy.said(message),
             combo_topic,
             len(combo_rows),
         )
@@ -7376,7 +7377,7 @@ def _prepare_chat_turn(
         vector_result_count = 0
         logger.info(
             "RAG new-item fast path query=%s matched_menu_items=%s excluded_item_ids=%s",
-            effective_message,
+            log_privacy.said(effective_message),
             _candidate_name_summary(final_candidates),
             [str(item_id) for item_id in sorted(exclude_item_ids, key=str)],
         )
@@ -7405,7 +7406,7 @@ def _prepare_chat_turn(
             "RAG retrieval precheck normalized_query=%s intent=%s final_retrieval_query=%s keyword_matches=%d matched_menu_items=%s excluded_item_ids=%s",
             _normalize_text(effective_message),
             resolved_intent.intent,
-            effective_message,
+            log_privacy.said(effective_message),
             len(filtered_keyword_candidates),
             _candidate_name_summary(filtered_keyword_candidates),
             [str(item_id) for item_id in sorted(exclude_item_ids, key=str)],
@@ -8349,7 +8350,7 @@ def handle_chat_message(
 
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
-        logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
+        logger.info("RAG greeting intent detected normalized_query=%s", log_privacy.said(_normalize_text(message)))
         greeting_cache_key = _greeting_response_cache_key(
             message, restaurant_id, restaurant_location_id
         )
@@ -8541,7 +8542,7 @@ def handle_chat_message(
             "RAG prepare turn failed user_id=%s session_id=%s message=%s",
             user.id,
             session_id,
-            message,
+            log_privacy.said(message),
         )
         prepared = _prepare_safe_fallback_turn(
             db,
@@ -8715,7 +8716,7 @@ def handle_chat_message(
             "RAG persist chat exchange failed user_id=%s session_id=%s message=%s",
             user.id,
             prepared.active_session_id,
-            message,
+            log_privacy.said(message),
         )
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)
@@ -8835,7 +8836,7 @@ def stream_chat_message(
 
     if _is_greeting_message(message):
         cache_started_at = perf_counter()
-        logger.info("RAG greeting intent detected normalized_query=%s", _normalize_text(message))
+        logger.info("RAG greeting intent detected normalized_query=%s", log_privacy.said(_normalize_text(message)))
         greeting_cache_key = _greeting_response_cache_key(
             message, restaurant_id, restaurant_location_id
         )
@@ -9061,7 +9062,7 @@ def stream_chat_message(
             "RAG stream prepare turn failed user_id=%s session_id=%s message=%s",
             user.id,
             session_id,
-            message,
+            log_privacy.said(message),
         )
         prepared = _prepare_safe_fallback_turn(
             db,
@@ -9244,7 +9245,7 @@ def stream_chat_message(
             "RAG stream persist chat exchange failed user_id=%s session_id=%s message=%s",
             user.id,
             prepared.active_session_id,
-            message,
+            log_privacy.said(message),
         )
     prepared.timings.total_ms = round((perf_counter() - started_at) * 1000, 2)
     _log_rag_timings(user, prepared)

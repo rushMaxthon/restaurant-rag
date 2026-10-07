@@ -3,6 +3,7 @@ import { ArrowRight, Check, Quote } from "lucide-react";
 
 import { BrandRail } from "@/components/bangkok/brand-facts";
 import { useStorefrontBrand, type BrandSection } from "@/lib/storefront";
+import { jsonLd } from "@/lib/json-ld";
 
 /**
  * What this kitchen says about itself, in its own words.
@@ -251,7 +252,9 @@ export function BrandFaqs() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          // `jsonLd`, never `JSON.stringify`: the answers are an owner's
+          // typing, and a raw `</script>` in one would run as script.
+          __html: jsonLd({
             "@context": "https://schema.org",
             "@type": "FAQPage",
             mainEntity: faqs.map((faq) => ({

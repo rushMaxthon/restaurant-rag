@@ -378,6 +378,14 @@ envVarGroups:
       # process handles the next request.
       - key: JWT_SECRET_KEY
         generateValue: true
+      # Encrypts restaurants' gateway keys, payout bank numbers and marketing
+      # channel passwords at rest (`services/secrets.py`). Without it those
+      # cannot be saved at all - refusing beats storing them in the clear.
+      # A Fernet key, set by hand in the dashboard and kept somewhere safe:
+      # losing it means re-entering every one of those secrets. Generate with
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: SECRETS_ENCRYPTION_KEY
+        sync: false
       - key: JWT_ALGORITHM
         value: HS256
       - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES

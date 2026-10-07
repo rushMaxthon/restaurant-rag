@@ -205,6 +205,7 @@ def _detail_response(
     ]
     if not include_owner:
         response.owner = None
+        response.owner_id = None
     return response
 
 
@@ -298,15 +299,21 @@ def list_restaurants(
     )
     if app_scope.restaurant_filter_id is not None:
         query = query.where(Restaurant.id == app_scope.restaurant_filter_id)
+    # Equality ignoring case, not `ilike`: as a pattern, a `%` typed into the
+    # city matched every restaurant on the platform (2026-10-07 review).
     if city:
-        query = query.where(Restaurant.city.ilike(city))
+        query = query.where(func.lower(Restaurant.city) == city.strip().lower())
     if cuisine_type:
-        query = query.where(Restaurant.cuisine_type.ilike(cuisine_type))
+        query = query.where(func.lower(Restaurant.cuisine_type) == cuisine_type.strip().lower())
 
     restaurants = db.scalars(
         query.order_by(Restaurant.is_open.desc(), Restaurant.created_at.desc(), Restaurant.name.asc())
     ).all()
-    return [RestaurantResponse.model_validate(restaurant) for restaurant in restaurants]
+    # Public: the owner's account id is not anyone's business here.
+    return [
+        RestaurantResponse.model_validate(restaurant).model_copy(update={"owner_id": None})
+        for restaurant in restaurants
+    ]
 
 
 @router.get("/mine", response_model=list[RestaurantResponse])
@@ -605,6 +612,9 @@ def create_restaurant_location(
         # The rate is the platform's. An owner opening a branch gets the
         # default whatever their request says.
         fields["commission_percent"] = menu_pricing.DEFAULT_COMMISSION_PERCENT
+        # Likewise the platform's per-order fee: the column's default, not
+        # whatever the request says.
+        fields.pop("platform_fee", None)
     location = RestaurantLocation(restaurant_id=restaurant_id, **fields)
     db.add(location)
     db.flush()
@@ -640,9 +650,24 @@ def _apply_location_changes(
     # An explicit null is "no opinion", not "off" or "zero". Both columns are
     # NOT NULL, and a form that sends null for a field it never rendered must
     # not 500.
-    for nullable_in_payload in ("gst_in_menu_prices", "commission_percent"):
+    for nullable_in_payload in ("gst_in_menu_prices", "commission_percent", "platform_fee"):
         if changes.get(nullable_in_payload, False) is None:
             changes.pop(nullable_in_payload)
+
+    # The platform's flat per-order fee is the platform's to set, like the
+    # rate below (2026-10-07 security review): an owner could send 0 with
+    # their branch settings and take it away. Same rule as the commission -
+    # the value they were shown is fine, a different one is refused before
+    # anything else on the payload is written.
+    if (
+        "platform_fee" in changes
+        and Decimal(str(changes["platform_fee"])) != Decimal(str(location.platform_fee or 0))
+        and current_user.role != UserRole.ADMIN
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the platform admin can change the platform fee.",
+        )
 
     before = menu_pricing.commission_percent_of(location)
     rate_moved = (

@@ -81,7 +81,7 @@ class ChatPlaceOrderRequest(BaseModel):
     restaurant_id: uuid.UUID
     restaurant_location_id: uuid.UUID
     session_id: uuid.UUID
-    cart: list[CartLinePayload] = Field(default_factory=list)
+    cart: list[CartLinePayload] = Field(default_factory=list, max_length=50)
 
 
 class ChatPlaceOrderResponse(BaseModel):
@@ -102,7 +102,7 @@ class ChatMessageRequest(BaseModel):
     guest_preferences: GuestPreferencePayload | None = None
     # Both selling rules are functions of the cart, and the cart lives in the
     # browser. Untrusted: every id is re-resolved against the branch.
-    cart: list[CartLinePayload] = Field(default_factory=list)
+    cart: list[CartLinePayload] = Field(default_factory=list, max_length=50)
     # The assistant's last line as the customer saw it, so the ordering
     # agent can read "yes" or "not yet" against what it just offered. The
     # client holds the thread; sending one line back is cheaper and more

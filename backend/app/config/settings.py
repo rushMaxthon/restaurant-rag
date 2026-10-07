@@ -30,8 +30,13 @@ class Settings(BaseSettings):
 
     app_name: str = "Restaurant RAG API"
     app_version: str = "1.0.0"
-    environment: str = "development"
-    debug: bool = True
+    # Safe when unset (2026-10-07 security review). Both used to default to
+    # development values, and every dangerous switch - the fixed phone code,
+    # tracebacks, /docs - keys off them, so a deployment that forgot to set
+    # them ran open. Local development sets ENVIRONMENT=development in .env;
+    # anything else that is still unsafe refuses to start (`config/safety.py`).
+    environment: str = "production"
+    debug: bool = False
     api_v1_prefix: str = "/api"
     business_timezone: str = "Asia/Kolkata"
     # Dialling code assumed when a customer types a bare local number at

@@ -43,6 +43,8 @@ from app.config.database import get_db
 from app.models.enums import PrintJobStatus
 from app.models.print_agent import PrintAgent, Printer
 from app.services.print.queue import ack_job, claim_jobs
+from app.services import rate_limit
+from app.services.rate_limit import per_ip
 
 router = APIRouter(prefix="/print-agents", tags=["Printing"])
 
@@ -229,6 +231,8 @@ class HeartbeatRequest(BaseModel):
 
 @router.post("/pair", response_model=PairResponse, status_code=status.HTTP_201_CREATED)
 def pair_agent(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("pair", limit=10, window_seconds=600))],
     payload: PairRequest,
     db: Annotated[Session, Depends(get_db)],
 ) -> PairResponse:
@@ -240,6 +244,11 @@ def pair_agent(
     when they pressed the button.
     """
 
+    # Across every caller too: a pairing code is six digits, so the sweep has
+    # to be slowed for the whole platform, not just per address. 60 tries in
+    # ten minutes is plenty for people typing codes and makes a sweep of a
+    # million codes hopeless within a code's ten-minute life.
+    rate_limit.hit("pair-all", "all", limit=60, window_seconds=600)
     _prune_codes()
     entry = _pending_codes.pop(payload.code.strip(), None)
     if entry is None:

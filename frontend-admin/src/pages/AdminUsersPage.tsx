@@ -537,11 +537,18 @@ export function AdminUsersPage({
               <label className="field form-grid__wide">
                 <span>Phone</span>
                 <input
+                  // The phone is a login; only the customer or the platform
+                  // admin may change it. The server refuses an owner who does.
+                  disabled={isOwnerView}
                   placeholder="+91 90000 00000"
                   value={editForm.phone_number}
                   onChange={(event) => setEditForm((current) => ({ ...current, phone_number: event.target.value }))}
                 />
-                <small className="hint-text">Used to sign in, so it must be unique within this app.</small>
+                <small className="hint-text">
+                  {isOwnerView
+                    ? 'The customer signs in with this number, so only they (or the platform admin) can change it.'
+                    : 'Used to sign in, so it must be unique within this app.'}
+                </small>
               </label>
               <label className="field form-grid__wide">
                 <span>Default address</span>

@@ -25,6 +25,8 @@ import logging
 
 import httpx
 
+from app.services.outbound_url import UnsafeUrl, require_public_https
+
 from app.config import get_settings
 from app.models.enums import MarketingChannel
 from app.services.marketing.providers.base import (
@@ -83,6 +85,12 @@ class SmsProvider:
         return 100
 
     def send(self, members: list[BatchMember], *, message: RenderedMessage) -> BatchResult:
+        # Again at send time, not only when saved: the gateway's domain could
+        # have been re-pointed at an internal address since (`outbound_url`).
+        try:
+            require_public_https(self._url)
+        except UnsafeUrl as error:
+            raise ProviderError(f"Your SMS provider's address cannot be used: {error}") from error
         text = compose(message.body)
         headers = {"Authorization": f"Bearer {self._key}"}
         outcomes: list[MemberOutcome] = []
@@ -138,7 +146,6 @@ class SmsProvider:
 def _describe(response: httpx.Response) -> str:
     if response.status_code in (401, 403):
         return "Your SMS provider rejected the API key. Reconnect SMS with a new one."
-    detail = (response.text or "").strip()
-    if detail:
-        return f"Your SMS provider refused it ({response.status_code}): {detail[:180]}"
+    # The status only, never the body: echoing whatever answered turned a
+    # mistyped or hostile URL into a way to read it (2026-10-07 review).
     return f"Your SMS provider refused it ({response.status_code})"

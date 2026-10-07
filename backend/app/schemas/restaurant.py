@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.schemas.common import ImageUrl
 from app.models.enums import (
     AppClientStatus,
     AppMode,
@@ -40,8 +41,8 @@ class RestaurantBase(BaseModel):
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     delivery_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
-    logo_image_url: str | None = Field(default=None, max_length=500)
-    cover_image_url: str | None = Field(default=None, max_length=500)
+    logo_image_url: ImageUrl = None
+    cover_image_url: ImageUrl = None
 
 
 class RestaurantCreate(RestaurantBase):
@@ -163,8 +164,8 @@ class AdminRestaurantUpdate(BaseModel):
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
     minimum_order_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
     delivery_fee: Decimal = Field(default=Decimal("0.00"), ge=0)
-    logo_image_url: str | None = Field(default=None, max_length=500)
-    cover_image_url: str | None = Field(default=None, max_length=500)
+    logo_image_url: ImageUrl = None
+    cover_image_url: ImageUrl = None
     is_open: bool = False
 
 
@@ -674,7 +675,9 @@ class RestaurantResponse(RestaurantBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    owner_id: uuid.UUID
+    #: None on the public routes: the owner's account id is staff business,
+    #: not a customer's or an anonymous caller's (2026-10-07 security review).
+    owner_id: uuid.UUID | None = None
     # What this restaurant charges in. On the response rather than derived
     # client-side, because the panel shows several restaurants' money on one
     # screen and has to label each figure with the right symbol.
@@ -713,8 +716,8 @@ class RestaurantSettingsUpdate(BaseModel):
     country: str | None = Field(default=None, min_length=2, max_length=120)
     postal_code: str | None = Field(default=None, min_length=3, max_length=20)
     phone_number: str | None = Field(default=None, min_length=8, max_length=20)
-    logo_image_url: str | None = Field(default=None, max_length=500)
-    cover_image_url: str | None = Field(default=None, max_length=500)
+    logo_image_url: ImageUrl = None
+    cover_image_url: ImageUrl = None
     is_open: bool | None = None
     is_active: bool | None = None
     # The handler has read this since per-restaurant currency shipped, and the

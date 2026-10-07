@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import get_settings
 from app.models.enums import (
     GeneratedComboLifecycleStatus,
+    OrderCancellationReason,
     OrderFulfillmentType,
     PaymentStatus,
     PersonalizedOfferAudience,
@@ -772,7 +773,7 @@ def sync_global_welcome_offer_for_user(
     if user.role != UserRole.CUSTOMER or not user.is_active:
         return False
 
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     welcome_matches = db.scalars(
         select(GeneratedOfferUserMatch)
         .join(GeneratedOffer, GeneratedOfferUserMatch.generated_offer_id == GeneratedOffer.id)
@@ -934,11 +935,34 @@ def _load_user_preferences(db: Session, user_id: uuid.UUID) -> UserPreferences |
     return db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
 
 
-def _latest_paid_order_at(db: Session, user_id: uuid.UUID) -> datetime | None:
+#: Orders that bought nothing: the payment failed, was abandoned, or never
+#: finished, and the reaper closed the checkout.
+_UNPAID_CANCELLATIONS = (
+    OrderCancellationReason.PAYMENT_FAILED,
+    OrderCancellationReason.PAYMENT_ABANDONED,
+    OrderCancellationReason.PAYMENT_NOT_COMPLETED,
+)
+
+
+def _latest_order_at(db: Session, user_id: uuid.UUID) -> datetime | None:
+    """When this customer last placed a real order, or None if never.
+
+    It looked for PAID orders only (2026-10-07 security review). A
+    cash-on-delivery order is never marked paid, so a COD customer stayed
+    "new" forever and took the welcome discount on every order; a card
+    customer could open several checkouts before paying any and have it on
+    each. Decided with the platform owner: COD, paid and still-unpaid
+    checkouts all count. Only a checkout cancelled because its payment
+    failed or was abandoned does not - nothing was bought.
+    """
+
     return db.scalar(
         select(func.max(Order.placed_at)).where(
             Order.customer_id == user_id,
-            Order.payment_status == PaymentStatus.PAID,
+            or_(
+                Order.cancellation_reason.is_(None),
+                Order.cancellation_reason.notin_(_UNPAID_CANCELLATIONS),
+            ),
         )
     )
 
@@ -2366,7 +2390,7 @@ def _load_live_manual_offer_cards_for_user(
     user: User,
 ) -> list[PersonalizedOfferCardResponse]:
     now = datetime.now(UTC)
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     cards: list[tuple[tuple[int, datetime], PersonalizedOfferCardResponse]] = []
     for offer in _load_active_offers(db):
         if offer.offer_type != PersonalizedOfferType.CUSTOM:
@@ -3000,7 +3024,7 @@ def get_personalized_offers_for_context(
     _ensure_generated_offers_bootstrapped(db, restaurant_id=payload.restaurant_id)
     matches = _sync_generated_offer_matches_for_user(db, user=user)
     effective_limit = max(limit or settings.personalized_offer_max_cards, 1)
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     now = datetime.now(UTC)
 
     cards: list[PersonalizedOfferCardResponse] = []
@@ -3078,7 +3102,7 @@ def get_personalized_offer_item_availability(
     indexed_items = {item.id: item for item in menu_items}
     _ensure_generated_offers_bootstrapped(db, restaurant_id=payload.restaurant_id)
     matches = _sync_generated_offer_matches_for_user(db, user=user)
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     now = datetime.now(UTC)
     manual_offers = [
         offer
@@ -3319,9 +3343,9 @@ def validate_offer_for_order(
     if not _offer_matches_scope(offer, restaurant_id=restaurant_id, location_id=restaurant_location_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This offer is not valid for the current restaurant")
 
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     if offer.offer_type == PersonalizedOfferType.WELCOME_FIRST_ORDER and latest_order_at is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This welcome offer is only available on your first paid order")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This welcome offer is only for your first order")
     if offer.minimum_order_amount > 0 and subtotal < offer.minimum_order_amount:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -3392,11 +3416,11 @@ def validate_generated_offer_for_order(
         if match is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This offer is not available")
 
-    latest_order_at = _latest_paid_order_at(db, user.id)
+    latest_order_at = _latest_order_at(db, user.id)
     if not _matches_generated_offer_audience(generated_offer, latest_order_at=latest_order_at, now=datetime.now(UTC)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This offer is not available")
     if not _matches_generated_offer_type_eligibility(generated_offer, latest_order_at=latest_order_at):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This welcome offer is only available on your first paid order")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This welcome offer is only for your first order")
 
     minimum_order_amount = _generated_offer_minimum_order_amount(generated_offer)
     if minimum_order_amount > 0 and subtotal < minimum_order_amount:

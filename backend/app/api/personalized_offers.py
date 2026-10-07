@@ -415,7 +415,7 @@ def trigger_owner_ai_offer_generation(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unable to run AI offer generation right now: {error}",
+            detail="Unable to run AI offer generation right now. The cause is in the server log.",
         ) from error
 
     logger.info(

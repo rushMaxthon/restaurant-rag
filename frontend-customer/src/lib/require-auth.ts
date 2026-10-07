@@ -18,6 +18,8 @@ export function sanitizeRedirect(href: string | undefined): string | undefined {
   if (!href) return undefined;
   // "//evil.com" is protocol-relative and would leave the origin.
   if (!href.startsWith("/") || href.startsWith("//")) return undefined;
+  // A backslash too: browsers read "/\\evil.com" as "//evil.com".
+  if (href.includes("\\")) return undefined;
   const path = href.split("?")[0]!.split("#")[0]!;
   if (AUTH_PATHS.has(path)) return undefined;
   return href;

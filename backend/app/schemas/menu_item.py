@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.common import ImageUrl
 from app.models.enums import MenuItemCustomizationSelectionType
 
 
@@ -163,7 +164,7 @@ class MenuItemRequestBase(BaseModel):
     stock_daily_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_bestseller: bool = False
     is_featured: bool = False
-    image_url: str | None = Field(default=None, max_length=500)
+    image_url: ImageUrl = None
     is_new_launch: bool = False
     has_sizes: bool = False
     has_customizations: bool = False

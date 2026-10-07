@@ -26,6 +26,7 @@ from app.schemas.traffic import (
     TrafficToday,
 )
 from app.services import traffic
+from app.services.rate_limit import client_ip as rate_limit_client_ip
 from app.services.auth import get_current_user, get_current_user_optional, require_admin
 from app.services.insights.scope import resolve_insights_scope
 
@@ -38,9 +39,9 @@ class TrafficBeat(BaseModel):
 
 
 def _client_address(request: Request) -> str | None:
-    # Behind Render's proxy the browser's address is the first forwarded one.
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    return forwarded or (request.client.host if request.client else None)
+    # The address Render's proxy recorded, not the first X-Forwarded-For entry,
+    # which the caller writes and could rotate to dodge the new-visitor cap.
+    return rate_limit_client_ip(request)
 
 
 @router.post("/beat", status_code=status.HTTP_204_NO_CONTENT)

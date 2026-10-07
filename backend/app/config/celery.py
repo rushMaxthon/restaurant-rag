@@ -6,9 +6,12 @@ from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_ready
 
-from app.config import get_settings
+from app.config import get_settings, safety
 
 settings = get_settings()
+# A worker signs unsubscribe links with the same secret and writes the same
+# data; it refuses an unsafe configuration exactly as the API does.
+safety.check(settings)
 
 celery_app = Celery(
     "restaurant_rag",

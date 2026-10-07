@@ -4,6 +4,7 @@ import { Phone, Sparkles } from "lucide-react";
 import { brandInitials } from "@/lib/brand-mark";
 import { hasCapability, useBangkokStore } from "@/lib/bangkok-store";
 import { useStorefrontContact, useStorefrontCopy, useStorefrontLogo } from "@/lib/storefront";
+import { jsonLd } from "@/lib/json-ld";
 
 /**
  * The end of every page, and the part of a brand site that says somebody real
@@ -186,9 +187,9 @@ function StructuredData({ name, description }: { name: string; description: stri
   return (
     <script
       type="application/ld+json"
-      // Known-shaped object built field by field above, never a passthrough of
-      // anything a visitor typed.
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      // Known-shaped, but its name, description and address are an owner's
+      // typing: `jsonLd` escapes them so a `</script>` cannot close the tag.
+      dangerouslySetInnerHTML={{ __html: jsonLd(data) }}
     />
   );
 }

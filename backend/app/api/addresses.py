@@ -43,6 +43,7 @@ from app.models.user_saved_address import UserSavedAddress
 from app.services.auth import require_customer
 from app.services.geocoding.base import GeocodingError
 from app.services.geocoding.registry import places_geocoder
+from app.services.rate_limit import per_ip
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class ResolvedAddress(BaseModel):
 
 @router.post("/suggest", response_model=SuggestResponse)
 def suggest_addresses(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("address-suggest", limit=60, window_seconds=60))],
     payload: SuggestRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_customer)],
@@ -146,6 +149,8 @@ def suggest_addresses(
 
 @router.post("/resolve", response_model=ResolvedAddress)
 def resolve_address(
+    # Counted before anything else runs (`services/rate_limit.py`).
+    _rate_limited: Annotated[None, Depends(per_ip("address-resolve", limit=30, window_seconds=60))],
     payload: ResolveRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_customer)],
