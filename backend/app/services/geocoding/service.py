@@ -38,13 +38,14 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.geocode_cache import GeocodeCache
 from app.services.cache import cache_get_json, cache_set_json
+from app.services.geocoding import health
 from app.services.geocoding.base import (
     AddressQuery,
     GeocodeConfidence,
     GeocodedPoint,
     GeocodingError,
 )
-from app.services.geocoding.registry import geocoder
+from app.services.geocoding.registry import fallback_geocoder, geocoder
 
 logger = logging.getLogger(__name__)
 
@@ -149,12 +150,52 @@ def locate(db: Session, query: AddressQuery) -> GeocodedPoint | None:
         # nothing about the address, and recording it as "not found" would
         # blind us to a perfectly good address for as long as the entry lived.
         logger.warning("Could not geocode %r: %s", query.cache_key()[:80], error)
-        return None
+        if error.retryable or not _is_google(provider):
+            return None
+        # Google refused the key itself - billing off, key restricted - which
+        # no retry fixes (2026-10-07: every address came back REQUEST_DENIED
+        # and no delivery address could be placed). Say so on Platform watch,
+        # and answer from OpenStreetMap so the customer can still order.
+        health.record_refusal("geocode", str(error))
+        return _locate_with_fallback(db, query)
     except Exception:  # noqa: BLE001 - a checkout must survive a geocoder bug
         logger.exception("Geocoding raised; treating the address as unlocatable")
         return None
 
+    if _is_google(provider):
+        health.record_success()
     _store(db, fingerprint, query, point, provider_name=provider_name)
+    return point
+
+
+def _is_google(provider) -> bool:
+    from app.services.geocoding.google import GoogleGeocoder
+
+    return isinstance(provider, GoogleGeocoder)
+
+
+def _locate_with_fallback(db: Session, query: AddressQuery) -> GeocodedPoint | None:
+    """The same lookup through OpenStreetMap, cached under its own name."""
+
+    fallback = fallback_geocoder()
+    fingerprint = _fingerprint(query, getattr(fallback, "name", "nominatim"))
+    cached = cache_get_json(_redis_key(fingerprint))
+    if isinstance(cached, dict) and not cached.get("miss"):
+        point = _from_stored(
+            cached.get("lat"),
+            cached.get("lng"),
+            str(cached.get("confidence") or ""),
+            str(cached.get("provider") or ""),
+            str(cached.get("matched") or ""),
+        )
+        if point is not None:
+            return point
+    try:
+        point = fallback.geocode(query, timeout=get_settings().geocoding_timeout_seconds)
+    except Exception:  # noqa: BLE001 - the fallback must not cost a checkout either
+        logger.warning("OpenStreetMap could not place %r either", query.cache_key()[:80], exc_info=True)
+        return None
+    _store(db, fingerprint, query, point, provider_name=getattr(fallback, "name", "nominatim"))
     return point
 
 

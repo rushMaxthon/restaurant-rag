@@ -274,6 +274,39 @@ def _check_delivery() -> Check:
     return Check("delivery", label, OK, f"{type(provider).__name__.replace('Provider', '')}: {', '.join(parts)}.")
 
 
+def _google_configured() -> bool:
+    return bool(get_settings().google_maps_api_key)
+
+
+#: How long after Google refuses us the check stays red with no newer word.
+MAPS_REFUSAL_WINDOW = timedelta(hours=1)
+
+
+def _check_maps(now: datetime) -> Check:
+    """Whether Google is answering address lookups and suggestions.
+
+    Added 2026-10-07, when Google refused every call (billing switched off on
+    the Cloud project) and the only sign was a customer told their address
+    was not on the map. Addresses fall back to OpenStreetMap meanwhile, but
+    suggestions-as-you-type stop entirely.
+    """
+
+    from app.services.geocoding import health
+
+    label = "Maps and address search (Google)"
+    if not _google_configured():
+        return Check("maps", label, WARN, "No Google key: addresses use OpenStreetMap and there are no suggestions as you type.",
+                     "Set GOOGLE_MAPS_API_KEY for building-level accuracy and the address dropdown.")
+    refusal = health.last_refusal()
+    if refusal and now - refusal["at"] <= MAPS_REFUSAL_WINDOW:
+        minutes = max(0, int((now - refusal["at"]).total_seconds() // 60))
+        return Check("maps", label, DOWN, f"Google refused us {minutes} min ago: {refusal['message'][:140]}",
+                     "Turn billing back on for the key's Google Cloud project (or check the key's API "
+                     "restrictions). Until then addresses are found through OpenStreetMap, less precisely, "
+                     "and checkout has no address suggestions.")
+    return Check("maps", label, OK, "Answering.")
+
+
 def _check_realtime() -> Check:
     if get_settings().enable_realtime:
         return Check("realtime", "Live updates", OK, "On. Boards update the moment an order moves.")
@@ -293,6 +326,7 @@ _LABELS = {
     "ai": "AI model (Ollama)",
     "delivery": "Delivery partner",
     "realtime": "Live updates",
+    "maps": "Maps and address search (Google)",
 }
 
 
@@ -307,6 +341,7 @@ def _start_checks(now: datetime):
         "ai": _check_ai,
         "delivery": _check_delivery,
         "realtime": _check_realtime,
+        "maps": lambda: _check_maps(now),
     }
     pool = ThreadPoolExecutor(max_workers=len(others), thread_name_prefix="platform-watch")
     return pool, {key: pool.submit(fn) for key, fn in others.items()}

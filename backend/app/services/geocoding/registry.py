@@ -89,3 +89,29 @@ def reset_geocoder() -> None:
 
 
 __all__ = ["geocoder", "places_geocoder", "reset_geocoder"]
+
+
+_fallback: NominatimGeocoder | None = None
+
+
+def fallback_geocoder() -> NominatimGeocoder:
+    """OpenStreetMap, for when Google refuses the key.
+
+    Used only after a refusal that retrying will not fix - a key or billing
+    problem (2026-10-07: Google answered REQUEST_DENIED for every address and
+    nothing could be located). Less precise than Google, but an address that is
+    located by it is priced and accepted; one that is not located at all is
+    neither. Never for suggestions: Nominatim's terms forbid autocomplete.
+    """
+
+    global _fallback
+    with _lock:
+        if _fallback is None:
+            settings = get_settings()
+            _fallback = NominatimGeocoder(
+                user_agent=settings.geocoding_user_agent,
+                timeout_seconds=settings.geocoding_timeout_seconds,
+                country_codes=settings.geocoding_country_codes,
+            )
+        return _fallback
+

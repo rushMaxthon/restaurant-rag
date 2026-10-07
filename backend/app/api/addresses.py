@@ -142,8 +142,17 @@ def suggest_addresses(
         # A typing box must not throw. An empty list reads as "no matches yet",
         # which is what a customer mid-word expects anyway.
         logger.warning("Address suggestions failed: %s", error)
+        if not error.retryable:
+            # The key itself was refused (billing off, restrictions): shown on
+            # Platform watch, not left for a customer to discover.
+            from app.services.geocoding import health
+
+            health.record_refusal("places", str(error))
         return SuggestResponse(suggestions=[])
 
+    from app.services.geocoding import health
+
+    health.record_success()
     return SuggestResponse(suggestions=[Suggestion(**entry) for entry in found])
 
 
