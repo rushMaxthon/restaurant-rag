@@ -27,6 +27,10 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'sha256-LCGOn3VdQCzV4qOP1PT664/KNmKpbhs5Ib+8mjGmAsg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://restaurant-rag-api-oj8p.onrender.com wss://restaurant-rag-api-oj8p.onrender.com; form-action 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; report-uri https://restaurant-rag-api-oj8p.onrender.com/api/security/csp-report"
         }
       ]
     }

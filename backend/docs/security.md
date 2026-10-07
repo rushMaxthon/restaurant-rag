@@ -109,17 +109,43 @@ Migration `0088` switches RLS on for the tables older migrations left open,
 so a database built from scratch starts closed. The live Supabase project
 already had it on every table.
 
-## Still open
+## Closed in the follow-up (same day)
 
-- Login tokens live in `localStorage` in all three web apps; moving them to
-  httpOnly cookies is the next step once the above is live.
-- A full CSP script allowlist (see above).
-- `GET /admin/users` is unpaged: the Users page filters and pages in the
-  browser. It needs server-side paging before a limit can be added.
-- Print-agent pairing codes live in one process's memory, so pairing fails
-  at random with more than one gunicorn worker.
-- Registration says whether an email or phone is taken (account
-  enumeration); login skips bcrypt when no account matches (timing).
-- Outside the code: sign Android release builds with a real keystore, not the
-  debug one; restrict the Firebase API keys to the app ids in Google Cloud;
-  set `SECRETS_ENCRYPTION_KEY` on Render.
+- **Script allowlist, report-only.** Each `vercel.json` sends
+  `Content-Security-Policy-Report-Only`; browsers report what it would block
+  to `POST /api/security/csp-report` (`api/security_reports.py`,
+  `test_csp_report`), which logs it with query strings stripped. The admin's
+  one inline script is allowed by hash, kept in step by `src/cspHash.test.ts`.
+  Switch the header to enforcing once the logs show no reports from
+  legitimate pages. The storefront still needs `'unsafe-inline'` for its
+  server-rendered scripts until they carry nonces.
+- **Admin and owner logins last 8 hours** (`jwt_staff_token_expire_minutes`,
+  `test_staff_token_lifetime`); kitchen tablets and customers keep 24.
+- **The Users list is paged on the server** (`search`, `role`, `status`,
+  `limit` 50 by default and at most 200, `offset`, `X-Total-Count`), and its
+  tiles come from `GET /admin/users/stats` (`test_admin_users_paging`).
+- **Print-agent pairing codes live in Redis**, redeemed with GET and DELETE in
+  one transaction so a code works once across every worker
+  (`test_print_pairing_codes`).
+- **Login costs the same for an unknown account** - one bcrypt check against
+  a dummy hash (`test_login_timing`).
+- **An owner can only read their own AI offer run's result**
+  (`test_owner_task_status_scope`).
+- **Android release builds can be signed with a real key**: put it in
+  `android/keystore.properties` (see the `.example`) or `RELEASE_STORE_*`
+  environment variables. Without one a release still builds on the debug key,
+  with a warning that it must not be distributed.
+
+## Still open, on purpose
+
+- **Login tokens in browser storage.** Moving them to httpOnly cookies needs
+  the API and the sites on one domain of your own (api.example.com and
+  example.com); with onrender.com and vercel.app the cookie is third-party
+  and browsers block it. Decided 2026-10-07: do it once that domain exists.
+- **Registration says when an email or phone is taken.** Hiding it would leave
+  a customer who already has an account with no idea why sign-up "worked" and
+  nothing happened. It is rate limited (10 sign-ups per hour per address)
+  instead.
+- **Outside the code:** create the Android release key and keep it safe;
+  restrict the Firebase API keys to the app ids in Google Cloud; set
+  `SECRETS_ENCRYPTION_KEY` on Render.

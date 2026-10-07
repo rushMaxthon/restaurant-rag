@@ -27,12 +27,16 @@ exists.
 
 from __future__ import annotations
 
+import json
+import logging
+
 import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
+from redis.exceptions import RedisError
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -44,6 +48,7 @@ from app.models.enums import PrintJobStatus
 from app.models.print_agent import PrintAgent, Printer
 from app.services.print.queue import ack_job, claim_jobs
 from app.services import rate_limit
+from app.services.cache import get_redis_client
 from app.services.rate_limit import per_ip
 
 router = APIRouter(prefix="/print-agents", tags=["Printing"])
@@ -57,19 +62,60 @@ router = APIRouter(prefix="/print-agents", tags=["Printing"])
 #: created, so it is the moment worth constraining.
 PAIRING_CODE_TTL = timedelta(minutes=10)
 
-#: Codes handed out and not yet used, in memory on purpose.
-#:
-#: A pairing code has a ten-minute life and exists to be used once, in the
-#: same sitting, by somebody standing at the PC. Persisting it would mean a
-#: table, a migration and a sweeper for a value whose entire purpose is to
-#: stop mattering. A process restart invalidating outstanding codes is
-#: acceptable: the owner presses the button again.
-#:
-#: The trade-off this accepts: with more than one API process, the code must
-#: be redeemed by the process that issued it. Behind a load balancer that
-#: means a retry may be needed. When that becomes real, this moves to Redis
-#: with the same TTL - not to a table.
+#: Codes handed out and not yet used: in Redis, with the code's lifetime as
+#: the key's, so every API worker sees the same codes and Redis does the
+#: expiring. They lived in one process's memory, which made pairing fail at
+#: random under more than one gunicorn worker (2026-10-07 security review) -
+#: the move to Redis "when that becomes real" that this comment promised.
+#: Still not a table: a value whose purpose is to stop mattering needs no
+#: migration and no sweeper.
+logger = logging.getLogger(__name__)
+_REDIS_PREFIX = "printpair:"
+
+#: Only when Redis is unreachable: the old behaviour, one process's memory.
 _pending_codes: dict[str, dict[str, Any]] = {}
+
+
+def _encode(entry: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "restaurant_id": str(entry["restaurant_id"]),
+            "restaurant_location_id": str(entry["restaurant_location_id"]),
+            "name": entry["name"],
+            "expires_at": entry["expires_at"].isoformat(),
+        }
+    )
+
+
+def _decode(raw: str | bytes) -> dict[str, Any]:
+    data = json.loads(raw)
+    return {
+        "restaurant_id": uuid.UUID(data["restaurant_id"]),
+        "restaurant_location_id": uuid.UUID(data["restaurant_location_id"]),
+        "name": data["name"],
+        "expires_at": datetime.fromisoformat(data["expires_at"]),
+    }
+
+
+def redeem_pairing_code(code: str) -> dict[str, Any] | None:
+    """The code's entry, removed so it can never be used again; or None.
+
+    GET and DELETE in one transaction, so two agents racing for one code
+    cannot both get it. (Not GETDEL, which a Redis older than 6.2 lacks.)
+    """
+
+    code = code.strip()
+    try:
+        pipe = get_redis_client().pipeline(transaction=True)
+        pipe.get(f"{_REDIS_PREFIX}{code}")
+        pipe.delete(f"{_REDIS_PREFIX}{code}")
+        raw, _ = pipe.execute()
+        if raw:
+            return _decode(raw)
+    except RedisError:
+        logger.warning("Redis unavailable; redeeming pairing codes from this process only")
+    _prune_codes()
+    return _pending_codes.pop(code, None)
 
 
 def _hash_token(raw: str) -> str:
@@ -97,12 +143,28 @@ def issue_pairing_code(
     # the creation of a long-lived credential.
     code = f"{secrets.randbelow(1_000_000):06d}"
     expires_at = datetime.now(UTC) + PAIRING_CODE_TTL
-    _pending_codes[code] = {
+    entry = {
         "restaurant_id": restaurant_id,
         "restaurant_location_id": restaurant_location_id,
         "name": name,
         "expires_at": expires_at,
     }
+    try:
+        stored = get_redis_client().set(
+            f"{_REDIS_PREFIX}{code}",
+            _encode(entry),
+            ex=int(PAIRING_CODE_TTL.total_seconds()),
+            nx=True,
+        )
+        if stored:
+            return {"code": code, "expires_at": expires_at}
+        # Another branch's code already has these six digits: draw again.
+        return issue_pairing_code(
+            restaurant_id=restaurant_id, restaurant_location_id=restaurant_location_id, name=name
+        )
+    except RedisError:
+        logger.warning("Redis unavailable; this pairing code only works on this API process")
+    _pending_codes[code] = entry
     return {"code": code, "expires_at": expires_at}
 
 
@@ -249,8 +311,7 @@ def pair_agent(
     # ten minutes is plenty for people typing codes and makes a sweep of a
     # million codes hopeless within a code's ten-minute life.
     rate_limit.hit("pair-all", "all", limit=60, window_seconds=600)
-    _prune_codes()
-    entry = _pending_codes.pop(payload.code.strip(), None)
+    entry = redeem_pairing_code(payload.code)
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

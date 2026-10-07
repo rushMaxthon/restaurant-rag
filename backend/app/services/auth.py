@@ -37,6 +37,13 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+#: A bcrypt hash of a random secret that was thrown away: nothing typed can
+#: match it. Checked when no account matches a login, so an unknown email
+#: costs the same ~100 ms as a wrong password - a fast "no" told whoever was
+#: timing it which emails have accounts (2026-10-07 security review).
+DUMMY_PASSWORD_HASH = "$2b$12$FQLgCHgSXhkBvZcY9ZcNIef9BR0HU6x2crZkKC5bLxItWfwUabARC"
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -65,7 +72,12 @@ def create_access_token(user: User) -> str:
     """
 
     issued_at = datetime.now(UTC)
-    expires_at = issued_at + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    minutes = (
+        settings.jwt_staff_token_expire_minutes
+        if user.role in (UserRole.ADMIN, UserRole.OWNER)
+        else settings.jwt_access_token_expire_minutes
+    )
+    expires_at = issued_at + timedelta(minutes=minutes)
     payload = {
         "sub": str(user.id),
         "role": user.role.value,
@@ -136,6 +148,9 @@ def authenticate_user(
         ).all()
     )
 
+    if not candidates:
+        verify_password(password, DUMMY_PASSWORD_HASH)
+        return None
     for candidate in candidates:
         if not verify_password(password, candidate.hashed_password):
             continue

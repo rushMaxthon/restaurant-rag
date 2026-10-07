@@ -215,3 +215,18 @@ class AdminUserResponse(UserResponse):
     app_label: str | None = None
     restaurant_id: uuid.UUID | None = None
     restaurant_name: str | None = None
+
+
+class AdminUserRoleCount(BaseModel):
+    total: int
+    active: int
+
+
+class AdminUserStats(BaseModel):
+    """Accounts per role, for the tiles above the Users list."""
+
+    all: AdminUserRoleCount
+    ADMIN: AdminUserRoleCount
+    OWNER: AdminUserRoleCount
+    KITCHEN: AdminUserRoleCount
+    CUSTOMER: AdminUserRoleCount

@@ -4,10 +4,10 @@ import uuid
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -29,6 +29,7 @@ from app.schemas.admin import (
     AdminCommissionReport,
     AdminCommissionRow,
     AdminUserResponse,
+    AdminUserStats,
     AdminUserUpdate,
     AdminAILogResponse,
     AdminAIOfferGenerationRequest,
@@ -563,39 +564,118 @@ def _admin_user_query():
     )
 
 
-@router.get("/users", response_model=list[AdminUserResponse])
-def list_users(
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> list[AdminUserResponse]:
-    """Admins see every account; owners see only their own app's customers.
+#: A page of the Users list when the caller does not say (2026-10-07
+#: security review: the list used to be every account in one response).
+USERS_DEFAULT_LIMIT = 50
 
-    An owner's customers are those whose `app_client_id` is the app client
-    linked to their restaurant. Owners never see marketplace customers, other
-    restaurants' customers, or platform staff. Read-only: this narrows the
-    listing, it does not change how anyone is authenticated or scoped.
+
+def _scoped_users_query(db: Session, current_user: User):
+    """The accounts this caller may list, or None when there are none.
+
+    Admins see every account; owners only their own app's customers - never
+    marketplace customers, other restaurants' customers, or platform staff.
+    Read-only: this narrows the listing, it does not change how anyone is
+    authenticated or scoped.
     """
 
-    query = _admin_user_query()
-
+    if current_user.role == UserRole.ADMIN:
+        return select(User)
     if current_user.role == UserRole.OWNER:
         owner_restaurant_id = resolve_owner_restaurant_id(db, current_user)
         app_client = get_app_client_for_restaurant(db, restaurant_id=owner_restaurant_id)
         if app_client is None:
-            # The restaurant has no branded app yet, so it has no customers of
-            # its own to show.
-            return []
-        query = query.where(
-            User.role == UserRole.CUSTOMER,
-            User.app_client_id == app_client.id,
-        )
-    elif current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this resource",
-        )
+            # No branded app yet, so no customers of its own to show.
+            return None
+        return select(User).where(User.role == UserRole.CUSTOMER, User.app_client_id == app_client.id)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You do not have permission to access this resource",
+    )
 
-    users = db.scalars(query.order_by(User.created_at.desc())).all()
+
+def _escape_like(value: str) -> str:
+    """Make `%` and `_` match themselves in an ILIKE (escape character: backslash)."""
+
+    return value.replace("\\", r"\\").replace("%", r"\%").replace("_", r"\_")
+
+
+@router.get("/users/stats", response_model=AdminUserStats)
+def user_stats(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AdminUserStats:
+    """How many accounts per role, and how many of them are active.
+
+    For the tiles above the Users list, which describe everybody the caller
+    may see rather than the page on screen. Declared before
+    `/users/{user_id}`, or "stats" would be read as an id.
+    """
+
+    query = _scoped_users_query(db, current_user)
+    counts: dict[str, dict[str, int]] = {}
+    if query is not None:
+        scoped = query.subquery()
+        rows = db.execute(
+            select(scoped.c.role, func.count(), func.count().filter(scoped.c.is_active.is_(True))).group_by(
+                scoped.c.role
+            )
+        ).all()
+        for role, total, active in rows:
+            counts[role.value if hasattr(role, "value") else str(role)] = {"total": int(total), "active": int(active)}
+    empty = {"total": 0, "active": 0}
+    return AdminUserStats(
+        all={
+            "total": sum(c["total"] for c in counts.values()),
+            "active": sum(c["active"] for c in counts.values()),
+        },
+        ADMIN=counts.get("ADMIN", empty),
+        OWNER=counts.get("OWNER", empty),
+        KITCHEN=counts.get("KITCHEN", empty),
+        CUSTOMER=counts.get("CUSTOMER", empty),
+    )
+
+
+@router.get("/users", response_model=list[AdminUserResponse])
+def list_users(
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    search: str | None = Query(default=None, max_length=120),
+    role: UserRole | None = Query(default=None),
+    status_filter: Literal["ACTIVE", "INACTIVE"] | None = Query(default=None, alias="status"),
+    limit: int = Query(default=USERS_DEFAULT_LIMIT, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[AdminUserResponse]:
+    """One page of the accounts the caller may see, newest first.
+
+    Filtered and paged here, with the full count in `X-Total-Count` - the
+    contract `GET /orders` already has. It used to return every account at
+    once for the page to filter (2026-10-07 security review): one stolen
+    owner token, one request, every customer's name, email and phone.
+    """
+
+    query = _scoped_users_query(db, current_user)
+    if query is None:
+        response.headers["X-Total-Count"] = "0"
+        return []
+    if search and search.strip():
+        pattern = f"%{_escape_like(search.strip())}%"
+        query = query.where(
+            or_(
+                User.full_name.ilike(pattern, escape="\\"),
+                User.email.ilike(pattern, escape="\\"),
+                User.phone_number.ilike(pattern, escape="\\"),
+            )
+        )
+    if role is not None:
+        query = query.where(User.role == role)
+    if status_filter is not None:
+        query = query.where(User.is_active.is_(status_filter == "ACTIVE"))
+
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    response.headers["X-Total-Count"] = str(total)
+    page = query.options(selectinload(User.app_client).selectinload(AppClient.restaurant))
+    users = db.scalars(page.order_by(User.created_at.desc(), User.id).limit(limit).offset(offset)).all()
     return [_serialize_admin_user(user) for user in users]
 
 

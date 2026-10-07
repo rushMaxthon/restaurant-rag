@@ -4,6 +4,7 @@ import logging
 import uuid
 from typing import Annotated
 
+from redis.exceptions import RedisError
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,6 +36,7 @@ from app.schemas.admin import (
     OwnerAIOfferGenerationRequest,
 )
 from app.config.celery import celery_app
+from app.services.cache import get_redis_client
 from app.tasks.ai_offers import generate_ai_offers_task
 from app.services.auth import (
     get_current_user,
@@ -374,6 +376,35 @@ def remove_generated_offer(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+#: How long an owner may ask about a run they started.
+_OWNER_TASK_TTL_SECONDS = 24 * 3600
+
+
+def remember_owner_task(task_id: str, restaurant_id: uuid.UUID) -> None:
+    """Record that this AI offer run belongs to this restaurant.
+
+    The status route used to answer any task id to any owner (2026-10-07
+    security review); it now answers only for a task recorded here. A Redis
+    outage means a run cannot be looked up afterwards - Celery itself runs on
+    Redis, so nothing could be queued then anyway.
+    """
+
+    try:
+        get_redis_client().set(f"owner-ai-task:{task_id}", str(restaurant_id), ex=_OWNER_TASK_TTL_SECONDS)
+    except RedisError:
+        logger.warning("Could not record owner AI task %s", task_id)
+
+
+def _owner_task_restaurant(task_id: str) -> str | None:
+    try:
+        value = get_redis_client().get(f"owner-ai-task:{task_id}")
+    except RedisError:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode()
+    return value
+
+
 @router.post(
     "/owner/offers/generate-ai",
     response_model=AdminAIOfferGenerationTriggerResponse,
@@ -418,6 +449,7 @@ def trigger_owner_ai_offer_generation(
             detail="Unable to run AI offer generation right now. The cause is in the server log.",
         ) from error
 
+    remember_owner_task(str(result.id), restaurant_id)
     logger.info(
         "Owner AI offer generation completed owner_user_id=%s restaurant_id=%s "
         "task_id=%s force_refresh=%s successful=%s",
@@ -466,7 +498,11 @@ def get_owner_ai_offer_generation_status(
     results at all.
     """
 
-    resolve_owner_restaurant_id(db, current_user)
+    restaurant_id = resolve_owner_restaurant_id(db, current_user)
+    # Only a run this restaurant started (`remember_owner_task`); any other
+    # task id is 404, so the answer does not confirm it exists.
+    if _owner_task_restaurant(task_id) != str(restaurant_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     result = celery_app.AsyncResult(task_id)
     task_state = str(result.state or "PENDING").upper()

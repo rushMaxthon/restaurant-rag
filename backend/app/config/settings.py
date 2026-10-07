@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-this-in-production"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 1440
+    # ADMIN and OWNER logins: a working day. Their tokens can spend marketing
+    # budget, change prices and read every order and payout, and until the
+    # platform has its own domain they sit in browser storage rather than an
+    # httpOnly cookie - so a stolen one should stop working sooner
+    # (2026-10-07 security review). Kitchen tablets and customers keep the
+    # full day above.
+    jwt_staff_token_expire_minutes: int = 480
 
     # Where GENERATION goes. Either a local Ollama or Ollama Cloud
     # (https://ollama.com), which needs `ollama_api_key` below.

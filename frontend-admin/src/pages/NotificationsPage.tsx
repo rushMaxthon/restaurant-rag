@@ -14,6 +14,7 @@ import {
   tokenScope,
 } from '../services/pageCache';
 import type {
+  AdminUserStats,
   NotificationAudience,
   NotificationType,
   NotificationHistoryItem,
@@ -110,6 +111,10 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
     () => !hasPageSnapshot(usersKey) || !hasPageSnapshot(historyKey),
   );
   const [users, setUsers] = useState<User[]>(() => getPageSnapshot<User[]>(usersKey) ?? []);
+  // Exact counts for the audience estimate, from the server: `users` is the
+  // newest 200 active accounts, for the picker, not everybody.
+  const [userStats, setUserStats] = useState<AdminUserStats | null>(null);
+  const [activeTotal, setActiveTotal] = useState<number | null>(null);
   const [history, setHistory] = useState<NotificationHistoryItem[]>(
     () => getPageSnapshot<NotificationHistoryItem[]>(historyKey) ?? [],
   );
@@ -137,12 +142,16 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
 
       setLoading(true);
       try {
-        const [historyResponse, usersResponse] = await Promise.all([
+        const [historyResponse, usersPage, stats] = await Promise.all([
           api.getNotificationHistory(token),
-          api.getAdminUsers(token),
+          api.getAdminUsers(token, { page: 1, pageSize: 200, status: 'ACTIVE' }),
+          api.getAdminUserStats(token),
         ]);
+        const usersResponse = usersPage.rows;
         setHistory(historyResponse);
         setUsers(usersResponse);
+        setUserStats(stats);
+        setActiveTotal(usersPage.total);
         setPageSnapshot(historyKey, historyResponse);
         setPageSnapshot(usersKey, usersResponse);
       } catch (error) {
@@ -163,19 +172,19 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
   const estimatedRecipients = useMemo(() => {
     switch (audience) {
       case 'ALL_USERS':
-        return users.filter(user => user.is_active).length;
+        return userStats?.all.active ?? users.filter(user => user.is_active).length;
       case 'CUSTOMERS':
-        return users.filter(user => user.is_active && user.role === 'CUSTOMER').length;
+        return userStats?.CUSTOMER.active ?? users.filter(user => user.is_active && user.role === 'CUSTOMER').length;
       case 'OWNERS':
-        return users.filter(user => user.is_active && user.role === 'OWNER').length;
+        return userStats?.OWNER.active ?? users.filter(user => user.is_active && user.role === 'OWNER').length;
       case 'ADMINS':
-        return users.filter(user => user.is_active && user.role === 'ADMIN').length;
+        return userStats?.ADMIN.active ?? users.filter(user => user.is_active && user.role === 'ADMIN').length;
       case 'SPECIFIC_USER':
         return targetUserId ? 1 : 0;
       default:
         return 0;
     }
-  }, [audience, targetUserId, users]);
+  }, [audience, targetUserId, userStats, users]);
 
   const targetUser = useMemo(
     () => users.find(user => user.id === targetUserId) ?? null,
@@ -353,7 +362,9 @@ export function NotificationsPage({ onToast }: NotificationsPageProps) {
                 <small>
                   {targetUser
                     ? `Selected: ${targetUser.full_name} (${targetUser.email})`
-                    : 'Only active users are shown here.'}
+                    : activeTotal !== null && activeTotal > users.length
+                      ? `Showing the newest ${users.length} of ${activeTotal} active users.`
+                      : 'Only active users are shown here.'}
                 </small>
               </label>
             ) : null}

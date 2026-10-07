@@ -342,7 +342,8 @@ export function DashboardPage({
         ] = await Promise.all([
           api.getAdminDashboard(token),
           api.getAdminRestaurants(token),
-          api.getAdminUsers(token),
+          // The five newest accounts are all this page shows.
+          api.getAdminUsers(token, { page: 1, pageSize: 5 }).then((result) => result.rows),
           api.getOrders(token),
           api.getAdminAILogs(token),
         ]);
@@ -454,7 +455,8 @@ export function DashboardPage({
           ] = await Promise.all([
             api.getAdminDashboard(token),
             api.getAdminRestaurants(token),
-            api.getAdminUsers(token),
+            // The five newest accounts are all this page shows.
+          api.getAdminUsers(token, { page: 1, pageSize: 5 }).then((result) => result.rows),
             api.getOrders(token),
             api.getAdminAILogs(token),
           ]);

@@ -92,6 +92,24 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    // Release signing (2026-10-07 security review): release builds used the
+    // public debug key - its password is "android" and the keystore is in
+    // git - so anyone could sign an APK that installs as an update over a
+    // sideloaded one. The real key comes from android/keystore.properties
+    // (git-ignored; see keystore.properties.example) or from RELEASE_STORE_*
+    // environment variables in CI. Without either a release still builds on
+    // the debug key, loudly, so nobody's build breaks before the key exists.
+    def keystorePropertiesFile = rootProject.file("keystore.properties")
+    def keystoreProperties = new Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+    }
+    def releaseValue = { String name, String envName ->
+        keystoreProperties.getProperty(name) ?: System.getenv(envName)
+    }
+    def releaseStoreFile = releaseValue("storeFile", "RELEASE_STORE_FILE")
+    def hasReleaseKey = releaseStoreFile != null && file(releaseStoreFile).exists()
+
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -99,15 +117,27 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasReleaseKey) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseValue("storePassword", "RELEASE_STORE_PASSWORD")
+                keyAlias releaseValue("keyAlias", "RELEASE_KEY_ALIAS")
+                keyPassword releaseValue("keyPassword", "RELEASE_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (hasReleaseKey) {
+                signingConfig signingConfigs.release
+            } else {
+                logger.warn("WARNING: no release keystore (android/keystore.properties or RELEASE_STORE_FILE); " +
+                    "this release is signed with the PUBLIC debug key and must not be distributed.")
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

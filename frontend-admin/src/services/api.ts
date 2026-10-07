@@ -29,6 +29,8 @@ import type {
   PaymentGateway,
   PaymentGatewayPayload,
   CommissionReport,
+  AdminUserStats,
+  UserRole,
   DeliveryPricing,
   TrafficOverview,
   TrafficSummary,
@@ -1023,8 +1025,44 @@ export const api = {
   deleteRestaurant(token: string, restaurantId: string): Promise<void> {
     return request<void>(`/admin/restaurants/${restaurantId}`, { method: 'DELETE', token });
   },
-  getAdminUsers(token: string): Promise<User[]> {
-    return request<User[]>('/admin/users', { token });
+  /**
+   * One page of the accounts this session may see, filtered on the server,
+   * with the full count from `X-Total-Count` (2026-10-07 security review:
+   * this used to fetch every account for the page to filter).
+   */
+  async getAdminUsers(
+    token: string,
+    opts: {
+      page: number;
+      pageSize: number;
+      search?: string;
+      role?: UserRole | null;
+      status?: 'ACTIVE' | 'INACTIVE' | null;
+    },
+  ): Promise<{ rows: User[]; total: number }> {
+    const params = new URLSearchParams({
+      limit: String(opts.pageSize),
+      offset: String((opts.page - 1) * opts.pageSize),
+    });
+    if (opts.search) params.set('search', opts.search);
+    if (opts.role) params.set('role', opts.role);
+    if (opts.status) params.set('status', opts.status);
+    const headers = new Headers({ Authorization: `Bearer ${token}` });
+    const response = await fetch(`${API_BASE_URL}/admin/users?${params.toString()}`, { headers });
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT));
+      throw new ApiError('Your session has expired. Please sign in again.', 401);
+    }
+    const payload = await response.json().catch(() => []);
+    if (!response.ok) {
+      const detail = typeof payload.detail === 'string' ? payload.detail : 'Unable to load users.';
+      throw new ApiError(detail, response.status);
+    }
+    return { rows: payload as User[], total: Number(response.headers.get('X-Total-Count') ?? payload.length) };
+  },
+  /** Accounts per role, for the tiles - everybody, not the page on screen. */
+  getAdminUserStats(token: string): Promise<AdminUserStats> {
+    return request<AdminUserStats>('/admin/users/stats', { token });
   },
   getAdminUser(token: string, userId: string): Promise<User> {
     return request<User>(`/admin/users/${userId}`, { token });

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.admin import router as admin_router
 from app.api.traffic import router as traffic_router
+from app.api.security_reports import router as security_reports_router
 from app.api.app_clients import router as app_clients_router
 from app.api.app_config import router as app_config_router
 from app.api.preference_admin import router as preference_admin_router
@@ -35,6 +36,7 @@ from app.api.whatsapp import router as whatsapp_router
 api_router = APIRouter()
 api_router.include_router(admin_router)
 api_router.include_router(traffic_router)
+api_router.include_router(security_reports_router)
 api_router.include_router(app_clients_router)
 api_router.include_router(app_config_router)
 api_router.include_router(preference_admin_router)

@@ -1786,6 +1786,15 @@ export interface TrafficOverview {
   restaurants: TrafficOverviewRow[];
 }
 
+/** `GET /admin/users/stats`: accounts per role, and how many are active. */
+export interface AdminUserStats {
+  all: { total: number; active: number };
+  ADMIN: { total: number; active: number };
+  OWNER: { total: number; active: number };
+  KITCHEN: { total: number; active: number };
+  CUSTOMER: { total: number; active: number };
+}
+
 export interface CommissionReport {
   days: number;
   since: string;

@@ -1,5 +1,5 @@
 import { ChefHat, Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DataToolbar } from '../components/DataToolbar';
@@ -11,13 +11,7 @@ import { readWorkspaceSettings } from '../services/workspaceSettings';
 import { ApiError, api, formatDate } from '../services/api';
 import { pluralize } from '../services/format';
 import { StatusPill } from '../components/StatusPill';
-import {
-  getPageSnapshot,
-  hasPageSnapshot,
-  setPageSnapshot,
-  tokenScope,
-} from '../services/pageCache';
-import type { User, UserRole } from '../types/app';
+import type { AdminUserStats, User, UserRole } from '../types/app';
 
 interface AdminUsersPageProps {
   token: string;
@@ -55,18 +49,19 @@ export function AdminUsersPage({
   // An owner's list is already narrowed to their customers server-side, so the
   // role dimension (tiles, filter, column) carries no information for them.
   const isOwnerView = role === 'OWNER';
-  // The backend already scopes this list per session (an owner's is narrowed
-  // to their own customers), so the token scope alone is enough of a key.
-  const usersKey = buildAdminUsersCacheKey(tokenScope(token));
-  const [users, setUsers] = useState<User[]>(() => getPageSnapshot<User[]>(usersKey) ?? []);
-  // Only true when nothing has been fetched yet this session - not on every
-  // mount, so revisiting this page keeps showing its data instead of a
-  // skeleton.
+  // One page at a time, filtered by the server (2026-10-07 security review:
+  // this page used to download every account and filter it here). The
+  // backend still scopes it per session: an owner's is their own customers.
+  const [users, setUsers] = useState<User[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<AdminUserStats | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Bumped by the error panel's Try again; nothing else in the deps changes.
+  // Bumped by Try again, and after an edit, so the page and tiles refetch.
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [isLoading, setIsLoading] = useState(() => !hasPageSnapshot(usersKey));
+  const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState('');
+  // What the server is asked for: the search box, a moment after typing stops.
+  const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [page, setPage] = useState(1);
@@ -78,74 +73,67 @@ export function AdminUsersPage({
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   useEffect(() => {
-    const cached = getPageSnapshot<User[]>(usersKey);
-    if (cached) {
-      setUsers(cached);
-      setIsLoading(false);
-      return;
-    }
+    const timer = window.setTimeout(() => setSearch(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
-    setIsLoading(true);
-    api.getAdminUsers(token)
-      .then((rows) => {
+  useEffect(() => {
+    let current = true;
+    api
+      .getAdminUsers(token, {
+        page,
+        pageSize,
+        search: search || undefined,
+        role: roleFilter === 'ALL' ? null : roleFilter,
+        status: statusFilter === 'ALL' ? null : statusFilter,
+      })
+      .then(({ rows, total: count }) => {
+        if (!current) return;
         setUsers(rows);
+        setTotal(count);
         setLoadError(null);
-        setPageSnapshot(usersKey, rows);
       })
       .catch((error: unknown) => {
+        if (!current) return;
         const message = error instanceof ApiError ? error.message : 'Unable to load users.';
         // Keeps the failure on screen after the toast fades, and gives it a way out.
         setLoadError(message);
         onToast('Users unavailable', message, 'error');
       })
-      .finally(() => setIsLoading(false));
-  }, [onToast, token, usersKey, reloadNonce]);
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return users.filter((user) => {
-      const matchesQuery =
-        !normalized ||
-        [user.full_name, user.email, user.role, user.app_label ?? '']
-          .some((value) => value.toLowerCase().includes(normalized));
-      const matchesRole = roleFilter === 'ALL' || user.role === roleFilter;
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'ACTIVE' ? user.is_active : !user.is_active);
-      return matchesQuery && matchesRole && matchesStatus;
-    });
-  }, [query, roleFilter, statusFilter, users]);
-
-  const roleStats = useMemo(() => {
-    const byRole = (role: UserRole) => {
-      const members = users.filter((user) => user.role === role);
-      return {
-        total: members.length,
-        active: members.filter((user) => user.is_active).length,
-      };
+      .finally(() => {
+        if (current) setIsLoading(false);
+      });
+    return () => {
+      current = false;
     };
-    return {
-      all: { total: users.length, active: users.filter((user) => user.is_active).length },
-      ADMIN: byRole('ADMIN'),
-      OWNER: byRole('OWNER'),
-      CUSTOMER: byRole('CUSTOMER'),
-      KITCHEN: byRole('KITCHEN'),
-    };
-  }, [users]);
+  }, [onToast, page, pageSize, reloadNonce, roleFilter, search, statusFilter, token]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => {
+    let current = true;
+    api
+      .getAdminUserStats(token)
+      .then((next) => {
+        if (current) setStats(next);
+      })
+      .catch(() => {
+        // The tiles stay at zero; the list's own error says what went wrong.
+      });
+    return () => {
+      current = false;
+    };
+  }, [reloadNonce, token]);
+
+  const noCount = { total: 0, active: 0 };
+  const roleStats = stats ?? { all: noCount, ADMIN: noCount, OWNER: noCount, KITCHEN: noCount, CUSTOMER: noCount };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
     setPage(1);
-  }, [pageSize, query, roleFilter, statusFilter]);
+  }, [pageSize, search, roleFilter, statusFilter]);
 
   const syncUser = (updated: User) => {
-    setUsers((current) => {
-      const next = current.map((entry) => (entry.id === updated.id ? updated : entry));
-      setPageSnapshot(usersKey, next);
-      return next;
-    });
+    setUsers((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
   };
 
   // Re-fetched rather than reused from the list so the modal reflects the
@@ -308,7 +296,7 @@ export function AdminUsersPage({
         <DataToolbar
           actions={
             <span className="toolbar-meta">
-              {pluralize(filtered.length, isOwnerView ? 'customer' : 'account')}
+              {pluralize(total, isOwnerView ? 'customer' : 'account')}
             </span>
           }
           filters={
@@ -413,14 +401,14 @@ export function AdminUsersPage({
           )}
           mobileSubtitle={(user) => user.email}
           mobileTitle={(user) => user.full_name}
-          rows={pageItems}
+          rows={users}
         />
         <Pagination
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           page={page}
           pageSize={pageSize}
-          totalItems={filtered.length}
+          totalItems={total}
           totalPages={totalPages}
         />
       </section>
