@@ -5499,3 +5499,13 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
   TextInputInstance/ScrollViewInstance; tsc 6 rejects baseUrl.
 - Not done (blocked on the user): FCM push (google-services.json), in-app map
   (Google billing), Plan 3 admin Riders page, Plan 4 storefront OTP card.
+- (same day, later) Plan 3 pushed as ccef814: admin Platform > Delivery riders
+  (roster, pay & dispatch, payouts) and the fleet section on the order's Courier
+  card. INCIDENT: a local test's own-fleet fallback booked 2 LIVE Pidge orders
+  because backend/.env had ALLOW_LIVE_DISPATCH_FROM_LOCAL=true with the live
+  Pidge URL; both cancelled with the user's yes before any rider was assigned;
+  user set the flag back to false. Courier-only actions are now hidden on fleet
+  rows. Any dispatch-capable local run must force the Pidge sandbox first.
+- Plan 4 pushed as 3ca24d1: storefront order page shows the 4-digit delivery
+  code, fleet status lines and "See where they are" for own-fleet orders.
+  All four plans of the own-fleet project are now on `redesign`.
