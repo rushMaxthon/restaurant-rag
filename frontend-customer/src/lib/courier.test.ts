@@ -5,6 +5,7 @@ import {
   courierNow,
   deliveryCode,
   isOwnFleet,
+  riderAway,
   riderMapLink,
   riderSeen,
 } from "./courier";
@@ -124,5 +125,18 @@ describe("where the rider is", () => {
     expect(isOwnFleet(fleet("PENDING"))).toBe(true);
     expect(isOwnFleet({ provider: "pidge" })).toBe(false);
     expect(isOwnFleet(null)).toBe(false);
+  });
+});
+
+describe("riderAway", () => {
+  it("says how far and how long, from the server's estimate", () => {
+    expect(riderAway({ rider_distance_m: 1240, rider_eta_minutes: 5 })).toBe(
+      "1.2 km away · about 5 min",
+    );
+    expect(riderAway({ rider_distance_m: 430, rider_eta_minutes: 2 })).toBe(
+      "450 m away · about 2 min",
+    );
+    expect(riderAway({ rider_distance_m: 60, rider_eta_minutes: 1 })).toBe("Arriving now");
+    expect(riderAway({})).toBeNull();
   });
 });

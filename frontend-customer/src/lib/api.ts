@@ -567,6 +567,9 @@ export type OrderDelivery = {
   rider_latitude?: number | null;
   rider_longitude?: number | null;
   rider_location_at?: string | null;
+  /** Own fleet: road metres and minutes from the rider to the door. */
+  rider_distance_m?: number | null;
+  rider_eta_minutes?: number | null;
 };
 
 // `ChargeLine` and `OrderCharges` now live in `bangkok-data`, because the

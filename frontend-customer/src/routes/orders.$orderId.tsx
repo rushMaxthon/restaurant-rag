@@ -23,6 +23,7 @@ import {
   courierNow,
   deliveryCode,
   isOwnFleet,
+  riderAway,
   riderMapLink,
   riderSeen,
 } from "@/lib/courier";
@@ -191,6 +192,7 @@ function OrderDetail() {
   // code for the door and the rider's live position on the map.
   const ownFleet = isOwnFleet(tracking);
   const code = isDelivery && !cancelled ? deliveryCode(tracking) : null;
+  const away = isDelivery && ownFleet && o.status !== "DELIVERED" ? riderAway(tracking) : null;
   const riderMap =
     isDelivery && ownFleet && o.status !== "DELIVERED" ? riderMapLink(tracking) : null;
   const active = Math.max(stepIndex, 0);
@@ -292,6 +294,12 @@ function OrderDetail() {
                   <p className="mt-1 text-lg font-extrabold leading-snug">{rider.rider_name}</p>
                   {courierLine && !courierFailed && (
                     <p className="mt-0.5 text-sm font-semibold">{courierLine}</p>
+                  )}
+                  {away && (
+                    <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+                      <Clock className="size-4" />
+                      {away}
+                    </p>
                   )}
                   {courierClock && (
                     <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-bold text-primary">

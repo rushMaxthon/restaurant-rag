@@ -113,3 +113,14 @@ export function riderSeen(iso: string | null | undefined, now: Date = new Date()
   const minutes = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000);
   return minutes < 1 ? "updated just now" : `updated ${minutes} min ago`;
 }
+
+/** "1.2 km away · about 5 min" from the server's estimate, or null without one. */
+export function riderAway(delivery: Partial<OrderDelivery> | null | undefined): string | null {
+  const metres = delivery?.rider_distance_m;
+  const minutes = delivery?.rider_eta_minutes;
+  if (metres == null || minutes == null) return null;
+  if (metres < 100) return "Arriving now";
+  const distance =
+    metres < 1000 ? `${Math.round(metres / 50) * 50} m` : `${(metres / 1000).toFixed(1)} km`;
+  return `${distance} away · about ${minutes} min`;
+}
