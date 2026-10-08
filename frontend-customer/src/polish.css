@@ -4290,6 +4290,19 @@ html {
   font-weight: 700;
   line-height: 1.25;
 }
+/* The mark and the name sit on one line, which took more than `align-items`
+   on the row above. The 44px touch floor in `styles.css` is written to be
+   inert on a plain text link, because `min-height` does nothing to an inline
+   box — but a flex container BLOCKIFIES its children, so this anchor computes
+   `display: block` and the floor does apply. It then has a 44px box with its
+   text at the top, and centring the row centred that BOX while the text stayed
+   high inside it: the mark measured 11px below the letters. Centring the link's
+   own content puts the text back in the middle of the target it is given,
+   which keeps the 44px tap area rather than trading it away. */
+.picks__name a {
+  display: flex;
+  align-items: center;
+}
 .picks__desc {
   color: var(--muted);
   font-size: var(--fs-body);
