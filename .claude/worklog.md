@@ -5509,3 +5509,29 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
 - Plan 4 pushed as 3ca24d1: storefront order page shows the 4-digit delivery
   code, fleet status lines and "See where they are" for own-fleet orders.
   All four plans of the own-fleet project are now on `redesign`.
+- (same day, evening) Local full-flow pass and the gaps it found, all verified
+  on the emulator against the local dev API (sandbox forced throughout):
+  - Rider steps sync the order: ACCEPTED -> OUT_FOR_DELIVERY -> DELIVERED, actor
+    RIDER, checked in the DB on two real runs.
+  - Our riders first: nobody free / nobody accepting / max_offers no longer send
+    the order to Pidge early. It stays OPEN for `window_minutes` (now 5) and any
+    free nearby rider can take it from Home -> Open orders (`offers.open_orders`,
+    `offers.claim`, row lock + one-live-trip index; race test). Cash and branches
+    off the fleet still go at once. Two old tests rewritten on purpose.
+  - Admin Riders -> Live map: hand-drawn OSM tiles, riders + waiting orders,
+    nearest free riders with Assign (`GET /admin/riders/waiting`). Stale riders
+    are faded and kept off the assign list; expired PENDING offers ask nobody.
+    Fixed a blank map in background tabs (measure on mount, not only via
+    ResizeObserver).
+  - Push: background alerts work without Firebase (shift service keeps JS
+    alive); killed-app push verified with google-services.json + the
+    quickbite-7833a service account. `FCM_PROJECT_ID` in backend/.env changed
+    from restaurant-rag to quickbite-7833a with the user's yes. Debug builds take
+    ~18 s to draw a woken alert (JS from Metro); force-stopped apps get no FCM.
+  - Live ETA (rider trip screen + storefront), history by day, calmer motion
+    (clamped springs), new white notification icon.
+  - Windows: Redis via `localhost` costs ~6 s per connection (IPv6 first);
+    127.0.0.1 is 0.12 s. Fixed in the dev scripts only; .env Redis lines still
+    say localhost - ask before changing.
+  - Suites: fleet 107, delivery 235, orders 423, admin 539 + build, storefront
+    536 + build, rider jest 43 + tsc, lint 0 errors.

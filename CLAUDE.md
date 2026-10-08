@@ -578,6 +578,26 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
 - `refresh_deliveries_task` skips `own_fleet`/`unassigned` rows.
 - RIDER is platform staff: `0089_own_fleet` widened the platform-uniqueness indexes.
   A rider's email is a placeholder `rider.<digits>@riders.invalid`; they sign in by phone.
+- **Live map** (admin Riders -> Live map, `components/RiderLiveMap.tsx`, maths in
+  `services/liveMap.ts`): riders on shift where they last reported, and
+  `GET /admin/riders/waiting` - fleet orders nobody carries (own_fleet or
+  unassigned, not closed, no live trip; never a Pidge booking). Assign goes
+  through `reassign`, so the server still refuses offline/busy riders. A rider
+  not heard from in 5 min is drawn faded and left OFF the assign list - an old
+  position is a guess. A PENDING offer past `expires_at` counts as asking
+  nobody, so a late expiry task cannot leave "Asking ..." up. Drawn by hand from
+  OpenStreetMap tiles: no map library (house rule), and Google's JS map needs
+  billing that is not set up.
+- **Rider push.** Backend sends data-only FCM for offers and cancelled trips
+  (`fleet/notify.py`); the app draws the alert itself (`rider/src/services/push.ts`,
+  channel `rider-offers` must match `OFFER_CHANNEL`). While on shift the
+  foreground service keeps the app alive, so RiderProvider keeps the socket and
+  offer check running in the background and rings a full-screen alert itself -
+  that part needs no Firebase. A KILLED app needs FCM: `rider/android/app/
+  google-services.json` for package `com.foodie.rider`, in the SAME Firebase
+  project as the backend's service account (`FCM_PROJECT_ID`). The Gradle plugin
+  is applied only when that file exists, and `firebaseReady()` guards every call,
+  so the app builds and runs without it. A tap is routed by `PushRouter`.
 
 ## Payouts (Razorpay Route)
 
@@ -836,6 +856,11 @@ Kept because the notes are hard-won, not because they apply here.
   installed later (`qwen3:8b` + `nomic-embed-text`), which is worth knowing
   because several sessions tested the AI paths by scripting the model seam
   instead of running it.
+- **Use `127.0.0.1`, not `localhost`, for Redis here.** `localhost` resolves to
+  IPv6 first and Redis listens on IPv4 only, so every connection waits out a
+  timeout before falling back: measured 6.26 s per Celery enqueue against 0.12 s
+  (2026-10-08). It made an admin assign take 6.6 s and slows every kitchen
+  accept, which enqueues the courier dispatch. `.env` still says `localhost`.
 - Git Bash: use forward slashes; working directory `F:\restaurant-rag`.
 
 ## Known rough edges in this checkout
