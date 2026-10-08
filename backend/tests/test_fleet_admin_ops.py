@@ -22,7 +22,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from fleet_harness import FleetDB, client_for, postgres_available, reset_overrides  # noqa: E402
 
+from sqlalchemy import select  # noqa: E402
+
 from app.models.enums import RiderStatus, TripEndReason  # noqa: E402
+from app.models.order_delivery import OrderDelivery  # noqa: E402
 from app.models.order import Order  # noqa: E402
 from app.models.rider import RiderTrip  # noqa: E402
 from app.models.user import User  # noqa: E402
@@ -204,6 +207,33 @@ class CustomerSeesTheCodeTests(unittest.TestCase):
         for viewer in (admin, owner):
             with self.subTest(role=viewer.role):
                 self.assertIsNone(self._code(viewer, order))
+
+    def test_customer_sees_how_far_the_rider_is(self) -> None:
+        # Restaurant (21.18, 72.84), customer (21.20, 72.80) in the harness.
+        order, customer = self._order("PICKED_UP")
+        with self.fdb.session() as db:
+            row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+            row.rider_latitude, row.rider_longitude = 21.19, 72.80  # ~1.1 km from the door
+            db.commit()
+        body = client_for(self.fdb, customer).get(f"/api/orders/{order.id}/delivery").json()
+        self.assertGreater(body["rider_distance_m"], 1000)
+        self.assertLess(body["rider_distance_m"], 1600)  # road estimate, x1.3
+        self.assertGreaterEqual(body["rider_eta_minutes"], 4)
+
+    def test_before_pickup_the_eta_includes_the_restaurant(self) -> None:
+        order, customer = self._order("ASSIGNED")
+        with self.fdb.session() as db:
+            row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+            row.rider_latitude, row.rider_longitude = 21.18, 72.84  # at the restaurant
+            db.commit()
+        body = client_for(self.fdb, customer).get(f"/api/orders/{order.id}/delivery").json()
+        # restaurant -> door is ~4.7 km straight, ~6 km by road
+        self.assertGreater(body["rider_distance_m"], 5000)
+
+    def test_no_position_no_eta(self) -> None:
+        order, customer = self._order("PICKED_UP")
+        body = client_for(self.fdb, customer).get(f"/api/orders/{order.id}/delivery").json()
+        self.assertIsNone(body["rider_eta_minutes"])
 
     def test_a_courier_order_has_no_code(self) -> None:
         order, customer = self._order(provider="pidge")

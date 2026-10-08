@@ -63,6 +63,8 @@ class RiderMe(BaseModel):
     today_trips: int
     today_earnings: Decimal
     fleet_enabled: bool
+    #: What a delivery pays right now, so the app can say it (admin-set).
+    pay: dict[str, Decimal]
 
 
 class StatusUpdate(BaseModel):
@@ -98,6 +100,22 @@ class OfferView(BaseModel):
     earning_estimate: Decimal
     drop_area: str
     item_count: int
+
+
+class OpenOrderView(BaseModel):
+    """An order a free rider may take from the list (`offers.open_orders`)."""
+
+    order_id: uuid.UUID
+    restaurant_name: str
+    branch: str
+    pickup_address: str
+    pickup_distance_m: float | None
+    trip_distance_km: float
+    earning_estimate: Decimal
+    drop_area: str
+    item_count: int
+    #: Until the courier is booked instead.
+    minutes_left: int
 
 
 class TripStop(BaseModel):
@@ -204,6 +222,22 @@ class FleetDeliveryView(BaseModel):
     fallback_reason: str | None
     offers: list[FleetOfferRow]
     trip: TripView | None
+
+
+class WaitingOrder(BaseModel):
+    """An order our fleet holds with no rider on it: a pin on the admin's map."""
+
+    order_id: uuid.UUID
+    order_code: str
+    restaurant_name: str
+    provider: str
+    pickup_lat: float | None
+    pickup_lng: float | None
+    drop_lat: float | None
+    drop_lng: float | None
+    ordered_at: datetime
+    #: The rider being asked right now, if any - assigning someone else withdraws it.
+    offered_to: str | None = None
 
 
 class ReassignIn(BaseModel):

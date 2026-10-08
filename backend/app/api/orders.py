@@ -643,6 +643,13 @@ def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User
         from app.services.fleet import otp
 
         response.delivery_otp = otp.code_for(order.id)
+    if order is not None and delivery.provider == "own_fleet":
+        from app.services.fleet.trips import rider_eta
+
+        eta = rider_eta(order, delivery)
+        if eta is not None:
+            response.rider_distance_m = round(eta[0])
+            response.rider_eta_minutes = eta[1]
     if order is not None:
         response.paid_for_delivery = delivery_service.paid_for_delivery(order)
         response.courier_overpriced = delivery_service.courier_overpriced(order, delivery)

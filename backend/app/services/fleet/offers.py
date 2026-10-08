@@ -9,8 +9,12 @@ delivery row, so two callers at once take turns instead of offering twice.
       -> no trip, no open offer, a candidate   -> offer to the nearest   "offered"
       -> open offer still inside its window    -> nothing                "waiting"
       -> open offer past its window            -> EXPIRED, then again
-      -> cash / branch not served / window over / max offers / nobody near
+      -> nobody free, or max_offers pinged     -> stays open to all      "open"
+      -> cash / branch not served / window over
                                                -> Pidge, with the reason "fallback"
+
+An OPEN delivery is on every free nearby rider's list (`open_orders`) and any
+of them may `claim` it; our riders get the whole window before Pidge does.
       -> a live trip exists                    -> nothing                "assigned"
 
 `accept` takes the same row lock, so the race between two taps (or two
@@ -64,6 +68,7 @@ _REMARKS = {
     "offer_expired": "Rider did not answer in time",
     "offer_declined": "Rider declined",
     "assigned": "Rider accepted",
+    "claimed": "Rider took it from the open orders",
     "reassigned": "Reassigned by the platform",
     "fallback": "Handed to the courier",
     "arrived_pickup": "Rider at the restaurant",
@@ -142,9 +147,9 @@ def _refusal(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: date
         started = started.replace(tzinfo=UTC)
     if now - started > timedelta(minutes=fleet.window_minutes):
         return f"no rider within {fleet.window_minutes} minutes"
-    tried = db.scalar(select(func.count(RiderOffer.id)).where(RiderOffer.order_delivery_id == delivery.id)) or 0
-    if tried >= fleet.max_offers:
-        return "no rider accepted"
+    # Nobody free, nobody accepting, max_offers spent: none of these is a
+    # reason any more. Our riders come first (2026-10-08) - the order stays
+    # open to them until the window above closes.
     return None
 
 
@@ -206,9 +211,6 @@ def advance(db: Session, delivery_id: uuid.UUID, now: datetime | None = None) ->
         expired = open_offer
 
     reason = _refusal(db, delivery, fleet, now)
-    pool = [] if reason else candidates(db, delivery, fleet, now)
-    if not reason and not pool:
-        reason = "no rider online nearby"
     if reason:
         timeline(delivery, "fallback", reason=reason)
         delivery_service.fallback_to_pidge(db, delivery, reason)
@@ -217,6 +219,18 @@ def advance(db: Session, delivery_id: uuid.UUID, now: datetime | None = None) ->
             notify.offer_withdrawn(db, expired)
         logger.info("Delivery %s goes to the courier: %s", delivery.id, reason)
         return "fallback"
+
+    # Riders are pinged one by one up to max_offers; after that, or with
+    # nobody free right now, the order simply stays OPEN: on every free
+    # rider's list (`open_orders`) and re-tried by the beat every 10 s, so a
+    # rider who comes online is offered it.
+    tried = db.scalar(select(func.count(RiderOffer.id)).where(RiderOffer.order_delivery_id == delivery.id)) or 0
+    pool = candidates(db, delivery, fleet, now) if tried < fleet.max_offers else []
+    if not pool:
+        db.commit()
+        if expired is not None:
+            notify.offer_withdrawn(db, expired)
+        return "open"
 
     rider, metres = pool[0]
     offer = RiderOffer(
@@ -257,6 +271,18 @@ def accept(db: Session, rider_user: User, offer_id: uuid.UUID, now: datetime | N
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "offer_expired")
     offer.outcome, offer.responded_at = OfferOutcome.ACCEPTED, now
+    return _start_trip(db, delivery, rider_user, now, conflict="offer_taken")
+
+
+def _start_trip(
+    db: Session, delivery: OrderDelivery, rider_user: User, now: datetime, *, conflict: str
+) -> RiderTrip:
+    """The one place a trip begins, for an accepted offer and a claimed open order alike.
+
+    Caller holds the delivery row lock. `uq_rider_trips_one_live` is the second
+    guard: if another trip committed first, this one rolls back with `conflict`.
+    """
+
     trip = RiderTrip(order_delivery_id=delivery.id, rider_user_id=rider_user.id, accepted_at=now)
     db.add(trip)
     rider = db.get(Rider, rider_user.id)
@@ -273,11 +299,136 @@ def accept(db: Session, rider_user: User, offer_id: uuid.UUID, now: datetime | N
     except IntegrityError:
         # uq_rider_trips_one_live: another accept committed first.
         db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "offer_taken") from None
+        raise HTTPException(status.HTTP_409_CONFLICT, conflict) from None
     from app.services.fleet import notify
 
     notify.trip_changed(db, trip)
-    logger.info("Rider %s accepted delivery %s", rider_user.id, delivery.id)
+    logger.info("Rider %s took delivery %s", rider_user.id, delivery.id)
+    return trip
+
+
+def _window_left(delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> timedelta:
+    started = delivery.created_at or now
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return started + timedelta(minutes=fleet.window_minutes) - now
+
+
+def _rider_is_free(db: Session, rider_user_id: uuid.UUID) -> bool:
+    rider = db.get(Rider, rider_user_id)
+    if rider is None or rider.status != RiderStatus.ONLINE:
+        return False
+    live = db.scalar(select(RiderTrip.id).where(RiderTrip.rider_user_id == rider_user_id, RiderTrip.ended_at.is_(None)))
+    return live is None
+
+
+def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Orders our fleet still holds that this rider could take right now, nearest first.
+
+    Only for a rider who is online and free; only within `radius_km` of where
+    they last reported. It includes an order currently being offered to
+    someone else - first come, first served - and one whose offer to THIS
+    rider ran out while they were not looking, which is the point of the list.
+    """
+
+    from app.services.fleet.earnings import earning_for
+    from app.services.fleet.trips import trip_km
+
+    now = now or _now()
+    if not _rider_is_free(db, rider_user.id):
+        return []
+    rider = db.get(Rider, rider_user.id)
+    fleet = load_fleet(db)
+    from app.services.fleet.config import load_pay
+
+    pay = load_pay(db)
+    live = select(RiderTrip.order_delivery_id).where(RiderTrip.ended_at.is_(None))
+    rows = db.scalars(
+        select(OrderDelivery)
+        .join(Order, Order.id == OrderDelivery.order_id)
+        .where(
+            OrderDelivery.provider == PROVIDER,
+            OrderDelivery.state == DeliveryState.PENDING.value,
+            Order.status.not_in(list(_ORDER_CLOSED)),
+            OrderDelivery.id.not_in(live),
+        )
+    ).all()
+    out: list[dict[str, Any]] = []
+    for delivery in rows:
+        left = _window_left(delivery, fleet, now)
+        if left.total_seconds() <= 0:
+            continue
+        order, lat, lng = _branch_point(db, delivery)
+        metres = None
+        if None not in (lat, lng, rider.last_latitude, rider.last_longitude):
+            metres = haversine_m(rider.last_latitude, rider.last_longitude, lat, lng)
+            if metres > fleet.radius_km * 1000:
+                continue
+        km = trip_km(db, delivery)
+        estimate, _ = earning_for(km, pay)
+        out.append({
+            "order_id": order.id,
+            "delivery": delivery,
+            "order": order,
+            "pickup_distance_m": round(metres, 1) if metres is not None else None,
+            "trip_distance_km": round(km, 1),
+            "earning_estimate": estimate,
+            "minutes_left": max(1, int(left.total_seconds() // 60)),
+        })
+    out.sort(key=lambda r: (r["pickup_distance_m"] is None, r["pickup_distance_m"] or 0))
+    return out
+
+
+def claim(db: Session, rider_user: User, order_id: uuid.UUID, now: datetime | None = None) -> RiderTrip:
+    """A free rider takes an open order from the list. Same lock as `accept`.
+
+    Refused with `order_taken` once anyone else has it - another rider, the
+    courier, or nobody because the window closed and it is on its way to
+    Pidge - so the app can say one plain thing and refresh the list.
+    """
+
+    from app.services.fleet import notify
+
+    now = now or _now()
+    delivery_id = db.scalar(select(OrderDelivery.id).where(OrderDelivery.order_id == order_id))
+    if delivery_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    delivery = _lock(db, delivery_id)
+    if not _rider_is_free(db, rider_user.id):
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "rider_offline")
+    if (
+        delivery is None
+        or delivery.provider != PROVIDER
+        or not _offerable(db, delivery)
+        or _window_left(delivery, load_fleet(db), now).total_seconds() <= 0
+    ):
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_taken")
+    withdrawn = list(
+        db.scalars(
+            select(RiderOffer).where(
+                RiderOffer.order_delivery_id == delivery.id, RiderOffer.outcome == OfferOutcome.PENDING
+            )
+        )
+    )
+    for other in withdrawn:
+        other.outcome, other.responded_at = OfferOutcome.WITHDRAWN, now
+    # Recorded as an accepted offer so the admin's offer history and the
+    # one-offer-per-rider rules read a claim the same way as an accept.
+    db.add(RiderOffer(
+        order_delivery_id=delivery.id,
+        rider_user_id=rider_user.id,
+        offered_at=now,
+        expires_at=now,
+        responded_at=now,
+        outcome=OfferOutcome.ACCEPTED,
+    ))
+    timeline(delivery, "claimed", rider=str(rider_user.id))
+    db.flush()
+    trip = _start_trip(db, delivery, rider_user, now, conflict="order_taken")
+    for other in withdrawn:
+        notify.offer_withdrawn(db, other)
     return trip
 
 
@@ -408,6 +559,62 @@ def schedule_expiry(delivery_id: uuid.UUID, seconds: int) -> None:
 
 
 __all__ = [
-    "PROVIDER", "accept", "advance", "candidates", "current_offer", "decline", "haversine_m",
+    "PROVIDER", "accept", "advance", "candidates", "claim", "current_offer", "decline", "haversine_m",
+    "open_orders",
     "queue_advance", "queue_advance_after_commit", "reassign", "schedule_expiry", "timeline",
 ]
+
+
+def waiting_orders(db: Session) -> list[dict]:
+    """Orders our fleet holds that no rider is carrying: what the admin assigns from.
+
+    Exactly the set `reassign` would accept - own_fleet or unassigned, the
+    delivery not finished, the order not closed - minus anything with a live
+    trip, which is already moving. A Pidge booking is left out on purpose: it
+    has its own rider coming, and offering it to ours would send two riders
+    to one bag (the review finding `reassign` already guards).
+    """
+
+    from app.models.restaurant import Restaurant
+    from app.models.restaurant_location import RestaurantLocation
+    from app.services.kitchen_push import order_code
+
+    live = select(RiderTrip.order_delivery_id).where(RiderTrip.ended_at.is_(None))
+    rows = db.execute(
+        select(OrderDelivery, Order, Restaurant.name, RestaurantLocation.latitude, RestaurantLocation.longitude)
+        .join(Order, Order.id == OrderDelivery.order_id)
+        .join(Restaurant, Restaurant.id == Order.restaurant_id)
+        .join(RestaurantLocation, RestaurantLocation.id == Order.restaurant_location_id)
+        .where(
+            OrderDelivery.provider.in_([PROVIDER, "unassigned"]),
+            Order.status.not_in(list(_ORDER_CLOSED)),
+            OrderDelivery.id.not_in(live),
+        )
+        .order_by(Order.created_at)
+    ).tuples().all()
+    pending = dict(
+        db.execute(
+            select(RiderOffer.order_delivery_id, User.full_name)
+            .join(User, User.id == RiderOffer.rider_user_id)
+            # Past its deadline it is asking nobody, even if the expiry task
+            # has not run yet - a late worker must not leave "Asking ..." up.
+            .where(RiderOffer.outcome == OfferOutcome.PENDING, RiderOffer.expires_at > _now())
+        ).tuples().all()
+    )
+    out = []
+    for delivery, order, name, lat, lng in rows:
+        if DeliveryState(delivery.state).is_terminal:
+            continue
+        out.append({
+            "order_id": order.id,
+            "order_code": order_code(order),
+            "restaurant_name": name,
+            "provider": delivery.provider,
+            "pickup_lat": float(lat) if lat is not None else None,
+            "pickup_lng": float(lng) if lng is not None else None,
+            "drop_lat": order.delivery_latitude,
+            "drop_lng": order.delivery_longitude,
+            "ordered_at": order.created_at,
+            "offered_to": pending.get(delivery.id),
+        })
+    return out

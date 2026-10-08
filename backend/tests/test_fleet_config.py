@@ -65,7 +65,7 @@ class SavedSettingsTests(unittest.TestCase):
         with self.fdb.session() as db:
             self.assertEqual(config.load_pay(db), config.default_pay())
             fleet = config.load_fleet(db)
-            self.assertEqual((fleet.offer_seconds, fleet.max_offers, fleet.window_minutes), (30, 5, 4))
+            self.assertEqual((fleet.offer_seconds, fleet.max_offers, fleet.window_minutes), (30, 5, 5))
             self.assertEqual(fleet.location_ids, [])
 
     def test_admin_saves_and_reads_back(self) -> None:

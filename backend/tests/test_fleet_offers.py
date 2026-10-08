@@ -3,9 +3,14 @@
 The money question is "two riders, one order". One PENDING offer per delivery
 and one live trip per delivery are partial unique indexes, and `accept` locks
 the delivery row, so a double tap or a race between two phones resolves to
-exactly one trip. The rest is about never stranding food: nobody online,
-nobody accepting, a cash order or a branch outside the fleet all hand the
-order to Pidge with a reason somebody can read.
+exactly one trip. The rest is about never stranding food.
+
+Our riders come first (decided 2026-10-08): nobody free, nobody accepting
+and every rider declining no longer hand the order to Pidge on the spot. It
+stays OPEN - on every free rider's list, offered to whoever comes online -
+until `window_minutes` (5) have passed, and only then goes to the courier.
+A cash order or a branch outside the fleet still goes at once: no rider of
+ours may carry it however long it waits.
 """
 
 from __future__ import annotations
@@ -107,8 +112,9 @@ class OfferLoopTests(unittest.TestCase):
     def test_stale_location_is_not_a_candidate(self) -> None:
         self._rider(NEAR, seen_at=datetime.now(UTC) - timedelta(minutes=10))
         delivery = self._delivery()
-        self.assertEqual(self._advance(delivery), "fallback")
-        self.assertEqual(self.fallback.call_args.args[2], "no rider online nearby")
+        self.assertEqual(self._advance(delivery), "open")
+        self.assertIsNone(self._open_offer(delivery))
+        self.fallback.assert_not_called()
 
     def test_expired_offer_moves_to_the_next_rider(self) -> None:
         a = self._rider(NEAR)
@@ -132,9 +138,11 @@ class OfferLoopTests(unittest.TestCase):
         offer = self._open_offer(delivery)
         with self.fdb.session() as db:
             offers.decline(db, a, offer.id)
-        self.assertEqual(self._advance(delivery), "fallback")
+        self.assertEqual(self._advance(delivery), "open")
+        self.assertIsNone(self._open_offer(delivery))
+        self.fallback.assert_not_called()
 
-    def test_max_offers_then_pidge(self) -> None:
+    def test_after_max_offers_it_stays_open_instead_of_going_to_pidge(self) -> None:
         with self.fdb.session() as db:
             db.add(PlatformSetting(key="own_fleet", value={"max_offers": 2}))
             db.commit()
@@ -144,20 +152,34 @@ class OfferLoopTests(unittest.TestCase):
         now = datetime.now(UTC)
         self._advance(delivery, now)
         self._advance(delivery, now + timedelta(seconds=31))
-        self.assertEqual(self._advance(delivery, now + timedelta(seconds=62)), "fallback")
-        self.assertEqual(self.fallback.call_args.args[2], "no rider accepted")
+        # Two riders asked one by one; the third is not pinged - but the order
+        # is still on every free rider's open list until the window closes.
+        self.assertEqual(self._advance(delivery, now + timedelta(seconds=62)), "open")
+        self.assertIsNone(self._open_offer(delivery))
+        self.fallback.assert_not_called()
 
-    def test_nobody_online_goes_straight_to_pidge(self) -> None:
+    def test_nobody_online_waits_for_our_riders_then_pidge(self) -> None:
         delivery = self._delivery()
-        self.assertEqual(self._advance(delivery), "fallback")
-        self.assertEqual(self.fallback.call_count, 1)
+        now = datetime.now(UTC)
+        self.assertEqual(self._advance(delivery, now), "open")
+        self.fallback.assert_not_called()
+        self.assertEqual(self._advance(delivery, now + timedelta(minutes=5, seconds=1)), "fallback")
+        self.assertEqual(self.fallback.call_args.args[2], "no rider within 5 minutes")
+
+    def test_a_rider_who_comes_online_later_is_offered_it(self) -> None:
+        delivery = self._delivery()
+        now = datetime.now(UTC)
+        self.assertEqual(self._advance(delivery, now), "open")
+        late = self._rider(NEAR)
+        self.assertEqual(self._advance(delivery, now + timedelta(seconds=10)), "offered")
+        self.assertEqual(self._open_offer(delivery).rider_user_id, late.id)
 
     def test_window_elapsed_goes_to_pidge(self) -> None:
         self._rider(NEAR)
         delivery = self._delivery()
-        later = datetime.now(UTC) + timedelta(minutes=5)
+        later = datetime.now(UTC) + timedelta(minutes=6)
         self.assertEqual(self._advance(delivery, later), "fallback")
-        self.assertEqual(self.fallback.call_args.args[2], "no rider within 4 minutes")
+        self.assertEqual(self.fallback.call_args.args[2], "no rider within 5 minutes")
 
     def test_cash_order_is_never_offered(self) -> None:
         self._rider(NEAR)

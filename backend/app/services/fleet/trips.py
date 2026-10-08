@@ -54,6 +54,43 @@ def trip_km(db: Session, delivery: OrderDelivery) -> float:
     return straight * float(get_settings().delivery_road_factor) / 1000
 
 
+#: A two-wheeler's typical average through city traffic; the rider app uses
+#: the same figure (`rider/src/utils/geo.ts`) so both screens agree.
+CITY_KMH = 18.0
+
+
+def rider_eta(order: Any, delivery: OrderDelivery) -> tuple[float, int] | None:
+    """(road metres, minutes) from the rider to the customer's door, or None.
+
+    Before pickup the rider still has to reach the restaurant, so the trip is
+    rider -> restaurant -> door; after pickup, rider -> door. Straight lines x
+    the road factor the platform prices with - an estimate, said as "about".
+    """
+
+    from app.config import get_settings
+    from app.services.fleet.offers import haversine_m
+
+    if delivery.rider_latitude is None or delivery.rider_longitude is None:
+        return None
+    if order.delivery_latitude is None or order.delivery_longitude is None:
+        return None
+    rider = (float(delivery.rider_latitude), float(delivery.rider_longitude))
+    door = (float(order.delivery_latitude), float(order.delivery_longitude))
+    if delivery.state == "ASSIGNED":
+        branch = order.restaurant_location
+        if branch.latitude is None or branch.longitude is None:
+            return None
+        shop = (float(branch.latitude), float(branch.longitude))
+        straight = haversine_m(*rider, *shop) + haversine_m(*shop, *door)
+    elif delivery.state in {"PICKED_UP", "IN_TRANSIT"}:
+        straight = haversine_m(*rider, *door)
+    else:
+        return None
+    road = straight * float(get_settings().delivery_road_factor)
+    minutes = max(1, round(road / 1000 / CITY_KMH * 60))
+    return road, minutes
+
+
 def _pay(db: Session, trip: RiderTrip, delivery: OrderDelivery, *, full: bool) -> None:
     """Full pay for a carried trip; the minimum for a wasted ride to the restaurant."""
 

@@ -34,6 +34,7 @@ from app.schemas.rider import (
     RiderUpdate,
     TripView,
     UnpaidRow,
+    WaitingOrder,
 )
 from app.services.auth import require_admin
 from app.services.fleet import config as fleet_config
@@ -86,6 +87,13 @@ def live_riders(_: Admin, db: Db) -> list[RiderResponse]:
         for u, r in svc.list_riders(db)
         if u.is_active and r.status != RiderStatus.OFFLINE
     ]
+
+
+@router.get("/waiting", response_model=list[WaitingOrder])
+def waiting(_: Admin, db: Db) -> list[WaitingOrder]:
+    """Orders that need a rider, for the live map: assign from here with `reassign`."""
+
+    return [WaitingOrder(**row) for row in offers.waiting_orders(db)]
 
 
 @router.post("", response_model=RiderResponse, status_code=status.HTTP_201_CREATED)

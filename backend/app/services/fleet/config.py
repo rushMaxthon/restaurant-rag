@@ -34,10 +34,12 @@ class RiderPay:
 class FleetConfig:
     #: How long one rider has to accept before the next is asked.
     offer_seconds: int = 30
-    #: Riders tried before the order goes to Pidge.
+    #: Riders pinged one by one. After that the order stays open on every free
+    #: rider's list until the window closes - it no longer goes to Pidge early.
     max_offers: int = 5
     #: Total time our fleet gets before Pidge takes over, whatever happened.
-    window_minutes: int = 4
+    #: 5, not 4: our riders are the first choice (decided 2026-10-08).
+    window_minutes: int = 5
     #: Straight-line distance from the branch within which a rider is asked.
     radius_km: float = 6.0
     #: No location for this long and a rider is no longer "online".

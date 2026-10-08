@@ -29,6 +29,7 @@ from app.schemas.rider import (
     Earnings,
     LocationBatch,
     OfferView,
+    OpenOrderView,
     RiderMe,
     StatusUpdate,
     TripAction,
@@ -52,8 +53,11 @@ def start_of_today() -> datetime:
 
 
 def me_response(db: Session, user: User) -> RiderMe:
+    from app.services.fleet.config import load_pay
+
     rider = db.get(Rider, user.id)
     trips, amount = svc.today_summary(db, user.id, start_of_today())
+    pay = load_pay(db)
     return RiderMe(
         user_id=user.id,
         full_name=user.full_name,
@@ -65,6 +69,7 @@ def me_response(db: Session, user: User) -> RiderMe:
         today_trips=trips,
         today_earnings=amount,
         fleet_enabled=get_settings().enable_own_fleet,
+        pay={"base": pay.base, "per_km": pay.per_km, "minimum": pay.minimum},
     )
 
 
@@ -102,6 +107,22 @@ _ACTION_SLUGS = {
 }
 
 
+def _summary(order) -> dict:
+    """What a rider is told about an order before taking it: where from, roughly
+    where to (the area, never the door - that comes with the trip), how big."""
+
+    location = order.restaurant_location
+    parts = [p.strip() for p in (order.delivery_address or "").split(",") if p.strip()]
+    items = list(getattr(order, "items", None) or [])
+    return {
+        "restaurant_name": order.restaurant.name if order.restaurant is not None else location.branch_name,
+        "branch": location.branch_name,
+        "pickup_address": ", ".join(p for p in (location.address_line_1, location.city) if p),
+        "drop_area": ", ".join(parts[-3:-1]) if len(parts) >= 3 else (parts[-1] if parts else ""),
+        "item_count": sum(item.quantity for item in items),
+    }
+
+
 def _offer_view(db: Session, offer: RiderOffer) -> OfferView:
     from app.models.order_delivery import OrderDelivery
     from app.services.fleet.config import load_fleet, load_pay
@@ -110,25 +131,18 @@ def _offer_view(db: Session, offer: RiderOffer) -> OfferView:
 
     delivery = db.get(OrderDelivery, offer.order_delivery_id)
     order = delivery.order
-    location = order.restaurant_location
     km = trip_km(db, delivery)
     estimate, _ = earning_for(km, load_pay(db))
     expires = offer.expires_at if offer.expires_at.tzinfo else offer.expires_at.replace(tzinfo=UTC)
-    parts = [p.strip() for p in (order.delivery_address or "").split(",") if p.strip()]
-    items = list(getattr(order, "items", None) or [])
     return OfferView(
         id=offer.id,
         expires_at=expires,
         seconds_left=max(0, int((expires - datetime.now(UTC)).total_seconds())),
         total_seconds=load_fleet(db).offer_seconds,
-        restaurant_name=order.restaurant.name if order.restaurant is not None else location.branch_name,
-        branch=location.branch_name,
-        pickup_address=", ".join(p for p in (location.address_line_1, location.city) if p),
         pickup_distance_m=offer.distance_to_pickup_m,
         trip_distance_km=round(km, 1),
         earning_estimate=estimate,
-        drop_area=", ".join(parts[-3:-1]) if len(parts) >= 3 else (parts[-1] if parts else ""),
-        item_count=sum(item.quantity for item in items),
+        **_summary(order),
     )
 
 
@@ -150,6 +164,29 @@ def accept_offer(offer_id: uuid.UUID, user: RiderUser, db: Db) -> TripView:
 def decline_offer(offer_id: uuid.UUID, user: RiderUser, db: Db) -> Response:
     offers.decline(db, user, offer_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/open-orders", response_model=list[OpenOrderView])
+def open_orders(user: RiderUser, db: Db) -> list[OpenOrderView]:
+    """Orders this rider could take now - including one whose offer they missed."""
+
+    return [
+        OpenOrderView(
+            order_id=row["order_id"],
+            pickup_distance_m=row["pickup_distance_m"],
+            trip_distance_km=row["trip_distance_km"],
+            earning_estimate=row["earning_estimate"],
+            minutes_left=row["minutes_left"],
+            **_summary(row["order"]),
+        )
+        for row in offers.open_orders(db, user)
+    ]
+
+
+@router.post("/open-orders/{order_id}/claim", response_model=TripView)
+def claim_open_order(order_id: uuid.UUID, user: RiderUser, db: Db) -> TripView:
+    trip = offers.claim(db, user, order_id)
+    return TripView(**trips.trip_view(db, trip))
 
 
 @router.get("/trip", response_model=TripView, responses={204: {"description": "No active trip"}})
