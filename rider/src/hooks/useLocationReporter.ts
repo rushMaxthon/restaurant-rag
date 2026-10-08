@@ -3,12 +3,16 @@ import Geolocation from '@react-native-community/geolocation';
 
 import { useApi } from '@/store/SessionProvider';
 import type { LocationFix, RiderStatus } from '@/types/api';
+import { batchToSend } from '@utils/heartbeat';
 
 /** On a trip the customer watches the rider move; idle, we only need "near which branch". */
 const SEND_EVERY_MS = { ON_TRIP: 10_000, ONLINE: 30_000 } as const;
 const MAX_QUEUE = 20;
 
-export type LocationState = { lastFix: LocationFix | null; error: string | null };
+export type LocationState = {
+  lastFix: LocationFix | null;
+  error: string | null;
+};
 
 /**
  * Watches the GPS while the rider is online and sends what it saw in batches.
@@ -18,7 +22,10 @@ export type LocationState = { lastFix: LocationFix | null; error: string | null 
  * kept (up to the server's 20) and sent when the network returns, newest
  * last, so the server keeps the right one.
  */
-export function useLocationReporter(status: RiderStatus | undefined, enabled: boolean): LocationState {
+export function useLocationReporter(
+  status: RiderStatus | undefined,
+  enabled: boolean,
+): LocationState {
   const api = useApi();
   const queue = useRef<LocationFix[]>([]);
   // The first fix after going online is sent AT ONCE: until the server has a
@@ -26,7 +33,13 @@ export function useLocationReporter(status: RiderStatus | undefined, enabled: bo
   // rider with no position offline again within minutes.
   const sentOnce = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
-  const [state, setState] = useState<LocationState>({ lastFix: null, error: null });
+  const [state, setState] = useState<LocationState>({
+    lastFix: null,
+    error: null,
+  });
+  // Read by the send timer: a still rider resends their last fix (see heartbeat.ts).
+  const lastFix = useRef<LocationFix | null>(null);
+  const gpsError = useRef<string | null>(null);
   const active = enabled && (status === 'ONLINE' || status === 'ON_TRIP');
 
   useEffect(() => {
@@ -44,11 +57,21 @@ export function useLocationReporter(status: RiderStatus | undefined, enabled: bo
           at: new Date(position.timestamp || Date.now()).toISOString(),
         };
         queue.current = [...queue.current, fix].slice(-MAX_QUEUE);
+        lastFix.current = fix;
+        gpsError.current = null;
         setState({ lastFix: fix, error: null });
         if (!sentOnce.current) void flushRef.current();
       },
-      error => setState(prev => ({ ...prev, error: error.message || 'Location is not available' })),
-      { enableHighAccuracy: true, distanceFilter: 15, interval: 5_000, fastestInterval: 3_000 },
+      error => {
+        gpsError.current = error.message || 'Location is not available';
+        setState(prev => ({ ...prev, error: gpsError.current }));
+      },
+      {
+        enableHighAccuracy: true,
+        distanceFilter: 15,
+        interval: 5_000,
+        fastestInterval: 3_000,
+      },
     );
     return () => Geolocation.clearWatch(watchId);
   }, [active]);
@@ -56,8 +79,12 @@ export function useLocationReporter(status: RiderStatus | undefined, enabled: bo
   useEffect(() => {
     if (!active || (status !== 'ONLINE' && status !== 'ON_TRIP')) return;
     const flush = async () => {
-      if (queue.current.length === 0) return;
-      const batch = queue.current;
+      const batch = batchToSend(
+        queue.current,
+        lastFix.current,
+        gpsError.current,
+      );
+      if (batch.length === 0) return;
       queue.current = [];
       try {
         await api.sendLocation(batch);
