@@ -2,6 +2,7 @@ import { CheckCircle2, RefreshCw, UserCheck } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError, api, formatDate } from '../services/api';
+import { reassignErrorMessage } from '../services/riders';
 import type { FleetDeliveryView, FleetOfferRow, Rider, ToastMessage } from '../types/app';
 import { StatusPill } from './StatusPill';
 
@@ -73,7 +74,7 @@ export function FleetDeliverySection({
       onToast?.(done, '', 'success');
       onChanged();
     } catch (e: unknown) {
-      onToast?.('That did not work', e instanceof ApiError ? e.message : 'Please try again.', 'error');
+      onToast?.('That did not work', e instanceof ApiError ? reassignErrorMessage(e.detail, e.message) : 'Please try again.', 'error');
     } finally {
       setBusy(false);
     }

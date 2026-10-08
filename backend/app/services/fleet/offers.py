@@ -504,6 +504,26 @@ def reassign(db: Session, admin: User, delivery: OrderDelivery, rider_user_id: u
         raise HTTPException(status.HTTP_409_CONFLICT, "rider_busy")
     if DeliveryState(delivery.state).is_terminal:
         raise HTTPException(status.HTTP_409_CONFLICT, "delivery_finished")
+    # One order, one rider (2026-10-08). This used to take the order from its
+    # rider with no question asked - even with the food already on their bike.
+    live = db.scalar(
+        select(RiderTrip).where(RiderTrip.order_delivery_id == delivery.id, RiderTrip.ended_at.is_(None))
+    )
+    if live is not None:
+        if live.picked_up_at is not None or delivery.state in {
+            DeliveryState.PICKED_UP.value,
+            DeliveryState.IN_TRANSIT.value,
+        }:
+            # The bag is physically with that rider: nobody else can carry it.
+            raise HTTPException(status.HTTP_409_CONFLICT, "food_picked_up")
+        holder = db.get(Rider, live.rider_user_id)
+        seen = holder.last_location_at if holder is not None else None
+        if seen is not None and seen.tzinfo is None:
+            seen = seen.replace(tzinfo=UTC)
+        if seen is not None and _now() - seen <= timedelta(minutes=load_fleet(db).silent_minutes):
+            raise HTTPException(status.HTTP_409_CONFLICT, "rider_has_it")
+        # Before pickup and silent past silent_minutes: a dead phone or a
+        # breakdown. Rescuing it is the one reassign of a held order allowed.
     from app.services.fleet import notify, trips
 
     trips.end_live_trip(db, delivery, reason="REASSIGNED")

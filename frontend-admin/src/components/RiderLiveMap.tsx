@@ -27,17 +27,11 @@ import {
   project,
   type LatLng,
 } from '../services/liveMap';
-import { lastSeenLabel } from '../services/riders';
+import { lastSeenLabel, reassignErrorMessage } from '../services/riders';
 import type { Rider, ToastMessage, WaitingFleetOrder } from '../types/app';
 
 const POLL_MS = 10_000;
 
-const ASSIGN_ERROR: Record<string, string> = {
-  rider_offline: 'That rider has just gone offline.',
-  rider_busy: 'That rider is already answering another order.',
-  courier_has_it: 'A Pidge rider has this order. Cancel it there first.',
-  delivery_finished: 'This order is already finished.',
-};
 
 interface Props {
   token: string;
@@ -203,8 +197,11 @@ export function RiderLiveMap({ token, onToast }: Props) {
       onToast('Offer sent', `${rider.full_name} has been asked to take ${order.order_code}.`, 'success');
       load();
     } catch (e) {
-      const detail = e instanceof ApiError && typeof e.detail === 'string' ? e.detail : '';
-      onToast('Could not assign', ASSIGN_ERROR[detail] ?? (e instanceof Error ? e.message : 'Try again.'), 'error');
+      onToast(
+        'Could not assign',
+        reassignErrorMessage(e instanceof ApiError ? e.detail : null, e instanceof Error ? e.message : 'Try again.'),
+        'error',
+      );
       load();
     } finally {
       setAssigning(null);

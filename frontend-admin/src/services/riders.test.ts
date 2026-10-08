@@ -6,6 +6,7 @@ import {
   payExample,
   payFormError,
   riderFormErrors,
+  reassignErrorMessage,
   tenDigits,
 } from './riders';
 
@@ -56,5 +57,21 @@ describe('lastSeenLabel', () => {
     expect(lastSeenLabel('2026-10-08T11:59:40Z', now)).toBe('Just now');
     expect(lastSeenLabel('2026-10-08T11:55:00Z', now)).toBe('5 min ago');
     expect(lastSeenLabel('2026-10-08T09:00:00Z', now)).toBe('3 h ago');
+  });
+});
+
+describe('reassignErrorMessage', () => {
+  it('says plainly why an order cannot move to another rider', () => {
+    expect(reassignErrorMessage('rider_has_it')).toBe(
+      'Another rider has this order and is still active. It can only move if they go silent before pickup.',
+    );
+    expect(reassignErrorMessage('food_picked_up')).toBe(
+      'The rider has already picked up the food, so it stays with them.',
+    );
+    expect(reassignErrorMessage('rider_busy')).toBe('That rider is already answering another order.');
+  });
+
+  it('falls back to the server message for anything else', () => {
+    expect(reassignErrorMessage('something_new', 'Server said no')).toBe('Server said no');
   });
 });

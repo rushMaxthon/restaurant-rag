@@ -84,3 +84,20 @@ export const VEHICLE_LABEL: Record<RiderVehicle, string> = {
   SCOOTER: 'Scooter',
   CYCLE: 'Bicycle',
 };
+
+/**
+ * Why the server refused to move an order to this rider, in words. The codes
+ * are a contract with `offers.reassign`; one order, one rider (2026-10-08).
+ */
+const REASSIGN_ERRORS: Record<string, string> = {
+  rider_has_it: 'Another rider has this order and is still active. It can only move if they go silent before pickup.',
+  food_picked_up: 'The rider has already picked up the food, so it stays with them.',
+  rider_offline: 'That rider has just gone offline.',
+  rider_busy: 'That rider is already answering another order.',
+  courier_has_it: 'A Pidge rider has this order. Cancel it there first.',
+  delivery_finished: 'This order is already finished.',
+};
+
+export function reassignErrorMessage(detail: unknown, fallback = 'Please try again.'): string {
+  return (typeof detail === 'string' && REASSIGN_ERRORS[detail]) || fallback;
+}
