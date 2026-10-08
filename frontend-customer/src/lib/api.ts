@@ -559,6 +559,14 @@ export type OrderDelivery = {
   /** Every step the courier reported, oldest first. */
   timeline?: Array<{ status: string; at: string | null; remark: string }>;
   failure_reason?: string;
+  /** Who carries it: "own_fleet" is the platform's own riders, anything else a courier. */
+  provider?: string;
+  /** Own fleet only: the code the customer reads to the rider, while one is on the way. */
+  delivery_otp?: string | null;
+  /** The rider's last reported position and when. */
+  rider_latitude?: number | null;
+  rider_longitude?: number | null;
+  rider_location_at?: string | null;
 };
 
 // `ChargeLine` and `OrderCharges` now live in `bangkok-data`, because the
