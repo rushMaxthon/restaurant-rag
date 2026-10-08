@@ -1,0 +1,196 @@
+"""What the super admin does with the fleet, and the one thing the customer sees.
+
+Settings, reassigning and confirming a delivery, and paying riders are ADMIN
+only: an owner never manages the shared fleet. Paying is the money path:
+it sums exactly the unpaid finished trips, and a second click for the same
+period pays nothing twice.
+
+The delivery code is shown to the order's own customer and nobody else - not
+the rider who must ask for it, not the kitchen, not the platform.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from fleet_harness import FleetDB, client_for, postgres_available, reset_overrides  # noqa: E402
+
+from app.models.enums import RiderStatus, TripEndReason  # noqa: E402
+from app.models.order import Order  # noqa: E402
+from app.models.rider import RiderTrip  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.fleet import otp  # noqa: E402
+
+
+@unittest.skipUnless(postgres_available(), "local Postgres is not running")
+class AdminOpsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.fdb = FleetDB("restaurant_rag_fleet_admin_ops_test")
+        with cls.fdb.session() as db:
+            cls.admin = cls.fdb.make_admin(db)
+            cls.owner = cls.fdb.make_owner(db)
+            db.commit()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        reset_overrides()
+        cls.fdb.drop()
+
+    def setUp(self) -> None:
+        for target in ("trip_changed", "trip_cancelled", "offer_made", "offer_withdrawn", "order_moved"):
+            p = mock.patch(f"app.services.fleet.notify.{target}")
+            p.start()
+            self.addCleanup(p.stop)
+        p = mock.patch("app.services.fleet.offers.schedule_expiry")
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(reset_overrides)
+
+    def test_settings_round_trip_and_owner_is_refused(self) -> None:
+        admin = client_for(self.fdb, self.admin)
+        r = admin.put("/api/admin/riders/settings/pay", json={"base": "30", "per_km": "7", "minimum": "35"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(Decimal(r.json()["pay"]["per_km"]), Decimal("7"))
+        r = admin.put("/api/admin/riders/settings/fleet", json={"offer_seconds": 40, "radius_km": 5})
+        self.assertEqual(r.json()["fleet"]["offer_seconds"], 40)
+        self.assertEqual(client_for(self.fdb, self.owner).get("/api/admin/riders/settings").status_code, 403)
+        admin.put("/api/admin/riders/settings/pay", json={"base": "25", "per_km": "6", "minimum": "30"})
+        admin.put("/api/admin/riders/settings/fleet", json={})
+
+    def test_reassign_to_an_offline_rider_is_409(self) -> None:
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db, status=RiderStatus.OFFLINE)
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+        r = client_for(self.fdb, self.admin).post(
+            f"/api/admin/riders/deliveries/{order.id}/reassign", json={"rider_user_id": str(rider.id)}
+        )
+        self.assertEqual((r.status_code, r.json()["detail"]), (409, "rider_offline"))
+
+    def test_reassign_offers_the_named_rider_and_shows_it(self) -> None:
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db, status=RiderStatus.ONLINE)
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+        r = client_for(self.fdb, self.admin).post(
+            f"/api/admin/riders/deliveries/{order.id}/reassign", json={"rider_user_id": str(rider.id)}
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual([o["outcome"] for o in r.json()["offers"]], ["PENDING"])
+
+    def test_owner_cannot_read_fleet_delivery_detail(self) -> None:
+        with self.fdb.session() as db:
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+        self.assertEqual(client_for(self.fdb, self.owner).get(f"/api/admin/riders/deliveries/{order.id}").status_code, 403)
+
+    def _ended_trip(self, db, rider, amount, ended_at):
+        order = self.fdb.make_order(db)
+        delivery = self.fdb.make_fleet_delivery(db, order, state="DELIVERED")
+        db.add(RiderTrip(order_delivery_id=delivery.id, rider_user_id=rider.id, accepted_at=ended_at,
+                         ended_at=ended_at, end_reason=TripEndReason.DELIVERED, earning_amount=Decimal(amount)))
+
+    def test_payout_sums_unpaid_trips_once(self) -> None:
+        now = datetime.now(UTC)
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db)
+            self._ended_trip(db, rider, "49.00", now - timedelta(days=2))
+            self._ended_trip(db, rider, "37.00", now - timedelta(days=1))
+            self._ended_trip(db, rider, "60.00", now + timedelta(days=1))  # after the period
+            db.commit()
+        admin = client_for(self.fdb, self.admin)
+        unpaid = {row["rider_user_id"]: row for row in admin.get("/api/admin/riders/payouts/unpaid").json()}
+        self.assertEqual(Decimal(unpaid[str(rider.id)]["amount"]), Decimal("146.00"))
+        r = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": now.isoformat(), "reference": "UTR123"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual((Decimal(r.json()["amount"]), r.json()["trips"]), (Decimal("86.00"), 2))
+        again = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": now.isoformat()})
+        self.assertEqual((again.status_code, again.json()["detail"]), (409, "nothing_to_pay"))
+        earnings = client_for(self.fdb, rider).get("/api/rider/earnings").json()
+        self.assertEqual(Decimal(earnings["unpaid"]), Decimal("60.00"))
+        self.assertEqual(Decimal(earnings["paid_total"]), Decimal("86.00"))
+
+    def test_confirm_delivered_completes_the_trip(self) -> None:
+        now = datetime.now(UTC)
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db, status=RiderStatus.ON_TRIP)
+            order = self.fdb.make_order(db)
+            delivery = self.fdb.make_fleet_delivery(db, order, state="IN_TRANSIT", otp_locked=True)
+            db.add(RiderTrip(order_delivery_id=delivery.id, rider_user_id=rider.id, accepted_at=now,
+                             arrived_pickup_at=now, picked_up_at=now, arrived_drop_at=now))
+            db.commit()
+        r = client_for(self.fdb, self.admin).post(
+            f"/api/admin/riders/deliveries/{order.id}/confirm-delivered", json={"reason": "Customer confirmed by phone"}
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["trip"]["step"], "done")
+        self.assertFalse(r.json()["otp_locked"])
+
+
+@unittest.skipUnless(postgres_available(), "local Postgres is not running")
+class CustomerSeesTheCodeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.fdb = FleetDB("restaurant_rag_fleet_customer_otp_test")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        reset_overrides()
+        cls.fdb.drop()
+
+    def tearDown(self) -> None:
+        reset_overrides()
+
+    def _order(self, state="ASSIGNED", provider="own_fleet"):
+        with self.fdb.session() as db:
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order, state=state, provider=provider)
+            db.commit()
+            customer = db.get(User, order.customer_id)
+            return order, customer
+
+    def _code(self, viewer, order):
+        r = client_for(self.fdb, viewer).get(f"/api/orders/{order.id}/delivery")
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()["delivery_otp"]
+
+    def test_customer_sees_four_digits_while_the_rider_is_coming(self) -> None:
+        for state in ("ASSIGNED", "PICKED_UP", "IN_TRANSIT"):
+            with self.subTest(state=state):
+                order, customer = self._order(state)
+                self.assertEqual(self._code(customer, order), otp.code_for(order.id))
+
+    def test_not_before_a_rider_or_after_delivery(self) -> None:
+        for state in ("PENDING", "DELIVERED"):
+            with self.subTest(state=state):
+                order, customer = self._order(state)
+                self.assertIsNone(self._code(customer, order))
+
+    def test_nobody_else_sees_it(self) -> None:
+        order, _ = self._order()
+        with self.fdb.session() as db:
+            admin = self.fdb.make_admin(db)
+            owner = db.get(User, db.get(Order, order.id).restaurant.owner_id)
+            db.commit()
+        for viewer in (admin, owner):
+            with self.subTest(role=viewer.role):
+                self.assertIsNone(self._code(viewer, order))
+
+    def test_a_courier_order_has_no_code(self) -> None:
+        order, customer = self._order(provider="pidge")
+        self.assertIsNone(self._code(customer, order))
+
+
+if __name__ == "__main__":
+    unittest.main()

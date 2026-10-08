@@ -5474,3 +5474,28 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
   - set `RAZORPAY_WEBHOOK_SECRET` and the webhook;
   - run the test-mode checklist in `backend/docs/payouts.md`;
   - then turn the flag on.
+
+## 2026-10-08 — Own delivery fleet: backend (Plan 1) + rider Android app (Plan 2)
+
+- Spec `docs/superpowers/specs/2026-10-08-rider-app-design.md`; plans
+  `docs/superpowers/plans/2026-10-08-own-fleet-backend.md`, `...-rider-app.md`;
+  API contract `docs/superpowers/plans/rider-openapi.json`.
+- Backend: RIDER role, migration `0089_own_fleet` (NOT applied to Supabase yet —
+  user runs `alembic upgrade head`), `services/fleet/` (config, earnings, riders,
+  offers, trips, otp, notify, payouts), own_fleet courier + Pidge fallback,
+  `/api/rider/*`, `/api/admin/riders/*`, customer `delivery_otp`, Platform watch
+  check, Celery tasks + beat (behind `enable_own_fleet`, default off).
+- Independent opus review: 1 Critical + 6 Important fixed with RED->GREEN tests
+  (`test_fleet_review_fixes.py`); deferred minors are in the SDD ledger.
+- Full backend suite: 3601 tests OK. Fleet 87, delivery 235.
+- Rider app `rider/`: RN 0.87.1, Reanimated 4.7, Gesture Handler 3, Nav 7.
+  Splash, login, permissions, bottom tabs (Home/Earnings/History/Profile),
+  full-screen offer, trip with slides + OTP (auto-submits on 4th digit),
+  delivered celebration. Verified end to end on the emulator against a LOCAL
+  dev API (port 8001, DB rr_rider_dev, adb reverse 8000->8001).
+- Gotchas: Claude Code's shell sets NoDefaultCurrentDirectoryInExePath (run
+  gradlew.bat from PowerShell after removing it); RN 0.87 is edge-to-edge, so
+  the keyboard does not resize the window (useKeyboardHeight); RN 0.87 refs are
+  TextInputInstance/ScrollViewInstance; tsc 6 rejects baseUrl.
+- Not done (blocked on the user): FCM push (google-services.json), in-app map
+  (Google billing), Plan 3 admin Riders page, Plan 4 storefront OTP card.

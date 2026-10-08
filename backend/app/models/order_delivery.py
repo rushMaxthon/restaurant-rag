@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -109,6 +109,13 @@ class OrderDelivery(TimestampMixin, Base):
     network_order_id: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default="")
     allocated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Own fleet only (2026-10-08). The customer reads a 4-digit code to the
+    # rider; it is DERIVED per order from a server secret (services/fleet/otp)
+    # and only a hash is kept here, so reading the database alone does not let
+    # anyone complete a delivery. Five wrong tries lock it until an admin acts.
+    delivery_otp_hash: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default="")
+    otp_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    otp_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     order: Mapped["Order"] = relationship(back_populates="delivery")
 

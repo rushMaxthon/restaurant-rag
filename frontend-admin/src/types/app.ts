@@ -4,7 +4,7 @@
  * cook appears in the Users list, and a union that did not know the role made
  * `ROLE_META[user.role]` undefined and crashed the page on `meta.icon`.
  */
-export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER' | 'KITCHEN';
+export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER' | 'KITCHEN' | 'RIDER';
 export type NotificationAudience =
   | 'ALL_USERS'
   | 'CUSTOMERS'
@@ -1792,6 +1792,7 @@ export interface AdminUserStats {
   ADMIN: { total: number; active: number };
   OWNER: { total: number; active: number };
   KITCHEN: { total: number; active: number };
+  RIDER?: { total: number; active: number };
   CUSTOMER: { total: number; active: number };
 }
 

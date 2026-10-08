@@ -656,6 +656,27 @@ PIDGE_TRACKING_URL=https://tracking.pidge.in/?t={code}
 
 Point Pidge's webhook at `POST /api/delivery/webhook`.
 
+## The platform's own fleet
+
+Added 2026-10-08 (`enable_own_fleet`, default off). Our own riders are a second
+courier, `own_fleet`, behind the same contract, and the courier above becomes the
+backup.
+
+```
+kitchen accepts -> dispatch -> OwnFleetProvider.create (PENDING, books nobody)
+  -> offers.advance: nearest online rider gets 30 s (push + socket)
+       accept  -> trip, ASSIGNED, rider ON_TRIP
+       decline / expire -> next rider
+       cash, branch not served, 4 min, 5 riders, nobody near
+               -> fallback_to_pidge: SAME row, attempt+1, booked with the courier
+  -> rider: arrived pickup -> picked up (OUT_FOR_DELIVERY) -> arrived drop
+            -> delivered with the customer's 4-digit code (DELIVERED)
+```
+
+Testing locally: create a rider in the admin (or `POST /api/admin/riders`), sign in
+by phone from the rider app, go online near a branch, and accept a card order in
+the kitchen. Switch the fleet off and the same order goes straight to the courier.
+
 ## Still open
 
 - **An aggregator account from Pidge.** Blocks per-tenant brand mapping.

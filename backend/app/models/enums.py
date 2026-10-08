@@ -20,6 +20,41 @@ class UserRole(StrEnum):
     # owner's own credentials — the same token that edits the menu, spends
     # money on marketing campaigns and reads revenue.
     KITCHEN = "KITCHEN"
+    # A delivery rider in the platform's own fleet (2026-10-08). Platform staff
+    # like KITCHEN: `app_client_id` NULL and NOT pinned to a restaurant - one
+    # fleet serves every restaurant in a city, and only an ADMIN creates or
+    # manages riders. Their only surface is the rider app.
+    RIDER = "RIDER"
+
+
+class RiderStatus(StrEnum):
+    OFFLINE = "OFFLINE"
+    ONLINE = "ONLINE"
+    ON_TRIP = "ON_TRIP"
+
+
+class VehicleType(StrEnum):
+    BIKE = "BIKE"
+    SCOOTER = "SCOOTER"
+    CYCLE = "CYCLE"
+
+
+class OfferOutcome(StrEnum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    DECLINED = "DECLINED"
+    EXPIRED = "EXPIRED"
+    #: Taken back by the system: the order was cancelled, reassigned, sent to
+    #: Pidge, or the rider went offline.
+    WITHDRAWN = "WITHDRAWN"
+
+
+class TripEndReason(StrEnum):
+    DELIVERED = "DELIVERED"
+    CANCELLED_BEFORE_PICKUP = "CANCELLED_BEFORE_PICKUP"
+    CANCELLED_AFTER_PICKUP = "CANCELLED_AFTER_PICKUP"
+    CUSTOMER_UNAVAILABLE = "CUSTOMER_UNAVAILABLE"
+    REASSIGNED = "REASSIGNED"
 
 
 class AppMode(StrEnum):
@@ -318,6 +353,9 @@ class OrderEventActor(StrEnum):
     # platform did by itself — which is exactly the question this table exists
     # to answer.
     KITCHEN = "KITCHEN"
+    # The same reason as KITCHEN: a rider's "picked up" must not read as the
+    # platform moving the order by itself.
+    RIDER = "RIDER"
     SYSTEM = "SYSTEM"
     PAYMENT_PROVIDER = "PAYMENT_PROVIDER"
 

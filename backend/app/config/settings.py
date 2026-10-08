@@ -899,6 +899,15 @@ class Settings(BaseSettings):
     # that has to be switched on. Nothing calls Pidge until this is true AND
     # credentials exist.
     enable_delivery_dispatch: bool = False
+    # The platform's own riders (2026-10-08). Off: no order is offered to a
+    # rider and the registry never returns the fleet courier - Pidge behaves
+    # exactly as before. Riders can still sign in, go online and be trained
+    # while it is off, which is why the rider endpoints are not behind it.
+    enable_own_fleet: bool = False
+    # Derives each order's delivery OTP (an HMAC of the order id). Unset falls
+    # back to the JWT secret, so a deployment that forgets it still has codes
+    # nobody can work out from an order id.
+    rider_otp_secret: str = ""
     pidge_base_url: str = "https://store.dev.pidge.in"
     pidge_username: str = ""
     pidge_password: str = ""

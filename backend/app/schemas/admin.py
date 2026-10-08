@@ -229,4 +229,5 @@ class AdminUserStats(BaseModel):
     ADMIN: AdminUserRoleCount
     OWNER: AdminUserRoleCount
     KITCHEN: AdminUserRoleCount
+    RIDER: AdminUserRoleCount = AdminUserRoleCount(total=0, active=0)
     CUSTOMER: AdminUserRoleCount

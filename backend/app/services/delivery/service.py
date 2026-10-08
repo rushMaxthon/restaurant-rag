@@ -38,7 +38,7 @@ from app.services.delivery.base import (
     DeliveryResult,
     DeliveryState,
 )
-from app.services.delivery.registry import delivery_provider
+from app.services.delivery.registry import delivery_provider, dispatch_provider
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,9 @@ def dispatch(db: Session, order: Order) -> OrderDelivery | None:
         logger.info("Order %s already has delivery %s", order.id, existing.provider_order_id)
         return existing
 
-    provider = delivery_provider()
+    # Our own riders first when the fleet is on; otherwise exactly the courier
+    # this always asked, through the same name tests and callers patch.
+    provider = dispatch_provider() if get_settings().enable_own_fleet else delivery_provider()
     if provider is None:
         return None
 
@@ -307,6 +309,14 @@ def dispatch(db: Session, order: Order) -> OrderDelivery | None:
     logger.info(
         "Dispatched order %s to %s as %s", order.id, provider.name, result.provider_order_id
     )
+    if provider.name == "own_fleet":
+        from app.services.fleet import offers, otp
+
+        # The code the customer will read to the rider; only its hash is kept.
+        row.delivery_otp_hash = otp.hash_code(otp.code_for(order.id))
+        db.flush()
+        offers.queue_advance_after_commit(db, row.id)
+        return row
     _ask_for_a_rider(row, provider)
     return row
 
@@ -394,6 +404,8 @@ def cancel(db: Session, order: Order) -> OrderDelivery | None:
     """
 
     row = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == order.id))
+    if row is not None and getattr(row, "provider", "") in {"own_fleet", UNASSIGNED}:
+        return _cancel_fleet(db, row)
     if row is None or not row.provider_order_id:
         return None
     try:
@@ -423,6 +435,86 @@ def cancel(db: Session, order: Order) -> OrderDelivery | None:
     row.last_error = ""
     logger.info("Cancelled delivery %s for order %s", row.provider_order_id, order.id)
     return row
+
+
+def _cancel_fleet(db: Session, row: OrderDelivery) -> OrderDelivery:
+    """Our own rider: nothing to call, but offers are withdrawn and the trip ended.
+
+    The delivery row is locked FIRST, the order `accept` and `advance` take
+    locks in - taking the offer rows first deadlocked against an accept at the
+    same moment (review finding, 2026-10-08). Works without a booking id: an
+    unassigned or reassigned row has none and must still be cancelled.
+    """
+
+    from app.services.fleet import trips
+
+    row = db.scalar(select(OrderDelivery).where(OrderDelivery.id == row.id).with_for_update())
+    try:
+        if DeliveryState(row.state).is_terminal:
+            return row
+    except ValueError:
+        pass
+    trips.on_order_cancelled(db, row)
+    row.state = DeliveryState.CANCELLED.value
+    row.provider_status = "cancelled"
+    row.last_error = ""
+    return row
+
+
+#: `order_deliveries.provider` for a delivery nobody can carry: our riders
+#: passed and no courier is configured. Nothing retries it on its own;
+#: Platform watch shows it and an admin reassigns a rider.
+UNASSIGNED = "unassigned"
+
+
+def fallback_to_pidge(db: Session, row: OrderDelivery, reason: str) -> None:
+    """Hand a delivery our own riders did not take to the courier. Never raises.
+
+    The SAME row is re-pointed - `order_id` is unique, which is what stops a
+    rider and a courier both being sent - with its attempt number up, because
+    Pidge refuses a reference it has seen. The fleet's offers stay in
+    `rider_offers` as the history of what was tried. The caller commits.
+    """
+
+    order = db.get(Order, row.order_id)
+    if order.status in {OrderStatus.CANCELLED, OrderStatus.DELIVERED}:
+        # Nothing to carry any more; the loop stops here (review finding).
+        row.state = DeliveryState.CANCELLED.value
+        return
+    courier = delivery_provider() if should_dispatch(order) else None
+    row.attempt = (row.attempt or 1) + 1
+    row.provider_order_id = ""
+    row.rider_name = row.rider_mobile = ""
+    row.rider_latitude = row.rider_longitude = row.rider_location_at = None
+    row.state = DeliveryState.PENDING.value
+    if courier is None or getattr(courier, "name", "") == "own_fleet":
+        row.provider = UNASSIGNED
+        row.last_error = f"No rider and no courier: {reason}"[:2000]
+        logger.error("Delivery %s for order %s has nobody to carry it: %s", row.id, row.order_id, reason)
+        return
+    row.provider = courier.name
+    request = build_request(order)
+    request.reference = f"{order.id}-{row.attempt}"
+    try:
+        result = courier.create(request)
+    except DeliveryProviderError as error:
+        # Marked FAILED so "Find a rider" (rebook) is offered to the owner,
+        # with the courier's own sentence beside it.
+        row.state = DeliveryState.FAILED.value
+        row.failure_reason = f"Our riders passed ({reason}) and the courier refused"
+        row.last_error = str(error)[:2000]
+        logger.warning("Courier refused fallback for order %s: %s", order.id, error)
+        return
+    except Exception as error:  # noqa: BLE001 - the offer loop must not crash on a courier
+        row.state = DeliveryState.FAILED.value
+        row.failure_reason = f"Our riders passed ({reason}) and the courier could not be reached"
+        row.last_error = str(error)[:2000]
+        logger.exception("Courier fallback failed for order %s", order.id)
+        return
+    row.last_error = ""
+    record(db, row, result)
+    _ask_for_a_rider(row, courier)
+    logger.info("Order %s handed to %s after our riders passed: %s", order.id, courier.name, reason)
 
 
 #: Courier states a person can do nothing more about, as statuses Pidge
@@ -456,7 +548,9 @@ def _notify_after_commit(db: Session, order: Order, status: OrderStatus) -> None
     event.listen(db, "after_commit", _send, once=True)
 
 
-def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDelivery:
+def record(
+    db: Session, row: OrderDelivery, result: DeliveryResult, *, actor_user=None
+) -> OrderDelivery:
     """Write a courier's answer onto the delivery, and move the order if it should.
 
     A move is made the way a kitchen tap makes one: an order status event
@@ -539,7 +633,10 @@ def record(db: Session, row: OrderDelivery, result: DeliveryResult) -> OrderDeli
                 order=order,
                 from_status=before,
                 to_status=order.status,
-                actor=OrderEventActor.SYSTEM,
+                # Our own rider's step is theirs, not the platform's: the
+                # audit log must say who moved the food (2026-10-08).
+                actor=OrderEventActor.RIDER if actor_user is not None else OrderEventActor.SYSTEM,
+                actor_user_id=getattr(actor_user, "id", None),
                 note=f"courier: {(result.provider_status or result.state.value).lower()}",
                 metadata={"source": "courier", "provider": row.provider, "courier_status": result.provider_status},
                 occurred_at=(
@@ -653,6 +750,14 @@ def rebook(db: Session, order: Order) -> OrderDelivery:
         row.last_error = str(error)[:2000]
         raise
     row.attempt = attempt
+    # A re-book goes to the courier, so the row is the courier's from now on -
+    # left as "own_fleet" the offer loop would book a SECOND courier rider for
+    # it (review finding, 2026-10-08). Our own code is void with our rider gone.
+    if isinstance(getattr(provider, "name", None), str):
+        row.provider = provider.name
+    row.delivery_otp_hash = ""
+    row.otp_attempts = 0
+    row.otp_locked = False
     row.state = DeliveryState.PENDING.value
     row.rider_name = row.rider_mobile = row.tracking_url = row.failure_reason = row.last_error = ""
     row.rider_latitude = row.rider_longitude = row.rider_location_at = None

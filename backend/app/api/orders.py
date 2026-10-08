@@ -627,6 +627,17 @@ def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User
         and delivery_service.can_allocate(order, delivery)
     )
     response.can_simulate = str(viewer.role) == "ADMIN" and delivery_service.simulate_allowed()
+    if (
+        order is not None
+        and delivery.provider == "own_fleet"
+        and delivery.state in {"ASSIGNED", "PICKED_UP", "IN_TRANSIT"}
+        and getattr(viewer, "id", None) == order.customer_id
+    ):
+        # Only the customer: the code is what proves the food reached them,
+        # so the rider, the kitchen and even the platform must not be shown it.
+        from app.services.fleet import otp
+
+        response.delivery_otp = otp.code_for(order.id)
     if order is not None:
         response.paid_for_delivery = delivery_service.paid_for_delivery(order)
         response.courier_overpriced = delivery_service.courier_overpriced(order, delivery)

@@ -546,6 +546,39 @@ manager cannot disconnect anything (verified). A per-process sweep
 disconnected client, so the client reports a (re)connect as "anything may have
 changed" (`onChange(null)`).
 
+## Own delivery fleet (riders)
+
+`app/services/fleet/` + `app/api/rider.py` (the rider app) + `app/api/admin_riders.py`
+(super admin) + the `rider/` React Native app. Spec:
+`docs/superpowers/specs/2026-10-08-rider-app-design.md`. Behind
+**`enable_own_fleet`, default off** — off, dispatch picks exactly the courier it
+always did. Rider login/shift routes are NOT behind it, so riders can be trained first.
+
+- **The fleet is a courier** (`delivery/own_fleet_provider.py`), so one
+  `order_deliveries` row per order serves both. Rider steps are written through
+  `delivery.service.record` (actor RIDER), the same function Pidge's webhook feeds.
+- **Offer loop** (`fleet/offers.py advance`): nearest ONLINE rider seen in the last
+  `silent_minutes`, within `radius_km`, one at a time, `offer_seconds` each. Locks the
+  delivery row. Two partial unique indexes are the money guards:
+  `uq_rider_offers_one_pending`, `uq_rider_trips_one_live`.
+- **Fallback re-points the SAME row** to Pidge (`service.fallback_to_pidge`, attempt+1).
+  Cash orders, branches outside `location_ids`, the window passing, `max_offers` or
+  nobody near all fall back. No courier configured → `provider='unassigned'`, red on
+  Platform watch, an admin reassigns.
+- **Delivery OTP is derived, not stored** (`fleet/otp.py`, HMAC of order id under
+  `rider_otp_secret` or the JWT secret). Shown ONLY to the order's customer
+  (`/orders/{id}/delivery` `delivery_otp`) while ASSIGNED…IN_TRANSIT. 5 wrong → locked;
+  admin `confirm-delivered` with a reason.
+- **Pay**: `max(minimum, base + per_km × km)`, admin-set in `platform_settings`
+  (`rider_pay`, `own_fleet`), computed at the end of the trip and stored with its
+  breakdown. Cancelled before reaching the restaurant pays 0, after reaching it the
+  minimum, after pickup the full trip. Payouts lock the trips they pay.
+- Fleet timeline entries use the courier shape `{status, at, remark}` (plus `event`):
+  `OrderDeliveryResponse.timeline` validates `DeliveryStep`.
+- `refresh_deliveries_task` skips `own_fleet`/`unassigned` rows.
+- RIDER is platform staff: `0089_own_fleet` widened the platform-uniqueness indexes.
+  A rider's email is a placeholder `rider.<digits>@riders.invalid`; they sign in by phone.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

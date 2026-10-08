@@ -631,6 +631,7 @@ def user_stats(
         ADMIN=counts.get("ADMIN", empty),
         OWNER=counts.get("OWNER", empty),
         KITCHEN=counts.get("KITCHEN", empty),
+        RIDER=counts.get("RIDER", empty),
         CUSTOMER=counts.get("CUSTOMER", empty),
     )
 

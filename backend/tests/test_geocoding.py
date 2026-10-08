@@ -435,6 +435,12 @@ class ReadingGoogle(unittest.TestCase):
 
 class WhichGeocoderAnswers(unittest.TestCase):
     def setUp(self) -> None:
+        # These tests are about Google versus OpenStreetMap, so Ola (which is
+        # preferred over both) is pinned off. Without this the suite went red
+        # the day a real OLA_MAPS_API_KEY landed in a developer's .env.
+        ola_off = mock.patch.dict(os.environ, {"OLA_MAPS_API_KEY": ""})
+        ola_off.start()
+        self.addCleanup(ola_off.stop)
         reset_geocoder()
         get_settings.cache_clear()
         self.addCleanup(reset_geocoder)

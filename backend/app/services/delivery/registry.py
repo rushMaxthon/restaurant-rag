@@ -97,6 +97,22 @@ def delivery_provider() -> DeliveryProvider | None:
         return _provider
 
 
+def dispatch_provider() -> DeliveryProvider | None:
+    """Who is asked FIRST when an order needs carrying.
+
+    Our own riders when `enable_own_fleet` is on - they hand anything they
+    cannot take to `delivery_provider()` through `service.fallback_to_pidge`.
+    Off, exactly the courier `delivery_provider()` returns, so switching the
+    fleet off is the whole rollback.
+    """
+
+    if get_settings().enable_own_fleet:
+        from app.services.delivery.own_fleet_provider import OwnFleetProvider
+
+        return OwnFleetProvider()
+    return delivery_provider()
+
+
 def reset_delivery_provider() -> None:
     """Forget the cached provider. For tests, and for a settings reload."""
 
@@ -106,4 +122,4 @@ def reset_delivery_provider() -> None:
         _built = False
 
 
-__all__ = ["delivery_provider", "reset_delivery_provider"]
+__all__ = ["delivery_provider", "dispatch_provider", "reset_delivery_provider"]
