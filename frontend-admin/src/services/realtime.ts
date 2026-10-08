@@ -116,6 +116,11 @@ export type RealtimeOptions = {
   onChange: (orderIds: string[] | null) => void;
   /** The session is over; sign out. */
   onSignOut: () => void;
+  /**
+   * A rider moved or went on/off shift (`fleet:riders_changed`, admin room
+   * only). Coalesced like orders. A hint: the live map refetches over REST.
+   */
+  onRidersChanged?: () => void;
   /** Injected by tests. */
   connect?: (url: string, options: Parameters<typeof io>[1]) => Socket;
   coalesceMs?: number;
@@ -129,6 +134,7 @@ export class RealtimeClient {
   private scope: Record<string, unknown> = {};
   private readonly options: RealtimeOptions;
   private readonly change: ReturnType<typeof coalesce>;
+  private readonly ridersChange: ReturnType<typeof coalesce>;
   private pendingIds: Set<string> | null = new Set();
 
   constructor(options: RealtimeOptions) {
@@ -138,6 +144,10 @@ export class RealtimeClient {
       this.pendingIds = new Set();
       options.onChange(ids ? [...ids] : null);
     }, options.coalesceMs ?? 300);
+    this.ridersChange = coalesce(
+      () => options.onRidersChanged?.(),
+      options.coalesceMs ?? 300,
+    );
   }
 
   private changed(orderId: string | null): void {
@@ -209,6 +219,7 @@ export class RealtimeClient {
           typeof event?.order_id === "string" ? event.order_id : null,
         ),
     );
+    socket.on("fleet:riders_changed", () => this.ridersChange.call());
     socket.on("session:revoked", () => {
       this.stop();
       this.options.onSignOut();
@@ -233,6 +244,7 @@ export class RealtimeClient {
 
   stop(): void {
     this.change.cancel();
+    this.ridersChange.cancel();
     if (this.retryTimer !== null) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     const socket = this.socket;
@@ -279,6 +291,21 @@ export function onOrdersChanged(listener: OrdersListener): () => void {
   return () => {
     ordersListeners.delete(listener);
   };
+}
+
+type RidersListener = () => void;
+const ridersListeners = new Set<RidersListener>();
+
+/** The live map listens here; the panel's one socket announces. */
+export function onRidersChanged(listener: RidersListener): () => void {
+  ridersListeners.add(listener);
+  return () => {
+    ridersListeners.delete(listener);
+  };
+}
+
+export function announceRidersChanged(): void {
+  for (const listener of Array.from(ridersListeners)) listener();
 }
 
 export function announceOrdersChanged(orderIds: string[] | null): void {

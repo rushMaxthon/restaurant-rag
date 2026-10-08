@@ -8,14 +8,19 @@
  * booking cannot be taken, and the rider still has to accept the offer on
  * their phone. The map only shortens the walk to that button.
  */
-import { Bike, LocateFixed, Minus, Plus, RefreshCw, Store, UserCheck } from 'lucide-react';
+import { Bike, ExternalLink, LocateFixed, Minus, Navigation, Phone, Plus, RefreshCw, Store, UserCheck, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
+import { useOrdersChanged, useRidersChanged } from '../hooks/useRealtime';
 import { ApiError, api } from '../services/api';
 import {
+  GLIDE_MS,
   MAX_ZOOM,
   MIN_ZOOM,
+  bearingDeg,
   distanceLabel,
+  glideAt,
+  metresBetween,
   fitView,
   groupByPickup,
   nearestRiders,
@@ -30,11 +35,14 @@ import {
 import { lastSeenLabel, reassignErrorMessage } from '../services/riders';
 import type { Rider, ToastMessage, WaitingFleetOrder } from '../types/app';
 
+/** The safety net. Riders moving and orders arriving refresh it at once over the socket. */
 const POLL_MS = 10_000;
-
+/** Below this a new fix is GPS jitter, not movement: no glide, no new heading. */
+const MOVE_M = 5;
 
 interface Props {
   token: string;
+  onNavigate?: (path: string) => void;
   onToast: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
@@ -58,7 +66,71 @@ function pickupOf(order: WaitingFleetOrder): LatLng | null {
   return order.pickup_lat == null || order.pickup_lng == null ? null : { lat: order.pickup_lat, lng: order.pickup_lng };
 }
 
-export function RiderLiveMap({ token, onToast }: Props) {
+type Glide = { from: LatLng; to: LatLng; start: number; bearing: number | null };
+type Shown = { at: LatLng; bearing: number | null };
+
+/**
+ * Pins that follow their riders. Each new position glides from wherever the
+ * pin is drawn right now (so a fix landing mid-glide never jumps it back),
+ * and a frame loop runs only while something is moving. Glides happen in
+ * lat/lng, so panning and zooming stay instant.
+ */
+function useGlidingRiders(riders: Rider[] | null): Map<string, Shown> {
+  const glides = useRef(new Map<string, Glide>());
+  const frame = useRef<number | null>(null);
+  const [shown, setShown] = useState<Map<string, Shown>>(() => new Map());
+
+  useEffect(() => {
+    const t0 = performance.now();
+    const next = new Map<string, Glide>();
+    for (const rider of riders ?? []) {
+      const p = riderPoint(rider);
+      if (!p) continue;
+      const old = glides.current.get(rider.user_id);
+      if (!old) {
+        next.set(rider.user_id, { from: p, to: p, start: 0, bearing: null });
+        continue;
+      }
+      if (metresBetween(old.to, p) < MOVE_M) {
+        next.set(rider.user_id, old);
+        continue;
+      }
+      const here = glideAt(old.from, old.to, (t0 - old.start) / GLIDE_MS);
+      next.set(rider.user_id, { from: here, to: p, start: t0, bearing: bearingDeg(old.to, p) });
+    }
+    glides.current = next;
+    // A hidden tab gets no animation frames at all, so there it skips the
+    // glide and lands every pin on its newest position and heading - a map
+    // left in a background tab must be right the moment it is looked at.
+    const hidden = () => document.visibilityState === 'hidden';
+    const tick = () => {
+      const t = performance.now();
+      const out = new Map<string, Shown>();
+      let moving = false;
+      for (const [id, g] of glides.current) {
+        const k = hidden() ? 1 : (t - g.start) / GLIDE_MS;
+        if (k < 1) moving = true;
+        out.set(id, { at: glideAt(g.from, g.to, k), bearing: g.bearing });
+      }
+      setShown(out);
+      frame.current = moving ? requestAnimationFrame(tick) : null;
+    };
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    const timeout = hidden() ? window.setTimeout(tick, 0) : null;
+    if (timeout === null) frame.current = requestAnimationFrame(tick);
+    return () => {
+      if (timeout !== null) window.clearTimeout(timeout);
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
+    };
+  }, [riders]);
+
+  return shown;
+}
+
+const TONE_LABEL = { free: 'Free', busy: 'On a trip', stale: 'Not updating' } as const;
+
+export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
   const [riders, setRiders] = useState<Rider[] | null>(null);
   const [waiting, setWaiting] = useState<WaitingFleetOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +147,12 @@ export function RiderLiveMap({ token, onToast }: Props) {
 
   const [reload, setReload] = useState(0);
   const load = useCallback(() => setReload(n => n + 1), []);
+  // A rider moving, going on or off shift, or an order changing reaches the
+  // map the moment the server says so; the poll below is only the net.
+  useRidersChanged(load);
+  useOrdersChanged(load);
+  const [riderId, setRiderId] = useState<string | null>(null);
+  const shown = useGlidingRiders(riders);
 
   useEffect(() => {
     let alive = true;
@@ -273,19 +351,29 @@ export function RiderLiveMap({ token, onToast }: Props) {
           })}
 
           {(riders ?? []).map(rider => {
-            const p = riderPoint(rider);
+            const p = shown.get(rider.user_id)?.at ?? riderPoint(rider);
             const at = p ? place(p) : null;
             if (!at) return null;
             const tone = riderPinTone(rider, now);
+            const bearing = tone === 'stale' ? null : (shown.get(rider.user_id)?.bearing ?? null);
+            const active = rider.user_id === riderId;
             return (
-              <span
+              <button
                 key={rider.user_id}
-                className={`rmap__pin rmap__pin--rider rmap__pin--${tone}`}
+                type="button"
+                className={`rmap__pin rmap__pin--rider rmap__pin--${tone}${active ? ' rmap__pin--picked' : ''}`}
                 style={{ left: at.left, top: at.top }}
-                title={`${rider.full_name} · ${tone === 'busy' ? 'on a trip' : tone === 'free' ? 'free' : 'not updating'} · ${lastSeenLabel(rider.last_location_at, now)}`}
+                onClick={() => setRiderId(active ? null : rider.user_id)}
+                title={`${rider.full_name} · ${TONE_LABEL[tone].toLowerCase()} · ${lastSeenLabel(rider.last_location_at, now)}`}
+                aria-label={`${rider.full_name}, ${TONE_LABEL[tone]}`}
               >
+                {bearing !== null ? (
+                  <span className="rmap__heading" style={{ transform: `rotate(${bearing}deg)` }} aria-hidden="true">
+                    <span className="rmap__heading-tip" />
+                  </span>
+                ) : null}
                 {initials(rider.full_name)}
-              </span>
+              </button>
             );
           })}
 
@@ -314,6 +402,56 @@ export function RiderLiveMap({ token, onToast }: Props) {
       </div>
 
       <aside className="rmap__side">
+        {(() => {
+          const picked = riders?.find(r => r.user_id === riderId);
+          if (!picked) return null;
+          const tone = riderPinTone(picked, now);
+          return (
+            <div className="rmap__card">
+              <div className="rmap__card-head">
+                <span className={`rmap__avatar rmap__avatar--${tone}`} aria-hidden="true">
+                  {initials(picked.full_name)}
+                </span>
+                <span className="rmap__rider-name">
+                  <strong>{picked.full_name}</strong>
+                  <span className="rmap__muted">
+                    {TONE_LABEL[tone]} · seen {lastSeenLabel(picked.last_location_at, now).toLowerCase()}
+                  </span>
+                </span>
+                <button type="button" className="rmap__control" onClick={() => setRiderId(null)} aria-label="Close">
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="rmap__card-actions">
+                {picked.phone_number ? (
+                  <a className="secondary-button" href={`tel:${picked.phone_number}`}>
+                    <Phone size={14} aria-hidden="true" /> Call
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    const p = riderPoint(picked);
+                    if (p && view) setView({ center: p, zoom: Math.max(view.zoom, 15) });
+                  }}
+                >
+                  <Navigation size={14} aria-hidden="true" /> Show on map
+                </button>
+                {picked.active_order_id && onNavigate ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => onNavigate(`/orders/${picked.active_order_id}`)}
+                  >
+                    <ExternalLink size={14} aria-hidden="true" /> Current order
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="rmap__side-head">
           <h3>Needs a rider</h3>
           <button type="button" className="secondary-button" onClick={() => void load()}>

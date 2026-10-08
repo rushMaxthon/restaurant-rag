@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from app.models.enums import UserRole  # noqa: E402
 from app.services.fleet import notify  # noqa: E402
-from app.services.realtime.rooms import is_staff_role, user_room  # noqa: E402
+from app.services.realtime.rooms import ADMIN_ALL_ROOM, is_staff_role, user_room  # noqa: E402
 
 
 def _offer(**over):
@@ -108,6 +108,28 @@ class RiderEventsTests(unittest.TestCase):
             notify.order_moved(mock.Mock(), delivery)
             notify.order_moved(mock.Mock(), delivery)
         self.assertEqual(emitter.emit.call_count, 1)
+
+    def test_rider_position_hint_goes_to_the_admin_room_by_id_only_and_is_throttled(self) -> None:
+        # The live map refetches over REST: the hint never carries coordinates,
+        # and a rider reporting every few seconds is announced at most once per
+        # window, or one busy fleet would flood every admin's screen.
+        rider_id = uuid.uuid4()
+        emitter = mock.Mock()
+        seen = set()
+
+        def setnx(key, value, nx, ex):
+            if key in seen:
+                return None
+            seen.add(key)
+            return True
+
+        redis = mock.Mock(set=mock.Mock(side_effect=setnx))
+        with mock.patch("app.services.realtime.outbox._emitter", return_value=emitter),                 mock.patch("app.services.cache.get_redis_client", return_value=redis):
+            notify.riders_changed(rider_id)
+            notify.riders_changed(rider_id)
+        emitter.emit.assert_called_once_with(
+            notify.RIDERS_CHANGED_EVENT, {"rider_id": str(rider_id)}, room=ADMIN_ALL_ROOM
+        )
 
     def test_realtime_off_emits_nothing(self) -> None:
         self.settings.stop()

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fitView, groupByPickup, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
+import { bearingDeg, fitView, glideAt, groupByPickup, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
 import type { Rider } from '../types/app';
 
 const rider = (over: Partial<Rider>): Rider => ({
@@ -110,5 +110,29 @@ describe('riderPinTone', () => {
     expect(riderPinTone(rider({ last_location_at: '2026-10-08T11:59:00Z' }), now)).toBe('free');
     expect(riderPinTone(rider({ status: 'ON_TRIP', last_location_at: '2026-10-08T11:59:00Z' }), now)).toBe('busy');
     expect(riderPinTone(rider({ last_location_at: '2026-10-08T11:40:00Z' }), now)).toBe('stale');
+  });
+});
+
+describe('glideAt', () => {
+  const from = { lat: 21.0, lng: 72.0 };
+  const to = { lat: 21.1, lng: 72.2 };
+  it('starts where the pin was and ends where the rider is', () => {
+    expect(glideAt(from, to, 0)).toEqual(from);
+    expect(glideAt(from, to, 1)).toEqual(to);
+  });
+  it('eases: past the halfway point at half time, never overshooting', () => {
+    const mid = glideAt(from, to, 0.5);
+    expect(mid.lat).toBeGreaterThan(21.05);
+    expect(mid.lat).toBeLessThan(21.1);
+    expect(glideAt(from, to, 1.7)).toEqual(to);
+  });
+});
+
+describe('bearingDeg', () => {
+  it('points the way the rider is going, clockwise from north', () => {
+    expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 21.01, lng: 72 }))).toBe(0);
+    expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 21, lng: 72.01 }))).toBe(90);
+    expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 20.99, lng: 72 }))).toBe(180);
+    expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 21, lng: 71.99 }))).toBe(270);
   });
 });

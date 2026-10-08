@@ -235,6 +235,10 @@ def set_status(db: Session, user: User, online: bool) -> Rider:
         released = go_offline(db, user.id, "rider went offline")
     db.commit()
     _move_on(released)
+    from app.services.fleet import notify
+
+    # A pin appears or disappears on the admin map now, not at the next poll.
+    notify.riders_changed(user.id)
     return rider
 
 
@@ -262,9 +266,10 @@ def record_locations(db: Session, user: User, fixes: list[LocationFix]) -> Rider
             delivery.rider_longitude = newest.lng
             delivery.rider_location_at = at
     db.commit()
-    if delivery is not None:
-        from app.services.fleet import notify
+    from app.services.fleet import notify
 
+    notify.riders_changed(user.id)
+    if delivery is not None:
         notify.order_moved(db, delivery)
     return rider
 

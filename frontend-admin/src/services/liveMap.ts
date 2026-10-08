@@ -162,3 +162,27 @@ export function groupByPickup(orders: WaitingFleetOrder[]): { key: string; at: L
   }
   return [...groups.values()];
 }
+
+/** How long a pin takes to glide to a rider's new position. */
+export const GLIDE_MS = 1200;
+
+/**
+ * Where a gliding pin is at `t` (0..1) between its old and new position.
+ * Interpolated in lat/lng, not screen pixels, so panning and zooming mid-glide
+ * move the pin with the map instead of dragging it behind. Ease-out cubic:
+ * quick to start, no overshoot - a pin that bounces past a rider is a lie.
+ */
+export function glideAt(from: LatLng, to: LatLng, t: number): LatLng {
+  const k = t >= 1 ? 1 : t <= 0 ? 0 : 1 - (1 - t) ** 3;
+  if (k === 1) return to;
+  return { lat: from.lat + (to.lat - from.lat) * k, lng: from.lng + (to.lng - from.lng) * k };
+}
+
+/** Heading from `a` to `b` in degrees clockwise from north (0 north, 90 east). */
+export function bearingDeg(a: LatLng, b: LatLng): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+  const x =
+    Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}

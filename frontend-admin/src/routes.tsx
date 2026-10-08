@@ -456,7 +456,7 @@ export const ROUTES: RouteDef[] = [
     pattern: "/riders",
     roles: ADMIN_ONLY,
     nav: { section: "Platform", label: "Delivery riders", icon: Bike, keywords: ["riders", "fleet", "delivery boys", "drivers", "payouts", "online"] },
-    render: (ctx) => <RidersPage onToast={ctx.pushToast} token={ctx.token} />,
+    render: (ctx) => <RidersPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />,
   },
 
   {

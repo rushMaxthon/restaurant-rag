@@ -39,6 +39,7 @@ import type { FleetConfig, FleetSettings, Rider, RiderPay, RiderUnpaid, ToastMes
 
 interface RidersPageProps {
   token: string;
+  onNavigate?: (path: string) => void;
   onToast: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
@@ -60,7 +61,7 @@ function riderStatus(rider: Rider): string {
   return rider.status;
 }
 
-export function RidersPage({ token, onToast }: RidersPageProps) {
+export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
   const [tab, setTab] = useState<Tab>('map');
 
   return (
@@ -83,7 +84,7 @@ export function RidersPage({ token, onToast }: RidersPageProps) {
           </button>
         ))}
       </nav>
-      {tab === 'map' ? <RiderLiveMap onToast={onToast} token={token} /> : null}
+      {tab === 'map' ? <RiderLiveMap onNavigate={onNavigate} onToast={onToast} token={token} /> : null}
       {tab === 'roster' ? <RosterTab onToast={onToast} token={token} /> : null}
       {tab === 'settings' ? <SettingsTab onToast={onToast} token={token} /> : null}
       {tab === 'payouts' ? <PayoutsTab onToast={onToast} token={token} /> : null}

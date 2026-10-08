@@ -17626,14 +17626,49 @@ optgroup {
   color: var(--text);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
-  transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out);
+  /* No left/top transition: riders glide frame by frame in lat/lng
+     (RiderLiveMap useGlidingRiders), and a CSS transition here made every
+     pin trail behind the tiles while the map was dragged. */
 }
 
 .rmap__pin--rider {
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: var(--radius-pill);
   border: 3px solid var(--muted);
+  font-family: inherit;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.rmap__pin--picked {
+  box-shadow: var(--shadow-ring);
+  z-index: 4;
+}
+
+/* The heading: a small wedge on the ring, rotated to the rider's direction
+   of travel (bearing from the last two positions). Only drawn once they move. */
+.rmap__heading {
+  position: absolute;
+  inset: -9px;
+  pointer-events: none;
+}
+
+.rmap__heading-tip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.rmap__pin--free .rmap__heading-tip {
+  background: var(--success);
 }
 
 .rmap__pin--free {
@@ -17873,3 +17908,44 @@ optgroup {
     max-height: none;
   }
 }
+
+.rmap__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-control);
+  background: var(--primary-soft);
+}
+
+.rmap__card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rmap__card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Call is a tel: link dressed as a button; links underline by default. */
+.rmap__card-actions a {
+  text-decoration: none;
+}
+
+.rmap__avatar--free {
+  border: 2px solid var(--success);
+}
+
+.rmap__avatar--busy {
+  border: 2px solid var(--primary);
+  color: var(--primary-text);
+}
+
+.rmap__avatar--stale {
+  opacity: 0.6;
+}
+

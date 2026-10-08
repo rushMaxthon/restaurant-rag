@@ -867,7 +867,8 @@ Kept because the notes are hard-won, not because they apply here.
   IPv6 first and Redis listens on IPv4 only, so every connection waits out a
   timeout before falling back: measured 6.26 s per Celery enqueue against 0.12 s
   (2026-10-08). It made an admin assign take 6.6 s and slows every kitchen
-  accept, which enqueues the courier dispatch. `.env` still says `localhost`.
+  accept, which enqueues the courier dispatch. `.env` uses `127.0.0.1` for
+  `REDIS_URL` and both Celery URLs since 2026-10-08 (0.14 s per enqueue).
 - Git Bash: use forward slashes; working directory `F:\restaurant-rag`.
 
 ## Known rough edges in this checkout

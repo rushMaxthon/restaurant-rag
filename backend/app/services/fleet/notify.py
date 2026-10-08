@@ -30,11 +30,17 @@ OFFER_EVENT = "rider:offer"
 OFFER_WITHDRAWN_EVENT = "rider:offer_withdrawn"
 TRIP_UPDATED_EVENT = "rider:trip_updated"
 TRIP_CANCELLED_EVENT = "rider:trip_cancelled"
+#: To the admin room: a rider moved or changed state - the live map refetches.
+RIDERS_CHANGED_EVENT = "fleet:riders_changed"
 
 #: Android channel the rider app creates for offers (loud, full-screen).
 OFFER_CHANNEL = "rider-offers"
 #: The customer's map refreshes at most this often per delivery.
 MOVED_THROTTLE_SECONDS = 10
+#: The admin's live map hears about one rider at most this often. Short: the
+#: map is where a dispatcher decides who is nearest, so a pin should follow
+#: the rider, and the admin client coalesces a burst into one refetch anyway.
+RIDER_HINT_THROTTLE_SECONDS = 3
 
 
 def _emit(event: str, payload: dict[str, Any], *, room: Any) -> None:
@@ -150,6 +156,26 @@ def _throttled(delivery_id: uuid.UUID) -> bool:
         return not fresh
     except Exception:  # noqa: BLE001 - Redis down: announce rather than go silent
         return False
+
+
+def riders_changed(rider_user_id: uuid.UUID) -> None:
+    """Tell the admin live map a rider moved. An id, never a position: the map
+    refetches `/admin/riders/live`, whose ADMIN-only rule decides who sees it."""
+
+    from app.services.realtime.rooms import ADMIN_ALL_ROOM
+
+    if not get_settings().enable_realtime:
+        return
+    try:
+        from app.services.cache import get_redis_client
+
+        if not get_redis_client().set(
+            f"fleet:rider_hint:{rider_user_id}", "1", nx=True, ex=RIDER_HINT_THROTTLE_SECONDS
+        ):
+            return
+    except Exception:  # noqa: BLE001 - Redis down: announce rather than go silent
+        pass
+    _emit(RIDERS_CHANGED_EVENT, {"rider_id": str(rider_user_id)}, room=ADMIN_ALL_ROOM)
 
 
 def order_moved(db: Session, delivery: Any) -> None:

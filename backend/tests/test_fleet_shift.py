@@ -88,6 +88,25 @@ class ShiftTests(unittest.TestCase):
             row = db.get(Rider, user.id)
             self.assertEqual((row.last_latitude, row.last_longitude), (21.30, 72.30))
 
+    def test_going_online_or_offline_tells_the_admin_map(self) -> None:
+        user = self._rider(lat=21.5, lng=72.5, seen_at=datetime.now(UTC))
+        client = client_for(self.fdb, user)
+        with mock.patch("app.services.fleet.notify.riders_changed") as hint:
+            client.post("/api/rider/status", json={"online": True})
+            client.post("/api/rider/status", json={"online": False})
+        self.assertEqual(hint.call_count, 2)
+
+    def test_a_new_position_tells_the_admin_map_and_a_stale_one_does_not(self) -> None:
+        user = self._rider(lat=21.5, lng=72.5, seen_at=datetime.now(UTC) - timedelta(minutes=1))
+        client = client_for(self.fdb, user)
+        with mock.patch("app.services.fleet.notify.riders_changed") as hint:
+            client.post("/api/rider/location", json={"fixes": [{"lat": 21.6, "lng": 72.6, "at": _iso(datetime.now(UTC))}]})
+            hint.assert_called_once_with(user.id)
+            hint.reset_mock()
+            old = datetime.now(UTC) - timedelta(minutes=5)
+            client.post("/api/rider/location", json={"fixes": [{"lat": 1, "lng": 1, "at": _iso(old)}]})
+            hint.assert_not_called()
+
     def test_a_late_batch_never_moves_the_rider_backwards(self) -> None:
         user = self._rider(lat=21.5, lng=72.5, seen_at=datetime.now(UTC))
         old = datetime.now(UTC) - timedelta(minutes=2)
