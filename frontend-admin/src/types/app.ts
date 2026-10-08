@@ -2008,6 +2008,21 @@ export interface FleetTripView {
   drop: { name: string; address: string };
 }
 
+/** An order our fleet holds that no rider is carrying: a pin on the live map. */
+export interface WaitingFleetOrder {
+  order_id: string;
+  order_code: string;
+  restaurant_name: string;
+  provider: string;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  ordered_at: string;
+  /** The rider being asked right now; assigning someone else withdraws it. */
+  offered_to: string | null;
+}
+
 export interface FleetDeliveryView {
   provider: string;
   state: string;

@@ -17565,3 +17565,311 @@ optgroup {
   margin-top: 0;
 }
 
+
+/* ── Live rider map (Riders → Live map) ─────────────────────────────────
+   Hand-drawn from OpenStreetMap tiles; see services/liveMap.ts for why there
+   is no map library. Pins are a surface disc with a status ring rather than
+   a filled dot, so their ink reads in both themes without a literal white. */
+.rmap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--gap-section);
+  align-items: start;
+}
+
+.rmap__stage {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+
+.rmap__canvas {
+  position: relative;
+  height: min(70vh, 640px);
+  min-height: 420px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.rmap__canvas:active {
+  cursor: grabbing;
+}
+
+.rmap__tiles {
+  position: absolute;
+  inset: 0;
+}
+
+.dark .rmap__tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}
+
+.rmap__tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+}
+
+.rmap__pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out);
+}
+
+.rmap__pin--rider {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--muted);
+}
+
+.rmap__pin--free {
+  border-color: var(--success);
+}
+
+.rmap__pin--busy {
+  border-color: var(--primary);
+}
+
+.rmap__pin--stale {
+  opacity: 0.55;
+}
+
+.rmap__pin--order {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  border: 2px solid var(--danger);
+  color: var(--danger-text);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.rmap__pin--active {
+  border-color: var(--primary);
+  color: var(--primary-text);
+  box-shadow: var(--shadow-ring);
+  z-index: 2;
+}
+
+.rmap__pin--drop {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--primary);
+}
+
+.rmap__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
+
+.rmap__controls {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rmap__control {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+}
+
+.rmap__legend {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-size: var(--fs-micro);
+  color: var(--text);
+}
+
+.rmap__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.rmap__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--muted);
+}
+
+.rmap__swatch--free {
+  border-color: var(--success);
+}
+
+.rmap__swatch--busy {
+  border-color: var(--primary);
+}
+
+.rmap__swatch--stale {
+  opacity: 0.55;
+}
+
+.rmap__credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  background: var(--surface);
+  opacity: 0.85;
+}
+
+.rmap__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack);
+  padding: var(--pad-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+.rmap__side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rmap__side-head h3,
+.rmap__shortlist h4 {
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-strong);
+}
+
+.rmap__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rmap__order {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rmap__order--active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.rmap__order-top {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rmap__muted {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
+
+.rmap__asking {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--primary-text);
+}
+
+.rmap__asking--alert {
+  color: var(--danger-text);
+}
+
+.rmap__shortlist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.rmap__rider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rmap__avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--success-soft, var(--surface-alt));
+  color: var(--success-text);
+}
+
+.rmap__rider-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .rmap {
+    grid-template-columns: 1fr;
+  }
+
+  .rmap__side {
+    max-height: none;
+  }
+}

@@ -12,7 +12,7 @@
  * signs them out at once and withdraws any order they were being offered.
  */
 
-import { Bike, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
+import { Bike, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -20,6 +20,7 @@ import { DataToolbar } from '../components/DataToolbar';
 import { EmptyPanel } from '../components/EmptyPanel';
 import { Modal } from '../components/Modal';
 import { PageIntro } from '../components/PageIntro';
+import { RiderLiveMap } from '../components/RiderLiveMap';
 import { ResponsiveTable, type TableColumn } from '../components/ResponsiveTable';
 import { StatusPill } from '../components/StatusPill';
 import { useMoney } from '../hooks/useMoney';
@@ -41,10 +42,11 @@ interface RidersPageProps {
   onToast: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
-type Tab = 'roster' | 'settings' | 'payouts';
+type Tab = 'map' | 'roster' | 'settings' | 'payouts';
 type StatusFilter = 'ALL' | 'ONLINE' | 'ON_TRIP' | 'OFFLINE' | 'INACTIVE';
 
 const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
+  { key: 'map', label: 'Live map', icon: MapIcon },
   { key: 'roster', label: 'Riders', icon: Users },
   { key: 'settings', label: 'Pay & dispatch', icon: Settings2 },
   { key: 'payouts', label: 'Payouts', icon: Wallet },
@@ -59,7 +61,7 @@ function riderStatus(rider: Rider): string {
 }
 
 export function RidersPage({ token, onToast }: RidersPageProps) {
-  const [tab, setTab] = useState<Tab>('roster');
+  const [tab, setTab] = useState<Tab>('map');
 
   return (
     <div className="page-stack">
@@ -81,6 +83,7 @@ export function RidersPage({ token, onToast }: RidersPageProps) {
           </button>
         ))}
       </nav>
+      {tab === 'map' ? <RiderLiveMap onToast={onToast} token={token} /> : null}
       {tab === 'roster' ? <RosterTab onToast={onToast} token={token} /> : null}
       {tab === 'settings' ? <SettingsTab onToast={onToast} token={token} /> : null}
       {tab === 'payouts' ? <PayoutsTab onToast={onToast} token={token} /> : null}

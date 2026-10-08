@@ -87,6 +87,7 @@ import type {
   RiderPayoutRecord,
   RiderUnpaid,
   RiderUpdateInput,
+  WaitingFleetOrder,
 } from '../types/app';
 
 // Imported for the fetch calls below AND re-exported, because
@@ -270,6 +271,14 @@ export const api = {
   // --- own delivery fleet (admin only) ---
   listRiders(token: string): Promise<Rider[]> {
     return request<Rider[]>('/admin/riders', { token });
+  },
+  /** Riders on shift (online or on a trip) with their last position, for the live map. */
+  listLiveRiders(token: string): Promise<Rider[]> {
+    return request<Rider[]>('/admin/riders/live', { token });
+  },
+  /** Fleet orders nobody is carrying yet; assign one with `reassignFleetDelivery`. */
+  listWaitingFleetOrders(token: string): Promise<WaitingFleetOrder[]> {
+    return request<WaitingFleetOrder[]>('/admin/riders/waiting', { token });
   },
   createRider(token: string, body: RiderCreateInput): Promise<Rider> {
     return request<Rider>('/admin/riders', { method: 'POST', token, body });
