@@ -12,6 +12,7 @@ import {
   stepLabel,
 } from '../services/courier';
 import { useMoney } from '../hooks/useMoney';
+import { FleetDeliverySection } from './FleetDeliverySection';
 import type { OrderDelivery, ToastMessage } from '../types/app';
 
 /**
@@ -48,6 +49,8 @@ interface DeliveryPanelProps {
   orderId: string;
   /** Said when a cancel, re-book or simulate succeeds or is refused. */
   onToast?: (title: string, description: string, tone?: ToastMessage['tone']) => void;
+  /** The platform admin also sees our own riders' side: offers, reassign, confirm. */
+  isAdmin?: boolean;
 }
 
 /** Our seven states, in words a person reads, and the tone each deserves. */
@@ -64,7 +67,7 @@ const STATES: Record<string, { label: string; tone: 'ok' | 'busy' | 'warn' }> = 
 /** States a delivery cannot move on from, so there is nothing left to watch. */
 const DONE = new Set(['DELIVERED', 'CANCELLED', 'FAILED']);
 
-export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPanelProps) {
+export function DeliveryPanel({ token, orderId, awaiting, onToast, isAdmin = false }: DeliveryPanelProps) {
   const money = useMoney();
   const [delivery, setDelivery] = useState<OrderDelivery | null>(null);
   const [loading, setLoading] = useState(true);
@@ -435,6 +438,10 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast }: DeliveryPan
           </div>
         </div>
       )}
+
+      {isAdmin && (delivery.provider === 'own_fleet' || delivery.provider === 'unassigned') ? (
+        <FleetDeliverySection onChanged={() => setRound((n) => n + 1)} onToast={onToast} orderId={orderId} token={token} />
+      ) : null}
     </section>
   );
 }

@@ -626,7 +626,12 @@ def _delivery_response(db: Session, delivery: OrderDelivery | None, viewer: User
         and str(viewer.role) in {"ADMIN", "OWNER"}
         and delivery_service.can_allocate(order, delivery)
     )
-    response.can_simulate = str(viewer.role) == "ADMIN" and delivery_service.simulate_allowed()
+    # The courier's sandbox, so never on our own riders' order.
+    response.can_simulate = (
+        str(viewer.role) == "ADMIN"
+        and delivery.provider not in {"own_fleet", "unassigned"}
+        and delivery_service.simulate_allowed()
+    )
     if (
         order is not None
         and delivery.provider == "own_fleet"

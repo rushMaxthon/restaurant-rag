@@ -76,6 +76,14 @@ export function resolveStatusPillTone(status: string | OrderStatus): StatusPillT
   if (normalized === 'OFFLINE') {
     return 'danger';
   }
+  // A delivery rider (2026-10-08). Off shift is normal, not a fault, so it is
+  // grey - unlike a printer's OFFLINE above. On a trip is busy: the brand tone.
+  if (normalized === 'OFF SHIFT') {
+    return 'muted';
+  }
+  if (normalized === 'ON_TRIP' || normalized === 'ON TRIP') {
+    return 'primary';
+  }
   if (normalized === 'NEVER CONNECTED') {
     return 'warning';
   }

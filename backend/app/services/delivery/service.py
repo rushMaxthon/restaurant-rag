@@ -350,6 +350,10 @@ def can_allocate(order: Order, row: OrderDelivery | None) -> bool:
 
     if row is None or not row.provider_order_id:
         return False
+    # The courier's network is asked; our own riders' row has none to ask, and
+    # "asking" would call Pidge about a fleet order (2026-10-08).
+    if getattr(row, "provider", "") in {"own_fleet", UNASSIGNED}:
+        return False
     if row.state != DeliveryState.PENDING.value or row.rider_name:
         return False
     return order.status not in {OrderStatus.DELIVERED, OrderStatus.CANCELLED}

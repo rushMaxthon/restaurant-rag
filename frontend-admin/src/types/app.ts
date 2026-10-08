@@ -1909,3 +1909,111 @@ export interface PayoutAccount extends Omit<PayoutAccountInput, "bank_account_nu
   last_error: string | null;
   updated_at: string | null;
 }
+
+// --- Own delivery fleet (2026-10-08): `/api/admin/riders/*`, ADMIN only ------
+
+export type RiderStatus = 'OFFLINE' | 'ONLINE' | 'ON_TRIP';
+export type RiderVehicle = 'BIKE' | 'SCOOTER' | 'CYCLE';
+
+export interface Rider {
+  user_id: string;
+  full_name: string;
+  phone_number: string | null;
+  is_active: boolean;
+  vehicle_type: RiderVehicle;
+  vehicle_number: string;
+  city: string;
+  status: RiderStatus;
+  last_latitude: number | null;
+  last_longitude: number | null;
+  last_location_at: string | null;
+  active_order_id: string | null;
+  notes: string;
+}
+
+export interface RiderCreateInput {
+  full_name: string;
+  phone_number: string;
+  password: string;
+  vehicle_type: RiderVehicle;
+  vehicle_number: string;
+  city: string;
+  notes?: string;
+}
+
+export type RiderUpdateInput = Partial<Omit<RiderCreateInput, 'phone_number'>> & { is_active?: boolean };
+
+export interface RiderPay {
+  base: string;
+  per_km: string;
+  minimum: string;
+}
+
+export interface FleetConfig {
+  offer_seconds: number;
+  max_offers: number;
+  window_minutes: number;
+  radius_km: number;
+  silent_minutes: number;
+  location_ids: string[];
+}
+
+export interface FleetSettings {
+  /** `enable_own_fleet` on the server: read-only here, set by deployment. */
+  enabled: boolean;
+  pay: RiderPay;
+  fleet: FleetConfig;
+}
+
+export interface RiderUnpaid {
+  rider_user_id: string;
+  full_name: string;
+  trips: number;
+  amount: string;
+  oldest: string | null;
+}
+
+export interface RiderPayoutRecord {
+  id: string;
+  rider_user_id: string;
+  period_from: string;
+  period_to: string;
+  amount: string;
+  trips: number;
+  reference: string;
+  paid_at: string;
+}
+
+export interface FleetOfferRow {
+  rider_user_id: string;
+  rider_name: string;
+  outcome: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'WITHDRAWN';
+  offered_at: string;
+  responded_at: string | null;
+  metres: number | null;
+}
+
+export interface FleetTripView {
+  id: string;
+  order_code: string;
+  step: 'to_pickup' | 'at_pickup' | 'to_drop' | 'at_drop' | 'done';
+  accepted_at: string;
+  delivered_at: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+  distance_km: number;
+  earning: string;
+  otp_locked: boolean;
+  pickup: { name: string };
+  drop: { name: string; address: string };
+}
+
+export interface FleetDeliveryView {
+  provider: string;
+  state: string;
+  attempt: number;
+  otp_locked: boolean;
+  fallback_reason: string | null;
+  offers: FleetOfferRow[];
+  trip: FleetTripView | null;
+}

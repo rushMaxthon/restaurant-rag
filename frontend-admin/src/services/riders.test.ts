@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  emptyRiderDraft,
+  lastSeenLabel,
+  payExample,
+  payFormError,
+  riderFormErrors,
+  tenDigits,
+} from './riders';
+
+describe('rider form', () => {
+  it('needs a name, a 10-digit mobile and an 8-character password to create', () => {
+    const errors = riderFormErrors({ ...emptyRiderDraft(), full_name: ' ', phone: '98765', password: 'short' }, 'create');
+    expect(errors.full_name).toBeTruthy();
+    expect(errors.phone).toBeTruthy();
+    expect(errors.password).toBeTruthy();
+  });
+
+  it('accepts a complete rider', () => {
+    const draft = { ...emptyRiderDraft(), full_name: 'Ravi', phone: '98765 43210', password: 'rider1234' };
+    expect(riderFormErrors(draft, 'create')).toEqual({});
+  });
+
+  it('allows an empty password when editing (unchanged)', () => {
+    const draft = { ...emptyRiderDraft(), full_name: 'Ravi', phone: '9876543210', password: '' };
+    expect(riderFormErrors(draft, 'edit')).toEqual({});
+  });
+
+  it('keeps the last ten digits of whatever was typed', () => {
+    expect(tenDigits('+91 98765-43210')).toBe('9876543210');
+  });
+});
+
+describe('pay settings', () => {
+  it('refuses a rate that pays nothing', () => {
+    expect(payFormError({ base: '0', per_km: '0', minimum: '0' })).toBeTruthy();
+  });
+
+  it('refuses something that is not a number', () => {
+    expect(payFormError({ base: 'abc', per_km: '6', minimum: '30' })).toBeTruthy();
+  });
+
+  it('shows what a 4 km trip pays, never under the minimum', () => {
+    expect(payExample({ base: '25', per_km: '6', minimum: '30' }, 4)).toBe(49);
+    expect(payExample({ base: '10', per_km: '2', minimum: '30' }, 1)).toBe(30);
+  });
+});
+
+describe('lastSeenLabel', () => {
+  const now = new Date('2026-10-08T12:00:00Z');
+  it('says never when there is no location', () => {
+    expect(lastSeenLabel(null, now)).toBe('Never');
+  });
+  it('reads minutes and hours', () => {
+    expect(lastSeenLabel('2026-10-08T11:59:40Z', now)).toBe('Just now');
+    expect(lastSeenLabel('2026-10-08T11:55:00Z', now)).toBe('5 min ago');
+    expect(lastSeenLabel('2026-10-08T09:00:00Z', now)).toBe('3 h ago');
+  });
+});

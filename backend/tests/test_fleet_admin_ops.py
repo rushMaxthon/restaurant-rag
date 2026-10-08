@@ -121,6 +121,24 @@ class AdminOpsTests(unittest.TestCase):
         self.assertEqual(Decimal(earnings["unpaid"]), Decimal("60.00"))
         self.assertEqual(Decimal(earnings["paid_total"]), Decimal("86.00"))
 
+    def test_courier_only_buttons_are_not_offered_on_a_fleet_order(self) -> None:
+        # "Find a rider" asks the COURIER's network, and simulate drives the
+        # courier's sandbox: on our own riders' order either would call Pidge.
+        from app.services.delivery import service
+
+        with self.fdb.session() as db:
+            order = self.fdb.make_order(db)
+            row = self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+            self.assertFalse(service.can_allocate(order, row))
+            with mock.patch.object(service, "delivery_provider") as courier:
+                with self.assertRaises(Exception):
+                    service.allocate(db, order)
+                courier.return_value.allocate.assert_not_called()
+        body = client_for(self.fdb, self.admin).get(f"/api/orders/{order.id}/delivery").json()
+        self.assertFalse(body["can_allocate"])
+        self.assertFalse(body["can_simulate"])
+
     def test_confirm_delivered_completes_the_trip(self) -> None:
         now = datetime.now(UTC)
         with self.fdb.session() as db:

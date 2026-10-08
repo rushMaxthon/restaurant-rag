@@ -2844,6 +2844,13 @@ select:focus-visible {
   border-color: color-mix(in srgb, var(--chart-4) 22%, transparent);
 }
 
+/* The platform's own delivery riders (2026-10-08). */
+.usr-role.usr-role--rider {
+  background: var(--neutral-soft);
+  color: var(--on-neutral-soft);
+  border-color: color-mix(in srgb, var(--chart-2) 22%, transparent);
+}
+
 /* Shrink-wrap guard for the remaining passive badges. See the note in the
    status badge block above: a grid parent stretches its items, and these are
    all one refactor away from landing in a table cell. No visual change
