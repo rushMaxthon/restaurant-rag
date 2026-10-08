@@ -14,7 +14,7 @@ import { useRiderRealtime } from '@hooks/useRiderRealtime';
 import { useApi, useSession } from '@/store/SessionProvider';
 import { offerPollMs } from '@utils/realtime';
 import { clearOfferAlert, showOfferAlert } from '@/services/push';
-import type { Offer, RiderMe, Trip } from '@/types/api';
+import type { Offer, OpenOrder, RiderMe, Trip } from '@/types/api';
 
 /**
  * What the rider app knows about the rider right now: who they are, whether
@@ -29,16 +29,21 @@ import type { Offer, RiderMe, Trip } from '@/types/api';
 
 const TRIP_POLL_MS = 15_000;
 const ME_POLL_MS = 30_000;
+/** The Orders board: often enough that a card a few seconds old is rarely gone. */
+const BOARD_POLL_MS = 8_000;
 
 type RiderContextValue = {
   me: RiderMe | null;
   trip: Trip | null;
   offer: Offer | null;
+  /** The Orders board - shared by the tab, its badge and Home. */
+  openOrders: OpenOrder[];
   loading: boolean;
   error: string | null;
   refreshMe: () => Promise<void>;
   refreshTrip: () => Promise<void>;
   refreshOffer: () => Promise<void>;
+  refreshOpenOrders: () => Promise<void>;
   setMe: (me: RiderMe) => void;
   setTrip: (trip: Trip | null) => void;
   clearOffer: () => void;
@@ -94,6 +99,15 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     }
   }, [api]);
 
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
+  const refreshOpenOrders = useCallback(async () => {
+    try {
+      setOpenOrders(await api.openOrders());
+    } catch {
+      // the next poll tries again
+    }
+  }, [api]);
+
   const clearOffer = useCallback(() => {
     setOffer(current => {
       if (current) dismissed.current.add(current.id);
@@ -135,15 +149,21 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     session.status === 'signedIn' ? session.token : null,
     foreground || onShift,
     {
-      onOffer: () => void refreshOffer(),
+      // An offer coming or going is also the board changing.
+      onOffer: () => {
+        void refreshOffer();
+        void refreshOpenOrders();
+      },
       onTrip: () => {
         void refreshTrip();
         void refreshMe();
+        void refreshOpenOrders();
       },
       onReconnect: () => {
         void refreshMe();
         void refreshTrip();
         void refreshOffer();
+        void refreshOpenOrders();
       },
       onRevoked: () =>
         void signOut('You were signed out. Please sign in again.'),
@@ -174,16 +194,27 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     }
   }, [offer, foreground]);
 
+  // The board is for looking at any time, so it is kept fresh whenever the
+  // app is open - online or not, mid-trip or not.
+  useEffect(() => {
+    if (!foreground) return;
+    void refreshOpenOrders();
+    const id = setInterval(refreshOpenOrders, BOARD_POLL_MS);
+    return () => clearInterval(id);
+  }, [foreground, refreshOpenOrders]);
+
   const value = useMemo(
     () => ({
       me,
       trip,
       offer,
+      openOrders,
       loading,
       error,
       refreshMe,
       refreshTrip,
       refreshOffer,
+      refreshOpenOrders,
       setMe,
       setTrip,
       clearOffer,
@@ -192,11 +223,13 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       me,
       trip,
       offer,
+      openOrders,
       loading,
       error,
       refreshMe,
       refreshTrip,
       refreshOffer,
+      refreshOpenOrders,
       clearOffer,
     ],
   );

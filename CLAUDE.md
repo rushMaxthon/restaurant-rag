@@ -588,6 +588,13 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   nobody, so a late expiry task cannot leave "Asking ..." up. Drawn by hand from
   OpenStreetMap tiles: no map library (house rule), and Google's JS map needs
   billing that is not set up.
+- **Our riders first, then the Orders board.** Nobody free / nobody accepting
+  / `max_offers` spent no longer send an order to Pidge early: it stays OPEN
+  for `window_minutes` (5). The rider app's Orders tab (`offers.open_orders`)
+  shows every open order near the rider to ANY active rider - offline,
+  mid-trip or free - flagged `missed` if it was offered to them first;
+  `offers.claim` is what needs them online and free (`rider_offline`,
+  `rider_busy`, `order_taken`). Seeing is not taking: never gate the list.
 - **Rider push.** Backend sends data-only FCM for offers and cancelled trips
   (`fleet/notify.py`); the app draws the alert itself (`rider/src/services/push.ts`,
   channel `rider-offers` must match `OFFER_CHANNEL`). While on shift the

@@ -314,31 +314,45 @@ def _window_left(delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> 
     return started + timedelta(minutes=fleet.window_minutes) - now
 
 
-def _rider_is_free(db: Session, rider_user_id: uuid.UUID) -> bool:
+def _why_not_free(db: Session, rider_user_id: uuid.UUID) -> str | None:
+    """Why this rider cannot take an order right now, or None if they can."""
+
     rider = db.get(Rider, rider_user_id)
-    if rider is None or rider.status != RiderStatus.ONLINE:
-        return False
+    if rider is None or rider.status == RiderStatus.OFFLINE:
+        return "rider_offline"
     live = db.scalar(select(RiderTrip.id).where(RiderTrip.rider_user_id == rider_user_id, RiderTrip.ended_at.is_(None)))
-    return live is None
+    if live is not None or rider.status == RiderStatus.ON_TRIP:
+        return "rider_busy"
+    return None
 
 
 def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Orders our fleet still holds that this rider could take right now, nearest first.
+    """The Orders board: what our fleet still holds near this rider, nearest first.
 
-    Only for a rider who is online and free; only within `radius_km` of where
-    they last reported. It includes an order currently being offered to
-    someone else - first come, first served - and one whose offer to THIS
-    rider ran out while they were not looking, which is the point of the list.
+    Visible to any active rider within `radius_km` of where they last
+    reported - offline, mid-trip or free - because it is a board they check
+    any time (2026-10-08). TAKING one is what needs them online and free, and
+    `claim` enforces that. It includes an order being offered to someone else
+    (first come, first served) and one whose offer to THIS rider ran out while
+    they were not looking, flagged `missed`.
     """
 
     from app.services.fleet.earnings import earning_for
     from app.services.fleet.trips import trip_km
 
     now = now or _now()
-    if not _rider_is_free(db, rider_user.id):
-        return []
     rider = db.get(Rider, rider_user.id)
+    if rider is None or not rider_user.is_active:
+        return []
     fleet = load_fleet(db)
+    missed = set(
+        db.scalars(
+            select(RiderOffer.order_delivery_id).where(
+                RiderOffer.rider_user_id == rider_user.id,
+                RiderOffer.outcome.in_([OfferOutcome.EXPIRED, OfferOutcome.DECLINED]),
+            )
+        )
+    )
     from app.services.fleet.config import load_pay
 
     pay = load_pay(db)
@@ -374,6 +388,7 @@ def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> l
             "trip_distance_km": round(km, 1),
             "earning_estimate": estimate,
             "minutes_left": max(1, int(left.total_seconds() // 60)),
+            "missed": delivery.id in missed,
         })
     out.sort(key=lambda r: (r["pickup_distance_m"] is None, r["pickup_distance_m"] or 0))
     return out
@@ -394,9 +409,10 @@ def claim(db: Session, rider_user: User, order_id: uuid.UUID, now: datetime | No
     if delivery_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
     delivery = _lock(db, delivery_id)
-    if not _rider_is_free(db, rider_user.id):
+    blocked = _why_not_free(db, rider_user.id)
+    if blocked is not None:
         db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "rider_offline")
+        raise HTTPException(status.HTTP_409_CONFLICT, blocked)
     if (
         delivery is None
         or delivery.provider != PROVIDER

@@ -177,6 +177,7 @@ def open_orders(user: RiderUser, db: Db) -> list[OpenOrderView]:
             trip_distance_km=row["trip_distance_km"],
             earning_estimate=row["earning_estimate"],
             minutes_left=row["minutes_left"],
+            missed=row["missed"],
             **_summary(row["order"]),
         )
         for row in offers.open_orders(db, user)

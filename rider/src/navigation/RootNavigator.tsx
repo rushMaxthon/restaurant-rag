@@ -12,6 +12,7 @@ import { EarningsScreen } from '@screens/earnings/EarningsScreen';
 import { HistoryScreen } from '@screens/history/HistoryScreen';
 import { HomeScreen } from '@screens/home/HomeScreen';
 import { OfferScreen } from '@screens/offer/OfferScreen';
+import { OrdersScreen } from '@screens/orders/OrdersScreen';
 import { PushRouter } from '@components/PushRouter';
 import { PermissionsScreen } from '@screens/onboarding/PermissionsScreen';
 import { ProfileScreen } from '@screens/profile/ProfileScreen';
@@ -33,6 +34,7 @@ function MainTabs() {
       screenOptions={{ headerShown: false, animation: 'shift' }}
     >
       <Tabs.Screen name="Home" component={HomeScreen} />
+      <Tabs.Screen name="Orders" component={OrdersScreen} />
       <Tabs.Screen name="Earnings" component={EarningsScreen} />
       <Tabs.Screen name="History" component={HistoryScreen} />
       <Tabs.Screen name="Profile" component={ProfileScreen} />

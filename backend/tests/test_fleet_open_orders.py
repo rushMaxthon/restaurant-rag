@@ -90,17 +90,42 @@ class OpenOrderTests(unittest.TestCase):
         self.assertGreater(rows[0]["earning_estimate"], 0)
         self.assertGreaterEqual(rows[0]["minutes_left"], 4)
 
-    def test_hidden_from_a_rider_who_is_far_offline_or_already_riding(self) -> None:
-        self._order()
+    def test_the_board_is_visible_offline_or_mid_trip_but_never_from_far_away(self) -> None:
+        # The Orders tab is a board a rider checks any time (2026-10-08):
+        # seeing is open to every nearby rider; TAKING is what needs them free.
+        order = self._order()
         self.assertEqual(self._open(self._rider(FAR)), [])
-        self.assertEqual(self._open(self._rider(status=RiderStatus.OFFLINE)), [])
+        self.assertEqual([r["order_id"] for r in self._open(self._rider(status=RiderStatus.OFFLINE))], [order.id])
         busy = self._rider()
         other = self._order()
         with self.fdb.session() as db:
             d = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == other.id))
             db.add(RiderTrip(order_delivery_id=d.id, rider_user_id=busy.id, accepted_at=datetime.now(UTC)))
             db.commit()
-        self.assertEqual(self._open(busy), [])
+        self.assertEqual([r["order_id"] for r in self._open(busy)], [order.id])
+
+    def test_says_which_orders_this_rider_missed(self) -> None:
+        rider = self._rider()
+        missed, fresh = self._order(), self._order()
+        with self.fdb.session() as db:
+            d = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == missed.id))
+            past = datetime.now(UTC) - timedelta(seconds=40)
+            db.add(RiderOffer(order_delivery_id=d.id, rider_user_id=rider.id, outcome=OfferOutcome.EXPIRED,
+                              offered_at=past, expires_at=past + timedelta(seconds=30), distance_to_pickup_m=500.0))
+            db.commit()
+        rows = {r["order_id"]: r["missed"] for r in self._open(rider)}
+        self.assertEqual(rows, {missed.id: True, fresh.id: False})
+
+    def test_a_rider_mid_trip_cannot_take_another(self) -> None:
+        busy = self._rider()
+        carrying, waiting = self._order(), self._order()
+        with self.fdb.session() as db:
+            d = db.scalar(select(OrderDelivery).where(OrderDelivery.order_id == carrying.id))
+            db.add(RiderTrip(order_delivery_id=d.id, rider_user_id=busy.id, accepted_at=datetime.now(UTC)))
+            db.commit()
+        with self.fdb.session() as db, self.assertRaises(HTTPException) as caught:
+            offers.claim(db, db.get(User, busy.id), waiting.id)
+        self.assertEqual(caught.exception.detail, "rider_busy")
 
     def test_leaves_out_what_is_carried_finished_or_the_couriers(self) -> None:
         rider = self._rider()

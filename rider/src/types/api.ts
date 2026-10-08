@@ -76,6 +76,8 @@ export type OpenOrder = {
   item_count: number;
   /** Until a courier is booked instead. */
   minutes_left: number;
+  /** Offered to this rider first, and they let it run out or declined it. */
+  missed: boolean;
 };
 
 export type TripStop = {

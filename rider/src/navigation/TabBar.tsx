@@ -13,9 +13,11 @@ import { Icon, type IconName } from '@components/ui/Icon';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
+import { useRider } from '@/store/RiderProvider';
 
 const ICONS: Record<string, [IconName, IconName]> = {
   Home: ['home-outline', 'home'],
+  Orders: ['receipt-outline', 'receipt'],
   Earnings: ['wallet-outline', 'wallet'],
   History: ['time-outline', 'time'],
   Profile: ['person-circle-outline', 'person-circle'],
@@ -31,6 +33,8 @@ const BAR_HEIGHT = 68;
  */
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
+  // Orders waiting on the board: a count on its tab, so a rider sees them from anywhere.
+  const waiting = useRider().openOrders.length;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const count = state.routes.length;
@@ -97,11 +101,31 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 }
               }}
             >
-              <Icon
-                name={focused ? solid : outline}
-                size={22}
-                color={focused ? colors.onPrimary : colors.textMuted}
-              />
+              <View>
+                <Icon
+                  name={focused ? solid : outline}
+                  size={22}
+                  color={focused ? colors.onPrimary : colors.textMuted}
+                />
+                {route.name === 'Orders' && waiting > 0 ? (
+                  <View
+                    style={[
+                      styles.badge,
+                      {
+                        backgroundColor: colors.danger,
+                        borderColor: colors.elevated,
+                      },
+                    ]}
+                  >
+                    <AppText
+                      variant="micro"
+                      style={[styles.badgeText, { color: colors.onPrimary }]}
+                    >
+                      {waiting > 9 ? '9+' : waiting}
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
               <AppText
                 variant="micro"
                 style={{ color: focused ? colors.onPrimary : colors.textMuted }}
@@ -138,6 +162,19 @@ const styles = StyleSheet.create({
     bottom: 6,
     borderRadius: radius.xl,
   },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { fontSize: 10, lineHeight: 12 },
   item: {
     flex: 1,
     height: '100%',

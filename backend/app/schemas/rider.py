@@ -116,6 +116,8 @@ class OpenOrderView(BaseModel):
     item_count: int
     #: Until the courier is booked instead.
     minutes_left: int
+    #: Offered to this rider first, and they let it run out or declined it.
+    missed: bool = False
 
 
 class TripStop(BaseModel):
