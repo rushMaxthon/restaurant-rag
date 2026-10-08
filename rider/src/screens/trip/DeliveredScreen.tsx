@@ -19,7 +19,7 @@ import { Button } from '@components/ui/Button';
 import { Screen } from '@components/ui/Screen';
 import type { RootStackParamList } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
-import { space } from '@theme/tokens';
+import { space, motion } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -32,7 +32,10 @@ const RING_LENGTH = 2 * Math.PI * 58;
 function Burst({ angle, color }: { angle: number; color: string }) {
   const t = useSharedValue(0);
   useEffect(() => {
-    t.value = withDelay(350, withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) }));
+    t.value = withDelay(
+      350,
+      withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) }),
+    );
   }, [t]);
   const style = useAnimatedStyle(() => ({
     opacity: 1 - t.value,
@@ -42,11 +45,16 @@ function Burst({ angle, color }: { angle: number; color: string }) {
       { scale: 1 - t.value * 0.5 },
     ],
   }));
-  return <Animated.View style={[styles.spark, { backgroundColor: color }, style]} />;
+  return (
+    <Animated.View style={[styles.spark, { backgroundColor: color }, style]} />
+  );
 }
 
 /** The moment a delivery is done: the ring closes, the tick draws, the money lands. */
-export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Delivered'>) {
+export function DeliveredScreen({
+  navigation,
+  route,
+}: NativeStackScreenProps<RootStackParamList, 'Delivered'>) {
   const { colors } = useTheme();
   const ring = useSharedValue(0);
   const tick = useSharedValue(0);
@@ -54,13 +62,23 @@ export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<Ro
 
   useEffect(() => {
     haptic('success');
-    pop.value = withSpring(1, { damping: 10, stiffness: 180 });
-    ring.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
-    tick.value = withDelay(350, withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) }));
+    pop.value = withSpring(1, motion.spring);
+    ring.value = withTiming(1, {
+      duration: 500,
+      easing: Easing.out(Easing.cubic),
+    });
+    tick.value = withDelay(
+      350,
+      withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) }),
+    );
   }, [ring, tick, pop]);
 
-  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: RING_LENGTH * (1 - ring.value) }));
-  const tickProps = useAnimatedProps(() => ({ strokeDashoffset: TICK_LENGTH * (1 - tick.value) }));
+  const ringProps = useAnimatedProps(() => ({
+    strokeDashoffset: RING_LENGTH * (1 - ring.value),
+  }));
+  const tickProps = useAnimatedProps(() => ({
+    strokeDashoffset: TICK_LENGTH * (1 - tick.value),
+  }));
   const badge = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const sparks = [colors.primary, colors.success, colors.warning];
 
@@ -69,11 +87,20 @@ export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<Ro
       <View style={styles.center}>
         <View style={styles.badgeWrap}>
           {Array.from({ length: 10 }, (_, i) => (
-            <Burst key={i} angle={(i / 10) * Math.PI * 2} color={sparks[i % 3] ?? colors.primary} />
+            <Burst
+              key={i}
+              angle={(i / 10) * Math.PI * 2}
+              color={sparks[i % 3] ?? colors.primary}
+            />
           ))}
           <Animated.View style={badge}>
             <Svg width={SIZE} height={SIZE}>
-              <Circle cx={SIZE / 2} cy={SIZE / 2} r={58} fill={colors.successSoft} />
+              <Circle
+                cx={SIZE / 2}
+                cy={SIZE / 2}
+                r={58}
+                fill={colors.successSoft}
+              />
               <AnimatedCircle
                 cx={SIZE / 2}
                 cy={SIZE / 2}
@@ -101,7 +128,10 @@ export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<Ro
           </Animated.View>
         </View>
 
-        <Animated.View entering={FadeInDown.delay(500).springify().damping(16)} style={styles.text}>
+        <Animated.View
+          entering={FadeInDown.delay(500).duration(motion.base)}
+          style={styles.text}
+        >
           <AppText variant="title" align="center">
             Delivered!
           </AppText>
@@ -110,16 +140,33 @@ export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<Ro
           </AppText>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(700).springify().damping(16)} style={[styles.earned, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+        <Animated.View
+          entering={FadeInDown.delay(700).duration(motion.base)}
+          style={[
+            styles.earned,
+            { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+          ]}
+        >
           <AppText variant="micro" tone="muted" align="center">
             YOU EARNED
           </AppText>
-          <AnimatedAmount value={Number(route.params.amount)} duration={900} align="center" tone="success" />
+          <AnimatedAmount
+            value={Number(route.params.amount)}
+            duration={900}
+            align="center"
+            tone="success"
+          />
         </Animated.View>
       </View>
 
       <Animated.View entering={FadeInDown.delay(900)}>
-        <Button label="Back to orders" icon="arrow-forward" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} />
+        <Button
+          label="Back to orders"
+          icon="arrow-forward"
+          onPress={() =>
+            navigation.reset({ index: 0, routes: [{ name: 'Main' }] })
+          }
+        />
       </Animated.View>
     </Screen>
   );
@@ -128,8 +175,19 @@ export function DeliveredScreen({ navigation, route }: NativeStackScreenProps<Ro
 const styles = StyleSheet.create({
   root: { justifyContent: 'space-between' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  badgeWrap: { width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' },
+  badgeWrap: {
+    width: SIZE,
+    height: SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   spark: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
   text: { marginTop: space.xxl, gap: space.xs },
-  earned: { marginTop: space.xxl, paddingVertical: space.lg, paddingHorizontal: space.xxxl, borderRadius: 20, borderWidth: 1 },
+  earned: {
+    marginTop: space.xxl,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.xxxl,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
 });

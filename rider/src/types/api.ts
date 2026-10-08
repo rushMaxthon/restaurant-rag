@@ -5,8 +5,19 @@
 
 export type RiderStatus = 'OFFLINE' | 'ONLINE' | 'ON_TRIP';
 export type VehicleType = 'BIKE' | 'SCOOTER' | 'CYCLE';
-export type TripStep = 'to_pickup' | 'at_pickup' | 'to_drop' | 'at_drop' | 'done';
-export type TripAction = 'arrived-pickup' | 'picked-up' | 'arrived-drop' | 'delivered' | 'unavailable' | 'call-logged';
+export type TripStep =
+  | 'to_pickup'
+  | 'at_pickup'
+  | 'to_drop'
+  | 'at_drop'
+  | 'done';
+export type TripAction =
+  | 'arrived-pickup'
+  | 'picked-up'
+  | 'arrived-drop'
+  | 'delivered'
+  | 'unavailable'
+  | 'call-logged';
 
 export type SessionUser = {
   id: string;
@@ -33,6 +44,8 @@ export type RiderMe = {
   today_trips: number;
   today_earnings: string;
   fleet_enabled: boolean;
+  /** What a delivery pays right now (admin-set): base + per km, never under minimum. */
+  pay: { base: string; per_km: string; minimum: string };
 };
 
 export type Offer = {
@@ -48,6 +61,21 @@ export type Offer = {
   earning_estimate: string;
   drop_area: string;
   item_count: number;
+};
+
+/** An order a free rider may take from the list (backend `OpenOrderView`). */
+export type OpenOrder = {
+  order_id: string;
+  restaurant_name: string;
+  branch: string;
+  pickup_address: string;
+  pickup_distance_m: number | null;
+  trip_distance_km: number;
+  earning_estimate: string;
+  drop_area: string;
+  item_count: number;
+  /** Until a courier is booked instead. */
+  minutes_left: number;
 };
 
 export type TripStop = {
@@ -95,4 +123,9 @@ export type Earnings = {
   days: EarningDay[];
 };
 
-export type LocationFix = { lat: number; lng: number; accuracy_m?: number | null; at: string };
+export type LocationFix = {
+  lat: number;
+  lng: number;
+  accuracy_m?: number | null;
+  at: string;
+};

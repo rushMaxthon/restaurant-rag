@@ -13,7 +13,10 @@ type State = { error: Error | null };
  * of a blank screen a rider cannot get out of. Nothing is lost by retrying -
  * every truth (online, the trip, the steps) is on the server.
  */
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
+export class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  State
+> {
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
@@ -34,18 +37,39 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
         <AppText variant="title" align="center" style={{ color: dark.text }}>
           Something went wrong
         </AppText>
-        <AppText align="center" style={[styles.body, { color: dark.textMuted }]}>
+        <AppText
+          align="center"
+          style={[styles.body, { color: dark.textMuted }]}
+        >
           Your delivery and status are safe on the server. Tap below to reload.
         </AppText>
-        <Button label="Try again" icon="refresh" onPress={() => this.setState({ error: null })} style={styles.button} />
+        <Button
+          label="Try again"
+          icon="refresh"
+          onPress={() => this.setState({ error: null })}
+          style={styles.button}
+        />
       </View>
     );
   }
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
-  icon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  root: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 8,
+  },
+  icon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
   body: { marginBottom: 16 },
   button: { alignSelf: 'stretch' },
 });

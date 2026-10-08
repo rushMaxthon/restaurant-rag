@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,10 +14,14 @@ import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
-import { space } from '@theme/tokens';
+import { space, motion } from '@theme/tokens';
 import { clockTime, km, rupees } from '@utils/format';
+import { groupByDay, type HistoryRow } from '@utils/history';
 
-const END_LABEL: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+const END_LABEL: Record<
+  string,
+  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
+> = {
   DELIVERED: { label: 'Delivered', tone: 'success' },
   CUSTOMER_UNAVAILABLE: { label: 'Customer away', tone: 'warning' },
   CANCELLED_BEFORE_PICKUP: { label: 'Cancelled', tone: 'danger' },
@@ -27,10 +31,18 @@ const END_LABEL: Record<string, { label: string; tone: 'success' | 'warning' | '
 
 function TripRow({ trip, index }: { trip: Trip; index: number }) {
   const { colors } = useTheme();
-  const end = END_LABEL[trip.end_reason ?? ''] ?? { label: trip.end_reason ?? 'Ended', tone: 'neutral' as const };
-  const ended = trip.ended_at ? new Date(trip.ended_at) : null;
+  const end = END_LABEL[trip.end_reason ?? ''] ?? {
+    label: trip.end_reason ?? 'Ended',
+    tone: 'neutral' as const,
+  };
   return (
-    <Animated.View entering={index < 8 ? FadeInDown.delay(index * 40).springify().damping(18) : undefined}>
+    <Animated.View
+      entering={
+        index < 8
+          ? FadeInDown.delay(index * 40).duration(motion.base)
+          : undefined
+      }
+    >
       <Card style={styles.card}>
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
@@ -41,18 +53,45 @@ function TripRow({ trip, index }: { trip: Trip; index: number }) {
               to {trip.drop.name} · {km(trip.distance_km)}
             </AppText>
           </View>
-          <AppText variant="heading" tone={Number(trip.earning) > 0 ? 'success' : 'muted'}>
+          <AppText
+            variant="heading"
+            tone={Number(trip.earning) > 0 ? 'success' : 'muted'}
+          >
             {rupees(trip.earning)}
           </AppText>
         </View>
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <Pill label={end.label} tone={end.tone} dot />
           <AppText variant="caption" tone="faint">
-            {trip.order_code} · {ended ? `${ended.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${clockTime(trip.ended_at)}` : ''}
+            {trip.order_code}
+            {trip.ended_at ? ` · ${clockTime(trip.ended_at)}` : ''}
           </AppText>
         </View>
       </Card>
     </Animated.View>
+  );
+}
+
+/** A day's heading: what the rider made that day, at a glance. */
+function DayHeader({
+  row,
+  first,
+}: {
+  row: Extract<HistoryRow, { kind: 'day' }>;
+  first: boolean;
+}) {
+  return (
+    <View style={[styles.day, first ? null : styles.dayGap]}>
+      <View style={styles.flex}>
+        <AppText variant="bodyStrong">{row.label}</AppText>
+        <AppText variant="caption" tone="muted">
+          {row.count} {row.count === 1 ? 'delivery' : 'deliveries'}
+        </AppText>
+      </View>
+      <AppText variant="bodyStrong" tone="success">
+        {rupees(row.total)}
+      </AppText>
+    </View>
   );
 }
 
@@ -67,6 +106,8 @@ export function HistoryScreen() {
   const [more, setMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const rows = useMemo(() => groupByDay(items ?? []), [items]);
+
   const loadFirst = useCallback(async () => {
     try {
       const page = await api.history();
@@ -74,7 +115,9 @@ export function HistoryScreen() {
       setMore(page.length === 20);
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not load your deliveries.');
+      setError(
+        e instanceof ApiError ? e.message : 'Could not load your deliveries.',
+      );
     }
   }, [api]);
 
@@ -100,7 +143,12 @@ export function HistoryScreen() {
   }, [api, items, more, loadingMore]);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top + space.md }]}>
+    <View
+      style={[
+        styles.root,
+        { backgroundColor: colors.bg, paddingTop: insets.top + space.md },
+      ]}
+    >
       <View style={styles.header}>
         <AppText variant="title">History</AppText>
         <AppText tone="muted">Your finished deliveries</AppText>
@@ -113,11 +161,20 @@ export function HistoryScreen() {
         </View>
       ) : (
         <FlashList
-          data={items}
-          keyExtractor={t => t.id}
-          renderItem={({ item, index }) => <TripRow trip={item} index={index} />}
-          contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: 120 }}
-          ItemSeparatorComponent={() => <View style={{ height: space.md }} />}
+          data={rows}
+          keyExtractor={r => r.key}
+          getItemType={r => r.kind}
+          renderItem={({ item, index }) =>
+            item.kind === 'day' ? (
+              <DayHeader row={item} first={index === 0} />
+            ) : (
+              <TripRow trip={item.trip} index={index} />
+            )
+          }
+          contentContainerStyle={{
+            paddingHorizontal: space.lg,
+            paddingBottom: 120,
+          }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           refreshControl={
@@ -135,14 +192,24 @@ export function HistoryScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceAlt }]}>
-                <Icon name="receipt-outline" size={34} color={colors.textMuted} />
+              <View
+                style={[
+                  styles.emptyIcon,
+                  { backgroundColor: colors.surfaceAlt },
+                ]}
+              >
+                <Icon
+                  name="receipt-outline"
+                  size={34}
+                  color={colors.textMuted}
+                />
               </View>
               <AppText variant="heading" align="center">
                 No deliveries yet
               </AppText>
               <AppText tone="muted" align="center">
-                {error ?? 'Go online from Home to start. Every trip you finish shows up here.'}
+                {error ??
+                  'Go online from Home to start. Every trip you finish shows up here.'}
               </AppText>
             </View>
           }
@@ -157,9 +224,34 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   header: { paddingHorizontal: space.lg, marginBottom: space.lg },
   skeletons: { paddingHorizontal: space.lg, gap: space.md },
-  card: { gap: space.md },
+  card: { gap: space.md, marginBottom: space.md },
+  day: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingBottom: space.sm,
+    paddingHorizontal: space.xs,
+  },
+  dayGap: { marginTop: space.lg },
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: space.md, borderTopWidth: StyleSheet.hairlineWidth },
-  empty: { alignItems: 'center', gap: space.sm, paddingTop: space.huge, paddingHorizontal: space.xl },
-  emptyIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: space.sm },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  empty: {
+    alignItems: 'center',
+    gap: space.sm,
+    paddingTop: space.huge,
+    paddingHorizontal: space.xl,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.sm,
+  },
 });

@@ -15,7 +15,7 @@ import Animated, {
 import { AppText } from '@components/ui/AppText';
 import { BrandMark } from '@components/ui/BrandMark';
 import { useTheme } from '@theme/ThemeProvider';
-import { space } from '@theme/tokens';
+import { space, motion } from '@theme/tokens';
 
 const MIN_VISIBLE_MS = 1100;
 
@@ -33,34 +33,63 @@ export function SplashOverlay({ ready }: { ready: boolean }) {
   const pulse = useSharedValue(0);
 
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 11, stiffness: 160 });
-    lift.value = withDelay(180, withSpring(0, { damping: 16, stiffness: 140 }));
+    scale.value = withSpring(1, motion.springSoft);
+    lift.value = withDelay(180, withSpring(0, motion.springSoft));
     fade.value = withDelay(180, withTiming(1, { duration: 420 }));
-    pulse.value = withDelay(500, withRepeat(withSequence(withTiming(1, { duration: 600, easing: Easing.inOut(Easing.quad) }), withTiming(0, { duration: 600 })), -1));
+    pulse.value = withDelay(
+      500,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0, { duration: 600 }),
+        ),
+        -1,
+      ),
+    );
     const t = setTimeout(() => setMinElapsed(true), MIN_VISIBLE_MS);
     return () => clearTimeout(t);
   }, [scale, lift, fade, pulse]);
 
-  const mark = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const words = useAnimatedStyle(() => ({ opacity: fade.value, transform: [{ translateY: lift.value }] }));
+  const mark = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const words = useAnimatedStyle(() => ({
+    opacity: fade.value,
+    transform: [{ translateY: lift.value }],
+  }));
   const dots = useAnimatedStyle(() => ({ opacity: 0.35 + pulse.value * 0.65 }));
 
   if (ready && minElapsed) return null;
 
   return (
-    <Animated.View exiting={FadeOut.duration(320)} style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: colors.bg }]}>
+    <Animated.View
+      exiting={FadeOut.duration(320)}
+      style={[
+        StyleSheet.absoluteFill,
+        styles.root,
+        { backgroundColor: colors.bg },
+      ]}
+    >
       <Animated.View style={mark}>
         <BrandMark size={96} />
       </Animated.View>
       <Animated.View style={[styles.words, words]}>
         <AppText variant="display" align="center">
-          Foodie <AppText variant="display" tone="primary">Rider</AppText>
+          Foodie{' '}
+          <AppText variant="display" tone="primary">
+            Rider
+          </AppText>
         </AppText>
-        <AppText tone="muted" align="center">Deliver smiles, earn more.</AppText>
+        <AppText tone="muted" align="center">
+          Deliver smiles, earn more.
+        </AppText>
       </Animated.View>
       <Animated.View style={[styles.dots, dots]}>
         {[0, 1, 2].map(i => (
-          <View key={i} style={[styles.dot, { backgroundColor: colors.primary }]} />
+          <View
+            key={i}
+            style={[styles.dot, { backgroundColor: colors.primary }]}
+          />
         ))}
       </Animated.View>
     </Animated.View>
@@ -70,6 +99,11 @@ export function SplashOverlay({ ready }: { ready: boolean }) {
 const styles = StyleSheet.create({
   root: { alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   words: { marginTop: space.xl, gap: space.xs },
-  dots: { position: 'absolute', bottom: 72, flexDirection: 'row', gap: space.sm },
+  dots: {
+    position: 'absolute',
+    bottom: 72,
+    flexDirection: 'row',
+    gap: space.sm,
+  },
   dot: { width: 8, height: 8, borderRadius: 4 },
 });

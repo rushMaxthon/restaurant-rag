@@ -10,9 +10,14 @@ import { Screen } from '@components/ui/Screen';
 import { usePermissions, type PermissionKey } from '@hooks/usePermissions';
 import { useNav } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space } from '@theme/tokens';
+import { radius, space, motion } from '@theme/tokens';
 
-const ITEMS: { key: PermissionKey; icon: IconName; title: string; why: string }[] = [
+const ITEMS: {
+  key: PermissionKey;
+  icon: IconName;
+  title: string;
+  why: string;
+}[] = [
   {
     key: 'location',
     icon: 'location',
@@ -48,10 +53,26 @@ export function PermissionsScreen() {
       {ITEMS.map((item, i) => {
         const granted = state?.[item.key] ?? false;
         return (
-          <Animated.View key={item.key} entering={FadeInDown.delay(80 * (i + 1)).springify().damping(18)}>
+          <Animated.View
+            key={item.key}
+            entering={FadeInDown.delay(80 * (i + 1)).duration(motion.base)}
+          >
             <Card tone={granted ? 'success' : 'surface'} style={styles.item}>
-              <View style={[styles.icon, { backgroundColor: granted ? colors.success : colors.surfaceAlt }]}>
-                <Icon name={granted ? 'checkmark' : item.icon} size={22} color={granted ? colors.onSuccess : colors.text} />
+              <View
+                style={[
+                  styles.icon,
+                  {
+                    backgroundColor: granted
+                      ? colors.success
+                      : colors.surfaceAlt,
+                  },
+                ]}
+              >
+                <Icon
+                  name={granted ? 'checkmark' : item.icon}
+                  size={22}
+                  color={granted ? colors.onSuccess : colors.text}
+                />
               </View>
               <View style={styles.flex}>
                 <AppText variant="bodyStrong">{item.title}</AppText>
@@ -59,7 +80,13 @@ export function PermissionsScreen() {
                   {item.why}
                 </AppText>
               </View>
-              {granted ? null : <Button size="md" label="Allow" onPress={() => request(item.key)} />}
+              {granted ? null : (
+                <Button
+                  size="md"
+                  label="Allow"
+                  onPress={() => request(item.key)}
+                />
+              )}
             </Card>
           </Animated.View>
         );
@@ -78,8 +105,21 @@ export function PermissionsScreen() {
 const styles = StyleSheet.create({
   content: { gap: space.lg },
   flex: { flex: 1 },
-  badge: { width: 64, height: 64, borderRadius: radius.xl, alignItems: 'center', justifyContent: 'center', marginBottom: space.lg },
+  badge: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.lg,
+  },
   item: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  icon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gapXs: { marginTop: space.xs },
 });

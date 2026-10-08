@@ -1,0 +1,208 @@
+import notifee, {
+  AndroidCategory,
+  AndroidImportance,
+  AndroidVisibility,
+  EventType,
+  type Event,
+} from '@notifee/react-native';
+import { getApps } from '@react-native-firebase/app';
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  onTokenRefresh,
+  setBackgroundMessageHandler,
+} from '@react-native-firebase/messaging';
+import { Platform } from 'react-native';
+
+import { offerAlertMs, parsePush, type RiderPush } from '@utils/push';
+
+/**
+ * Notifications that reach a rider whose app is not on screen.
+ *
+ * Two routes in, one way out:
+ * - FCM (`notify.py` sends data-only, high priority) wakes the app even when
+ *   it was killed. Needs `google-services.json`; without it `firebaseReady()`
+ *   is false and nothing here touches Firebase.
+ * - While on shift the foreground service keeps the app alive, so the
+ *   socket/poll still sees a new offer; RiderProvider calls `showOfferAlert`
+ *   itself. That works with no Firebase at all.
+ * Either way the app draws the alert (Notifee), and a tap is parked here
+ * until the navigator is mounted to act on it (`takePendingPush`).
+ */
+
+const OFFER_CHANNEL = 'rider-offers'; // must match OFFER_CHANNEL in notify.py
+const UPDATES_CHANNEL = 'rider-updates';
+
+let pending: RiderPush | null = null;
+const listeners = new Set<(push: RiderPush) => void>();
+
+function deliver(push: RiderPush | null): void {
+  if (!push) return;
+  if (listeners.size === 0) {
+    pending = push; // the app is still starting: PushRouter takes it on mount
+    return;
+  }
+  listeners.forEach(fn => fn(push));
+}
+
+/** The tap that opened (or woke) the app, if the navigator has not handled it yet. */
+export function takePendingPush(): RiderPush | null {
+  const push = pending;
+  pending = null;
+  return push;
+}
+
+export function onPushTap(fn: (push: RiderPush) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+export function firebaseReady(): boolean {
+  try {
+    return getApps().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function channels(): Promise<void> {
+  await notifee.createChannel({
+    id: OFFER_CHANNEL,
+    name: 'New orders',
+    description:
+      'Rings when an order is offered to you. Keep this on while you are online.',
+    importance: AndroidImportance.HIGH,
+    visibility: AndroidVisibility.PUBLIC,
+    sound: 'default',
+    vibration: true,
+    vibrationPattern: [300, 500, 300, 500],
+  });
+  await notifee.createChannel({
+    id: UPDATES_CHANNEL,
+    name: 'Trip updates',
+    description: 'A delivery you are on was changed or cancelled.',
+    importance: AndroidImportance.HIGH,
+  });
+}
+
+/** A loud, full-screen alert that disappears the moment the offer expires. */
+export async function showOfferAlert(
+  offerId: string,
+  expiresAt: string,
+): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  const ms = offerAlertMs(expiresAt);
+  if (ms === null) return;
+  try {
+    await channels();
+    await notifee.displayNotification({
+      id: `offer-${offerId}`,
+      title: 'New delivery order',
+      body: 'Tap to see what it pays and accept it.',
+      data: { type: 'rider_offer', offer_id: offerId, expires_at: expiresAt },
+      android: {
+        channelId: OFFER_CHANNEL,
+        category: AndroidCategory.CALL,
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        timeoutAfter: ms,
+        autoCancel: true,
+        pressAction: { id: 'default', launchActivity: 'default' },
+        // Over the lock screen, like a call: an offer lasts seconds.
+        fullScreenAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+  } catch {
+    // No notification permission: the offer still shows when they open the app.
+  }
+}
+
+export async function clearOfferAlert(offerId: string): Promise<void> {
+  try {
+    await notifee.cancelNotification(`offer-${offerId}`);
+  } catch {
+    // nothing to clear
+  }
+}
+
+async function showTripCancelled(tripId: string): Promise<void> {
+  try {
+    await channels();
+    await notifee.displayNotification({
+      id: `trip-${tripId}`,
+      title: 'Delivery cancelled',
+      body: 'The order was cancelled. Tap to see your earnings for it.',
+      data: { type: 'rider_trip_cancelled', trip_id: tripId },
+      android: {
+        channelId: UPDATES_CHANNEL,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        pressAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+  } catch {
+    // ignored, as above
+  }
+}
+
+/** The part of an FCM message we read (v26 does not export its RemoteMessage type). */
+type PushMessage = { data?: { [key: string]: unknown } };
+
+async function showPush(message: PushMessage): Promise<void> {
+  const push = parsePush(message.data);
+  if (push?.kind === 'offer')
+    await showOfferAlert(push.offerId, push.expiresAt);
+  if (push?.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
+}
+
+function handleEvent({ type, detail }: Event): void {
+  if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+    deliver(parsePush(detail.notification?.data));
+  }
+}
+
+/**
+ * index.js, before the app renders: a killed app is started headless for a
+ * push, and these handlers must already exist when it is.
+ */
+export function registerBackgroundPush(): void {
+  if (Platform.OS !== 'android') return;
+  notifee.onBackgroundEvent(async event => handleEvent(event));
+  if (firebaseReady()) {
+    setBackgroundMessageHandler(getMessaging(), showPush);
+  }
+}
+
+/** While the app is mounted: taps, the cold-start tap, and FCM while open. */
+export function listenForPush(onForegroundMessage: () => void): () => void {
+  const offEvents = notifee.onForegroundEvent(handleEvent);
+  notifee
+    .getInitialNotification()
+    .then(initial => deliver(parsePush(initial?.notification?.data)))
+    .catch(() => undefined);
+  // On screen the socket/poll already shows it; a push just means "look now".
+  const offMessages = firebaseReady()
+    ? onMessage(getMessaging(), () => onForegroundMessage())
+    : () => undefined;
+  return () => {
+    offEvents();
+    offMessages();
+  };
+}
+
+/** Tell the server where to push. Re-sent when Firebase rotates the token. */
+export function registerDeviceToken(
+  save: (token: string) => Promise<unknown>,
+): () => void {
+  if (!firebaseReady()) return () => undefined;
+  const messaging = getMessaging();
+  getToken(messaging)
+    .then(token => save(token))
+    .catch(() => undefined);
+  return onTokenRefresh(messaging, token => {
+    save(token).catch(() => undefined);
+  });
+}

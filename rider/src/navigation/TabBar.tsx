@@ -1,7 +1,11 @@
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
@@ -37,19 +41,43 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     x.value = withSpring(state.index * slot, motion.spring);
   }, [state.index, slot, x]);
 
-  const pill = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  const pill = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }],
+  }));
 
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.wrap, { bottom: Math.max(insets.bottom, space.md), left: BAR_MARGIN, right: BAR_MARGIN }]}
+      style={[
+        styles.wrap,
+        {
+          bottom: Math.max(insets.bottom, space.md),
+          left: BAR_MARGIN,
+          right: BAR_MARGIN,
+        },
+      ]}
     >
-      <View style={[styles.bar, { backgroundColor: colors.elevated, borderColor: colors.border }]}>
-        <Animated.View style={[styles.pill, { width: slot, backgroundColor: colors.primarySoft }, pill]} />
+      <View
+        style={[
+          styles.bar,
+          { backgroundColor: colors.elevated, borderColor: colors.border },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.pill,
+            { width: slot, backgroundColor: colors.primary },
+            pill,
+          ]}
+        />
         {state.routes.map((route, index) => {
           const focused = state.index === index;
-          const label = (descriptors[route.key]?.options.title ?? route.name) as string;
-          const [outline, solid] = ICONS[route.name] ?? ['ellipse-outline', 'ellipse'];
+          const label = (descriptors[route.key]?.options.title ??
+            route.name) as string;
+          const [outline, solid] = ICONS[route.name] ?? [
+            'ellipse-outline',
+            'ellipse',
+          ];
           return (
             <Pressable
               key={route.key}
@@ -58,15 +86,26 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               accessibilityLabel={label}
               style={styles.item}
               onPress={() => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
                 if (!focused && !event.defaultPrevented) {
                   haptic('tick');
                   navigation.navigate(route.name);
                 }
               }}
             >
-              <Icon name={focused ? solid : outline} size={22} color={focused ? colors.primary : colors.textMuted} />
-              <AppText variant="micro" style={{ color: focused ? colors.primary : colors.textMuted }}>
+              <Icon
+                name={focused ? solid : outline}
+                size={22}
+                color={focused ? colors.onPrimary : colors.textMuted}
+              />
+              <AppText
+                variant="micro"
+                style={{ color: focused ? colors.onPrimary : colors.textMuted }}
+              >
                 {label.toUpperCase()}
               </AppText>
             </Pressable>
@@ -92,6 +131,18 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
   },
-  pill: { position: 'absolute', left: 4, top: 6, bottom: 6, borderRadius: radius.xl },
-  item: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  pill: {
+    position: 'absolute',
+    left: 4,
+    top: 6,
+    bottom: 6,
+    borderRadius: radius.xl,
+  },
+  item: {
+    flex: 1,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
 });

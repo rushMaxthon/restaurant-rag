@@ -13,7 +13,7 @@ import { APP_VERSION, SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
 import { useApi, useSession, useSignedInUser } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space } from '@theme/tokens';
+import { radius, space, motion } from '@theme/tokens';
 import { initials, prettyPhone } from '@utils/format';
 import { call } from '@utils/links';
 
@@ -23,7 +23,17 @@ const VEHICLE: Record<string, { label: string; icon: IconName }> = {
   CYCLE: { label: 'Bicycle', icon: 'bicycle-outline' },
 };
 
-function Row({ icon, label, value, onPress }: { icon: IconName; label: string; value?: string; onPress?: () => void }) {
+function Row({
+  icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+}) {
   const { colors } = useTheme();
   return (
     <Card onPress={onPress} style={styles.row}>
@@ -38,7 +48,9 @@ function Row({ icon, label, value, onPress }: { icon: IconName; label: string; v
           {value}
         </AppText>
       ) : null}
-      {onPress ? <Icon name="chevron-forward" size={18} color={colors.textFaint} /> : null}
+      {onPress ? (
+        <Icon name="chevron-forward" size={18} color={colors.textFaint} />
+      ) : null}
     </Card>
   );
 }
@@ -55,7 +67,10 @@ export function ProfileScreen() {
 
   const confirmSignOut = () => {
     if (trip) {
-      Alert.alert('Finish your delivery first', 'You cannot sign out while carrying an order.');
+      Alert.alert(
+        'Finish your delivery first',
+        'You cannot sign out while carrying an order.',
+      );
       return;
     }
     Alert.alert('Sign out?', 'You will stop getting orders on this phone.', [
@@ -96,9 +111,14 @@ export function ProfileScreen() {
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).springify().damping(18)}>
+      <Animated.View entering={FadeInDown.delay(80).duration(motion.base)}>
         <Card style={styles.vehicle}>
-          <View style={[styles.vehicleIcon, { backgroundColor: colors.primarySoft }]}>
+          <View
+            style={[
+              styles.vehicleIcon,
+              { backgroundColor: colors.primarySoft },
+            ]}
+          >
             <Icon name={vehicle.icon} size={28} color={colors.primary} />
           </View>
           <View style={styles.flex}>
@@ -113,20 +133,47 @@ export function ProfileScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(140).springify().damping(18)} style={styles.list}>
+      <Animated.View
+        entering={FadeInDown.delay(140).duration(motion.base)}
+        style={styles.list}
+      >
         <AppText variant="micro" tone="muted" style={styles.section}>
           SETTINGS
         </AppText>
-        <Row icon="shield-half-outline" label="Permissions" onPress={() => nav.navigate('Permissions')} />
-        <Row icon={mode === 'dark' ? 'moon' : 'sunny'} label="Appearance" value={mode === 'dark' ? 'Dark (system)' : 'Light (system)'} />
+        <Row
+          icon="shield-half-outline"
+          label="Permissions"
+          onPress={() => nav.navigate('Permissions')}
+        />
+        <Row
+          icon={mode === 'dark' ? 'moon' : 'sunny'}
+          label="Appearance"
+          value={mode === 'dark' ? 'Dark (system)' : 'Light (system)'}
+        />
         <AppText variant="micro" tone="muted" style={styles.section}>
           HELP
         </AppText>
-        <Row icon="headset-outline" label="Call support" onPress={() => call(SUPPORT_PHONE)} />
-        {__DEV__ ? <Row icon="color-palette-outline" label="Component preview" onPress={() => nav.navigate('Gallery')} /> : null}
+        <Row
+          icon="headset-outline"
+          label="Call support"
+          onPress={() => call(SUPPORT_PHONE)}
+        />
+        {__DEV__ ? (
+          <Row
+            icon="color-palette-outline"
+            label="Component preview"
+            onPress={() => nav.navigate('Gallery')}
+          />
+        ) : null}
       </Animated.View>
 
-      <Button kind="danger" label="Sign out" icon="log-out-outline" loading={leaving} onPress={confirmSignOut} />
+      <Button
+        kind="danger"
+        label="Sign out"
+        icon="log-out-outline"
+        loading={leaving}
+        onPress={confirmSignOut}
+      />
       <AppText variant="caption" tone="faint" align="center">
         Foodie Rider · v{APP_VERSION}
       </AppText>
@@ -138,13 +185,47 @@ const styles = StyleSheet.create({
   content: { gap: space.lg },
   flex: { flex: 1 },
   hero: { alignItems: 'center', gap: space.xs, paddingTop: space.md },
-  avatar: { width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', marginBottom: space.md },
+  avatar: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space.md,
+  },
   pills: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
-  vehicle: { flexDirection: 'row', alignItems: 'center', gap: space.md, borderRadius: radius.xxl },
-  vehicleIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  plate: { borderWidth: 2, borderRadius: radius.sm, paddingHorizontal: space.sm, paddingVertical: 2 },
+  vehicle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    borderRadius: radius.xxl,
+  },
+  vehicleIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plate: {
+    borderWidth: 2,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
   list: { gap: space.sm },
   section: { marginTop: space.sm, marginLeft: space.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
-  rowIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: space.md,
+  },
+  rowIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

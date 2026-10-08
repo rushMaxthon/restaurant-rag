@@ -121,15 +121,35 @@ export const font = {
 } as const;
 
 export const type = {
-  display: { fontFamily: font.heavy, fontSize: 34, lineHeight: 40, letterSpacing: -0.5 },
-  title: { fontFamily: font.bold, fontSize: 24, lineHeight: 30, letterSpacing: -0.3 },
+  display: {
+    fontFamily: font.heavy,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.5,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.3,
+  },
   heading: { fontFamily: font.bold, fontSize: 18, lineHeight: 24 },
   body: { fontFamily: font.medium, fontSize: 16, lineHeight: 22 },
   bodyStrong: { fontFamily: font.semibold, fontSize: 16, lineHeight: 22 },
   label: { fontFamily: font.semibold, fontSize: 14, lineHeight: 18 },
   caption: { fontFamily: font.medium, fontSize: 13, lineHeight: 17 },
-  micro: { fontFamily: font.bold, fontSize: 11, lineHeight: 14, letterSpacing: 0.6 },
-  money: { fontFamily: font.heavy, fontSize: 28, lineHeight: 34, letterSpacing: -0.4 },
+  micro: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.6,
+  },
+  money: {
+    fontFamily: font.heavy,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.4,
+  },
 } as const;
 
 /** 48dp: the floor for anything a rider taps, often wearing gloves. */
@@ -143,9 +163,17 @@ export const motion = {
   fast: 160,
   base: 240,
   slow: 380,
-  spring: { damping: 18, stiffness: 220, mass: 1 },
-  springSoft: { damping: 22, stiffness: 140, mass: 1 },
-  springSnappy: { damping: 14, stiffness: 320, mass: 0.8 },
+  // Critically damped and clamped: things settle, they do not wobble. The
+  // first pass overshot visibly (damping 14-18) and riders found it bouncy
+  // (2026-10-08) - on a phone held on a bike, motion should confirm, not play.
+  spring: { damping: 26, stiffness: 260, mass: 1, overshootClamping: true },
+  springSoft: { damping: 28, stiffness: 170, mass: 1, overshootClamping: true },
+  springSnappy: {
+    damping: 24,
+    stiffness: 340,
+    mass: 0.8,
+    overshootClamping: true,
+  },
 } as const;
 
 export type ThemeMode = 'dark' | 'light';

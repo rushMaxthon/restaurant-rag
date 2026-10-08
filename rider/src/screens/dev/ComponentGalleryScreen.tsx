@@ -10,7 +10,7 @@ import { OnlineToggle } from '@components/ui/OnlineToggle';
 import { Skeleton } from '@components/ui/Skeleton';
 import { SlideToConfirm } from '@components/ui/SlideToConfirm';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space } from '@theme/tokens';
+import { radius, space, motion } from '@theme/tokens';
 
 const OFFER_MS = 30_000;
 
@@ -44,23 +44,46 @@ export function ComponentGalleryScreen() {
     }, 900);
   }, []);
 
-  const steps = ['Slide to pick up', 'Slide to deliver', 'Slide to start again'];
+  const steps = [
+    'Slide to pick up',
+    'Slide to deliver',
+    'Slide to start again',
+  ];
 
   return (
     <ScrollView
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.huge }]}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: insets.top + space.lg,
+          paddingBottom: insets.bottom + space.huge,
+        },
+      ]}
     >
       <Animated.View entering={FadeInDown.duration(400)}>
-        <AppText variant="micro" tone="primary">RIDER · PREVIEW</AppText>
-        <AppText variant="title" style={styles.gap}>Building blocks</AppText>
-        <AppText tone="muted">Tap, slide and watch. Everything here runs on the UI thread.</AppText>
+        <AppText variant="micro" tone="primary">
+          RIDER · PREVIEW
+        </AppText>
+        <AppText variant="title" style={styles.gap}>
+          Building blocks
+        </AppText>
+        <AppText tone="muted">
+          Tap, slide and watch. Everything here runs on the UI thread.
+        </AppText>
       </Animated.View>
 
       <Section title="Shift" index={1}>
         <OnlineToggle online={online} onChange={toggle} busy={toggling} />
-        <AppText variant="caption" tone="muted" align="center" style={styles.gap}>
-          {online ? 'You will get new orders nearby.' : 'You are not getting orders.'}
+        <AppText
+          variant="caption"
+          tone="muted"
+          align="center"
+          style={styles.gap}
+        >
+          {online
+            ? 'You will get new orders nearby.'
+            : 'You are not getting orders.'}
         </AppText>
       </Section>
 
@@ -68,7 +91,14 @@ export function ComponentGalleryScreen() {
         <View style={styles.center}>
           <CountdownRing expiresAt={expiresAt} totalMs={OFFER_MS} />
         </View>
-        <Button kind="secondary" size="md" icon="refresh" label="Restart countdown" onPress={() => setExpiresAt(Date.now() + OFFER_MS)} style={styles.gap} />
+        <Button
+          kind="secondary"
+          size="md"
+          icon="refresh"
+          label="Restart countdown"
+          onPress={() => setExpiresAt(Date.now() + OFFER_MS)}
+          style={styles.gap}
+        />
       </Section>
 
       <Section title="Trip step" index={3}>
@@ -80,18 +110,41 @@ export function ComponentGalleryScreen() {
           onConfirm={confirm}
         />
         <View style={styles.gap} />
-        <SlideToConfirm label="Slide to deliver" onConfirm={() => undefined} disabledReason="Enter the customer's 4-digit code first" />
+        <SlideToConfirm
+          label="Slide to deliver"
+          onConfirm={() => undefined}
+          disabledReason="Enter the customer's 4-digit code first"
+        />
       </Section>
 
       <Section title="Buttons" index={4}>
         <Button label="Accept order" icon="checkmark-circle" />
-        <Button kind="secondary" label="Navigate" icon="navigate" style={styles.gap} />
-        <Button kind="danger" label="Customer unavailable" icon="alert-circle" style={styles.gap} />
-        <Button label="Go online" disabledReason="Allow location 'all the time' to receive orders" style={styles.gap} />
+        <Button
+          kind="secondary"
+          label="Navigate"
+          icon="navigate"
+          style={styles.gap}
+        />
+        <Button
+          kind="danger"
+          label="Customer unavailable"
+          icon="alert-circle"
+          style={styles.gap}
+        />
+        <Button
+          label="Go online"
+          disabledReason="Allow location 'all the time' to receive orders"
+          style={styles.gap}
+        />
       </Section>
 
       <Section title="Loading" index={5}>
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
           <Skeleton width="40%" height={14} />
           <Skeleton height={22} style={styles.gap} />
           <Skeleton width="70%" height={14} style={styles.gap} />
@@ -101,12 +154,23 @@ export function ComponentGalleryScreen() {
   );
 }
 
-function Section({ title, index, children }: { title: string; index: number; children: React.ReactNode }) {
+function Section({
+  title,
+  index,
+  children,
+}: {
+  title: string;
+  index: number;
+  children: React.ReactNode;
+}) {
   const { colors } = useTheme();
   return (
     <Animated.View
-      entering={FadeInDown.delay(80 * index).springify().damping(18)}
-      style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      entering={FadeInDown.delay(80 * index).duration(motion.base)}
+      style={[
+        styles.section,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
     >
       <AppText variant="label" tone="muted" style={styles.sectionTitle}>
         {title}

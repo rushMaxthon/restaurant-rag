@@ -2,10 +2,15 @@ import React from 'react';
 import { StatusBar, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+} from '@react-navigation/native';
 
 import { ErrorBoundary } from '@components/ErrorBoundary';
 import { RootNavigator } from '@navigation/RootNavigator';
+import { navigationRef } from '@navigation/ref';
 import { SplashOverlay } from '@screens/auth/SplashOverlay';
 import { SessionProvider, useSession } from '@/store/SessionProvider';
 import { ThemeProvider, useTheme } from '@theme/ThemeProvider';
@@ -35,13 +40,24 @@ function Navigation() {
   const base = mode === 'dark' ? DarkTheme : DefaultTheme;
   const navTheme = {
     ...base,
-    colors: { ...base.colors, background: colors.bg, card: colors.surface, text: colors.text, border: colors.border, primary: colors.primary },
+    colors: {
+      ...base.colors,
+      background: colors.bg,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.primary,
+    },
   };
   return (
     <>
-      <NavigationContainer theme={navTheme}>
-        <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} />
-        <ErrorBoundary>{state.status === 'loading' ? null : <RootNavigator />}</ErrorBoundary>
+      <NavigationContainer ref={navigationRef} theme={navTheme}>
+        <StatusBar
+          barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
+        />
+        <ErrorBoundary>
+          {state.status === 'loading' ? null : <RootNavigator />}
+        </ErrorBoundary>
       </NavigationContainer>
       <SplashOverlay ready={state.status !== 'loading'} />
     </>

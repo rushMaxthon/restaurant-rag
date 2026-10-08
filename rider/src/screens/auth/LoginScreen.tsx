@@ -1,5 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, StyleSheet, View, type TextInputInstance } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  StyleSheet,
+  View,
+  type TextInputInstance,
+} from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
@@ -13,7 +20,7 @@ import { SUPPORT_PHONE } from '@/config/api';
 import { ApiError } from '@/services/http';
 import { useSession } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
-import { space } from '@theme/tokens';
+import { space, motion } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
 
 export function digitsOnly(value: string): string {
@@ -21,7 +28,8 @@ export function digitsOnly(value: string): string {
 }
 
 export function loginProblem(phone: string, password: string): string | null {
-  if (digitsOnly(phone).length !== 10) return 'Enter your 10-digit mobile number';
+  if (digitsOnly(phone).length !== 10)
+    return 'Enter your 10-digit mobile number';
   if (password.length < 8) return 'Your password has at least 8 characters';
   return null;
 }
@@ -37,7 +45,9 @@ export function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(state.status === 'signedOut' ? state.reason : null);
+  const [error, setError] = useState<string | null>(
+    state.status === 'signedOut' ? state.reason : null,
+  );
   const passwordRef = useRef<TextInputInstance>(null);
 
   const problem = loginProblem(phone, password);
@@ -59,8 +69,8 @@ export function LoginScreen() {
         e instanceof ApiError && e.status === 401
           ? 'That phone number and password do not match.'
           : e instanceof Error
-            ? e.message
-            : 'Could not sign in. Try again.',
+          ? e.message
+          : 'Could not sign in. Try again.',
       );
     } finally {
       setBusy(false);
@@ -68,7 +78,10 @@ export function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <Screen scroll contentStyle={styles.content}>
         <Animated.View entering={FadeInDown.duration(500)} style={styles.hero}>
           <BrandMark size={72} />
@@ -78,7 +91,10 @@ export function LoginScreen() {
           <AppText tone="muted">Sign in to start taking orders.</AppText>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(120).springify().damping(18)} style={styles.form}>
+        <Animated.View
+          entering={FadeInUp.delay(120).duration(motion.base)}
+          style={styles.form}
+        >
           <TextField
             label="Mobile number"
             icon="call-outline"
@@ -114,7 +130,10 @@ export function LoginScreen() {
           />
           {error ? (
             <Animated.View entering={FadeInDown.duration(200)}>
-              <Card tone="alt" style={[styles.error, { borderColor: colors.danger }]}>
+              <Card
+                tone="alt"
+                style={[styles.error, { borderColor: colors.danger }]}
+              >
                 <Icon name="alert-circle" size={20} color={colors.danger} />
                 <AppText variant="label" tone="danger" style={styles.flex}>
                   {error}
@@ -122,14 +141,26 @@ export function LoginScreen() {
               </Card>
             </Animated.View>
           ) : null}
-          <Button label="Sign in" icon="arrow-forward" loading={busy} onPress={submit} testID="login-submit" />
+          <Button
+            label="Sign in"
+            icon="arrow-forward"
+            loading={busy}
+            onPress={submit}
+            testID="login-submit"
+          />
         </Animated.View>
 
         <View style={styles.help}>
           <AppText variant="caption" tone="muted" align="center">
             New rider or forgot your password?
           </AppText>
-          <Button kind="ghost" size="md" label="Call your manager" icon="headset-outline" onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)} />
+          <Button
+            kind="ghost"
+            size="md"
+            label="Call your manager"
+            icon="headset-outline"
+            onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)}
+          />
         </View>
       </Screen>
     </KeyboardAvoidingView>
@@ -142,6 +173,11 @@ const styles = StyleSheet.create({
   hero: { gap: space.xs, marginBottom: space.xxxl },
   title: { marginTop: space.xl },
   form: { gap: space.lg },
-  error: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.md },
+  error: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingVertical: space.md,
+  },
   help: { marginTop: space.xxxl, alignItems: 'center' },
 });

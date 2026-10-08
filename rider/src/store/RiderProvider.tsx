@@ -1,8 +1,19 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { ApiError } from '@/services/http';
-import { useApi } from '@/store/SessionProvider';
+import { useRiderRealtime } from '@hooks/useRiderRealtime';
+import { useApi, useSession } from '@/store/SessionProvider';
+import { offerPollMs } from '@utils/realtime';
+import { clearOfferAlert, showOfferAlert } from '@/services/push';
 import type { Offer, RiderMe, Trip } from '@/types/api';
 
 /**
@@ -12,11 +23,10 @@ import type { Offer, RiderMe, Trip } from '@/types/api';
  * REST is the only source of truth; this polls it at the rate the moment
  * needs - every 3 s for offers while online and idle (an offer lasts 30 s),
  * every 15 s for a trip, 30 s for the profile - and refetches the moment the
- * app comes back to the foreground. Until push is set up (Firebase), the
- * offer poll is what brings a new order in.
+ * app comes back to the foreground. With the live socket up, a push makes
+ * it refetch at once and the offer poll drops to a 20 s safety net.
  */
 
-const OFFER_POLL_MS = 3_000;
 const TRIP_POLL_MS = 15_000;
 const ME_POLL_MS = 30_000;
 
@@ -39,7 +49,9 @@ const RiderContext = createContext<RiderContextValue | null>(null);
 function useForeground(): boolean {
   const [active, setActive] = useState(AppState.currentState === 'active');
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => setActive(next === 'active'));
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) =>
+      setActive(next === 'active'),
+    );
     return () => sub.remove();
   }, []);
   return active;
@@ -47,6 +59,7 @@ function useForeground(): boolean {
 
 export function RiderProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
+  const { state: session, signOut } = useSession();
   const foreground = useForeground();
   const [me, setMe] = useState<RiderMe | null>(null);
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -92,7 +105,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!foreground) return;
     let alive = true;
-    Promise.all([refreshMe(), refreshTrip()]).finally(() => alive && setLoading(false));
+    Promise.all([refreshMe(), refreshTrip()]).finally(
+      () => alive && setLoading(false),
+    );
     return () => {
       alive = false;
     };
@@ -110,22 +125,84 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [foreground, trip, refreshTrip]);
 
-  const wantsOffers = foreground && me?.status === 'ONLINE' && !trip;
+  // On shift the foreground service keeps the app alive in the background,
+  // so the socket and the offer check keep running there too. They used to
+  // stop with the screen, and a rider navigating in Google Maps never heard
+  // an offer at all (2026-10-08).
+  const onShift =
+    me?.status === 'ONLINE' || me?.status === 'ON_TRIP' || trip !== null;
+  const live = useRiderRealtime(
+    session.status === 'signedIn' ? session.token : null,
+    foreground || onShift,
+    {
+      onOffer: () => void refreshOffer(),
+      onTrip: () => {
+        void refreshTrip();
+        void refreshMe();
+      },
+      onReconnect: () => {
+        void refreshMe();
+        void refreshTrip();
+        void refreshOffer();
+      },
+      onRevoked: () =>
+        void signOut('You were signed out. Please sign in again.'),
+    },
+  );
+
+  const wantsOffers = me?.status === 'ONLINE' && !trip;
   useEffect(() => {
     if (!wantsOffers) {
       setOffer(null);
       return;
     }
     void refreshOffer();
-    const id = setInterval(refreshOffer, OFFER_POLL_MS);
+    const id = setInterval(refreshOffer, offerPollMs(live));
     return () => clearInterval(id);
-  }, [wantsOffers, refreshOffer]);
+  }, [wantsOffers, refreshOffer, live]);
+
+  // Not on screen: ring. On screen, OfferWatcher opens the offer itself.
+  const alerted = useRef<string | null>(null);
+  useEffect(() => {
+    if (offer && !foreground && alerted.current !== offer.id) {
+      alerted.current = offer.id;
+      void showOfferAlert(offer.id, offer.expires_at);
+    }
+    if (!offer && alerted.current) {
+      void clearOfferAlert(alerted.current);
+      alerted.current = null;
+    }
+  }, [offer, foreground]);
 
   const value = useMemo(
-    () => ({ me, trip, offer, loading, error, refreshMe, refreshTrip, refreshOffer, setMe, setTrip, clearOffer }),
-    [me, trip, offer, loading, error, refreshMe, refreshTrip, refreshOffer, clearOffer],
+    () => ({
+      me,
+      trip,
+      offer,
+      loading,
+      error,
+      refreshMe,
+      refreshTrip,
+      refreshOffer,
+      setMe,
+      setTrip,
+      clearOffer,
+    }),
+    [
+      me,
+      trip,
+      offer,
+      loading,
+      error,
+      refreshMe,
+      refreshTrip,
+      refreshOffer,
+      clearOffer,
+    ],
   );
-  return <RiderContext.Provider value={value}>{children}</RiderContext.Provider>;
+  return (
+    <RiderContext.Provider value={value}>{children}</RiderContext.Provider>
+  );
 }
 
 export function useRider(): RiderContextValue {

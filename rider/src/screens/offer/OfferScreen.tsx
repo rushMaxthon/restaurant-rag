@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Vibration, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
@@ -14,8 +14,9 @@ import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space } from '@theme/tokens';
+import { radius, space, motion } from '@theme/tokens';
 import { distance, km, rupees } from '@utils/format';
+import { jobMinutes } from '@utils/geo';
 import { haptic } from '@utils/haptics';
 
 /** Ring, ring, pause - repeated until the rider answers or time runs out. */
@@ -67,9 +68,12 @@ export function OfferScreen() {
       nav.replace('Trip');
     } catch (e) {
       haptic('error');
-      setError(e instanceof ApiError ? e.message : 'Could not accept. Try again.');
+      setError(
+        e instanceof ApiError ? e.message : 'Could not accept. Try again.',
+      );
       setBusy(null);
-      if (e instanceof ApiError && (e.status === 409 || e.status === 404)) setTimeout(close, 1400);
+      if (e instanceof ApiError && (e.status === 409 || e.status === 404))
+        setTimeout(close, 1400);
     }
   }, [api, shown, setTrip, clearOffer, refreshMe, nav, close]);
 
@@ -88,7 +92,16 @@ export function OfferScreen() {
   const expiresAt = new Date(shown.expires_at).getTime();
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg }]}>
+    <View
+      style={[
+        styles.root,
+        {
+          backgroundColor: colors.bg,
+          paddingTop: insets.top + space.lg,
+          paddingBottom: insets.bottom + space.lg,
+        },
+      ]}
+    >
       <Animated.View entering={FadeIn.duration(250)} style={styles.top}>
         <Pill label="New order" tone="primary" icon="flash" />
         <AppText variant="caption" tone="muted">
@@ -96,47 +109,117 @@ export function OfferScreen() {
         </AppText>
       </Animated.View>
 
-      <Animated.View entering={ZoomIn.springify().damping(14)} style={styles.ring}>
-        <CountdownRing expiresAt={expiresAt} totalMs={shown.total_seconds * 1000} size={150} onExpire={close} />
-      </Animated.View>
+      <View style={styles.body}>
+        <Animated.View
+          entering={FadeIn.duration(motion.slow)}
+          style={styles.ring}
+        >
+          <CountdownRing
+            expiresAt={expiresAt}
+            totalMs={shown.total_seconds * 1000}
+            size={150}
+            onExpire={close}
+          />
+        </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).springify().damping(18)} style={styles.earn}>
-        <AppText variant="micro" tone="muted" align="center">
-          YOU EARN
-        </AppText>
-        <AppText style={[styles.amount, { color: colors.text }]} align="center">
-          {rupees(shown.earning_estimate)}
-        </AppText>
-        <View style={styles.chips}>
-          <Pill label={`${distance(shown.pickup_distance_m)} to pickup`} icon="bicycle" />
-          <Pill label={`${km(shown.trip_distance_km)} trip`} icon="navigate" />
-        </View>
-      </Animated.View>
+        <Animated.View
+          entering={FadeInDown.delay(80).duration(motion.base)}
+          style={[styles.earn, { backgroundColor: colors.successSoft }]}
+        >
+          <AppText variant="micro" tone="success" align="center">
+            YOU EARN
+          </AppText>
+          <AppText
+            style={[styles.amount, { color: colors.text }]}
+            align="center"
+          >
+            {rupees(shown.earning_estimate)}
+          </AppText>
+          <View style={styles.chips}>
+            <Pill
+              label={`${distance(shown.pickup_distance_m)} to pickup`}
+              icon="bicycle"
+            />
+            <Pill
+              label={`${km(shown.trip_distance_km)} trip`}
+              icon="navigate"
+            />
+            <Pill
+              label={`about ${jobMinutes(
+                shown.pickup_distance_m,
+                shown.trip_distance_km,
+              )} min`}
+              icon="time"
+            />
+          </View>
+        </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(160).springify().damping(18)}>
-        <Card style={styles.route}>
-          <Stop icon="restaurant" color={colors.primary} title={shown.restaurant_name} subtitle={shown.pickup_address} label="Pick up" />
-          <View style={[styles.connector, { borderColor: colors.border }]} />
-          <Stop icon="home" color={colors.success} title={shown.drop_area || 'Customer'} subtitle="Full address after you accept" label="Deliver to" />
-        </Card>
-      </Animated.View>
-
-      <View style={styles.flex} />
+        <Animated.View entering={FadeInDown.delay(160).duration(motion.base)}>
+          <Card style={styles.route}>
+            <Stop
+              icon="restaurant"
+              color={colors.primary}
+              title={shown.restaurant_name}
+              subtitle={shown.pickup_address}
+              label="Pick up"
+            />
+            <View style={[styles.connector, { borderColor: colors.border }]} />
+            <Stop
+              icon="home"
+              color={colors.success}
+              title={shown.drop_area || 'Customer'}
+              subtitle="Full address after you accept"
+              label="Deliver to"
+            />
+          </Card>
+        </Animated.View>
+      </View>
 
       {error ? (
-        <AppText variant="label" tone="danger" align="center" style={styles.error}>
+        <AppText
+          variant="label"
+          tone="danger"
+          align="center"
+          style={styles.error}
+        >
           {error}
         </AppText>
       ) : null}
       <Animated.View entering={FadeInDown.delay(220)} style={styles.actions}>
-        <Button kind="secondary" label="Decline" style={styles.decline} loading={busy === 'decline'} onPress={decline} />
-        <Button kind="success" label="Accept order" icon="checkmark-circle" style={styles.accept} loading={busy === 'accept'} onPress={accept} testID="offer-accept" />
+        <Button
+          kind="secondary"
+          label="Decline"
+          style={styles.decline}
+          loading={busy === 'decline'}
+          onPress={decline}
+        />
+        <Button
+          kind="success"
+          label="Accept order"
+          icon="checkmark-circle"
+          style={styles.accept}
+          loading={busy === 'accept'}
+          onPress={accept}
+          testID="offer-accept"
+        />
       </Animated.View>
     </View>
   );
 }
 
-function Stop({ icon, color, title, subtitle, label }: { icon: 'restaurant' | 'home'; color: string; title: string; subtitle: string; label: string }) {
+function Stop({
+  icon,
+  color,
+  title,
+  subtitle,
+  label,
+}: {
+  icon: 'restaurant' | 'home';
+  color: string;
+  title: string;
+  subtitle: string;
+  label: string;
+}) {
   const { colors } = useTheme();
   return (
     <View style={styles.stop}>
@@ -144,9 +227,15 @@ function Stop({ icon, color, title, subtitle, label }: { icon: 'restaurant' | 'h
         <Icon name={icon} size={20} color={color} />
       </View>
       <View style={styles.flex}>
-        <AppText variant="caption" tone="muted">{label}</AppText>
-        <AppText variant="bodyStrong" numberOfLines={1}>{title}</AppText>
-        <AppText variant="caption" tone="muted" numberOfLines={2}>{subtitle}</AppText>
+        <AppText variant="caption" tone="muted">
+          {label}
+        </AppText>
+        <AppText variant="bodyStrong" numberOfLines={1}>
+          {title}
+        </AppText>
+        <AppText variant="caption" tone="muted" numberOfLines={2}>
+          {subtitle}
+        </AppText>
       </View>
     </View>
   );
@@ -155,15 +244,49 @@ function Stop({ icon, color, title, subtitle, label }: { icon: 'restaurant' | 'h
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: space.lg },
   flex: { flex: 1 },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ring: { alignItems: 'center', marginTop: space.xl },
-  earn: { alignItems: 'center', marginTop: space.xl, gap: space.xs },
-  amount: { fontFamily: 'PlusJakartaSans-ExtraBold', fontSize: 52, lineHeight: 60, letterSpacing: -1 },
-  chips: { flexDirection: 'row', gap: space.sm, marginTop: space.sm, flexWrap: 'wrap', justifyContent: 'center' },
-  route: { marginTop: space.xxl, gap: space.xs, borderRadius: radius.xxl },
+  top: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  body: { flex: 1, justifyContent: 'center', paddingVertical: space.lg },
+  ring: { alignItems: 'center' },
+  earn: {
+    alignItems: 'center',
+    marginTop: space.xl,
+    gap: space.xs,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.md,
+    borderRadius: radius.xxl,
+  },
+  amount: {
+    fontFamily: 'PlusJakartaSans-ExtraBold',
+    fontSize: 52,
+    lineHeight: 60,
+    letterSpacing: -1,
+  },
+  chips: {
+    flexDirection: 'row',
+    gap: space.sm,
+    marginTop: space.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  route: { marginTop: space.lg, gap: space.xs, borderRadius: radius.xxl },
   stop: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  stopIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  connector: { height: 18, marginLeft: 21, borderLeftWidth: 2, borderStyle: 'dashed' },
+  stopIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connector: {
+    height: 18,
+    marginLeft: 21,
+    borderLeftWidth: 2,
+    borderStyle: 'dashed',
+  },
   actions: { flexDirection: 'row', gap: space.md },
   decline: { flex: 1 },
   accept: { flex: 2 },

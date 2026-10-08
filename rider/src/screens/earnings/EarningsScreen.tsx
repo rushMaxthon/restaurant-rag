@@ -1,7 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+} from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 
 import { AnimatedAmount } from '@components/ui/AnimatedAmount';
 import { AppText } from '@components/ui/AppText';
@@ -13,22 +26,45 @@ import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
 import type { Earnings } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space } from '@theme/tokens';
+import { radius, space, motion } from '@theme/tokens';
 import { rupees, weekday } from '@utils/format';
 
 const CHART_HEIGHT = 140;
 
-function Bar({ ratio, index, highlight, label, amount }: { ratio: number; index: number; highlight: boolean; label: string; amount: string }) {
+function Bar({
+  ratio,
+  index,
+  highlight,
+  label,
+  amount,
+}: {
+  ratio: number;
+  index: number;
+  highlight: boolean;
+  label: string;
+  amount: string;
+}) {
   const { colors } = useTheme();
   const h = useSharedValue(0);
   useEffect(() => {
-    h.value = withDelay(60 * index, withSpring(Math.max(ratio, 0.03) * CHART_HEIGHT, { damping: 16, stiffness: 120 }));
+    h.value = withDelay(
+      60 * index,
+      withSpring(Math.max(ratio, 0.03) * CHART_HEIGHT, motion.springSoft),
+    );
   }, [ratio, index, h]);
   const style = useAnimatedStyle(() => ({ height: h.value }));
   return (
     <View style={styles.barCol} accessibilityLabel={`${label}: ${amount}`}>
       <View style={styles.barTrack}>
-        <Animated.View style={[styles.bar, { backgroundColor: highlight ? colors.primary : colors.primarySoft }, style]} />
+        <Animated.View
+          style={[
+            styles.bar,
+            {
+              backgroundColor: highlight ? colors.primary : colors.primarySoft,
+            },
+            style,
+          ]}
+        />
       </View>
       <AppText variant="micro" tone={highlight ? 'primary' : 'muted'}>
         {label.toUpperCase()}
@@ -79,29 +115,68 @@ export function EarningsScreen() {
         <AppText tone="muted">Last 7 days</AppText>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(60).springify().damping(18)}>
-        <Card style={[styles.hero, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-          <AppText variant="micro" style={{ color: colors.onPrimary, opacity: 0.85 }}>
+      <Animated.View entering={FadeInDown.delay(60).duration(motion.base)}>
+        <View style={styles.hero}>
+          {/* A warm gradient with a soft highlight: the one place money is the hero. */}
+          <Svg
+            style={StyleSheet.absoluteFill}
+            preserveAspectRatio="none"
+            viewBox="0 0 100 100"
+          >
+            <Defs>
+              <LinearGradient id="earn" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#FF7A3D" />
+                <Stop offset="1" stopColor={colors.primaryPressed} />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100" height="100" fill="url(#earn)" />
+            <Circle cx="92" cy="8" r="38" fill="#FFFFFF" opacity={0.08} />
+          </Svg>
+          <AppText variant="micro" style={styles.heroLabel}>
             THIS WEEK
           </AppText>
           {data ? (
-            <AnimatedAmount value={Number(data.period_total)} style={[styles.heroAmount, { color: colors.onPrimary }]} />
+            <AnimatedAmount
+              value={Number(data.period_total)}
+              style={styles.heroAmount}
+            />
           ) : (
             <Skeleton width={160} height={40} style={styles.gapSm} />
           )}
-          <AppText variant="label" style={{ color: colors.onPrimary, opacity: 0.9 }}>
-            {data ? `${data.period_trips} ${data.period_trips === 1 ? 'delivery' : 'deliveries'} · today ${rupees(data.today)}` : ' '}
-          </AppText>
-        </Card>
+          <View style={styles.heroRow}>
+            <HeroStat
+              label="Deliveries"
+              value={data ? String(data.period_trips) : '—'}
+            />
+            <HeroStat label="Today" value={data ? rupees(data.today) : '—'} />
+            <HeroStat
+              label="Per delivery"
+              value={
+                data && data.period_trips > 0
+                  ? rupees(
+                      Math.round(Number(data.period_total) / data.period_trips),
+                    )
+                  : '—'
+              }
+            />
+          </View>
+        </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(120).springify().damping(18)}>
+      <Animated.View entering={FadeInDown.delay(120).duration(motion.base)}>
         <Card>
           <AppText variant="label" tone="muted">
             DAILY
           </AppText>
           <View style={styles.chart}>
-            {(data?.days ?? Array.from({ length: 7 }, (_, i) => ({ date: `${i}`, trips: 0, amount: '0' }))).map((d, i, all) => (
+            {(
+              data?.days ??
+              Array.from({ length: 7 }, (_, i) => ({
+                date: `${i}`,
+                trips: 0,
+                amount: '0',
+              }))
+            ).map((d, i, all) => (
               <Bar
                 key={d.date}
                 index={i}
@@ -115,27 +190,43 @@ export function EarningsScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(180).springify().damping(18)} style={styles.row}>
+      <Animated.View
+        entering={FadeInDown.delay(180).duration(motion.base)}
+        style={styles.row}
+      >
         <Card style={styles.half}>
           <Icon name="hourglass-outline" size={22} color={colors.warning} />
           <AppText variant="micro" tone="muted" style={styles.gapSm}>
             TO BE PAID
           </AppText>
-          <AppText variant="heading">{data ? rupees(data.unpaid) : '—'}</AppText>
+          <AppText variant="heading">
+            {data ? rupees(data.unpaid) : '—'}
+          </AppText>
         </Card>
         <Card style={styles.half}>
-          <Icon name="checkmark-done-circle-outline" size={22} color={colors.success} />
+          <Icon
+            name="checkmark-done-circle-outline"
+            size={22}
+            color={colors.success}
+          />
           <AppText variant="micro" tone="muted" style={styles.gapSm}>
             PAID SO FAR
           </AppText>
-          <AppText variant="heading">{data ? rupees(data.paid_total) : '—'}</AppText>
+          <AppText variant="heading">
+            {data ? rupees(data.paid_total) : '—'}
+          </AppText>
         </Card>
       </Animated.View>
 
       <Card tone="alt" style={styles.info}>
-        <Icon name="information-circle-outline" size={20} color={colors.textMuted} />
+        <Icon
+          name="information-circle-outline"
+          size={20}
+          color={colors.textMuted}
+        />
         <AppText variant="caption" tone="muted" style={styles.flex}>
-          Payouts are sent to your bank by the platform. Each delivery pays a base amount plus a rate per km.
+          Payouts are sent to your bank by the platform. Each delivery pays a
+          base amount plus a rate per km.
         </AppText>
       </Card>
 
@@ -151,9 +242,30 @@ export function EarningsScreen() {
 const styles = StyleSheet.create({
   content: { gap: space.lg },
   flex: { flex: 1 },
-  hero: { borderRadius: radius.xxl, paddingVertical: space.xl, gap: space.xs },
-  heroAmount: { fontSize: 40, lineHeight: 48 },
-  chart: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: space.lg },
+  hero: {
+    borderRadius: radius.xxl,
+    padding: space.xl,
+    gap: space.xs,
+    overflow: 'hidden',
+  },
+  heroLabel: { color: '#FFFFFF', opacity: 0.85 },
+  heroAmount: { fontSize: 40, lineHeight: 48, color: '#FFFFFF' },
+  heroRow: { flexDirection: 'row', marginTop: space.lg, gap: space.md },
+  heroStat: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.md,
+    paddingVertical: space.sm,
+    alignItems: 'center',
+  },
+  heroValue: { color: '#FFFFFF' },
+  heroCaption: { color: '#FFFFFF', opacity: 0.8 },
+  chart: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginTop: space.lg,
+  },
   barCol: { alignItems: 'center', gap: space.xs, flex: 1 },
   barTrack: { height: CHART_HEIGHT, justifyContent: 'flex-end' },
   bar: { width: 22, borderRadius: 8 },
@@ -162,3 +274,16 @@ const styles = StyleSheet.create({
   info: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
   gapSm: { marginTop: space.sm },
 });
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.heroStat}>
+      <AppText variant="bodyStrong" style={styles.heroValue} numberOfLines={1}>
+        {value}
+      </AppText>
+      <AppText variant="caption" style={styles.heroCaption}>
+        {label}
+      </AppText>
+    </View>
+  );
+}

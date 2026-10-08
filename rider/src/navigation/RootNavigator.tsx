@@ -1,7 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
-import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationProp,
+} from '@react-navigation/native-stack';
 
 import { ComponentGalleryScreen } from '@screens/dev/ComponentGalleryScreen';
 import { LoginScreen } from '@screens/auth/LoginScreen';
@@ -9,10 +12,12 @@ import { EarningsScreen } from '@screens/earnings/EarningsScreen';
 import { HistoryScreen } from '@screens/history/HistoryScreen';
 import { HomeScreen } from '@screens/home/HomeScreen';
 import { OfferScreen } from '@screens/offer/OfferScreen';
+import { PushRouter } from '@components/PushRouter';
 import { PermissionsScreen } from '@screens/onboarding/PermissionsScreen';
 import { ProfileScreen } from '@screens/profile/ProfileScreen';
 import { DeliveredScreen } from '@screens/trip/DeliveredScreen';
 import { TripScreen } from '@screens/trip/TripScreen';
+import { ShiftKeeper } from '@components/ShiftKeeper';
 import { RiderProvider, useRider } from '@/store/RiderProvider';
 import { useSession } from '@/store/SessionProvider';
 import { TabBar } from './TabBar';
@@ -23,7 +28,10 @@ const Tabs = createBottomTabNavigator<TabParamList>();
 
 function MainTabs() {
   return (
-    <Tabs.Navigator tabBar={props => <TabBar {...props} />} screenOptions={{ headerShown: false, animation: 'shift' }}>
+    <Tabs.Navigator
+      tabBar={props => <TabBar {...props} />}
+      screenOptions={{ headerShown: false, animation: 'shift' }}
+    >
       <Tabs.Screen name="Home" component={HomeScreen} />
       <Tabs.Screen name="Earnings" component={EarningsScreen} />
       <Tabs.Screen name="History" component={HistoryScreen} />
@@ -55,14 +63,35 @@ function OfferWatcher() {
 function SignedIn() {
   return (
     <RiderProvider>
-      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-        <Stack.Screen name="Main" component={MainTabsWithWatcher} />
-        <Stack.Screen name="Trip" component={TripScreen} />
-        <Stack.Screen name="Permissions" component={PermissionsScreen} options={{ animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="Offer" component={OfferScreen} options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }} />
-        <Stack.Screen name="Delivered" component={DeliveredScreen} options={{ animation: 'fade', gestureEnabled: false }} />
-        <Stack.Screen name="Gallery" component={ComponentGalleryScreen} />
-      </Stack.Navigator>
+      <ShiftKeeper>
+        <PushRouter />
+        <Stack.Navigator
+          screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+        >
+          <Stack.Screen name="Main" component={MainTabsWithWatcher} />
+          <Stack.Screen name="Trip" component={TripScreen} />
+          <Stack.Screen
+            name="Permissions"
+            component={PermissionsScreen}
+            options={{ animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen
+            name="Offer"
+            component={OfferScreen}
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="Delivered"
+            component={DeliveredScreen}
+            options={{ animation: 'fade', gestureEnabled: false }}
+          />
+          <Stack.Screen name="Gallery" component={ComponentGalleryScreen} />
+        </Stack.Navigator>
+      </ShiftKeeper>
     </RiderProvider>
   );
 }
