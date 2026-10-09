@@ -73,6 +73,19 @@ def rider_earnings(db: Session, rider_user_id: uuid.UUID, *, days: int, tz: Zone
     }
 
 
+def rider_payouts(db: Session, rider_user_id: uuid.UUID, *, limit: int = 50) -> list[RiderPayout]:
+    """What this rider has been paid, newest first: the app's Payments list."""
+
+    return list(
+        db.scalars(
+            select(RiderPayout)
+            .where(RiderPayout.rider_user_id == rider_user_id)
+            .order_by(RiderPayout.paid_at.desc())
+            .limit(limit)
+        )
+    )
+
+
 def unpaid_summary(db: Session) -> list[dict[str, Any]]:
     rows = db.execute(
         select(

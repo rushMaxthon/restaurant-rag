@@ -5547,3 +5547,13 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
 - Verified on the emulator (battery dialog, high contrast, recovery from a screen crash) and in the admin (picker, discard).
 - Suites: backend fleet 121 OK, admin vitest 549, rider jest 73, tsc/eslint clean, admin build OK.
 - Left on purpose: in-app map/bottom sheet (Maps billing), Lottie, R8 (release build), background-location permission (foreground service covers it).
+
+## 2026-10-09 - rider first-time guide, Payments, trip detail, problem sheet
+
+- Spec `docs/superpowers/specs/2026-10-09-rider-guide-and-polish-design.md` (approved in chat; implemented inline).
+- Guide: intro cards after the first sign-in, spotlight tips per screen (home 3, orders, trip 2, otp, earnings), replay from Profile. Pure parts tested: seen-flags, tooltip placement, tour targets.
+- Screens: Earnings period switch + Payments (new `GET /rider/payouts`), History row -> TripDetail (timeline), Trip "Having a problem?" sheet (customer-unavailable moved in), Delivered "Done"/"N orders waiting", Home shift-done card, global no-connection pill, Profile Appearance picker + "Test the order alert".
+- Found and fixed while verifying: gorhom bottom-sheet draws nothing here (replaced by a Modal-based `ui/Sheet`); FlashList cells with Reanimated `entering` were mis-measured (gap + dead taps) on History.
+- Verified the whole path on the emulator from `pm clear`: login -> intro -> permissions -> Home tour -> sandbox order -> trip/otp tours -> delivered -> History detail -> Earnings -> Profile rows; airplane mode banner; light theme.
+- Suites: backend fleet 122 OK + compileall; rider jest 101, tsc clean, eslint 0 errors. Not committed.
+

@@ -14,6 +14,8 @@ import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
 import { useRider } from '@/store/RiderProvider';
+import { GuideTarget } from '@/guide/GuideProvider';
+import { TARGETS } from '@/guide/tours';
 
 const ICONS: Record<string, [IconName, IconName]> = {
   Home: ['home-outline', 'home'],
@@ -101,7 +103,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 }
               }}
             >
-              <View>
+              <TabIcon target={route.name === 'Orders'}>
                 <Icon
                   name={focused ? solid : outline}
                   size={22}
@@ -125,7 +127,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                     </AppText>
                   </View>
                 ) : null}
-              </View>
+              </TabIcon>
               <AppText
                 variant="micro"
                 style={{ color: focused ? colors.onPrimary : colors.textMuted }}
@@ -138,6 +140,18 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       </View>
     </View>
   );
+}
+
+/** The Orders icon is what the Home tour points at; the others are plain. */
+function TabIcon({
+  target,
+  children,
+}: {
+  target: boolean;
+  children: React.ReactNode;
+}) {
+  if (!target) return <View>{children}</View>;
+  return <GuideTarget id={TARGETS.tabOrders}>{children}</GuideTarget>;
 }
 
 const styles = StyleSheet.create({

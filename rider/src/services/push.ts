@@ -120,6 +120,37 @@ export async function showOfferAlert(
   }
 }
 
+/**
+ * What a new order sounds like, on demand: the same channel, sound and
+ * vibration as a real offer, so a rider hears it once before it matters.
+ * Gone again after a few seconds; a tap opens the app and nothing more.
+ */
+export async function testOfferAlert(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  try {
+    await channels();
+    await notifee.displayNotification({
+      id: 'offer-test',
+      title: 'This is what a new order sounds like',
+      body: 'A real one shows what it pays and how far it is.',
+      data: { type: 'rider_test' },
+      android: {
+        channelId: OFFER_CHANNEL,
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        timeoutAfter: 6_000,
+        autoCancel: true,
+        pressAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function clearOfferAlert(offerId: string): Promise<void> {
   try {
     await notifee.cancelNotification(`offer-${offerId}`);

@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect } from '@react-navigation/native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
@@ -14,36 +13,24 @@ import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
-import { space, motion } from '@theme/tokens';
+import { space } from '@theme/tokens';
 import { clockTime, km, rupees } from '@utils/format';
 import { groupByDay, type HistoryRow } from '@utils/history';
+import { endLabel } from '@utils/tripTimeline';
+import { useNav } from '@navigation/types';
 
-const END_LABEL: Record<
-  string,
-  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
-> = {
-  DELIVERED: { label: 'Delivered', tone: 'success' },
-  CUSTOMER_UNAVAILABLE: { label: 'Customer away', tone: 'warning' },
-  CANCELLED_BEFORE_PICKUP: { label: 'Cancelled', tone: 'danger' },
-  CANCELLED_AFTER_PICKUP: { label: 'Cancelled', tone: 'danger' },
-  REASSIGNED: { label: 'Reassigned', tone: 'neutral' },
-};
-
-function TripRow({ trip, index }: { trip: Trip; index: number }) {
+function TripRow({ trip }: { trip: Trip }) {
   const { colors } = useTheme();
-  const end = END_LABEL[trip.end_reason ?? ''] ?? {
-    label: trip.end_reason ?? 'Ended',
-    tone: 'neutral' as const,
-  };
+  const nav = useNav();
+  const end = endLabel(trip.end_reason);
   return (
-    <Animated.View
-      entering={
-        index < 8
-          ? FadeInDown.delay(index * 40).duration(motion.base)
-          : undefined
-      }
-    >
-      <Card style={styles.card}>
+    // No entering animation on a recycled FlashList cell: Reanimated's layout
+    // animation left the cell measured wrong (a gap above, taps falling through).
+    <View>
+      <Card
+        style={styles.card}
+        onPress={() => nav.navigate('TripDetail', { trip })}
+      >
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
             <AppText variant="bodyStrong" numberOfLines={1}>
@@ -62,13 +49,16 @@ function TripRow({ trip, index }: { trip: Trip; index: number }) {
         </View>
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <Pill label={end.label} tone={end.tone} dot />
-          <AppText variant="caption" tone="faint">
-            {trip.order_code}
-            {trip.ended_at ? ` · ${clockTime(trip.ended_at)}` : ''}
-          </AppText>
+          <View style={styles.meta}>
+            <AppText variant="caption" tone="faint">
+              {trip.order_code}
+              {trip.ended_at ? ` · ${clockTime(trip.ended_at)}` : ''}
+            </AppText>
+            <Icon name="chevron-forward" size={16} color={colors.textFaint} />
+          </View>
         </View>
       </Card>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -168,7 +158,7 @@ export function HistoryScreen() {
             item.kind === 'day' ? (
               <DayHeader row={item} first={index === 0} />
             ) : (
-              <TripRow trip={item.trip} index={index} />
+              <TripRow trip={item.trip} />
             )
           }
           contentContainerStyle={{
@@ -233,6 +223,7 @@ const styles = StyleSheet.create({
   },
   dayGap: { marginTop: space.lg },
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

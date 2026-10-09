@@ -18,6 +18,8 @@ import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Screen } from '@components/ui/Screen';
 import type { RootStackParamList } from '@navigation/types';
+import { useRider } from '@/store/RiderProvider';
+import { waitingLabel } from '@utils/delivered';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
@@ -56,6 +58,7 @@ export function DeliveredScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'Delivered'>) {
   const { colors } = useTheme();
+  const waiting = waitingLabel(useRider().openOrders.length);
   const ring = useSharedValue(0);
   const tick = useSharedValue(0);
   const pop = useSharedValue(0.6);
@@ -159,10 +162,23 @@ export function DeliveredScreen({
         </Animated.View>
       </View>
 
-      <Animated.View entering={FadeInDown.delay(900)}>
+      <Animated.View entering={FadeInDown.delay(900)} style={styles.actions}>
+        {waiting ? (
+          <Button
+            kind="secondary"
+            label={waiting}
+            icon="receipt"
+            onPress={() =>
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Main', params: { screen: 'Orders' } }],
+              })
+            }
+          />
+        ) : null}
         <Button
-          label="Back to orders"
-          icon="arrow-forward"
+          label="Done"
+          icon="checkmark"
           onPress={() =>
             navigation.reset({ index: 0, routes: [{ name: 'Main' }] })
           }
@@ -183,6 +199,7 @@ const styles = StyleSheet.create({
   },
   spark: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
   text: { marginTop: space.xxl, gap: space.xs },
+  actions: { gap: space.sm },
   earned: {
     marginTop: space.xxl,
     paddingVertical: space.lg,

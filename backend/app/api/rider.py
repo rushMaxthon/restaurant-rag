@@ -30,6 +30,7 @@ from app.schemas.rider import (
     LocationBatch,
     OfferView,
     OpenOrderView,
+    PayoutOut,
     RiderMe,
     StatusUpdate,
     TripAction,
@@ -212,6 +213,16 @@ def earnings(user: RiderUser, db: Db, days: int = Query(default=7, ge=1, le=62))
     from app.services.fleet import payouts
 
     return Earnings(**payouts.rider_earnings(db, user.id, days=days, tz=LOCAL_TZ))
+
+
+@router.get("/payouts", response_model=list[PayoutOut])
+def my_payouts(user: RiderUser, db: Db) -> list[PayoutOut]:
+    """Every payment this rider has received, newest first. The money moves by
+    bank transfer outside the app; this is the record the rider checks it
+    against, with the admin's reference (UTR) on each row."""
+    from app.services.fleet import payouts
+
+    return [PayoutOut.model_validate(p, from_attributes=True) for p in payouts.rider_payouts(db, user.id)]
 
 
 @router.get("/trips", response_model=list[TripView])

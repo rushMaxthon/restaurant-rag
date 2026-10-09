@@ -622,6 +622,25 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   the rider off shift like deactivation; the branch allowlist (`location_ids`)
   is a checkbox list on Riders -> Pay & dispatch, from `FleetSettings.branches`.
 
+- **Rider first-time guide and the Payments/detail screens (2026-10-09).**
+  Spec: `docs/superpowers/specs/2026-10-09-rider-guide-and-polish-design.md`.
+  `rider/src/guide/`: four intro cards once after the first sign-in (`Intro`
+  is the stack's initial route while `guide.intro` is unseen, so
+  `SignedInStack` waits for the one AsyncStorage read), then spotlight tips
+  the first time each screen opens (`useTour(id, ready)`; targets register
+  with `GuideTarget`, copy lives only in `tours.ts`, seen-flags in
+  `rider.guide.v1`). A tour never starts over a ringing offer and cancels if
+  one arrives. Spotlight is an SVG mask drawn once above the navigator; the
+  dark area swallows taps on purpose. Profile replays both. Also: `GET
+  /rider/payouts` + the Payments list and Today/7/30 switch on Earnings,
+  `TripDetail` from History, Appearance (system/light/dark, `rider.theme`),
+  "Test the order alert", the trip "Having a problem?" sheet, a global
+  no-connection pill, a shift-done card. Two traps: `@gorhom/bottom-sheet`
+  draws nothing on this RN 0.87 / gesture-handler 3 setup (`present()` runs,
+  no sheet) - `ui/Sheet` is a plain `Modal`; and a Reanimated `entering`
+  animation on a FlashList cell left the cell mis-measured (a gap above it,
+  taps falling through), so History rows have none.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

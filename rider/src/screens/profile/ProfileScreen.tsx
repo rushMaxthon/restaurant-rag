@@ -8,6 +8,10 @@ import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Pill } from '@components/ui/Pill';
 import { Screen } from '@components/ui/Screen';
+import { Sheet } from '@components/ui/Sheet';
+import { useGuide } from '@/guide/GuideProvider';
+import { testOfferAlert } from '@/services/push';
+import { THEME_OPTIONS } from '@theme/preference';
 import { useNav } from '@navigation/types';
 import { APP_VERSION, SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
@@ -59,7 +63,17 @@ function Row({
 }
 
 export function ProfileScreen() {
-  const { colors, mode, highContrast, setHighContrast } = useTheme();
+  const {
+    colors,
+    mode,
+    preference,
+    setPreference,
+    highContrast,
+    setHighContrast,
+  } = useTheme();
+  const { resetTips } = useGuide();
+  const [appearance, setAppearance] = useState(false);
+  const [alertNote, setAlertNote] = useState<string | null>(null);
   const nav = useNav();
   const api = useApi();
   const user = useSignedInUser();
@@ -151,7 +165,14 @@ export function ProfileScreen() {
         <Row
           icon={mode === 'dark' ? 'moon' : 'sunny'}
           label="Appearance"
-          value={mode === 'dark' ? 'Dark (system)' : 'Light (system)'}
+          value={
+            preference === 'system'
+              ? `${mode === 'dark' ? 'Dark' : 'Light'} · follows phone`
+              : preference === 'dark'
+              ? 'Dark'
+              : 'Light'
+          }
+          onPress={() => setAppearance(true)}
         />
         <Row
           icon="contrast"
@@ -167,6 +188,33 @@ export function ProfileScreen() {
               accessibilityLabel="High contrast"
             />
           }
+        />
+        <AppText variant="micro" tone="muted" style={styles.section}>
+          GUIDE
+        </AppText>
+        <Row
+          icon="book-outline"
+          label="How the app works"
+          onPress={() => nav.navigate('Intro', { replay: true })}
+        />
+        <Row
+          icon="bulb-outline"
+          label="Show tips again"
+          value="On every screen"
+          onPress={() => {
+            resetTips();
+            nav.navigate('Main', { screen: 'Home' });
+          }}
+        />
+        <Row
+          icon="volume-high-outline"
+          label="Test the order alert"
+          value={alertNote ?? 'Hear the ring'}
+          onPress={async () => {
+            const ok = await testOfferAlert();
+            setAlertNote(ok ? 'Listen…' : 'Allow notifications first');
+            setTimeout(() => setAlertNote(null), 6000);
+          }}
         />
         <AppText variant="micro" tone="muted" style={styles.section}>
           HELP
@@ -195,6 +243,63 @@ export function ProfileScreen() {
       <AppText variant="caption" tone="faint" align="center">
         Foodie Rider · v{APP_VERSION}
       </AppText>
+
+      <Sheet
+        open={appearance}
+        onClose={() => setAppearance(false)}
+        title="Appearance"
+      >
+        {THEME_OPTIONS.map(option => {
+          const active = option.key === preference;
+          return (
+            <Card
+              key={option.key}
+              tone={active ? 'primary' : 'surface'}
+              style={styles.row}
+              onPress={() => {
+                setPreference(option.key);
+                setAppearance(false);
+              }}
+            >
+              <View
+                style={[
+                  styles.rowIcon,
+                  {
+                    backgroundColor: active
+                      ? colors.primary
+                      : colors.surfaceAlt,
+                  },
+                ]}
+              >
+                <Icon
+                  name={
+                    option.key === 'system'
+                      ? 'phone-portrait-outline'
+                      : option.key === 'dark'
+                      ? 'moon'
+                      : 'sunny'
+                  }
+                  size={20}
+                  color={active ? colors.onPrimary : colors.text}
+                />
+              </View>
+              <View style={styles.flex}>
+                <AppText variant="bodyStrong">{option.label}</AppText>
+                <AppText variant="caption" tone="muted">
+                  {option.hint}
+                </AppText>
+              </View>
+              {active ? (
+                <Icon
+                  name="checkmark-circle"
+                  size={22}
+                  color={colors.primary}
+                />
+              ) : null}
+            </Card>
+          );
+        })}
+      </Sheet>
     </Screen>
   );
 }

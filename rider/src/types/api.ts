@@ -125,6 +125,17 @@ export type Earnings = {
   days: EarningDay[];
 };
 
+/** A payment the admin recorded against this rider's trips (bank transfer, outside the app). */
+export type Payout = {
+  id: string;
+  period_from: string;
+  period_to: string;
+  amount: string;
+  trips: number;
+  reference: string;
+  paid_at: string;
+};
+
 export type LocationFix = {
   lat: number;
   lng: number;

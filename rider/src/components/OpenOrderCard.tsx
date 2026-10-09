@@ -5,6 +5,8 @@ import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Pill } from '@components/ui/Pill';
+import { GuideTarget } from '@/guide/GuideProvider';
+import { TARGETS } from '@/guide/tours';
 import type { OpenOrder } from '@/types/api';
 import { radius, space } from '@theme/tokens';
 import { distance, km, rupees } from '@utils/format';
@@ -20,12 +22,26 @@ export function OpenOrderCard({
   taking,
   blockedReason,
   onTake,
+  guide = false,
 }: {
   order: OpenOrder;
   taking: boolean;
   blockedReason: string | null;
   onTake: () => void;
+  /** The first card on the board: the one the Orders tip points at. */
+  guide?: boolean;
 }) {
+  const take = (
+    <Button
+      kind="success"
+      size="md"
+      icon="checkmark-circle"
+      label="Take order"
+      loading={taking}
+      disabledReason={blockedReason ?? undefined}
+      onPress={onTake}
+    />
+  );
   return (
     <Card style={styles.card}>
       {order.missed ? (
@@ -63,15 +79,7 @@ export function OpenOrderCard({
           label={minutesLeftLabel(order.minutes_left)}
         />
       </View>
-      <Button
-        kind="success"
-        size="md"
-        icon="checkmark-circle"
-        label="Take order"
-        loading={taking}
-        disabledReason={blockedReason ?? undefined}
-        onPress={onTake}
-      />
+      {guide ? <GuideTarget id={TARGETS.ordersTake}>{take}</GuideTarget> : take}
     </Card>
   );
 }

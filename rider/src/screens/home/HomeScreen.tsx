@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
@@ -20,6 +20,9 @@ import { OnlineToggle } from '@components/ui/OnlineToggle';
 import { Pill } from '@components/ui/Pill';
 import { Screen } from '@components/ui/Screen';
 import { Skeleton } from '@components/ui/Skeleton';
+import { GuideTarget } from '@/guide/GuideProvider';
+import { TARGETS } from '@/guide/tours';
+import { useTour } from '@/guide/useTour';
 import { usePermissions } from '@hooks/usePermissions';
 import { gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
@@ -29,7 +32,7 @@ import { useApi, useSignedInUser } from '@/store/SessionProvider';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space, motion } from '@theme/tokens';
-import { greeting, initials } from '@utils/format';
+import { greeting, initials, rupees } from '@utils/format';
 import { haptic } from '@utils/haptics';
 
 const STEP_LABEL: Record<Trip['step'], string> = {
@@ -52,8 +55,20 @@ export function HomeScreen() {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // What the shift added up to, shown for a moment after going offline.
+  const [shiftDone, setShiftDone] = useState<{
+    trips: number;
+    earnings: string;
+  } | null>(null);
 
   const online = me?.status === 'ONLINE' || me?.status === 'ON_TRIP';
+  useTour('home', me !== null && !trip);
+
+  useEffect(() => {
+    if (!shiftDone) return;
+    const t = setTimeout(() => setShiftDone(null), 8000);
+    return () => clearTimeout(t);
+  }, [shiftDone]);
 
   const toggle = useCallback(
     async (next: boolean) => {
@@ -64,7 +79,14 @@ export function HomeScreen() {
       setToggling(true);
       setToggleError(null);
       try {
-        setMe(await api.setOnline(next));
+        const updated = await api.setOnline(next);
+        setMe(updated);
+        if (!next)
+          setShiftDone({
+            trips: updated.today_trips,
+            earnings: updated.today_earnings,
+          });
+        else setShiftDone(null);
       } catch (e) {
         haptic('error');
         setToggleError(
@@ -132,30 +154,34 @@ export function HomeScreen() {
 
       {/* Today */}
       <Animated.View entering={FadeInDown.delay(80).duration(motion.base)}>
-        <Card tone="alt" style={styles.today}>
-          <View style={styles.flex}>
-            <AppText variant="micro" tone="muted">
-              TODAY'S EARNINGS
-            </AppText>
-            {loading && !me ? (
-              <Skeleton width={120} height={30} style={styles.gapXs} />
-            ) : (
-              <AnimatedAmount
-                value={Number(me?.today_earnings ?? 0)}
-                style={styles.gapXs}
-              />
-            )}
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.tripsBox}>
-            <AppText variant="micro" tone="muted">
-              TRIPS
-            </AppText>
-            <AppText variant="money" style={styles.gapXs}>
-              {me?.today_trips ?? 0}
-            </AppText>
-          </View>
-        </Card>
+        <GuideTarget id={TARGETS.homeToday}>
+          <Card tone="alt" style={styles.today}>
+            <View style={styles.flex}>
+              <AppText variant="micro" tone="muted">
+                TODAY'S EARNINGS
+              </AppText>
+              {loading && !me ? (
+                <Skeleton width={120} height={30} style={styles.gapXs} />
+              ) : (
+                <AnimatedAmount
+                  value={Number(me?.today_earnings ?? 0)}
+                  style={styles.gapXs}
+                />
+              )}
+            </View>
+            <View
+              style={[styles.divider, { backgroundColor: colors.border }]}
+            />
+            <View style={styles.tripsBox}>
+              <AppText variant="micro" tone="muted">
+                TRIPS
+              </AppText>
+              <AppText variant="money" style={styles.gapXs}>
+                {me?.today_trips ?? 0}
+              </AppText>
+            </View>
+          </Card>
+        </GuideTarget>
       </Animated.View>
 
       {/* Active trip */}
@@ -255,14 +281,14 @@ export function HomeScreen() {
                 </AppText>
               </Animated.View>
             )}
-            <View style={styles.gapXl}>
+            <GuideTarget id={TARGETS.homeToggle} style={styles.toggleWrap}>
               <OnlineToggle
                 online={online}
                 onChange={toggle}
                 busy={toggling}
                 disabledReason={disabledReason}
               />
-            </View>
+            </GuideTarget>
             {toggleError ? (
               <AppText
                 variant="caption"
@@ -273,6 +299,28 @@ export function HomeScreen() {
                 {toggleError}
               </AppText>
             ) : null}
+          </Card>
+        </Animated.View>
+      ) : null}
+
+      {shiftDone ? (
+        <Animated.View
+          entering={FadeInDown.duration(motion.base)}
+          exiting={FadeOut}
+        >
+          <Card
+            tone="success"
+            style={styles.note}
+            onPress={() => setShiftDone(null)}
+          >
+            <Icon name="checkmark-circle" size={22} color={colors.success} />
+            <View style={styles.flex}>
+              <AppText variant="bodyStrong">Shift done</AppText>
+              <AppText variant="caption" tone="muted">
+                {shiftDone.trips} deliver{shiftDone.trips === 1 ? 'y' : 'ies'} ·{' '}
+                {rupees(shiftDone.earnings)} today. See you next time.
+              </AppText>
+            </View>
           </Card>
         </Animated.View>
       ) : null}
@@ -389,5 +437,5 @@ const styles = StyleSheet.create({
   gapXs: { marginTop: space.xs },
   gapSm: { marginTop: space.sm },
   gapMd: { marginTop: space.md },
-  gapXl: { marginTop: space.xl },
+  toggleWrap: { marginTop: space.xl, alignSelf: 'center' },
 });

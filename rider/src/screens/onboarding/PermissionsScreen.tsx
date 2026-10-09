@@ -115,9 +115,12 @@ export function PermissionsScreen() {
       {autoStart ? (
         <Card style={styles.item}>
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">Phone has its own battery saver?</AppText>
+            <AppText variant="bodyStrong">
+              Phone has its own battery saver?
+            </AppText>
             <AppText variant="caption" tone="muted">
-              Xiaomi, Realme, Oppo and Vivo add one more switch. Turn on auto-start for this app.
+              Xiaomi, Realme, Oppo and Vivo add one more switch. Turn on
+              auto-start for this app.
             </AppText>
           </View>
           <Button
@@ -133,7 +136,12 @@ export function PermissionsScreen() {
         label={ready ? 'All set' : 'Continue'}
         icon="arrow-forward"
         disabledReason={gateReason(state)}
-        onPress={() => (nav.canGoBack() ? nav.goBack() : nav.navigate('Main'))}
+        onPress={() =>
+          // Reached from the intro there is nothing behind this screen: start fresh on Home.
+          nav.canGoBack()
+            ? nav.goBack()
+            : nav.reset({ index: 0, routes: [{ name: 'Main' }] })
+        }
       />
     </Screen>
   );

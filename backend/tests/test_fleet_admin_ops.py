@@ -145,6 +145,30 @@ class AdminOpsTests(unittest.TestCase):
         self.assertEqual(Decimal(earnings["unpaid"]), Decimal("60.00"))
         self.assertEqual(Decimal(earnings["paid_total"]), Decimal("86.00"))
 
+    def test_a_rider_sees_their_own_payouts_newest_first(self) -> None:
+        now = datetime.now(UTC)
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db)
+            other = self.fdb.make_rider(db)
+            self._ended_trip(db, rider, "40.00", now - timedelta(days=3))
+            self._ended_trip(db, other, "55.00", now - timedelta(days=3))
+            db.commit()
+        admin = client_for(self.fdb, self.admin)
+        first = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": now.isoformat(), "reference": "UTR-A"})
+        self.assertEqual(first.status_code, 201, first.text)
+        with self.fdb.session() as db:
+            self._ended_trip(db, rider, "25.00", now - timedelta(hours=1))
+            db.commit()
+        second = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": now.isoformat(), "reference": "UTR-B"})
+        self.assertEqual(second.status_code, 201, second.text)
+        mine = client_for(self.fdb, rider).get("/api/rider/payouts")
+        self.assertEqual(mine.status_code, 200, mine.text)
+        self.assertEqual([p["reference"] for p in mine.json()], ["UTR-B", "UTR-A"])
+        self.assertEqual([Decimal(p["amount"]) for p in mine.json()], [Decimal("25.00"), Decimal("40.00")])
+        # The other rider's payment is theirs alone.
+        theirs = client_for(self.fdb, other).get("/api/rider/payouts").json()
+        self.assertEqual(theirs, [])
+
     def test_courier_only_buttons_are_not_offered_on_a_fleet_order(self) -> None:
         # "Find a rider" asks the COURIER's network, and simulate drives the
         # courier's sandbox: on our own riders' order either would call Pidge.

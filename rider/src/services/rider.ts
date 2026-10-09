@@ -4,6 +4,7 @@ import type {
   LoginResponse,
   Offer,
   OpenOrder,
+  Payout,
   RiderMe,
   Trip,
   TripAction,
@@ -63,6 +64,7 @@ export const riderApi = (token: string) => ({
     }),
   earnings: (days = 7) =>
     request<Earnings>(`/rider/earnings?days=${days}`, { token }),
+  payouts: () => request<Payout[]>('/rider/payouts', { token }),
   history: (before?: string) =>
     request<Trip[]>(
       `/rider/trips?limit=20${

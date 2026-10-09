@@ -9,6 +9,7 @@ import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
 import { useNav } from '@navigation/types';
+import { useTour } from '@/guide/useTour';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
@@ -35,6 +36,7 @@ export function OrdersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const blocked = takeBlockedReason(me?.status, trip !== null);
+  useTour('orders', openOrders.length > 0);
 
   // Fresh on every visit, not just on the next poll.
   useFocusEffect(
@@ -150,6 +152,7 @@ export function OrdersScreen() {
                   : blocked
               }
               onTake={() => void take(order)}
+              guide={index === 0}
             />
           </Animated.View>
         ))

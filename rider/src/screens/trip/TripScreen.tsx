@@ -21,6 +21,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OtpInput } from '@components/trip/OtpInput';
+import { ProblemSheet } from '@components/trip/ProblemSheet';
 import { StepTracker } from '@components/trip/StepTracker';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
@@ -30,11 +31,13 @@ import { IconButton } from '@components/ui/IconButton';
 import { Pill } from '@components/ui/Pill';
 import { SlideToConfirm } from '@components/ui/SlideToConfirm';
 import { useRiderLocation } from '@components/ShiftKeeper';
+import { GuideTarget } from '@/guide/GuideProvider';
+import { TARGETS } from '@/guide/tours';
+import { useTour } from '@/guide/useTour';
 import { useKeyboardHeight } from '@hooks/useKeyboardHeight';
 import { useTripAction } from '@hooks/useTripAction';
 import { nextSlide } from '@utils/tripSteps';
 import { useNav } from '@navigation/types';
-import { SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
 import type { Trip, TripStop } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
@@ -44,8 +47,6 @@ import { awayLabel, metresBetween } from '@utils/geo';
 import { haptic } from '@utils/haptics';
 import { call, openNavigation } from '@utils/links';
 
-const WAIT_MINUTES = 10;
-
 export function TripScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -53,7 +54,7 @@ export function TripScreen() {
   const { trip, setTrip, refreshMe, refreshTrip } = useRider();
   const [otp, setOtp] = useState('');
   const [shake, setShake] = useState(0);
-  const [showProblem, setShowProblem] = useState(false);
+  const [problem, setProblem] = useState(false);
   const keyboard = useKeyboardHeight();
   const { lastFix } = useRiderLocation();
   const scroll = useRef<ScrollViewInstance>(null);
@@ -81,6 +82,8 @@ export function TripScreen() {
     [setTrip, refreshMe, nav],
   );
   const action = useTripAction(trip?.id, onDone);
+  useTour('trip', trip?.step === 'to_pickup');
+  useTour('otp', trip?.step === 'at_drop');
 
   // A wrong code: shake, clear, refresh the attempts left.
   useEffect(() => {
@@ -122,10 +125,6 @@ export function TripScreen() {
     heading && lastFix && stop.lat != null && stop.lng != null
       ? awayLabel(metresBetween(lastFix.lat, lastFix.lng, stop.lat, stop.lng))
       : null;
-  const waitedMin = trip.arrived_drop_at
-    ? (Date.now() - new Date(trip.arrived_drop_at).getTime()) / 60_000
-    : 0;
-  const canGiveUp = waitedMin >= WAIT_MINUTES && trip.call_attempts >= 2;
   const otpReason = trip.otp_locked
     ? 'Code locked after wrong tries. Call support.'
     : otp.length < 4
@@ -148,9 +147,9 @@ export function TripScreen() {
           </AppText>
         </View>
         <IconButton
-          icon="headset"
-          label="Call support"
-          onPress={() => call(SUPPORT_PHONE)}
+          icon="help-circle-outline"
+          label="Having a problem?"
+          onPress={() => setProblem(true)}
         />
       </View>
 
@@ -164,9 +163,11 @@ export function TripScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(350)}>
-          <Card>
-            <StepTracker step={trip.step} />
-          </Card>
+          <GuideTarget id={TARGETS.tripSteps}>
+            <Card>
+              <StepTracker step={trip.step} />
+            </Card>
+          </GuideTarget>
         </Animated.View>
 
         {action.waitingForNetwork ? (
@@ -253,6 +254,13 @@ export function TripScreen() {
                 onPress={() => openNavigation(stop.lat, stop.lng, stop.address)}
               />
             </View>
+            <Button
+              kind="ghost"
+              size="md"
+              icon="help-circle-outline"
+              label="Having a problem?"
+              onPress={() => setProblem(true)}
+            />
           </Card>
         </Animated.View>
 
@@ -310,7 +318,7 @@ export function TripScreen() {
               >
                 The customer sees it on their order page.
               </AppText>
-              <View style={styles.gapLg}>
+              <GuideTarget id={TARGETS.tripOtp} style={styles.gapLg}>
                 <OtpInput
                   value={otp}
                   onChange={v => {
@@ -326,7 +334,7 @@ export function TripScreen() {
                   error={action.error?.code === 'otp_wrong'}
                   disabled={trip.otp_locked}
                 />
-              </View>
+              </GuideTarget>
               {action.error?.code === 'otp_wrong' ? (
                 <AppText
                   variant="label"
@@ -351,30 +359,9 @@ export function TripScreen() {
               <Button
                 kind="ghost"
                 size="md"
-                label={showProblem ? 'Hide' : 'Customer not answering?'}
-                onPress={() => setShowProblem(p => !p)}
+                label="Customer not answering?"
+                onPress={() => setProblem(true)}
               />
-              {showProblem ? (
-                <Animated.View entering={FadeInDown} style={styles.problem}>
-                  <AppText variant="caption" tone="muted" align="center">
-                    Call the customer at least twice and wait {WAIT_MINUTES}{' '}
-                    minutes at the door. Calls made: {trip.call_attempts}.
-                  </AppText>
-                  <Button
-                    kind="danger"
-                    size="md"
-                    icon="person-remove"
-                    label="Customer unavailable"
-                    loading={action.busy === 'unavailable'}
-                    disabledReason={
-                      canGiveUp
-                        ? null
-                        : `Available after ${WAIT_MINUTES} min and 2 calls`
-                    }
-                    onPress={() => action.run('unavailable')}
-                  />
-                </Animated.View>
-              ) : null}
             </Card>
           </Animated.View>
         ) : null}
@@ -398,7 +385,7 @@ export function TripScreen() {
             },
           ]}
         >
-          {slide ? (
+          <GuideTarget id={TARGETS.tripSlide}>
             <SlideToConfirm
               label={slide.label}
               icon={slide.icon}
@@ -408,9 +395,21 @@ export function TripScreen() {
               onConfirm={() => action.run(slide.action)}
               testID={`slide-${slide.action}`}
             />
-          ) : null}
+          </GuideTarget>
         </View>
       ) : null}
+
+      <ProblemSheet
+        open={problem}
+        onClose={() => setProblem(false)}
+        trip={trip}
+        onCustomerCalled={() => action.run('call-logged')}
+        unavailableBusy={action.busy === 'unavailable'}
+        onUnavailable={() => {
+          setProblem(false);
+          action.run('unavailable');
+        }}
+      />
     </View>
   );
 }
@@ -468,7 +467,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   otpCard: { borderRadius: radius.xxl, paddingVertical: space.xl },
-  problem: { gap: space.sm, marginTop: space.sm },
   footer: {
     position: 'absolute',
     left: 0,
