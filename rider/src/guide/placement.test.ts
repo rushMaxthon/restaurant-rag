@@ -1,4 +1,4 @@
-import { CARD_GAP, GUTTER, placeTooltip } from './placement';
+import { CARD_GAP, GUTTER, inWindow, placeTooltip } from './placement';
 
 const window = { width: 400, height: 800 };
 
@@ -54,5 +54,26 @@ describe('where the tip card goes around a spotlit control', () => {
       { height: 300 },
     );
     expect(place.side).toBe('below');
+  });
+});
+
+describe('whether a control is actually on screen', () => {
+  it('accepts a control fully inside the window', () => {
+    expect(inWindow({ x: 20, y: 100, width: 200, height: 48 }, window)).toBe(
+      true,
+    );
+  });
+
+  it('rejects a control scrolled below the fold or above the top', () => {
+    expect(inWindow({ x: 20, y: 790, width: 200, height: 48 }, window)).toBe(
+      false,
+    );
+    expect(inWindow({ x: 20, y: -30, width: 200, height: 48 }, window)).toBe(
+      false,
+    );
+  });
+
+  it('allows the ring padding to touch the edge, but not the control itself', () => {
+    expect(inWindow({ x: 0, y: 0, width: 100, height: 40 }, window)).toBe(true);
   });
 });

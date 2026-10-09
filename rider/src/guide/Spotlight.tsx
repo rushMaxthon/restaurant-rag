@@ -1,5 +1,11 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  BackHandler,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import Svg, { Defs, Mask, Rect } from 'react-native-svg';
 
@@ -23,6 +29,18 @@ export function Spotlight() {
   const { colors } = useTheme();
   const window = useWindowDimensions();
   const [cardHeight, setCardHeight] = useState(0);
+
+  // The phone's back button means "not now": it skips the tour rather than
+  // popping the screen out from under it.
+  const up = active !== null;
+  useEffect(() => {
+    if (!up) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      skip();
+      return true;
+    });
+    return () => sub.remove();
+  }, [up, skip]);
 
   if (!active) return null;
   const current = active.steps[active.index];

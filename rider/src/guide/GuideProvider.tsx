@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { Dimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useRider } from '@/store/RiderProvider';
@@ -20,7 +20,7 @@ import {
   SEEN_KEY,
   type Seen,
 } from './guideStore';
-import type { Rect } from './placement';
+import { inWindow, type Rect } from './placement';
 import {
   INTRO_ID,
   TOURS,
@@ -58,6 +58,8 @@ type GuideContextValue = {
   start: (id: TourId) => void;
   next: () => void;
   skip: () => void;
+  /** Drop the tour without marking it seen: the screen went away under it. */
+  cancel: () => void;
   markIntroSeen: () => void;
   resetTips: () => void;
 };
@@ -118,11 +120,12 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
       if (starting.current || active || isSeen(seen, id)) return;
       starting.current = true;
       const steps = TOURS[id].steps;
+      const window = Dimensions.get('window');
       Promise.all(
         steps.map(async step => {
           const ref = targets.current.get(step.target);
           const rect = ref ? await measure(ref) : null;
-          return rect ? { step, rect } : null;
+          return rect && inWindow(rect, window) ? { step, rect } : null;
         }),
       )
         .then(measured => {
@@ -153,6 +156,8 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
     if (active) finish(active.id);
   }, [active, finish]);
 
+  const cancel = useCallback(() => setActive(null), []);
+
   // An order ringing is never covered by a tip.
   useEffect(() => {
     if (offer && active) setActive(null);
@@ -181,6 +186,7 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
       start,
       next,
       skip,
+      cancel,
       markIntroSeen,
       resetTips,
     }),
@@ -192,6 +198,7 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
       start,
       next,
       skip,
+      cancel,
       markIntroSeen,
       resetTips,
     ],

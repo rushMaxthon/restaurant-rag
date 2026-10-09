@@ -17,7 +17,7 @@ const SETTLE_MS = 700;
  */
 export function useTour(id: TourId, ready: boolean = true): void {
   const focused = useIsFocused();
-  const { loaded, seen, active, start } = useGuide();
+  const { loaded, seen, active, start, cancel } = useGuide();
   const { offer } = useRider();
   const due =
     focused && ready && loaded && !active && !offer && !isSeen(seen, id);
@@ -27,4 +27,12 @@ export function useTour(id: TourId, ready: boolean = true): void {
     const t = setTimeout(() => start(id), SETTLE_MS);
     return () => clearTimeout(t);
   }, [due, id, start]);
+
+  // The screen left (back button, a push, a tab switch) while its tour was
+  // up: the ring would be drawn around a control that is no longer there.
+  // Dropped, not marked seen, so it runs next time the screen is open.
+  const running = active?.id === id;
+  useEffect(() => {
+    if (running && !focused) cancel();
+  }, [running, focused, cancel]);
 }

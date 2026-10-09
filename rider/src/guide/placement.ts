@@ -23,6 +23,20 @@ export type Placement = {
   arrowLeft: number;
 };
 
+/**
+ * A control the rider cannot see is not one to point at: on a short phone the
+ * "To be paid" card or the code boxes can sit below the fold, and a ring drawn
+ * off-screen with a card floating mid-air would read as a broken app.
+ */
+export function inWindow(rect: Rect, window: Size): boolean {
+  return (
+    rect.y >= 0 &&
+    rect.x >= 0 &&
+    rect.y + rect.height <= window.height &&
+    rect.x + rect.width <= window.width
+  );
+}
+
 export function placeTooltip(
   target: Rect,
   window: Size,
