@@ -36,7 +36,62 @@ class RiderStatus(StrEnum):
 class VehicleType(StrEnum):
     BIKE = "BIKE"
     SCOOTER = "SCOOTER"
+    # A low-speed e-scooter (under 25 km/h), which Indian law lets anyone ride
+    # with no licence or registration - so sign-up asks for neither. A
+    # registered electric scooter is a SCOOTER.
+    EV_SCOOTER = "EV_SCOOTER"
     CYCLE = "CYCLE"
+
+
+class RiderOnboarding(StrEnum):
+    """Whether a rider may work. Admin-made riders are APPROVED from the start;
+    a rider who signed up in the app is PENDING until an admin approves."""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ApplicationStatus(StrEnum):
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
+    CHANGES_NEEDED = "CHANGES_NEEDED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ApplicationItemKind(StrEnum):
+    """One reviewable thing: a typed-in section, or one side of a document."""
+
+    PERSONAL = "PERSONAL"
+    VEHICLE_DETAILS = "VEHICLE_DETAILS"
+    BANK_DETAILS = "BANK_DETAILS"
+    SELFIE = "SELFIE"
+    RC = "RC"
+    AADHAAR_FRONT = "AADHAAR_FRONT"
+    AADHAAR_BACK = "AADHAAR_BACK"
+    PAN = "PAN"
+    LICENCE_FRONT = "LICENCE_FRONT"
+    LICENCE_BACK = "LICENCE_BACK"
+    BANK_PROOF = "BANK_PROOF"
+
+
+class ItemStatus(StrEnum):
+    MISSING = "MISSING"
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    NEEDS_CHANGE = "NEEDS_CHANGE"
+
+
+class ApplicationAction(StrEnum):
+    SUBMITTED = "SUBMITTED"
+    RESUBMITTED = "RESUBMITTED"
+    ITEM_ACCEPTED = "ITEM_ACCEPTED"
+    ITEM_FLAGGED = "ITEM_FLAGGED"
+    SENT_BACK = "SENT_BACK"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    REOPENED = "REOPENED"
 
 
 class OfferOutcome(StrEnum):

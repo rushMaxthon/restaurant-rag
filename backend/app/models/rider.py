@@ -27,7 +27,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import OfferOutcome, RiderStatus, TripEndReason, VehicleType
+from app.models.enums import OfferOutcome, RiderOnboarding, RiderStatus, TripEndReason, VehicleType
 
 
 def _enum(cls: type, name: str) -> Enum:
@@ -53,6 +53,15 @@ class Rider(TimestampMixin, Base):
     fcm_token: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     app_version: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # APPROVED by default, so every rider an admin made - and every rider that
+    # existed before self sign-up - keeps working with no backfill. Sign-up
+    # sets PENDING; only APPROVED may go online, be offered or claim.
+    onboarding: Mapped[RiderOnboarding] = mapped_column(
+        _enum(RiderOnboarding, "rider_onboarding"),
+        nullable=False,
+        default=RiderOnboarding.APPROVED,
+        server_default="APPROVED",
+    )
 
     __table_args__ = (Index("ix_riders_status", "status"),)
 
