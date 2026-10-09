@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, TextInput, View, type TextInputInstance } from '
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
 
@@ -24,6 +25,7 @@ export function OtpInput({
   disabled?: boolean;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const input = useRef<TextInputInstance>(null);
   const shake = useSharedValue(0);
 
@@ -41,7 +43,7 @@ export function OtpInput({
   const row = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
 
   return (
-    <Pressable accessibilityLabel="Customer's 4-digit code" onPress={() => input.current?.focus()} disabled={disabled}>
+    <Pressable accessibilityLabel={t('trip.otpA11y')} onPress={() => input.current?.focus()} disabled={disabled}>
       <Animated.View style={[styles.row, row]}>
         {[0, 1, 2, 3].map(i => {
           const char = value[i] ?? '';
@@ -65,7 +67,7 @@ export function OtpInput({
       <TextInput
         ref={input}
         value={value}
-        onChangeText={t => onChange(t.replace(/\D/g, '').slice(0, 4))}
+        onChangeText={text => onChange(text.replace(/\D/g, '').slice(0, 4))}
         keyboardType="number-pad"
         maxLength={4}
         editable={!disabled}

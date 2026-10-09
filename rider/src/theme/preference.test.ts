@@ -1,3 +1,4 @@
+import { en, gu, hi } from '@/i18n/strings';
 import { decodePreference, resolveMode, THEME_OPTIONS } from './preference';
 
 describe('the appearance choice', () => {
@@ -23,6 +24,9 @@ describe('the appearance choice', () => {
 
   it('offers system, light and dark, each with a label', () => {
     expect(THEME_OPTIONS.map(o => o.key)).toEqual(['system', 'light', 'dark']);
-    expect(THEME_OPTIONS.every(o => o.label.length > 0)).toBe(true);
+    for (const dict of [en, hi, gu]) {
+      expect(THEME_OPTIONS.every(o => dict[o.labelKey].length > 0)).toBe(true);
+      expect(THEME_OPTIONS.every(o => dict[o.hintKey].length > 0)).toBe(true);
+    }
   });
 });

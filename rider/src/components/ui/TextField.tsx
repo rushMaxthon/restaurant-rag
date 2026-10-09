@@ -1,4 +1,5 @@
 import React, { forwardRef, useState } from 'react';
+import { translate } from '@/i18n/translate';
 import { Pressable, StyleSheet, TextInput, View, type TextInputInstance, type TextInputProps } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -64,7 +65,11 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
         {secure ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
+            accessibilityLabel={
+              hidden
+                ? translate('common.showPassword')
+                : translate('common.hidePassword')
+            }
             hitSlop={10}
             onPress={() => setHidden(h => !h)}
           >

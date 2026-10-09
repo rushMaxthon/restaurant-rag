@@ -38,6 +38,7 @@ import { useTour } from '@/guide/useTour';
 import { useKeyboardHeight } from '@hooks/useKeyboardHeight';
 import { useTripAction } from '@hooks/useTripAction';
 import { nextSlide } from '@utils/tripSteps';
+import { useI18n } from '@/i18n';
 import { useNav } from '@navigation/types';
 import { useRider } from '@/store/RiderProvider';
 import type { Trip, TripStop } from '@/types/api';
@@ -50,6 +51,7 @@ import { call, openNavigation } from '@utils/links';
 
 export function TripScreen() {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   const insets = useSafeAreaInsets();
   const nav = useNav();
   const { trip, setTrip, refreshMe, refreshTrip } = useRider();
@@ -103,8 +105,8 @@ export function TripScreen() {
 
   useEffect(() => {
     if (!trip) {
-      const t = setTimeout(() => nav.canGoBack() && nav.goBack(), 600);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => nav.canGoBack() && nav.goBack(), 600);
+      return () => clearTimeout(timer);
     }
   }, [trip, nav]);
 
@@ -118,7 +120,7 @@ export function TripScreen() {
   if (!trip || !stop) {
     return (
       <View style={[styles.empty, { backgroundColor: colors.bg }]}>
-        <AppText tone="muted">This delivery has ended.</AppText>
+        <AppText tone="muted">{t('trip.ended')}</AppText>
       </View>
     );
   }
@@ -133,9 +135,9 @@ export function TripScreen() {
       ? awayLabel(metresBetween(lastFix.lat, lastFix.lng, stop.lat, stop.lng))
       : null;
   const otpReason = trip.otp_locked
-    ? 'Code locked after wrong tries. Call support.'
+    ? t('trip.otpLocked')
     : otp.length < 4
-    ? 'Ask the customer for their 4-digit code'
+    ? t('trip.askCode')
     : null;
 
   return (
@@ -144,18 +146,21 @@ export function TripScreen() {
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
         <IconButton
           icon="chevron-back"
-          label="Back"
+          label={t('common.back')}
           onPress={() => nav.goBack()}
         />
         <View style={styles.headerText}>
           <AppText variant="heading">{trip.order_code}</AppText>
           <AppText variant="caption" tone="muted">
-            {km(trip.distance_km)} · you earn {rupees(trip.earning)}
+            {t('trip.headerMeta', {
+              km: km(trip.distance_km),
+              amount: rupees(trip.earning),
+            })}
           </AppText>
         </View>
         <IconButton
           icon="help-circle-outline"
-          label="Having a problem?"
+          label={t('trip.problemTitle')}
           onPress={() => setProblem(true)}
         />
       </View>
@@ -180,7 +185,7 @@ export function TripScreen() {
             <Card tone="alt" style={styles.banner}>
               <Icon name="cloud-offline" size={20} color={colors.warning} />
               <AppText variant="label" style={styles.flex}>
-                No network. Your step is saved and will be sent automatically.
+                {t('trip.noNetwork')}
               </AppText>
             </Card>
           </Animated.View>
@@ -195,12 +200,12 @@ export function TripScreen() {
           <Card style={styles.stopCard}>
             <View style={styles.rowBetween}>
               <Pill
-                label={atRestaurant ? 'Pick up from' : 'Deliver to'}
+                label={atRestaurant ? t('trip.pickUpFrom') : t('trip.deliverTo')}
                 tone={atRestaurant ? 'primary' : 'success'}
                 icon={atRestaurant ? 'restaurant' : 'home'}
               />
               {trip.step === 'at_pickup' || trip.step === 'at_drop' ? (
-                <Pill label="You are here" tone="success" dot />
+                <Pill label={t('trip.youAreHere')} tone="success" dot />
               ) : null}
             </View>
             <AppText variant="title" style={styles.gapMd}>
@@ -241,20 +246,20 @@ export function TripScreen() {
                 kind="secondary"
                 size="md"
                 icon="call"
-                label="Call"
+                label={t('trip.call')}
                 style={styles.flex}
                 onPress={async () => {
                   const ok = await call(stop.phone);
                   if (ok && !atRestaurant && trip.step === 'at_drop')
                     action.run('call-logged');
                 }}
-                disabledReason={stop.phone ? null : 'No phone number'}
+                disabledReason={stop.phone ? null : t('trip.noPhone')}
               />
               <Button
                 kind="primary"
                 size="md"
                 icon="navigate"
-                label="Navigate"
+                label={t('trip.navigate')}
                 style={styles.flex}
                 onPress={() => openNavigation(stop.lat, stop.lng, stop.address)}
               />
@@ -275,8 +280,7 @@ export function TripScreen() {
               >
                 <Icon name="bag-handle" size={20} color={colors.primary} />
                 <AppText variant="bodyStrong" style={styles.flex}>
-                  Collect {trip.item_count} item
-                  {trip.item_count === 1 ? '' : 's'}
+                  {plural('trip.collect', trip.item_count)}
                 </AppText>
                 <Icon
                   name={showItems ? 'chevron-up' : 'chevron-down'}
@@ -321,7 +325,7 @@ export function TripScreen() {
           <Animated.View entering={FadeInDown.duration(motion.base)}>
             <Card style={styles.otpCard}>
               <AppText variant="heading" align="center">
-                Customer's code
+                {t('trip.customerCode')}
               </AppText>
               <AppText
                 variant="caption"
@@ -329,7 +333,7 @@ export function TripScreen() {
                 align="center"
                 style={styles.gapXs}
               >
-                The customer sees it on their order page.
+                {t('trip.codeWhere')}
               </AppText>
               <GuideTarget id={TARGETS.tripOtp} style={styles.gapLg}>
                 <OtpInput
@@ -355,13 +359,12 @@ export function TripScreen() {
                   align="center"
                   style={styles.gapSm}
                 >
-                  Wrong code. {trip.otp_attempts_left}{' '}
-                  {trip.otp_attempts_left === 1 ? 'try' : 'tries'} left.
+                  {plural('trip.wrongCode', trip.otp_attempts_left)}
                 </AppText>
               ) : null}
               <Button
                 kind="success"
-                label="Complete delivery"
+                label={t('trip.completeDelivery')}
                 icon="checkmark-done"
                 style={styles.gapLg}
                 loading={action.busy === 'delivered'}
@@ -372,7 +375,7 @@ export function TripScreen() {
               <Button
                 kind="ghost"
                 size="md"
-                label="Customer not answering?"
+                label={t('trip.notAnswering')}
                 onPress={() => setProblem(true)}
               />
             </Card>

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
 import { Icon } from '@components/ui/Icon';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 
@@ -19,6 +20,7 @@ const PATIENCE_MS = 1500;
  */
 export function ConnectionBanner() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [offline, setOffline] = useState(false);
 
@@ -53,7 +55,7 @@ export function ConnectionBanner() {
       >
         <Icon name="cloud-offline" size={16} color={colors.warning} />
         <AppText variant="label" tone="warning">
-          No connection. We keep trying.
+          {t('account.offline')}
         </AppText>
       </View>
     </Animated.View>

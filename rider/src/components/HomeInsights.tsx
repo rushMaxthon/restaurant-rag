@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { AppText } from '@components/ui/AppText';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
+import { useI18n } from '@/i18n';
 import { useApi } from '@/store/SessionProvider';
 import type { Earnings, RiderMe } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
@@ -19,6 +20,7 @@ import { rupees } from '@utils/format';
  */
 export function HomeInsights({ me }: { me: RiderMe | null }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const api = useApi();
   const nav = useNavigation<{ navigate: (route: 'Earnings') => void }>();
   const [week, setWeek] = useState<Earnings | null>(null);
@@ -53,23 +55,23 @@ export function HomeInsights({ me }: { me: RiderMe | null }) {
               <Icon name="trending-up" size={18} color={colors.success} />
             </View>
             <AppText variant="label" tone="muted" style={styles.flex}>
-              THIS WEEK
+              {t('money.thisWeek')}
             </AppText>
             <Icon name="chevron-forward" size={18} color={colors.textFaint} />
           </View>
           <View style={styles.stats}>
             <Stat
-              label="Earned"
+              label={t('money.earned')}
               value={week ? rupees(week.period_total) : '—'}
             />
             <View style={[styles.rule, { backgroundColor: colors.border }]} />
             <Stat
-              label="Deliveries"
+              label={t('money.deliveries')}
               value={week ? String(week.period_trips) : '—'}
             />
             <View style={[styles.rule, { backgroundColor: colors.border }]} />
             <Stat
-              label="Per delivery"
+              label={t('money.perDelivery')}
               value={average != null ? rupees(Math.round(average)) : '—'}
             />
           </View>
@@ -85,11 +87,14 @@ export function HomeInsights({ me }: { me: RiderMe | null }) {
               <Icon name="cash-outline" size={18} color={colors.primary} />
             </View>
             <View style={styles.flex}>
-              <AppText variant="bodyStrong">How you earn</AppText>
+              <AppText variant="bodyStrong">{t('money.howYouEarn')}</AppText>
               <AppText variant="caption" tone="muted">
-                {rupees(pay.base)} + {rupees(pay.per_km)} per km, at least{' '}
-                {rupees(pay.minimum)}. A 4 km trip pays{' '}
-                {example != null ? rupees(example) : '—'}.
+                {t('money.payRule', {
+                  base: rupees(pay.base),
+                  perKm: rupees(pay.per_km),
+                  minimum: rupees(pay.minimum),
+                  example: example != null ? rupees(example) : '—',
+                })}
               </AppText>
             </View>
           </Card>
@@ -105,7 +110,16 @@ function Stat({ label, value }: { label: string; value: string }) {
       <AppText variant="heading" numberOfLines={1}>
         {value}
       </AppText>
-      <AppText variant="caption" tone="muted">
+      {/* One line, shrunk to fit: a longer word in Hindi or Gujarati wrapped
+          and lost its second half in this narrow column. */}
+      <AppText
+        variant="caption"
+        tone="muted"
+        align="center"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
         {label}
       </AppText>
     </View>

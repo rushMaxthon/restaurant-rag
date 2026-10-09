@@ -685,6 +685,20 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   the content padding, so rows pad themselves - and a last-7-days summary.
   Profile: an identity card and `ui/Group` settings sections.
 
+- **Hindi and Gujarati (2026-10-09).** `rider/src/i18n/`: English, Hindi,
+  Gujarati. The language follows the phone (hi/gu, anything else English)
+  until the rider picks one in Profile (`rider.lang`). Strings live in one
+  file per area under `i18n/strings/` (common, home, trip, money, account,
+  system) so screens can be translated side by side; `Translations<typeof
+  en>` makes tsc refuse a Hindi or Gujarati file missing a key, and
+  `dictionaries.test.ts` checks every `{placeholder}` survives. Components
+  use `useI18n().t`; pure helpers and headless code use `translate` from
+  `i18n/translate` - NOT `@/i18n`, which pulls AsyncStorage and breaks jest.
+  Headless work (a push waking a killed app, the shift notification) calls
+  `initLanguage()` first or it speaks the phone's language. Wording rules and
+  the term table are `i18n/GLOSSARY.md`; server text (names, addresses,
+  ApiError messages) is not translated. Digits stay 0-9.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

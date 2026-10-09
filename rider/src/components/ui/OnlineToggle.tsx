@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useI18n } from '@/i18n';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -55,6 +56,7 @@ export function OnlineToggle({
   const KNOB = HEIGHT - 8;
   const dims = { width: WIDTH, height: HEIGHT };
   const { colors } = useTheme();
+  const { t } = useI18n();
   const progress = useSharedValue(online ? 1 : 0);
   const pulse = useSharedValue(0);
 
@@ -108,10 +110,12 @@ export function OnlineToggle({
       <Pressable
         accessibilityRole="switch"
         accessibilityState={{ checked: online, disabled, busy }}
-        accessibilityLabel={online ? 'You are online' : 'You are offline'}
+        accessibilityLabel={
+          online ? t('toggle.youAreOnline') : t('toggle.youAreOffline')
+        }
         accessibilityHint={
           disabledReason ??
-          (online ? 'Double tap to go offline' : 'Double tap to go online')
+          (online ? t('toggle.tapToGoOffline') : t('toggle.tapToGoOnline'))
         }
         disabled={disabled}
         hitSlop={8}
@@ -152,7 +156,7 @@ export function OnlineToggle({
                 adjustsFontSizeToFit
                 minimumFontScale={0.7}
               >
-                Go online
+                {t('toggle.goOnline')}
               </AppText>
             </Animated.View>
             <Animated.View
@@ -169,7 +173,7 @@ export function OnlineToggle({
                 adjustsFontSizeToFit
                 minimumFontScale={0.7}
               >
-                Online
+                {t('toggle.online')}
               </AppText>
             </Animated.View>
             <Animated.View

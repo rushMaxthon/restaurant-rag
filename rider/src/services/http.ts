@@ -1,4 +1,6 @@
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '@/config/api';
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
 
 /**
  * One error type for every request, carrying a sentence a rider can read.
@@ -21,34 +23,43 @@ export class ApiError extends Error {
   }
 }
 
-/** Backend codes the app reacts to, in words for the rider. */
-const SENTENCES: Record<string, string> = {
-  offer_taken: 'Another rider took this order.',
-  offer_expired: 'This offer has expired.',
-  out_of_order: 'Finish the previous step first.',
-  otp_locked: 'Too many wrong codes. Call support to finish this delivery.',
-  too_early: 'Wait a little longer at the door and call the customer twice first.',
-  on_trip: 'Finish your current delivery before going offline.',
-  trip_ended: 'This delivery has already ended.',
+/**
+ * Backend codes the app reacts to, in words for the rider. Keys rather than
+ * sentences, translated when the error is made, so a language switch applies.
+ * A detail the server wrote itself is shown as it came.
+ */
+const SENTENCES: Record<string, Key> = {
+  offer_taken: 'system.errOfferTaken',
+  offer_expired: 'system.errOfferExpired',
+  out_of_order: 'system.errOutOfOrder',
+  otp_locked: 'system.errOtpLocked',
+  too_early: 'system.errTooEarly',
+  on_trip: 'system.errOnTrip',
+  trip_ended: 'system.errTripEnded',
 };
+
+function sentenceFor(code: string): string | null {
+  const key = Object.prototype.hasOwnProperty.call(SENTENCES, code) ? SENTENCES[code] : undefined;
+  return key ? translate(key) : null;
+}
 
 export function messageFor(status: number, detail: unknown): { message: string; code: string | null } {
   if (typeof detail === 'string') {
-    return { message: SENTENCES[detail] ?? detail, code: detail };
+    return { message: sentenceFor(detail) ?? detail, code: detail };
   }
   if (detail && typeof detail === 'object' && 'code' in detail) {
     const code = String((detail as { code: unknown }).code);
-    return { message: SENTENCES[code] ?? code, code };
+    return { message: sentenceFor(code) ?? code, code };
   }
   if (Array.isArray(detail) && detail.length > 0) {
     const first = detail[0] as { msg?: string };
-    return { message: first?.msg ?? 'Please check what you entered.', code: 'validation' };
+    return { message: first?.msg ?? translate('system.errValidation'), code: 'validation' };
   }
-  if (status === 401) return { message: 'Your session has ended. Please sign in again.', code: 'auth' };
-  if (status === 403) return { message: 'This account cannot use the rider app.', code: 'forbidden' };
-  if (status === 429) return { message: 'Too many tries. Wait a minute and try again.', code: 'rate_limited' };
-  if (status >= 500) return { message: 'Something went wrong on our side. Try again in a moment.', code: 'server' };
-  return { message: 'Something went wrong. Try again.', code: null };
+  if (status === 401) return { message: translate('system.errAuth'), code: 'auth' };
+  if (status === 403) return { message: translate('system.errForbidden'), code: 'forbidden' };
+  if (status === 429) return { message: translate('system.errRateLimited'), code: 'rate_limited' };
+  if (status >= 500) return { message: translate('system.errServer'), code: 'server' };
+  return { message: translate('system.errGeneric'), code: null };
 }
 
 type Options = { method?: string; body?: unknown; token?: string | null; signal?: AbortSignal };
@@ -77,7 +88,7 @@ export async function request<T>(path: string, { method = 'GET', body, token, si
       signal: controller.signal,
     });
   } catch {
-    throw new ApiError(0, 'No connection. Check your internet and try again.', 'network');
+    throw new ApiError(0, translate('system.errNetwork'), 'network');
   } finally {
     clearTimeout(timer);
   }

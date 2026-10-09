@@ -7,6 +7,7 @@ import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Sheet } from '@components/ui/Sheet';
 import { SUPPORT_PHONE } from '@/config/api';
+import { useI18n } from '@/i18n';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
@@ -65,6 +66,7 @@ export function ProblemSheet({
   onUnavailable: () => void;
   unavailableBusy: boolean;
 }) {
+  const { t } = useI18n();
   const atDoor = trip.step === 'at_drop';
   // Re-check the clock while the sheet is open at the door, so the button
   // unlocks at ten minutes without the rider closing and reopening it.
@@ -72,8 +74,8 @@ export function ProblemSheet({
   useEffect(() => {
     if (!open || !atDoor) return;
     setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 15_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
   }, [open, atDoor]);
   const waitedMin = trip.arrived_drop_at
     ? (now - new Date(trip.arrived_drop_at).getTime()) / 60_000
@@ -82,11 +84,11 @@ export function ProblemSheet({
     waitedMin >= WAIT_MINUTES && trip.call_attempts >= CALLS_NEEDED;
 
   return (
-    <Sheet open={open} onClose={onClose} title="Having a problem?">
+    <Sheet open={open} onClose={onClose} title={t('trip.problemTitle')}>
       {trip.pickup.phone ? (
         <Line
           icon="restaurant"
-          label="Call the restaurant"
+          label={t('trip.callRestaurant')}
           hint={trip.pickup.name}
           onPress={() => void call(trip.pickup.phone)}
         />
@@ -94,7 +96,7 @@ export function ProblemSheet({
       {trip.drop.phone ? (
         <Line
           icon="home"
-          label="Call the customer"
+          label={t('trip.callCustomer')}
           hint={trip.drop.name}
           onPress={async () => {
             const ok = await call(trip.drop.phone);
@@ -104,28 +106,33 @@ export function ProblemSheet({
       ) : null}
       <Line
         icon="headset"
-        label="Call support"
-        hint="Wrong address, order not ready, anything else"
+        label={t('trip.callSupport')}
+        hint={t('trip.supportHint')}
         onPress={() => void call(SUPPORT_PHONE)}
       />
 
       {atDoor ? (
         <View style={styles.giveUp}>
           <AppText variant="caption" tone="muted" align="center">
-            Customer not answering? Call them at least {CALLS_NEEDED} times and
-            wait {WAIT_MINUTES} minutes at the door. Calls made:{' '}
-            {trip.call_attempts}.
+            {t('trip.notAnsweringHelp', {
+              calls: CALLS_NEEDED,
+              minutes: WAIT_MINUTES,
+              made: trip.call_attempts,
+            })}
           </AppText>
           <Button
             kind="danger"
             size="md"
             icon="person-remove"
-            label="Customer unavailable"
+            label={t('trip.customerUnavailable')}
             loading={unavailableBusy}
             disabledReason={
               canGiveUp
                 ? null
-                : `Available after ${WAIT_MINUTES} min and ${CALLS_NEEDED} calls`
+                : t('trip.unavailableAfter', {
+                    minutes: WAIT_MINUTES,
+                    calls: CALLS_NEEDED,
+                  })
             }
             onPress={onUnavailable}
           />

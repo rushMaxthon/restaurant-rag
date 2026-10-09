@@ -4,6 +4,9 @@ import notifee, {
 } from '@notifee/react-native';
 import { Platform } from 'react-native';
 
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
+
 /**
  * The ongoing "You're online" notification that keeps the rider's location
  * flowing while the app is in the background or the screen is off.
@@ -32,9 +35,8 @@ export function registerShiftService(): void {
 async function channel(): Promise<string> {
   return notifee.createChannel({
     id: CHANNEL_ID,
-    name: 'On shift',
-    description:
-      'Shown while you are online, so the app can keep sharing your location.',
+    name: translate('system.channelShift'),
+    description: translate('system.channelShiftDesc'),
     // Quiet: it is a status, not an alert. Orders use their own loud channel.
     importance: AndroidImportance.LOW,
   });
@@ -42,26 +44,23 @@ async function channel(): Promise<string> {
 
 export type ShiftMode = 'online' | 'trip';
 
-const COPY: Record<ShiftMode, { title: string; body: string }> = {
-  online: {
-    title: 'You are online',
-    body: 'Looking for orders near you. Tap to open.',
-  },
-  trip: {
-    title: 'Delivery in progress',
-    body: 'Sharing your location with the customer. Tap to open.',
-  },
+// Keys, not sentences: read at display time, in the rider's language.
+const COPY: Record<ShiftMode, { title: Key; body: Key }> = {
+  online: { title: 'system.shiftOnlineTitle', body: 'system.shiftOnlineBody' },
+  trip: { title: 'system.shiftTripTitle', body: 'system.shiftTripBody' },
 };
 
 /** Start the service, or update its text if it is already running. */
 export async function startShift(mode: ShiftMode): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
+    // Called from ShiftKeeper inside the React tree, so the rider's language
+    // is already in force; reading storage here could race a fresh switch.
     const channelId = await channel();
     await notifee.displayNotification({
       id: NOTIFICATION_ID,
-      title: COPY[mode].title,
-      body: COPY[mode].body,
+      title: translate(COPY[mode].title),
+      body: translate(COPY[mode].body),
       android: {
         channelId,
         asForegroundService: true,

@@ -3,21 +3,28 @@
  * `offers.claim` in the backend: `order_taken`, `rider_offline`, `rider_busy`.
  */
 
-const CLAIM_ERRORS: Record<string, string> = {
-  order_taken: 'Another rider took this one first.',
-  rider_offline: 'Go online to take orders.',
-  rider_busy: 'Finish your current delivery first.',
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
+
+const CLAIM_ERRORS: Record<string, Key> = {
+  order_taken: 'system.claimTaken',
+  rider_offline: 'system.claimOffline',
+  rider_busy: 'system.claimBusy',
 };
 
 export function claimErrorMessage(detail: string | undefined): string {
-  return (
-    (detail && CLAIM_ERRORS[detail]) || 'Could not take this order. Try again.'
-  );
+  const key =
+    detail && Object.prototype.hasOwnProperty.call(CLAIM_ERRORS, detail)
+      ? CLAIM_ERRORS[detail]
+      : undefined;
+  return translate(key ?? 'system.claimFailed');
 }
 
 /** How long before the order goes to a courier instead. */
 export function minutesLeftLabel(minutes: number): string {
-  return minutes <= 1 ? 'Last minute' : `${minutes} min left`;
+  return minutes <= 1
+    ? translate('system.lastMinute')
+    : translate('system.minutesLeft', { n: minutes });
 }
 
 /**
@@ -29,7 +36,7 @@ export function takeBlockedReason(
   onTrip: boolean,
 ): string | null {
   if (onTrip || status === 'ON_TRIP')
-    return 'Finish your current delivery first';
-  if (status !== 'ONLINE') return 'Go online to take orders';
+    return translate('system.blockedBusy');
+  if (status !== 'ONLINE') return translate('system.blockedOffline');
   return null;
 }

@@ -17,6 +17,8 @@ import { Icon } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
 import { TextField } from '@components/ui/TextField';
 import { SUPPORT_PHONE } from '@/config/api';
+import { useI18n } from '@/i18n';
+import { translate } from '@/i18n/translate';
 import { ApiError } from '@/services/http';
 import { useSession } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
@@ -29,8 +31,8 @@ export function digitsOnly(value: string): string {
 
 export function loginProblem(phone: string, password: string): string | null {
   if (digitsOnly(phone).length !== 10)
-    return 'Enter your 10-digit mobile number';
-  if (password.length < 8) return 'Your password has at least 8 characters';
+    return translate('account.login.phoneProblem');
+  if (password.length < 8) return translate('account.login.passwordProblem');
   return null;
 }
 
@@ -42,6 +44,7 @@ export function loginProblem(phone: string, password: string): string | null {
 export function LoginScreen() {
   const { signIn, state } = useSession();
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,10 +70,10 @@ export function LoginScreen() {
       haptic('error');
       setError(
         e instanceof ApiError && e.status === 401
-          ? 'That phone number and password do not match.'
+          ? t('account.login.mismatch')
           : e instanceof Error
           ? e.message
-          : 'Could not sign in. Try again.',
+          : t('account.login.failed'),
       );
     } finally {
       setBusy(false);
@@ -86,9 +89,9 @@ export function LoginScreen() {
         <Animated.View entering={FadeInDown.duration(500)} style={styles.hero}>
           <BrandMark size={72} />
           <AppText variant="display" style={styles.title}>
-            Welcome back
+            {t('account.login.welcome')}
           </AppText>
-          <AppText tone="muted">Sign in to start taking orders.</AppText>
+          <AppText tone="muted">{t('account.login.lead')}</AppText>
         </Animated.View>
 
         <Animated.View
@@ -96,7 +99,7 @@ export function LoginScreen() {
           style={styles.form}
         >
           <TextField
-            label="Mobile number"
+            label={t('account.login.mobile')}
             icon="call-outline"
             prefix="+91"
             value={phone}
@@ -114,7 +117,7 @@ export function LoginScreen() {
           />
           <TextField
             ref={passwordRef}
-            label="Password"
+            label={t('account.login.password')}
             icon="lock-closed-outline"
             secure
             value={password}
@@ -125,7 +128,7 @@ export function LoginScreen() {
             autoCapitalize="none"
             autoComplete="password"
             returnKeyType="go"
-            placeholder="Your password"
+            placeholder={t('account.login.passwordPlaceholder')}
             onSubmitEditing={submit}
           />
           {error ? (
@@ -142,7 +145,7 @@ export function LoginScreen() {
             </Animated.View>
           ) : null}
           <Button
-            label="Sign in"
+            label={t('account.login.signIn')}
             icon="arrow-forward"
             loading={busy}
             onPress={submit}
@@ -152,12 +155,12 @@ export function LoginScreen() {
 
         <View style={styles.help}>
           <AppText variant="caption" tone="muted" align="center">
-            New rider or forgot your password?
+            {t('account.login.help')}
           </AppText>
           <Button
             kind="ghost"
             size="md"
-            label="Call your manager"
+            label={t('account.login.callManager')}
             icon="headset-outline"
             onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)}
           />

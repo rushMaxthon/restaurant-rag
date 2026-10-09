@@ -14,6 +14,7 @@ import Animated, {
 
 import { AppText } from '@components/ui/AppText';
 import { BrandMark } from '@components/ui/BrandMark';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 
@@ -26,6 +27,7 @@ const MIN_VISIBLE_MS = 1100;
  */
 export function SplashOverlay({ ready }: { ready: boolean }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [minElapsed, setMinElapsed] = useState(false);
   const scale = useSharedValue(0.6);
   const lift = useSharedValue(16);
@@ -46,8 +48,8 @@ export function SplashOverlay({ ready }: { ready: boolean }) {
         -1,
       ),
     );
-    const t = setTimeout(() => setMinElapsed(true), MIN_VISIBLE_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setMinElapsed(true), MIN_VISIBLE_MS);
+    return () => clearTimeout(timer);
   }, [scale, lift, fade, pulse]);
 
   const mark = useAnimatedStyle(() => ({
@@ -81,7 +83,7 @@ export function SplashOverlay({ ready }: { ready: boolean }) {
           </AppText>
         </AppText>
         <AppText tone="muted" align="center">
-          Deliver smiles, earn more.
+          {t('account.splash.tagline')}
         </AppText>
       </Animated.View>
       <Animated.View style={[styles.dots, dots]}>

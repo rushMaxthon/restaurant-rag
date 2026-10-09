@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { translate } from '@/i18n/translate';
 import { identifyRider } from '@/services/crashReports';
 import { ApiError, setUnauthorizedHandler } from '@/services/http';
 import { login as apiLogin, riderApi, type RiderApi } from '@/services/rider';
@@ -50,7 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // from an earlier sign-in must not end the new session.
     setUnauthorizedHandler(token => {
       if (token === tokenRef.current) {
-        void signOut('Your session has ended. Please sign in again.');
+        void signOut(translate('system.errAuth'));
       }
     });
     return () => setUnauthorizedHandler(null);

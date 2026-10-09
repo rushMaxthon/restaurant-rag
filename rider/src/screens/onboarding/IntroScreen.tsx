@@ -11,6 +11,7 @@ import { CountdownRing } from '@components/ui/CountdownRing';
 import { OnlineToggle } from '@components/ui/OnlineToggle';
 import { SlideToConfirm } from '@components/ui/SlideToConfirm';
 import { useGuide } from '@/guide/GuideProvider';
+import { useI18n, type Key } from '@/i18n';
 import { usePermissions } from '@hooks/usePermissions';
 import type { RootStackParamList } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
@@ -25,8 +26,8 @@ import { haptic } from '@utils/haptics';
 
 type Card = {
   key: string;
-  title: string;
-  body: string;
+  titleKey: Key;
+  bodyKey: Key;
   demo: React.ComponentType;
 };
 
@@ -51,17 +52,18 @@ function RingDemo() {
 }
 
 function SlideDemo() {
+  const { t } = useI18n();
   const [done, setDone] = useState(0);
   const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setResetKey(k => k + 1), 1400);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setResetKey(k => k + 1), 1400);
+    return () => clearTimeout(timer);
   }, [done]);
   return (
     <View style={styles.slideWrap}>
       <SlideToConfirm
-        label="Arrived at restaurant"
+        label={t('account.intro.slideLabel')}
         icon="restaurant"
         resetKey={resetKey}
         onConfirm={() => {
@@ -74,9 +76,7 @@ function SlideDemo() {
         tone={done ? 'success' : 'muted'}
         align="center"
       >
-        {done
-          ? "That's it. The customer now sees you're there."
-          : 'Try it: slide the knob all the way.'}
+        {done ? t('account.intro.slideDone') : t('account.intro.slideTry')}
       </AppText>
     </View>
   );
@@ -86,10 +86,11 @@ const CODE = ['4', '7', '1', '9'];
 
 function CodeDemo() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const [filled, setFilled] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setFilled(f => (f >= 5 ? 0 : f + 1)), 650);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setFilled(f => (f >= 5 ? 0 : f + 1)), 650);
+    return () => clearInterval(timer);
   }, []);
   const paid = filled >= 4;
   return (
@@ -112,7 +113,7 @@ function CodeDemo() {
       </View>
       <View style={[styles.paid, paid ? null : styles.hidden]}>
         <AppText variant="micro" tone="success">
-          YOU EARNED
+          {t('account.intro.youEarned')}
         </AppText>
         {paid ? (
           <AnimatedAmount value={52} tone="success" duration={500} />
@@ -125,26 +126,26 @@ function CodeDemo() {
 const CARDS: Card[] = [
   {
     key: 'online',
-    title: 'Go online when you start',
-    body: 'Orders only come while this is on. Switch it off when your shift ends. Try it.',
+    titleKey: 'account.intro.onlineTitle',
+    bodyKey: 'account.intro.onlineBody',
     demo: OnlineDemo,
   },
   {
     key: 'ring',
-    title: 'An order rings like a call',
-    body: 'You see what it pays and how far it is. Accept before the ring runs out - declining costs nothing.',
+    titleKey: 'account.intro.ringTitle',
+    bodyKey: 'account.intro.ringBody',
     demo: RingDemo,
   },
   {
     key: 'slide',
-    title: 'Slide at every stop',
-    body: 'Reached the restaurant? Slide. Picked up? Slide. A slide, not a tap, so a bump on the road cannot do it for you.',
+    titleKey: 'account.intro.slideTitle',
+    bodyKey: 'account.intro.slideBody',
     demo: SlideDemo,
   },
   {
     key: 'code',
-    title: "The customer's code pays you",
-    body: 'At the door, ask for the 4-digit code on their order page. Type it and the delivery is done - and paid.',
+    titleKey: 'account.intro.codeTitle',
+    bodyKey: 'account.intro.codeBody',
     demo: CodeDemo,
   },
 ];
@@ -154,6 +155,7 @@ export function IntroScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'Intro'>) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { markIntroSeen } = useGuide();
@@ -196,12 +198,12 @@ export function IntroScreen({
     >
       <View style={styles.top}>
         <AppText variant="micro" tone="muted">
-          HOW IT WORKS
+          {t('account.intro.howItWorks')}
         </AppText>
         <Button
           kind="ghost"
           size="md"
-          label={replay ? 'Close' : 'Skip'}
+          label={replay ? t('common.close') : t('common.skip')}
           onPress={leave}
         />
       </View>
@@ -252,10 +254,10 @@ export function IntroScreen({
                   entering={FadeInDown.duration(300)}
                 >
                   <AppText variant="title" align="center">
-                    {item.title}
+                    {t(item.titleKey)}
                   </AppText>
                   <AppText tone="muted" align="center" style={styles.body}>
-                    {item.body}
+                    {t(item.bodyKey)}
                   </AppText>
                 </Animated.View>
               </View>
@@ -269,7 +271,10 @@ export function IntroScreen({
       >
         <View
           style={styles.dots}
-          accessibilityLabel={`Card ${index + 1} of ${CARDS.length}`}
+          accessibilityLabel={t('account.intro.cardOf', {
+            n: index + 1,
+            count: CARDS.length,
+          })}
         >
           {CARDS.map((c, i) => (
             <View
@@ -285,7 +290,13 @@ export function IntroScreen({
           ))}
         </View>
         <Button
-          label={last ? (replay ? 'Done' : "Let's set up") : 'Next'}
+          label={
+            last
+              ? replay
+                ? t('common.done')
+                : t('account.intro.letsSetUp')
+              : t('common.next')
+          }
           icon="arrow-forward"
           onPress={() => (last ? leave() : goTo(index + 1))}
           testID="intro-next"

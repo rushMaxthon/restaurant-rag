@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { useI18n, type Key } from '@/i18n';
 import { StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, {
@@ -34,16 +35,17 @@ import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 import { greeting, initials } from '@utils/format';
 
-const STEP_LABEL: Record<Trip['step'], string> = {
-  to_pickup: 'Going to restaurant',
-  at_pickup: 'At restaurant',
-  to_drop: 'Going to customer',
-  at_drop: 'At customer',
-  done: 'Done',
+const STEP_LABEL: Record<Trip['step'], Key> = {
+  to_pickup: 'home.step.toPickup',
+  at_pickup: 'home.step.atPickup',
+  to_drop: 'home.step.toDrop',
+  at_drop: 'home.step.atDrop',
+  done: 'home.step.done',
 };
 
 export function HomeScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const nav = useNav();
   const user = useSignedInUser();
   const { me, trip, loading, refreshMe, refreshTrip, error } = useRider();
@@ -88,7 +90,7 @@ export function HomeScreen() {
             {greeting()}
           </AppText>
           <AppText variant="heading" numberOfLines={1}>
-            {me?.full_name ?? user?.full_name ?? 'Rider'}
+            {me?.full_name ?? user?.full_name ?? t('common.rider')}
           </AppText>
         </View>
       </Animated.View>
@@ -107,7 +109,7 @@ export function HomeScreen() {
           >
             <View style={styles.rowBetween}>
               <Pill
-                label={STEP_LABEL[trip.step]}
+                label={t(STEP_LABEL[trip.step])}
                 tone="primary"
                 icon="navigate"
               />
@@ -120,7 +122,7 @@ export function HomeScreen() {
               <View style={styles.flexGap}>
                 <View>
                   <AppText variant="caption" tone="muted">
-                    Pick up
+                    {t('home.pickUp')}
                   </AppText>
                   <AppText variant="bodyStrong" numberOfLines={1}>
                     {trip.pickup.name}
@@ -128,7 +130,7 @@ export function HomeScreen() {
                 </View>
                 <View>
                   <AppText variant="caption" tone="muted">
-                    Deliver to
+                    {t('home.deliverTo')}
                   </AppText>
                   <AppText variant="bodyStrong" numberOfLines={1}>
                     {trip.drop.name} · {trip.drop.address}
@@ -137,7 +139,7 @@ export function HomeScreen() {
               </View>
             </View>
             <Button
-              label="Continue delivery"
+              label={t('home.continueDelivery')}
               icon="arrow-forward"
               onPress={() => nav.navigate('Trip')}
             />
@@ -169,7 +171,7 @@ export function HomeScreen() {
           <Card tone="alt" style={styles.today}>
             <View style={styles.flex}>
               <AppText variant="micro" tone="muted">
-                TODAY'S EARNINGS
+                {t('home.todayEarnings')}
               </AppText>
               {loading && !me ? (
                 <Skeleton width={120} height={30} style={styles.gapXs} />
@@ -185,7 +187,7 @@ export function HomeScreen() {
             />
             <View style={styles.tripsBox}>
               <AppText variant="micro" tone="muted">
-                TRIPS
+                {t('home.trips')}
               </AppText>
               <AppText variant="money" style={styles.gapXs}>
                 {me?.today_trips ?? 0}
@@ -203,9 +205,11 @@ export function HomeScreen() {
         <Card onPress={() => nav.navigate('Permissions')} style={styles.note}>
           <Icon name="warning" size={22} color={colors.warning} />
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">Finish setting up</AppText>
+            <AppText variant="bodyStrong">{t('home.finishSetup')}</AppText>
             <AppText variant="caption" tone="muted">
-              {gateReason(permissions.state)}.
+              {t('home.setupReason', {
+                reason: gateReason(permissions.state) ?? '',
+              })}
             </AppText>
           </View>
           <Icon name="chevron-forward" size={20} color={colors.textFaint} />
@@ -215,10 +219,9 @@ export function HomeScreen() {
         <Card style={styles.note}>
           <Icon name="information-circle" size={22} color={colors.primary} />
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">Practice mode</AppText>
+            <AppText variant="bodyStrong">{t('home.practiceMode')}</AppText>
             <AppText variant="caption" tone="muted">
-              Orders are not being sent to riders yet. You can still go online
-              and learn the app.
+              {t('home.practiceModeBody')}
             </AppText>
           </View>
         </Card>
@@ -227,9 +230,9 @@ export function HomeScreen() {
         <Card style={styles.note}>
           <Icon name="location-outline" size={22} color={colors.danger} />
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">Location not available</AppText>
+            <AppText variant="bodyStrong">{t('home.noLocation')}</AppText>
             <AppText variant="caption" tone="muted">
-              {location.error}. Turn on GPS so we can send you nearby orders.
+              {t('home.noLocationBody', { reason: location.error })}
             </AppText>
           </View>
         </Card>
@@ -238,7 +241,7 @@ export function HomeScreen() {
         <Card style={styles.note}>
           <Icon name="cloud-offline-outline" size={22} color={colors.danger} />
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">Can't reach the server</AppText>
+            <AppText variant="bodyStrong">{t('home.noServer')}</AppText>
             <AppText variant="caption" tone="muted">
               {error}
             </AppText>

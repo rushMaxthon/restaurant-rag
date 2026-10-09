@@ -6,6 +6,7 @@ import { Button } from '@components/ui/Button';
 import { Icon } from '@components/ui/Icon';
 import { dark } from '@theme/tokens';
 import { reportScreenError } from '@/services/crashReports';
+import { translate } from '@/i18n/translate';
 
 type State = { error: Error | null };
 
@@ -37,16 +38,16 @@ export class ErrorBoundary extends React.Component<
           <Icon name="warning" size={34} color={dark.danger} />
         </View>
         <AppText variant="title" align="center" style={{ color: dark.text }}>
-          Something went wrong
+          {translate('account.crash.title')}
         </AppText>
         <AppText
           align="center"
           style={[styles.body, { color: dark.textMuted }]}
         >
-          Your delivery and status are safe on the server. Tap below to reload.
+          {translate('account.crash.body')}
         </AppText>
         <Button
-          label="Try again"
+          label={translate('common.tryAgain')}
           icon="refresh"
           onPress={() => this.setState({ error: null })}
           style={styles.button}
@@ -68,7 +69,9 @@ export function withBoundary<P extends object>(Screen: React.ComponentType<P>) {
       </ErrorBoundary>
     );
   }
-  Bounded.displayName = `Bounded(${Screen.displayName ?? Screen.name ?? 'Screen'})`;
+  Bounded.displayName = `Bounded(${
+    Screen.displayName ?? Screen.name ?? 'Screen'
+  })`;
   return Bounded;
 }
 

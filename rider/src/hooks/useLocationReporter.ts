@@ -4,6 +4,7 @@ import Geolocation from '@react-native-community/geolocation';
 import { useApi } from '@/store/SessionProvider';
 import type { LocationFix, RiderStatus } from '@/types/api';
 import { batchToSend } from '@utils/heartbeat';
+import { translate } from '@/i18n/translate';
 
 /** On a trip the customer watches the rider move; idle, we only need "near which branch". */
 const SEND_EVERY_MS = { ON_TRIP: 10_000, ONLINE: 30_000 } as const;
@@ -63,7 +64,7 @@ export function useLocationReporter(
         if (!sentOnce.current) void flushRef.current();
       },
       error => {
-        gpsError.current = error.message || 'Location is not available';
+        gpsError.current = error.message || translate('system.locationUnavailable');
         setState(prev => ({ ...prev, error: gpsError.current }));
       },
       {

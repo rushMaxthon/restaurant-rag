@@ -5,6 +5,7 @@ import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
+import { translate } from '@/i18n/translate';
 import { haptic } from '@utils/haptics';
 import { firstMissing } from '@utils/permissions';
 
@@ -44,7 +45,9 @@ export function useShiftToggle() {
       } catch (e) {
         haptic('error');
         setError(
-          e instanceof ApiError ? e.message : 'Could not change your status.',
+          e instanceof ApiError
+            ? e.message
+            : translate('system.statusFailed'),
         );
       } finally {
         inFlight.current = false;
@@ -60,6 +63,8 @@ export function useShiftToggle() {
     busy,
     error,
     disabledReason:
-      me?.status === 'ON_TRIP' ? 'Finish your delivery to go offline' : null,
+      me?.status === 'ON_TRIP'
+        ? translate('system.finishToGoOffline')
+        : null,
   };
 }

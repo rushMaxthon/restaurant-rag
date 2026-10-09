@@ -27,6 +27,7 @@ import { Skeleton } from '@components/ui/Skeleton';
 import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import { useTour } from '@/guide/useTour';
+import { useI18n } from '@/i18n';
 import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
 import type { Earnings, Payout } from '@/types/api';
@@ -39,24 +40,10 @@ import {
   showsChart,
   type PeriodKey,
 } from '@utils/earningsPeriod';
-import { rupees, weekday } from '@utils/format';
+import { monthName, rupees, weekday } from '@utils/format';
 import { dateLabel } from '@utils/history';
 
 const CHART_HEIGHT = 90;
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
 
 function Bar({
   ratio,
@@ -117,6 +104,7 @@ function localDate(iso: string): string {
  */
 export function EarningsScreen() {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   const api = useApi();
   const [periodKey, setPeriodKey] = useState<PeriodKey>('week');
   const period = periodFor(periodKey);
@@ -151,9 +139,9 @@ export function EarningsScreen() {
       setError(null);
     } catch (e) {
       if (mine !== request.current) return;
-      setError(e instanceof ApiError ? e.message : 'Could not load earnings.');
+      setError(e instanceof ApiError ? e.message : t('money.loadFailed'));
     }
-  }, [api, period.days]);
+  }, [api, period.days, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -179,11 +167,12 @@ export function EarningsScreen() {
       contentStyle={styles.content}
     >
       <Animated.View entering={FadeInDown.duration(350)}>
-        <AppText variant="title">Earnings</AppText>
+        <AppText variant="title">{t('money.earnings')}</AppText>
       </Animated.View>
 
       <Segmented
-        options={PERIODS}
+        // A fresh array each render: the labels are read in the current language.
+        options={PERIODS.map(p => ({ key: p.key, label: p.label }))}
         value={periodKey}
         onChange={key => {
           setPeriodKey(key);
@@ -195,7 +184,7 @@ export function EarningsScreen() {
         <Card tone="alt" style={styles.errorCard}>
           <Icon name="cloud-offline-outline" size={20} color={colors.danger} />
           <AppText variant="label" style={styles.flex}>
-            {error} Pull down to try again.
+            {error} {t('money.pullToRetry')}
           </AppText>
         </Card>
       ) : null}
@@ -248,7 +237,7 @@ export function EarningsScreen() {
           <Card style={stale && styles.stale}>
             <View style={styles.chartHead}>
               <AppText variant="label" tone="muted" style={styles.flex}>
-                DAILY
+                {t('money.daily')}
               </AppText>
               {pickedDay ? (
                 <AppText variant="label">
@@ -272,7 +261,7 @@ export function EarningsScreen() {
                 setPicked(Math.max(0, Math.min(n - 1, i)));
               }}
               accessibilityRole="adjustable"
-              accessibilityLabel="Daily earnings chart. Tap a day to see its amount."
+              accessibilityLabel={t('money.chartA11y')}
             >
               {(
                 data?.days ??
@@ -306,7 +295,7 @@ export function EarningsScreen() {
                       style={styles.monthLabel}
                     >
                       {Number(d.date.slice(-2))}{' '}
-                      {MONTHS[Number(d.date.slice(5, 7)) - 1]}
+                      {monthName(Number(d.date.slice(5, 7)))}
                     </AppText>
                   ))}
               </View>
@@ -324,7 +313,7 @@ export function EarningsScreen() {
             <View style={styles.payHead}>
               <Icon name="hourglass-outline" size={16} color={colors.warning} />
               <AppText variant="micro" tone="muted">
-                TO BE PAID
+                {t('money.toBePaid')}
               </AppText>
             </View>
             <AppText variant="heading" style={styles.gapXs}>
@@ -340,7 +329,7 @@ export function EarningsScreen() {
                 color={colors.success}
               />
               <AppText variant="micro" tone="muted">
-                PAID SO FAR
+                {t('money.paidSoFar')}
               </AppText>
             </View>
             <AppText variant="heading" style={styles.gapXs}>
@@ -359,7 +348,7 @@ export function EarningsScreen() {
           <View style={styles.paymentsHead}>
             <Icon name="card-outline" size={18} color={colors.success} />
             <AppText variant="bodyStrong" style={styles.flex}>
-              Payments to your bank
+              {t('money.paymentsToBank')}
             </AppText>
           </View>
           {payouts === null ? (
@@ -369,10 +358,10 @@ export function EarningsScreen() {
               style={[styles.emptyPay, { backgroundColor: colors.surfaceAlt }]}
             >
               <AppText variant="label" align="center">
-                Couldn't load payments
+                {t('money.paymentsFailed')}
               </AppText>
               <AppText variant="caption" tone="muted" align="center">
-                Pull down to try again.
+                {t('money.pullToRetry')}
               </AppText>
             </View>
           ) : payouts.length === 0 ? (
@@ -380,14 +369,12 @@ export function EarningsScreen() {
               style={[styles.emptyPay, { backgroundColor: colors.surfaceAlt }]}
             >
               <AppText variant="label" align="center">
-                Nothing paid yet
+                {t('money.nothingPaid')}
               </AppText>
               <AppText variant="caption" tone="muted" align="center">
                 {data && Number(data.unpaid) > 0
-                  ? `${rupees(
-                      data.unpaid,
-                    )} is due to you. It arrives after the platform pays out.`
-                  : 'Each delivery you finish adds to what is due to you.'}
+                  ? t('money.dueArrives', { amount: rupees(data.unpaid) })
+                  : t('money.eachAdds')}
               </AppText>
             </View>
           ) : (
@@ -402,11 +389,13 @@ export function EarningsScreen() {
               >
                 <View style={styles.flex}>
                   <AppText variant="bodyStrong">
-                    {dateLabel(localDate(p.paid_at))} · {p.trips} deliver
-                    {p.trips === 1 ? 'y' : 'ies'}
+                    {dateLabel(localDate(p.paid_at))} ·{' '}
+                    {plural('common.deliveries', p.trips)}
                   </AppText>
                   <AppText variant="caption" tone="muted" numberOfLines={1}>
-                    {p.reference ? `Ref ${p.reference}` : 'Bank transfer'}
+                    {p.reference
+                      ? t('money.ref', { reference: p.reference })
+                      : t('money.bankTransfer')}
                   </AppText>
                 </View>
                 <AppText variant="heading" tone="success">
@@ -425,7 +414,7 @@ export function EarningsScreen() {
           color={colors.textMuted}
         />
         <AppText variant="caption" tone="muted" style={styles.flex}>
-          Base + a rate per km, never under the minimum. Rates are on Home.
+          {t('money.rateInfo')}
         </AppText>
       </Card>
 

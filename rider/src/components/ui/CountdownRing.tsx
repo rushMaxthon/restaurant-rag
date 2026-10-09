@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { secondsLeft } from '@utils/time';
 import { AppText } from './AppText';
@@ -28,6 +29,7 @@ export type CountdownRingProps = {
  */
 export function CountdownRing({ expiresAt, totalMs, size = 120, onExpire }: CountdownRingProps) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const stroke = 8;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
@@ -67,7 +69,7 @@ export function CountdownRing({ expiresAt, totalMs, size = 120, onExpire }: Coun
       style={{ width: size, height: size }}
       accessible
       accessibilityRole="timer"
-      accessibilityLabel={`${left} seconds left`}
+      accessibilityLabel={t('trip.secondsLeftA11y', { n: left })}
     >
       <Svg width={size} height={size} style={styles.svg}>
         <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.surfaceAlt} strokeWidth={stroke} fill="none" />
@@ -88,7 +90,7 @@ export function CountdownRing({ expiresAt, totalMs, size = 120, onExpire }: Coun
           {left}
         </AppText>
         <AppText variant="micro" tone="muted">
-          SECONDS
+          {t('trip.seconds')}
         </AppText>
       </View>
     </View>

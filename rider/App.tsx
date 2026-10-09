@@ -11,6 +11,7 @@ import {
 import { ErrorBoundary } from '@components/ErrorBoundary';
 import { RootNavigator } from '@navigation/RootNavigator';
 import { navigationRef } from '@navigation/ref';
+import { LanguageProvider } from '@/i18n';
 import { SplashOverlay } from '@screens/auth/SplashOverlay';
 import { SessionProvider, useSession } from '@/store/SessionProvider';
 import { ThemeProvider, useTheme } from '@theme/ThemeProvider';
@@ -24,11 +25,13 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <SessionProvider>
-            <Navigation />
-          </SessionProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <SessionProvider>
+              <Navigation />
+            </SessionProvider>
+          </ThemeProvider>
+        </LanguageProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

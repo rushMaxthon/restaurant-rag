@@ -9,6 +9,7 @@ import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
 import { Skeleton } from '@components/ui/Skeleton';
+import { useI18n } from '@/i18n';
 import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
 import type { Earnings, Trip } from '@/types/api';
@@ -28,6 +29,7 @@ import { useNav } from '@navigation/types';
 function TripRow({ trip }: { trip: Trip }) {
   const { colors } = useTheme();
   const nav = useNav();
+  const { t } = useI18n();
   const end = endLabel(trip.end_reason);
   const dot = {
     success: colors.success,
@@ -55,8 +57,9 @@ function TripRow({ trip }: { trip: Trip }) {
           <AppText variant="caption" tone="muted" numberOfLines={1}>
             {/* A delivery that did not happen says so where the eye already is. */}
             {delivered ? '' : `${end.label} · `}
-            {trip.ended_at ? clockTime(trip.ended_at) : trip.order_code} · to{' '}
-            {trip.drop.name} · {km(trip.distance_km)}
+            {trip.ended_at ? clockTime(trip.ended_at) : trip.order_code} ·{' '}
+            {t('money.toPlace', { name: trip.drop.name })} ·{' '}
+            {km(trip.distance_km)}
           </AppText>
         </View>
         <AppText
@@ -94,16 +97,16 @@ function DayHeader({
 /** This week at a glance, above the list: the question History is opened for. */
 function WeekSummary({ week }: { week: Earnings | null }) {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   return (
     <Card tone="alt" style={styles.summary}>
       <Icon name="calendar-outline" size={20} color={colors.primary} />
       <AppText variant="label" tone="muted" style={styles.flex}>
-        LAST 7 DAYS
+        {t('money.heroWeek')}
       </AppText>
       {week ? (
         <AppText variant="bodyStrong">
-          {week.period_trips}{' '}
-          {week.period_trips === 1 ? 'delivery' : 'deliveries'} ·{' '}
+          {plural('common.deliveries', week.period_trips)} ·{' '}
           <AppText variant="bodyStrong" tone="success">
             {rupees(week.period_total)}
           </AppText>
@@ -120,13 +123,17 @@ export function HistoryScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const api = useApi();
+  const { t, lang } = useI18n();
   const [items, setItems] = useState<Trip[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [more, setMore] = useState(true);
 
   const [week, setWeek] = useState<Earnings | null>(null);
-  const rows = useMemo(() => groupByDay(items ?? []), [items]);
+  // `lang` on purpose: the day headings are words, and a language switch has
+  // to rebuild them even though the trips did not change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lang, see above
+  const rows = useMemo(() => groupByDay(items ?? []), [items, lang]);
   const sticky = useMemo(() => dayHeaderIndices(rows), [rows]);
 
   // One counter for every load: a refresh that lands after a newer one, or
@@ -156,11 +163,11 @@ export function HistoryScreen() {
       } catch (e) {
         if (!seq.isLatest(ticket)) return;
         setError(
-          e instanceof ApiError ? e.message : 'Could not load your deliveries.',
+          e instanceof ApiError ? e.message : t('money.loadDeliveriesFailed'),
         );
       }
     },
-    [api, seq],
+    [api, seq, t],
   );
 
   // Coming back (from a trip's detail, or another tab) adds what is new on
@@ -180,8 +187,8 @@ export function HistoryScreen() {
       const page = await api.history(last.ended_at);
       if (!seq.isLatest(ticket)) return;
       setItems(prev => {
-        const have = new Set((prev ?? []).map(t => t.id));
-        return [...(prev ?? []), ...page.filter(t => !have.has(t.id))];
+        const have = new Set((prev ?? []).map(trip => trip.id));
+        return [...(prev ?? []), ...page.filter(trip => !have.has(trip.id))];
       });
       setMore(page.length === 20);
     } catch {
@@ -199,7 +206,7 @@ export function HistoryScreen() {
       ]}
     >
       <View style={styles.header}>
-        <AppText variant="title">History</AppText>
+        <AppText variant="title">{t('money.history')}</AppText>
         <WeekSummary week={week} />
       </View>
       {items === null && error ? (
@@ -212,7 +219,7 @@ export function HistoryScreen() {
             <Icon name="cloud-offline-outline" size={34} color={colors.textMuted} />
           </View>
           <AppText variant="heading" align="center">
-            Couldn't load your deliveries
+            {t('money.deliveriesFailedTitle')}
           </AppText>
           <AppText tone="muted" align="center">
             {error}
@@ -221,7 +228,7 @@ export function HistoryScreen() {
             kind="secondary"
             size="md"
             icon="refresh"
-            label="Try again"
+            label={t('common.tryAgain')}
             onPress={() => void loadFirst('replace')}
             style={styles.retry}
           />
@@ -278,11 +285,10 @@ export function HistoryScreen() {
                 />
               </View>
               <AppText variant="heading" align="center">
-                No deliveries yet
+                {t('money.noDeliveriesYet')}
               </AppText>
               <AppText tone="muted" align="center">
-                {error ??
-                  'Go online from Home to start. Every trip you finish shows up here.'}
+                {error ?? t('money.emptyHint')}
               </AppText>
             </View>
           }

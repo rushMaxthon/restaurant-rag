@@ -1,4 +1,5 @@
 import React from 'react';
+import { translate } from '@/i18n/translate';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
@@ -54,7 +55,7 @@ export function Sheet({
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={translate('common.close')}
             onPress={onClose}
             style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]}
           />
@@ -76,7 +77,7 @@ export function Sheet({
             <AppText variant="heading" style={styles.title}>
               {title}
             </AppText>
-            <IconButton icon="close" label="Close" onPress={onClose} />
+            <IconButton icon="close" label={translate('common.close')} onPress={onClose} />
           </View>
           <View style={styles.body}>{children}</View>
         </Animated.View>

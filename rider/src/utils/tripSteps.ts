@@ -1,4 +1,6 @@
 import type { IconName } from '@components/ui/Icon';
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
 import type { TripAction, TripStep } from '@/types/api';
 
 export type Slide = { action: TripAction; label: string; icon: IconName; tone?: 'success' };
@@ -9,22 +11,24 @@ export type Slide = { action: TripAction; label: string; icon: IconName; tone?: 
  * sure the screen never offers a step the server would refuse. At the door
  * there is no slide - delivering takes the customer's code.
  */
-const SLIDES: Partial<Record<TripStep, Slide>> = {
-  to_pickup: { action: 'arrived-pickup', label: 'Arrived at restaurant', icon: 'restaurant' },
-  at_pickup: { action: 'picked-up', label: 'Picked up the order', icon: 'bag-check' },
-  to_drop: { action: 'arrived-drop', label: 'Arrived at customer', icon: 'home', tone: 'success' },
+const SLIDES: Partial<Record<TripStep, Omit<Slide, 'label'> & { label: Key }>> = {
+  to_pickup: { action: 'arrived-pickup', label: 'trip.slideArrivedPickup', icon: 'restaurant' },
+  at_pickup: { action: 'picked-up', label: 'trip.slidePickedUp', icon: 'bag-check' },
+  to_drop: { action: 'arrived-drop', label: 'trip.slideArrivedDrop', icon: 'home', tone: 'success' },
 };
 
+/** The label is translated at call time, so a language switch shows at once. */
 export function nextSlide(step: TripStep): Slide | null {
-  return SLIDES[step] ?? null;
+  const slide = SLIDES[step];
+  return slide ? { ...slide, label: translate(slide.label) } : null;
 }
 
-const PROGRESS: Record<TripStep, { current: number; label: string }> = {
-  to_pickup: { current: 1, label: 'Going to the restaurant' },
-  at_pickup: { current: 2, label: 'At the restaurant' },
-  to_drop: { current: 3, label: 'Going to the customer' },
-  at_drop: { current: 4, label: 'At the door' },
-  done: { current: 4, label: 'Delivered' },
+const PROGRESS: Record<TripStep, { current: number; label: Key }> = {
+  to_pickup: { current: 1, label: 'trip.stepToPickup' },
+  at_pickup: { current: 2, label: 'trip.stepAtPickup' },
+  to_drop: { current: 3, label: 'trip.stepToDrop' },
+  at_drop: { current: 4, label: 'trip.stepAtDrop' },
+  done: { current: 4, label: 'trip.stepDone' },
 };
 
 /**
@@ -37,5 +41,6 @@ export function stepProgress(step: TripStep): {
   total: number;
   label: string;
 } {
-  return { ...PROGRESS[step], total: 4 };
+  const { current, label } = PROGRESS[step];
+  return { current, total: 4, label: translate(label) };
 }

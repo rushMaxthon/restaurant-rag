@@ -16,6 +16,7 @@ import { useApi, useSession } from '@/store/SessionProvider';
 import { offerPollMs } from '@utils/realtime';
 import { clearOfferAlert, showOfferAlert } from '@/services/push';
 import type { Offer, OpenOrder, RiderMe, Trip } from '@/types/api';
+import { translate } from '@/i18n/translate';
 
 /**
  * What the rider app knows about the rider right now: who they are, whether
@@ -183,7 +184,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         void refreshOpenOrders();
       },
       onRevoked: () =>
-        void signOut('You were signed out. Please sign in again.'),
+        void signOut(translate('system.signedOut')),
     },
   );
 

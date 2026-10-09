@@ -1,5 +1,6 @@
 import type { Trip } from '@/types/api';
-import { dayLabel, weekday } from './format';
+import { translate } from '@/i18n/translate';
+import { dayLabel, monthName, weekday } from './format';
 
 export type HistoryRow =
   | { kind: 'day'; key: string; label: string; total: number; count: number }
@@ -13,27 +14,16 @@ function localDate(iso: string): string {
   )}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
 
 /** "Today", "Yesterday", else "Mon, 5 Oct" - a bare weekday repeats every week. */
 export function dateLabel(day: string, now: Date = new Date()): string {
   const label = dayLabel(day, now);
-  if (label === 'Today' || label === 'Yesterday') return label;
+  // dayLabel answers in the rider's language, so compare against the same words.
+  if (label === translate('common.today') || label === translate('common.yesterday')) {
+    return label;
+  }
   const [, m, d] = day.split('-').map(Number);
-  return `${weekday(day)}, ${d} ${MONTHS[(m ?? 1) - 1]}`;
+  return `${weekday(day)}, ${d} ${monthName(m ?? 1)}`;
 }
 
 /**

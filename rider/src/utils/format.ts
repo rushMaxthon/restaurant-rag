@@ -1,3 +1,4 @@
+import { translate } from '@/i18n/translate';
 /** Money, distance and time, written the way a rider in India reads them. */
 
 export function rupees(value: string | number | null | undefined, { decimals = false } = {}): string {
@@ -29,9 +30,9 @@ export function initials(name: string): string {
 
 export function greeting(now: Date = new Date()): string {
   const h = now.getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return translate('common.goodMorning');
+  if (h < 17) return translate('common.goodAfternoon');
+  return translate('common.goodEvening');
 }
 
 export function clockTime(iso: string | null | undefined): string {
@@ -47,14 +48,24 @@ export function clockTime(iso: string | null | undefined): string {
 export function dayLabel(isoDate: string, today: Date = new Date()): string {
   const d = new Date(`${isoDate}T00:00:00`);
   const diff = Math.round((new Date(today.toDateString()).getTime() - d.getTime()) / 86_400_000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString('en-IN', { weekday: 'short' });
+  if (diff === 0) return translate('common.today');
+  if (diff === 1) return translate('common.yesterday');
+  return weekday(isoDate);
 }
 
-/** Three-letter weekday of a YYYY-MM-DD date, e.g. "Wed". */
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
+
+/** Short weekday of a YYYY-MM-DD date, e.g. "Wed", in the rider's language. */
 export function weekday(isoDate: string): string {
-  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(`${isoDate}T00:00:00`).getDay()] ?? '';
+  const day = WEEKDAYS[new Date(`${isoDate}T00:00:00`).getDay()];
+  return day ? translate(`common.${day}`) : '';
+}
+
+/** Short month name, 1-12, e.g. "Oct", in the rider's language. */
+export function monthName(month: number): string {
+  const m = MONTHS[month - 1];
+  return m ? translate(`common.${m}`) : '';
 }
 
 /** +919876543210 -> +91 98765 43210 */

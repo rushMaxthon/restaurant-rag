@@ -7,6 +7,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
+import { useI18n } from '@/i18n';
 import type { TripStep } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, space } from '@theme/tokens';
@@ -19,6 +20,7 @@ import { stepProgress } from '@utils/tripSteps';
  */
 export function StepProgress({ step }: { step: TripStep }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const { current, total, label } = stepProgress(step);
   const fill = useSharedValue(0);
   useEffect(() => {
@@ -29,14 +31,14 @@ export function StepProgress({ step }: { step: TripStep }) {
   return (
     <View
       style={styles.wrap}
-      accessibilityLabel={`Step ${current} of ${total}: ${label}`}
+      accessibilityLabel={t('trip.stepOfA11y', { current, total, label })}
     >
       <View style={styles.row}>
         <AppText variant="bodyStrong" style={styles.flex} numberOfLines={1}>
           {label}
         </AppText>
         <AppText variant="label" tone="muted">
-          {current} of {total}
+          {t('trip.stepOf', { current, total })}
         </AppText>
       </View>
       <View style={[styles.track, { backgroundColor: colors.border }]}>

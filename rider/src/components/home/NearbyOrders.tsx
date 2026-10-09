@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -22,6 +23,7 @@ import { homePreview } from '@utils/homeOrders';
  */
 export function NearbyOrders({ onSeeAll }: { onSeeAll: () => void }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const { openOrders } = useRider();
   const { take, taking, error, blockedFor } = useTakeOrder();
   const { shown, more } = homePreview(openOrders);
@@ -31,8 +33,8 @@ export function NearbyOrders({ onSeeAll }: { onSeeAll: () => void }) {
       <View style={styles.head}>
         <AppText variant="label" tone="muted" style={styles.flex}>
           {shown.length > 0
-            ? `WAITING NEAR YOU · ${openOrders.length}`
-            : 'WAITING NEAR YOU'}
+            ? t('home.waitingNearYouCount', { n: openOrders.length })
+            : t('home.waitingNearYou')}
         </AppText>
         {openOrders.length > 0 ? (
           <Pressable
@@ -42,7 +44,9 @@ export function NearbyOrders({ onSeeAll }: { onSeeAll: () => void }) {
             style={styles.link}
           >
             <AppText variant="label" tone="primary">
-              {more > 0 ? `See all ${openOrders.length}` : 'Orders tab'}
+              {more > 0
+                ? t('home.seeAll', { n: openOrders.length })
+                : t('home.ordersTab')}
             </AppText>
             <Icon name="chevron-forward" size={16} color={colors.primary} />
           </Pressable>
@@ -51,7 +55,7 @@ export function NearbyOrders({ onSeeAll }: { onSeeAll: () => void }) {
 
       {shown.length === 0 ? (
         <AppText variant="caption" tone="muted">
-          No orders waiting right now. A new one rings the moment it's yours.
+          {t('home.nothingWaiting')}
         </AppText>
       ) : (
         shown.map((order, i) => (

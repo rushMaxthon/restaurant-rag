@@ -9,6 +9,7 @@ import { Group, GroupRow } from '@components/ui/Group';
 import { Screen } from '@components/ui/Screen';
 import { Sheet } from '@components/ui/Sheet';
 import { useGuide } from '@/guide/GuideProvider';
+import { LANGUAGE_NAMES, useI18n, type Key } from '@/i18n';
 import { testOfferAlert } from '@/services/push';
 import { THEME_OPTIONS } from '@theme/preference';
 import { useNav } from '@navigation/types';
@@ -20,10 +21,10 @@ import { radius, space, motion } from '@theme/tokens';
 import { initials, prettyPhone } from '@utils/format';
 import { call } from '@utils/links';
 
-const VEHICLE: Record<string, { label: string; icon: IconName }> = {
-  BIKE: { label: 'Motorbike', icon: 'bicycle' },
-  SCOOTER: { label: 'Scooter', icon: 'bicycle' },
-  CYCLE: { label: 'Bicycle', icon: 'bicycle-outline' },
+const VEHICLE: Record<string, { labelKey: Key; icon: IconName }> = {
+  BIKE: { labelKey: 'account.profile.vehicleBike', icon: 'bicycle' },
+  SCOOTER: { labelKey: 'account.profile.vehicleScooter', icon: 'bicycle' },
+  CYCLE: { labelKey: 'account.profile.vehicleCycle', icon: 'bicycle-outline' },
 };
 
 export function ProfileScreen() {
@@ -36,6 +37,9 @@ export function ProfileScreen() {
     setHighContrast,
   } = useTheme();
   const { resetTips } = useGuide();
+  const i18n = useI18n();
+  const { t } = i18n;
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const [alertNote, setAlertNote] = useState<string | null>(null);
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,33 +60,37 @@ export function ProfileScreen() {
   const confirmSignOut = () => {
     if (trip) {
       Alert.alert(
-        'Finish your delivery first',
-        'You cannot sign out while carrying an order.',
+        t('account.profile.finishFirstTitle'),
+        t('account.profile.finishFirstBody'),
       );
       return;
     }
-    Alert.alert('Sign out?', 'You will stop getting orders on this phone.', [
-      { text: 'Stay', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          setLeaving(true);
-          try {
-            if (me?.status === 'ONLINE') await api.setOnline(false);
-          } catch {
-            // the server takes a silent rider offline within minutes anyway
-          }
-          await signOut(null);
+    Alert.alert(
+      t('account.profile.signOutTitle'),
+      t('account.profile.signOutBody'),
+      [
+        { text: t('account.profile.stay'), style: 'cancel' },
+        {
+          text: t('account.profile.signOut'),
+          style: 'destructive',
+          onPress: async () => {
+            setLeaving(true);
+            try {
+              if (me?.status === 'ONLINE') await api.setOnline(false);
+            } catch {
+              // the server takes a silent rider offline within minutes anyway
+            }
+            await signOut(null);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
     <Screen scroll tabbed contentStyle={styles.content}>
       <Animated.View entering={FadeInDown.duration(350)}>
-        <AppText variant="title">Profile</AppText>
+        <AppText variant="title">{t('account.profile.title')}</AppText>
       </Animated.View>
 
       {/* Who and on what: the two things anyone checking a rider asks. */}
@@ -108,7 +116,7 @@ export function ProfileScreen() {
           <View style={[styles.vehicle, { borderTopColor: colors.border }]}>
             <Icon name={vehicle.icon} size={20} color={colors.textMuted} />
             <AppText variant="label" tone="muted" style={styles.flex}>
-              {vehicle.label}
+              {t(vehicle.labelKey)}
             </AppText>
             <View style={[styles.plate, { borderColor: colors.text }]}>
               <AppText variant="label">{me?.vehicle_number || '—'}</AppText>
@@ -121,28 +129,51 @@ export function ProfileScreen() {
         entering={FadeInDown.delay(120).duration(motion.base)}
         style={styles.list}
       >
-        <Group title="SETTINGS">
+        <Group title={t('account.profile.settings')}>
+          {/* First: a rider who cannot read the current language must find it. */}
+          <GroupRow
+            icon="language-outline"
+            label={t('account.language.title')}
+            value={
+              i18n.preference === 'system'
+                ? t('account.language.phoneHint', {
+                    name: LANGUAGE_NAMES[i18n.lang],
+                  })
+                : LANGUAGE_NAMES[i18n.lang]
+            }
+            onPress={() => setLanguageOpen(true)}
+          />
           <GroupRow
             icon="shield-half-outline"
-            label="Permissions"
+            label={t('account.profile.permissions')}
             onPress={() => nav.navigate('Permissions')}
           />
           <GroupRow
             icon={mode === 'dark' ? 'moon' : 'sunny'}
-            label="Appearance"
+            label={t('account.profile.appearance')}
             value={
               preference === 'system'
-                ? `${mode === 'dark' ? 'Dark' : 'Light'} · phone`
-                : preference === 'dark'
-                ? 'Dark'
-                : 'Light'
+                ? t('account.profile.modeFromPhone', {
+                    mode: t(
+                      mode === 'dark'
+                        ? 'account.profile.dark'
+                        : 'account.profile.light',
+                    ),
+                  })
+                : t(
+                    preference === 'dark'
+                      ? 'account.profile.dark'
+                      : 'account.profile.light',
+                  )
             }
             onPress={() => setAppearance(true)}
           />
           <GroupRow
             icon="contrast"
-            label="High contrast"
-            value={highContrast ? undefined : 'For bright sun'}
+            label={t('account.profile.highContrast')}
+            value={
+              highContrast ? undefined : t('account.profile.highContrastHint')
+            }
             onPress={() => setHighContrast(!highContrast)}
             trailing={
               <Switch
@@ -150,20 +181,20 @@ export function ProfileScreen() {
                 onValueChange={setHighContrast}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor={highContrast ? colors.onPrimary : colors.textMuted}
-                accessibilityLabel="High contrast"
+                accessibilityLabel={t('account.profile.highContrast')}
               />
             }
           />
         </Group>
-        <Group title="GUIDE">
+        <Group title={t('account.profile.guide')}>
           <GroupRow
             icon="book-outline"
-            label="How the app works"
+            label={t('account.profile.howItWorks')}
             onPress={() => nav.navigate('Intro', { replay: true })}
           />
           <GroupRow
             icon="bulb-outline"
-            label="Show tips again"
+            label={t('account.profile.showTips')}
             onPress={() => {
               resetTips();
               nav.navigate('Main', { screen: 'Home' });
@@ -171,20 +202,24 @@ export function ProfileScreen() {
           />
           <GroupRow
             icon="volume-high-outline"
-            label="Test the order alert"
+            label={t('account.profile.testAlert')}
             value={alertNote ?? undefined}
             onPress={async () => {
               const ok = await testOfferAlert();
-              setAlertNote(ok ? 'Listen…' : 'Notifications are off');
+              setAlertNote(
+                ok
+                  ? t('account.profile.listen')
+                  : t('account.profile.notificationsOff'),
+              );
               if (alertTimer.current) clearTimeout(alertTimer.current);
               alertTimer.current = setTimeout(() => setAlertNote(null), 6000);
             }}
           />
         </Group>
-        <Group title="HELP">
+        <Group title={t('account.profile.help')}>
           <GroupRow
             icon="headset-outline"
-            label="Call support"
+            label={t('account.profile.callSupport')}
             onPress={() => call(SUPPORT_PHONE)}
           />
           {__DEV__ ? (
@@ -198,7 +233,7 @@ export function ProfileScreen() {
         <Group>
           <GroupRow
             icon="log-out-outline"
-            label="Sign out"
+            label={t('account.profile.signOut')}
             tone="danger"
             busy={leaving}
             onPress={confirmSignOut}
@@ -211,9 +246,45 @@ export function ProfileScreen() {
       </AppText>
 
       <Sheet
+        open={languageOpen}
+        onClose={() => setLanguageOpen(false)}
+        title={t('account.language.title')}
+      >
+        {(['system', 'en', 'hi', 'gu'] as const).map(option => {
+          const active = option === i18n.preference;
+          return (
+            <Card
+              key={option}
+              tone={active ? 'primary' : 'surface'}
+              style={styles.row}
+              onPress={() => {
+                i18n.setPreference(option);
+                setLanguageOpen(false);
+              }}
+            >
+              <View style={styles.flex}>
+                <AppText variant="bodyStrong">
+                  {option === 'system'
+                    ? t('account.language.phone')
+                    : LANGUAGE_NAMES[option]}
+                </AppText>
+              </View>
+              {active ? (
+                <Icon
+                  name="checkmark-circle"
+                  size={22}
+                  color={colors.primary}
+                />
+              ) : null}
+            </Card>
+          );
+        })}
+      </Sheet>
+
+      <Sheet
         open={appearance}
         onClose={() => setAppearance(false)}
-        title="Appearance"
+        title={t('account.profile.appearance')}
       >
         {THEME_OPTIONS.map(option => {
           const active = option.key === preference;
@@ -250,9 +321,9 @@ export function ProfileScreen() {
                 />
               </View>
               <View style={styles.flex}>
-                <AppText variant="bodyStrong">{option.label}</AppText>
+                <AppText variant="bodyStrong">{t(option.labelKey)}</AppText>
                 <AppText variant="caption" tone="muted">
-                  {option.hint}
+                  {t(option.hintKey)}
                 </AppText>
               </View>
               {active ? (

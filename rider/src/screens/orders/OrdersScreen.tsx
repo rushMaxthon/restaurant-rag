@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useI18n } from '@/i18n';
 import { StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -27,6 +28,7 @@ import { rankOrders } from '@utils/homeOrders';
  */
 export function OrdersScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const nav = useNav();
   const { trip, openOrders, refreshOpenOrders } = useRider();
   const shift = useShiftToggle();
@@ -60,11 +62,11 @@ export function OrdersScreen() {
         style={styles.header}
       >
         <AppText variant="title" style={styles.flex}>
-          Orders
+          {t('orders.title')}
         </AppText>
         {openOrders.length > 0 ? (
           <AppText variant="label" tone="muted">
-            {openOrders.length} waiting
+            {t('orders.waiting', { n: openOrders.length })}
           </AppText>
         ) : null}
       </Animated.View>
@@ -78,13 +80,13 @@ export function OrdersScreen() {
         >
           <Icon name="bicycle" size={20} color={colors.primary} />
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">You're on a delivery</AppText>
+            <AppText variant="bodyStrong">{t('orders.onDelivery')}</AppText>
             <AppText variant="caption" tone="muted">
-              Finish it to take another
+              {t('orders.finishFirst')}
             </AppText>
           </View>
           <AppText variant="label" tone="primary">
-            Continue
+            {t('orders.continue')}
           </AppText>
           <Icon name="chevron-forward" size={16} color={colors.primary} />
         </Card>
@@ -97,7 +99,7 @@ export function OrdersScreen() {
           busy={shift.busy}
           disabledReason={shift.disabledReason}
           error={shift.error}
-          offlineHint="Go online to take orders"
+          offlineHint={t('orders.offlineHint')}
         />
       )}
 
@@ -115,11 +117,10 @@ export function OrdersScreen() {
             <Icon name="receipt-outline" size={26} color={colors.textMuted} />
           </View>
           <AppText variant="bodyStrong" align="center">
-            No orders waiting
+            {t('orders.emptyTitle')}
           </AppText>
           <AppText variant="caption" tone="muted" align="center">
-            New ones appear the moment a kitchen accepts. A missed order stays
-            here until a courier is booked.
+            {t('orders.emptyBody')}
           </AppText>
         </View>
       ) : (

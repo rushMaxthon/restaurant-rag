@@ -3,9 +3,13 @@
  *
  * A tour is a few steps, each pointing at a control a screen registers under
  * one of these TARGETS. The copy is written for a rider reading it on a bike
- * stand: what the thing is, then what to do with it, in one line. Keeping it
- * all here is also what makes a translation layer later a one-file job.
+ * stand: what the thing is, then what to do with it, in one line. The words
+ * themselves live in `i18n/strings/account.ts`; a step holds KEYS, resolved
+ * with t() where the tip is drawn, so a language switch reaches a tour that
+ * was declared before it.
  */
+
+import type { Key } from '@/i18n/strings';
 
 export const TARGETS = {
   homeToggle: 'home.toggle',
@@ -20,28 +24,28 @@ export const TARGETS = {
 
 export type TargetId = (typeof TARGETS)[keyof typeof TARGETS];
 
-export type TourStep = { target: TargetId; title: string; body: string };
+export type TourStep = { target: TargetId; titleKey: Key; bodyKey: Key };
 /** `tabbed`: the floating tab bar covers the bottom of this screen, so a control under it is not visible. */
 export type Tour = { steps: TourStep[]; tabbed?: boolean };
 
-export const TOURS = {
+const tours = {
   home: {
     tabbed: true,
     steps: [
       {
         target: TARGETS.homeToggle,
-        title: 'Go online to get orders',
-        body: "Tap here at the start of your shift. Orders only come while you're online.",
+        titleKey: 'account.tip.homeToggleTitle',
+        bodyKey: 'account.tip.homeToggleBody',
       },
       {
         target: TARGETS.homeToday,
-        title: "What you've made today",
-        body: 'Updates after every delivery. The Earnings tab has the whole week.',
+        titleKey: 'account.tip.homeTodayTitle',
+        bodyKey: 'account.tip.homeTodayBody',
       },
       {
         target: TARGETS.tabOrders,
-        title: 'Orders waiting near you',
-        body: "Any order nobody has taken yet. Take one from here when you're online and free.",
+        titleKey: 'account.tip.tabOrdersTitle',
+        bodyKey: 'account.tip.tabOrdersBody',
       },
     ],
   },
@@ -50,8 +54,8 @@ export const TOURS = {
     steps: [
       {
         target: TARGETS.ordersTake,
-        title: 'Take an order',
-        body: 'Looking is free. Taking needs you online with no delivery in hand.',
+        titleKey: 'account.tip.ordersTakeTitle',
+        bodyKey: 'account.tip.ordersTakeBody',
       },
     ],
   },
@@ -60,13 +64,13 @@ export const TOURS = {
     steps: [
       {
         target: TARGETS.tripSteps,
-        title: 'Where you are',
-        body: 'Four steps: restaurant, collect, customer, deliver. The bar fills as you go.',
+        titleKey: 'account.tip.tripStepsTitle',
+        bodyKey: 'account.tip.tripStepsBody',
       },
       {
         target: TARGETS.tripSlide,
-        title: "Slide when you're there",
-        body: "Only slide once you've actually arrived. It tells the customer where their food is.",
+        titleKey: 'account.tip.tripSlideTitle',
+        bodyKey: 'account.tip.tripSlideBody',
       },
     ],
   },
@@ -75,8 +79,8 @@ export const TOURS = {
     steps: [
       {
         target: TARGETS.tripOtp,
-        title: 'Ask for the code',
-        body: "The customer has a 4-digit code on their order page. Type it and you're paid.",
+        titleKey: 'account.tip.tripOtpTitle',
+        bodyKey: 'account.tip.tripOtpBody',
       },
     ],
   },
@@ -85,12 +89,16 @@ export const TOURS = {
     steps: [
       {
         target: TARGETS.earningsUnpaid,
-        title: 'To be paid',
-        body: "Everything you've earned that hasn't reached your bank yet. Payments appear below.",
+        titleKey: 'account.tip.earningsUnpaidTitle',
+        bodyKey: 'account.tip.earningsUnpaidBody',
       },
     ],
   },
 } satisfies Record<string, Tour>;
+
+// Widened to Tour: each step literal-typed (target AND keys) would make every
+// step a different type, and GuideProvider handles them as one TourStep.
+export const TOURS: Record<keyof typeof tours, Tour> = tours;
 
 export type TourId = keyof typeof TOURS;
 /** The intro cards are a tour too, for the seen-flags; they have no spotlight steps. */

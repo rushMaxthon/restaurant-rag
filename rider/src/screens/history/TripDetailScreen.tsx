@@ -9,6 +9,7 @@ import { Icon } from '@components/ui/Icon';
 import { IconButton } from '@components/ui/IconButton';
 import { Pill } from '@components/ui/Pill';
 import { Screen } from '@components/ui/Screen';
+import { useI18n } from '@/i18n';
 import type { RootStackParamList } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
@@ -33,6 +34,7 @@ export function TripDetailScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'TripDetail'>) {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   const { trip } = route.params;
   const end = endLabel(trip.end_reason);
   const rows = tripTimeline(trip);
@@ -45,7 +47,7 @@ export function TripDetailScreen({
       <View style={styles.header}>
         <IconButton
           icon="chevron-back"
-          label="Back"
+          label={t('common.back')}
           onPress={() => navigation.goBack()}
         />
         <View style={styles.flex}>
@@ -61,7 +63,7 @@ export function TripDetailScreen({
         <Card tone="alt" style={styles.pay}>
           <View style={styles.flex}>
             <AppText variant="micro" tone="muted">
-              YOU EARNED
+              {t('money.youEarned')}
             </AppText>
             <AppText
               variant="money"
@@ -73,7 +75,7 @@ export function TripDetailScreen({
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <View>
             <AppText variant="micro" tone="muted">
-              DISTANCE
+              {t('money.distance')}
             </AppText>
             <AppText variant="heading">{km(trip.distance_km)}</AppText>
           </View>
@@ -83,7 +85,7 @@ export function TripDetailScreen({
       <Animated.View entering={FadeInDown.delay(60).duration(motion.base)}>
         <Card>
           <AppText variant="label" tone="muted">
-            TIMELINE
+            {t('money.timeline')}
           </AppText>
           <View style={styles.timeline}>
             {rows.map((row, i) => (
@@ -128,7 +130,7 @@ export function TripDetailScreen({
                     {row.label}
                   </AppText>
                   <AppText variant="label" tone={row.at ? 'muted' : 'faint'}>
-                    {row.at ? clockTime(row.at) : 'Did not happen'}
+                    {row.at ? clockTime(row.at) : t('money.didNotHappen')}
                   </AppText>
                 </View>
               </View>
@@ -142,7 +144,7 @@ export function TripDetailScreen({
           <Stop
             icon="restaurant"
             color={colors.primary}
-            label="Picked up from"
+            label={t('money.pickedUpFrom')}
             name={trip.pickup.name}
             address={trip.pickup.address}
           />
@@ -151,7 +153,9 @@ export function TripDetailScreen({
             icon="home"
             color={colors.success}
             label={
-              trip.end_reason === 'DELIVERED' ? 'Delivered to' : 'Was going to'
+              trip.end_reason === 'DELIVERED'
+                ? t('money.deliveredTo')
+                : t('money.wasGoingTo')
             }
             name={trip.drop.name}
             address={trip.drop.address}
@@ -171,7 +175,7 @@ export function TripDetailScreen({
             >
               <Icon name="bag-handle" size={20} color={colors.primary} />
               <AppText variant="bodyStrong" style={styles.flex}>
-                {trip.item_count} item{trip.item_count === 1 ? '' : 's'}
+                {plural('common.items', trip.item_count)}
               </AppText>
               <Icon
                 name={itemsOpen ? 'chevron-up' : 'chevron-down'}

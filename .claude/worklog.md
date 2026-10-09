@@ -5581,3 +5581,9 @@ answers suggestions and lookups, OpenStreetMap stays behind it for lookups.
 Verified: /addresses/suggest returns 5 suggestions as a customer; geocoding,
 address, platform-watch and redaction suites 143 OK; API on 8000 restarted
 with the sandbox courier forced.
+
+## 2026-10-09 - rider: review fixes, alert + trip detail, Hindi and Gujarati
+
+Review pass on the redesign (dee87f8): History error/retry, keeps scrolled pages, no overlapping loads, paid-only day count; Earnings chart one touch area, period switch keeps old numbers dimmed, full dates, theme colours; guide remembers each tip; `utils/latest` sequencer for /me and the board; single-flight go-online; Take error fades; items reopen at the counter; large text in the strip. Alert details sit above the buttons; trip detail compact.
+
+Hindi/Gujarati: `rider/src/i18n/` (see CLAUDE.md). Four parallel agents translated trip/money/account/system areas, one strings file each; I did core, common, home/orders, the Profile picker, and the leftovers in shared UI. Verified on the emulator in hi and gu: every tab, a full delivery (alert, trip, OTP, Delivered). Side-by-side list for the user to check: docs/rider-app-translations.csv. jest 140, tsc, eslint clean.

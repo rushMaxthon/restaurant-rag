@@ -9,6 +9,7 @@ import { Card } from '@components/ui/Card';
 import { CountdownRing } from '@components/ui/CountdownRing';
 import { Icon } from '@components/ui/Icon';
 import { Pill } from '@components/ui/Pill';
+import { useI18n } from '@/i18n';
 import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
@@ -29,6 +30,7 @@ const RING = [0, 400, 200, 400, 900];
  */
 export function OfferScreen() {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   const insets = useSafeAreaInsets();
   const nav = useNav();
   const api = useApi();
@@ -69,13 +71,13 @@ export function OfferScreen() {
     } catch (e) {
       haptic('error');
       setError(
-        e instanceof ApiError ? e.message : 'Could not accept. Try again.',
+        e instanceof ApiError ? e.message : t('trip.couldNotAccept'),
       );
       setBusy(null);
       if (e instanceof ApiError && (e.status === 409 || e.status === 404))
         setTimeout(close, 1400);
     }
-  }, [api, shown, setTrip, clearOffer, refreshMe, nav, close]);
+  }, [api, shown, setTrip, clearOffer, refreshMe, nav, close, t]);
 
   const decline = useCallback(async () => {
     if (!shown) return;
@@ -103,9 +105,9 @@ export function OfferScreen() {
       ]}
     >
       <Animated.View entering={FadeIn.duration(250)} style={styles.top}>
-        <Pill label="New order" tone="primary" icon="flash" />
+        <Pill label={t('trip.newOrder')} tone="primary" icon="flash" />
         <AppText variant="caption" tone="muted">
-          {shown.item_count} item{shown.item_count === 1 ? '' : 's'}
+          {plural('common.items', shown.item_count)}
         </AppText>
       </Animated.View>
 
@@ -127,7 +129,7 @@ export function OfferScreen() {
           style={[styles.earn, { backgroundColor: colors.successSoft }]}
         >
           <AppText variant="micro" tone="success" align="center">
-            YOU EARN
+            {t('trip.youEarn')}
           </AppText>
           <AppText
             style={[styles.amount, { color: colors.text }]}
@@ -137,18 +139,19 @@ export function OfferScreen() {
           </AppText>
           <View style={styles.chips}>
             <Pill
-              label={`${distance(shown.pickup_distance_m)} to pickup`}
+              label={t('trip.toPickup', {
+                distance: distance(shown.pickup_distance_m),
+              })}
               icon="bicycle"
             />
             <Pill
-              label={`${km(shown.trip_distance_km)} trip`}
+              label={t('trip.tripKm', { km: km(shown.trip_distance_km) })}
               icon="navigate"
             />
             <Pill
-              label={`about ${jobMinutes(
-                shown.pickup_distance_m,
-                shown.trip_distance_km,
-              )} min`}
+              label={t('common.minAway', {
+                n: jobMinutes(shown.pickup_distance_m, shown.trip_distance_km),
+              })}
               icon="time"
             />
           </View>
@@ -161,15 +164,15 @@ export function OfferScreen() {
               color={colors.primary}
               title={shown.restaurant_name}
               subtitle={shown.pickup_address}
-              label="Pick up"
+              label={t('trip.pickUp')}
             />
             <View style={[styles.connector, { borderColor: colors.border }]} />
             <Stop
               icon="home"
               color={colors.success}
-              title={shown.drop_area || 'Customer'}
-              subtitle="Full address after you accept"
-              label="Deliver to"
+              title={shown.drop_area || t('trip.customer')}
+              subtitle={t('trip.addressAfterAccept')}
+              label={t('trip.deliverTo')}
             />
           </Card>
         </Animated.View>
@@ -188,14 +191,14 @@ export function OfferScreen() {
       <Animated.View entering={FadeInDown.delay(220)} style={styles.actions}>
         <Button
           kind="secondary"
-          label="Decline"
+          label={t('trip.decline')}
           style={styles.decline}
           loading={busy === 'decline'}
           onPress={decline}
         />
         <Button
           kind="success"
-          label="Accept order"
+          label={t('trip.acceptOrder')}
           icon="checkmark-circle"
           style={styles.accept}
           loading={busy === 'accept'}

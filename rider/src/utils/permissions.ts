@@ -5,18 +5,27 @@
  * Realme and friends kill the app minutes after the screen goes off, and the
  * rider silently stops getting orders - the failure the spec names first.
  */
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
+
 export type PermissionKey = 'location' | 'notifications' | 'battery';
 export type PermissionState = Record<PermissionKey, boolean>;
 
-export const PERMISSION_ORDER: readonly PermissionKey[] = ['location', 'notifications', 'battery'];
+export const PERMISSION_ORDER: readonly PermissionKey[] = [
+  'location',
+  'notifications',
+  'battery',
+];
 
-const REASON: Record<PermissionKey, string> = {
-  location: 'Allow location to start getting orders',
-  notifications: 'Allow notifications to start getting orders',
-  battery: 'Let the app run in the background to start getting orders',
+const REASON: Record<PermissionKey, Key> = {
+  location: 'account.perm.reasonLocation',
+  notifications: 'account.perm.reasonNotifications',
+  battery: 'account.perm.reasonBattery',
 };
 
-export function firstMissing(state: PermissionState | null): PermissionKey | null {
+export function firstMissing(
+  state: PermissionState | null,
+): PermissionKey | null {
   for (const key of PERMISSION_ORDER) {
     if (!state?.[key]) return key;
   }
@@ -26,5 +35,5 @@ export function firstMissing(state: PermissionState | null): PermissionKey | nul
 /** The sentence beside a disabled Continue (house rule: say why). */
 export function gateReason(state: PermissionState | null): string | null {
   const missing = firstMissing(state);
-  return missing ? REASON[missing] : null;
+  return missing ? translate(REASON[missing]) : null;
 }

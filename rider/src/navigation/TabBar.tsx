@@ -14,6 +14,7 @@ import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
 import { useRider } from '@/store/RiderProvider';
+import { useI18n, type Key } from '@/i18n';
 import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 
@@ -23,6 +24,14 @@ const ICONS: Record<string, [IconName, IconName]> = {
   Earnings: ['wallet-outline', 'wallet'],
   History: ['time-outline', 'time'],
   Profile: ['person-circle-outline', 'person-circle'],
+};
+
+const LABELS: Record<string, Key> = {
+  Home: 'account.tab.home',
+  Orders: 'account.tab.orders',
+  Earnings: 'account.tab.earnings',
+  History: 'account.tab.history',
+  Profile: 'account.tab.profile',
 };
 
 const BAR_MARGIN = space.lg;
@@ -35,6 +44,7 @@ const BAR_HEIGHT = 68;
  */
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   // Orders waiting on the board: a count on its tab, so a rider sees them from anywhere.
   const waiting = useRider().openOrders.length;
   const insets = useSafeAreaInsets();
@@ -78,8 +88,10 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         />
         {state.routes.map((route, index) => {
           const focused = state.index === index;
-          const label = (descriptors[route.key]?.options.title ??
-            route.name) as string;
+          const labelKey = LABELS[route.name];
+          const label = labelKey
+            ? t(labelKey)
+            : ((descriptors[route.key]?.options.title ?? route.name) as string);
           const [outline, solid] = ICONS[route.name] ?? [
             'ellipse-outline',
             'ellipse',

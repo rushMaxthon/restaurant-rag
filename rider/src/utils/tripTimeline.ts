@@ -1,13 +1,16 @@
+import type { Key } from '@/i18n/strings';
+import { translate } from '@/i18n/translate';
 import type { Trip } from '@/types/api';
 
 export type EndTone = 'success' | 'warning' | 'danger' | 'neutral';
 
-const END: Record<string, { label: string; tone: EndTone }> = {
-  DELIVERED: { label: 'Delivered', tone: 'success' },
-  CUSTOMER_UNAVAILABLE: { label: 'Customer unavailable', tone: 'warning' },
-  CANCELLED_BEFORE_PICKUP: { label: 'Cancelled', tone: 'danger' },
-  CANCELLED_AFTER_PICKUP: { label: 'Cancelled', tone: 'danger' },
-  REASSIGNED: { label: 'Reassigned', tone: 'neutral' },
+// Keys, not words: the label is looked up when asked for, in the language then in force.
+const END: Record<string, { key: Key; tone: EndTone }> = {
+  DELIVERED: { key: 'money.endDelivered', tone: 'success' },
+  CUSTOMER_UNAVAILABLE: { key: 'money.endCustomerUnavailable', tone: 'warning' },
+  CANCELLED_BEFORE_PICKUP: { key: 'money.endCancelled', tone: 'danger' },
+  CANCELLED_AFTER_PICKUP: { key: 'money.endCancelled', tone: 'danger' },
+  REASSIGNED: { key: 'money.endReassigned', tone: 'neutral' },
 };
 
 /** How a trip ended, as a pill: one place for History, the detail screen and Home. */
@@ -15,8 +18,12 @@ export function endLabel(reason: string | null | undefined): {
   label: string;
   tone: EndTone;
 } {
-  if (!reason) return { label: 'Ended', tone: 'neutral' };
-  return END[reason] ?? { label: reason, tone: 'neutral' };
+  if (!reason) return { label: translate('money.endEnded'), tone: 'neutral' };
+  const end = END[reason];
+  // An end reason this build does not know yet is shown as the server sent it.
+  return end
+    ? { label: translate(end.key), tone: end.tone }
+    : { label: reason, tone: 'neutral' };
 }
 
 export type TimelineRow = { label: string; at: string | null; done: boolean };
@@ -31,12 +38,14 @@ export function tripTimeline(trip: Trip): TimelineRow[] {
   const delivered = trip.end_reason === 'DELIVERED' || trip.end_reason == null;
   const finalAt = delivered ? trip.delivered_at : trip.ended_at;
   const rows: TimelineRow[] = [
-    { label: 'Accepted', at: trip.accepted_at },
-    { label: 'Reached restaurant', at: trip.arrived_pickup_at },
-    { label: 'Picked up', at: trip.picked_up_at },
-    { label: 'Reached customer', at: trip.arrived_drop_at },
+    { label: translate('money.stepAccepted'), at: trip.accepted_at },
+    { label: translate('money.stepReachedRestaurant'), at: trip.arrived_pickup_at },
+    { label: translate('money.stepPickedUp'), at: trip.picked_up_at },
+    { label: translate('money.stepReachedCustomer'), at: trip.arrived_drop_at },
     {
-      label: delivered ? 'Delivered' : endLabel(trip.end_reason).label,
+      label: delivered
+        ? translate('money.endDelivered')
+        : endLabel(trip.end_reason).label,
       at: finalAt,
     },
   ].map(r => ({ ...r, done: r.at !== null }));

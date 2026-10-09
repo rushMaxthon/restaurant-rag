@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 
+import { translate } from '@/i18n/translate';
 import { ApiError } from '@/services/http';
 import {
   clearPending,
@@ -66,7 +67,7 @@ export function useTripAction(
         setError(
           e instanceof ApiError
             ? e
-            : new ApiError(0, 'Something went wrong. Try again.'),
+            : new ApiError(0, translate('trip.somethingWrong')),
         );
       } finally {
         inFlight.current = false;

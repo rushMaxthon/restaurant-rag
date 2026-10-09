@@ -17,6 +17,7 @@ import { AnimatedAmount } from '@components/ui/AnimatedAmount';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Screen } from '@components/ui/Screen';
+import { useI18n } from '@/i18n';
 import type { RootStackParamList } from '@navigation/types';
 import { useRider } from '@/store/RiderProvider';
 import { waitingLabel } from '@utils/delivered';
@@ -58,6 +59,7 @@ export function DeliveredScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'Delivered'>) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const { me, openOrders } = useRider();
   // Only when they could actually take one: the board needs them online.
   const waiting = waitingLabel(me?.status === 'ONLINE' ? openOrders.length : 0);
@@ -138,10 +140,10 @@ export function DeliveredScreen({
           style={styles.text}
         >
           <AppText variant="title" align="center">
-            Delivered!
+            {t('trip.delivered')}
           </AppText>
           <AppText tone="muted" align="center">
-            Order {route.params.orderCode} is with the customer.
+            {t('trip.withCustomer', { code: route.params.orderCode })}
           </AppText>
         </Animated.View>
 
@@ -153,7 +155,7 @@ export function DeliveredScreen({
           ]}
         >
           <AppText variant="micro" tone="muted" align="center">
-            YOU EARNED
+            {t('trip.youEarned')}
           </AppText>
           <AnimatedAmount
             value={Number(route.params.amount)}
@@ -179,7 +181,7 @@ export function DeliveredScreen({
           />
         ) : null}
         <Button
-          label="Done"
+          label={t('common.done')}
           icon="checkmark"
           onPress={() =>
             navigation.reset({ index: 0, routes: [{ name: 'Main' }] })

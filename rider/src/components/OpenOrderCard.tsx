@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@/i18n';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@components/ui/AppText';
@@ -34,13 +35,14 @@ export function OpenOrderCard({
   guide?: boolean;
 }) {
   const { colors } = useTheme();
+  const { t, plural } = useI18n();
   const lastMinute = order.minutes_left <= 1;
   const take = (
     <Button
       kind="success"
       size="md"
       icon="checkmark-circle"
-      label="Take order"
+      label={t('orders.take')}
       loading={taking}
       disabledReason={blockedReason ?? undefined}
       onPress={onTake}
@@ -54,7 +56,7 @@ export function OpenOrderCard({
         <View style={styles.meta}>
           <Icon name="alarm" size={14} color={colors.warning} />
           <AppText variant="caption" style={{ color: colors.warning }}>
-            You missed this - still yours to take
+            {t('orders.missed')}
           </AppText>
         </View>
       ) : null}
@@ -64,8 +66,10 @@ export function OpenOrderCard({
             {order.restaurant_name}
           </AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
-            to {order.drop_area || 'the customer'} · {order.item_count} item
-            {order.item_count === 1 ? '' : 's'}
+            {t('orders.to', {
+              place: order.drop_area || t('orders.theCustomer'),
+            })}{' '}
+            · {plural('common.items', order.item_count)}
           </AppText>
         </View>
         <AppText variant="heading" tone="success">
@@ -73,8 +77,16 @@ export function OpenOrderCard({
         </AppText>
       </View>
       <View style={styles.metaRow}>
-        <Meta icon="bicycle" label={`${distance(order.pickup_distance_m)} away`} />
-        <Meta icon="navigate" label={`${km(order.trip_distance_km)} trip`} />
+        <Meta
+          icon="bicycle"
+          label={t('common.away', {
+            distance: distance(order.pickup_distance_m),
+          })}
+        />
+        <Meta
+          icon="navigate"
+          label={t('orders.trip', { distance: km(order.trip_distance_km) })}
+        />
         <Meta
           icon="time"
           label={minutesLeftLabel(order.minutes_left)}

@@ -1,3 +1,4 @@
+import type { Key } from '@/i18n/strings';
 import type { ThemeMode } from './tokens';
 
 /** System follows the phone; the other two are the rider's own choice. */
@@ -5,18 +6,27 @@ export type ThemePreference = 'system' | ThemeMode;
 
 export const THEME_KEY = 'rider.theme';
 
+/** Keys, not words: resolved with t() where drawn, so a language switch reaches them. */
 export const THEME_OPTIONS: readonly {
   key: ThemePreference;
-  label: string;
-  hint: string;
+  labelKey: Key;
+  hintKey: Key;
 }[] = [
   {
     key: 'system',
-    label: 'Follow the phone',
-    hint: 'Dark at night if your phone is',
+    labelKey: 'account.theme.systemLabel',
+    hintKey: 'account.theme.systemHint',
   },
-  { key: 'light', label: 'Light', hint: 'Easier in bright sun' },
-  { key: 'dark', label: 'Dark', hint: 'Easier on the eyes at night' },
+  {
+    key: 'light',
+    labelKey: 'account.profile.light',
+    hintKey: 'account.theme.lightHint',
+  },
+  {
+    key: 'dark',
+    labelKey: 'account.profile.dark',
+    hintKey: 'account.theme.darkHint',
+  },
 ];
 
 export function resolveMode(

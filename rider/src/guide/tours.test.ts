@@ -1,3 +1,4 @@
+import { en, gu, hi } from '@/i18n/strings';
 import { TARGETS, TOURS, type TourId } from './tours';
 
 describe('the spotlight tours', () => {
@@ -19,10 +20,17 @@ describe('the spotlight tours', () => {
     for (const id of ids) {
       expect(TOURS[id].steps.length).toBeGreaterThan(0);
       for (const step of TOURS[id].steps) {
-        expect(step.title.length).toBeGreaterThan(3);
-        expect(step.title.length).toBeLessThanOrEqual(32);
-        expect(step.body.length).toBeGreaterThan(10);
-        expect(step.body.length).toBeLessThanOrEqual(140);
+        const title = en[step.titleKey];
+        const body = en[step.bodyKey];
+        expect(title.length).toBeGreaterThan(3);
+        expect(title.length).toBeLessThanOrEqual(32);
+        expect(body.length).toBeGreaterThan(10);
+        expect(body.length).toBeLessThanOrEqual(140);
+        // ...and in every language the rider can pick.
+        for (const dict of [hi, gu]) {
+          expect(dict[step.titleKey].length).toBeGreaterThan(3);
+          expect(dict[step.bodyKey].length).toBeGreaterThan(10);
+        }
       }
     }
   });

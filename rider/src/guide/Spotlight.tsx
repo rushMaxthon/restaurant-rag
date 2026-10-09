@@ -18,6 +18,7 @@ import Svg, { Defs, Mask, Rect } from 'react-native-svg';
 
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
 import { useGuide } from './GuideProvider';
@@ -38,6 +39,7 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
 export function Spotlight() {
   const { active, next, skip } = useGuide();
   const { colors } = useTheme();
+  const { t } = useI18n();
   const window = useWindowDimensions();
 
   // The phone's back button means "not now": it skips the tour rather than
@@ -85,8 +87,8 @@ export function Spotlight() {
       <Tip
         key={active.index}
         hole={hole}
-        title={current.step.title}
-        body={current.step.body}
+        title={t(current.step.titleKey)}
+        body={t(current.step.bodyKey)}
         index={active.index}
         count={active.steps.length}
         onNext={next}
@@ -180,6 +182,7 @@ function Tip({
   onSkip: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const window = useWindowDimensions();
   const [cardHeight, setCardHeight] = useState(0);
   const place = placeTooltip(hole, window, { height: cardHeight || 150 });
@@ -217,15 +220,20 @@ function Tip({
           {title}
         </AppText>
         <AppText variant="micro" tone="muted">
-          {index + 1} OF {count}
+          {t('account.guide.stepOf', { n: index + 1, count })}
         </AppText>
       </View>
       <AppText tone="muted">{body}</AppText>
       <View style={styles.actions}>
-        <Button kind="ghost" size="md" label="Skip" onPress={onSkip} />
+        <Button
+          kind="ghost"
+          size="md"
+          label={t('common.skip')}
+          onPress={onSkip}
+        />
         <Button
           size="md"
-          label={last ? 'Done' : 'Next'}
+          label={last ? t('common.done') : t('common.next')}
           icon={last ? 'checkmark' : 'arrow-forward'}
           onPress={onNext}
           style={styles.next}

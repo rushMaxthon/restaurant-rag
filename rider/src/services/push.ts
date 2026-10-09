@@ -16,6 +16,8 @@ import {
 } from '@react-native-firebase/messaging';
 import { Platform } from 'react-native';
 
+import { initLanguage } from '@/i18n';
+import { translate } from '@/i18n/translate';
 import { offerAlertMs, parsePush, type RiderPush } from '@utils/push';
 
 /**
@@ -70,9 +72,10 @@ export function firebaseReady(): boolean {
 async function channels(): Promise<void> {
   await notifee.createChannel({
     id: OFFER_CHANNEL,
-    name: 'New orders',
-    description:
-      'Rings when an order is offered to you. Keep this on while you are online.',
+    // Shown in the phone's settings. A channel keeps the name it was first
+    // created with (in the language in force then); the id never changes.
+    name: translate('system.channelOffers'),
+    description: translate('system.channelOffersDesc'),
     importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
     sound: 'default',
@@ -81,8 +84,8 @@ async function channels(): Promise<void> {
   });
   await notifee.createChannel({
     id: UPDATES_CHANNEL,
-    name: 'Trip updates',
-    description: 'A delivery you are on was changed or cancelled.',
+    name: translate('system.channelUpdates'),
+    description: translate('system.channelUpdatesDesc'),
     importance: AndroidImportance.HIGH,
   });
 }
@@ -99,8 +102,8 @@ export async function showOfferAlert(
     await channels();
     await notifee.displayNotification({
       id: `offer-${offerId}`,
-      title: 'New delivery order',
-      body: 'Tap to see what it pays and accept it.',
+      title: translate('system.offerTitle'),
+      body: translate('system.offerBody'),
       data: { type: 'rider_offer', offer_id: offerId, expires_at: expiresAt },
       android: {
         channelId: OFFER_CHANNEL,
@@ -139,8 +142,8 @@ export async function testOfferAlert(): Promise<boolean> {
     if (channel?.blocked) return false;
     await notifee.displayNotification({
       id: 'offer-test',
-      title: 'This is what a new order sounds like',
-      body: 'A real one shows what it pays and how far it is.',
+      title: translate('system.testTitle'),
+      body: translate('system.testBody'),
       data: { type: 'rider_test' },
       android: {
         channelId: OFFER_CHANNEL,
@@ -172,8 +175,8 @@ async function showTripCancelled(tripId: string): Promise<void> {
     await channels();
     await notifee.displayNotification({
       id: `trip-${tripId}`,
-      title: 'Delivery cancelled',
-      body: 'The order was cancelled. Tap to see your earnings for it.',
+      title: translate('system.cancelledTitle'),
+      body: translate('system.cancelledBody'),
       data: { type: 'rider_trip_cancelled', trip_id: tripId },
       android: {
         channelId: UPDATES_CHANNEL,
@@ -192,9 +195,13 @@ type PushMessage = { data?: { [key: string]: unknown } };
 
 async function showPush(message: PushMessage): Promise<void> {
   const push = parsePush(message.data);
-  if (push?.kind === 'offer')
+  if (!push) return;
+  // A killed app is started headless for this: no LanguageProvider has run,
+  // so read the rider's choice first or the alert speaks the phone's language.
+  await initLanguage();
+  if (push.kind === 'offer')
     await showOfferAlert(push.offerId, push.expiresAt);
-  if (push?.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
+  if (push.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
 }
 
 function handleEvent({ type, detail }: Event): void {

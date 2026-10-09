@@ -4,6 +4,7 @@ import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
+import { translate } from '@/i18n/translate';
 import type { OpenOrder } from '@/types/api';
 import { haptic } from '@utils/haptics';
 import { claimErrorMessage, takeBlockedReason } from '@utils/openOrders';
@@ -60,7 +61,7 @@ export function useTakeOrder() {
   /** Why this card's Take is off: another order is being taken, or the rider can't. */
   const blockedFor = (order: OpenOrder) =>
     taking !== null && taking !== order.order_id
-      ? 'Taking another order'
+      ? translate('system.takingAnother')
       : blocked;
 
   return { take, taking, error, blockedFor };

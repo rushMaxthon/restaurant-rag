@@ -9,6 +9,7 @@ import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
 import { usePermissions, type PermissionKey } from '@hooks/usePermissions';
+import { useI18n, type Key } from '@/i18n';
 import { gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
@@ -17,32 +18,33 @@ import { radius, space, motion } from '@theme/tokens';
 const ITEMS: {
   key: PermissionKey;
   icon: IconName;
-  title: string;
-  why: string;
+  titleKey: Key;
+  whyKey: Key;
 }[] = [
   {
     key: 'location',
     icon: 'location',
-    title: 'Location',
-    why: 'We send you orders from restaurants near you, and customers see you arriving.',
+    titleKey: 'account.perm.location',
+    whyKey: 'account.perm.locationWhy',
   },
   {
     key: 'notifications',
     icon: 'notifications',
-    title: 'Notifications',
-    why: 'A new order rings even when your screen is off, so you never miss one.',
+    titleKey: 'account.perm.notifications',
+    whyKey: 'account.perm.notificationsWhy',
   },
   {
     key: 'battery',
     icon: 'battery-charging',
-    title: 'Run in the background',
-    why: 'Without this, your phone closes the app to save battery and orders stop reaching you.',
+    titleKey: 'account.perm.battery',
+    whyKey: 'account.perm.batteryWhy',
   },
 ];
 
 /** Each permission with one sentence on why - a rider who understands taps Allow. */
 export function PermissionsScreen() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const nav = useNav();
   const { state, ready, request, openAutoStart } = usePermissions();
   const leave = () =>
@@ -68,9 +70,9 @@ export function PermissionsScreen() {
         <View style={[styles.badge, { backgroundColor: colors.primarySoft }]}>
           <Icon name="shield-checkmark" size={34} color={colors.primary} />
         </View>
-        <AppText variant="title">Three quick things</AppText>
+        <AppText variant="title">{t('account.perm.title')}</AppText>
         <AppText tone="muted" style={styles.gapXs}>
-          The app needs these to send you orders.
+          {t('account.perm.lead')}
         </AppText>
       </Animated.View>
 
@@ -99,15 +101,15 @@ export function PermissionsScreen() {
                 />
               </View>
               <View style={styles.flex}>
-                <AppText variant="bodyStrong">{item.title}</AppText>
+                <AppText variant="bodyStrong">{t(item.titleKey)}</AppText>
                 <AppText variant="caption" tone="muted">
-                  {item.why}
+                  {t(item.whyKey)}
                 </AppText>
               </View>
               {granted ? null : (
                 <Button
                   size="md"
-                  label="Allow"
+                  label={t('account.perm.allow')}
                   onPress={() => request(item.key)}
                 />
               )}
@@ -120,31 +122,35 @@ export function PermissionsScreen() {
         <Card style={styles.item}>
           <View style={styles.flex}>
             <AppText variant="bodyStrong">
-              Phone has its own battery saver?
+              {t('account.perm.autoStartTitle')}
             </AppText>
             <AppText variant="caption" tone="muted">
-              Xiaomi, Realme, Oppo and Vivo add one more switch. Turn on
-              auto-start for this app.
+              {t('account.perm.autoStartBody')}
             </AppText>
           </View>
           <Button
             size="md"
             kind="secondary"
-            label="Open"
+            label={t('account.perm.open')}
             onPress={async () => setAutoStart(await openAutoStart())}
           />
         </Card>
       ) : null}
 
       <Button
-        label={ready ? 'All set' : 'Continue'}
+        label={ready ? t('account.perm.allSet') : t('common.continue')}
         icon="arrow-forward"
         disabledReason={gateReason(state)}
         onPress={leave}
       />
       {ready ? null : (
         // Going online is what these gate (Home says so); the app itself is not.
-        <Button kind="ghost" size="md" label="Not now" onPress={leave} />
+        <Button
+          kind="ghost"
+          size="md"
+          label={t('account.perm.notNow')}
+          onPress={leave}
+        />
       )}
     </Screen>
   );

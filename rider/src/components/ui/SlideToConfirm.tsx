@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { useI18n } from '@/i18n';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space, touch } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
@@ -57,6 +58,7 @@ export function SlideToConfirm({
   testID,
 }: SlideToConfirmProps) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const accent = tone === 'success' ? colors.success : colors.primary;
   const onAccent = tone === 'success' ? colors.onSuccess : colors.onPrimary;
   const disabled = Boolean(disabledReason);
@@ -135,7 +137,7 @@ export function SlideToConfirm({
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel={label}
-          accessibilityHint={disabledReason ?? 'Slide right to confirm'}
+          accessibilityHint={disabledReason ?? t('trip.slideHint')}
           accessibilityState={{ disabled, busy }}
           accessibilityActions={[{ name: 'activate', label }]}
           onAccessibilityAction={() => !disabled && !confirmed && fire()}

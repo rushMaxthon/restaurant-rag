@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useI18n } from '@/i18n';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -58,9 +59,10 @@ function ShiftStrip({
   disabledReason,
   error,
   guide = true,
-  offlineHint = 'Go online to start getting orders',
+  offlineHint,
 }: Props) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const toggle = (
     <OnlineToggle
       compact
@@ -90,7 +92,7 @@ function ShiftStrip({
             </View>
           )}
           <AppText variant="bodyStrong" style={styles.flex} numberOfLines={2}>
-            {online ? "You're online" : "You're offline"}
+            {online ? t('home.online') : t('home.offline')}
           </AppText>
           {guide ? (
             <GuideTarget id={TARGETS.homeToggle}>{toggle}</GuideTarget>
@@ -101,7 +103,9 @@ function ShiftStrip({
         {/* Under the row, full width: beside a 148 dp toggle at a large font
             it had ~96 dp and was cut off. */}
         <AppText variant="caption" tone="muted" style={styles.hint}>
-          {online ? disabledReason ?? 'Looking for orders near you' : offlineHint}
+          {online
+            ? disabledReason ?? t('home.lookingForOrders')
+            : offlineHint ?? t('home.offlineHint')}
         </AppText>
         {error ? (
           <AppText variant="caption" tone="danger">
@@ -115,6 +119,7 @@ function ShiftStrip({
 
 function OfflineCard({ online, onChange, busy, disabledReason, error }: Props) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   return (
     <Animated.View entering={FadeIn.duration(300)}>
       <Card style={styles.offline}>
@@ -125,9 +130,9 @@ function OfflineCard({ online, onChange, busy, disabledReason, error }: Props) {
             <Icon name="moon-outline" size={22} color={colors.textMuted} />
           </View>
           <View style={styles.flex}>
-            <AppText variant="heading">You're offline</AppText>
+            <AppText variant="heading">{t('home.offline')}</AppText>
             <AppText variant="caption" tone="muted">
-              Go online to start getting delivery orders.
+              {t('home.offlineBody')}
             </AppText>
           </View>
         </View>
@@ -151,6 +156,7 @@ function OfflineCard({ online, onChange, busy, disabledReason, error }: Props) {
 
 /** A dot with one ring rippling out of it: "live", in 28 dp. */
 function Beacon({ color }: { color: string }) {
+  const { t: tr } = useI18n();
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withRepeat(
@@ -164,7 +170,7 @@ function Beacon({ color }: { color: string }) {
     transform: [{ scale: 0.6 + t.value * 1.2 }],
   }));
   return (
-    <View style={styles.beacon} accessibilityLabel="Looking for orders">
+    <View style={styles.beacon} accessibilityLabel={tr('home.searching')}>
       <Animated.View
         style={[styles.beaconRing, { borderColor: color }, ring]}
       />
