@@ -83,11 +83,28 @@ class Principal:
     staff_room: str | None
 
 
-def origin_allowed(origin: str | None) -> bool:
-    """The same answer `CORSMiddleware` gives, for the WebSocket handshake."""
+def origin_allowed(origin: str | None, environ: dict | None = None) -> bool:
+    """The same answer `CORSMiddleware` gives, for the WebSocket handshake -
+    plus the server's own address.
+
+    React Native on Android sends `Origin: <the URL it connects to>`. That is
+    a same-origin connection (no page on another site can claim it), and
+    without this the rider app was refused on every connect and fell back to
+    polling - found 2026-10-09 when an approval took ~10 s to reach the phone.
+    """
 
     if origin is None:
         return True
+    if environ:
+        host = environ.get("HTTP_HOST", "")
+        # Behind Render's proxy the request arrives as http while the app
+        # connected with https; the proxy says which in X-Forwarded-Proto.
+        schemes = {environ.get("wsgi.url_scheme", "http")}
+        forwarded = environ.get("HTTP_X_FORWARDED_PROTO", "")
+        if forwarded:
+            schemes.add(forwarded.split(",")[0].strip())
+        if host and origin in {f"{scheme}://{host}" for scheme in schemes}:
+            return True
     if origin in settings.backend_cors_origins_list:
         return True
     pattern = settings.cors_origin_regex
