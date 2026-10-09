@@ -364,18 +364,30 @@ def save_photo(db: Session, user: User, kind: K, data: bytes) -> RiderApplicatio
     if content_type is None:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "not_an_image")
 
-    app = _lock(db, user.id)
-    item = items_of(db, user.id)[kind]
-    if not editable(app, item):
+    # Checked before the upload (no point sending a photo that will be
+    # refused), then again under the lock after it: the upload is a slow
+    # network call and must not hold the application row while it runs.
+    app = db.get(RiderApplication, user.id)
+    if app is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Application not found")
+    if not editable(app, items_of(db, user.id)[kind]):
         raise HTTPException(status.HTTP_409_CONFLICT, "not_editable")
+    db.rollback()
 
     path = f"riders/{user.id}/{kind.value.lower()}-{uuid.uuid4().hex}.{storage.EXTENSION[content_type]}"
     try:
         storage.upload(path, data, content_type)
     except storage.StorageUnavailable as error:
-        db.rollback()
         logger.warning("Rider document upload failed: %s", error)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "storage_not_configured") from None
+
+    app = _lock(db, user.id)
+    item = items_of(db, user.id)[kind]
+    if not editable(app, item):
+        # Submitted from another phone while this one was uploading.
+        db.rollback()
+        storage.delete(path)
+        raise HTTPException(status.HTTP_409_CONFLICT, "not_editable")
 
     old = item.storage_path
     item.storage_path, item.content_type, item.size_bytes = path, content_type, len(data)

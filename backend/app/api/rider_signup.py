@@ -121,13 +121,17 @@ def save_section(section: str, body: dict[str, Any], user: RiderUser, db: Db) ->
 
 
 @router.post("/application/items/{kind}", response_model=ApplicationView)
-async def upload_item(
+def upload_item(
     kind: ApplicationItemKind, user: RiderUser, db: Db, file: Annotated[UploadFile, File()]
 ) -> ApplicationView:
+    # A plain `def`, so FastAPI runs it in a worker thread: the storage upload
+    # is a blocking network call, and Socket.IO shares this event loop - an
+    # `async` route here stalled every board and rider on the worker.
     _mine(db, user)
-    # Read one byte past the limit and no further: a 50 MB upload is refused
-    # without ever being held in memory whole.
-    data = await file.read(get_settings().rider_doc_max_bytes + 1)
+    # Read one byte past the limit: an oversized photo is refused without
+    # being copied into memory whole. (Starlette has already spooled the
+    # request to a temporary file by now; memory is bounded, disk is not.)
+    data = file.file.read(get_settings().rider_doc_max_bytes + 1)
     applications.save_photo(db, user, kind, data)
     return application_view(db, db.get(RiderApplication, user.id))
 

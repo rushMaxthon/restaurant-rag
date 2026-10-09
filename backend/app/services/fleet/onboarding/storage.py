@@ -93,11 +93,28 @@ def configured() -> bool:
     return bool(settings.supabase_url and settings.supabase_service_key)
 
 
+_client: StorageClient | None = None
+
+
 def client() -> StorageClient:
-    settings = get_settings()
+    """One client for the process, so its connection pool is reused: the
+    admin's review page signs up to eight links per refresh, and a fresh
+    client per call left sockets open until the garbage collector found them."""
+
+    global _client
     if not configured():
         raise StorageUnavailable("storage_not_configured")
-    return StorageClient(settings.supabase_url, settings.supabase_service_key, settings.rider_docs_bucket)
+    if _client is None:
+        settings = get_settings()
+        _client = StorageClient(settings.supabase_url, settings.supabase_service_key, settings.rider_docs_bucket)
+    return _client
+
+
+def reset_client() -> None:
+    """Forget the shared client. For tests, and after the settings change."""
+
+    global _client
+    _client = None
 
 
 def upload(path: str, data: bytes, content_type: str) -> None:

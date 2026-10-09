@@ -150,5 +150,30 @@ class StorageClient(unittest.TestCase):
         )
 
 
+
+class UploadDoesNotStallTheServer(unittest.TestCase):
+    """Socket.IO lives inside the same ASGI app, so an `async` route that does
+    a blocking upload stalls every kitchen board and rider on the worker for
+    its whole length. The route must be a plain function (run in a thread),
+    and the storage client one shared, reused connection pool."""
+
+    def test_the_upload_route_runs_in_a_thread(self) -> None:
+        import inspect
+
+        from app.api.rider_signup import upload_item
+
+        self.assertFalse(inspect.iscoroutinefunction(upload_item))
+
+    def test_one_storage_client_is_reused(self) -> None:
+        from unittest import mock
+
+        from app.services.fleet.onboarding import storage
+
+        storage.reset_client()
+        self.addCleanup(storage.reset_client)
+        with mock.patch.object(storage, "configured", return_value=True):
+            self.assertIs(storage.client(), storage.client())
+
+
 if __name__ == "__main__":
     unittest.main()
