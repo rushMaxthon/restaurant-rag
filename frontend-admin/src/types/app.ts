@@ -1955,7 +1955,22 @@ export interface FleetConfig {
   window_minutes: number;
   radius_km: number;
   silent_minutes: number;
+  /** Nearest riders first: the order reaches one ring further every this many minutes. */
+  wave_minutes: number;
+  /** The first ring, and how much each wave adds. */
+  first_wave_km: number;
   location_ids: string[];
+}
+
+/** A restaurant branch as a pin on the live map. */
+export interface MapBranch {
+  id: string;
+  restaurant_name: string;
+  branch_name: string;
+  lat: number;
+  lng: number;
+  /** Our riders serve it; otherwise its orders go straight to the courier. */
+  on_fleet: boolean;
 }
 
 export interface FleetBranch {
@@ -2031,6 +2046,8 @@ export interface WaitingFleetOrder {
   ordered_at: string;
   /** The rider being asked right now; assigning someone else withdraws it. */
   offered_to: string | null;
+  /** How far from the branch riders see it right now (its current wave). */
+  reach_km?: number | null;
 }
 
 export interface FleetDeliveryView {

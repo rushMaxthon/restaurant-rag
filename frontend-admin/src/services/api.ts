@@ -92,6 +92,7 @@ import type {
   RiderApplicationSummary,
   RiderUpdateInput,
   WaitingFleetOrder,
+  MapBranch,
 } from '../types/app';
 
 // Imported for the fetch calls below AND re-exported, because
@@ -283,6 +284,10 @@ export const api = {
   /** Fleet orders nobody is carrying yet; assign one with `reassignFleetDelivery`. */
   listWaitingFleetOrders(token: string): Promise<WaitingFleetOrder[]> {
     return request<WaitingFleetOrder[]>('/admin/riders/waiting', { token });
+  },
+  /** Restaurant branches with a map pin, and whether our riders serve them. */
+  listMapBranches(token: string): Promise<MapBranch[]> {
+    return request<MapBranch[]>('/admin/riders/branches', { token });
   },
   createRider(token: string, body: RiderCreateInput): Promise<Rider> {
     return request<Rider>('/admin/riders', { method: 'POST', token, body });

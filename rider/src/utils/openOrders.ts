@@ -1,6 +1,7 @@
 /**
  * Words for the open-orders list. The `detail` strings are a contract with
- * `offers.claim` in the backend: `order_taken`, `rider_offline`, `rider_busy`.
+ * `offers.claim` in the backend: `order_taken`, `rider_offline`, `rider_busy`,
+ * `order_not_near` (the order is still with the riders nearest the restaurant).
  */
 
 import type { Key } from '@/i18n/strings';
@@ -10,6 +11,7 @@ const CLAIM_ERRORS: Record<string, Key> = {
   order_taken: 'system.claimTaken',
   rider_offline: 'system.claimOffline',
   rider_busy: 'system.claimBusy',
+  order_not_near: 'system.claimNotNear',
 };
 
 export function claimErrorMessage(detail: string | undefined): string {

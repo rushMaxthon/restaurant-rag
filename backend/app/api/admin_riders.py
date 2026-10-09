@@ -26,6 +26,7 @@ from app.schemas.rider import (
     FleetDeliveryView,
     FleetOfferRow,
     FleetSettings,
+    MapBranch,
     PayoutIn,
     PayoutOut,
     ReassignIn,
@@ -95,6 +96,41 @@ def waiting(_: Admin, db: Db) -> list[WaitingOrder]:
     """Orders that need a rider, for the live map: assign from here with `reassign`."""
 
     return [WaitingOrder(**row) for row in offers.waiting_orders(db)]
+
+
+@router.get("/branches", response_model=list[MapBranch])
+def map_branches(_: Admin, db: Db) -> list[MapBranch]:
+    """Every real branch with a map pin, for the live map: where riders head
+    from, and whether the fleet serves it. A branch without coordinates is
+    left out - there is nowhere to draw it, and the fleet cannot measure
+    distance to it either."""
+
+    from app.models.restaurant import Restaurant
+    from app.models.restaurant_location import RestaurantLocation
+
+    fleet = fleet_config.load_fleet(db)
+    rows = db.execute(
+        select(RestaurantLocation, Restaurant.name)
+        .join(Restaurant, Restaurant.id == RestaurantLocation.restaurant_id)
+        .where(
+            RestaurantLocation.is_active.is_(True),
+            Restaurant.is_demo.is_(False),
+            RestaurantLocation.latitude.is_not(None),
+            RestaurantLocation.longitude.is_not(None),
+        )
+        .order_by(Restaurant.name, RestaurantLocation.branch_name)
+    ).all()
+    return [
+        MapBranch(
+            id=location.id,
+            restaurant_name=name,
+            branch_name=location.branch_name,
+            lat=float(location.latitude),
+            lng=float(location.longitude),
+            on_fleet=not fleet.location_ids or str(location.id) in fleet.location_ids,
+        )
+        for location, name in rows
+    ]
 
 
 @router.post("", response_model=RiderResponse, status_code=status.HTTP_201_CREATED)

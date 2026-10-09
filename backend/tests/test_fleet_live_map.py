@@ -59,6 +59,36 @@ class LiveMapTests(unittest.TestCase):
         self.assertIsNone(row["offered_to"])
         self.assertTrue(row["order_code"])
 
+    def test_shows_every_branch_with_a_pin_and_whether_riders_serve_it(self) -> None:
+        # Restaurants on the map (2026-10-09): where riders are heading from,
+        # and which branches the fleet serves (`location_ids`, empty = all).
+        from app.models.platform_setting import PlatformSetting
+        from app.models.restaurant_location import RestaurantLocation
+
+        with self.fdb.session() as db:
+            order = self.fdb.make_order(db, lat=21.19, lng=72.85)
+            served = order.restaurant_location_id
+            other = self.fdb.make_order(db)
+            db.add(PlatformSetting(key="own_fleet", value={"location_ids": [str(served)]}))
+            hidden = db.get(RestaurantLocation, self.fdb.make_order(db).restaurant_location_id)
+            hidden.latitude = None
+            db.commit()
+            hidden_id = hidden.id
+        try:
+            r = client_for(self.fdb, self.admin).get("/api/admin/riders/branches")
+            self.assertEqual(r.status_code, 200, r.text)
+            rows = {row["id"]: row for row in r.json()}
+            self.assertEqual((rows[str(served)]["lat"], rows[str(served)]["lng"]), (21.19, 72.85))
+            self.assertEqual(rows[str(served)]["restaurant_name"], "Bhagwati Bakery")
+            self.assertTrue(rows[str(served)]["on_fleet"])
+            self.assertFalse(rows[str(other.restaurant_location_id)]["on_fleet"])
+            self.assertNotIn(str(hidden_id), rows)  # no pin, nothing to draw
+            self.assertEqual(client_for(self.fdb, self.owner).get("/api/admin/riders/branches").status_code, 403)
+        finally:
+            with self.fdb.session() as db:
+                db.query(PlatformSetting).delete()
+                db.commit()
+
     def test_unassigned_orders_wait_too(self) -> None:
         with self.fdb.session() as db:
             order = self.fdb.make_order(db)

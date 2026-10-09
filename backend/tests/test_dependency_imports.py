@@ -76,6 +76,7 @@ class ImportOrderTests(unittest.TestCase):
             "app.tasks.ai_recommendations.generate_ai_recommendations_task",
             "app.tasks.delivery.cancel_order_delivery_task",
             "app.tasks.delivery.dispatch_order_task",
+            "app.tasks.delivery.dispatch_missed_task",
             "app.tasks.delivery.refresh_deliveries_task",
             "app.tasks.embed.backfill_menu_embeddings",
             "app.tasks.fleet.advance_delivery_task",

@@ -201,6 +201,8 @@ class FleetConfigIn(BaseModel):
     window_minutes: int = Field(default=5, ge=1, le=30)
     radius_km: float = Field(default=6.0, ge=0.5, le=25)
     silent_minutes: int = Field(default=3, ge=1, le=30)
+    wave_minutes: int = Field(default=2, ge=1, le=10)
+    first_wave_km: float = Field(default=2.0, ge=0.5, le=25)
     location_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
@@ -212,6 +214,19 @@ class FleetBranch(BaseModel):
     branch_name: str
     city: str
     delivery_enabled: bool
+
+
+class MapBranch(BaseModel):
+    """A restaurant branch as a pin on the live map."""
+
+    id: uuid.UUID
+    restaurant_name: str
+    branch_name: str
+    lat: float
+    lng: float
+    #: Our riders serve it (`location_ids` empty, or naming it); otherwise
+    #: its orders go straight to the courier.
+    on_fleet: bool
 
 
 class FleetSettings(BaseModel):
@@ -256,6 +271,9 @@ class WaitingOrder(BaseModel):
     ordered_at: datetime
     #: The rider being asked right now, if any - assigning someone else withdraws it.
     offered_to: str | None = None
+    #: How far from the branch riders see it right now (the current wave);
+    #: None for an order no rider is offered (unassigned, or no branch pin).
+    reach_km: float | None = None
 
 
 class ReassignIn(BaseModel):

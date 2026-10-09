@@ -44,6 +44,12 @@ class FleetConfig:
     radius_km: float = 6.0
     #: No location for this long and a rider is no longer "online".
     silent_minutes: int = 3
+    #: Waves (the owner's rule, 2026-10-09): an order is shown to the riders
+    #: nearest the restaurant first - within `first_wave_km` - and every
+    #: `wave_minutes` nobody takes it, it reaches one ring further out, up to
+    #: `radius_km`. `offers.reach_m` is the one place that reads them.
+    wave_minutes: int = 2
+    first_wave_km: float = 2.0
     #: Branches the fleet serves; empty means every branch. A visible list on
     #: the admin page, never a constant in code - the AI allowlist that was
     #: deleted from this codebase is the warning.
@@ -142,6 +148,12 @@ def validate_fleet(data: dict[str, Any]) -> FleetConfig:
         raise _refuse("radius_km must be a number") from None
     if not 0.5 <= radius <= 25:
         raise _refuse("radius_km must be between 0.5 and 25")
+    try:
+        first_wave = float(data.get("first_wave_km", base.first_wave_km))
+    except (TypeError, ValueError):
+        raise _refuse("first_wave_km must be a number") from None
+    if not 0.5 <= first_wave <= 25:
+        raise _refuse("first_wave_km must be between 0.5 and 25")
     ids = data.get("location_ids", [])
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         raise _refuse("location_ids must be a list of branch ids")
@@ -151,6 +163,8 @@ def validate_fleet(data: dict[str, Any]) -> FleetConfig:
         window_minutes=_whole(data, "window_minutes", 1, 30, base.window_minutes),
         radius_km=radius,
         silent_minutes=_whole(data, "silent_minutes", 1, 30, base.silent_minutes),
+        wave_minutes=_whole(data, "wave_minutes", 1, 10, base.wave_minutes),
+        first_wave_km=first_wave,
         location_ids=list(ids),
     )
 

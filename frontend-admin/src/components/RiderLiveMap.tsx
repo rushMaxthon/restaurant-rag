@@ -1,6 +1,7 @@
 /**
  * The super admin's live map: every rider on shift where they last reported,
- * every fleet order still waiting for one, and a one-click way to put the
+ * every restaurant branch, every fleet order still waiting for one (with the
+ * ring of riders it reaches right now), and a one-click way to put the
  * nearest free rider on it.
  *
  * Assigning goes through the same `reassign` route as the order page, so the
@@ -15,6 +16,8 @@ import { useOrdersChanged, useRidersChanged } from '../hooks/useRealtime';
 import { ApiError, api } from '../services/api';
 import {
   GLIDE_MS,
+  branchPins,
+  metresToPixels,
   MAX_ZOOM,
   MIN_ZOOM,
   bearingDeg,
@@ -33,10 +36,12 @@ import {
   type LatLng,
 } from '../services/liveMap';
 import { lastSeenLabel, reassignErrorMessage } from '../services/riders';
-import type { Rider, ToastMessage, WaitingFleetOrder } from '../types/app';
+import type { MapBranch, Rider, ToastMessage, WaitingFleetOrder } from '../types/app';
 
 /** The safety net. Riders moving and orders arriving refresh it at once over the socket. */
 const POLL_MS = 10_000;
+/** Restaurant names show from this zoom in; further out they overlap. */
+const BRANCH_LABEL_ZOOM = 14;
 /** Below this a new fix is GPS jitter, not movement: no glide, no new heading. */
 const MOVE_M = 5;
 
@@ -133,6 +138,7 @@ const TONE_LABEL = { free: 'Free', busy: 'On a trip', stale: 'Not updating' } as
 export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
   const [riders, setRiders] = useState<Rider[] | null>(null);
   const [waiting, setWaiting] = useState<WaitingFleetOrder[] | null>(null);
+  const [branches, setBranches] = useState<MapBranch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -153,6 +159,20 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
   useOrdersChanged(load);
   const [riderId, setRiderId] = useState<string | null>(null);
   const shown = useGlidingRiders(riders);
+
+  // Branches barely change: loaded once, and a failure only costs their pins.
+  useEffect(() => {
+    let alive = true;
+    api
+      .listMapBranches(token)
+      .then(rows => {
+        if (alive) setBranches(rows);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [token]);
 
   useEffect(() => {
     let alive = true;
@@ -209,8 +229,9 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
       const p = pickupOf(o);
       if (p) out.push(p);
     }
+    for (const b of branches) out.push({ lat: b.lat, lng: b.lng });
     return out;
-  }, [riders, waiting]);
+  }, [riders, waiting, branches]);
 
   const loaded = riders !== null || error !== null;
   // Drawn even when loading failed: a blank box reads as a broken map, the
@@ -314,6 +335,43 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
             ))}
           </div>
 
+          {/* The selected order's current wave: who can see it right now. */}
+          {selected && selectedPickup && selected.reach_km && view
+            ? (() => {
+                const at = place(selectedPickup);
+                if (!at) return null;
+                const r = metresToPixels(selected.reach_km * 1000, selectedPickup.lat, view.zoom);
+                return (
+                  <span
+                    className="rmap__reach"
+                    style={{ left: at.left - r, top: at.top - r, width: r * 2, height: r * 2 }}
+                    aria-hidden="true"
+                  />
+                );
+              })()
+            : null}
+
+          {branchPins(branches, groupByPickup(waiting ?? [])).map(branch => {
+            const at = place({ lat: branch.lat, lng: branch.lng });
+            if (!at) return null;
+            const name = `${branch.restaurant_name} · ${branch.branch_name}`;
+            return (
+              <span
+                key={branch.id}
+                className={branch.on_fleet ? 'rmap__pin rmap__pin--branch' : 'rmap__pin rmap__pin--branch rmap__pin--courier'}
+                style={{ left: at.left, top: at.top }}
+                title={branch.on_fleet ? name : `${name} · courier only`}
+                aria-label={name}
+              >
+                <Store size={12} aria-hidden="true" />
+                {/* Names pile up at city scale; there the icon and its hover title are enough. */}
+                {view && view.zoom >= BRANCH_LABEL_ZOOM ? (
+                  <span className="rmap__pin-label">{branch.restaurant_name}</span>
+                ) : null}
+              </span>
+            );
+          })}
+
           {selected && selected.drop_lat != null && selected.drop_lng != null
             ? (() => {
                 const at = place({ lat: selected.drop_lat, lng: selected.drop_lng });
@@ -393,6 +451,11 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
             <span><i className="rmap__swatch rmap__swatch--free" /> Free {counts.free}</span>
             <span><i className="rmap__swatch rmap__swatch--busy" /> On a trip {counts.busy}</span>
             <span><i className="rmap__swatch rmap__swatch--stale" /> Not updating {counts.stale}</span>
+            {branches.length ? (
+              <span>
+                <Store size={12} aria-hidden="true" /> Restaurants {branches.length}
+              </span>
+            ) : null}
           </div>
 
           <a className="rmap__credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
@@ -476,6 +539,9 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
                   <span className="rmap__muted">waiting {waitedLabel(order.ordered_at, now)}</span>
                 </span>
                 <span className="rmap__muted">{order.restaurant_name}</span>
+                {order.reach_km ? (
+                  <span className="rmap__muted">Riders within {distanceLabel(order.reach_km * 1000)} see it</span>
+                ) : null}
                 {order.offered_to ? (
                   <span className="rmap__asking">Asking {order.offered_to}…</span>
                 ) : order.provider === 'unassigned' ? (

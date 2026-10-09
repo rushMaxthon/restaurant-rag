@@ -9,7 +9,7 @@
  * that is the whole of what a library would have bought here.
  */
 
-import type { Rider, WaitingFleetOrder } from '../types/app';
+import type { MapBranch, Rider, WaitingFleetOrder } from '../types/app';
 
 export const TILE = 256;
 export const MIN_ZOOM = 3;
@@ -185,4 +185,26 @@ export function bearingDeg(a: LatLng, b: LatLng): number {
   const x =
     Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Earth's circumference at the equator, in metres (Web Mercator's sphere). */
+const EQUATOR_M = 40_075_016.7;
+
+/**
+ * A ground distance as screen pixels at this zoom and latitude: what the
+ * circle showing an order's current wave is drawn with. Mercator stretches
+ * away from the equator, so the same metres take more pixels further north.
+ */
+export function metresToPixels(metres: number, lat: number, zoom: number): number {
+  const metresPerPixel = (EQUATOR_M * Math.cos((lat * Math.PI) / 180)) / (TILE * 2 ** zoom);
+  return metres / metresPerPixel;
+}
+
+/** Branches to draw as restaurant pins: those not already under an order pin. */
+export function branchPins(
+  branches: MapBranch[],
+  orderGroups: { key: string }[],
+): MapBranch[] {
+  const taken = new Set(orderGroups.map(g => g.key));
+  return branches.filter(b => !taken.has(`${b.lat.toFixed(5)},${b.lng.toFixed(5)}`));
 }

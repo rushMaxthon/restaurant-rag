@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bearingDeg, fitView, glideAt, groupByPickup, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
+import { bearingDeg, branchPins, fitView, glideAt, groupByPickup, metresToPixels, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
 import type { Rider } from '../types/app';
 
 const rider = (over: Partial<Rider>): Rider => ({
@@ -134,5 +134,26 @@ describe('bearingDeg', () => {
     expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 21, lng: 72.01 }))).toBe(90);
     expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 20.99, lng: 72 }))).toBe(180);
     expect(Math.round(bearingDeg({ lat: 21, lng: 72 }, { lat: 21, lng: 71.99 }))).toBe(270);
+  });
+});
+
+describe('metresToPixels', () => {
+  it('turns a ground distance into screen pixels at this zoom and latitude', () => {
+    // At the equator, zoom 0, one 256px tile spans the whole 40,075 km.
+    expect(metresToPixels(40_075_016.7, 0, 0)).toBeCloseTo(256, 0);
+    // Each zoom step doubles it; further from the equator a metre is more pixels.
+    expect(metresToPixels(2000, 21.18, 14)).toBeCloseTo(2 * metresToPixels(2000, 21.18, 13), 6);
+    expect(metresToPixels(2000, 21.18, 14)).toBeGreaterThan(metresToPixels(2000, 0, 14));
+  });
+});
+
+describe('branchPins', () => {
+  const branch = (id: string, lat: number) =>
+    ({ id, restaurant_name: 'R', branch_name: 'Main', lat, lng: 72.8, on_fleet: true }) as never;
+  const order = (lat: number) => ({ order_id: 'o', pickup_lat: lat, pickup_lng: 72.8 }) as never;
+
+  it('leaves out a branch already drawn as an order pin', () => {
+    const pins = branchPins([branch('a', 21.2), branch('b', 21.3)], groupByPickup([order(21.2)]));
+    expect(pins.map(b => b.id)).toEqual(['b']);
   });
 });

@@ -699,8 +699,9 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
             <span className="eyebrow">Dispatch</span>
             <h2>How orders are offered</h2>
             <p className="hint-text">
-              One rider at a time, nearest first. Anything nobody accepts waits on every rider&apos;s Orders board until the
-              window ends; only then does the courier take it.
+              One rider at a time, nearest first. On the Orders board the nearest riders see an order first, and it
+              reaches one ring further out every few minutes nobody takes it. Only when the window ends does the courier
+              take it.
             </p>
           </div>
         </div>
@@ -722,6 +723,16 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
           <label className="field">
             <span>Search radius (km)</span>
             <input max={25} min={0.5} onChange={number('radius_km')} step="0.5" type="number" value={fleet.radius_km} />
+          </label>
+          <label className="field">
+            <span>First ring (km)</span>
+            <input max={25} min={0.5} onChange={number('first_wave_km')} step="0.5" type="number" value={fleet.first_wave_km} />
+            <small>Riders this close to the restaurant see a new order first. Each ring adds this much again.</small>
+          </label>
+          <label className="field">
+            <span>Minutes per ring</span>
+            <input max={10} min={1} onChange={number('wave_minutes')} type="number" value={fleet.wave_minutes} />
+            <small>Nobody takes it in this long, and riders one ring further out see it too.</small>
           </label>
           <label className="field">
             <span>Offline after silent (minutes)</span>

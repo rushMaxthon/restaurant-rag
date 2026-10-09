@@ -5609,3 +5609,15 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
 - Forgot password: `/rider/password/{code,check,reset}` (tests/test_rider_password_reset.py, 8) + app Login "Forgot password?" -> SignupPhone/SignupCode with `purpose: 'reset'` -> ResetPassword. Verified on the emulator against live. Initials fix ("Test Rider (test)" was "T(").
 - Live test rider created through the admin API: 9800000101 / rider1234 (approved). Emulator GPS set ~200 m from Bhagwati Bakery.
 - Suites: backend fleet/rider/delivery/realtime 475 OK, rider jest 183, tsc clean.
+
+## 2026-10-09 (late) - order waves, restaurants on the live map
+
+- Orders reach the nearest riders first and widen ring by ring
+  (`first_wave_km` 2, `wave_minutes` 2, up to `radius_km`): `offers.reach_m`,
+  used by the Orders board and by `claim` (409 `order_not_near`, worded in
+  en/hi/gu in the rider app). Empty rings are skipped; riders who said no
+  stop holding it back. Tests: `test_fleet_waves.py` (10).
+- Admin live map: every real branch as a pin (`GET /admin/riders/branches`),
+  the selected order's current ring, "Riders within N km see it" on the
+  list; the two dials on Pay & dispatch. Checked in the browser on 5174
+  against live (13 branches).

@@ -136,6 +136,59 @@ def candidates(
     return sorted(found, key=lambda pair: pair[1])
 
 
+def reach_m(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> float:
+    """How far from the branch a rider may be to see - and take - this order now.
+
+    The nearest riders first (the owner's rule, 2026-10-09): `first_wave_km`
+    to begin with, one ring further every `wave_minutes`, never past
+    `radius_km`. A ring with nobody free in it is skipped at once - waiting
+    two minutes on an empty ring helps no one - and so is a rider who already
+    said no to this order (declined, or let the offer run out). A rider
+    still being ASKED does count: their 30 seconds are what the wave is for.
+    """
+
+    full = fleet.radius_km * 1000
+    step = min(fleet.first_wave_km, fleet.radius_km) * 1000
+    started = delivery.created_at or now
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    wave = int(max(0.0, (now - started).total_seconds()) // (fleet.wave_minutes * 60))
+    ring = min(full, step * (wave + 1))
+    if ring >= full:
+        return full
+    _, lat, lng = _branch_point(db, delivery)
+    if lat is None or lng is None:
+        return full
+    said_no = set(
+        db.scalars(
+            select(RiderOffer.rider_user_id).where(
+                RiderOffer.order_delivery_id == delivery.id,
+                RiderOffer.outcome.in_([OfferOutcome.DECLINED, OfferOutcome.EXPIRED]),
+            )
+        )
+    )
+    fresh_after = now - timedelta(minutes=fleet.silent_minutes)
+    free = db.execute(
+        select(Rider.user_id, Rider.last_latitude, Rider.last_longitude)
+        .join(User, User.id == Rider.user_id)
+        .where(
+            Rider.status == RiderStatus.ONLINE,
+            Rider.onboarding == RiderOnboarding.APPROVED,
+            User.is_active.is_(True),
+            Rider.last_location_at >= fresh_after,
+            Rider.last_latitude.is_not(None),
+            Rider.last_longitude.is_not(None),
+        )
+    ).all()
+    nearest = min(
+        (haversine_m(r_lat, r_lng, lat, lng) for uid, r_lat, r_lng in free if uid not in said_no),
+        default=None,
+    )
+    if nearest is not None and nearest > ring:
+        ring = min(full, math.ceil(nearest / step) * step)
+    return ring
+
+
 def _refusal(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> str | None:
     """Why this delivery should go to Pidge rather than to another rider, if it should."""
 
@@ -338,8 +391,8 @@ def _why_not_free(db: Session, rider_user_id: uuid.UUID) -> str | None:
 def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> list[dict[str, Any]]:
     """The Orders board: what our fleet still holds near this rider, nearest first.
 
-    Visible to any active rider within `radius_km` of where they last
-    reported - offline, mid-trip or free - because it is a board they check
+    Visible to any active rider within the order's current wave
+    (`reach_m`, at most `radius_km`) of where they last reported - offline, mid-trip or free - because it is a board they check
     any time (2026-10-08). TAKING one is what needs them online and free, and
     `claim` enforces that. It includes an order being offered to someone else
     (first come, first served) and one whose offer to THIS rider ran out while
@@ -391,7 +444,8 @@ def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> l
         metres = None
         if None not in (lat, lng, rider.last_latitude, rider.last_longitude):
             metres = haversine_m(rider.last_latitude, rider.last_longitude, lat, lng)
-            if metres > fleet.radius_km * 1000:
+            # Nearest riders first: further out it appears wave by wave.
+            if metres > reach_m(db, delivery, fleet, now):
                 continue
         km = trip_km(db, delivery)
         estimate, _ = earning_for(km, pay)
@@ -428,14 +482,23 @@ def claim(db: Session, rider_user: User, order_id: uuid.UUID, now: datetime | No
     if blocked is not None:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, blocked)
+    fleet = load_fleet(db)
     if (
         delivery is None
         or delivery.provider != PROVIDER
         or not _offerable(db, delivery)
-        or _window_left(delivery, load_fleet(db), now).total_seconds() <= 0
+        or _window_left(delivery, fleet, now).total_seconds() <= 0
     ):
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "order_taken")
+    # The board hides an order from riders outside its wave; a stale board
+    # (or a moved rider) must not take it ahead of the riders it is for.
+    me = db.get(Rider, rider_user.id)
+    _, lat, lng = _branch_point(db, delivery)
+    if None not in (lat, lng, me.last_latitude, me.last_longitude):
+        if haversine_m(me.last_latitude, me.last_longitude, lat, lng) > reach_m(db, delivery, fleet, now):
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "order_not_near")
     withdrawn = list(
         db.scalars(
             select(RiderOffer).where(
@@ -616,7 +679,7 @@ def schedule_expiry(delivery_id: uuid.UUID, seconds: int) -> None:
 
 __all__ = [
     "PROVIDER", "accept", "advance", "candidates", "claim", "current_offer", "decline", "haversine_m",
-    "open_orders",
+    "open_orders", "reach_m",
     "queue_advance", "queue_advance_after_commit", "reassign", "schedule_expiry", "timeline",
 ]
 
@@ -657,10 +720,15 @@ def waiting_orders(db: Session) -> list[dict]:
             .where(RiderOffer.outcome == OfferOutcome.PENDING, RiderOffer.expires_at > _now())
         ).tuples().all()
     )
+    fleet = load_fleet(db)
+    now = _now()
     out = []
     for delivery, order, name, lat, lng in rows:
         if DeliveryState(delivery.state).is_terminal:
             continue
+        reach = None
+        if delivery.provider == PROVIDER and lat is not None and lng is not None:
+            reach = round(reach_m(db, delivery, fleet, now) / 1000, 2)
         out.append({
             "order_id": order.id,
             "order_code": order_code(order),
@@ -672,5 +740,6 @@ def waiting_orders(db: Session) -> list[dict]:
             "drop_lng": order.delivery_longitude,
             "ordered_at": order.created_at,
             "offered_to": pending.get(delivery.id),
+            "reach_km": reach,
         })
     return out

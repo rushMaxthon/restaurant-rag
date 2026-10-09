@@ -17700,6 +17700,29 @@ optgroup {
   z-index: 2;
 }
 
+/* A restaurant branch: quieter than an order pin, under everything else. */
+.rmap__pin--branch {
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  border: 2px solid var(--text);
+  z-index: 0;
+}
+
+.rmap__pin--courier {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+/* The selected order's current wave: the riders who can see it now. */
+.rmap__reach {
+  position: absolute;
+  border-radius: var(--radius-pill);
+  border: 2px dashed var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  pointer-events: none;
+}
+
 .rmap__pin--drop {
   width: 18px;
   height: 18px;

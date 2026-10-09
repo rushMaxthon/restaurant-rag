@@ -756,6 +756,19 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   is what happened to the first test orders, which were also accepted before
   the fleet was switched on.
 
+- **Waves and restaurants on the map (2026-10-09, the owner's rule).** An
+  order reaches the riders nearest the restaurant first: within
+  `first_wave_km` (2), one ring further every `wave_minutes` (2) nobody
+  takes it, up to `radius_km` - `offers.reach_m` is the only place that
+  reads them, and both the board (`open_orders`) and `claim` (409
+  `order_not_near`) go through it, so seeing and taking agree. A ring with
+  no free online rider is skipped at once, and a rider who declined or let
+  the offer run out no longer holds it back; one still being ASKED does.
+  The one-by-one pings were already nearest first and are unchanged. Admin:
+  both dials on Pay & dispatch; the live map draws every real branch with a
+  pin (`GET /admin/riders/branches`, dashed = courier only, names from zoom
+  14) and the selected order's current ring (`WaitingOrder.reach_km`).
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The
