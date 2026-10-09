@@ -5474,3 +5474,116 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
   - set `RAZORPAY_WEBHOOK_SECRET` and the webhook;
   - run the test-mode checklist in `backend/docs/payouts.md`;
   - then turn the flag on.
+
+## 2026-10-08 — Own delivery fleet: backend (Plan 1) + rider Android app (Plan 2)
+
+- Spec `docs/superpowers/specs/2026-10-08-rider-app-design.md`; plans
+  `docs/superpowers/plans/2026-10-08-own-fleet-backend.md`, `...-rider-app.md`;
+  API contract `docs/superpowers/plans/rider-openapi.json`.
+- Backend: RIDER role, migration `0089_own_fleet` (NOT applied to Supabase yet —
+  user runs `alembic upgrade head`), `services/fleet/` (config, earnings, riders,
+  offers, trips, otp, notify, payouts), own_fleet courier + Pidge fallback,
+  `/api/rider/*`, `/api/admin/riders/*`, customer `delivery_otp`, Platform watch
+  check, Celery tasks + beat (behind `enable_own_fleet`, default off).
+- Independent opus review: 1 Critical + 6 Important fixed with RED->GREEN tests
+  (`test_fleet_review_fixes.py`); deferred minors are in the SDD ledger.
+- Full backend suite: 3601 tests OK. Fleet 87, delivery 235.
+- Rider app `rider/`: RN 0.87.1, Reanimated 4.7, Gesture Handler 3, Nav 7.
+  Splash, login, permissions, bottom tabs (Home/Earnings/History/Profile),
+  full-screen offer, trip with slides + OTP (auto-submits on 4th digit),
+  delivered celebration. Verified end to end on the emulator against a LOCAL
+  dev API (port 8001, DB rr_rider_dev, adb reverse 8000->8001).
+- Gotchas: Claude Code's shell sets NoDefaultCurrentDirectoryInExePath (run
+  gradlew.bat from PowerShell after removing it); RN 0.87 is edge-to-edge, so
+  the keyboard does not resize the window (useKeyboardHeight); RN 0.87 refs are
+  TextInputInstance/ScrollViewInstance; tsc 6 rejects baseUrl.
+- Not done (blocked on the user): FCM push (google-services.json), in-app map
+  (Google billing), Plan 3 admin Riders page, Plan 4 storefront OTP card.
+- (same day, later) Plan 3 pushed as ccef814: admin Platform > Delivery riders
+  (roster, pay & dispatch, payouts) and the fleet section on the order's Courier
+  card. INCIDENT: a local test's own-fleet fallback booked 2 LIVE Pidge orders
+  because backend/.env had ALLOW_LIVE_DISPATCH_FROM_LOCAL=true with the live
+  Pidge URL; both cancelled with the user's yes before any rider was assigned;
+  user set the flag back to false. Courier-only actions are now hidden on fleet
+  rows. Any dispatch-capable local run must force the Pidge sandbox first.
+- Plan 4 pushed as 3ca24d1: storefront order page shows the 4-digit delivery
+  code, fleet status lines and "See where they are" for own-fleet orders.
+  All four plans of the own-fleet project are now on `redesign`.
+- (same day, evening) Local full-flow pass and the gaps it found, all verified
+  on the emulator against the local dev API (sandbox forced throughout):
+  - Rider steps sync the order: ACCEPTED -> OUT_FOR_DELIVERY -> DELIVERED, actor
+    RIDER, checked in the DB on two real runs.
+  - Our riders first: nobody free / nobody accepting / max_offers no longer send
+    the order to Pidge early. It stays OPEN for `window_minutes` (now 5) and any
+    free nearby rider can take it from Home -> Open orders (`offers.open_orders`,
+    `offers.claim`, row lock + one-live-trip index; race test). Cash and branches
+    off the fleet still go at once. Two old tests rewritten on purpose.
+  - Admin Riders -> Live map: hand-drawn OSM tiles, riders + waiting orders,
+    nearest free riders with Assign (`GET /admin/riders/waiting`). Stale riders
+    are faded and kept off the assign list; expired PENDING offers ask nobody.
+    Fixed a blank map in background tabs (measure on mount, not only via
+    ResizeObserver).
+  - Push: background alerts work without Firebase (shift service keeps JS
+    alive); killed-app push verified with google-services.json + the
+    quickbite-7833a service account. `FCM_PROJECT_ID` in backend/.env changed
+    from restaurant-rag to quickbite-7833a with the user's yes. Debug builds take
+    ~18 s to draw a woken alert (JS from Metro); force-stopped apps get no FCM.
+  - Live ETA (rider trip screen + storefront), history by day, calmer motion
+    (clamped springs), new white notification icon.
+  - Windows: Redis via `localhost` costs ~6 s per connection (IPv6 first);
+    127.0.0.1 is 0.12 s. Fixed in the dev scripts only; .env Redis lines still
+    say localhost - ask before changing.
+  - Suites: fleet 107, delivery 235, orders 423, admin 539 + build, storefront
+    536 + build, rider jest 43 + tsc, lint 0 errors.
+
+## 2026-10-09 - live map follows riders; rider spec gaps filled
+
+- Pushed `150a213`: live map pins follow riders (fleet:riders_changed hint, glide, heading, rider card).
+- Audited the rider spec against the code, then filled the gaps:
+  - backend: password reset takes the rider off shift; `FleetSettings.branches` for the allowlist; FleetConfigIn window default 5.
+  - admin: branch allowlist picker + dispatch copy matching "our riders first, Orders board, then courier".
+  - rider: persisted offline trip-step queue + NetInfo retry, battery-optimisation gate with a native one-tap dialog,
+    per-screen error boundaries, Crashlytics, high contrast, trip slide table; tests for queue, gate, contrast, steps, 401.
+- Verified on the emulator (battery dialog, high contrast, recovery from a screen crash) and in the admin (picker, discard).
+- Suites: backend fleet 121 OK, admin vitest 549, rider jest 73, tsc/eslint clean, admin build OK.
+- Left on purpose: in-app map/bottom sheet (Maps billing), Lottie, R8 (release build), background-location permission (foreground service covers it).
+
+## 2026-10-09 - rider first-time guide, Payments, trip detail, problem sheet
+
+- Spec `docs/superpowers/specs/2026-10-09-rider-guide-and-polish-design.md` (approved in chat; implemented inline).
+- Guide: intro cards after the first sign-in, spotlight tips per screen (home 3, orders, trip 2, otp, earnings), replay from Profile. Pure parts tested: seen-flags, tooltip placement, tour targets.
+- Screens: Earnings period switch + Payments (new `GET /rider/payouts`), History row -> TripDetail (timeline), Trip "Having a problem?" sheet (customer-unavailable moved in), Delivered "Done"/"N orders waiting", Home shift-done card, global no-connection pill, Profile Appearance picker + "Test the order alert".
+- Found and fixed while verifying: gorhom bottom-sheet draws nothing here (replaced by a Modal-based `ui/Sheet`); FlashList cells with Reanimated `entering` were mis-measured (gap + dead taps) on History.
+- Verified the whole path on the emulator from `pm clear`: login -> intro -> permissions -> Home tour -> sandbox order -> trip/otp tours -> delivered -> History detail -> Earnings -> Profile rows; airplane mode banner; light theme.
+- Suites: backend fleet 122 OK + compileall; rider jest 101, tsc clean, eslint 0 errors. Not committed.
+- Pushed `feef5dc`; fresh-context review (18 findings) -> fixed: update path (intro waits for /me, never on shift; Permissions over Main + "Not now"), off-screen/tab-bar-covered steps dropped without burning the tour, hole springs between steps instead of re-fading the overlay, Earnings race on fast period taps, Payments failure state, unavailable button unlocks on a 15 s tick, honest "Test the order alert", call-logged never queued, Segmented 56 dp, payouts order tie-break. Back during a tip skips it. Verified on the emulator; rider jest 105, tsc/eslint clean, fleet suites OK.
+- Rider status sync: forced `riders_changed` on every status transition, new `delivery_changed` for non-status steps, offers hint the map; admin Riders list / order delivery panels and storefront delivery card now listen. Verified live: admin list flips Online/Off shift/On trip/Online within 2-4 s of the phone, order page shows "At the restaurant" right after the step. Fixed Go-online permissions loop. Suites: 513 backend (fleet/delivery/realtime/kitchen) OK, admin 551 + build, storefront 539 + build, rider 105.
+- Rider Home redesign: online = compact status strip + up to 3 nearby orders takeable from Home (homePreview tested), then Today/week/pay; offline = one short card with the big toggle; duplicate shift-done card removed; Take logic shared via useTakeOrder. Verified on the emulator (empty, 2 waiting, Take from Home -> trip, offline, Home tip on the compact toggle). Rider jest 111, tsc clean.
+
+
+## 2026-10-09 - rider: Orders, Trip, Earnings, History, Profile redesign
+
+Same approach as the Home redesign: the useful part first, no number twice.
+New: `useShiftToggle`, `ShiftCard strip`, `rankOrders`, `StepProgress` +
+`stepProgress`, `heroLine`, `dayHeaderIndices`, `ui/Group`. Deleted
+`trip/StepTracker`. Verified on the emulator (dark and light): Orders
+online/offline/missed cards and its tip, take -> trip -> OTP -> Delivered,
+History sticky headings, Earnings, Profile. jest 120, tsc clean, eslint 0
+errors (51 pre-existing warnings). Trap: FlashList sticky headers ignore
+contentContainerStyle padding.
+
+## 2026-10-09 - address picker: Ola Maps removed, Google answers
+
+The checkout address dropdown was empty: Ola Maps answered 401 to every
+call (41 in a day) and, being tried first, hid a working Google key. Ola is
+removed (provider, settings, render.yaml, its tests, the .env line); Google
+answers suggestions and lookups, OpenStreetMap stays behind it for lookups.
+Verified: /addresses/suggest returns 5 suggestions as a customer; geocoding,
+address, platform-watch and redaction suites 143 OK; API on 8000 restarted
+with the sandbox courier forced.
+
+## 2026-10-09 - rider: review fixes, alert + trip detail, Hindi and Gujarati
+
+Review pass on the redesign (dee87f8): History error/retry, keeps scrolled pages, no overlapping loads, paid-only day count; Earnings chart one touch area, period switch keeps old numbers dimmed, full dates, theme colours; guide remembers each tip; `utils/latest` sequencer for /me and the board; single-flight go-online; Take error fades; items reopen at the counter; large text in the strip. Alert details sit above the buttons; trip detail compact.
+
+Hindi/Gujarati: `rider/src/i18n/` (see CLAUDE.md). Four parallel agents translated trip/money/account/system areas, one strings file each; I did core, common, home/orders, the Profile picker, and the leftovers in shared UI. Verified on the emulator in hi and gu: every tab, a full delivery (alert, trip, OTP, Delivered). Side-by-side list for the user to check: docs/rider-app-translations.csv. jest 140, tsc, eslint clean.

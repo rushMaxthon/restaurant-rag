@@ -146,6 +146,9 @@ def refresh_deliveries_task() -> dict[str, int]:
             .join(Order, Order.id == OrderDelivery.order_id)
             .where(OrderDelivery.state.notin_(done))
             .where(OrderDelivery.provider_order_id != "")
+            # Not our own riders' rows: they are the truth themselves, and
+            # asking Pidge about a "fleet-..." id would only fail.
+            .where(OrderDelivery.provider.notin_(["own_fleet", "unassigned"]))
             .where(Order.status.notin_([OrderStatus.DELIVERED, OrderStatus.CANCELLED]))
             .limit(200)
         ).all()

@@ -54,17 +54,19 @@ function setup() {
   const socket = new FakeSocket();
   const onChange = vi.fn();
   const onSignOut = vi.fn();
+  const onRidersChanged = vi.fn();
   const connect = vi.fn(() => socket as unknown as Socket);
   const client = new RealtimeClient({
     apiBaseUrl: "http://localhost:8000/api",
     auth: () => ({ token: "t" }),
     onChange,
     onSignOut,
+    onRidersChanged,
     connect,
     coalesceMs: 10,
   });
   client.start();
-  return { socket, onChange, onSignOut, connect, client };
+  return { socket, onChange, onSignOut, onRidersChanged, connect, client };
 }
 
 describe("socketEndpoint", () => {
@@ -121,6 +123,14 @@ describe("RealtimeClient", () => {
     vi.advanceTimersByTime(20);
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(["0", "1", "2"]);
+  });
+
+  it("tells the live map a rider moved, coalescing a burst, and never as an order change", () => {
+    const { socket, onChange, onRidersChanged } = setup();
+    for (let i = 0; i < 5; i += 1) socket.fire("fleet:riders_changed", { rider_id: String(i) });
+    vi.advanceTimersByTime(20);
+    expect(onRidersChanged).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('reports a reconnect as "anything may have changed"', () => {
@@ -238,5 +248,18 @@ describe("announceOrdersChanged", () => {
     expect(getPageSnapshot("dashboard:scope:admin:")).toBeUndefined();
     // Screens that carry no order data keep their cache.
     expect(getPageSnapshot("restaurants:scope:list")).toEqual({ rows: [] });
+  });
+});
+
+describe('whether a push concerns one order', () => {
+  it('is about the order when its id is in the push', async () => {
+    const { concernsOrder } = await import('./realtime');
+    expect(concernsOrder(['a', 'b'], 'b')).toBe(true);
+    expect(concernsOrder(['a'], 'b')).toBe(false);
+  });
+
+  it('is about every order after a reconnect, when anything may have moved', async () => {
+    const { concernsOrder } = await import('./realtime');
+    expect(concernsOrder(null, 'b')).toBe(true);
   });
 });

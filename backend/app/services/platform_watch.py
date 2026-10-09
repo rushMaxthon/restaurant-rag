@@ -275,10 +275,9 @@ def _check_delivery() -> Check:
 
 
 def _google_configured() -> bool:
-    """Whether a keyed maps provider (Ola Maps or Google) is configured."""
+    """Whether the keyed maps provider (Google) is configured."""
 
-    settings = get_settings()
-    return bool(settings.ola_maps_api_key or settings.google_maps_api_key)
+    return bool(get_settings().google_maps_api_key)
 
 
 #: How long after Google refuses us the check stays red with no newer word.
@@ -299,15 +298,69 @@ def _check_maps(now: datetime) -> Check:
     label = "Maps and address search"
     if not _google_configured():
         return Check("maps", label, WARN, "No maps key: addresses use OpenStreetMap and there are no suggestions as you type.",
-                     "Set OLA_MAPS_API_KEY (free tier) or GOOGLE_MAPS_API_KEY for the address dropdown and accurate pricing.")
+                     "Set GOOGLE_MAPS_API_KEY for the address dropdown and accurate pricing.")
     refusal = health.last_refusal()
     if refusal and now - refusal["at"] <= MAPS_REFUSAL_WINDOW:
         minutes = max(0, int((now - refusal["at"]).total_seconds() // 60))
         return Check("maps", label, DOWN, f"The maps provider refused us {minutes} min ago: {refusal['message'][:140]}",
-                     "Check the key: for Google, billing on its Cloud project and its API restrictions; for "
-                     "Ola Maps, the key and the account. Until then addresses are found through OpenStreetMap, "
+                     "Check the Google key: billing on its Cloud project and its API restrictions (Places API "
+                     "(New) and Geocoding API). Until then addresses are found through OpenStreetMap, "
                      "less precisely, and checkout has no address suggestions.")
     return Check("maps", label, OK, "Answering.")
+
+
+def _check_fleet(db: Session) -> Check:
+    """Our own riders (2026-10-08): deliveries nobody is carrying, riders gone quiet.
+
+    Red when a delivery has nobody - our riders passed and no courier is
+    configured - because that is food sitting at a counter. Amber when a
+    rider on a trip has stopped reporting: the customer's map has frozen.
+    """
+
+    from datetime import timedelta
+
+    from sqlalchemy import func, select
+
+    from app.models.enums import RiderStatus
+    from app.models.order_delivery import OrderDelivery
+    from app.models.rider import Rider
+    from app.services.fleet.config import load_fleet
+
+    label = "Own delivery fleet"
+    settings = get_settings()
+    try:
+        with db.begin_nested():
+            from app.models.enums import OrderStatus
+            from app.models.order import Order
+
+            stranded = db.scalar(
+                select(func.count(OrderDelivery.id))
+                .join(Order, Order.id == OrderDelivery.order_id)
+                .where(
+                    OrderDelivery.provider == "unassigned",
+                    OrderDelivery.state == "PENDING",
+                    Order.status.notin_([OrderStatus.CANCELLED, OrderStatus.DELIVERED]),
+                )
+            ) or 0
+            cutoff = datetime.now(UTC) - timedelta(minutes=load_fleet(db).silent_minutes)
+            quiet = db.scalar(
+                select(func.count(Rider.user_id)).where(
+                    Rider.status == RiderStatus.ON_TRIP,
+                    (Rider.last_location_at.is_(None)) | (Rider.last_location_at < cutoff),
+                )
+            ) or 0
+            online = db.scalar(select(func.count(Rider.user_id)).where(Rider.status != RiderStatus.OFFLINE)) or 0
+    except Exception:  # noqa: BLE001 - a database without 0089 yet
+        return Check("fleet", label, WARN, "Not set up on this database yet.", "Run alembic upgrade head.")
+    if stranded:
+        return Check("fleet", label, DOWN, f"{stranded} delivery(s) have no rider and no courier.",
+                     "Open the order and reassign it to an online rider, or configure the courier as a backup.")
+    if quiet:
+        return Check("fleet", label, WARN, f"{quiet} rider(s) on a trip stopped sending their location.",
+                     "Call the rider; the customer's map is not moving.")
+    if not settings.enable_own_fleet:
+        return Check("fleet", label, OK, "Off. Deliveries go to the courier.")
+    return Check("fleet", label, OK, f"On. {online} rider(s) online.")
 
 
 def _check_realtime() -> Check:
@@ -382,7 +435,7 @@ def system_checks(db: Session, *, now: datetime) -> list[Check]:
 
     deadline = time.monotonic() + CHECKS_BUDGET_SECONDS
     pool, futures = _start_checks(now)
-    return [_check_database(db), *_collect_checks(pool, futures, deadline=deadline)]
+    return [_check_database(db), _check_fleet(db), *_collect_checks(pool, futures, deadline=deadline)]
 
 
 # --- issues -----------------------------------------------------------------
@@ -664,7 +717,7 @@ def build(db: Session) -> PlatformWatch:
     restaurants = restaurants_today(db, now=now, issues=issues)
     return PlatformWatch(
         generated_at=now,
-        checks=[database, *_collect_checks(pool, futures, deadline=deadline)],
+        checks=[database, _check_fleet(db), *_collect_checks(pool, futures, deadline=deadline)],
         issues=issues,
         restaurants=restaurants,
     )

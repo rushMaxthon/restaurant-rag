@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.tasks.ai_recommendations",
         "app.tasks.ai_offers",
         "app.tasks.delivery",
+        "app.tasks.fleet",
         "app.tasks.embed",
         "app.tasks.generated_combos",
         "app.tasks.insights",
@@ -46,6 +47,10 @@ celery_app.conf.update(
         "app.tasks.notifications.send_order_status_notification": {"queue": "notifications"},
         # A kitchen page is time-critical in the same way an order update is.
         "app.tasks.notifications.send_kitchen_new_order_notification": {"queue": "notifications"},
+        # A rider's offer is time-critical in the same way: 30 seconds to accept.
+        "app.tasks.fleet.advance_delivery_task": {"queue": "notifications"},
+        "app.tasks.fleet.advance_offers_task": {"queue": "notifications"},
+        "app.tasks.fleet.sweep_riders_task": {"queue": "notifications"},
         # Same queue as the order push: both talk to Firebase, and a campaign
         # send must queue behind order notifications rather than compete with
         # them for a separate worker's attention.
@@ -121,6 +126,18 @@ celery_app.conf.update(
                 },
             }
             if settings.enable_delivery_dispatch
+            else {}
+        ),
+        # The own fleet's safety nets (2026-10-08). The offer loop is driven by
+        # the API and by each offer's own expiry countdown; this beat only
+        # catches what a lost task left behind. The sweep takes riders who
+        # stopped reporting off shift so nobody is offered an unseen order.
+        **(
+            {
+                "fleet-advance-offers": {"task": "app.tasks.fleet.advance_offers_task", "schedule": 10.0},
+                "fleet-sweep-riders": {"task": "app.tasks.fleet.sweep_riders_task", "schedule": 60.0},
+            }
+            if settings.enable_own_fleet
             else {}
         ),
         **(

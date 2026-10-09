@@ -899,6 +899,15 @@ class Settings(BaseSettings):
     # that has to be switched on. Nothing calls Pidge until this is true AND
     # credentials exist.
     enable_delivery_dispatch: bool = False
+    # The platform's own riders (2026-10-08). Off: no order is offered to a
+    # rider and the registry never returns the fleet courier - Pidge behaves
+    # exactly as before. Riders can still sign in, go online and be trained
+    # while it is off, which is why the rider endpoints are not behind it.
+    enable_own_fleet: bool = False
+    # Derives each order's delivery OTP (an HMAC of the order id). Unset falls
+    # back to the JWT secret, so a deployment that forgets it still has codes
+    # nobody can work out from an order id.
+    rider_otp_secret: str = ""
     pidge_base_url: str = "https://store.dev.pidge.in"
     pidge_username: str = ""
     pidge_password: str = ""
@@ -1089,12 +1098,6 @@ class Settings(BaseSettings):
     # credential with a billing quota attached does not ship inside a
     # JavaScript bundle.
     google_maps_api_key: str = ""
-    # Ola Maps (2026-10-07): when set, Ola answers address suggestions, picked
-    # places and typed addresses ahead of Google - free for 100,000 requests a
-    # month per API, built for Indian addresses, and no billing account to lapse
-    # (Google's did, and checkout lost its address dropdown). Google stays the
-    # second choice when its key is set too; OpenStreetMap the last.
-    ola_maps_api_key: str = ""
     # Nominatim's usage policy requires a genuine identifying User-Agent and
     # treats a default library string as abuse, so this is a setting rather
     # than a constant — a deployment should say who it is.

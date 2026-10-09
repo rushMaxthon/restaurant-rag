@@ -4,7 +4,9 @@ import { API_BASE_URL } from "../services/api";
 import {
   RealtimeClient,
   announceOrdersChanged,
+  announceRidersChanged,
   onOrdersChanged,
+  onRidersChanged,
   type RealtimeStatus,
 } from "../services/realtime";
 
@@ -32,6 +34,7 @@ export function useRealtimeConnection(
             apiBaseUrl: API_BASE_URL,
             auth: () => ({ token }),
             onChange: announceOrdersChanged,
+            onRidersChanged: announceRidersChanged,
             onSignOut,
             coalesceMs: 1000,
           })
@@ -66,4 +69,13 @@ export function useOrdersChanged(
     latest.current = listener;
   }, [listener]);
   useEffect(() => onOrdersChanged((orderIds) => latest.current(orderIds)), []);
+}
+
+/** Run `listener` whenever a rider moves or goes on/off shift (the live map). */
+export function useRidersChanged(listener: () => void): void {
+  const latest = useRef(listener);
+  useEffect(() => {
+    latest.current = listener;
+  }, [listener]);
+  useEffect(() => onRidersChanged(() => latest.current()), []);
 }

@@ -1,4 +1,4 @@
-import { ChefHat, Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
+import { Bike, ChefHat, Eye, Pencil, Power, Shield, Store, UserRound, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Modal } from '../components/Modal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -32,6 +32,7 @@ const ROLE_META: Record<UserRole, { label: string; icon: typeof Shield }> = {
   OWNER: { label: 'Owner', icon: Store },
   CUSTOMER: { label: 'Customer', icon: UserRound },
   KITCHEN: { label: 'Kitchen', icon: ChefHat },
+  RIDER: { label: 'Rider', icon: Bike },
 };
 
 // Shared with NotificationsPage, which fetches the exact same user list to

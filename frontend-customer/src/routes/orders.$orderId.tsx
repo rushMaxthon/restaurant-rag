@@ -9,6 +9,7 @@ import {
   CreditCard,
   MapPin,
   Phone,
+  ShieldCheck,
   Store,
   XCircle,
 } from "lucide-react";
@@ -17,7 +18,15 @@ import { ChargesBreakdown } from "@/components/ChargesBreakdown";
 import { OrderItemThumb } from "@/components/bangkok/order-item-thumb";
 import { cancellationMessage } from "@/lib/cancellation";
 import { expectedBy, lineSelections, orderCode, scheduledFor } from "@/lib/bangkok-data";
-import { courierEta, courierNow } from "@/lib/courier";
+import {
+  courierEta,
+  courierNow,
+  deliveryCode,
+  isOwnFleet,
+  riderAway,
+  riderMapLink,
+  riderSeen,
+} from "@/lib/courier";
 import { useRequireAuth } from "@/lib/require-auth";
 import { useOrder, useOrderDelivery, usePaymentReconciliation } from "@/lib/queries";
 import { ORDER_FALLBACK_POLL_MS } from "@/lib/realtime";
@@ -174,9 +183,18 @@ function OrderDetail() {
   // The courier's latest step and its clock time, in the customer's words.
   // The order's own status moves on four of the courier's dozen steps; these
   // fill the gaps ("Your rider is at the restaurant") between them.
-  const courierLine = isDelivery && !cancelled && o.status !== "DELIVERED" ? courierNow(tracking) : null;
-  const courierClock = isDelivery && !cancelled && o.status !== "DELIVERED" ? courierEta(tracking) : null;
+  const courierLine =
+    isDelivery && !cancelled && o.status !== "DELIVERED" ? courierNow(tracking) : null;
+  const courierClock =
+    isDelivery && !cancelled && o.status !== "DELIVERED" ? courierEta(tracking) : null;
   const courierFailed = tracking?.state === "FAILED";
+  // The platform's own riders: no courier tracking page, but the customer's
+  // code for the door and the rider's live position on the map.
+  const ownFleet = isOwnFleet(tracking);
+  const code = isDelivery && !cancelled ? deliveryCode(tracking) : null;
+  const away = isDelivery && ownFleet && o.status !== "DELIVERED" ? riderAway(tracking) : null;
+  const riderMap =
+    isDelivery && ownFleet && o.status !== "DELIVERED" ? riderMapLink(tracking) : null;
   const active = Math.max(stepIndex, 0);
   const progress = cancelled || stepIndex < 0 ? 0 : ((active + 1) / STEPS.length) * 100;
   const discount = Number(o.discount_amount ?? 0);
@@ -194,9 +212,7 @@ function OrderDetail() {
               that already says what happened — the same shouted-label pattern
               being removed across the site. The code still reads as a code,
               because tabular figures do that work without shouting. */}
-          <p className="text-sm font-semibold tabular-nums text-muted">
-            Order {orderCode(o)}
-          </p>
+          <p className="text-sm font-semibold tabular-nums text-muted">Order {orderCode(o)}</p>
           <h1 className="mt-2 font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">
             {cancelled
               ? "This order was cancelled"
@@ -279,6 +295,12 @@ function OrderDetail() {
                   {courierLine && !courierFailed && (
                     <p className="mt-0.5 text-sm font-semibold">{courierLine}</p>
                   )}
+                  {away && (
+                    <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
+                      <Clock className="size-4" />
+                      {away}
+                    </p>
+                  )}
                   {courierClock && (
                     <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-bold text-primary">
                       <Clock className="size-4" />
@@ -307,7 +329,47 @@ function OrderDetail() {
                         </a>
                       </Button>
                     )}
+                    {!rider.tracking_url && riderMap && (
+                      <Button asChild className="h-11 flex-1">
+                        <a href={riderMap} rel="noreferrer" target="_blank">
+                          <MapPin className="size-4" />
+                          See where they are
+                        </a>
+                      </Button>
+                    )}
                   </div>
+                  {riderMap && riderSeen(tracking?.rider_location_at) && (
+                    <p className="mt-2 text-xs text-muted">
+                      Rider&apos;s location {riderSeen(tracking?.rider_location_at)}.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/*
+               * Our own riders ask for this code at the door, so it is the
+               * one thing on the page the customer must be able to find and
+               * read out: large, spaced, and above the progress bar.
+               */}
+              {code && (
+                <div
+                  className="mb-7 rounded-xl border-2 border-primary/40 bg-primary/5 p-4"
+                  data-testid="delivery-code"
+                >
+                  <p className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-primary">
+                    <ShieldCheck className="size-4" />
+                    Delivery code
+                  </p>
+                  <p
+                    className="mt-2 font-display text-4xl font-extrabold tabular-nums tracking-[0.35em]"
+                    aria-label={`Delivery code ${code.split("").join(" ")}`}
+                  >
+                    {code}
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    Share this code with your rider when they hand over your food. Don&apos;t share
+                    it before.
+                  </p>
                 </div>
               )}
 
@@ -318,6 +380,18 @@ function OrderDetail() {
                * the two, and showing nothing for eleven minutes is how a
                * customer decides the order is stuck.
                */}
+              {isDelivery && !rider && ownFleet && tracking?.state === "PENDING" && (
+                <div className="mb-7 rounded-xl bg-surface-alt p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-muted">
+                    Finding you a rider
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    We&apos;re asking riders near the restaurant. You&apos;ll see their name and
+                    number the moment one accepts.
+                  </p>
+                </div>
+              )}
+
               {isDelivery && !rider && tracking?.tracking_url && (
                 <div className="mb-7 rounded-xl bg-surface-alt p-4">
                   <p className="text-xs font-extrabold uppercase tracking-wider text-muted">

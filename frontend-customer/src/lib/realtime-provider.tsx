@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { API_BASE_URL, announceSessionExpired } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { queryKeys } from "@/lib/queries";
+import { orderQueriesToRefresh } from "@/lib/order-refresh";
 import { RealtimeClient } from "@/lib/realtime";
 import { RealtimeStatusContext } from "@/lib/realtime-context";
 
@@ -31,17 +31,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             // for the app it was issued to, and a browser cannot set the
             // `X-Forwarded-Host` header on a WebSocket handshake.
             auth: () => ({ token, app_host: window.location.host }),
+            // The order, its payment and its delivery card (rider steps that
+            // do not move the status only show up there): order-refresh.ts.
             onChange: (orderIds) => {
-              void queryClient.invalidateQueries({ queryKey: queryKeys.orders });
-              if (orderIds === null) {
-                // Reconnected: anything may have moved while away.
-                void queryClient.invalidateQueries({ queryKey: ["order"] });
-                void queryClient.invalidateQueries({ queryKey: ["payment-status"] });
-                return;
-              }
-              for (const id of orderIds) {
-                void queryClient.invalidateQueries({ queryKey: queryKeys.order(id) });
-                void queryClient.invalidateQueries({ queryKey: ["payment-status", id] });
+              for (const queryKey of orderQueriesToRefresh(orderIds)) {
+                void queryClient.invalidateQueries({ queryKey });
               }
             },
             // The same path a 401 takes: clear the session once, then the

@@ -4,7 +4,7 @@
  * cook appears in the Users list, and a union that did not know the role made
  * `ROLE_META[user.role]` undefined and crashed the page on `meta.icon`.
  */
-export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER' | 'KITCHEN';
+export type UserRole = 'ADMIN' | 'OWNER' | 'CUSTOMER' | 'KITCHEN' | 'RIDER';
 export type NotificationAudience =
   | 'ALL_USERS'
   | 'CUSTOMERS'
@@ -1792,6 +1792,7 @@ export interface AdminUserStats {
   ADMIN: { total: number; active: number };
   OWNER: { total: number; active: number };
   KITCHEN: { total: number; active: number };
+  RIDER?: { total: number; active: number };
   CUSTOMER: { total: number; active: number };
 }
 
@@ -1907,4 +1908,137 @@ export interface PayoutAccount extends Omit<PayoutAccountInput, "bank_account_nu
   requirements: string[];
   last_error: string | null;
   updated_at: string | null;
+}
+
+// --- Own delivery fleet (2026-10-08): `/api/admin/riders/*`, ADMIN only ------
+
+export type RiderStatus = 'OFFLINE' | 'ONLINE' | 'ON_TRIP';
+export type RiderVehicle = 'BIKE' | 'SCOOTER' | 'CYCLE';
+
+export interface Rider {
+  user_id: string;
+  full_name: string;
+  phone_number: string | null;
+  is_active: boolean;
+  vehicle_type: RiderVehicle;
+  vehicle_number: string;
+  city: string;
+  status: RiderStatus;
+  last_latitude: number | null;
+  last_longitude: number | null;
+  last_location_at: string | null;
+  active_order_id: string | null;
+  notes: string;
+}
+
+export interface RiderCreateInput {
+  full_name: string;
+  phone_number: string;
+  password: string;
+  vehicle_type: RiderVehicle;
+  vehicle_number: string;
+  city: string;
+  notes?: string;
+}
+
+export type RiderUpdateInput = Partial<Omit<RiderCreateInput, 'phone_number'>> & { is_active?: boolean };
+
+export interface RiderPay {
+  base: string;
+  per_km: string;
+  minimum: string;
+}
+
+export interface FleetConfig {
+  offer_seconds: number;
+  max_offers: number;
+  window_minutes: number;
+  radius_km: number;
+  silent_minutes: number;
+  location_ids: string[];
+}
+
+export interface FleetBranch {
+  id: string;
+  restaurant_name: string;
+  branch_name: string;
+  city: string;
+  delivery_enabled: boolean;
+}
+
+export interface FleetSettings {
+  /** `enable_own_fleet` on the server: read-only here, set by deployment. */
+  enabled: boolean;
+  pay: RiderPay;
+  fleet: FleetConfig;
+  /** Branches the allowlist can name (active, non-demo). */
+  branches: FleetBranch[];
+}
+
+export interface RiderUnpaid {
+  rider_user_id: string;
+  full_name: string;
+  trips: number;
+  amount: string;
+  oldest: string | null;
+}
+
+export interface RiderPayoutRecord {
+  id: string;
+  rider_user_id: string;
+  period_from: string;
+  period_to: string;
+  amount: string;
+  trips: number;
+  reference: string;
+  paid_at: string;
+}
+
+export interface FleetOfferRow {
+  rider_user_id: string;
+  rider_name: string;
+  outcome: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'WITHDRAWN';
+  offered_at: string;
+  responded_at: string | null;
+  metres: number | null;
+}
+
+export interface FleetTripView {
+  id: string;
+  order_code: string;
+  step: 'to_pickup' | 'at_pickup' | 'to_drop' | 'at_drop' | 'done';
+  accepted_at: string;
+  delivered_at: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+  distance_km: number;
+  earning: string;
+  otp_locked: boolean;
+  pickup: { name: string };
+  drop: { name: string; address: string };
+}
+
+/** An order our fleet holds that no rider is carrying: a pin on the live map. */
+export interface WaitingFleetOrder {
+  order_id: string;
+  order_code: string;
+  restaurant_name: string;
+  provider: string;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  drop_lat: number | null;
+  drop_lng: number | null;
+  ordered_at: string;
+  /** The rider being asked right now; assigning someone else withdraws it. */
+  offered_to: string | null;
+}
+
+export interface FleetDeliveryView {
+  provider: string;
+  state: string;
+  attempt: number;
+  otp_locked: boolean;
+  fallback_reason: string | null;
+  offers: FleetOfferRow[];
+  trip: FleetTripView | null;
 }

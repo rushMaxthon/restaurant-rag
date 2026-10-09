@@ -812,6 +812,7 @@ export function OrderDetailPage({
             renders nothing at all for a pickup one. */}
         <DeliveryPanel
           awaiting={order.fulfillment_type === "DELIVERY"}
+          isAdmin={role === "ADMIN"}
           onToast={onToast}
           orderId={orderId}
           token={token}

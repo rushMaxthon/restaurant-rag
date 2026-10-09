@@ -573,6 +573,13 @@ class OrderDeliveryResponse(BaseModel):
     #: Whether a staff member may ask for another rider right now.
     can_rebook: bool = False
     can_cancel: bool = False
+    #: Own fleet only: the 4-digit code the customer reads to the rider. Set
+    #: for the order's own customer, and only while a rider is on the way.
+    delivery_otp: str | None = None
+    #: Own fleet: road metres and minutes from the rider to the customer's door
+    #: (via the restaurant before pickup). Null without a rider position.
+    rider_distance_m: float | None = None
+    rider_eta_minutes: int | None = None
     # Booked with the courier, no rider assigned yet: "Find a rider" can ask again.
     can_allocate: bool = False
     #: Platform admin, on the courier's sandbox only: the simulate buttons.

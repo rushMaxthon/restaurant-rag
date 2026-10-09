@@ -78,6 +78,16 @@ import type {
   OwnerInsight,
   OwnerInsightStatus,
   ActionOutcome,
+  FleetConfig,
+  FleetDeliveryView,
+  FleetSettings,
+  Rider,
+  RiderCreateInput,
+  RiderPay,
+  RiderPayoutRecord,
+  RiderUnpaid,
+  RiderUpdateInput,
+  WaitingFleetOrder,
 } from '../types/app';
 
 // Imported for the fetch calls below AND re-exported, because
@@ -257,6 +267,56 @@ export const api = {
   },
   saveDeliveryPricing(token: string, body: DeliveryPricingInput): Promise<DeliveryPricing> {
     return request<DeliveryPricing>('/admin/delivery-pricing', { method: "PUT", token, body });
+  },
+  // --- own delivery fleet (admin only) ---
+  listRiders(token: string): Promise<Rider[]> {
+    return request<Rider[]>('/admin/riders', { token });
+  },
+  /** Riders on shift (online or on a trip) with their last position, for the live map. */
+  listLiveRiders(token: string): Promise<Rider[]> {
+    return request<Rider[]>('/admin/riders/live', { token });
+  },
+  /** Fleet orders nobody is carrying yet; assign one with `reassignFleetDelivery`. */
+  listWaitingFleetOrders(token: string): Promise<WaitingFleetOrder[]> {
+    return request<WaitingFleetOrder[]>('/admin/riders/waiting', { token });
+  },
+  createRider(token: string, body: RiderCreateInput): Promise<Rider> {
+    return request<Rider>('/admin/riders', { method: 'POST', token, body });
+  },
+  updateRider(token: string, userId: string, body: RiderUpdateInput): Promise<Rider> {
+    return request<Rider>(`/admin/riders/${userId}`, { method: 'PATCH', token, body });
+  },
+  getFleetSettings(token: string): Promise<FleetSettings> {
+    return request<FleetSettings>('/admin/riders/settings', { token });
+  },
+  saveRiderPay(token: string, body: RiderPay): Promise<FleetSettings> {
+    return request<FleetSettings>('/admin/riders/settings/pay', { method: 'PUT', token, body });
+  },
+  saveFleetConfig(token: string, body: FleetConfig): Promise<FleetSettings> {
+    return request<FleetSettings>('/admin/riders/settings/fleet', { method: 'PUT', token, body });
+  },
+  listUnpaidRiders(token: string): Promise<RiderUnpaid[]> {
+    return request<RiderUnpaid[]>('/admin/riders/payouts/unpaid', { token });
+  },
+  payRider(token: string, userId: string, body: { period_to: string; reference: string }): Promise<RiderPayoutRecord> {
+    return request<RiderPayoutRecord>(`/admin/riders/${userId}/payouts`, { method: 'POST', token, body });
+  },
+  getFleetDelivery(token: string, orderId: string): Promise<FleetDeliveryView> {
+    return request<FleetDeliveryView>(`/admin/riders/deliveries/${orderId}`, { token });
+  },
+  reassignFleetDelivery(token: string, orderId: string, riderUserId: string): Promise<FleetDeliveryView> {
+    return request<FleetDeliveryView>(`/admin/riders/deliveries/${orderId}/reassign`, {
+      method: 'POST',
+      token,
+      body: { rider_user_id: riderUserId },
+    });
+  },
+  confirmFleetDelivered(token: string, orderId: string, reason: string): Promise<FleetDeliveryView> {
+    return request<FleetDeliveryView>(`/admin/riders/deliveries/${orderId}/confirm-delivered`, {
+      method: 'POST',
+      token,
+      body: { reason },
+    });
   },
   getAdminDashboard(token: string): Promise<AdminDashboardStats> {
     return request<AdminDashboardStats>('/admin/dashboard', { token });

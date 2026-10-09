@@ -327,6 +327,8 @@ def get_owner_restaurant_id(
 
 
 require_kitchen = _require_role(UserRole.KITCHEN)
+# The rider app. Every rider route is the caller's own work only (services/fleet).
+require_rider = _require_role(UserRole.RIDER)
 
 # Who may read and advance an order board. An ADMIN runs the platform, an OWNER
 # runs one restaurant, and a KITCHEN account works one branch of one — three

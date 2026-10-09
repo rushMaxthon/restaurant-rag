@@ -546,6 +546,159 @@ manager cannot disconnect anything (verified). A per-process sweep
 disconnected client, so the client reports a (re)connect as "anything may have
 changed" (`onChange(null)`).
 
+## Own delivery fleet (riders)
+
+`app/services/fleet/` + `app/api/rider.py` (the rider app) + `app/api/admin_riders.py`
+(super admin) + the `rider/` React Native app. Spec:
+`docs/superpowers/specs/2026-10-08-rider-app-design.md`. Behind
+**`enable_own_fleet`, default off** — off, dispatch picks exactly the courier it
+always did. Rider login/shift routes are NOT behind it, so riders can be trained first.
+
+- **The fleet is a courier** (`delivery/own_fleet_provider.py`), so one
+  `order_deliveries` row per order serves both. Rider steps are written through
+  `delivery.service.record` (actor RIDER), the same function Pidge's webhook feeds.
+- **Offer loop** (`fleet/offers.py advance`): nearest ONLINE rider seen in the last
+  `silent_minutes`, within `radius_km`, one at a time, `offer_seconds` each. Locks the
+  delivery row. Two partial unique indexes are the money guards:
+  `uq_rider_offers_one_pending`, `uq_rider_trips_one_live`.
+- **Fallback re-points the SAME row** to Pidge (`service.fallback_to_pidge`, attempt+1).
+  Cash orders, branches outside `location_ids`, the window passing, `max_offers` or
+  nobody near all fall back. No courier configured → `provider='unassigned'`, red on
+  Platform watch, an admin reassigns.
+- **Delivery OTP is derived, not stored** (`fleet/otp.py`, HMAC of order id under
+  `rider_otp_secret` or the JWT secret). Shown ONLY to the order's customer
+  (`/orders/{id}/delivery` `delivery_otp`) while ASSIGNED…IN_TRANSIT. 5 wrong → locked;
+  admin `confirm-delivered` with a reason.
+- **Pay**: `max(minimum, base + per_km × km)`, admin-set in `platform_settings`
+  (`rider_pay`, `own_fleet`), computed at the end of the trip and stored with its
+  breakdown. Cancelled before reaching the restaurant pays 0, after reaching it the
+  minimum, after pickup the full trip. Payouts lock the trips they pay.
+- Fleet timeline entries use the courier shape `{status, at, remark}` (plus `event`):
+  `OrderDeliveryResponse.timeline` validates `DeliveryStep`.
+- `refresh_deliveries_task` skips `own_fleet`/`unassigned` rows.
+- RIDER is platform staff: `0089_own_fleet` widened the platform-uniqueness indexes.
+  A rider's email is a placeholder `rider.<digits>@riders.invalid`; they sign in by phone.
+- **Live map** (admin Riders -> Live map, `components/RiderLiveMap.tsx`, maths in
+  `services/liveMap.ts`): riders on shift where they last reported, and
+  `GET /admin/riders/waiting` - fleet orders nobody carries (own_fleet or
+  unassigned, not closed, no live trip; never a Pidge booking). Assign goes
+  through `reassign`, so the server still refuses offline/busy riders. A rider
+  not heard from in 5 min is drawn faded and left OFF the assign list - an old
+  position is a guess. A PENDING offer past `expires_at` counts as asking
+  nobody, so a late expiry task cannot leave "Asking ..." up. Drawn by hand from
+  OpenStreetMap tiles: no map library (house rule), and Google's JS map needs
+  billing that is not set up.
+- **Our riders first, then the Orders board.** Nobody free / nobody accepting
+  / `max_offers` spent no longer send an order to Pidge early: it stays OPEN
+  for `window_minutes` (5). The rider app's Orders tab (`offers.open_orders`)
+  shows every open order near the rider to ANY active rider - offline,
+  mid-trip or free - flagged `missed` if it was offered to them first;
+  `offers.claim` is what needs them online and free (`rider_offline`,
+  `rider_busy`, `order_taken`). Seeing is not taking: never gate the list.
+- **Rider push.** Backend sends data-only FCM for offers and cancelled trips
+  (`fleet/notify.py`); the app draws the alert itself (`rider/src/services/push.ts`,
+  channel `rider-offers` must match `OFFER_CHANNEL`). While on shift the
+  foreground service keeps the app alive, so RiderProvider keeps the socket and
+  offer check running in the background and rings a full-screen alert itself -
+  that part needs no Firebase. A KILLED app needs FCM: `rider/android/app/
+  google-services.json` for package `com.foodie.rider`, in the SAME Firebase
+  project as the backend's service account (`FCM_PROJECT_ID`). The Gradle plugin
+  is applied only when that file exists, and `firebaseReady()` guards every call,
+  so the app builds and runs without it. A tap is routed by `PushRouter`.
+
+- **Rider app robustness (2026-10-09).** A trip step is saved to AsyncStorage
+  BEFORE its first attempt (`utils/pendingAction.ts`) and replayed with the same
+  action id when that trip reopens, and retried the moment NetInfo reports a
+  connection. The permission gate has three steps - location, notifications,
+  battery optimisation - in `utils/permissions.ts`; battery uses the one-tap
+  system dialog from `BatteryModule.kt` (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`),
+  Notifee's settings list only as a fallback. Every screen has its own
+  `ErrorBoundary` (`withBoundary` in `RootNavigator`), which reports to
+  Crashlytics (off in debug, `firebase.json`; plugin applied only with
+  `google-services.json`, like push). High contrast is a Profile switch
+  (`theme/contrast.ts`, AAA inks). Not built, on purpose: the in-app map and
+  bottom sheet (Google Maps SDK needs billing), Lottie (the Delivered screen
+  already animates), R8 (with the release build). Admin: a password reset takes
+  the rider off shift like deactivation; the branch allowlist (`location_ids`)
+  is a checkbox list on Riders -> Pay & dispatch, from `FleetSettings.branches`.
+
+- **Rider first-time guide and the Payments/detail screens (2026-10-09).**
+  Spec: `docs/superpowers/specs/2026-10-09-rider-guide-and-polish-design.md`.
+  `rider/src/guide/`: four intro cards once after the first sign-in (`Intro`
+  is the stack's initial route while `guide.intro` is unseen, so
+  `SignedInStack` waits for the one AsyncStorage read), then spotlight tips
+  the first time each screen opens (`useTour(id, ready)`; targets register
+  with `GuideTarget`, copy lives only in `tours.ts`, seen-flags in
+  `rider.guide.v1`). A tour never starts over a ringing offer and cancels if
+  one arrives. Spotlight is an SVG mask drawn once above the navigator; the
+  dark area swallows taps on purpose. Profile replays both. Also: `GET
+  /rider/payouts` + the Payments list and Today/7/30 switch on Earnings,
+  `TripDetail` from History, Appearance (system/light/dark, `rider.theme`),
+  "Test the order alert", the trip "Having a problem?" sheet, a global
+  no-connection pill, a shift-done card. Two traps: `@gorhom/bottom-sheet`
+  draws nothing on this RN 0.87 / gesture-handler 3 setup (`present()` runs,
+  no sheet) - `ui/Sheet` is a plain `Modal`; and a Reanimated `entering`
+  animation on a FlashList cell left the cell mis-measured (a gap above it,
+  taps falling through), so History rows have none.
+  Review fixes the same day: the intro waits for `/rider/me` and never runs
+  for a rider on shift or carrying an order (an app update must not pull them
+  off a live trip or away from offers); Permissions is always pushed OVER
+  Main with a "Not now" - going online is what the permissions gate, not the
+  app; a step whose control is off-screen (or under the floating tab bar,
+  unless the step points at the tab bar itself) is dropped without marking
+  the tour seen; `call-logged` is never queued ahead of a real step.
+
+- **Every rider status change is announced (2026-10-09, `test_fleet_sync`).**
+  Two id-only hints in `fleet/notify.py`: `riders_changed(id, force=True)` to
+  `admin:all` for a STATUS change (online, offline, took an order, finished,
+  freed by a cancel or reassign, deactivated, swept) - `force` skips the 3 s
+  throttle that exists for location pings, which would otherwise swallow a
+  status change made a second after a ping; and `delivery_changed(delivery,
+  reason)`, an `order:updated` to the order's rooms for a step that does not
+  move the order status (assigned, at the restaurant, at the door), which
+  used to reach nobody until a poll. Offers made/withdrawn also send the map
+  hint ("Asking ..."). Listening: admin Riders list, FleetDeliverySection
+  and DeliveryPanel (`useRidersChanged`/`useOrdersChanged` + `concernsOrder`),
+  the storefront's delivery card (`order-refresh.ts`). Polls stay as the net.
+  Rider app: Go online re-checks permissions at the tap (a stale copy looped
+  riders back to Permissions).
+
+- **Home layout (2026-10-09).** Online, the shift control is a strip
+  (`components/home/ShiftCard`, compact `OnlineToggle`, a pulsing dot) and
+  the screen goes to `NearbyOrders`: up to 3 waiting orders with Take
+  (`utils/homeOrders.homePreview` - last-minute first, then nearest pickup),
+  then Today, the week, pay. Offline, the card is the one big action. Take
+  is `hooks/useTakeOrder`, shared with the Orders tab. The old radar card
+  and `OpenOrders` pointer are gone.
+
+- **The other tabs, same idea (2026-10-09).** Orders: one title line, the
+  same shift strip as Home (`ShiftCard strip guide={false}` - an offline
+  rider goes online right there; `guide={false}` because tabs stay mounted
+  and a second `home.toggle` target would steal Home's tip), cards ranked by
+  `homeOrders.rankOrders` (Home's preview uses it too). Going on/off shift is
+  `hooks/useShiftToggle`. Trip: `trip/StepProgress` (a thin bar, "2 of 4")
+  replaced the four-circle `StepTracker`; items fold to one row, open by
+  default at the restaurant. Earnings: shorter hero with `heroLine`, a 90 dp
+  chart whose bars are tappable, To-be-paid/Paid in one card. History: one
+  line per trip with a status dot, sticky day headings
+  (`history.dayHeaderIndices`) - FlashList draws a pinned heading outside
+  the content padding, so rows pad themselves - and a last-7-days summary.
+  Profile: an identity card and `ui/Group` settings sections.
+
+- **Hindi and Gujarati (2026-10-09).** `rider/src/i18n/`: English, Hindi,
+  Gujarati. The language follows the phone (hi/gu, anything else English)
+  until the rider picks one in Profile (`rider.lang`). Strings live in one
+  file per area under `i18n/strings/` (common, home, trip, money, account,
+  system) so screens can be translated side by side; `Translations<typeof
+  en>` makes tsc refuse a Hindi or Gujarati file missing a key, and
+  `dictionaries.test.ts` checks every `{placeholder}` survives. Components
+  use `useI18n().t`; pure helpers and headless code use `translate` from
+  `i18n/translate` - NOT `@/i18n`, which pulls AsyncStorage and breaks jest.
+  Headless work (a push waking a killed app, the shift notification) calls
+  `initLanguage()` first or it speaks the phone's language. Wording rules and
+  the term table are `i18n/GLOSSARY.md`; server text (names, addresses,
+  ApiError messages) is not translated. Digits stay 0-9.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The
@@ -803,6 +956,12 @@ Kept because the notes are hard-won, not because they apply here.
   installed later (`qwen3:8b` + `nomic-embed-text`), which is worth knowing
   because several sessions tested the AI paths by scripting the model seam
   instead of running it.
+- **Use `127.0.0.1`, not `localhost`, for Redis here.** `localhost` resolves to
+  IPv6 first and Redis listens on IPv4 only, so every connection waits out a
+  timeout before falling back: measured 6.26 s per Celery enqueue against 0.12 s
+  (2026-10-08). It made an admin assign take 6.6 s and slows every kitchen
+  accept, which enqueues the courier dispatch. `.env` uses `127.0.0.1` for
+  `REDIS_URL` and both Celery URLs since 2026-10-08 (0.14 s per enqueue).
 - Git Bash: use forward slashes; working directory `F:\restaurant-rag`.
 
 ## Known rough edges in this checkout

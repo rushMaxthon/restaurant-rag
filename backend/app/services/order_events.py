@@ -56,6 +56,8 @@ def actor_for_user(user: User | None) -> OrderEventActor:
     # table is for.
     if user.role == UserRole.KITCHEN:
         return OrderEventActor.KITCHEN
+    if user.role == UserRole.RIDER:
+        return OrderEventActor.RIDER
     return OrderEventActor.SYSTEM
 
 
@@ -256,7 +258,8 @@ def _queue_courier_cancel(db: Session, order: Order) -> None:
     """
 
     delivery = getattr(order, "delivery", None)
-    if delivery is None or not getattr(delivery, "provider_order_id", ""):
+    fleet = getattr(delivery, "provider", "") in {"own_fleet", "unassigned"}
+    if delivery is None or (not fleet and not getattr(delivery, "provider_order_id", "")):
         return
     order_id = str(order.id)
 

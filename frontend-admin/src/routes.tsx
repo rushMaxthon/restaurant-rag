@@ -65,6 +65,7 @@ import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
 import { DeliveryPricingPage } from "./pages/DeliveryPricingPage";
+import { RidersPage } from "./pages/RidersPage";
 import { TrafficPage } from "./pages/TrafficPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
 import { PlatformWatchPage } from "./pages/PlatformWatchPage";
@@ -447,6 +448,15 @@ export const ROUTES: RouteDef[] = [
     roles: ADMIN_ONLY,
     nav: { section: "Platform", label: "Delivery pricing", icon: Bike, keywords: ["delivery fee", "distance", "slabs", "km", "gst", "charges"] },
     render: (ctx) => <DeliveryPricingPage onToast={ctx.pushToast} token={ctx.token} />,
+  },
+  {
+    // Admin only, like /api/admin/riders: one fleet shared by every
+    // restaurant, so an owner who could read it would see the others' orders.
+    id: "riders",
+    pattern: "/riders",
+    roles: ADMIN_ONLY,
+    nav: { section: "Platform", label: "Delivery riders", icon: Bike, keywords: ["riders", "fleet", "delivery boys", "drivers", "payouts", "online"] },
+    render: (ctx) => <RidersPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />,
   },
 
   {

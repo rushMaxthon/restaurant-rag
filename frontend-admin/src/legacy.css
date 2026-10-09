@@ -2844,6 +2844,13 @@ select:focus-visible {
   border-color: color-mix(in srgb, var(--chart-4) 22%, transparent);
 }
 
+/* The platform's own delivery riders (2026-10-08). */
+.usr-role.usr-role--rider {
+  background: var(--neutral-soft);
+  color: var(--on-neutral-soft);
+  border-color: color-mix(in srgb, var(--chart-2) 22%, transparent);
+}
+
 /* Shrink-wrap guard for the remaining passive badges. See the note in the
    status badge block above: a grid parent stretches its items, and these are
    all one refactor away from landing in a table cell. No visual change
@@ -17556,5 +17563,446 @@ optgroup {
 
 .cancel-order .modal-actions {
   margin-top: 0;
+}
+
+
+/* ── Live rider map (Riders → Live map) ─────────────────────────────────
+   Hand-drawn from OpenStreetMap tiles; see services/liveMap.ts for why there
+   is no map library. Pins are a surface disc with a status ring rather than
+   a filled dot, so their ink reads in both themes without a literal white. */
+.rmap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--gap-section);
+  align-items: start;
+}
+
+.rmap__stage {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+
+.rmap__canvas {
+  position: relative;
+  height: min(70vh, 640px);
+  min-height: 420px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.rmap__canvas:active {
+  cursor: grabbing;
+}
+
+.rmap__tiles {
+  position: absolute;
+  inset: 0;
+}
+
+.dark .rmap__tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}
+
+.rmap__tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+}
+
+.rmap__pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-strong);
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  /* No left/top transition: riders glide frame by frame in lat/lng
+     (RiderLiveMap useGlidingRiders), and a CSS transition here made every
+     pin trail behind the tiles while the map was dragged. */
+}
+
+.rmap__pin--rider {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--muted);
+  font-family: inherit;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.rmap__pin--picked {
+  box-shadow: var(--shadow-ring);
+  z-index: 4;
+}
+
+/* The heading: a small wedge on the ring, rotated to the rider's direction
+   of travel (bearing from the last two positions). Only drawn once they move. */
+.rmap__heading {
+  position: absolute;
+  inset: -9px;
+  pointer-events: none;
+}
+
+.rmap__heading-tip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.rmap__pin--free .rmap__heading-tip {
+  background: var(--success);
+}
+
+.rmap__pin--free {
+  border-color: var(--success);
+}
+
+.rmap__pin--busy {
+  border-color: var(--primary);
+}
+
+.rmap__pin--stale {
+  opacity: 0.55;
+}
+
+.rmap__pin--order {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  border: 2px solid var(--danger);
+  color: var(--danger-text);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.rmap__pin--active {
+  border-color: var(--primary);
+  color: var(--primary-text);
+  box-shadow: var(--shadow-ring);
+  z-index: 2;
+}
+
+.rmap__pin--drop {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--primary);
+}
+
+.rmap__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
+
+.rmap__controls {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rmap__control {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+}
+
+.rmap__legend {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-size: var(--fs-micro);
+  color: var(--text);
+}
+
+.rmap__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.rmap__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--muted);
+}
+
+.rmap__swatch--free {
+  border-color: var(--success);
+}
+
+.rmap__swatch--busy {
+  border-color: var(--primary);
+}
+
+.rmap__swatch--stale {
+  opacity: 0.55;
+}
+
+.rmap__credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-micro);
+  color: var(--muted);
+  background: var(--surface);
+  opacity: 0.85;
+}
+
+.rmap__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack);
+  padding: var(--pad-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+.rmap__side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rmap__side-head h3,
+.rmap__shortlist h4 {
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-strong);
+}
+
+.rmap__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rmap__order {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rmap__order--active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.rmap__order-top {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rmap__muted {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
+
+.rmap__asking {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--primary-text);
+}
+
+.rmap__asking--alert {
+  color: var(--danger-text);
+}
+
+.rmap__shortlist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.rmap__rider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rmap__avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--success-soft, var(--surface-alt));
+  color: var(--success-text);
+}
+
+.rmap__rider-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .rmap {
+    grid-template-columns: 1fr;
+  }
+
+  .rmap__side {
+    max-height: none;
+  }
+}
+
+.rmap__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-control);
+  background: var(--primary-soft);
+}
+
+.rmap__card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rmap__card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Call is a tel: link dressed as a button; links underline by default. */
+.rmap__card-actions a {
+  text-decoration: none;
+}
+
+.rmap__avatar--free {
+  border: 2px solid var(--success);
+}
+
+.rmap__avatar--busy {
+  border: 2px solid var(--primary);
+  color: var(--primary-text);
+}
+
+.rmap__avatar--stale {
+  opacity: 0.6;
+}
+
+/* Rider dispatch: the branch allowlist. An empty list means EVERY branch,
+ * so the legend states the scope in words beside the boxes. */
+.rider-branches {
+  grid-column: 1 / -1;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border: 0;
+  justify-items: start;
+}
+
+.rider-branches__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.rider-branches__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.rider-branches__item:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+/* `.field input` makes every input a full-width text box; a checkbox here
+ * is a checkbox. */
+.rider-branches .rider-branches__item input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+
+.rider-branches__item span {
+  display: grid;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+.rider-branches__item small {
+  color: var(--muted);
+  font-size: var(--fs-caption);
 }
 
