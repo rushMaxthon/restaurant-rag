@@ -13,6 +13,19 @@ describe('messageFor', () => {
   it('explains an expired session', () => {
     expect(messageFor(401, null).code).toBe('auth');
   });
+  it('reads a section 422 by its error code', () => {
+    expect(messageFor(422, { field: 'ifsc', error: 'bad_ifsc' })).toEqual({
+      message: 'An IFSC looks like SBIN0001234.',
+      code: 'bad_ifsc',
+    });
+  });
+  it('reads what a refused submit is missing', () => {
+    expect(messageFor(422, { missing: ['PAN'] }).code).toBe('missing');
+    expect(messageFor(422, { flagged: ['PAN'] }).code).toBe('flagged');
+  });
+  it('says sign-up codes in words', () => {
+    expect(messageFor(409, 'phone_in_use').message).toBe('This number already has an account.');
+  });
   it('passes through a plain sentence from the server', () => {
     expect(messageFor(400, 'Enter a valid phone number').message).toBe('Enter a valid phone number');
   });

@@ -9,6 +9,8 @@ export type RealtimeHandlers = {
   onTrip: () => void;
   onReconnect: () => void;
   onRevoked: () => void;
+  /** `rider:application`: an admin decided on this rider's sign-up. */
+  onApplication?: () => void;
 };
 
 /**
@@ -67,6 +69,7 @@ export function useRiderRealtime(
     socket.on('rider:trip_updated', () => ref.current.onTrip());
     socket.on('rider:trip_cancelled', () => ref.current.onTrip());
     socket.on('session:revoked', () => ref.current.onRevoked());
+    socket.on('rider:application', () => ref.current.onApplication?.());
     return () => {
       if (retry) clearTimeout(retry);
       socket.removeAllListeners();

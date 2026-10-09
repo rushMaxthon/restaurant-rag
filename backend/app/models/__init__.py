@@ -42,6 +42,7 @@ from app.models.restaurant import Restaurant
 from app.models.restaurant_location import RestaurantLocation
 from app.models.restaurant_payout import RestaurantPayout, RestaurantPayoutAccount
 from app.models.rider import Rider, RiderOffer, RiderPayout, RiderTrip
+from app.models.rider_application import PhoneVerification, RiderApplication, RiderApplicationEvent, RiderApplicationItem
 from app.models.user import User
 from app.models.user_device_token import UserDeviceToken
 from app.models.user_saved_address import UserSavedAddress
@@ -54,6 +55,10 @@ from app.models.preference import (
 )
 
 __all__ = [
+    "PhoneVerification",
+    "RiderApplication",
+    "RiderApplicationEvent",
+    "RiderApplicationItem",
     "Rider",
     "RiderOffer",
     "RiderPayout",

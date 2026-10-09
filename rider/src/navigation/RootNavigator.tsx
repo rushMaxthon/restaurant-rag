@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
@@ -17,9 +17,15 @@ import { OfferScreen } from '@screens/offer/OfferScreen';
 import { OrdersScreen } from '@screens/orders/OrdersScreen';
 import { PushRouter } from '@components/PushRouter';
 import { withBoundary } from '@components/ErrorBoundary';
+import { ApplicationReviewScreen } from '@screens/onboarding/ApplicationReviewScreen';
+import { ApplicationStepScreen } from '@screens/onboarding/ApplicationStepScreen';
 import { IntroScreen } from '@screens/onboarding/IntroScreen';
+import { OnboardingHomeScreen } from '@screens/onboarding/OnboardingHomeScreen';
 import { PermissionsScreen } from '@screens/onboarding/PermissionsScreen';
 import { ProfileScreen } from '@screens/profile/ProfileScreen';
+import { SignupAccountScreen } from '@screens/signup/SignupAccountScreen';
+import { SignupCodeScreen } from '@screens/signup/SignupCodeScreen';
+import { SignupPhoneScreen } from '@screens/signup/SignupPhoneScreen';
 import { DeliveredScreen } from '@screens/trip/DeliveredScreen';
 import { TripScreen } from '@screens/trip/TripScreen';
 import { ConnectionBanner } from '@components/ConnectionBanner';
@@ -27,8 +33,12 @@ import { ShiftKeeper } from '@components/ShiftKeeper';
 import { GuideProvider, useGuide } from '@/guide/GuideProvider';
 import { Spotlight } from '@/guide/Spotlight';
 import { useTheme } from '@theme/ThemeProvider';
+import { loadOnboarding } from '@/services/onboardingMemory';
+import { ApplicationProvider } from '@/store/ApplicationProvider';
 import { RiderProvider, useRider } from '@/store/RiderProvider';
 import { useSession } from '@/store/SessionProvider';
+import type { RiderOnboarding } from '@/types/api';
+import { gateFor } from '@utils/onboarding';
 import { TabBar } from './TabBar';
 import type { RootStackParamList, TabParamList } from './types';
 
@@ -50,6 +60,12 @@ const Bounded = {
   ProfileScreen: withBoundary(ProfileScreen),
   DeliveredScreen: withBoundary(DeliveredScreen),
   TripScreen: withBoundary(TripScreen),
+  SignupPhoneScreen: withBoundary(SignupPhoneScreen),
+  SignupCodeScreen: withBoundary(SignupCodeScreen),
+  SignupAccountScreen: withBoundary(SignupAccountScreen),
+  OnboardingHomeScreen: withBoundary(OnboardingHomeScreen),
+  ApplicationStepScreen: withBoundary(ApplicationStepScreen),
+  ApplicationReviewScreen: withBoundary(ApplicationReviewScreen),
 };
 const Tabs = createBottomTabNavigator<TabParamList>();
 
@@ -91,16 +107,67 @@ function OfferWatcher() {
 function SignedIn() {
   return (
     <RiderProvider>
-      <ShiftKeeper>
-        <GuideProvider>
-          <PushRouter />
-          <SignedInStack />
-          <ConnectionBanner />
-          {/* Last, so a tip sits above every screen and the tab bar. */}
-          <Spotlight />
-        </GuideProvider>
-      </ShiftKeeper>
+      <SignedInGate />
     </RiderProvider>
+  );
+}
+
+/**
+ * Tabs, or the application. A rider who signed up themselves is PENDING
+ * until an admin approves them, and sees only their application: no shift
+ * keeper, no location, no offers or Orders board - the server would refuse
+ * all of it, and a "Go online" that can only fail is worse than none. The
+ * moment /rider/me says APPROVED (a push, the socket, a pull to refresh)
+ * this swaps to the tabs, and SignedInStack opens on the first-time intro.
+ */
+function SignedInGate() {
+  const { me, loading } = useRider();
+  const { colors } = useTheme();
+  // undefined: not read yet. The read is one AsyncStorage get.
+  const [remembered, setRemembered] = useState<RiderOnboarding | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    loadOnboarding().then(value => alive && setRemembered(value));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const gate = remembered === undefined ? 'wait' : gateFor(me, remembered, loading);
+
+  if (gate === 'wait')
+    return <View style={[styles.fill, { backgroundColor: colors.bg }]} />;
+  if (gate === 'onboarding') {
+    return (
+      <ApplicationProvider>
+        <PushRouter />
+        <OnboardingStack />
+        <ConnectionBanner />
+      </ApplicationProvider>
+    );
+  }
+  return (
+    <ShiftKeeper>
+      <GuideProvider>
+        <PushRouter />
+        <SignedInStack />
+        <ConnectionBanner />
+        {/* Last, so a tip sits above every screen and the tab bar. */}
+        <Spotlight />
+      </GuideProvider>
+    </ShiftKeeper>
+  );
+}
+
+function OnboardingStack() {
+  return (
+    <Stack.Navigator
+      initialRouteName="OnboardingHome"
+      screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+    >
+      <Stack.Screen name="OnboardingHome" component={Bounded.OnboardingHomeScreen} />
+      <Stack.Screen name="ApplicationStep" component={Bounded.ApplicationStepScreen} />
+      <Stack.Screen name="ApplicationReview" component={Bounded.ApplicationReviewScreen} />
+    </Stack.Navigator>
   );
 }
 
@@ -174,6 +241,21 @@ export function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="Login" component={Bounded.LoginScreen} />
+      <Stack.Screen
+        name="SignupPhone"
+        component={Bounded.SignupPhoneScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="SignupCode"
+        component={Bounded.SignupCodeScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="SignupAccount"
+        component={Bounded.SignupAccountScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
     </Stack.Navigator>
   );
 }

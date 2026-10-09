@@ -4,7 +4,8 @@
  */
 
 export type RiderStatus = 'OFFLINE' | 'ONLINE' | 'ON_TRIP';
-export type VehicleType = 'BIKE' | 'SCOOTER' | 'CYCLE';
+/** EV_SCOOTER is a low-speed e-scooter: no RC, no licence. A registered one is SCOOTER. */
+export type VehicleType = 'BIKE' | 'SCOOTER' | 'EV_SCOOTER' | 'CYCLE';
 export type TripStep =
   | 'to_pickup'
   | 'at_pickup'
@@ -46,7 +47,98 @@ export type RiderMe = {
   fleet_enabled: boolean;
   /** What a delivery pays right now (admin-set): base + per km, never under minimum. */
   pay: { base: string; per_km: string; minimum: string };
+  /**
+   * Only APPROVED may work. A self-signed-up rider is PENDING until an admin
+   * approves the application; admin-made riders were always APPROVED.
+   */
+  onboarding: RiderOnboarding;
+  /** Null for a rider an admin created: there is no application to show. */
+  application_status: ApplicationStatus | null;
 };
+
+export type RiderOnboarding = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+// --- self sign-up (`app/schemas/rider_onboarding.py`) ------------------------
+
+export type SignupCodeResponse = {
+  sent: boolean;
+  retry_after: number;
+  /** The static code while sign-up runs without a real sender. */
+  debug_code: string | null;
+};
+
+export type ApplicationStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'CHANGES_NEEDED'
+  | 'APPROVED'
+  | 'REJECTED';
+
+export type ItemStatus = 'MISSING' | 'PENDING' | 'ACCEPTED' | 'NEEDS_CHANGE';
+
+export type SectionKey = 'personal' | 'vehicle' | 'documents' | 'bank';
+
+export type PhotoKind =
+  | 'SELFIE'
+  | 'RC'
+  | 'AADHAAR_FRONT'
+  | 'AADHAAR_BACK'
+  | 'PAN'
+  | 'LICENCE_FRONT'
+  | 'LICENCE_BACK'
+  | 'BANK_PROOF';
+
+export type ItemKind = PhotoKind | 'PERSONAL' | 'VEHICLE_DETAILS' | 'BANK_DETAILS';
+
+export type ApplicationItem = {
+  kind: ItemKind;
+  status: ItemStatus;
+  reason: string;
+  section: SectionKey;
+  required: boolean;
+  has_photo: boolean;
+  /** Whether the rider may change it right now (a draft, or flagged). */
+  editable: boolean;
+};
+
+export type ApplicationView = {
+  rider_user_id: string;
+  status: ApplicationStatus;
+  final_reason: string;
+  submitted_at: string | null;
+  decided_at: string | null;
+  sections: {
+    personal: {
+      full_name: string;
+      /** YYYY-MM-DD */
+      date_of_birth: string | null;
+      city: string;
+      address_line: string;
+      pincode: string;
+      emergency_name: string;
+      emergency_phone: string;
+    };
+    vehicle: { vehicle_type: VehicleType | null; vehicle_number: string };
+    documents: {
+      aadhaar_last4: string;
+      pan_last4: string;
+      licence_last4: string;
+      licence_expiry: string | null;
+    };
+    bank: {
+      bank_holder: string;
+      bank_account_last4: string;
+      ifsc: string;
+      upi_id: string;
+    };
+  };
+  items: ApplicationItem[];
+  required: ItemKind[];
+  missing: ItemKind[];
+};
+
+/** A photo on the phone, ready to send as multipart `file`. */
+export type UploadFile = { uri: string; type: string; name: string };
 
 export type Offer = {
   id: string;

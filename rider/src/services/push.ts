@@ -190,6 +190,33 @@ async function showTripCancelled(tripId: string): Promise<void> {
   }
 }
 
+/** An admin decided on the rider's application: worth a notification, since they are rarely looking. */
+async function showApplicationUpdate(status: string): Promise<void> {
+  const body =
+    status === 'APPROVED'
+      ? translate('onboarding.push.approved')
+      : status === 'REJECTED'
+      ? translate('onboarding.push.rejected')
+      : translate('onboarding.push.changes');
+  try {
+    await channels();
+    await notifee.displayNotification({
+      id: 'rider-application',
+      title: translate('onboarding.push.title'),
+      body,
+      data: { type: 'rider_application', status },
+      android: {
+        channelId: UPDATES_CHANNEL,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        pressAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+  } catch {
+    // ignored, as above: the status screen shows it when they open the app
+  }
+}
+
 /** The part of an FCM message we read (v26 does not export its RemoteMessage type). */
 type PushMessage = { data?: { [key: string]: unknown } };
 
@@ -202,6 +229,7 @@ async function showPush(message: PushMessage): Promise<void> {
   if (push.kind === 'offer')
     await showOfferAlert(push.offerId, push.expiresAt);
   if (push.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
+  if (push.kind === 'application') await showApplicationUpdate(push.status);
 }
 
 function handleEvent({ type, detail }: Event): void {
@@ -223,7 +251,9 @@ export function registerBackgroundPush(): void {
 }
 
 /** While the app is mounted: taps, the cold-start tap, and FCM while open. */
-export function listenForPush(onForegroundMessage: () => void): () => void {
+export function listenForPush(
+  onForegroundMessage: (push: RiderPush | null) => void,
+): () => void {
   const offEvents = notifee.onForegroundEvent(handleEvent);
   notifee
     .getInitialNotification()
@@ -231,7 +261,9 @@ export function listenForPush(onForegroundMessage: () => void): () => void {
     .catch(() => undefined);
   // On screen the socket/poll already shows it; a push just means "look now".
   const offMessages = firebaseReady()
-    ? onMessage(getMessaging(), () => onForegroundMessage())
+    ? onMessage(getMessaging(), message =>
+        onForegroundMessage(parsePush((message as PushMessage).data)),
+      )
     : () => undefined;
   return () => {
     offEvents();

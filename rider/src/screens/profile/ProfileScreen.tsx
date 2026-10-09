@@ -24,6 +24,7 @@ import { call } from '@utils/links';
 const VEHICLE: Record<string, { labelKey: Key; icon: IconName }> = {
   BIKE: { labelKey: 'account.profile.vehicleBike', icon: 'bicycle' },
   SCOOTER: { labelKey: 'account.profile.vehicleScooter', icon: 'bicycle' },
+  EV_SCOOTER: { labelKey: 'onboarding.vehicle.EV_SCOOTER', icon: 'flash-outline' },
   CYCLE: { labelKey: 'account.profile.vehicleCycle', icon: 'bicycle-outline' },
 };
 

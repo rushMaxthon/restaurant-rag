@@ -489,6 +489,29 @@ def send_text(to: str, body: str) -> bool:
     )
 
 
+def send_template(to: str, template: str, parameters: Sequence[str], language: str = "en") -> bool:
+    """An approved template message - the only kind Meta delivers to someone
+    who has not written to us in the last 24 hours, which is everyone asking
+    for a sign-up code. An AUTHENTICATION template carries the code as its one
+    body parameter and as the copy-code button's. True if Meta accepted it."""
+
+    values = [{"type": "text", "text": str(p)} for p in parameters]
+    return _send(
+        to,
+        {
+            "type": "template",
+            "template": {
+                "name": template,
+                "language": {"code": language},
+                "components": [
+                    {"type": "body", "parameters": values},
+                    {"type": "button", "sub_type": "url", "index": "0", "parameters": values[:1]},
+                ],
+            },
+        },
+    )
+
+
 #: Meta's caps on what a tappable reply may say. Titles are truncated to fit
 #: rather than refused: a row the customer can read and tap beats no row, and
 #: nothing downstream reads the title anyway — the id carries the answer.

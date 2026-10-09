@@ -23,17 +23,28 @@ import { screenFor, type RiderPush } from '@utils/push';
  */
 export function PushRouter() {
   const api = useApi();
-  const { refreshOffer, refreshTrip, refreshMe } = useRider();
+  const { refreshOffer, refreshTrip, refreshMe, applicationChanged } =
+    useRider();
 
   useEffect(() => {
     const act = (push: RiderPush) => {
+      // A decision on the application: refetch it and /me. If it was an
+      // approval, RootNavigator swaps the application for the tabs itself.
+      if (push.kind === 'application') {
+        applicationChanged();
+        return;
+      }
       if (screenFor(push) === 'Offer') {
         void refreshOffer();
         return;
       }
       void refreshTrip();
       void refreshMe();
-      if (navigationRef.isReady())
+      // Mounted over the application stack too, which has no Main.
+      if (
+        navigationRef.isReady() &&
+        navigationRef.getRootState()?.routeNames?.includes('Main')
+      )
         navigationRef.navigate('Main', { screen: 'Home' });
     };
     const consume = () => {
@@ -42,7 +53,10 @@ export function PushRouter() {
     };
     consume();
     const offTap = onPushTap(act);
-    const offPush = listenForPush(() => void refreshOffer());
+    const offPush = listenForPush(push => {
+      if (push?.kind === 'application') applicationChanged();
+      else void refreshOffer();
+    });
     const sub = AppState.addEventListener(
       'change',
       next => next === 'active' && consume(),
@@ -52,7 +66,7 @@ export function PushRouter() {
       offPush();
       sub.remove();
     };
-  }, [refreshOffer, refreshTrip, refreshMe]);
+  }, [refreshOffer, refreshTrip, refreshMe, applicationChanged]);
 
   useEffect(
     () => registerDeviceToken(token => api.deviceToken(token, APP_VERSION)),

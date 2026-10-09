@@ -35,7 +35,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.enums import OfferOutcome, OrderStatus, PaymentMethod, RiderStatus
+from app.models.enums import OfferOutcome, OrderStatus, PaymentMethod, RiderOnboarding, RiderStatus
 from app.models.order import Order
 from app.models.order_delivery import OrderDelivery
 from app.models.rider import Rider, RiderOffer, RiderTrip
@@ -116,6 +116,9 @@ def candidates(
         .join(User, User.id == Rider.user_id)
         .where(
             Rider.status == RiderStatus.ONLINE,
+            # Belt and braces: a pending rider cannot go online, but a rider
+            # rejected while online must not be offered the next order.
+            Rider.onboarding == RiderOnboarding.APPROVED,
             User.is_active.is_(True),
             Rider.last_location_at >= fresh_after,
             Rider.last_latitude.is_not(None),
@@ -322,6 +325,8 @@ def _why_not_free(db: Session, rider_user_id: uuid.UUID) -> str | None:
     """Why this rider cannot take an order right now, or None if they can."""
 
     rider = db.get(Rider, rider_user_id)
+    if rider is not None and rider.onboarding != RiderOnboarding.APPROVED:
+        return "rider_not_approved"
     if rider is None or rider.status == RiderStatus.OFFLINE:
         return "rider_offline"
     live = db.scalar(select(RiderTrip.id).where(RiderTrip.rider_user_id == rider_user_id, RiderTrip.ended_at.is_(None)))
@@ -340,6 +345,12 @@ def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> l
     (first come, first served) and one whose offer to THIS rider ran out while
     they were not looking, flagged `missed`.
     """
+
+    # The board is for riders who may take what is on it: an applicant
+    # still under review sees an empty list, not orders they cannot claim.
+    me = db.get(Rider, rider_user.id)
+    if me is None or me.onboarding != RiderOnboarding.APPROVED:
+        return []
 
     from app.services.fleet.earnings import earning_for
     from app.services.fleet.trips import trip_km

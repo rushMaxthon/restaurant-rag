@@ -58,7 +58,7 @@ const en = {
   'account.login.password': 'Password',
   'account.login.passwordPlaceholder': 'Your password',
   'account.login.signIn': 'Sign in',
-  'account.login.help': 'New rider or forgot your password?',
+  'account.login.help': 'Forgot your password?',
   'account.login.callManager': 'Call your manager',
   'account.splash.tagline': 'Deliver smiles, earn more.',
 
@@ -195,7 +195,7 @@ const hi: Translations<typeof en> = {
   'account.login.password': 'पासवर्ड',
   'account.login.passwordPlaceholder': 'आपका पासवर्ड',
   'account.login.signIn': 'साइन इन',
-  'account.login.help': 'नए राइडर हैं या पासवर्ड भूल गए?',
+  'account.login.help': 'पासवर्ड भूल गए?',
   'account.login.callManager': 'मैनेजर को कॉल करें',
   'account.splash.tagline': 'खुशियां पहुंचाएं, ज़्यादा कमाएं।',
 
@@ -327,7 +327,7 @@ const gu: Translations<typeof en> = {
   'account.login.password': 'પાસવર્ડ',
   'account.login.passwordPlaceholder': 'તમારો પાસવર્ડ',
   'account.login.signIn': 'સાઇન ઇન',
-  'account.login.help': 'નવા રાઇડર છો કે પાસવર્ડ ભૂલી ગયા?',
+  'account.login.help': 'પાસવર્ડ ભૂલી ગયા?',
   'account.login.callManager': 'મેનેજરને કૉલ કરો',
   'account.splash.tagline': 'ખુશી પહોંચાડો, વધુ કમાઓ.',
 

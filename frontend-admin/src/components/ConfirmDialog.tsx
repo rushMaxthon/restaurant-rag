@@ -7,9 +7,18 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   tone?: "default" | "danger";
   busy?: boolean;
+  /**
+   * Something the decision needs, such as a reason. Rendered above the
+   * buttons; most confirmations have nothing to ask and pass none.
+   */
+  children?: ReactNode;
+  /** Holds the confirm button until `children` has what it needs. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
+
+import type { ReactNode } from "react";
 
 import { Modal } from "./Modal";
 
@@ -22,6 +31,8 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   busy = false,
+  children,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -48,6 +59,7 @@ export function ConfirmDialog({
         </div>
 
         <div className="modal-card__body confirm-dialog__body">
+          {children}
           <div className="modal-actions">
             <button
               className="secondary-button"
@@ -63,7 +75,7 @@ export function ConfirmDialog({
                   ? "primary-button primary-button--danger"
                   : "primary-button"
               }
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               onClick={onConfirm}
               type="button"
             >

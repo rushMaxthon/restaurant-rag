@@ -21,7 +21,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.enums import OfferOutcome, RiderStatus, UserRole, VehicleType
+from app.models.enums import OfferOutcome, RiderOnboarding, RiderStatus, UserRole, VehicleType
 from app.models.rider import Rider, RiderOffer, RiderTrip
 from app.models.user import User
 from app.services.auth import hash_password, normalize_phone_number
@@ -236,6 +236,11 @@ def set_status(db: Session, user: User, online: bool) -> Rider:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rider not found")
     released: list[uuid.UUID] = []
     if online:
+        # A rider who signed up in the app works only once an admin approved
+        # them. The app shows a pending rider only their application; this is
+        # the check that holds whatever the app shows.
+        if rider.onboarding != RiderOnboarding.APPROVED:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "rider_not_approved")
         if rider.status == RiderStatus.OFFLINE:
             rider.status, rider.status_at = RiderStatus.ONLINE, _now()
     else:

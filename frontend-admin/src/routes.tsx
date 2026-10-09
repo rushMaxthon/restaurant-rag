@@ -65,6 +65,7 @@ import { CampaignEditorPage } from "./pages/CampaignEditorPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
 import { CommissionPage } from "./pages/CommissionPage";
 import { DeliveryPricingPage } from "./pages/DeliveryPricingPage";
+import { RiderApplicationPage } from "./pages/RiderApplicationPage";
 import { RidersPage } from "./pages/RidersPage";
 import { TrafficPage } from "./pages/TrafficPage";
 import { PayoutsPage } from "./pages/PayoutsPage";
@@ -457,6 +458,23 @@ export const ROUTES: RouteDef[] = [
     roles: ADMIN_ONLY,
     nav: { section: "Platform", label: "Delivery riders", icon: Bike, keywords: ["riders", "fleet", "delivery boys", "drivers", "payouts", "online"] },
     render: (ctx) => <RidersPage onNavigate={ctx.navigate} onToast={ctx.pushToast} token={ctx.token} />,
+  },
+  {
+    // A rider who signed up in the app, reviewed item by item. Reached from
+    // the Applications tab only, so no sidebar entry; the Riders entry stays lit.
+    id: "rider-application",
+    pattern: "/riders/applications/:riderUserId",
+    roles: ADMIN_ONLY,
+    activeNavPath: "/riders",
+    render: (ctx, params) => (
+      <RiderApplicationPage
+        key={params.riderUserId}
+        onNavigate={ctx.navigate}
+        onToast={ctx.pushToast}
+        riderUserId={params.riderUserId}
+        token={ctx.token}
+      />
+    ),
   },
 
   {

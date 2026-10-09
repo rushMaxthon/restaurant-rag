@@ -13,8 +13,10 @@ from app.api.generated_combos import router as generated_combos_router
 from app.api.insights import router as insights_router
 from app.api.kitchen_menu import router as kitchen_menu_router
 from app.api.kitchen_staff import router as kitchen_staff_router
+from app.api.admin_rider_applications import router as admin_rider_applications_router
 from app.api.admin_riders import router as admin_riders_router
 from app.api.rider import router as rider_router
+from app.api.rider_signup import router as rider_signup_router
 from app.api.marketing import router as marketing_router
 from app.api.menu_items import router as menu_items_router
 from app.api.notifications import router as notifications_router
@@ -50,6 +52,8 @@ api_router.include_router(insights_router)
 api_router.include_router(kitchen_staff_router)
 api_router.include_router(admin_riders_router)
 api_router.include_router(rider_router)
+api_router.include_router(rider_signup_router)
+api_router.include_router(admin_rider_applications_router)
 api_router.include_router(kitchen_menu_router)
 api_router.include_router(restaurants_router)
 api_router.include_router(marketing_router)

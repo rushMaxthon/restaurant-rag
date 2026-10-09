@@ -699,6 +699,32 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   the term table are `i18n/GLOSSARY.md`; server text (names, addresses,
   ApiError messages) is not translated. Digits stay 0-9.
 
+- **Rider self sign-up (2026-10-09).** Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-10-09-rider-self-signup*`. The
+  application IS the rider account: sign-up (`api/rider_signup.py`) makes a
+  RIDER with `riders.onboarding = PENDING` and a DRAFT `rider_applications`
+  row; migration `0090_rider_onboarding` defaults the column to APPROVED so
+  every existing and admin-made rider keeps working. Only APPROVED riders go
+  online (`set_status` 403 `rider_not_approved`), are offered
+  (`offers.candidates`), claim (`_why_not_free`) or see the board
+  (`open_orders` -> []). Rules in `services/fleet/onboarding/`: `rules`
+  (pure, mirrored in `rider/src/utils/onboarding.ts`), `phone` (sign-up
+  codes, HMAC'd, 10 min, 5 tries; `RIDER_SIGNUP_OTP_MODE=static` for now on
+  the owner's call - `otp_debug_code` everywhere, so anyone can register any
+  number until it is `whatsapp` with `WHATSAPP_OTP_TEMPLATE`), `storage`
+  (private Supabase bucket over REST, `SUPABASE_URL` +
+  `SUPABASE_SERVICE_KEY`, type from magic bytes, 5 MB, signed links 5 min;
+  no local-disk fallback), `applications` (the state machine: per-item
+  ACCEPTED/NEEDS_CHANGE, only flagged items editable after send-back, row
+  lock -> 409 `state_changed` for the second admin), `views`. Aadhaar is
+  last-4 only; PAN, licence and account numbers are Fernet-encrypted and
+  leave the server as last 4. Admin: Riders -> Applications tab +
+  `/riders/applications/:id`. App: signed-out sign-up screens, and a
+  PENDING rider gets the application stack instead of the tabs (no shift
+  keeper, location, offers or board until approved). Trap found on the
+  emulator: `flex` boxes inside a non-stretching row collapse to slivers
+  (DateInput uses fixed widths).
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

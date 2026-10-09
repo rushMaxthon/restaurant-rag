@@ -4,12 +4,14 @@
  * The backend sends DATA-only messages (`app/services/fleet/notify.py`), so
  * the app draws every notification itself - which is what lets an offer ring
  * full-screen and vanish when it expires. These keys are a contract with that
- * file: `type`, `offer_id`, `expires_at`, `trip_id`.
+ * file: `type`, `offer_id`, `expires_at`, `trip_id`, `status`.
  */
 
 export type RiderPush =
   | { kind: 'offer'; offerId: string; expiresAt: string }
-  | { kind: 'trip_cancelled'; tripId: string };
+  | { kind: 'trip_cancelled'; tripId: string }
+  /** An admin approved, sent back or rejected a self-signed-up rider (`application_decided`). */
+  | { kind: 'application'; status: string };
 
 export function parsePush(
   data: Record<string, unknown> | undefined,
@@ -26,6 +28,9 @@ export function parsePush(
   }
   if (data.type === 'rider_trip_cancelled' && str('trip_id')) {
     return { kind: 'trip_cancelled', tripId: str('trip_id') };
+  }
+  if (data.type === 'rider_application' && str('status')) {
+    return { kind: 'application', status: str('status') };
   }
   return null;
 }

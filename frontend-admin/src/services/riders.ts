@@ -82,6 +82,9 @@ export function lastSeenLabel(iso: string | null, now: Date = new Date()): strin
 export const VEHICLE_LABEL: Record<RiderVehicle, string> = {
   BIKE: 'Motorbike',
   SCOOTER: 'Scooter',
+  // A low-speed e-scooter needs no licence or RC, which is why sign-up offers
+  // it as its own type and asks for neither.
+  EV_SCOOTER: 'E-scooter (low-speed)',
   CYCLE: 'Bicycle',
 };
 

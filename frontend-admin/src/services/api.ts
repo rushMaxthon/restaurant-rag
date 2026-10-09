@@ -86,6 +86,10 @@ import type {
   RiderPay,
   RiderPayoutRecord,
   RiderUnpaid,
+  ApplicationStatus,
+  ItemKind,
+  RiderApplicationDetail,
+  RiderApplicationSummary,
   RiderUpdateInput,
   WaitingFleetOrder,
 } from '../types/app';
@@ -294,6 +298,48 @@ export const api = {
   },
   saveFleetConfig(token: string, body: FleetConfig): Promise<FleetSettings> {
     return request<FleetSettings>('/admin/riders/settings/fleet', { method: 'PUT', token, body });
+  },
+  // --- rider applications (self sign-up), admin only ---
+  /** Oldest submitted first: whoever has waited longest is at the top. */
+  listRiderApplications(
+    token: string,
+    query: { status?: ApplicationStatus; q?: string; city?: string } = {},
+  ): Promise<RiderApplicationSummary[]> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value) params.set(key, value);
+    }
+    const search = params.toString();
+    return request<RiderApplicationSummary[]>(`/admin/rider-applications${search ? `?${search}` : ''}`, { token });
+  },
+  getRiderApplication(token: string, riderUserId: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}`, { token });
+  },
+  acceptApplicationItem(token: string, riderUserId: string, kind: ItemKind): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/items/${kind}/accept`, { method: 'POST', token });
+  },
+  flagApplicationItem(token: string, riderUserId: string, kind: ItemKind, reason: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/items/${kind}/flag`, {
+      method: 'POST',
+      token,
+      body: { reason },
+    });
+  },
+  sendBackApplication(token: string, riderUserId: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/send-back`, { method: 'POST', token });
+  },
+  approveApplication(token: string, riderUserId: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/approve`, { method: 'POST', token });
+  },
+  rejectApplication(token: string, riderUserId: string, reason: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/reject`, {
+      method: 'POST',
+      token,
+      body: { reason },
+    });
+  },
+  reopenApplication(token: string, riderUserId: string): Promise<RiderApplicationDetail> {
+    return request<RiderApplicationDetail>(`/admin/rider-applications/${riderUserId}/reopen`, { method: 'POST', token });
   },
   listUnpaidRiders(token: string): Promise<RiderUnpaid[]> {
     return request<RiderUnpaid[]>('/admin/riders/payouts/unpaid', { token });

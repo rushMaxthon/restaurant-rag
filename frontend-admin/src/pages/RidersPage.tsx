@@ -6,16 +6,19 @@
  * every restaurant, and an owner who could read it could see the others'
  * deliveries. Owners only ever see "rider assigned" on their own orders.
  *
- * Riders sign into the rider app with the mobile number and password set
- * here; there is no self-signup. There is no delete either - trips and
+ * Riders either sign up in the rider app and are approved on the
+ * Applications tab, or are added here with a mobile number and password.
+ * There is no delete - trips and
  * payouts point at the account - so a rider who leaves is deactivated, which
  * signs them out at once and withdraws any order they were being offered.
  */
 
-import { Bike, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { dueForRefresh, firstTab } from '../services/riderApplications';
+import { Bike, ClipboardCheck, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ApplicationsTab } from '../components/riders/ApplicationsTab';
 import { useRidersChanged } from '../hooks/useRealtime';
 import { DataToolbar } from '../components/DataToolbar';
 import { EmptyPanel } from '../components/EmptyPanel';
@@ -46,11 +49,12 @@ interface RidersPageProps {
   onToast: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
-type Tab = 'map' | 'roster' | 'settings' | 'payouts';
+type Tab = 'applications' | 'map' | 'roster' | 'settings' | 'payouts';
 type StatusFilter = 'ALL' | 'ONLINE' | 'ON_TRIP' | 'OFFLINE' | 'INACTIVE';
 
 const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
   { key: 'map', label: 'Live map', icon: MapIcon },
+  { key: 'applications', label: 'Applications', icon: ClipboardCheck },
   { key: 'roster', label: 'Riders', icon: Users },
   { key: 'settings', label: 'Pay & dispatch', icon: Settings2 },
   { key: 'payouts', label: 'Payouts', icon: Wallet },
@@ -64,8 +68,35 @@ function riderStatus(rider: Rider): string {
   return rider.status;
 }
 
+function tabFromAddress(): Tab | null {
+  const asked = new URLSearchParams(window.location.search).get('tab');
+  return TABS.some((t) => t.key === asked) ? (asked as Tab) : null;
+}
+
 export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
-  const [tab, setTab] = useState<Tab>('map');
+  // `?tab=` is how the review page's back button returns to the queue.
+  const [picked, setPicked] = useState<Tab | null>(tabFromAddress);
+  const waiting = useSubmittedCount(token);
+  // Somebody waiting to be approved comes before the map: it is the one
+  // thing on this page that only an admin can move forward. Decided once,
+  // from the first count - never again while the page is open, or the page
+  // switched tabs under an admin watching the map whenever someone applied.
+  // Null until the count is in when nothing was asked for, so the map does
+  // not mount for a moment and then give way to the queue.
+  const [settled, setSettled] = useState<Tab | null>(null);
+  // Adjusting state while rendering (React's pattern for "derive once from a
+  // prop"), not in an effect: no extra render with the wrong tab.
+  if (settled === null && waiting !== null) setSettled(firstTab(waiting));
+  const tab: Tab | null = picked ?? settled;
+  const queueFirst = settled === 'applications';
+  const tabs = queueFirst ? [TABS[1], TABS[0], ...TABS.slice(2)] : [...TABS.slice(0, 1), ...TABS.slice(2), TABS[1]];
+
+  const choose = (key: Tab) => {
+    setPicked(key);
+    // Replaced, not pushed: switching tabs is not a page the back button
+    // should step through, but a reload should land on the same tab.
+    window.history.replaceState(window.history.state, '', key === 'map' ? '/riders' : `/riders?tab=${key}`);
+  };
 
   return (
     <div className="page-stack">
@@ -75,24 +106,59 @@ export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
         description="The platform's own riders. Orders are offered to the nearest one online; if nobody takes it, the courier does."
       />
       <nav className="segmented-tabs" aria-label="Rider sections">
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {tabs.map(({ key, label, icon: Icon }) => (
           <button
+            aria-current={tab === key ? 'page' : undefined}
             className={tab === key ? 'segmented-tabs__item segmented-tabs__item--active' : 'segmented-tabs__item'}
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => choose(key)}
             type="button"
           >
             <Icon size={16} strokeWidth={2.1} />
             <span>{label}</span>
+            {key === 'applications' && waiting ? (
+              <span aria-label={`${waiting} waiting for review`} className="rapp-count rapp-count--alert">
+                {waiting}
+              </span>
+            ) : null}
           </button>
         ))}
       </nav>
+      {tab === 'applications' ? <ApplicationsTab onNavigate={onNavigate} token={token} /> : null}
       {tab === 'map' ? <RiderLiveMap onNavigate={onNavigate} onToast={onToast} token={token} /> : null}
       {tab === 'roster' ? <RosterTab onToast={onToast} token={token} /> : null}
       {tab === 'settings' ? <SettingsTab onToast={onToast} token={token} /> : null}
       {tab === 'payouts' ? <PayoutsTab onToast={onToast} token={token} /> : null}
     </div>
   );
+}
+
+/**
+ * How many applications are waiting for review, for the tab's badge. Null
+ * until the first answer; zero on an error, because a badge is a nudge and a
+ * failed count is not worth an error on a page whose other tabs work.
+ */
+function useSubmittedCount(token: string): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  const lastAt = useRef(0);
+  const load = useCallback(() => {
+    lastAt.current = Date.now();
+    api
+      .listRiderApplications(token, { status: 'SUBMITTED' })
+      .then((rows) => setCount(rows.length))
+      .catch(() => setCount((current) => current ?? 0));
+  }, [token]);
+  useEffect(() => {
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => window.clearInterval(id);
+  }, [load]);
+  // The hint also fires on every rider's location ping: refetch at most
+  // every 15 s on it, not a 500-row query per ping per open tab.
+  useRidersChanged(() => {
+    if (dueForRefresh(lastAt.current, Date.now(), 15_000)) load();
+  });
+  return count;
 }
 
 // --- Roster -----------------------------------------------------------------------
