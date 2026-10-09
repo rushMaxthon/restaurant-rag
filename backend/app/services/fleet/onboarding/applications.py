@@ -49,7 +49,7 @@ from app.models.rider_application import RiderApplication, RiderApplicationEvent
 from app.models.user import User
 from app.services.fleet.onboarding import rules, storage
 from app.services.fleet.onboarding.rules import PHOTO_KINDS, SECTION_OF
-from app.services.secrets import SecretsUnavailable, encrypt_secret, secrets_available
+from app.services.secrets import SecretsUnavailable, decrypt_secret, encrypt_secret, secrets_available
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +132,15 @@ def missing_items(app: RiderApplication, items: dict[K, RiderApplicationItem]) -
 
 
 def editable(app: RiderApplication, item: RiderApplicationItem | None) -> bool:
+    """While sent back: what was flagged, and anything required that is still
+    missing - a fix can make a new item required (a bank account given where
+    there was only UPI needs its cheque), and a rider who could not give it
+    would be stuck with no way to resubmit."""
+
     if app.status == ApplicationStatus.DRAFT:
         return True
     if app.status == ApplicationStatus.CHANGES_NEEDED:
-        return item is not None and item.status == ItemStatus.NEEDS_CHANGE
+        return item is not None and item.status in (ItemStatus.NEEDS_CHANGE, ItemStatus.MISSING)
     return False
 
 
@@ -181,6 +186,18 @@ def _seal(value: str, field: str) -> str:
         # Refused rather than stored in the clear: the same rule as payment
         # accounts. An operator sees it on Platform watch before a rider does.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no_secrets") from None
+
+
+def _previous_account(app: RiderApplication) -> str:
+    """The account saved before, compared in full: two accounts can share the
+    last four digits. Unreadable (key changed) counts as different."""
+
+    if not app.bank_account_encrypted:
+        return ""
+    try:
+        return decrypt_secret(app.bank_account_encrypted)
+    except Exception:  # noqa: BLE001 - treated as a different account
+        return ""
 
 
 def _date(raw: Any, field: str) -> date:
@@ -318,6 +335,13 @@ def save_section(
             upi = rules.valid_upi(raw_upi) or ""
             if not upi:
                 raise _invalid("upi_id", "bad_upi")
+        # A cheque proves the account it shows. A different account (or none)
+        # makes the old photo prove nothing, accepted or not: back to missing.
+        if not account or account != _previous_account(app):
+            proof = items[K.BANK_PROOF]
+            if proof.status != ItemStatus.MISSING:
+                proof.status, proof.reason = ItemStatus.MISSING, ""
+                proof.reviewed_at = proof.reviewed_by_user_id = None
         app.bank_holder = holder
         app.bank_account_encrypted = _seal(account, "account_number") if account else ""
         app.bank_account_last4 = account[-4:]

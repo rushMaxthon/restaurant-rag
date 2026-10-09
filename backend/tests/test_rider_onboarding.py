@@ -61,7 +61,7 @@ def make_applicant(fdb, db, digits: str) -> User:
     return user
 
 
-def fill(db, user, vehicle: VehicleType = VehicleType.BIKE) -> None:
+def fill(db, user, vehicle: VehicleType = VehicleType.BIKE, upi_only: bool = False) -> None:
     applications.save_section(db, user, "personal", {
         "full_name": "Asha Applicant", "date_of_birth": "1995-05-10", "city": "Surat",
         "address_line": "12 Rander Road, Adajan", "pincode": "395009",
@@ -74,10 +74,11 @@ def fill(db, user, vehicle: VehicleType = VehicleType.BIKE) -> None:
         "aadhaar_last4": "4321", "pan": "abcde1234f",
         "licence_number": "GJ0520190012345", "licence_expiry": "2030-01-01",
     }, today=TODAY)
-    applications.save_section(db, user, "bank", {
+    bank = {"bank_holder": "Asha Applicant", "upi_id": "asha@okaxis"} if upi_only else {
         "bank_holder": "Asha Applicant", "account_number": "123456789012",
         "account_number_again": "123456789012", "ifsc": "sbin0001234",
-    }, today=TODAY)
+    }
+    applications.save_section(db, user, "bank", bank, today=TODAY)
     app = db.get(RiderApplication, user.id)
     for kind in applications.required_for(app):
         if kind in applications.PHOTO_KINDS:
@@ -251,6 +252,54 @@ class ApplicationFlowTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 applications.save_photo(db, user, ApplicationItemKind.SELFIE, huge)
             self.assertEqual((caught.exception.status_code, caught.exception.detail), (413, "too_large"))
+
+    def test_an_item_that_becomes_required_after_send_back_can_be_given(self) -> None:
+        """Applied with UPI only; the admin asks for a bank account; giving one
+        makes the cheque photo required. It must be uploadable, or the rider is
+        stuck: the photo refused, submit refused, and no admin way out."""
+
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            fill(db, user, upi_only=True)
+            applications.submit(db, user)
+            applications.review_item(
+                db, self.admin, user.id, ApplicationItemKind.BANK_DETAILS, accept=False, reason="Give a bank account"
+            )
+            applications.send_back(db, self.admin, user.id)
+            applications.save_section(db, user, "bank", {
+                "bank_holder": "Asha Applicant", "account_number": "123456789012",
+                "account_number_again": "123456789012", "ifsc": "sbin0001234",
+            }, today=TODAY)
+            applications.save_photo(db, user, ApplicationItemKind.BANK_PROOF, JPEG)
+            applications.submit(db, user)
+            self.assertEqual(db.get(RiderApplication, user.id).status, ApplicationStatus.SUBMITTED)
+
+    def test_a_new_account_needs_a_new_cheque(self) -> None:
+        """An accepted cheque belongs to the account it shows: change the
+        account and the old photo no longer proves anything."""
+
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            app = db.get(RiderApplication, user.id)
+            for kind in applications.required_for(app):
+                if kind != ApplicationItemKind.BANK_DETAILS:
+                    applications.review_item(db, self.admin, user.id, kind, accept=True)
+            applications.review_item(
+                db, self.admin, user.id, ApplicationItemKind.BANK_DETAILS, accept=False, reason="Wrong IFSC"
+            )
+            applications.send_back(db, self.admin, user.id)
+            applications.save_section(db, user, "bank", {
+                "bank_holder": "Asha Applicant", "account_number": "999988887777",
+                "account_number_again": "999988887777", "ifsc": "hdfc0001234",
+            }, today=TODAY)
+            proof = db.query(RiderApplicationItem).filter_by(
+                rider_user_id=user.id, kind=ApplicationItemKind.BANK_PROOF
+            ).one()
+            self.assertEqual(proof.status, ItemStatus.MISSING)
+            with self.assertRaises(HTTPException):
+                applications.submit(db, user)  # the new cheque is missing
+            applications.save_photo(db, user, ApplicationItemKind.BANK_PROOF, JPEG)
+            applications.submit(db, user)
 
     def test_submissions_and_decisions_are_announced(self) -> None:
         with self.fdb.session() as db:
