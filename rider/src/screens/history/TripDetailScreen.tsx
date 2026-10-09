@@ -146,7 +146,9 @@ export function TripDetailScreen({
           <Stop
             icon="home"
             color={colors.success}
-            label="Delivered to"
+            label={
+              trip.end_reason === 'DELIVERED' ? 'Delivered to' : 'Was going to'
+            }
             name={trip.drop.name}
             address={trip.drop.address}
           />

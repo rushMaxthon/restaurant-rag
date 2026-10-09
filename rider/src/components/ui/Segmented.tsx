@@ -54,6 +54,7 @@ export function Segmented<K extends string>({
 
   return (
     <View
+      accessibilityRole="tablist"
       onLayout={onLayout}
       style={[
         styles.track,
@@ -96,7 +97,8 @@ const PAD = 4;
 const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
-    height: touch.min,
+    // Each segment is a full touch target inside the padding.
+    height: touch.min + PAD * 2,
     borderRadius: radius.pill,
     borderWidth: 1,
     padding: PAD,

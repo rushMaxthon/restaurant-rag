@@ -111,12 +111,18 @@ function SignedIn() {
  */
 function SignedInStack() {
   const { loaded, seen } = useGuide();
+  const { loading, me, trip } = useRider();
   const { colors } = useTheme();
-  if (!loaded)
+  // First run only: wait for /me as well, so a rider who is on shift or
+  // carrying an order (an app update, a reinstall) goes straight to it and
+  // keeps hearing offers, instead of being walked through the intro.
+  if (!loaded || (!seen.intro && loading))
     return <View style={[styles.fill, { backgroundColor: colors.bg }]} />;
+  const intro =
+    !seen.intro && !trip && (me === null || me.status === 'OFFLINE');
   return (
     <Stack.Navigator
-      initialRouteName={seen.intro ? 'Main' : 'Intro'}
+      initialRouteName={intro ? 'Intro' : 'Main'}
       screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
     >
       <Stack.Screen name="Main" component={MainTabsWithWatcher} />

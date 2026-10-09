@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -120,20 +120,27 @@ export function EarningsScreen() {
   const period = periodFor(periodKey);
   const [data, setData] = useState<Earnings | null>(null);
   const [payouts, setPayouts] = useState<Payout[] | null>(null);
+  const [payoutsFailed, setPayoutsFailed] = useState(false);
+  // Two period taps in a row start two requests; only the latest may land.
+  const request = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   useTour('earnings', data !== null);
 
   const load = useCallback(async () => {
+    const mine = ++request.current;
     try {
       const [earnings, paid] = await Promise.all([
         api.earnings(period.days),
         api.payouts().catch(() => null),
       ]);
+      if (mine !== request.current) return;
       setData(earnings);
-      if (paid) setPayouts(paid);
+      setPayouts(paid ?? []);
+      setPayoutsFailed(paid === null);
       setError(null);
     } catch (e) {
+      if (mine !== request.current) return;
       setError(e instanceof ApiError ? e.message : 'Could not load earnings.');
     }
   }, [api, period.days]);
@@ -334,6 +341,17 @@ export function EarningsScreen() {
           </View>
           {payouts === null ? (
             <Skeleton height={56} round={radius.md} />
+          ) : payoutsFailed ? (
+            <View
+              style={[styles.emptyPay, { backgroundColor: colors.surfaceAlt }]}
+            >
+              <AppText variant="label" align="center">
+                Couldn't load payments
+              </AppText>
+              <AppText variant="caption" tone="muted" align="center">
+                Pull down to try again.
+              </AppText>
+            </View>
           ) : payouts.length === 0 ? (
             <View
               style={[styles.emptyPay, { backgroundColor: colors.surfaceAlt }]}

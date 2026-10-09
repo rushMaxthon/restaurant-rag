@@ -34,3 +34,13 @@ describe('the spotlight tours', () => {
     }
   });
 });
+
+describe('which tours run under the floating tab bar', () => {
+  it('marks the tab screens, so a control hidden under the bar is not pointed at', () => {
+    expect(TOURS.home.tabbed).toBe(true);
+    expect(TOURS.orders.tabbed).toBe(true);
+    expect(TOURS.earnings.tabbed).toBe(true);
+    expect(TOURS.trip.tabbed).toBe(false);
+    expect(TOURS.otp.tabbed).toBe(false);
+  });
+});

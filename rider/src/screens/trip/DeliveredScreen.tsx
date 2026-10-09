@@ -58,7 +58,9 @@ export function DeliveredScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, 'Delivered'>) {
   const { colors } = useTheme();
-  const waiting = waitingLabel(useRider().openOrders.length);
+  const { me, openOrders } = useRider();
+  // Only when they could actually take one: the board needs them online.
+  const waiting = waitingLabel(me?.status === 'ONLINE' ? openOrders.length : 0);
   const ring = useSharedValue(0);
   const tick = useSharedValue(0);
   const pop = useSharedValue(0.6);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText } from '@components/ui/AppText';
@@ -66,8 +66,17 @@ export function ProblemSheet({
   unavailableBusy: boolean;
 }) {
   const atDoor = trip.step === 'at_drop';
+  // Re-check the clock while the sheet is open at the door, so the button
+  // unlocks at ten minutes without the rider closing and reopening it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open || !atDoor) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, [open, atDoor]);
   const waitedMin = trip.arrived_drop_at
-    ? (Date.now() - new Date(trip.arrived_drop_at).getTime()) / 60_000
+    ? (now - new Date(trip.arrived_drop_at).getTime()) / 60_000
     : 0;
   const canGiveUp =
     waitedMin >= WAIT_MINUTES && trip.call_attempts >= CALLS_NEEDED;

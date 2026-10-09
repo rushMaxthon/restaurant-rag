@@ -21,10 +21,12 @@ export const TARGETS = {
 export type TargetId = (typeof TARGETS)[keyof typeof TARGETS];
 
 export type TourStep = { target: TargetId; title: string; body: string };
-export type Tour = { steps: TourStep[] };
+/** `tabbed`: the floating tab bar covers the bottom of this screen, so a control under it is not visible. */
+export type Tour = { steps: TourStep[]; tabbed?: boolean };
 
 export const TOURS = {
   home: {
+    tabbed: true,
     steps: [
       {
         target: TARGETS.homeToggle,
@@ -44,6 +46,7 @@ export const TOURS = {
     ],
   },
   orders: {
+    tabbed: true,
     steps: [
       {
         target: TARGETS.ordersTake,
@@ -53,6 +56,7 @@ export const TOURS = {
     ],
   },
   trip: {
+    tabbed: false,
     steps: [
       {
         target: TARGETS.tripSteps,
@@ -67,6 +71,7 @@ export const TOURS = {
     ],
   },
   otp: {
+    tabbed: false,
     steps: [
       {
         target: TARGETS.tripOtp,
@@ -76,6 +81,7 @@ export const TOURS = {
     ],
   },
   earnings: {
+    tabbed: true,
     steps: [
       {
         target: TARGETS.earningsUnpaid,

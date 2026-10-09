@@ -157,7 +157,7 @@ export function IntroScreen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { markIntroSeen } = useGuide();
-  const { ready } = usePermissions();
+  const { ready, state: permissionState } = usePermissions();
   const list = useRef<FlatList<Card>>(null);
   const [index, setIndex] = useState(0);
   // A horizontal list gives its rows no height of their own: measured, so a card can centre itself.
@@ -171,9 +171,16 @@ export function IntroScreen({
       navigation.goBack();
       return;
     }
-    if (ready) navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-    else navigation.replace('Permissions');
-  }, [markIntroSeen, replay, ready, navigation]);
+    // Permissions sits ON TOP of Main, never alone: going online is what the
+    // permissions gate, and Home says so, so a rider may always get past it.
+    if (ready || permissionState === null)
+      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+    else
+      navigation.reset({
+        index: 1,
+        routes: [{ name: 'Main' }, { name: 'Permissions' }],
+      });
+  }, [markIntroSeen, replay, ready, permissionState, navigation]);
 
   const goTo = (i: number) => {
     list.current?.scrollToIndex({ index: i, animated: true });

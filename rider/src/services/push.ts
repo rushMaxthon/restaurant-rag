@@ -2,6 +2,7 @@ import notifee, {
   AndroidCategory,
   AndroidImportance,
   AndroidVisibility,
+  AuthorizationStatus,
   EventType,
   type Event,
 } from '@notifee/react-native';
@@ -129,6 +130,13 @@ export async function testOfferAlert(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   try {
     await channels();
+    // displayNotification resolves even when nothing can be heard: denied
+    // notifications, or the order channel silenced in the phone's settings.
+    const settings = await notifee.getNotificationSettings();
+    if (settings.authorizationStatus !== AuthorizationStatus.AUTHORIZED)
+      return false;
+    const channel = await notifee.getChannel(OFFER_CHANNEL);
+    if (channel?.blocked) return false;
     await notifee.displayNotification({
       id: 'offer-test',
       title: 'This is what a new order sounds like',

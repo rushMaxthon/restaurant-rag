@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 
 import { ApiError } from '@/services/http';
-import { clearPending, loadPending, savePending } from '@/services/pendingAction';
+import {
+  clearPending,
+  loadPending,
+  savePending,
+} from '@/services/pendingAction';
 import { useApi } from '@/store/SessionProvider';
 import type { Trip, TripAction } from '@/types/api';
 import { actionId } from '@utils/format';
@@ -22,7 +26,10 @@ type Pending = { action: TripAction; id: string; otp?: string };
  * being killed: the next time this trip opens, it is sent again. The moment
  * the phone gets a connection back it is retried at once, not on the timer.
  */
-export function useTripAction(tripId: string | undefined, onDone: (trip: Trip) => void) {
+export function useTripAction(
+  tripId: string | undefined,
+  onDone: (trip: Trip) => void,
+) {
   const api = useApi();
   const [pending, setPending] = useState<Pending | null>(null);
   const [waitingForNetwork, setWaitingForNetwork] = useState(false);
@@ -56,7 +63,11 @@ export function useTripAction(tripId: string | undefined, onDone: (trip: Trip) =
         void clearPending();
         setPending(null);
         setWaitingForNetwork(false);
-        setError(e instanceof ApiError ? e : new ApiError(0, 'Something went wrong. Try again.'));
+        setError(
+          e instanceof ApiError
+            ? e
+            : new ApiError(0, 'Something went wrong. Try again.'),
+        );
       } finally {
         inFlight.current = false;
       }
@@ -64,9 +75,12 @@ export function useTripAction(tripId: string | undefined, onDone: (trip: Trip) =
     [api, tripId],
   );
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   // A step saved before the app was killed goes out again, same id.
   useEffect(() => {
@@ -87,22 +101,43 @@ export function useTripAction(tripId: string | undefined, onDone: (trip: Trip) =
   useEffect(() => {
     if (!pending || !waitingForNetwork) return;
     return NetInfo.addEventListener(state => {
-      if (state.isConnected && state.isInternetReachable !== false) void attempt(pending);
+      if (state.isConnected && state.isInternetReachable !== false)
+        void attempt(pending);
     });
   }, [pending, waitingForNetwork, attempt]);
 
   const run = useCallback(
     (action: TripAction, otp?: string) => {
+      // Logging a call is advice to the server, not a step: it is sent once,
+      // never saved or retried, so it can never sit in front of "delivered".
+      if (action === 'call-logged') {
+        if (tripId)
+          api
+            .act(tripId, action, actionId())
+            .then(trip => doneRef.current(trip))
+            .catch(() => undefined);
+        return;
+      }
       if (pending) return;
       setError(null);
       const p = { action, id: actionId(), otp };
       setPending(p);
       if (tripId) {
-        void savePending({ tripId, ...p, savedAt: new Date().toISOString() }).then(() => attempt(p));
+        void savePending({
+          tripId,
+          ...p,
+          savedAt: new Date().toISOString(),
+        }).then(() => attempt(p));
       }
     },
-    [attempt, pending, tripId],
+    [api, attempt, pending, tripId],
   );
 
-  return { run, busy: pending?.action ?? null, waitingForNetwork, error, clearError: () => setError(null) };
+  return {
+    run,
+    busy: pending?.action ?? null,
+    waitingForNetwork,
+    error,
+    clearError: () => setError(null),
+  };
 }

@@ -80,7 +80,8 @@ def rider_payouts(db: Session, rider_user_id: uuid.UUID, *, limit: int = 50) -> 
         db.scalars(
             select(RiderPayout)
             .where(RiderPayout.rider_user_id == rider_user_id)
-            .order_by(RiderPayout.paid_at.desc())
+            # id breaks a tie: two payouts in one second keep a stable order between loads.
+            .order_by(RiderPayout.paid_at.desc(), RiderPayout.id.desc())
             .limit(limit)
         )
     )

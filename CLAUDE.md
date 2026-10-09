@@ -640,6 +640,13 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   no sheet) - `ui/Sheet` is a plain `Modal`; and a Reanimated `entering`
   animation on a FlashList cell left the cell mis-measured (a gap above it,
   taps falling through), so History rows have none.
+  Review fixes the same day: the intro waits for `/rider/me` and never runs
+  for a rider on shift or carrying an order (an app update must not pull them
+  off a live trip or away from offers); Permissions is always pushed OVER
+  Main with a "Not now" - going online is what the permissions gate, not the
+  app; a step whose control is off-screen (or under the floating tab bar,
+  unless the step points at the tab bar itself) is dropped without marking
+  the tour seen; `call-logged` is never queued ahead of a real step.
 
 ## Payouts (Razorpay Route)
 

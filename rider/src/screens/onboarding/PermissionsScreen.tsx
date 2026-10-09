@@ -45,6 +45,10 @@ export function PermissionsScreen() {
   const { colors } = useTheme();
   const nav = useNav();
   const { state, ready, request, openAutoStart } = usePermissions();
+  const leave = () =>
+    nav.canGoBack()
+      ? nav.goBack()
+      : nav.reset({ index: 0, routes: [{ name: 'Main' }] });
   // Only on brands that ship their own auto-start screen (Xiaomi, Oppo...).
   const [autoStart, setAutoStart] = React.useState(false);
   React.useEffect(() => {
@@ -136,13 +140,12 @@ export function PermissionsScreen() {
         label={ready ? 'All set' : 'Continue'}
         icon="arrow-forward"
         disabledReason={gateReason(state)}
-        onPress={() =>
-          // Reached from the intro there is nothing behind this screen: start fresh on Home.
-          nav.canGoBack()
-            ? nav.goBack()
-            : nav.reset({ index: 0, routes: [{ name: 'Main' }] })
-        }
+        onPress={leave}
       />
+      {ready ? null : (
+        // Going online is what these gate (Home says so); the app itself is not.
+        <Button kind="ghost" size="md" label="Not now" onPress={leave} />
+      )}
     </Screen>
   );
 }

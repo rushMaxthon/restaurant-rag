@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -74,6 +74,13 @@ export function ProfileScreen() {
   const { resetTips } = useGuide();
   const [appearance, setAppearance] = useState(false);
   const [alertNote, setAlertNote] = useState<string | null>(null);
+  const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (alertTimer.current) clearTimeout(alertTimer.current);
+    },
+    [],
+  );
   const nav = useNav();
   const api = useApi();
   const user = useSignedInUser();
@@ -212,8 +219,9 @@ export function ProfileScreen() {
           value={alertNote ?? 'Hear the ring'}
           onPress={async () => {
             const ok = await testOfferAlert();
-            setAlertNote(ok ? 'Listen…' : 'Allow notifications first');
-            setTimeout(() => setAlertNote(null), 6000);
+            setAlertNote(ok ? 'Listen…' : 'Notifications are off');
+            if (alertTimer.current) clearTimeout(alertTimer.current);
+            alertTimer.current = setTimeout(() => setAlertNote(null), 6000);
           }}
         />
         <AppText variant="micro" tone="muted" style={styles.section}>

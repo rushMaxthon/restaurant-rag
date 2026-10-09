@@ -42,6 +42,9 @@ import {
 /** What a `View` ref actually holds on the new architecture. */
 type Host = React.ComponentRef<typeof View>;
 
+/** Tab bar height + its bottom margin + room for a gesture bar (TabBar.tsx). */
+const TAB_BAR_COVER = 68 + 16 + 24;
+
 type Measured = { step: TourStep; rect: Rect };
 
 export type ActiveTour = {
@@ -119,38 +122,39 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
     (id: TourId) => {
       if (starting.current || active || isSeen(seen, id)) return;
       starting.current = true;
-      const steps = TOURS[id].steps;
-      const window = Dimensions.get('window');
+      const { steps, tabbed } = TOURS[id];
+      const full = Dimensions.get('window');
+      // The floating tab bar hides the bottom of a tabbed screen - except
+      // for a step that points at the tab bar itself.
+      const covered = { ...full, height: full.height - TAB_BAR_COVER };
       Promise.all(
         steps.map(async step => {
           const ref = targets.current.get(step.target);
           const rect = ref ? await measure(ref) : null;
+          const window =
+            tabbed && !step.target.startsWith('tab.') ? covered : full;
           return rect && inWindow(rect, window) ? { step, rect } : null;
         }),
       )
         .then(measured => {
           const usable = measured.filter((m): m is Measured => m !== null);
-          // Nothing to point at: count it seen rather than nag on every visit.
-          if (usable.length === 0) finish(id);
-          else setActive({ id, steps: usable, index: 0 });
+          // Nothing on screen to point at (a short phone, the card scrolled
+          // away): not seen, so it gets another chance next time the screen
+          // opens, rather than being burned forever without ever showing.
+          if (usable.length > 0) setActive({ id, steps: usable, index: 0 });
         })
         .finally(() => {
           starting.current = false;
         });
     },
-    [active, seen, finish],
+    [active, seen],
   );
 
   const next = useCallback(() => {
-    setActive(current => {
-      if (!current) return null;
-      if (current.index + 1 >= current.steps.length) {
-        finish(current.id);
-        return null;
-      }
-      return { ...current, index: current.index + 1 };
-    });
-  }, [finish]);
+    if (!active) return;
+    if (active.index + 1 >= active.steps.length) finish(active.id);
+    else setActive({ ...active, index: active.index + 1 });
+  }, [active, finish]);
 
   const skip = useCallback(() => {
     if (active) finish(active.id);
