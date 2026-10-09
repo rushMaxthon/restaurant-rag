@@ -205,6 +205,11 @@ def update_rider(db: Session, admin: User, user_id: uuid.UUID, **fields: Any) ->
     db.commit()
     logger.info("Rider %s updated by %s: %s", user.id, admin.id, sorted(k for k in fields if k != "password"))
     _move_on(released)
+    if revoke:
+        from app.services.fleet import notify
+
+        # Deactivated or reset: off shift on every admin screen at once.
+        notify.riders_changed(user.id, force=True)
     return user
 
 
@@ -241,8 +246,9 @@ def set_status(db: Session, user: User, online: bool) -> Rider:
     _move_on(released)
     from app.services.fleet import notify
 
-    # A pin appears or disappears on the admin map now, not at the next poll.
-    notify.riders_changed(user.id)
+    # A pin appears or disappears on the admin map now, not at the next poll -
+    # forced, so a ping a second earlier cannot throttle the status away.
+    notify.riders_changed(user.id, force=True)
     return rider
 
 
@@ -291,15 +297,20 @@ def sweep_silent(db: Session, now: datetime | None = None) -> dict[str, Any]:
             (Rider.last_location_at.is_(None)) | (Rider.last_location_at < cutoff),
         )
     ).all()
-    offline, alerts, released = 0, [], []
+    offline, alerts, released, taken_off = 0, [], [], []
     for rider in silent:
         if rider.status == RiderStatus.ON_TRIP:
             alerts.append(str(rider.user_id))
             continue
         released += go_offline(db, rider.user_id, "no location for too long")
+        taken_off.append(rider.user_id)
         offline += 1
     db.commit()
     _move_on(released)
+    from app.services.fleet import notify
+
+    for rider_user_id in taken_off:
+        notify.riders_changed(rider_user_id, force=True)
     return {"offline": offline, "alerts": alerts}
 
 

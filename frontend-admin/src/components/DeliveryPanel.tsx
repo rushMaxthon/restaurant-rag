@@ -12,6 +12,8 @@ import {
   stepLabel,
 } from '../services/courier';
 import { useMoney } from '../hooks/useMoney';
+import { useOrdersChanged } from '../hooks/useRealtime';
+import { concernsOrder } from '../services/realtime';
 import { FleetDeliverySection } from './FleetDeliverySection';
 import type { OrderDelivery, ToastMessage } from '../types/app';
 
@@ -79,6 +81,11 @@ export function DeliveryPanel({ token, orderId, awaiting, onToast, isAdmin = fal
   // Bumped after an action, so the poll restarts from the new state - a
   // re-booked trip is live again and must be watched again.
   const [round, setRound] = useState(0);
+  // A rider step (assigned, at the restaurant, at the door) is pushed as this
+  // order changing: read the card now rather than at the next 10 s poll.
+  useOrdersChanged((orderIds) => {
+    if (concernsOrder(orderIds, orderId)) setRound((n) => n + 1);
+  });
 
   useEffect(() => {
     let cancelled = false;

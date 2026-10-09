@@ -129,10 +129,13 @@ def offer_made(db: Session, offer: Any) -> None:
         # An offer that arrives after it expired is worse than none.
         ttl_seconds=ttl,
     )
+    # The admin map's waiting list says who is being asked right now.
+    riders_changed(offer.rider_user_id, force=True)
 
 
 def offer_withdrawn(db: Session, offer: Any) -> None:
     _to_rider(OFFER_WITHDRAWN_EVENT, offer.rider_user_id, {"offer_id": str(offer.id)})
+    riders_changed(offer.rider_user_id, force=True)
 
 
 def trip_changed(db: Session, trip: Any) -> None:
@@ -158,31 +161,59 @@ def _throttled(delivery_id: uuid.UUID) -> bool:
         return False
 
 
-def riders_changed(rider_user_id: uuid.UUID) -> None:
-    """Tell the admin live map a rider moved. An id, never a position: the map
-    refetches `/admin/riders/live`, whose ADMIN-only rule decides who sees it."""
+def riders_changed(rider_user_id: uuid.UUID, *, force: bool = False) -> None:
+    """Tell the admin's rider list and live map a rider changed. An id, never
+    a position: they refetch over REST, whose ADMIN-only rule decides who sees it.
+
+    Throttled per rider for location pings, which arrive every few seconds.
+    `force` is for a STATUS change (online, offline, on a trip, free again,
+    deactivated) and skips the throttle: going online a second after a
+    location ping must still reach the screen, not wait for its next poll.
+    """
 
     from app.services.realtime.rooms import ADMIN_ALL_ROOM
 
     if not get_settings().enable_realtime:
         return
-    try:
-        from app.services.cache import get_redis_client
+    if not force:
+        try:
+            from app.services.cache import get_redis_client
 
-        if not get_redis_client().set(
-            f"fleet:rider_hint:{rider_user_id}", "1", nx=True, ex=RIDER_HINT_THROTTLE_SECONDS
-        ):
-            return
-    except Exception:  # noqa: BLE001 - Redis down: announce rather than go silent
-        pass
+            if not get_redis_client().set(
+                f"fleet:rider_hint:{rider_user_id}", "1", nx=True, ex=RIDER_HINT_THROTTLE_SECONDS
+            ):
+                return
+        except Exception:  # noqa: BLE001 - Redis down: announce rather than go silent
+            pass
     _emit(RIDERS_CHANGED_EVENT, {"rider_id": str(rider_user_id)}, room=ADMIN_ALL_ROOM)
 
 
 def order_moved(db: Session, delivery: Any) -> None:
-    """The rider moved: the existing `order:updated` hint, so maps refetch."""
+    """The rider moved: the existing `order:updated` hint, so maps refetch.
+    Throttled: a position is worth one refetch per window, not one per fix."""
 
     if not get_settings().enable_realtime or _throttled(delivery.id):
         return
+    _order_hint(delivery, "rider_moved")
+
+
+def delivery_changed(db: Session | None, delivery: Any, reason: str) -> None:
+    """A delivery step that the order's status does not show - a rider was
+    assigned, reached the restaurant, reached the door - told to everyone
+    watching the order: its branch, its restaurant, the admin and the
+    customer, as the same `order:updated` hint a status change sends.
+
+    Never throttled: each one is a real step, and they come seconds apart at
+    most. "Picked up" and "delivered" also move the order and send their own
+    hint; the clients coalesce, so the second is free.
+    """
+
+    if not get_settings().enable_realtime:
+        return
+    _order_hint(delivery, reason)
+
+
+def _order_hint(delivery: Any, reason: str) -> None:
     try:
         from app.services.realtime.outbox import ORDER_UPDATED_EVENT
         from app.services.realtime.rooms import order_event_rooms
@@ -195,7 +226,7 @@ def order_moved(db: Session, delivery: Any) -> None:
             "status": getattr(order.status, "value", order.status),
             "from_status": getattr(order.status, "value", order.status),
             "occurred_at": datetime.now(UTC).isoformat(),
-            "reason": "rider_moved",
+            "reason": reason,
         }
         rooms = order_event_rooms(
             restaurant_id=order.restaurant_id,
@@ -203,12 +234,13 @@ def order_moved(db: Session, delivery: Any) -> None:
             customer_id=order.customer_id,
         )
     except Exception:  # noqa: BLE001
-        logger.warning("Could not build rider-moved event", exc_info=True)
+        logger.warning("Could not build delivery event reason=%s", reason, exc_info=True)
         return
     _emit(ORDER_UPDATED_EVENT, payload, room=rooms)
 
 
 __all__ = [
     "OFFER_CHANNEL", "OFFER_EVENT", "OFFER_WITHDRAWN_EVENT", "TRIP_CANCELLED_EVENT", "TRIP_UPDATED_EVENT",
-    "offer_made", "offer_withdrawn", "order_moved", "trip_cancelled", "trip_changed",
+    "delivery_changed", "offer_made", "offer_withdrawn", "order_moved", "riders_changed",
+    "trip_cancelled", "trip_changed",
 ]

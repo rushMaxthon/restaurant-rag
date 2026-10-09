@@ -41,7 +41,18 @@ class RiderEventsTests(unittest.TestCase):
         with mock.patch("app.services.realtime.outbox._emitter", return_value=emitter), \
                 mock.patch.object(notify, "_push") as push:
             notify.offer_made(mock.Mock(), offer)
-        emitter.emit.assert_called_once_with(notify.OFFER_EVENT, {"offer_id": str(offer.id)}, room=user_room(offer.rider_user_id))
+        # The offer itself goes to the rider's room and nowhere else. The only
+        # other emit is the admin map's id-only rider hint (2026-10-09, so
+        # "Asking <rider>" updates at once) - it carries no offer at all.
+        from app.services.realtime.rooms import ADMIN_ALL_ROOM
+
+        self.assertEqual(
+            emitter.emit.call_args_list,
+            [
+                mock.call(notify.OFFER_EVENT, {"offer_id": str(offer.id)}, room=user_room(offer.rider_user_id)),
+                mock.call(notify.RIDERS_CHANGED_EVENT, {"rider_id": str(offer.rider_user_id)}, room=ADMIN_ALL_ROOM),
+            ],
+        )
         data = push.call_args.args[2]
         self.assertEqual(data["type"], "rider_offer")
         self.assertLessEqual(push.call_args.kwargs["ttl_seconds"], 30)

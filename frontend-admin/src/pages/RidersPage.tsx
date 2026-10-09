@@ -16,6 +16,7 @@ import { Bike, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus,
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useRidersChanged } from '../hooks/useRealtime';
 import { DataToolbar } from '../components/DataToolbar';
 import { EmptyPanel } from '../components/EmptyPanel';
 import { Modal } from '../components/Modal';
@@ -116,12 +117,15 @@ function RosterTab({ token, onToast }: RidersPageProps) {
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Please try again.'));
   }, [token]);
 
-  // Live status moves on its own: refresh while the page is open.
+  // Live status moves on its own: refreshed the moment a rider goes online,
+  // offline, takes an order or finishes one (fleet:riders_changed), and
+  // polled while the page is open in case a push is missed.
   useEffect(() => {
     load();
     const id = window.setInterval(load, 20_000);
     return () => window.clearInterval(id);
   }, [load, reload]);
+  useRidersChanged(load);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

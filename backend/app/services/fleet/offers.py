@@ -303,6 +303,10 @@ def _start_trip(
     from app.services.fleet import notify
 
     notify.trip_changed(db, trip)
+    # Online -> on a trip on the admin's list and map; a rider's name on the
+    # customer's order page and the restaurant's boards.
+    notify.riders_changed(rider_user.id, force=True)
+    notify.delivery_changed(db, delivery, "rider_assigned")
     logger.info("Rider %s took delivery %s", rider_user.id, delivery.id)
     return trip
 
@@ -526,7 +530,7 @@ def reassign(db: Session, admin: User, delivery: OrderDelivery, rider_user_id: u
         # breakdown. Rescuing it is the one reassign of a held order allowed.
     from app.services.fleet import notify, trips
 
-    trips.end_live_trip(db, delivery, reason="REASSIGNED")
+    taken_from = trips.end_live_trip(db, delivery, reason="REASSIGNED")
     withdrawn = list(
         db.scalars(
             select(RiderOffer).where(
@@ -553,6 +557,11 @@ def reassign(db: Session, admin: User, delivery: OrderDelivery, rider_user_id: u
     for old in withdrawn:
         notify.offer_withdrawn(db, old)
     notify.offer_made(db, offer)
+    if taken_from is not None:
+        # The rider it was taken from is free again, and the order has no rider.
+        notify.trip_changed(db, taken_from)
+        notify.riders_changed(taken_from.rider_user_id, force=True)
+        notify.delivery_changed(db, delivery, "rider_reassigned")
     schedule_expiry(delivery.id, fleet.offer_seconds)
     return offer
 

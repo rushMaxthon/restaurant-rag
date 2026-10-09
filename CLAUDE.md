@@ -648,6 +648,21 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   unless the step points at the tab bar itself) is dropped without marking
   the tour seen; `call-logged` is never queued ahead of a real step.
 
+- **Every rider status change is announced (2026-10-09, `test_fleet_sync`).**
+  Two id-only hints in `fleet/notify.py`: `riders_changed(id, force=True)` to
+  `admin:all` for a STATUS change (online, offline, took an order, finished,
+  freed by a cancel or reassign, deactivated, swept) - `force` skips the 3 s
+  throttle that exists for location pings, which would otherwise swallow a
+  status change made a second after a ping; and `delivery_changed(delivery,
+  reason)`, an `order:updated` to the order's rooms for a step that does not
+  move the order status (assigned, at the restaurant, at the door), which
+  used to reach nobody until a poll. Offers made/withdrawn also send the map
+  hint ("Asking ..."). Listening: admin Riders list, FleetDeliverySection
+  and DeliveryPanel (`useRidersChanged`/`useOrdersChanged` + `concernsOrder`),
+  the storefront's delivery card (`order-refresh.ts`). Polls stay as the net.
+  Rider app: Go online re-checks permissions at the tap (a stale copy looped
+  riders back to Permissions).
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

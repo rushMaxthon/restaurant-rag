@@ -39,7 +39,13 @@ async function check(): Promise<PermissionState> {
 export function usePermissions() {
   const [state, setState] = useState<PermissionState | null>(null);
 
-  const refresh = useCallback(async () => setState(await check()), []);
+  // Returns what it read, so a caller can act on the phone's answer NOW
+  // rather than on this copy's state, which another screen may have outdated.
+  const refresh = useCallback(async () => {
+    const next = await check();
+    setState(next);
+    return next;
+  }, []);
 
   useEffect(() => {
     void refresh();

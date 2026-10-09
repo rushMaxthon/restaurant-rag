@@ -286,6 +286,14 @@ const ORDER_SNAPSHOT_PREFIXES = [
 type OrdersListener = (orderIds: string[] | null) => void;
 const ordersListeners = new Set<OrdersListener>();
 
+/**
+ * Whether a push is about this order. `null` is a reconnect: anything may
+ * have moved while the socket was down, so every open order screen refetches.
+ */
+export function concernsOrder(orderIds: string[] | null, orderId: string): boolean {
+  return orderIds === null || orderIds.includes(orderId);
+}
+
 export function onOrdersChanged(listener: OrdersListener): () => void {
   ordersListeners.add(listener);
   return () => {

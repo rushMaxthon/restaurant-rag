@@ -250,3 +250,16 @@ describe("announceOrdersChanged", () => {
     expect(getPageSnapshot("restaurants:scope:list")).toEqual({ rows: [] });
   });
 });
+
+describe('whether a push concerns one order', () => {
+  it('is about the order when its id is in the push', async () => {
+    const { concernsOrder } = await import('./realtime');
+    expect(concernsOrder(['a', 'b'], 'b')).toBe(true);
+    expect(concernsOrder(['a'], 'b')).toBe(false);
+  });
+
+  it('is about every order after a reconnect, when anything may have moved', async () => {
+    const { concernsOrder } = await import('./realtime');
+    expect(concernsOrder(null, 'b')).toBe(true);
+  });
+});

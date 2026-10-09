@@ -1,7 +1,9 @@
 import { CheckCircle2, RefreshCw, UserCheck } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { useOrdersChanged, useRidersChanged } from '../hooks/useRealtime';
 import { ApiError, api, formatDate } from '../services/api';
+import { concernsOrder } from '../services/realtime';
 import { reassignErrorMessage } from '../services/riders';
 import type { FleetDeliveryView, FleetOfferRow, Rider, ToastMessage } from '../types/app';
 import { StatusPill } from './StatusPill';
@@ -66,6 +68,12 @@ export function FleetDeliverySection({
     const id = window.setInterval(load, 15_000);
     return () => window.clearInterval(id);
   }, [load]);
+  // The poll is the safety net. A step on this order, or any rider going on
+  // or off shift (the "free to assign" list), refreshes at once.
+  useOrdersChanged((orderIds) => {
+    if (concernsOrder(orderIds, orderId)) load();
+  });
+  useRidersChanged(load);
 
   async function run(action: () => Promise<FleetDeliveryView>, done: string) {
     setBusy(true);

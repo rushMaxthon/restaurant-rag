@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -24,7 +25,7 @@ import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import { useTour } from '@/guide/useTour';
 import { usePermissions } from '@hooks/usePermissions';
-import { gateReason } from '@utils/permissions';
+import { firstMissing, gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
@@ -51,6 +52,14 @@ export function HomeScreen() {
   const { me, trip, loading, setMe, refreshMe, refreshTrip, error } =
     useRider();
   const permissions = usePermissions();
+  // Back from the Permissions screen or the phone's settings: read again, so
+  // the "Finish setting up" note and the toggle agree with the phone.
+  const refreshPermissions = permissions.refresh;
+  useFocusEffect(
+    useCallback(() => {
+      void refreshPermissions();
+    }, [refreshPermissions]),
+  );
   const location = useRiderLocation();
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -72,7 +81,10 @@ export function HomeScreen() {
 
   const toggle = useCallback(
     async (next: boolean) => {
-      if (next && !permissions.ready) {
+      // Asked again at the tap: this screen's copy was read when it opened,
+      // and a permission granted since (on the Permissions screen or in the
+      // phone's settings) would otherwise send the rider back there in a loop.
+      if (next && firstMissing(await permissions.refresh()) !== null) {
         nav.navigate('Permissions');
         return;
       }
@@ -96,7 +108,7 @@ export function HomeScreen() {
         setToggling(false);
       }
     },
-    [api, nav, permissions.ready, setMe],
+    [api, nav, permissions, setMe],
   );
 
   const onRefresh = useCallback(async () => {

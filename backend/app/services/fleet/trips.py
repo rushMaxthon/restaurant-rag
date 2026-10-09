@@ -168,6 +168,9 @@ def on_order_cancelled(db: Session, delivery: OrderDelivery) -> None:
             notify.offer_withdrawn(session, offer)
         if trip is not None:
             notify.trip_cancelled(session, trip)
+            # Free again on the admin's screens; the order's own CANCELLED
+            # event already tells everyone watching the order.
+            notify.riders_changed(trip.rider_user_id, force=True)
 
     event.listen(db, "after_commit", _tell, once=True)
 
@@ -309,6 +312,13 @@ def act(
     trip.applied_actions = [*(trip.applied_actions or []), action_id][-50:]
     db.commit()
     notify.trip_changed(db, trip)
+    # Everyone watching this order hears the step (a logged call is the
+    # rider's own record, not news), and a finished trip puts the rider back
+    # to "Online" on the admin's screens.
+    if action != "call_logged":
+        notify.delivery_changed(db, delivery, f"rider_{action}")
+    if trip.ended_at is not None:
+        notify.riders_changed(trip.rider_user_id, force=True)
     return trip
 
 
@@ -336,6 +346,8 @@ def admin_confirm_delivered(db: Session, admin: Any, delivery: OrderDelivery, re
     from app.services.fleet import notify
 
     notify.trip_changed(db, trip)
+    notify.delivery_changed(db, delivery, "confirmed_by_admin")
+    notify.riders_changed(trip.rider_user_id, force=True)
     return trip
 
 
