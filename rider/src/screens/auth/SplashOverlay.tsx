@@ -77,7 +77,7 @@ export function SplashOverlay({ ready }: { ready: boolean }) {
       </Animated.View>
       <Animated.View style={[styles.words, words]}>
         <AppText variant="display" align="center">
-          PreeOrder
+          Pree
           <AppText variant="display" tone="primary">
             Rider
           </AppText>

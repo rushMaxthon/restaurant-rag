@@ -5594,9 +5594,9 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
 
 ## 2026-10-09 — rider: keyboard, back flow, offline popup, name, language before sign-in
 
-- Vehicle details always required (`049634e`); app name PreeOrderRider + no-internet popup with "Open settings" (`d98c6e6`).
+- Vehicle details always required (`049634e`); app name PreeRider (first set as PreeOrderRider, renamed the same day) + no-internet popup with "Open settings" (`d98c6e6`).
 - `2220ac0`: edge-to-edge means `adjustResize` does nothing, so `ui/Screen` shortens a scrolling screen by the keyboard height and scrolls the focused field into view (`useRevealOnFocus`, called by `TextField` on focus). `avoidKeyboard={false}` for screens whose footer already rises (ApplicationStep). Status-bar scrim on scrolling screens.
 - Back: on Offer it opens the decline confirm; on an application step with unsaved typing a "Leave this step?" dialog (`beforeRemove`, cleared after a save). Delivered already replaces Trip, so back lands on Main.
 - `components/LanguageSwitch.tsx`: `LanguageSheet` (Profile uses it) + `LanguageButton` on Login, sign-up and the application home.
-- Verified on the emulator: login/sign-up fields clear the keyboard, Hindi switch, back closes the sheet, leave guard, 0 of 7 with vehicle. jest 182, tsc clean, eslint 81 warnings = baseline. Native rebuilt; launcher label is PreeOrderRider, icon still the Android default.
+- Verified on the emulator: login/sign-up fields clear the keyboard, Hindi switch, back closes the sheet, leave guard, 0 of 7 with vehicle. jest 182, tsc clean, eslint 81 warnings = baseline. Native rebuilt; launcher label is PreeRider, icon still the Android default.
 - The 8001 dev API had to be restarted to serve the new required list - it does not run with --reload.
