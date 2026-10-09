@@ -158,12 +158,14 @@ export function requiredItems(
   const items: ItemKind[] = [
     'PERSONAL',
     'SELFIE',
+    // Always: every rider says what they ride (the server's rule too).
+    'VEHICLE_DETAILS',
     'AADHAAR_FRONT',
     'AADHAAR_BACK',
     'PAN',
     'BANK_DETAILS',
   ];
-  if (needsRc(vehicle)) items.push('VEHICLE_DETAILS', 'RC');
+  if (needsRc(vehicle)) items.push('RC');
   if (needsLicence(vehicle)) items.push('LICENCE_FRONT', 'LICENCE_BACK');
   // A bank account is checked against a cheque or passbook; a UPI ID alone
   // has nothing to photograph.

@@ -34,9 +34,9 @@ class RequiredItems(unittest.TestCase):
         for kind in ("RC", "LICENCE_FRONT", "LICENCE_BACK", "VEHICLE_DETAILS"):
             self.assertIn(ApplicationItemKind(kind), items)
 
-    def test_a_bicycle_needs_neither(self) -> None:
+    def test_a_bicycle_needs_no_licence_or_rc(self) -> None:
         items = required_items(VehicleType.CYCLE)
-        for kind in ("RC", "LICENCE_FRONT", "LICENCE_BACK", "VEHICLE_DETAILS"):
+        for kind in ("RC", "LICENCE_FRONT", "LICENCE_BACK"):
             self.assertNotIn(ApplicationItemKind(kind), items)
 
     def test_a_low_speed_ev_needs_neither(self) -> None:
@@ -51,6 +51,12 @@ class RequiredItems(unittest.TestCase):
 
     def test_no_vehicle_chosen_yet_still_lists_the_basics(self) -> None:
         self.assertIn(ApplicationItemKind.PERSONAL, required_items(None))
+
+    def test_the_vehicle_is_always_asked_for(self) -> None:
+        # Every rider rides something: a bicycle rider who never picked one
+        # could submit without saying what they deliver on.
+        for vehicle in (None, *VehicleType):
+            self.assertIn(ApplicationItemKind.VEHICLE_DETAILS, required_items(vehicle))
 
 
 class Validators(unittest.TestCase):
