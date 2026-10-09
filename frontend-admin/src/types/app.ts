@@ -1913,7 +1913,7 @@ export interface PayoutAccount extends Omit<PayoutAccountInput, "bank_account_nu
 // --- Own delivery fleet (2026-10-08): `/api/admin/riders/*`, ADMIN only ------
 
 export type RiderStatus = 'OFFLINE' | 'ONLINE' | 'ON_TRIP';
-export type RiderVehicle = 'BIKE' | 'SCOOTER' | 'CYCLE';
+export type RiderVehicle = 'BIKE' | 'SCOOTER' | 'EV_SCOOTER' | 'CYCLE';
 
 export interface Rider {
   user_id: string;
@@ -2041,4 +2041,94 @@ export interface FleetDeliveryView {
   fallback_reason: string | null;
   offers: FleetOfferRow[];
   trip: FleetTripView | null;
+}
+
+// --- Rider self sign-up (2026-10-09): `/api/admin/rider-applications/*`, ADMIN only ---
+
+export type ApplicationStatus = 'DRAFT' | 'SUBMITTED' | 'CHANGES_NEEDED' | 'APPROVED' | 'REJECTED';
+export type ApplicationItemStatus = 'MISSING' | 'PENDING' | 'ACCEPTED' | 'NEEDS_CHANGE';
+export type ApplicationSection = 'personal' | 'vehicle' | 'documents' | 'bank';
+/** Typed sections (no photo) and one kind per side of each document. */
+export type ItemKind =
+  | 'PERSONAL'
+  | 'VEHICLE_DETAILS'
+  | 'BANK_DETAILS'
+  | 'SELFIE'
+  | 'RC'
+  | 'AADHAAR_FRONT'
+  | 'AADHAAR_BACK'
+  | 'PAN'
+  | 'LICENCE_FRONT'
+  | 'LICENCE_BACK'
+  | 'BANK_PROOF';
+export type ApplicationAction =
+  | 'SUBMITTED'
+  | 'RESUBMITTED'
+  | 'ITEM_ACCEPTED'
+  | 'ITEM_FLAGGED'
+  | 'SENT_BACK'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'REOPENED';
+
+export interface RiderApplicationSummary {
+  rider_user_id: string;
+  full_name: string;
+  phone_number: string | null;
+  city: string;
+  vehicle_type: RiderVehicle | null;
+  status: ApplicationStatus;
+  submitted_at: string | null;
+  updated_at: string;
+  /** Items currently marked NEEDS_CHANGE. */
+  flagged: number;
+}
+
+export interface ApplicationItem {
+  kind: ItemKind;
+  status: ApplicationItemStatus;
+  reason: string;
+  section: ApplicationSection;
+  required: boolean;
+  has_photo: boolean;
+  editable: boolean;
+}
+
+export interface ApplicationEvent {
+  at: string;
+  action: ApplicationAction;
+  item_kind: ItemKind | null;
+  note: string;
+  actor_name: string | null;
+}
+
+export interface RiderApplicationDetail {
+  rider_user_id: string;
+  status: ApplicationStatus;
+  phone_number: string | null;
+  final_reason: string;
+  submitted_at: string | null;
+  decided_at: string | null;
+  sections: {
+    personal: {
+      full_name: string;
+      date_of_birth: string | null;
+      city: string;
+      address_line: string;
+      pincode: string;
+      emergency_name: string;
+      emergency_phone: string;
+    };
+    vehicle: { vehicle_type: RiderVehicle | null; vehicle_number: string };
+    /** Last four digits only: the full numbers never leave the server. */
+    documents: { aadhaar_last4: string; pan_last4: string; licence_last4: string; licence_expiry: string | null };
+    bank: { bank_holder: string; bank_account_last4: string; ifsc: string; upi_id: string };
+  };
+  items: ApplicationItem[];
+  required: ItemKind[];
+  missing: ItemKind[];
+  /** Signed links, valid five minutes. Empty when storage is not configured. */
+  photos: Partial<Record<ItemKind, string>>;
+  photos_error: string | null;
+  events: ApplicationEvent[];
 }

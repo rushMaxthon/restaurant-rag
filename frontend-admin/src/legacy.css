@@ -18006,3 +18006,750 @@ optgroup {
   font-size: var(--fs-caption);
 }
 
+
+/* --- Rider applications (2026-10-09): the queue tab and the review page -----
+   `rapp-`. Every value is a token; the review page is read in both themes and
+   on a phone, so nothing here assumes a light ground. Touch targets are the
+   panel's control height plus one step (44px), because this is a screen an
+   admin may well work through on a phone between other things. */
+
+.rapp-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rapp-seg__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.rapp-seg__item:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  color: var(--text);
+}
+
+.rapp-seg__item--active,
+.rapp-seg__item--active:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: var(--primary-soft);
+  color: var(--on-primary-soft);
+}
+
+.rapp-seg__item:focus-visible,
+.rapp-btn:focus-visible,
+.rapp-chip:focus-visible,
+.rapp-photo:focus-visible,
+.rapp-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+/* A count, never a status: neutral unless people are waiting on us. */
+.rapp-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-5);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--muted-soft);
+  color: var(--on-muted-soft);
+  font-size: var(--fs-tiny);
+  font-weight: var(--fw-strong);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.rapp-count--alert {
+  background: var(--warning-soft);
+  color: var(--on-warning-soft);
+}
+
+.rapp-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.rapp-link:hover {
+  color: var(--primary-text);
+  text-decoration: underline;
+}
+
+/* `span.` because `.admin-table__cell-content span` greys every span in a
+   cell at (0,1,1), and these carry information, not decoration. */
+span.rapp-inline,
+span.rapp-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+span.rapp-flagged {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--danger-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+}
+
+.rapp-row-chevron {
+  color: var(--hint);
+}
+
+/* --- the review page --------------------------------------------------------- */
+
+.rapp {
+  gap: var(--gap-section);
+}
+
+.rapp-back {
+  justify-self: start;
+}
+
+.rapp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.rapp-head__who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.rapp-avatar {
+  flex: none;
+  width: var(--space-16);
+  height: var(--space-16);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--surface-alt);
+}
+
+.rapp-avatar--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  color: var(--on-primary-soft);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-strong);
+}
+
+.rapp-head__copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.rapp-head__copy h1 {
+  margin: 0;
+  font-size: var(--fs-display-sm);
+  font-weight: var(--fw-heavy);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.rapp-head__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted);
+  font-size: var(--fs-label);
+}
+
+.rapp-tel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: calc(var(--control-h) + var(--space-1));
+  color: var(--primary-text);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+
+.rapp-tel:hover {
+  text-decoration: underline;
+}
+
+.rapp-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: var(--fs-body);
+  line-height: var(--leading-snug);
+}
+
+.rapp-notice p {
+  margin: 0;
+}
+
+.rapp-notice svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.rapp-notice--danger {
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background: var(--danger-soft);
+  color: var(--on-danger-soft);
+}
+
+.rapp-notice--warning {
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+  background: var(--warning-soft);
+  color: var(--on-warning-soft);
+}
+
+.rapp-notice--info {
+  border-color: color-mix(in srgb, var(--blue) 30%, transparent);
+  background: var(--blue-soft);
+  color: var(--on-blue-soft);
+}
+
+/* Details on the left, documents on the right and wider: the photos are
+   what takes the looking. */
+.rapp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--gap-section);
+  align-items: start;
+}
+
+.rapp-col {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.rapp-col__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.rapp-col__head h2,
+.rapp-card__head h2 {
+  margin: 0;
+  font-size: var(--fs-body-lg);
+  font-weight: var(--fw-strong);
+  letter-spacing: -0.015em;
+}
+
+.rapp-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--pad-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+/* A flagged card keeps its ground and gains an edge: the reason inside it is
+   the part to read, and a red fill would drown it. */
+.rapp-card--flagged {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow-sm);
+}
+
+.rapp-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rapp-card__sub {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapp-expired {
+  color: var(--danger-text);
+  font-weight: var(--fw-medium);
+}
+
+.rapp-facts {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.rapp-facts__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 38%) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.rapp-facts__row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.rapp-facts dt {
+  color: var(--muted);
+  font-size: var(--fs-label);
+}
+
+.rapp-facts dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.rapp-facts dd a {
+  color: var(--primary-text);
+}
+
+.rapp-mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.rapp-reason {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--danger-soft);
+  color: var(--on-danger-soft);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  line-height: var(--leading-snug);
+}
+
+.rapp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rapp-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: calc(var(--control-h) + var(--space-1));
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.rapp-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.rapp-btn--accept:not(:disabled):hover {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--on-success-soft);
+}
+
+.rapp-btn--flag:not(:disabled):hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--on-danger-soft);
+}
+
+/* The chosen answer reads as chosen, not as greyed out. */
+.rapp-btn--accepted,
+.rapp-btn--accepted:disabled {
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  background: var(--success-soft);
+  color: var(--on-success-soft);
+  opacity: 1;
+  cursor: default;
+}
+
+.rapp-btn--flagged {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger-soft);
+  color: var(--on-danger-soft);
+}
+
+.rapp-sides {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.rapp-sides--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rapp-side {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+.rapp-side__caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+}
+
+/* Contain, not cover: a cropped edge is exactly where a document's number or
+   expiry date sits. */
+.rapp-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-alt);
+  cursor: zoom-in;
+}
+
+.rapp-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.rapp-photo:hover img {
+  transform: scale(1.02);
+}
+
+.rapp-photo--empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-style: dashed;
+  color: var(--hint);
+  font-size: var(--fs-label);
+  text-align: center;
+  cursor: default;
+}
+
+.rapp-history {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A rail down the left, a dot per event, coloured by what happened. */
+.rapp-history__item {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  margin-left: var(--space-1);
+  padding: 0 0 var(--space-4) var(--space-5);
+  border-left: 2px solid var(--border);
+  font-size: var(--fs-label);
+}
+
+.rapp-history__item:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+/* Centred on the 2px rail: half the dot's width back, plus one for the rail. */
+.rapp-history__item::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-3) / -2 - 1px);
+  top: 2px;
+  width: var(--space-3);
+  height: var(--space-3);
+  box-sizing: border-box;
+  border: 2px solid var(--card);
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+
+.rapp-history__item--approved::before,
+.rapp-history__item--item_accepted::before {
+  background: var(--success);
+}
+
+.rapp-history__item--rejected::before,
+.rapp-history__item--item_flagged::before,
+.rapp-history__item--sent_back::before {
+  background: var(--danger);
+}
+
+.rapp-history__item--submitted::before,
+.rapp-history__item--resubmitted::before,
+.rapp-history__item--reopened::before {
+  background: var(--warning);
+}
+
+.rapp-history__item strong {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+
+.rapp-history__note {
+  color: var(--text);
+}
+
+.rapp-history__meta {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+}
+
+/* The decision stays in reach however long the documents column runs. */
+.rapp-bar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+}
+
+.rapp-bar__summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapp-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.rapp-bar__action {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: center;
+}
+
+/* Why a decision button is off, beside it rather than in a tooltip a phone
+   cannot show. */
+.rapp-bar__action small {
+  color: var(--hint);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+.rapp-bar .primary-button,
+.rapp-bar .secondary-button {
+  min-height: calc(var(--control-h) + var(--space-1));
+}
+
+.rapp-bar__danger {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--danger-text);
+}
+
+.rapp-bar__danger:not(:disabled):hover {
+  background: var(--danger-soft);
+}
+
+.rapp-flag {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.rapp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rapp-chip {
+  min-height: calc(var(--control-h) + var(--space-1));
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.rapp-chip:hover {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+
+.rapp-chip--on,
+.rapp-chip--on:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--on-danger-soft);
+}
+
+.rapp-reject {
+  margin-bottom: var(--space-4);
+}
+
+.rapp-zoom {
+  width: min(100%, 960px);
+}
+
+.rapp-zoom__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rapp-zoom__stage {
+  display: grid;
+  place-items: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: min(64vh, 640px);
+  padding: var(--space-4);
+  overflow: hidden;
+  background: var(--surface-alt);
+}
+
+.rapp-zoom__img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform var(--dur) var(--ease-out);
+}
+
+/* A quarter turn swaps the box's sides; without this a landscape photo turned
+   upright would spill out of the top and bottom of the stage. */
+.rapp-zoom__img--sideways {
+  max-width: calc(min(64vh, 640px) - var(--space-8));
+  max-height: calc(min(100vw, 960px) - var(--space-8));
+}
+
+.rapp-zoom__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.rapp-zoom__tools .secondary-button,
+.rapp-zoom__tools .primary-button {
+  min-height: calc(var(--control-h) + var(--space-1));
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .rapp-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .rapp-seg__item {
+    min-height: calc(var(--control-h) + var(--space-1));
+  }
+
+  .rapp-head {
+    flex-direction: column;
+  }
+
+  .rapp-avatar {
+    width: var(--space-12);
+    height: var(--space-12);
+  }
+
+  .rapp-bar {
+    bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rapp-bar__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .rapp-bar__action {
+    justify-items: stretch;
+  }
+
+  .rapp-zoom__tools {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .rapp-zoom__tools .rapp-actions {
+    width: 100%;
+  }
+
+  .rapp-zoom__tools .rapp-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* Front beside back stops paying for itself below this: each side's two
+   44px buttons no longer fit in half a phone. */
+@media (max-width: 560px) {
+  .rapp-sides--pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rapp-facts__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
