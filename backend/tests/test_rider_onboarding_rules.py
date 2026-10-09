@@ -91,5 +91,64 @@ class Validators(unittest.TestCase):
         self.assertIsNone(valid_upi("ravi"))
 
 
+
+class ImageChecks(unittest.TestCase):
+    """A photo's type comes from its first bytes, never from its name: a PDF
+    or a web page renamed to .jpg must not reach an admin's browser."""
+
+    def test_types_come_from_the_bytes_not_the_name(self) -> None:
+        from app.services.fleet.onboarding.storage import sniff_image
+
+        self.assertEqual(sniff_image(b"\xff\xd8\xff\xe0rest"), "image/jpeg")
+        self.assertEqual(sniff_image(b"\x89PNG\r\n\x1a\nrest"), "image/png")
+        self.assertEqual(sniff_image(b"RIFF\x00\x00\x00\x00WEBPVP8 "), "image/webp")
+        self.assertIsNone(sniff_image(b"%PDF-1.7"))
+        self.assertIsNone(sniff_image(b"<html>"))
+
+
+class StorageClient(unittest.TestCase):
+    """Supabase Storage over its REST API. The bucket is created on the first
+    upload that finds it missing, private, so nobody has to click it into
+    existence in a dashboard."""
+
+    def test_the_bucket_is_made_private_on_first_use(self) -> None:
+        import httpx
+
+        from app.services.fleet.onboarding import storage
+
+        calls: list[tuple[str, str]] = []
+        state = {"bucket": False}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            if request.url.path == "/storage/v1/bucket":
+                state["bucket"] = True
+                self.assertIn(b'"public": false', request.content.replace(b'"public":false', b'"public": false'))
+                return httpx.Response(200, json={"name": "rider-documents"})
+            if not state["bucket"]:
+                return httpx.Response(404, json={"statusCode": "404", "error": "Bucket not found"})
+            return httpx.Response(200, json={"Key": "rider-documents/x"})
+
+        client = storage.StorageClient("https://x.supabase.co", "key", "rider-documents", httpx.MockTransport(handler))
+        client.upload("riders/u/SELFIE-1.jpg", b"\xff\xd8\xff", "image/jpeg")
+        self.assertEqual(
+            [c[0] for c in calls], ["POST", "POST", "POST"], "upload, create bucket, upload again"
+        )
+        self.assertEqual(calls[1], ("POST", "/storage/v1/bucket"))
+
+    def test_a_signed_link_is_absolute(self) -> None:
+        import httpx
+
+        from app.services.fleet.onboarding import storage
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"signedURL": "/object/sign/rider-documents/a.jpg?token=t"})
+
+        client = storage.StorageClient("https://x.supabase.co", "key", "rider-documents", httpx.MockTransport(handler))
+        self.assertEqual(
+            client.signed_url("a.jpg"), "https://x.supabase.co/storage/v1/object/sign/rider-documents/a.jpg?token=t"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

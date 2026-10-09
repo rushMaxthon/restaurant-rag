@@ -997,6 +997,24 @@ class Settings(BaseSettings):
     # The code accepted while there is nothing to send a real one with. Only
     # ever honoured on a local environment; see `services/otp.py`.
     otp_debug_code: str = "123456"
+    # Rider self sign-up (2026-10-09). The phone code is STATIC for now, on
+    # the owner's call, until a WhatsApp AUTHENTICATION template is approved:
+    # `otp_debug_code` is accepted and nothing is sent - on every
+    # environment, which is the deliberate difference from customer OTP
+    # above. While it is `static`, anyone can register any number; the admin
+    # review (who calls the rider) is the check. Switch to `whatsapp` and set
+    # `whatsapp_otp_template` the day the template is approved.
+    rider_signup_otp_mode: str = "static"
+    whatsapp_otp_template: str = ""
+    # Rider documents (Aadhaar, licence, RC, selfie, bank proof) live in ONE
+    # private Supabase Storage bucket, written with the service key and read
+    # by admins through links that expire in minutes. Without these, uploads
+    # refuse (503) rather than falling back to local disk: Render's disk is
+    # wiped on every deploy.
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    rider_docs_bucket: str = "rider-documents"
+    rider_doc_max_bytes: int = 5_000_000
     # The one way to book a REAL rider from a development machine.
     #
     # A laptop dispatches through exactly the same task, provider and
