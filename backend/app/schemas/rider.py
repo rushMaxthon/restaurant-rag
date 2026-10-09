@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import RiderStatus, VehicleType
+from app.models.enums import ApplicationStatus, RiderOnboarding, RiderStatus, VehicleType
 
 # --- admin -------------------------------------------------------------------
 
@@ -65,6 +65,10 @@ class RiderMe(BaseModel):
     fleet_enabled: bool
     #: What a delivery pays right now, so the app can say it (admin-set).
     pay: dict[str, Decimal]
+    #: APPROVED riders get the app; anyone else gets their application.
+    onboarding: RiderOnboarding = RiderOnboarding.APPROVED
+    #: None for a rider an admin made (they never applied).
+    application_status: ApplicationStatus | None = None
 
 
 class StatusUpdate(BaseModel):

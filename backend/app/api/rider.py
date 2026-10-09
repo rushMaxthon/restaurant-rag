@@ -56,7 +56,10 @@ def start_of_today() -> datetime:
 def me_response(db: Session, user: User) -> RiderMe:
     from app.services.fleet.config import load_pay
 
+    from app.models.rider_application import RiderApplication
+
     rider = db.get(Rider, user.id)
+    application = db.get(RiderApplication, user.id)
     trips, amount = svc.today_summary(db, user.id, start_of_today())
     pay = load_pay(db)
     return RiderMe(
@@ -71,6 +74,8 @@ def me_response(db: Session, user: User) -> RiderMe:
         today_earnings=amount,
         fleet_enabled=get_settings().enable_own_fleet,
         pay={"base": pay.base, "per_km": pay.per_km, "minimum": pay.minimum},
+        onboarding=rider.onboarding,
+        application_status=application.status if application is not None else None,
     )
 
 
