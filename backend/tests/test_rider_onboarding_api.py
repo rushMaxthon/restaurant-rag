@@ -141,6 +141,23 @@ class SignupApiTests(unittest.TestCase):
         with self.fdb.session() as db:
             self.assertIsNone(db.query(User).filter(User.phone_number == f"+91{digits}").first())
 
+    def test_the_code_is_checked_on_its_own_screen(self) -> None:
+        """A wrong code is said on the code screen, before the rider types a
+        name and password - and checking it does not use it up."""
+
+        digits = self.phone()
+        public = client_for(self.fdb, None)
+        sent = public.post("/api/rider/signup/code", json={"phone_number": digits}).json()
+        wrong = public.post("/api/rider/signup/check", json={"phone_number": digits, "code": "000000"})
+        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "code_wrong"))
+        right = public.post("/api/rider/signup/check", json={"phone_number": digits, "code": sent["debug_code"]})
+        self.assertEqual(right.status_code, 204, right.text)
+        made = public.post(
+            "/api/rider/signup",
+            json={"phone_number": digits, "code": sent["debug_code"], "password": "password123", "full_name": "A B"},
+        )
+        self.assertEqual(made.status_code, 201, made.text)
+
     # --- the application ---------------------------------------------------------
 
     def test_responses_never_carry_full_numbers(self) -> None:

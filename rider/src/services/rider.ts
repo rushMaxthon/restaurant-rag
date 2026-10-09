@@ -34,6 +34,14 @@ export function requestSignupCode(phone: string) {
 }
 
 /** Public: the code, the password and the name in one go; answers like /auth/login. */
+/** Is this the code? Said on the code screen; does not use the code up. */
+export function checkSignupCode(phone: string, code: string) {
+  return request<void>('/rider/signup/check', {
+    method: 'POST',
+    body: { phone_number: phone, code },
+  });
+}
+
 export function signup(body: {
   phone_number: string;
   code: string;

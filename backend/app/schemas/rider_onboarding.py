@@ -27,6 +27,11 @@ class SignupCodeResponse(BaseModel):
     debug_code: str | None = None
 
 
+class SignupCheckRequest(BaseModel):
+    phone_number: str = Field(min_length=6, max_length=20)
+    code: str = Field(min_length=4, max_length=8)
+
+
 class SignupRequest(BaseModel):
     phone_number: str = Field(min_length=6, max_length=20)
     code: str = Field(min_length=4, max_length=8)

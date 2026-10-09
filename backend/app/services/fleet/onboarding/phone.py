@@ -102,9 +102,14 @@ def request_code(db: Session, phone: str, now: datetime | None = None) -> Reques
     return RequestResult(sent=False, retry_after=int(RESEND_AFTER.total_seconds()), debug_code=code)
 
 
-def verify_code(db: Session, phone: str, code: str, now: datetime | None = None) -> None:
+def verify_code(
+    db: Session, phone: str, code: str, now: datetime | None = None, *, consume: bool = True
+) -> None:
     """Passes, or raises `code_expired` (also: already used, or none sent),
-    `code_locked` or `code_wrong`. A pass uses the code up."""
+    `code_locked` or `code_wrong`. A pass uses the code up, unless `consume`
+    is False: the code screen checks it so a typo is said THERE, before the
+    rider types a name and password, and sign-up then uses it. A wrong guess
+    counts towards the lock either way."""
 
     now = now or datetime.now(UTC)
     row = _latest(db, phone)
@@ -116,5 +121,6 @@ def verify_code(db: Session, phone: str, code: str, now: datetime | None = None)
         row.attempts += 1
         db.commit()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "code_wrong")
-    row.verified_at = now
-    db.commit()
+    if consume:
+        row.verified_at = now
+        db.commit()
