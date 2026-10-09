@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, {
@@ -9,15 +9,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { HomeInsights } from '@components/HomeInsights';
-import { OpenOrders } from '@components/OpenOrders';
-import { Radar } from '@components/Radar';
+import { NearbyOrders } from '@components/home/NearbyOrders';
+import { ShiftCard } from '@components/home/ShiftCard';
 import { useRiderLocation } from '@components/ShiftKeeper';
 import { AnimatedAmount } from '@components/ui/AnimatedAmount';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
-import { OnlineToggle } from '@components/ui/OnlineToggle';
 import { Pill } from '@components/ui/Pill';
 import { Screen } from '@components/ui/Screen';
 import { Skeleton } from '@components/ui/Skeleton';
@@ -32,8 +31,8 @@ import { useRider } from '@/store/RiderProvider';
 import { useApi, useSignedInUser } from '@/store/SessionProvider';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
-import { radius, space, motion } from '@theme/tokens';
-import { greeting, initials, rupees } from '@utils/format';
+import { space, motion } from '@theme/tokens';
+import { greeting, initials } from '@utils/format';
 import { haptic } from '@utils/haptics';
 
 const STEP_LABEL: Record<Trip['step'], string> = {
@@ -64,20 +63,8 @@ export function HomeScreen() {
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // What the shift added up to, shown for a moment after going offline.
-  const [shiftDone, setShiftDone] = useState<{
-    trips: number;
-    earnings: string;
-  } | null>(null);
-
   const online = me?.status === 'ONLINE' || me?.status === 'ON_TRIP';
   useTour('home', me !== null && !trip);
-
-  useEffect(() => {
-    if (!shiftDone) return;
-    const t = setTimeout(() => setShiftDone(null), 8000);
-    return () => clearTimeout(t);
-  }, [shiftDone]);
 
   const toggle = useCallback(
     async (next: boolean) => {
@@ -91,14 +78,8 @@ export function HomeScreen() {
       setToggling(true);
       setToggleError(null);
       try {
-        const updated = await api.setOnline(next);
-        setMe(updated);
-        if (!next)
-          setShiftDone({
-            trips: updated.today_trips,
-            earnings: updated.today_earnings,
-          });
-        else setShiftDone(null);
+        // The offline card itself shows what today added up to.
+        setMe(await api.setOnline(next));
       } catch (e) {
         haptic('error');
         setToggleError(
@@ -143,57 +124,6 @@ export function HomeScreen() {
             {me?.full_name ?? user?.full_name ?? 'Rider'}
           </AppText>
         </View>
-        {me ? (
-          <Pill
-            dot
-            label={
-              me.status === 'ON_TRIP'
-                ? 'On trip'
-                : me.status === 'ONLINE'
-                ? 'Online'
-                : 'Offline'
-            }
-            tone={
-              me.status === 'OFFLINE'
-                ? 'neutral'
-                : me.status === 'ON_TRIP'
-                ? 'primary'
-                : 'success'
-            }
-          />
-        ) : null}
-      </Animated.View>
-
-      {/* Today */}
-      <Animated.View entering={FadeInDown.delay(80).duration(motion.base)}>
-        <GuideTarget id={TARGETS.homeToday}>
-          <Card tone="alt" style={styles.today}>
-            <View style={styles.flex}>
-              <AppText variant="micro" tone="muted">
-                TODAY'S EARNINGS
-              </AppText>
-              {loading && !me ? (
-                <Skeleton width={120} height={30} style={styles.gapXs} />
-              ) : (
-                <AnimatedAmount
-                  value={Number(me?.today_earnings ?? 0)}
-                  style={styles.gapXs}
-                />
-              )}
-            </View>
-            <View
-              style={[styles.divider, { backgroundColor: colors.border }]}
-            />
-            <View style={styles.tripsBox}>
-              <AppText variant="micro" tone="muted">
-                TRIPS
-              </AppText>
-              <AppText variant="money" style={styles.gapXs}>
-                {me?.today_trips ?? 0}
-              </AppText>
-            </View>
-          </Card>
-        </GuideTarget>
       </Animated.View>
 
       {/* Active trip */}
@@ -248,97 +178,55 @@ export function HomeScreen() {
         </Animated.View>
       ) : null}
 
-      {/* Shift */}
+      {/* Shift: a strip while online, the screen's big action while offline. */}
       {!trip ? (
-        <Animated.View
-          entering={FadeInDown.delay(160).duration(motion.base)}
-          layout={LinearTransition}
-        >
-          <Card style={styles.shift}>
-            {online ? (
-              <Animated.View
-                entering={FadeIn.duration(400)}
-                style={styles.center}
-              >
-                <Radar />
-                <AppText variant="heading" align="center" style={styles.gapMd}>
-                  Looking for orders near you
-                </AppText>
-                <AppText variant="caption" tone="muted" align="center">
-                  A new order rings, even when you switch to Maps.
-                </AppText>
-              </Animated.View>
-            ) : (
-              <Animated.View
-                entering={FadeIn.duration(400)}
-                style={styles.center}
-              >
-                <View
-                  style={[
-                    styles.offIcon,
-                    { backgroundColor: colors.surfaceAlt },
-                  ]}
-                >
-                  <Icon
-                    name="moon-outline"
-                    size={34}
-                    color={colors.textMuted}
-                  />
-                </View>
-                <AppText variant="heading" align="center" style={styles.gapMd}>
-                  You are offline
-                </AppText>
-                <AppText variant="caption" tone="muted" align="center">
-                  Go online to start getting delivery orders.
-                </AppText>
-              </Animated.View>
-            )}
-            <GuideTarget id={TARGETS.homeToggle} style={styles.toggleWrap}>
-              <OnlineToggle
-                online={online}
-                onChange={toggle}
-                busy={toggling}
-                disabledReason={disabledReason}
-              />
-            </GuideTarget>
-            {toggleError ? (
-              <AppText
-                variant="caption"
-                tone="danger"
-                align="center"
-                style={styles.gapSm}
-              >
-                {toggleError}
-              </AppText>
-            ) : null}
-          </Card>
-        </Animated.View>
+        <ShiftCard
+          online={online}
+          onChange={toggle}
+          busy={toggling}
+          disabledReason={disabledReason}
+          error={toggleError}
+        />
       ) : null}
 
-      {shiftDone ? (
-        <Animated.View
-          entering={FadeInDown.duration(motion.base)}
-          exiting={FadeOut}
-        >
-          <Card
-            tone="success"
-            style={styles.note}
-            onPress={() => setShiftDone(null)}
-          >
-            <Icon name="checkmark-circle" size={22} color={colors.success} />
+      {/* Orders waiting nearby, takeable from here: what an online rider is looking for. */}
+      {online && !trip ? (
+        <NearbyOrders
+          onSeeAll={() => nav.navigate('Main', { screen: 'Orders' })}
+        />
+      ) : null}
+
+      {/* Today */}
+      <Animated.View entering={FadeInDown.delay(120).duration(motion.base)}>
+        <GuideTarget id={TARGETS.homeToday}>
+          <Card tone="alt" style={styles.today}>
             <View style={styles.flex}>
-              <AppText variant="bodyStrong">Shift done</AppText>
-              <AppText variant="caption" tone="muted">
-                {shiftDone.trips} deliver{shiftDone.trips === 1 ? 'y' : 'ies'} ·{' '}
-                {rupees(shiftDone.earnings)} today. See you next time.
+              <AppText variant="micro" tone="muted">
+                TODAY'S EARNINGS
+              </AppText>
+              {loading && !me ? (
+                <Skeleton width={120} height={30} style={styles.gapXs} />
+              ) : (
+                <AnimatedAmount
+                  value={Number(me?.today_earnings ?? 0)}
+                  style={styles.gapXs}
+                />
+              )}
+            </View>
+            <View
+              style={[styles.divider, { backgroundColor: colors.border }]}
+            />
+            <View style={styles.tripsBox}>
+              <AppText variant="micro" tone="muted">
+                TRIPS
+              </AppText>
+              <AppText variant="money" style={styles.gapXs}>
+                {me?.today_trips ?? 0}
               </AppText>
             </View>
           </Card>
-        </Animated.View>
-      ) : null}
-
-      {/* Orders nobody has taken yet - including one this rider missed. */}
-      <OpenOrders />
+        </GuideTarget>
+      </Animated.View>
 
       {/* The week so far and what a delivery pays: useful between orders. */}
       {!trip ? <HomeInsights me={me} /> : null}
@@ -436,18 +324,6 @@ const styles = StyleSheet.create({
   routeLine: { alignItems: 'center', paddingVertical: 6 },
   routeDot: { width: 10, height: 10, borderRadius: 5 },
   routeBar: { width: 2, flex: 1, marginVertical: 4, borderRadius: 1 },
-  shift: { paddingVertical: space.xxl, borderRadius: radius.xxl },
-  center: { alignItems: 'center' },
-  offIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   note: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   gapXs: { marginTop: space.xs },
-  gapSm: { marginTop: space.sm },
-  gapMd: { marginTop: space.md },
-  toggleWrap: { marginTop: space.xl, alignSelf: 'center' },
 });

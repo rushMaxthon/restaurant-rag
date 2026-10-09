@@ -663,6 +663,14 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   Rider app: Go online re-checks permissions at the tap (a stale copy looped
   riders back to Permissions).
 
+- **Home layout (2026-10-09).** Online, the shift control is a strip
+  (`components/home/ShiftCard`, compact `OnlineToggle`, a pulsing dot) and
+  the screen goes to `NearbyOrders`: up to 3 waiting orders with Take
+  (`utils/homeOrders.homePreview` - last-minute first, then nearest pickup),
+  then Today, the week, pay. Offline, the card is the one big action. Take
+  is `hooks/useTakeOrder`, shared with the Orders tab. The old radar card
+  and `OpenOrders` pointer are gone.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

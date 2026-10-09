@@ -9,15 +9,11 @@ import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
 import { useNav } from '@navigation/types';
+import { useTakeOrder } from '@hooks/useTakeOrder';
 import { useTour } from '@/guide/useTour';
-import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
-import { useApi } from '@/store/SessionProvider';
-import type { OpenOrder } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, space } from '@theme/tokens';
-import { haptic } from '@utils/haptics';
-import { claimErrorMessage, takeBlockedReason } from '@utils/openOrders';
 
 /**
  * The Orders board: every order waiting near the rider, any time - online
@@ -28,14 +24,10 @@ import { claimErrorMessage, takeBlockedReason } from '@utils/openOrders';
  */
 export function OrdersScreen() {
   const { colors } = useTheme();
-  const api = useApi();
   const nav = useNav();
-  const { me, trip, openOrders, refreshOpenOrders, setTrip, refreshMe } =
-    useRider();
-  const [taking, setTaking] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { me, trip, openOrders, refreshOpenOrders } = useRider();
+  const { take, taking, error, blockedFor } = useTakeOrder();
   const [refreshing, setRefreshing] = useState(false);
-  const blocked = takeBlockedReason(me?.status, trip !== null);
   useTour('orders', openOrders.length > 0);
 
   // Fresh on every visit, not just on the next poll.
@@ -44,31 +36,6 @@ export function OrdersScreen() {
       void refreshOpenOrders();
     }, [refreshOpenOrders]),
   );
-
-  const take = async (order: OpenOrder) => {
-    setTaking(order.order_id);
-    setError(null);
-    try {
-      const started = await api.claim(order.order_id);
-      haptic('success');
-      setTrip(started);
-      void refreshMe();
-      void refreshOpenOrders();
-      nav.navigate('Trip');
-    } catch (e) {
-      haptic('error');
-      setError(
-        claimErrorMessage(
-          e instanceof ApiError && typeof e.detail === 'string'
-            ? e.detail
-            : undefined,
-        ),
-      );
-      void refreshOpenOrders();
-    } finally {
-      setTaking(null);
-    }
-  };
 
   return (
     <Screen
@@ -146,11 +113,7 @@ export function OrdersScreen() {
             <OpenOrderCard
               order={order}
               taking={taking === order.order_id}
-              blockedReason={
-                taking !== null && taking !== order.order_id
-                  ? 'Taking another order'
-                  : blocked
-              }
+              blockedReason={blockedFor(order)}
               onTake={() => void take(order)}
               guide={index === 0}
             />
