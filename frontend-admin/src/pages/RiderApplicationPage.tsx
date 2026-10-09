@@ -77,6 +77,9 @@ export function RiderApplicationPage({ token, riderUserId, onNavigate, onToast }
   const [flagging, setFlagging] = useState<ItemKind | null>(null);
   const [zoom, setZoom] = useState<ItemKind | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  // Approve, send back and reopen each change what the rider sees on their
+  // phone: asked once more, so a misclick on the decision bar decides nothing.
+  const [asking, setAsking] = useState<'approve' | 'send-back' | 'reopen' | null>(null);
   const lastFetch = useRef(0);
   const hintTimer = useRef<number | null>(null);
 
@@ -178,6 +181,9 @@ export function RiderApplicationPage({ token, riderUserId, onNavigate, onToast }
     );
   }
 
+  const name = detail.sections.personal.full_name || 'The rider';
+  const flaggedCount = detail.items.filter((i) => i.required && i.status === 'NEEDS_CHANGE').length;
+
   return (
     <ApplicationView
       busy={busy}
@@ -185,27 +191,12 @@ export function RiderApplicationPage({ token, riderUserId, onNavigate, onToast }
       onAccept={(kind) =>
         void act(`item:${kind}`, () => api.acceptApplicationItem(token, riderUserId, kind))
       }
-      onApprove={() =>
-        void act('approve', () => api.approveApplication(token, riderUserId), [
-          'Rider approved',
-          `${detail.sections.personal.full_name || 'The rider'} can now go online and take orders.`,
-        ])
-      }
+      onApprove={() => setAsking('approve')}
       onBack={back}
       onFlag={setFlagging}
       onReject={() => setRejecting(true)}
-      onReopen={() =>
-        void act('reopen', () => api.reopenApplication(token, riderUserId), [
-          'Application reopened',
-          'The rider can resubmit it, and it comes back to this queue.',
-        ])
-      }
-      onSendBack={() =>
-        void act('send-back', () => api.sendBackApplication(token, riderUserId), [
-          'Sent back for changes',
-          'The rider has been told what to fix.',
-        ])
-      }
+      onReopen={() => setAsking('reopen')}
+      onSendBack={() => setAsking('send-back')}
       onZoom={setZoom}
     >
       {flagging ? (
@@ -240,6 +231,46 @@ export function RiderApplicationPage({ token, riderUserId, onNavigate, onToast }
         />
       ) : null}
 
+      <ConfirmDialog
+        busy={busy === asking}
+        confirmLabel={asking === 'approve' ? 'Approve rider' : asking === 'send-back' ? 'Send back' : 'Reopen'}
+        description={
+          asking === 'approve'
+            ? `${name} will be able to go online and take orders straight away.`
+            : asking === 'send-back'
+              ? `${name} will be asked to fix ${flaggedCount} ${flaggedCount === 1 ? 'item' : 'items'}, with your reasons.`
+              : `${name} will be able to fix and resubmit the application, and it comes back to this queue.`
+        }
+        eyebrow="Rider application"
+        onCancel={() => setAsking(null)}
+        onConfirm={async () => {
+          const which = asking;
+          const done =
+            which === 'approve'
+              ? await act('approve', () => api.approveApplication(token, riderUserId), [
+                  'Rider approved',
+                  `${name} can now go online and take orders.`,
+                ])
+              : which === 'send-back'
+                ? await act('send-back', () => api.sendBackApplication(token, riderUserId), [
+                    'Sent back for changes',
+                    'The rider has been told what to fix.',
+                  ])
+                : await act('reopen', () => api.reopenApplication(token, riderUserId), [
+                    'Application reopened',
+                    'The rider can resubmit it, and it comes back to this queue.',
+                  ]);
+          if (done) setAsking(null);
+        }}
+        open={asking !== null}
+        title={
+          asking === 'approve'
+            ? `Approve ${name}?`
+            : asking === 'send-back'
+              ? 'Send back for changes?'
+              : 'Reopen this application?'
+        }
+      />
       {rejecting ? (
         <RejectDialog
           busy={busy === 'reject'}

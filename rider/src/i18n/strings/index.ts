@@ -1,5 +1,6 @@
 import account from './account';
 import common from './common';
+import confirm from './confirm';
 import home from './home';
 import money from './money';
 import onboarding from './onboarding';
@@ -17,7 +18,7 @@ import trip from './trip';
  * - system: notifications, the shift service, errors from the network
  * - onboarding: sign-up, the application steps and its status screen
  */
-const areas = [common, home, trip, money, account, system, onboarding] as const;
+const areas = [common, confirm, home, trip, money, account, system, onboarding] as const;
 
 type Area = (typeof areas)[number];
 type Merge<U> = (U extends unknown ? (x: U) => void : never) extends (

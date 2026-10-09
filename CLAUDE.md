@@ -725,6 +725,17 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   emulator: `flex` boxes inside a non-stretching row collapse to slivers
   (DateInput uses fixed widths).
 
+- **No system alerts; ask before anything a slip of the thumb must not do
+  (2026-10-09, the owner's rule).** Rider app: `components/ui/ConfirmDialog`
+  (the app's own look, Cancel left, a red action right when it cannot be
+  undone, back/tap-outside = cancel; no `confirmLabel` = one-button notice).
+  Used for sign out (both places), Decline an offer, Customer unavailable,
+  Submit/Resubmit application. Strings in `i18n/strings/confirm.ts`. Never
+  `Alert.alert`. Admin: Approve, Send back and Reopen on the application page
+  go through `ConfirmDialog` like Reject. Also found that day: the socket
+  refused every React Native connection (Android sends Origin = the API's own
+  URL); `realtime/server.origin_allowed` now accepts same-origin.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

@@ -26,6 +26,7 @@ import { ProblemSheet } from '@components/trip/ProblemSheet';
 import { StepProgress } from '@components/trip/StepProgress';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
 import { IconButton } from '@components/ui/IconButton';
@@ -58,6 +59,7 @@ export function TripScreen() {
   const [otp, setOtp] = useState('');
   const [shake, setShake] = useState(0);
   const [problem, setProblem] = useState(false);
+  const [askUnavailable, setAskUnavailable] = useState(false);
   // Folded to one row on the way there; open by default at the counter,
   // where the rider checks the bag against it. A tap overrides either way.
   const [itemsOpen, setItemsOpen] = useState<boolean | null>(null);
@@ -200,7 +202,9 @@ export function TripScreen() {
           <Card style={styles.stopCard}>
             <View style={styles.rowBetween}>
               <Pill
-                label={atRestaurant ? t('trip.pickUpFrom') : t('trip.deliverTo')}
+                label={
+                  atRestaurant ? t('trip.pickUpFrom') : t('trip.deliverTo')
+                }
                 tone={atRestaurant ? 'primary' : 'success'}
                 icon={atRestaurant ? 'restaurant' : 'home'}
               />
@@ -288,34 +292,35 @@ export function TripScreen() {
                   color={colors.textMuted}
                 />
               </Pressable>
-              {showItems && trip.items.map((item, i) => (
-                <View
-                  key={`${item.name}-${i}`}
-                  style={[
-                    styles.item,
-                    { borderTopColor: colors.border },
-                    i === 0 && styles.firstItem,
-                  ]}
-                >
+              {showItems &&
+                trip.items.map((item, i) => (
                   <View
+                    key={`${item.name}-${i}`}
                     style={[
-                      styles.qty,
-                      { backgroundColor: colors.primarySoft },
+                      styles.item,
+                      { borderTopColor: colors.border },
+                      i === 0 && styles.firstItem,
                     ]}
                   >
-                    <AppText variant="label" tone="primary">
-                      {item.quantity}×
+                    <View
+                      style={[
+                        styles.qty,
+                        { backgroundColor: colors.primarySoft },
+                      ]}
+                    >
+                      <AppText variant="label" tone="primary">
+                        {item.quantity}×
+                      </AppText>
+                    </View>
+                    <AppText
+                      variant="bodyStrong"
+                      style={styles.flex}
+                      numberOfLines={2}
+                    >
+                      {item.name}
                     </AppText>
                   </View>
-                  <AppText
-                    variant="bodyStrong"
-                    style={styles.flex}
-                    numberOfLines={2}
-                  >
-                    {item.name}
-                  </AppText>
-                </View>
-              ))}
+                ))}
             </Card>
           </Animated.View>
         ) : null}
@@ -415,6 +420,22 @@ export function TripScreen() {
         </View>
       ) : null}
 
+      <ConfirmDialog
+        open={askUnavailable}
+        tone="danger"
+        icon="person-remove"
+        title={t('confirm.unavailable.title')}
+        message={t('confirm.unavailable.body')}
+        confirmLabel={t('confirm.unavailable.yes')}
+        cancelLabel={t('confirm.unavailable.no')}
+        busy={action.busy === 'unavailable'}
+        onCancel={() => setAskUnavailable(false)}
+        onConfirm={() => {
+          setAskUnavailable(false);
+          action.run('unavailable');
+        }}
+      />
+
       <ProblemSheet
         open={problem}
         onClose={() => setProblem(false)}
@@ -422,8 +443,9 @@ export function TripScreen() {
         onCustomerCalled={() => action.run('call-logged')}
         unavailableBusy={action.busy === 'unavailable'}
         onUnavailable={() => {
+          // Ends the delivery: asked first, after the sheet has closed.
           setProblem(false);
-          action.run('unavailable');
+          setAskUnavailable(true);
         }}
       />
     </View>

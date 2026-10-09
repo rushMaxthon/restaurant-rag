@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ItemRow } from '@components/onboarding/ItemRow';
@@ -51,19 +52,8 @@ export function OnboardingHomeScreen() {
     setRefreshing(false);
   }, [refresh, refreshMe]);
 
-  const confirmSignOut = () =>
-    Alert.alert(
-      t('onboarding.home.signOutTitle'),
-      t('onboarding.home.signOutBody'),
-      [
-        { text: t('onboarding.home.stay'), style: 'cancel' },
-        {
-          text: t('onboarding.home.signOut'),
-          style: 'destructive',
-          onPress: () => void signOut(),
-        },
-      ],
-    );
+  const [askSignOut, setAskSignOut] = useState(false);
+  const confirmSignOut = () => setAskSignOut(true);
 
   const firstName =
     (view?.sections.personal.full_name || user?.full_name || '').split(
@@ -131,6 +121,20 @@ export function OnboardingHomeScreen() {
         />
       </Group>
       <View style={[styles.spacer, { backgroundColor: colors.bg }]} />
+      <ConfirmDialog
+        open={askSignOut}
+        tone="danger"
+        icon="log-out-outline"
+        title={t('onboarding.home.signOutTitle')}
+        message={t('onboarding.home.signOutBody')}
+        confirmLabel={t('onboarding.home.signOut')}
+        cancelLabel={t('onboarding.home.stay')}
+        onCancel={() => setAskSignOut(false)}
+        onConfirm={() => {
+          setAskSignOut(false);
+          void signOut();
+        }}
+      />
     </Screen>
   );
 }
