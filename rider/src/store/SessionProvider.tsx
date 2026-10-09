@@ -4,8 +4,9 @@ import { translate } from '@/i18n/translate';
 import { identifyRider } from '@/services/crashReports';
 import { ApiError, setUnauthorizedHandler } from '@/services/http';
 import { login as apiLogin, riderApi, type RiderApi } from '@/services/rider';
+import { rememberOnboarding } from '@/services/onboardingMemory';
 import { clearSession, loadSession, saveSession } from '@/services/session';
-import type { SessionUser } from '@/types/api';
+import type { LoginResponse, SessionUser } from '@/types/api';
 
 type SessionState =
   | { status: 'loading' }
@@ -15,6 +16,8 @@ type SessionState =
 type SessionContextValue = {
   state: SessionState;
   signIn: (phone: string, password: string) => Promise<void>;
+  /** A login answer from anywhere: /auth/login, or /rider/signup (same shape). */
+  signInWithToken: (result: LoginResponse) => Promise<void>;
   signOut: (reason?: string | null) => Promise<void>;
 };
 
@@ -27,6 +30,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async (reason: string | null = null) => {
     tokenRef.current = null;
     await clearSession();
+    // The next person on this phone may be somebody else entirely.
+    await rememberOnboarding(null);
     setState({ status: 'signedOut', reason });
   }, []);
 
@@ -57,8 +62,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [signOut]);
 
-  const signIn = useCallback(async (phone: string, password: string) => {
-    const result = await apiLogin(phone, password);
+  const signInWithToken = useCallback(async (result: LoginResponse) => {
     if (String(result.role ?? result.user.role) !== 'RIDER') {
       throw new ApiError(403, 'This account is not a rider account. Ask your manager for rider access.', 'not_rider');
     }
@@ -67,10 +71,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setState({ status: 'signedIn', token: result.access_token, user: result.user });
   }, []);
 
+  const signIn = useCallback(
+    async (phone: string, password: string) => signInWithToken(await apiLogin(phone, password)),
+    [signInWithToken],
+  );
+
   const userId = state.status === 'signedIn' ? state.user.id : null;
   useEffect(() => identifyRider(userId), [userId]);
 
-  const value = useMemo(() => ({ state, signIn, signOut }), [state, signIn, signOut]);
+  const value = useMemo(
+    () => ({ state, signIn, signInWithToken, signOut }),
+    [state, signIn, signInWithToken, signOut],
+  );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

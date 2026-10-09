@@ -23,6 +23,13 @@ describe('parsePush', () => {
     });
   });
 
+  it('reads an application decision (notify.application_decided)', () => {
+    expect(parsePush({ type: 'rider_application', status: 'APPROVED' })).toEqual({
+      kind: 'application',
+      status: 'APPROVED',
+    });
+  });
+
   it('ignores anything else, including a message with no data', () => {
     expect(parsePush({ type: 'marketing' })).toBeNull();
     expect(parsePush(undefined)).toBeNull();

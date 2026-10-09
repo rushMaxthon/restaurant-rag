@@ -21,6 +21,10 @@
          to battery optimisation, Xiaomi/Realme-class phones kill the app and
          the rider silently stops getting orders. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Sign-up: the selfie and document photos (react-native-image-picker).
+         Declared, so it must also be asked for at runtime before launchCamera,
+         which PhotoSlot does; without the ask the picker answers "permission". -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Android 11+ hides other apps unless declared: "Call" and "Navigate"
          must be able to find the dialer and Google Maps. -->

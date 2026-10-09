@@ -20,6 +20,7 @@ import { SUPPORT_PHONE } from '@/config/api';
 import { useI18n } from '@/i18n';
 import { translate } from '@/i18n/translate';
 import { ApiError } from '@/services/http';
+import { useNav } from '@navigation/types';
 import { useSession } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
@@ -37,14 +38,16 @@ export function loginProblem(phone: string, password: string): string | null {
 }
 
 /**
- * Sign in with the phone number and password the manager gave you. No
- * sign-up: riders are added by the platform admin, so the help line is here
- * rather than a "create account" link that would lead nowhere.
+ * Sign in with the phone number and password - given by the manager, or
+ * chosen at sign-up. "Become a rider" sits right under Sign in, because a
+ * newcomer who opens the app looks for it there first; the help line stays
+ * for a forgotten password.
  */
 export function LoginScreen() {
   const { signIn, state } = useSession();
   const { colors } = useTheme();
   const { t } = useI18n();
+  const nav = useNav();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -150,6 +153,15 @@ export function LoginScreen() {
             loading={busy}
             onPress={submit}
             testID="login-submit"
+          />
+          <Button
+            kind="secondary"
+            icon="bicycle-outline"
+            label={t('onboarding.signup.newHere')}
+            onPress={() =>
+              nav.navigate('SignupPhone', { phone: digitsOnly(phone) || undefined })
+            }
+            testID="login-signup"
           />
         </Animated.View>
 

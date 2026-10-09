@@ -1,5 +1,10 @@
 import type {
+  ApplicationView,
   Earnings,
+  PhotoKind,
+  SectionKey,
+  SignupCodeResponse,
+  UploadFile,
   LocationFix,
   LoginResponse,
   Offer,
@@ -9,7 +14,7 @@ import type {
   Trip,
   TripAction,
 } from '@/types/api';
-import { request } from './http';
+import { request, upload } from './http';
 
 /** Every rider endpoint, typed from the backend contract. */
 
@@ -18,6 +23,24 @@ export function login(phone: string, password: string) {
     method: 'POST',
     body: { phone_number: phone, password },
   });
+}
+
+/** Public: asks for the sign-up code. 409 `phone_in_use` means "sign in instead". */
+export function requestSignupCode(phone: string) {
+  return request<SignupCodeResponse>('/rider/signup/code', {
+    method: 'POST',
+    body: { phone_number: phone },
+  });
+}
+
+/** Public: the code, the password and the name in one go; answers like /auth/login. */
+export function signup(body: {
+  phone_number: string;
+  code: string;
+  password: string;
+  full_name: string;
+}) {
+  return request<LoginResponse>('/rider/signup', { method: 'POST', body });
 }
 
 export const riderApi = (token: string) => ({
@@ -65,6 +88,30 @@ export const riderApi = (token: string) => ({
   earnings: (days = 7) =>
     request<Earnings>(`/rider/earnings?days=${days}`, { token }),
   payouts: () => request<Payout[]>('/rider/payouts', { token }),
+  // The rider's own application (a self-signed-up rider, until approved).
+  application: () => request<ApplicationView>('/rider/application', { token }),
+  saveSection: (section: SectionKey, body: Record<string, unknown>) =>
+    request<ApplicationView>(`/rider/application/${section}`, {
+      method: 'PUT',
+      body,
+      token,
+    }),
+  uploadPhoto: (
+    kind: PhotoKind,
+    file: UploadFile,
+    onProgress?: (fraction: number) => void,
+  ) =>
+    upload<ApplicationView>(
+      `/rider/application/items/${kind}`,
+      file,
+      token,
+      onProgress,
+    ),
+  submitApplication: () =>
+    request<ApplicationView>('/rider/application/submit', {
+      method: 'POST',
+      token,
+    }),
   history: (before?: string) =>
     request<Trip[]>(
       `/rider/trips?limit=20${

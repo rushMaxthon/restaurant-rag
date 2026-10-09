@@ -13,7 +13,9 @@ import { sequencer } from '@utils/latest';
 import { ApiError } from '@/services/http';
 import { useRiderRealtime } from '@hooks/useRiderRealtime';
 import { useApi, useSession } from '@/store/SessionProvider';
+import { canWork } from '@utils/onboarding';
 import { offerPollMs } from '@utils/realtime';
+import { rememberOnboarding } from '@/services/onboardingMemory';
 import { clearOfferAlert, showOfferAlert } from '@/services/push';
 import type { Offer, OpenOrder, RiderMe, Trip } from '@/types/api';
 import { translate } from '@/i18n/translate';
@@ -49,6 +51,12 @@ type RiderContextValue = {
   setMe: (me: RiderMe) => void;
   setTrip: (trip: Trip | null) => void;
   clearOffer: () => void;
+  /**
+   * Goes up whenever the server says the rider's application changed (a push
+   * or the socket), so the application screens refetch it.
+   */
+  applicationTick: number;
+  applicationChanged: () => void;
 };
 
 const RiderContext = createContext<RiderContextValue | null>(null);
@@ -85,6 +93,11 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
+  const [applicationTick, setApplicationTick] = useState(0);
+  // A pending rider is signed in to fill in an application, not to work: the
+  // Orders board is not fetched for them (the server would answer an empty
+  // list anyway), and ShiftKeeper is not even mounted (RootNavigator).
+  const working = canWork(me);
 
   const refreshMe = useCallback(async () => {
     const ticket = meSeq.start();
@@ -125,6 +138,18 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       // the next poll tries again
     }
   }, [api, ordersSeq]);
+
+  const applicationChanged = useCallback(() => {
+    setApplicationTick(n => n + 1);
+    void refreshMe();
+  }, [refreshMe]);
+
+  // Remembered so the next cold start picks tabs or the application without
+  // waiting for the network (`gateFor`).
+  const onboarding = me?.onboarding ?? null;
+  useEffect(() => {
+    if (onboarding) void rememberOnboarding(onboarding);
+  }, [onboarding]);
 
   const clearOffer = useCallback(() => {
     setOffer(current => {
@@ -185,6 +210,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       },
       onRevoked: () =>
         void signOut(translate('system.signedOut')),
+      onApplication: applicationChanged,
     },
   );
 
@@ -215,11 +241,11 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   // The board is for looking at any time, so it is kept fresh whenever the
   // app is open - online or not, mid-trip or not.
   useEffect(() => {
-    if (!foreground) return;
+    if (!foreground || !working) return;
     void refreshOpenOrders();
     const id = setInterval(refreshOpenOrders, BOARD_POLL_MS);
     return () => clearInterval(id);
-  }, [foreground, refreshOpenOrders]);
+  }, [foreground, working, refreshOpenOrders]);
 
   const value = useMemo(
     () => ({
@@ -236,6 +262,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       setMe,
       setTrip,
       clearOffer,
+      applicationTick,
+      applicationChanged,
     }),
     [
       me,
@@ -250,6 +278,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       refreshOpenOrders,
       setMe,
       clearOffer,
+      applicationTick,
+      applicationChanged,
     ],
   );
   return (

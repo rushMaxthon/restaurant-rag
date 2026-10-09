@@ -1,6 +1,8 @@
 import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '@/config/api';
 import type { Key } from '@/i18n/strings';
 import { translate } from '@/i18n/translate';
+import { ONBOARDING_ERRORS } from '@utils/onboarding';
+import type { UploadFile } from '@/types/api';
 
 /**
  * One error type for every request, carrying a sentence a rider can read.
@@ -36,6 +38,8 @@ const SENTENCES: Record<string, Key> = {
   too_early: 'system.errTooEarly',
   on_trip: 'system.errOnTrip',
   trip_ended: 'system.errTripEnded',
+  // Sign-up and the application: the same table the step forms use.
+  ...ONBOARDING_ERRORS,
 };
 
 function sentenceFor(code: string): string | null {
@@ -50,6 +54,18 @@ export function messageFor(status: number, detail: unknown): { message: string; 
   if (detail && typeof detail === 'object' && 'code' in detail) {
     const code = String((detail as { code: unknown }).code);
     return { message: sentenceFor(code) ?? code, code };
+  }
+  // A section save's 422 is {field, error}; the field is in `detail` for the
+  // form to put the sentence under it.
+  if (detail && typeof detail === 'object' && 'error' in detail) {
+    const code = String((detail as { error: unknown }).error);
+    return { message: sentenceFor(code) ?? translate('system.errValidation'), code };
+  }
+  // Submit's 422 lists what is missing or flagged.
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    for (const code of ['missing', 'flagged']) {
+      if (code in detail) return { message: sentenceFor(code) ?? translate('system.errValidation'), code };
+    }
   }
   if (Array.isArray(detail) && detail.length > 0) {
     const first = detail[0] as { msg?: string };
@@ -106,4 +122,54 @@ export async function request<T>(path: string, { method = 'GET', body, token, si
     throw new ApiError(response.status, message, code, detail);
   }
   return payload as T;
+}
+
+/**
+ * A photo, as multipart `file`. XMLHttpRequest rather than fetch because
+ * fetch reports no upload progress, and on a slow cell a 900 KB photo takes
+ * long enough that a bar standing still reads as a hang. Errors map exactly
+ * as `request` maps them.
+ */
+export function upload<T>(
+  path: string,
+  file: UploadFile,
+  token: string | null,
+  onProgress?: (fraction: number) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}${path}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    // Photos are big and cells are slow: four times a JSON request's patience.
+    xhr.timeout = REQUEST_TIMEOUT_MS * 4;
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+      };
+    }
+    const network = () => reject(new ApiError(0, translate('system.errNetwork'), 'network'));
+    xhr.onerror = network;
+    xhr.ontimeout = network;
+    xhr.onload = () => {
+      let payload: unknown = null;
+      try {
+        payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        payload = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload as T);
+        return;
+      }
+      const detail = payload && typeof payload === 'object' ? (payload as { detail?: unknown }).detail : null;
+      const { message, code } = messageFor(xhr.status, detail);
+      if (xhr.status === 401 && token && onUnauthorized) onUnauthorized(token);
+      reject(new ApiError(xhr.status, message, code, detail));
+    };
+    const form = new FormData();
+    // React Native's FormData takes {uri, type, name} for a file on the device.
+    form.append('file', file as unknown as Blob);
+    xhr.send(form);
+  });
 }
