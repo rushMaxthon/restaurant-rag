@@ -111,6 +111,8 @@ class AdminApplicationView(ApplicationView):
     #: Signed links, valid five minutes. Empty when storage is not configured.
     photos: dict[ApplicationItemKind, str]
     photos_error: str | None = None
+    #: Uploaded, but the file could not be found in storage. Shown per photo.
+    missing_photos: list[ApplicationItemKind] = []
     events: list[EventView]
 
 

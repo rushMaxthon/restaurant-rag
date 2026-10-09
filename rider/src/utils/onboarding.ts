@@ -264,6 +264,15 @@ export function itemState(view: ApplicationView, kind: ItemKind): ItemState {
   return view.status === 'DRAFT' ? 'added' : 'inReview';
 }
 
+/**
+ * Whether the list of what we need is shown. Not under a final rejection:
+ * "In review" and "Fix this" beside a decision that cannot be changed read
+ * as if the rider still had something to do.
+ */
+export function showsChecklist(status: ApplicationView['status']): boolean {
+  return status !== 'REJECTED';
+}
+
 export const PHOTO_KINDS: readonly PhotoKind[] = [
   'SELFIE',
   'RC',

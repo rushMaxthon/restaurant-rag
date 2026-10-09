@@ -2130,5 +2130,7 @@ export interface RiderApplicationDetail {
   /** Signed links, valid five minutes. Empty when storage is not configured. */
   photos: Partial<Record<ItemKind, string>>;
   photos_error: string | null;
+  /** Uploaded, but the file could not be found in storage. */
+  missing_photos?: ItemKind[];
   events: ApplicationEvent[];
 }

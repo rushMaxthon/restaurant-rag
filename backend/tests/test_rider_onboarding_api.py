@@ -220,6 +220,27 @@ class SignupApiTests(unittest.TestCase):
         self.assertEqual(approved.json()["status"], "APPROVED", approved.text)
         self.assertEqual(client.post("/api/rider/status", json={"online": True}).status_code, 200)
 
+    def test_one_missing_photo_does_not_hide_the_others(self) -> None:
+        """A file gone from the bucket (deleted by hand, a failed write) must
+        cost that one photo, not every document on the review page."""
+
+        from app.services.fleet.onboarding import storage
+
+        token, rider_id = self.sign_up()
+        client = self.rider(token)
+        self.complete(client)
+
+        def sign(path: str, seconds: int = 300) -> str:
+            if "selfie" in path:
+                raise storage.StorageUnavailable("Could not sign a document link (400)")
+            return f"https://signed/{path}"
+
+        with mock.patch("app.services.fleet.onboarding.storage.signed_url", side_effect=sign):
+            detail = self.admin_client().get(f"/api/admin/rider-applications/{rider_id}").json()
+        self.assertNotIn("SELFIE", detail["photos"])
+        self.assertIn("PAN", detail["photos"])
+        self.assertEqual(detail["missing_photos"], ["SELFIE"])
+
     def test_a_rider_cannot_read_the_admin_routes(self) -> None:
         token, rider_id = self.sign_up()
         response = self.rider(token).get(f"/api/admin/rider-applications/{rider_id}")

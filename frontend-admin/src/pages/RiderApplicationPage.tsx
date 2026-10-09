@@ -639,6 +639,7 @@ function DocumentCard({
               item={item}
               label={ITEM_LABELS[item.kind]}
               onZoom={() => onZoom(item.kind)}
+              missing={(detail.missing_photos ?? []).includes(item.kind)}
               unavailable={Boolean(detail.photos_error)}
               url={detail.photos[item.kind]}
             />
@@ -661,12 +662,15 @@ function Photo({
   item,
   url,
   label,
+  missing,
   unavailable,
   onZoom,
 }: {
   item: ApplicationItem;
   url: string | undefined;
   label: string;
+  /** Uploaded, but the file is gone from storage: only this photo is lost. */
+  missing: boolean;
   unavailable: boolean;
   onZoom: () => void;
 }) {
@@ -680,7 +684,9 @@ function Photo({
   }
   const text = !item.has_photo
     ? 'Not uploaded'
-    : unavailable
+    : missing
+      ? 'File missing - mark "Needs change" so the rider uploads it again'
+      : unavailable
       ? "Can't be shown"
       : broken
         ? 'The link expired - it renews within a few minutes'

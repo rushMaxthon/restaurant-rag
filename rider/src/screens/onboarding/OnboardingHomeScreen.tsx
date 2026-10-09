@@ -27,6 +27,7 @@ import {
   itemState,
   progress,
   SECTION_OF,
+  showsChecklist,
 } from '@utils/onboarding';
 
 /**
@@ -209,29 +210,31 @@ function Summary({ view: app }: { view: ApplicationView }) {
         </AppText>
       ) : null}
 
-      <Group title={t('onboarding.home.items')}>
-        {app.required.map(kind => {
-          const item = app.items.find(i => i.kind === kind);
-          const state = itemState(app, kind);
-          return (
-            <ItemRow
-              key={kind}
-              kind={kind}
-              item={item}
-              state={state}
-              onFix={
-                state === 'fix' && item?.editable
-                  ? () =>
-                      nav.navigate('ApplicationStep', {
-                        step: SECTION_OF[kind],
-                        single: true,
-                      })
-                  : undefined
-              }
-            />
-          );
-        })}
-      </Group>
+      {showsChecklist(app.status) ? (
+        <Group title={t('onboarding.home.items')}>
+          {app.required.map(kind => {
+            const item = app.items.find(i => i.kind === kind);
+            const state = itemState(app, kind);
+            return (
+              <ItemRow
+                key={kind}
+                kind={kind}
+                item={item}
+                state={state}
+                onFix={
+                  state === 'fix' && item?.editable
+                    ? () =>
+                        nav.navigate('ApplicationStep', {
+                          step: SECTION_OF[kind],
+                          single: true,
+                        })
+                    : undefined
+                }
+              />
+            );
+          })}
+        </Group>
+      ) : null}
     </Animated.View>
   );
 }

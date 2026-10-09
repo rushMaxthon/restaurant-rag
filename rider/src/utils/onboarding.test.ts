@@ -14,6 +14,7 @@ import {
   gateFor,
   isAdult,
   itemState,
+  showsChecklist,
   isoToDmy,
   licenceValid,
   parseDmy,
@@ -540,5 +541,17 @@ describe('itemState', () => {
     expect(itemState({ ...base, status: 'SUBMITTED' }, 'PERSONAL')).toBe(
       'inReview',
     );
+  });
+});
+
+describe('the checklist under a decision', () => {
+  it('is hidden once the application is rejected for good', () => {
+    expect(showsChecklist('REJECTED')).toBe(false);
+  });
+
+  it('is shown while there is anything to do or to wait for', () => {
+    for (const status of ['DRAFT', 'SUBMITTED', 'CHANGES_NEEDED'] as const) {
+      expect(showsChecklist(status)).toBe(true);
+    }
   });
 });

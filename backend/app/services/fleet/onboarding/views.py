@@ -86,13 +86,17 @@ def admin_application_view(db: Session, app: RiderApplication) -> AdminApplicati
     user = db.get(User, app.rider_user_id)
     photos: dict = {}
     error = None
+    missing: list = []
     if storage.configured():
-        try:
-            for kind, item in applications.items_of(db, app.rider_user_id).items():
-                if kind in PHOTO_KINDS and item.storage_path:
+        # Signed one by one: a single file gone from the bucket costs that
+        # photo, not every document on the page (one broken link used to
+        # blank the whole review).
+        for kind, item in applications.items_of(db, app.rider_user_id).items():
+            if kind in PHOTO_KINDS and item.storage_path:
+                try:
                     photos[kind] = storage.signed_url(item.storage_path)
-        except storage.StorageUnavailable as exc:
-            error = str(exc)
+                except storage.StorageUnavailable:
+                    missing.append(kind)
     else:
         error = "storage_not_configured"
     names = {}
@@ -109,6 +113,7 @@ def admin_application_view(db: Session, app: RiderApplication) -> AdminApplicati
         phone_number=user.phone_number if user else None,
         photos=photos,
         photos_error=error,
+        missing_photos=missing if storage.configured() else [],
         events=[
             EventView(
                 at=e.at,
