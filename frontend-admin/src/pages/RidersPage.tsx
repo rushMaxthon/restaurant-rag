@@ -13,8 +13,9 @@
  * signs them out at once and withdraws any order they were being offered.
  */
 
+import { dueForRefresh, firstTab } from '../services/riderApplications';
 import { Bike, ClipboardCheck, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ApplicationsTab } from '../components/riders/ApplicationsTab';
@@ -77,11 +78,18 @@ export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
   const [picked, setPicked] = useState<Tab | null>(tabFromAddress);
   const waiting = useSubmittedCount(token);
   // Somebody waiting to be approved comes before the map: it is the one
-  // thing on this page that only an admin can move forward.
+  // thing on this page that only an admin can move forward. Decided once,
+  // from the first count - never again while the page is open, or the page
+  // switched tabs under an admin watching the map whenever someone applied.
   // Null until the count is in when nothing was asked for, so the map does
   // not mount for a moment and then give way to the queue.
-  const tab: Tab | null = picked ?? (waiting === null ? null : waiting ? 'applications' : 'map');
-  const tabs = waiting ? [TABS[1], TABS[0], ...TABS.slice(2)] : [...TABS.slice(0, 1), ...TABS.slice(2), TABS[1]];
+  const [settled, setSettled] = useState<Tab | null>(null);
+  // Adjusting state while rendering (React's pattern for "derive once from a
+  // prop"), not in an effect: no extra render with the wrong tab.
+  if (settled === null && waiting !== null) setSettled(firstTab(waiting));
+  const tab: Tab | null = picked ?? settled;
+  const queueFirst = settled === 'applications';
+  const tabs = queueFirst ? [TABS[1], TABS[0], ...TABS.slice(2)] : [...TABS.slice(0, 1), ...TABS.slice(2), TABS[1]];
 
   const choose = (key: Tab) => {
     setPicked(key);
@@ -132,7 +140,9 @@ export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
  */
 function useSubmittedCount(token: string): number | null {
   const [count, setCount] = useState<number | null>(null);
+  const lastAt = useRef(0);
   const load = useCallback(() => {
+    lastAt.current = Date.now();
     api
       .listRiderApplications(token, { status: 'SUBMITTED' })
       .then((rows) => setCount(rows.length))
@@ -143,7 +153,11 @@ function useSubmittedCount(token: string): number | null {
     const id = window.setInterval(load, 60_000);
     return () => window.clearInterval(id);
   }, [load]);
-  useRidersChanged(load);
+  // The hint also fires on every rider's location ping: refetch at most
+  // every 15 s on it, not a 500-row query per ping per open tab.
+  useRidersChanged(() => {
+    if (dueForRefresh(lastAt.current, Date.now(), 15_000)) load();
+  });
   return count;
 }
 

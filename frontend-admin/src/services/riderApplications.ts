@@ -218,3 +218,20 @@ export function ageOn(dateOfBirth: string | null, now: Date = new Date()): numbe
   if (beforeBirthday) age -= 1;
   return age;
 }
+
+/**
+ * The tab /riders opens on, decided ONCE from the first count. Re-deciding on
+ * every change pulled an admin off the live map the moment somebody submitted
+ * (and back when the queue emptied), mid-dispatch.
+ */
+export function firstTab(waitingAtFirstLook: number): 'applications' | 'map' {
+  return waitingAtFirstLook > 0 ? 'applications' : 'map';
+}
+
+/**
+ * The rider-changed hint also fires on location pings; the badge only needs
+ * to move when an application does, so it refreshes at most this often.
+ */
+export function dueForRefresh(lastAt: number, now: number, minMs: number): boolean {
+  return now - lastAt >= minMs;
+}

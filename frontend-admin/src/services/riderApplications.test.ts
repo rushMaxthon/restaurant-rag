@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ApplicationItem, ItemKind, RiderApplicationDetail } from '../types/app';
 import {
+  dueForRefresh,
+  firstTab,
   ITEM_LABELS,
   REASONS,
   STATUS_META,
@@ -226,5 +228,17 @@ describe('age', () => {
     expect(ageOn('2000-10-09', now)).toBe(26);
     expect(ageOn('2000-10-10', now)).toBe(25);
     expect(ageOn(null, now)).toBeNull();
+  });
+});
+
+describe('the Riders page settles its tabs once', () => {
+  it('opens on Applications when someone was waiting at first look, else the map', () => {
+    expect(firstTab(2)).toBe('applications');
+    expect(firstTab(0)).toBe('map');
+  });
+
+  it('does not refetch the badge on every location ping', () => {
+    expect(dueForRefresh(0, 1_000, 15_000)).toBe(false);
+    expect(dueForRefresh(0, 15_000, 15_000)).toBe(true);
   });
 });
