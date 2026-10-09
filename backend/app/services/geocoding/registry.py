@@ -3,10 +3,16 @@
 Platform-level, like the courier and unlike payments: a coordinate is not
 anybody's money, and every tenant wants the same accuracy.
 
-**Ola Maps, then Google, when their keys exist; Nominatim otherwise.** Not a preference dial, an
+**Google when its key exists; Nominatim otherwise.** Not a preference dial, an
 ordering by accuracy — and the fallback is what makes this feature real in a
 deployment that has never opened a Google Cloud console. Nothing to configure
 for it to work, and one environment variable to make it good.
+
+Ola Maps sat in front of Google from 2026-10-07 and was removed on
+2026-10-09: its key started answering 401 to every call, and because it was
+tried first, the checkout lost its address dropdown while a working Google key
+sat unused behind it. One keyed provider, with OpenStreetMap behind it for
+lookups, is the whole chain now.
 
 `None` is impossible here, which is the point: a geocoder is always available,
 so callers never have to handle "there is no way to locate an address". What
@@ -23,7 +29,6 @@ from app.config import get_settings
 from app.services.geocoding.base import Geocoder
 from app.services.geocoding.google import GoogleGeocoder
 from app.services.geocoding.nominatim import NominatimGeocoder
-from app.services.geocoding.ola import OlaMapsGeocoder
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +50,7 @@ def geocoder() -> Geocoder:
         if _geocoder is not None:
             return _geocoder
         settings = get_settings()
-        if settings.ola_maps_api_key:
-            _geocoder = OlaMapsGeocoder(
-                api_key=settings.ola_maps_api_key,
-                timeout_seconds=settings.geocoding_timeout_seconds,
-                country_codes=settings.geocoding_country_codes,
-            )
-            logger.info("Geocoding through Ola Maps")
-        elif settings.google_maps_api_key:
+        if settings.google_maps_api_key:
             _geocoder = GoogleGeocoder(
                 api_key=settings.google_maps_api_key,
                 timeout_seconds=settings.geocoding_timeout_seconds,
@@ -72,7 +70,7 @@ def geocoder() -> Geocoder:
         return _geocoder
 
 
-def places_geocoder() -> GoogleGeocoder | OlaMapsGeocoder | None:
+def places_geocoder() -> GoogleGeocoder | None:
     """The geocoder that can power an autocomplete, if there is one.
 
     Separate from `geocoder()` because address SUGGESTIONS are not something
@@ -85,7 +83,7 @@ def places_geocoder() -> GoogleGeocoder | OlaMapsGeocoder | None:
     """
 
     found = geocoder()
-    return found if isinstance(found, (GoogleGeocoder, OlaMapsGeocoder)) else None
+    return found if isinstance(found, GoogleGeocoder) else None
 
 
 def reset_geocoder() -> None:

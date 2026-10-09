@@ -5571,3 +5571,13 @@ online/offline/missed cards and its tip, take -> trip -> OTP -> Delivered,
 History sticky headings, Earnings, Profile. jest 120, tsc clean, eslint 0
 errors (51 pre-existing warnings). Trap: FlashList sticky headers ignore
 contentContainerStyle padding.
+
+## 2026-10-09 - address picker: Ola Maps removed, Google answers
+
+The checkout address dropdown was empty: Ola Maps answered 401 to every
+call (41 in a day) and, being tried first, hid a working Google key. Ola is
+removed (provider, settings, render.yaml, its tests, the .env line); Google
+answers suggestions and lookups, OpenStreetMap stays behind it for lookups.
+Verified: /addresses/suggest returns 5 suggestions as a customer; geocoding,
+address, platform-watch and redaction suites 143 OK; API on 8000 restarted
+with the sandbox courier forced.

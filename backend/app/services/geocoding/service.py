@@ -169,12 +169,11 @@ def locate(db: Session, query: AddressQuery) -> GeocodedPoint | None:
 
 
 def _is_google(provider) -> bool:
-    """A keyed provider (Google or Ola Maps), whose refusal is an account problem."""
+    """The keyed provider, whose refusal is an account problem."""
 
     from app.services.geocoding.google import GoogleGeocoder
-    from app.services.geocoding.ola import OlaMapsGeocoder
 
-    return isinstance(provider, (GoogleGeocoder, OlaMapsGeocoder))
+    return isinstance(provider, GoogleGeocoder)
 
 
 def _locate_with_fallback(db: Session, query: AddressQuery) -> GeocodedPoint | None:

@@ -1098,12 +1098,6 @@ class Settings(BaseSettings):
     # credential with a billing quota attached does not ship inside a
     # JavaScript bundle.
     google_maps_api_key: str = ""
-    # Ola Maps (2026-10-07): when set, Ola answers address suggestions, picked
-    # places and typed addresses ahead of Google - free for 100,000 requests a
-    # month per API, built for Indian addresses, and no billing account to lapse
-    # (Google's did, and checkout lost its address dropdown). Google stays the
-    # second choice when its key is set too; OpenStreetMap the last.
-    ola_maps_api_key: str = ""
     # Nominatim's usage policy requires a genuine identifying User-Agent and
     # treats a default library string as abuse, so this is a setting rather
     # than a constant — a deployment should say who it is.
