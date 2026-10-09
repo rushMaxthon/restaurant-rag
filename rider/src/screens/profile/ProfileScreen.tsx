@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
+import { LanguageSheet } from '@components/LanguageSwitch';
 import { Card } from '@components/ui/Card';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Group, GroupRow } from '@components/ui/Group';
 import { Screen } from '@components/ui/Screen';
@@ -13,7 +15,7 @@ import { LANGUAGE_NAMES, useI18n, type Key } from '@/i18n';
 import { testOfferAlert } from '@/services/push';
 import { THEME_OPTIONS } from '@theme/preference';
 import { useNav } from '@navigation/types';
-import { APP_VERSION, SUPPORT_PHONE } from '@/config/api';
+import { APP_NAME, APP_VERSION, SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
 import { useApi, useSession, useSignedInUser } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
@@ -24,7 +26,10 @@ import { call } from '@utils/links';
 const VEHICLE: Record<string, { labelKey: Key; icon: IconName }> = {
   BIKE: { labelKey: 'account.profile.vehicleBike', icon: 'bicycle' },
   SCOOTER: { labelKey: 'account.profile.vehicleScooter', icon: 'bicycle' },
-  EV_SCOOTER: { labelKey: 'onboarding.vehicle.EV_SCOOTER', icon: 'flash-outline' },
+  EV_SCOOTER: {
+    labelKey: 'onboarding.vehicle.EV_SCOOTER',
+    icon: 'flash-outline',
+  },
   CYCLE: { labelKey: 'account.profile.vehicleCycle', icon: 'bicycle-outline' },
 };
 
@@ -58,34 +63,18 @@ export function ProfileScreen() {
   const [leaving, setLeaving] = useState(false);
   const vehicle = VEHICLE[me?.vehicle_type ?? 'BIKE'] ?? VEHICLE.BIKE!;
 
-  const confirmSignOut = () => {
-    if (trip) {
-      Alert.alert(
-        t('account.profile.finishFirstTitle'),
-        t('account.profile.finishFirstBody'),
-      );
-      return;
+  // Two answers in the app's own dialog (not Android's grey alert): a rider
+  // carrying an order is told why they cannot leave; anyone else is asked.
+  const [askSignOut, setAskSignOut] = useState<null | 'blocked' | 'ask'>(null);
+  const confirmSignOut = () => setAskSignOut(trip ? 'blocked' : 'ask');
+  const doSignOut = async () => {
+    setLeaving(true);
+    try {
+      if (me?.status === 'ONLINE') await api.setOnline(false);
+    } catch {
+      // the server takes a silent rider offline within minutes anyway
     }
-    Alert.alert(
-      t('account.profile.signOutTitle'),
-      t('account.profile.signOutBody'),
-      [
-        { text: t('account.profile.stay'), style: 'cancel' },
-        {
-          text: t('account.profile.signOut'),
-          style: 'destructive',
-          onPress: async () => {
-            setLeaving(true);
-            try {
-              if (me?.status === 'ONLINE') await api.setOnline(false);
-            } catch {
-              // the server takes a silent rider offline within minutes anyway
-            }
-            await signOut(null);
-          },
-        },
-      ],
-    );
+    await signOut(null);
   };
 
   return (
@@ -243,44 +232,33 @@ export function ProfileScreen() {
       </Animated.View>
 
       <AppText variant="caption" tone="faint" align="center">
-        Foodie Rider · v{APP_VERSION}
+        {APP_NAME} · v{APP_VERSION}
       </AppText>
 
-      <Sheet
+      <ConfirmDialog
+        open={askSignOut === 'blocked'}
+        icon="bicycle"
+        title={t('account.profile.finishFirstTitle')}
+        message={t('account.profile.finishFirstBody')}
+        onCancel={() => setAskSignOut(null)}
+      />
+      <ConfirmDialog
+        open={askSignOut === 'ask'}
+        tone="danger"
+        icon="log-out-outline"
+        title={t('account.profile.signOutTitle')}
+        message={t('account.profile.signOutBody')}
+        confirmLabel={t('account.profile.signOut')}
+        cancelLabel={t('account.profile.stay')}
+        busy={leaving}
+        onCancel={() => setAskSignOut(null)}
+        onConfirm={() => void doSignOut()}
+      />
+
+      <LanguageSheet
         open={languageOpen}
         onClose={() => setLanguageOpen(false)}
-        title={t('account.language.title')}
-      >
-        {(['system', 'en', 'hi', 'gu'] as const).map(option => {
-          const active = option === i18n.preference;
-          return (
-            <Card
-              key={option}
-              tone={active ? 'primary' : 'surface'}
-              style={styles.row}
-              onPress={() => {
-                i18n.setPreference(option);
-                setLanguageOpen(false);
-              }}
-            >
-              <View style={styles.flex}>
-                <AppText variant="bodyStrong">
-                  {option === 'system'
-                    ? t('account.language.phone')
-                    : LANGUAGE_NAMES[option]}
-                </AppText>
-              </View>
-              {active ? (
-                <Icon
-                  name="checkmark-circle"
-                  size={22}
-                  color={colors.primary}
-                />
-              ) : null}
-            </Card>
-          );
-        })}
-      </Sheet>
+      />
 
       <Sheet
         open={appearance}

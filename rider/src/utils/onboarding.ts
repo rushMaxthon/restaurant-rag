@@ -158,12 +158,14 @@ export function requiredItems(
   const items: ItemKind[] = [
     'PERSONAL',
     'SELFIE',
+    // Always: every rider says what they ride (the server's rule too).
+    'VEHICLE_DETAILS',
     'AADHAAR_FRONT',
     'AADHAAR_BACK',
     'PAN',
     'BANK_DETAILS',
   ];
-  if (needsRc(vehicle)) items.push('VEHICLE_DETAILS', 'RC');
+  if (needsRc(vehicle)) items.push('RC');
   if (needsLicence(vehicle)) items.push('LICENCE_FRONT', 'LICENCE_BACK');
   // A bank account is checked against a cheque or passbook; a UPI ID alone
   // has nothing to photograph.
@@ -262,6 +264,15 @@ export function itemState(view: ApplicationView, kind: ItemKind): ItemState {
     return 'todo';
   if (item.status === 'ACCEPTED') return 'accepted';
   return view.status === 'DRAFT' ? 'added' : 'inReview';
+}
+
+/**
+ * Whether the list of what we need is shown. Not under a final rejection:
+ * "In review" and "Fix this" beside a decision that cannot be changed read
+ * as if the rider still had something to do.
+ */
+export function showsChecklist(status: ApplicationView['status']): boolean {
+  return status !== 'REJECTED';
 }
 
 export const PHOTO_KINDS: readonly PhotoKind[] = [

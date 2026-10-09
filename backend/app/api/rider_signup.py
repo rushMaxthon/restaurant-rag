@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.auth import AuthResponse
 from app.schemas.rider_onboarding import (
     ApplicationView,
+    SignupCheckRequest,
     SignupCodeRequest,
     SignupCodeResponse,
     SignupRequest,
@@ -61,6 +62,20 @@ def signup_code(
         raise HTTPException(status.HTTP_409_CONFLICT, "phone_in_use")
     result = phone.request_code(db, number)
     return SignupCodeResponse(sent=result.sent, retry_after=result.retry_after, debug_code=result.debug_code)
+
+
+@router.post("/signup/check", status_code=status.HTTP_204_NO_CONTENT)
+def signup_check(
+    _rate_limited: Annotated[None, Depends(per_ip("rider-signup-check", limit=30, window_seconds=3600))],
+    payload: SignupCheckRequest,
+    db: Db,
+) -> Response:
+    """Is this the code? Asked on the code screen, so a typo is said there and
+    not after the rider has typed a name and password. Does not use the code
+    up (sign-up does); a wrong guess still counts towards the lock."""
+
+    phone.verify_code(db, _phone(payload.phone_number), payload.code, consume=False)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)

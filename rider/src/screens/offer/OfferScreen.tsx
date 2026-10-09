@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Vibration, View } from 'react-native';
+import { BackHandler, StyleSheet, Vibration, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Card } from '@components/ui/Card';
 import { CountdownRing } from '@components/ui/CountdownRing';
 import { Icon } from '@components/ui/Icon';
@@ -36,6 +37,7 @@ export function OfferScreen() {
   const api = useApi();
   const { offer, clearOffer, setTrip, refreshMe } = useRider();
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
+  const [askDecline, setAskDecline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown] = useState(offer);
 
@@ -44,6 +46,16 @@ export function OfferScreen() {
     haptic('heavy');
     return () => Vibration.cancel();
   }, []);
+
+  // Android back is a decline by another name: asked the same way, never a
+  // silent dismissal that leaves the order ringing for nobody.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (busy === null) setAskDecline(true);
+      return true;
+    });
+    return () => sub.remove();
+  }, [busy]);
 
   // Withdrawn or taken elsewhere while on screen: close.
   useEffect(() => {
@@ -70,9 +82,7 @@ export function OfferScreen() {
       nav.replace('Trip');
     } catch (e) {
       haptic('error');
-      setError(
-        e instanceof ApiError ? e.message : t('trip.couldNotAccept'),
-      );
+      setError(e instanceof ApiError ? e.message : t('trip.couldNotAccept'));
       setBusy(null);
       if (e instanceof ApiError && (e.status === 409 || e.status === 404))
         setTimeout(close, 1400);
@@ -194,7 +204,9 @@ export function OfferScreen() {
           label={t('trip.decline')}
           style={styles.decline}
           loading={busy === 'decline'}
-          onPress={decline}
+          // Asked first: one thumb on the wrong side of the screen gave the
+          // order away, and there is no taking it back from here.
+          onPress={() => setAskDecline(true)}
         />
         <Button
           kind="success"
@@ -206,6 +218,21 @@ export function OfferScreen() {
           testID="offer-accept"
         />
       </Animated.View>
+      <ConfirmDialog
+        open={askDecline}
+        tone="danger"
+        icon="close-circle"
+        title={t('confirm.decline.title')}
+        message={t('confirm.decline.body')}
+        confirmLabel={t('confirm.decline.yes')}
+        cancelLabel={t('confirm.decline.no')}
+        busy={busy === 'decline'}
+        onCancel={() => setAskDecline(false)}
+        onConfirm={() => {
+          setAskDecline(false);
+          void decline();
+        }}
+      />
     </View>
   );
 }

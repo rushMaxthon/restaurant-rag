@@ -1,11 +1,12 @@
 import React, { forwardRef, useState } from 'react';
 import { translate } from '@/i18n/translate';
-import { Pressable, StyleSheet, TextInput, View, type TextInputInstance, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type TextInputInstance, type TextInputProps, type ViewInstance } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { useTheme } from '@theme/ThemeProvider';
 import { font, motion, radius, space, touch } from '@theme/tokens';
 import { AppText } from './AppText';
+import { useRevealOnFocus } from './Screen';
 import { Icon, type IconName } from './Icon';
 
 type Props = TextInputProps & {
@@ -26,6 +27,9 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
 ) {
   const { colors } = useTheme();
   const focus = useSharedValue(0);
+  const reveal = useRevealOnFocus();
+  // The whole field - label to error line - is what has to clear the keyboard.
+  const box = React.useRef<ViewInstance>(null);
   const [hidden, setHidden] = useState(Boolean(secure));
   const animated = useAnimatedStyle(() => ({
     borderColor: error
@@ -35,7 +39,7 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
   }));
 
   return (
-    <View style={style}>
+    <View ref={box} style={style}>
       <AppText variant="label" tone="muted" style={styles.label}>
         {label}
       </AppText>
@@ -54,6 +58,7 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
           style={[styles.input, { color: colors.text }]}
           onFocus={e => {
             focus.value = withTiming(1, { duration: motion.fast });
+            reveal(box.current);
             onFocus?.(e);
           }}
           onBlur={e => {

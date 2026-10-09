@@ -180,6 +180,23 @@ class OriginTests(unittest.TestCase):
         # required, so this admits nobody unauthenticated.
         self.assertTrue(origin_allowed(None))
 
+    def test_a_native_app_sending_the_servers_own_address_is_let_in(self) -> None:
+        # React Native on Android sets Origin to the URL it is connecting to.
+        # That is a same-origin connection - no page on another site can send
+        # it - and refusing it left the rider app polling, never live.
+        environ = {"HTTP_HOST": "api.example.in", "wsgi.url_scheme": "https"}
+        self.assertTrue(origin_allowed("https://api.example.in", environ))
+        self.assertTrue(origin_allowed("http://localhost:8000", {"HTTP_HOST": "localhost:8000", "wsgi.url_scheme": "http"}))
+
+    def test_behind_a_proxy_that_ends_tls(self) -> None:
+        environ = {"HTTP_HOST": "api.example.in", "wsgi.url_scheme": "http", "HTTP_X_FORWARDED_PROTO": "https"}
+        self.assertTrue(origin_allowed("https://api.example.in", environ))
+
+    def test_another_host_is_still_refused(self) -> None:
+        environ = {"HTTP_HOST": "api.example.in", "wsgi.url_scheme": "https"}
+        self.assertFalse(origin_allowed("https://evil.example", environ))
+        self.assertFalse(origin_allowed("https://api.example.in.evil.example", environ))
+
 
 class TransportTests(unittest.TestCase):
     """The mount exists, and the polling transport is refused."""

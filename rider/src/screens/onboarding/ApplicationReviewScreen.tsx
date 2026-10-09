@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { IconButton } from '@components/ui/IconButton';
@@ -54,6 +55,7 @@ export function ApplicationReviewScreen() {
   const { view, setView, refresh } = useApplication();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askSubmit, setAskSubmit] = useState(false);
 
   if (!view) return <Screen>{null}</Screen>;
 
@@ -241,10 +243,24 @@ export function ApplicationReviewScreen() {
           }
           loading={busy}
           disabledReason={reason}
-          onPress={submit}
+          onPress={() => setAskSubmit(true)}
           testID="application-submit"
         />
       </View>
+      <ConfirmDialog
+        open={askSubmit}
+        icon="paper-plane"
+        title={t(resubmit ? 'confirm.resubmit.title' : 'confirm.submit.title')}
+        message={t(resubmit ? 'confirm.resubmit.body' : 'confirm.submit.body')}
+        confirmLabel={t('confirm.submit.yes')}
+        cancelLabel={t('confirm.submit.no')}
+        busy={busy}
+        onCancel={() => setAskSubmit(false)}
+        onConfirm={() => {
+          setAskSubmit(false);
+          void submit();
+        }}
+      />
     </View>
   );
 

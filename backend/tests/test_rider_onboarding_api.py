@@ -141,6 +141,23 @@ class SignupApiTests(unittest.TestCase):
         with self.fdb.session() as db:
             self.assertIsNone(db.query(User).filter(User.phone_number == f"+91{digits}").first())
 
+    def test_the_code_is_checked_on_its_own_screen(self) -> None:
+        """A wrong code is said on the code screen, before the rider types a
+        name and password - and checking it does not use it up."""
+
+        digits = self.phone()
+        public = client_for(self.fdb, None)
+        sent = public.post("/api/rider/signup/code", json={"phone_number": digits}).json()
+        wrong = public.post("/api/rider/signup/check", json={"phone_number": digits, "code": "000000"})
+        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "code_wrong"))
+        right = public.post("/api/rider/signup/check", json={"phone_number": digits, "code": sent["debug_code"]})
+        self.assertEqual(right.status_code, 204, right.text)
+        made = public.post(
+            "/api/rider/signup",
+            json={"phone_number": digits, "code": sent["debug_code"], "password": "password123", "full_name": "A B"},
+        )
+        self.assertEqual(made.status_code, 201, made.text)
+
     # --- the application ---------------------------------------------------------
 
     def test_responses_never_carry_full_numbers(self) -> None:
@@ -202,6 +219,27 @@ class SignupApiTests(unittest.TestCase):
         approved = admin.post(f"/api/admin/rider-applications/{rider_id}/approve")
         self.assertEqual(approved.json()["status"], "APPROVED", approved.text)
         self.assertEqual(client.post("/api/rider/status", json={"online": True}).status_code, 200)
+
+    def test_one_missing_photo_does_not_hide_the_others(self) -> None:
+        """A file gone from the bucket (deleted by hand, a failed write) must
+        cost that one photo, not every document on the review page."""
+
+        from app.services.fleet.onboarding import storage
+
+        token, rider_id = self.sign_up()
+        client = self.rider(token)
+        self.complete(client)
+
+        def sign(path: str, seconds: int = 300) -> str:
+            if "selfie" in path:
+                raise storage.StorageUnavailable("Could not sign a document link (400)")
+            return f"https://signed/{path}"
+
+        with mock.patch("app.services.fleet.onboarding.storage.signed_url", side_effect=sign):
+            detail = self.admin_client().get(f"/api/admin/rider-applications/{rider_id}").json()
+        self.assertNotIn("SELFIE", detail["photos"])
+        self.assertIn("PAN", detail["photos"])
+        self.assertEqual(detail["missing_photos"], ["SELFIE"])
 
     def test_a_rider_cannot_read_the_admin_routes(self) -> None:
         token, rider_id = self.sign_up()

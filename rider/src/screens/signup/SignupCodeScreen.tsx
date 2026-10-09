@@ -9,7 +9,8 @@ import { Icon } from '@components/ui/Icon';
 import { useI18n } from '@/i18n';
 import { useNav, type RootStackParamList } from '@navigation/types';
 import { ApiError } from '@/services/http';
-import { requestSignupCode } from '@/services/rider';
+import { checkSignupCode, requestSignupCode } from '@/services/rider';
+import { errorKey } from '@utils/onboarding';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
 import { prettyPhone } from '@utils/format';
@@ -51,14 +52,32 @@ export function SignupCodeScreen() {
     return () => clearTimeout(id);
   }, [wait]);
 
-  const next = (value = code) => {
+  const next = async (value = code) => {
     if (value.length !== CODE_LENGTH) {
       setError(t('onboarding.code.incomplete'));
       setShake(n => n + 1);
       haptic('warning');
       return;
     }
-    nav.navigate('SignupAccount', { phone: params.phone, code: value });
+    // Checked here, not only at "Create account": a typo found after the
+    // rider had typed a name and two passwords sent them back to retype all
+    // three (found on the emulator).
+    setBusy(true);
+    setError(null);
+    try {
+      await checkSignupCode(params.phone, value);
+      nav.navigate('SignupAccount', { phone: params.phone, code: value });
+    } catch (e) {
+      haptic('error');
+      setCode('');
+      setShake(n => n + 1);
+      const key = e instanceof ApiError ? errorKey(e.code ?? e.message) : null;
+      setError(
+        key ? t(key) : e instanceof ApiError ? e.message : t('onboarding.account.failed'),
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   const resend = async () => {
@@ -102,7 +121,7 @@ export function SignupCodeScreen() {
           setError(null);
           setCode(value);
           // The last digit is the "Next": nothing else to decide on this screen.
-          if (value.length === CODE_LENGTH) next(value);
+          if (value.length === CODE_LENGTH) void next(value);
         }}
       />
       {debugCode ? (
@@ -123,7 +142,7 @@ export function SignupCodeScreen() {
       <Button
         label={t('onboarding.code.next')}
         icon="arrow-forward"
-        onPress={() => next()}
+        onPress={() => void next()}
       />
 
       <View style={styles.links}>

@@ -12,4 +12,6 @@ export const REQUEST_TIMEOUT_MS = 15_000;
 
 export const SUPPORT_PHONE = '+919999999999';
 
+/** The rider app's name, as riders see it on the phone and in the app. */
+export const APP_NAME = 'PreeRider';
 export const APP_VERSION = '1.0.0';

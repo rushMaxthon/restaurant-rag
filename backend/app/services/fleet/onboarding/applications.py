@@ -78,6 +78,7 @@ __all__ = [
 #: The typed-in field a document item also needs, beside its photo: a PAN
 #: photo with no PAN number is not a complete PAN.
 _DATA_OF: dict[K, tuple[str, ...]] = {
+    K.VEHICLE_DETAILS: ("vehicle_type",),
     K.AADHAAR_FRONT: ("aadhaar_last4",),
     K.PAN: ("pan_last4",),
     K.LICENCE_FRONT: ("licence_last4", "licence_expiry"),

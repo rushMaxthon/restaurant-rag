@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -14,6 +14,7 @@ import { PhotoSlot } from '@components/onboarding/PhotoSlot';
 import { StepProgressBar } from '@components/onboarding/StepProgressBar';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
@@ -119,6 +120,24 @@ function useStep(step: SectionKey, single: boolean) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Typed since the last save. Back - the button, Android's key or a swipe -
+  // asks before throwing it away; a saved step leaves without a word.
+  const touched = useRef(false);
+  const [leaving, setLeaving] = useState<null | (() => void)>(null);
+
+  useEffect(
+    () =>
+      nav.addListener('beforeRemove', e => {
+        if (!touched.current) return;
+        e.preventDefault();
+        setLeaving(() => () => {
+          touched.current = false;
+          setLeaving(null);
+          nav.dispatch(e.data.action);
+        });
+      }),
+    [nav],
+  );
 
   const onBusy = useCallback((kind: PhotoKind, busy: boolean) => {
     setUploading(prev => {
@@ -140,13 +159,15 @@ function useStep(step: SectionKey, single: boolean) {
     return code ? t(errorKey(code) ?? 'onboarding.err.required') : null;
   };
 
-  const clear = (field: string) =>
+  const clear = (field: string) => {
+    touched.current = true;
     setErrors(prev => {
       if (!prev[field]) return prev;
       const next = { ...prev };
       delete next[field];
       return next;
     });
+  };
 
   /** Required photos the rider may give and has not: "Add this photo" under each. */
   const missingPhotos = (kinds: PhotoKind[]): boolean => {
@@ -202,6 +223,7 @@ function useStep(step: SectionKey, single: boolean) {
       // "your progress is saved after every step" has to hold for a rider
       // who closes the app here. Only moving on waits for the photo.
       setView(await api.saveSection(step, body));
+      touched.current = false;
       if (missingPhotos(photos)) {
         haptic('warning');
         return;
@@ -234,6 +256,8 @@ function useStep(step: SectionKey, single: boolean) {
     saving,
     error,
     save,
+    leaving,
+    stay: () => setLeaving(null),
   };
 }
 
@@ -247,8 +271,12 @@ function StepFrame({
   error,
   single,
   onNext,
+  leaving,
+  onStay,
   children,
 }: {
+  leaving: null | (() => void);
+  onStay: () => void;
   step: SectionKey;
   title: string;
   lead: string;
@@ -268,7 +296,12 @@ function StepFrame({
 
   return (
     <View style={[styles.fill, { backgroundColor: colors.bg }]}>
-      <Screen scroll style={styles.fill} contentStyle={styles.content}>
+      <Screen
+        scroll
+        avoidKeyboard={false}
+        style={styles.fill}
+        contentStyle={styles.content}
+      >
         <StepProgressBar step={step} />
         <View style={styles.titleBlock}>
           <AppText variant="title" accessibilityRole="header">
@@ -324,6 +357,17 @@ function StepFrame({
           testID="step-next"
         />
       </View>
+      <ConfirmDialog
+        open={leaving !== null}
+        tone="danger"
+        icon="create-outline"
+        title={t('confirm.leave.title')}
+        message={t('confirm.leave.body')}
+        confirmLabel={t('confirm.leave.yes')}
+        cancelLabel={t('confirm.leave.no')}
+        onCancel={onStay}
+        onConfirm={() => leaving?.()}
+      />
     </View>
   );
 }
@@ -417,6 +461,8 @@ function PersonalStep({ view, step, single }: StepProps) {
       uploading={s.uploading}
       error={s.error}
       onNext={next}
+      leaving={s.leaving}
+      onStay={s.stay}
     >
       <LockNote view={view} kind="PERSONAL" />
       <TextField
@@ -552,6 +598,8 @@ function VehicleStep({ view, step, single }: StepProps) {
       uploading={s.uploading}
       error={s.error}
       onNext={next}
+      leaving={s.leaving}
+      onStay={s.stay}
     >
       <LockNote view={view} kind="VEHICLE_DETAILS" />
       <View accessibilityRole="radiogroup" style={styles.choices}>
@@ -723,6 +771,8 @@ function DocumentsStep({ view, step, single }: StepProps) {
       uploading={s.uploading}
       error={s.error}
       onNext={next}
+      leaving={s.leaving}
+      onStay={s.stay}
     >
       <SectionTitle>{t('onboarding.docs.aadhaar')}</SectionTitle>
       <LockNote view={view} kind="AADHAAR_FRONT" />
@@ -882,6 +932,8 @@ function BankStep({ view, step, single }: StepProps) {
       uploading={s.uploading}
       error={s.error}
       onNext={next}
+      leaving={s.leaving}
+      onStay={s.stay}
     >
       <LockNote view={view} kind="BANK_DETAILS" />
       <TextField

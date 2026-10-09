@@ -1,9 +1,11 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { ConfirmDialog } from '@components/ui/ConfirmDialog';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ItemRow } from '@components/onboarding/ItemRow';
 import { StatusBanner } from '@components/onboarding/StatusBanner';
+import { LanguageButton } from '@components/LanguageSwitch';
 import { AppText } from '@components/ui/AppText';
 import { BrandMark } from '@components/ui/BrandMark';
 import { Button } from '@components/ui/Button';
@@ -27,6 +29,7 @@ import {
   itemState,
   progress,
   SECTION_OF,
+  showsChecklist,
 } from '@utils/onboarding';
 
 /**
@@ -50,19 +53,8 @@ export function OnboardingHomeScreen() {
     setRefreshing(false);
   }, [refresh, refreshMe]);
 
-  const confirmSignOut = () =>
-    Alert.alert(
-      t('onboarding.home.signOutTitle'),
-      t('onboarding.home.signOutBody'),
-      [
-        { text: t('onboarding.home.stay'), style: 'cancel' },
-        {
-          text: t('onboarding.home.signOut'),
-          style: 'destructive',
-          onPress: () => void signOut(),
-        },
-      ],
-    );
+  const [askSignOut, setAskSignOut] = useState(false);
+  const confirmSignOut = () => setAskSignOut(true);
 
   const firstName =
     (view?.sections.personal.full_name || user?.full_name || '').split(
@@ -86,6 +78,7 @@ export function OnboardingHomeScreen() {
             {t('onboarding.home.title')}
           </AppText>
         </View>
+        <LanguageButton />
       </View>
 
       {view ? (
@@ -130,6 +123,20 @@ export function OnboardingHomeScreen() {
         />
       </Group>
       <View style={[styles.spacer, { backgroundColor: colors.bg }]} />
+      <ConfirmDialog
+        open={askSignOut}
+        tone="danger"
+        icon="log-out-outline"
+        title={t('onboarding.home.signOutTitle')}
+        message={t('onboarding.home.signOutBody')}
+        confirmLabel={t('onboarding.home.signOut')}
+        cancelLabel={t('onboarding.home.stay')}
+        onCancel={() => setAskSignOut(false)}
+        onConfirm={() => {
+          setAskSignOut(false);
+          void signOut();
+        }}
+      />
     </Screen>
   );
 }
@@ -209,29 +216,31 @@ function Summary({ view: app }: { view: ApplicationView }) {
         </AppText>
       ) : null}
 
-      <Group title={t('onboarding.home.items')}>
-        {app.required.map(kind => {
-          const item = app.items.find(i => i.kind === kind);
-          const state = itemState(app, kind);
-          return (
-            <ItemRow
-              key={kind}
-              kind={kind}
-              item={item}
-              state={state}
-              onFix={
-                state === 'fix' && item?.editable
-                  ? () =>
-                      nav.navigate('ApplicationStep', {
-                        step: SECTION_OF[kind],
-                        single: true,
-                      })
-                  : undefined
-              }
-            />
-          );
-        })}
-      </Group>
+      {showsChecklist(app.status) ? (
+        <Group title={t('onboarding.home.items')}>
+          {app.required.map(kind => {
+            const item = app.items.find(i => i.kind === kind);
+            const state = itemState(app, kind);
+            return (
+              <ItemRow
+                key={kind}
+                kind={kind}
+                item={item}
+                state={state}
+                onFix={
+                  state === 'fix' && item?.editable
+                    ? () =>
+                        nav.navigate('ApplicationStep', {
+                          step: SECTION_OF[kind],
+                          single: true,
+                        })
+                    : undefined
+                }
+              />
+            );
+          })}
+        </Group>
+      ) : null}
     </Animated.View>
   );
 }

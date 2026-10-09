@@ -61,9 +61,11 @@ def required_items(vehicle: VehicleType | None) -> list[K]:
     UPI ID needs none), so `applications.required_for` adds it, not this.
     """
 
-    items = [K.PERSONAL, K.SELFIE, K.AADHAAR_FRONT, K.AADHAAR_BACK, K.PAN, K.BANK_DETAILS]
+    # The vehicle is always asked for (the owner's rule, 2026-10-09): a
+    # bicycle rider used to be able to submit without saying what they ride.
+    items = [K.PERSONAL, K.SELFIE, K.VEHICLE_DETAILS, K.AADHAAR_FRONT, K.AADHAAR_BACK, K.PAN, K.BANK_DETAILS]
     if needs_rc(vehicle):
-        items += [K.VEHICLE_DETAILS, K.RC]
+        items += [K.RC]
     if needs_licence(vehicle):
         items += [K.LICENCE_FRONT, K.LICENCE_BACK]
     return items

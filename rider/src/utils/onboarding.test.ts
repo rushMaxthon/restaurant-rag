@@ -14,6 +14,7 @@ import {
   gateFor,
   isAdult,
   itemState,
+  showsChecklist,
   isoToDmy,
   licenceValid,
   parseDmy,
@@ -51,15 +52,16 @@ describe('requiredItems mirrors the backend', () => {
     }
   });
 
-  it('a bicycle and a low-speed EV need neither', () => {
-    for (const kind of [
-      'RC',
-      'LICENCE_FRONT',
-      'LICENCE_BACK',
-      'VEHICLE_DETAILS',
-    ]) {
+  it('a bicycle and a low-speed EV need no licence or RC', () => {
+    for (const kind of ['RC', 'LICENCE_FRONT', 'LICENCE_BACK']) {
       expect(requiredItems('CYCLE')).not.toContain(kind);
       expect(requiredItems('EV_SCOOTER')).not.toContain(kind);
+    }
+  });
+
+  it('the vehicle is always asked for, even before one is chosen', () => {
+    for (const vehicle of ['BIKE', 'SCOOTER', 'EV_SCOOTER', 'CYCLE', null] as const) {
+      expect(requiredItems(vehicle)).toContain('VEHICLE_DETAILS');
     }
   });
 
@@ -540,5 +542,17 @@ describe('itemState', () => {
     expect(itemState({ ...base, status: 'SUBMITTED' }, 'PERSONAL')).toBe(
       'inReview',
     );
+  });
+});
+
+describe('the checklist under a decision', () => {
+  it('is hidden once the application is rejected for good', () => {
+    expect(showsChecklist('REJECTED')).toBe(false);
+  });
+
+  it('is shown while there is anything to do or to wait for', () => {
+    for (const status of ['DRAFT', 'SUBMITTED', 'CHANGES_NEEDED'] as const) {
+      expect(showsChecklist(status)).toBe(true);
+    }
   });
 });

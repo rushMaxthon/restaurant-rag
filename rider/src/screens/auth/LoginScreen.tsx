@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
+import { LanguageButton } from '@components/LanguageSwitch';
 import { AppText } from '@components/ui/AppText';
 import { BrandMark } from '@components/ui/BrandMark';
 import { Button } from '@components/ui/Button';
@@ -90,7 +91,10 @@ export function LoginScreen() {
     >
       <Screen scroll contentStyle={styles.content}>
         <Animated.View entering={FadeInDown.duration(500)} style={styles.hero}>
-          <BrandMark size={72} />
+          <View style={styles.brandRow}>
+            <BrandMark size={72} />
+            <LanguageButton />
+          </View>
           <AppText variant="display" style={styles.title}>
             {t('account.login.welcome')}
           </AppText>
@@ -186,6 +190,11 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center' },
   hero: { gap: space.xs, marginBottom: space.xxxl },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
   title: { marginTop: space.xl },
   form: { gap: space.lg },
   error: {
