@@ -14,6 +14,7 @@ import { HomeScreen } from '@screens/home/HomeScreen';
 import { OfferScreen } from '@screens/offer/OfferScreen';
 import { OrdersScreen } from '@screens/orders/OrdersScreen';
 import { PushRouter } from '@components/PushRouter';
+import { withBoundary } from '@components/ErrorBoundary';
 import { PermissionsScreen } from '@screens/onboarding/PermissionsScreen';
 import { ProfileScreen } from '@screens/profile/ProfileScreen';
 import { DeliveredScreen } from '@screens/trip/DeliveredScreen';
@@ -25,6 +26,22 @@ import { TabBar } from './TabBar';
 import type { RootStackParamList, TabParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Wrapped once, at module level: a new component per render would remount
+// every screen.
+const Bounded = {
+  ComponentGalleryScreen: withBoundary(ComponentGalleryScreen),
+  LoginScreen: withBoundary(LoginScreen),
+  EarningsScreen: withBoundary(EarningsScreen),
+  HistoryScreen: withBoundary(HistoryScreen),
+  HomeScreen: withBoundary(HomeScreen),
+  OfferScreen: withBoundary(OfferScreen),
+  OrdersScreen: withBoundary(OrdersScreen),
+  PermissionsScreen: withBoundary(PermissionsScreen),
+  ProfileScreen: withBoundary(ProfileScreen),
+  DeliveredScreen: withBoundary(DeliveredScreen),
+  TripScreen: withBoundary(TripScreen),
+};
 const Tabs = createBottomTabNavigator<TabParamList>();
 
 function MainTabs() {
@@ -33,11 +50,11 @@ function MainTabs() {
       tabBar={props => <TabBar {...props} />}
       screenOptions={{ headerShown: false, animation: 'shift' }}
     >
-      <Tabs.Screen name="Home" component={HomeScreen} />
-      <Tabs.Screen name="Orders" component={OrdersScreen} />
-      <Tabs.Screen name="Earnings" component={EarningsScreen} />
-      <Tabs.Screen name="History" component={HistoryScreen} />
-      <Tabs.Screen name="Profile" component={ProfileScreen} />
+      <Tabs.Screen name="Home" component={Bounded.HomeScreen} />
+      <Tabs.Screen name="Orders" component={Bounded.OrdersScreen} />
+      <Tabs.Screen name="Earnings" component={Bounded.EarningsScreen} />
+      <Tabs.Screen name="History" component={Bounded.HistoryScreen} />
+      <Tabs.Screen name="Profile" component={Bounded.ProfileScreen} />
     </Tabs.Navigator>
   );
 }
@@ -71,15 +88,15 @@ function SignedIn() {
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
         >
           <Stack.Screen name="Main" component={MainTabsWithWatcher} />
-          <Stack.Screen name="Trip" component={TripScreen} />
+          <Stack.Screen name="Trip" component={Bounded.TripScreen} />
           <Stack.Screen
             name="Permissions"
-            component={PermissionsScreen}
+            component={Bounded.PermissionsScreen}
             options={{ animation: 'slide_from_bottom' }}
           />
           <Stack.Screen
             name="Offer"
-            component={OfferScreen}
+            component={Bounded.OfferScreen}
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
@@ -88,10 +105,10 @@ function SignedIn() {
           />
           <Stack.Screen
             name="Delivered"
-            component={DeliveredScreen}
+            component={Bounded.DeliveredScreen}
             options={{ animation: 'fade', gestureEnabled: false }}
           />
-          <Stack.Screen name="Gallery" component={ComponentGalleryScreen} />
+          <Stack.Screen name="Gallery" component={Bounded.ComponentGalleryScreen} />
         </Stack.Navigator>
       </ShiftKeeper>
     </RiderProvider>
@@ -112,7 +129,7 @@ export function RootNavigator() {
   if (state.status === 'signedIn') return <SignedIn />;
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
-      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Login" component={Bounded.LoginScreen} />
     </Stack.Navigator>
   );
 }

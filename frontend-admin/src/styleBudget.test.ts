@@ -76,6 +76,7 @@ const BUDGET: Record<string, Counts> = {
   "reports": { spacing: 0, weight: 0, colour: 0 },
   "restaurant": { spacing: 0, weight: 0, colour: 0 },
   "rmap": { spacing: 0, weight: 0, colour: 0 },
+  "rider": { spacing: 0, weight: 0, colour: 0 },
   "rpt": { spacing: 0, weight: 0, colour: 0 },
   "secondary": { spacing: 0, weight: 0, colour: 0 },
   "segmented": { spacing: 0, weight: 0, colour: 0 },

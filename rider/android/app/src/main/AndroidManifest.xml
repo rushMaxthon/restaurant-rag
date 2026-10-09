@@ -17,6 +17,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- An offer rings over the lock screen like a call: it lasts seconds. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- One-tap "let the app run in the background" (BatteryModule.kt): left
+         to battery optimisation, Xiaomi/Realme-class phones kill the app and
+         the rider silently stops getting orders. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+ hides other apps unless declared: "Call" and "Navigate"
          must be able to find the dialer and Google Maps. -->

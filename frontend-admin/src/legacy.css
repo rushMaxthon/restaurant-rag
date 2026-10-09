@@ -17949,3 +17949,60 @@ optgroup {
   opacity: 0.6;
 }
 
+/* Rider dispatch: the branch allowlist. An empty list means EVERY branch,
+ * so the legend states the scope in words beside the boxes. */
+.rider-branches {
+  grid-column: 1 / -1;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  border: 0;
+  justify-items: start;
+}
+
+.rider-branches__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.rider-branches__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.rider-branches__item:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+/* `.field input` makes every input a full-width text box; a checkbox here
+ * is a checkbox. */
+.rider-branches .rider-branches__item input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+
+.rider-branches__item span {
+  display: grid;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+.rider-branches__item small {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+

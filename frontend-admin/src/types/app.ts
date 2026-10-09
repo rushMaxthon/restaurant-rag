@@ -1958,11 +1958,21 @@ export interface FleetConfig {
   location_ids: string[];
 }
 
+export interface FleetBranch {
+  id: string;
+  restaurant_name: string;
+  branch_name: string;
+  city: string;
+  delivery_enabled: boolean;
+}
+
 export interface FleetSettings {
   /** `enable_own_fleet` on the server: read-only here, set by deployment. */
   enabled: boolean;
   pay: RiderPay;
   fleet: FleetConfig;
+  /** Branches the allowlist can name (active, non-demo). */
+  branches: FleetBranch[];
 }
 
 export interface RiderUnpaid {

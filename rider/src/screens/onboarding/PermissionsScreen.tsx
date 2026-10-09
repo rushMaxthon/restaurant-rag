@@ -1,4 +1,5 @@
 import React from 'react';
+import notifee from '@notifee/react-native';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -8,6 +9,7 @@ import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
 import { Screen } from '@components/ui/Screen';
 import { usePermissions, type PermissionKey } from '@hooks/usePermissions';
+import { gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space, motion } from '@theme/tokens';
@@ -30,13 +32,31 @@ const ITEMS: {
     title: 'Notifications',
     why: 'A new order rings even when your screen is off, so you never miss one.',
   },
+  {
+    key: 'battery',
+    icon: 'battery-charging',
+    title: 'Run in the background',
+    why: 'Without this, your phone closes the app to save battery and orders stop reaching you.',
+  },
 ];
 
 /** Each permission with one sentence on why - a rider who understands taps Allow. */
 export function PermissionsScreen() {
   const { colors } = useTheme();
   const nav = useNav();
-  const { state, ready, request } = usePermissions();
+  const { state, ready, request, openAutoStart } = usePermissions();
+  // Only on brands that ship their own auto-start screen (Xiaomi, Oppo...).
+  const [autoStart, setAutoStart] = React.useState(false);
+  React.useEffect(() => {
+    let alive = true;
+    notifee
+      .getPowerManagerInfo()
+      .then(info => alive && setAutoStart(Boolean(info.activity)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <Screen scroll contentStyle={styles.content}>
@@ -44,7 +64,7 @@ export function PermissionsScreen() {
         <View style={[styles.badge, { backgroundColor: colors.primarySoft }]}>
           <Icon name="shield-checkmark" size={34} color={colors.primary} />
         </View>
-        <AppText variant="title">Two quick things</AppText>
+        <AppText variant="title">Three quick things</AppText>
         <AppText tone="muted" style={styles.gapXs}>
           The app needs these to send you orders.
         </AppText>
@@ -92,10 +112,27 @@ export function PermissionsScreen() {
         );
       })}
 
+      {autoStart ? (
+        <Card style={styles.item}>
+          <View style={styles.flex}>
+            <AppText variant="bodyStrong">Phone has its own battery saver?</AppText>
+            <AppText variant="caption" tone="muted">
+              Xiaomi, Realme, Oppo and Vivo add one more switch. Turn on auto-start for this app.
+            </AppText>
+          </View>
+          <Button
+            size="md"
+            kind="secondary"
+            label="Open"
+            onPress={async () => setAutoStart(await openAutoStart())}
+          />
+        </Card>
+      ) : null}
+
       <Button
         label={ready ? 'All set' : 'Continue'}
         icon="arrow-forward"
-        disabledReason={ready ? null : 'Allow both to start getting orders'}
+        disabledReason={gateReason(state)}
         onPress={() => (nav.canGoBack() ? nav.goBack() : nav.navigate('Main'))}
       />
     </Screen>

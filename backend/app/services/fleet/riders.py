@@ -188,11 +188,15 @@ def update_rider(db: Session, admin: User, user_id: uuid.UUID, **fields: Any) ->
             )
         user.hashed_password = hash_password(fields["password"])
         revoke = True
+        # The reset signs the phone out, so it can no longer report or answer
+        # an offer; left ONLINE it would keep being offered orders until the
+        # sweep noticed. go_offline leaves a rider on a trip on it.
+        released += go_offline(db, user.id, "password reset by admin")
     if fields.get("is_active") is not None and fields["is_active"] != user.is_active:
         user.is_active = bool(fields["is_active"])
         revoke = True
         if not user.is_active:
-            released = go_offline(db, user.id, "deactivated by admin")
+            released += go_offline(db, user.id, "deactivated by admin")
     if revoke:
         user.token_version += 1
         from app.services.realtime.outbox import queue_session_revoked

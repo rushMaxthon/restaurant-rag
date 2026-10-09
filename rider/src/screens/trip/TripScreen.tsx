@@ -32,6 +32,7 @@ import { SlideToConfirm } from '@components/ui/SlideToConfirm';
 import { useRiderLocation } from '@components/ShiftKeeper';
 import { useKeyboardHeight } from '@hooks/useKeyboardHeight';
 import { useTripAction } from '@hooks/useTripAction';
+import { nextSlide } from '@utils/tripSteps';
 import { useNav } from '@navigation/types';
 import { SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
@@ -114,6 +115,7 @@ export function TripScreen() {
   }
 
   const atRestaurant = trip.step === 'to_pickup' || trip.step === 'at_pickup';
+  const slide = nextSlide(trip.step);
   // Live, from this phone's own GPS: refreshed with every fix, no routing API.
   const heading = trip.step === 'to_pickup' || trip.step === 'to_drop';
   const away =
@@ -385,7 +387,7 @@ export function TripScreen() {
       </ScrollView>
 
       {/* The one big next step */}
-      {trip.step !== 'at_drop' ? (
+      {slide ? (
         <View
           style={[
             styles.footer,
@@ -396,35 +398,17 @@ export function TripScreen() {
             },
           ]}
         >
-          {trip.step === 'to_pickup' ? (
+          {slide ? (
             <SlideToConfirm
-              label="Arrived at restaurant"
-              icon="restaurant"
-              busy={action.busy === 'arrived-pickup'}
+              label={slide.label}
+              icon={slide.icon}
+              tone={slide.tone}
+              busy={action.busy === slide.action}
               resetKey={trip.step}
-              onConfirm={() => action.run('arrived-pickup')}
-              testID="slide-arrived-pickup"
+              onConfirm={() => action.run(slide.action)}
+              testID={`slide-${slide.action}`}
             />
-          ) : trip.step === 'at_pickup' ? (
-            <SlideToConfirm
-              label="Picked up the order"
-              icon="bag-check"
-              busy={action.busy === 'picked-up'}
-              resetKey={trip.step}
-              onConfirm={() => action.run('picked-up')}
-              testID="slide-picked-up"
-            />
-          ) : (
-            <SlideToConfirm
-              label="Arrived at customer"
-              tone="success"
-              icon="home"
-              busy={action.busy === 'arrived-drop'}
-              resetKey={trip.step}
-              onConfirm={() => action.run('arrived-drop')}
-              testID="slide-arrived-drop"
-            />
-          )}
+          ) : null}
         </View>
       ) : null}
     </View>

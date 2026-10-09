@@ -7,6 +7,9 @@ apply plugin: "com.facebook.react"
 // arrive over the socket and the poll, and nothing reaches a killed app.
 if (file("google-services.json").exists()) {
     apply plugin: "com.google.gms.google-services"
+    // Crash reports go to the same Firebase project; uploads R8 mapping files
+    // so a release stack trace reads as source, not as a.b.c().
+    apply plugin: "com.google.firebase.crashlytics"
 }
 
 /**

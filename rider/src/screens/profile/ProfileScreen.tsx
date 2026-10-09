@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
@@ -28,11 +28,13 @@ function Row({
   label,
   value,
   onPress,
+  trailing,
 }: {
   icon: IconName;
   label: string;
   value?: string;
   onPress?: () => void;
+  trailing?: React.ReactNode;
 }) {
   const { colors } = useTheme();
   return (
@@ -48,7 +50,8 @@ function Row({
           {value}
         </AppText>
       ) : null}
-      {onPress ? (
+      {trailing}
+      {onPress && !trailing ? (
         <Icon name="chevron-forward" size={18} color={colors.textFaint} />
       ) : null}
     </Card>
@@ -56,7 +59,7 @@ function Row({
 }
 
 export function ProfileScreen() {
-  const { colors, mode } = useTheme();
+  const { colors, mode, highContrast, setHighContrast } = useTheme();
   const nav = useNav();
   const api = useApi();
   const user = useSignedInUser();
@@ -149,6 +152,21 @@ export function ProfileScreen() {
           icon={mode === 'dark' ? 'moon' : 'sunny'}
           label="Appearance"
           value={mode === 'dark' ? 'Dark (system)' : 'Light (system)'}
+        />
+        <Row
+          icon="contrast"
+          label="High contrast"
+          value={highContrast ? 'On' : 'For bright sun'}
+          onPress={() => setHighContrast(!highContrast)}
+          trailing={
+            <Switch
+              value={highContrast}
+              onValueChange={setHighContrast}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={highContrast ? colors.onPrimary : colors.textMuted}
+              accessibilityLabel="High contrast"
+            />
+          }
         />
         <AppText variant="micro" tone="muted" style={styles.section}>
           HELP

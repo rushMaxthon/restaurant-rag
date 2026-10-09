@@ -5535,3 +5535,15 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
     say localhost - ask before changing.
   - Suites: fleet 107, delivery 235, orders 423, admin 539 + build, storefront
     536 + build, rider jest 43 + tsc, lint 0 errors.
+
+## 2026-10-09 - live map follows riders; rider spec gaps filled
+
+- Pushed `150a213`: live map pins follow riders (fleet:riders_changed hint, glide, heading, rider card).
+- Audited the rider spec against the code, then filled the gaps:
+  - backend: password reset takes the rider off shift; `FleetSettings.branches` for the allowlist; FleetConfigIn window default 5.
+  - admin: branch allowlist picker + dispatch copy matching "our riders first, Orders board, then courier".
+  - rider: persisted offline trip-step queue + NetInfo retry, battery-optimisation gate with a native one-tap dialog,
+    per-screen error boundaries, Crashlytics, high contrast, trip slide table; tests for queue, gate, contrast, steps, 401.
+- Verified on the emulator (battery dialog, high contrast, recovery from a screen crash) and in the admin (picker, discard).
+- Suites: backend fleet 121 OK, admin vitest 549, rider jest 73, tsc/eslint clean, admin build OK.
+- Left on purpose: in-app map/bottom sheet (Maps billing), Lottie, R8 (release build), background-location permission (foreground service covers it).

@@ -5,6 +5,7 @@ import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Icon } from '@components/ui/Icon';
 import { dark } from '@theme/tokens';
+import { reportScreenError } from '@/services/crashReports';
 
 type State = { error: Error | null };
 
@@ -25,6 +26,7 @@ export class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('Screen crashed', error, info.componentStack);
+    reportScreenError(error, info.componentStack);
   }
 
   render() {
@@ -52,6 +54,22 @@ export class ErrorBoundary extends React.Component<
       </View>
     );
   }
+}
+
+/**
+ * One boundary per screen (the spec's rule): a crash in Earnings must not take
+ * the trip screen - or the tab bar to get back to it - down with it.
+ */
+export function withBoundary<P extends object>(Screen: React.ComponentType<P>) {
+  function Bounded(props: P) {
+    return (
+      <ErrorBoundary>
+        <Screen {...props} />
+      </ErrorBoundary>
+    );
+  }
+  Bounded.displayName = `Bounded(${Screen.displayName ?? Screen.name ?? 'Screen'})`;
+  return Bounded;
 }
 
 const styles = StyleSheet.create({

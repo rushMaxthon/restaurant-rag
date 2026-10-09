@@ -606,6 +606,22 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   is applied only when that file exists, and `firebaseReady()` guards every call,
   so the app builds and runs without it. A tap is routed by `PushRouter`.
 
+- **Rider app robustness (2026-10-09).** A trip step is saved to AsyncStorage
+  BEFORE its first attempt (`utils/pendingAction.ts`) and replayed with the same
+  action id when that trip reopens, and retried the moment NetInfo reports a
+  connection. The permission gate has three steps - location, notifications,
+  battery optimisation - in `utils/permissions.ts`; battery uses the one-tap
+  system dialog from `BatteryModule.kt` (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`),
+  Notifee's settings list only as a fallback. Every screen has its own
+  `ErrorBoundary` (`withBoundary` in `RootNavigator`), which reports to
+  Crashlytics (off in debug, `firebase.json`; plugin applied only with
+  `google-services.json`, like push). High contrast is a Profile switch
+  (`theme/contrast.ts`, AAA inks). Not built, on purpose: the in-app map and
+  bottom sheet (Google Maps SDK needs billing), Lottie (the Delivered screen
+  already animates), R8 (with the release build). Admin: a password reset takes
+  the rider off shift like deactivation; the branch allowlist (`location_ids`)
+  is a checkbox list on Riders -> Pay & dispatch, from `FleetSettings.branches`.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

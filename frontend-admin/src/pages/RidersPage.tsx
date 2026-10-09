@@ -27,12 +27,14 @@ import { useMoney } from '../hooks/useMoney';
 import { ApiError, api } from '../services/api';
 import {
   VEHICLE_LABEL,
+  branchScopeLabel,
   emptyRiderDraft,
   lastSeenLabel,
   payExample,
   payFormError,
   riderFormErrors,
   tenDigits,
+  toggleBranch,
   type RiderDraft,
 } from '../services/riders';
 import type { FleetConfig, FleetSettings, Rider, RiderPay, RiderUnpaid, ToastMessage } from '../types/app';
@@ -626,7 +628,10 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
           <div>
             <span className="eyebrow">Dispatch</span>
             <h2>How orders are offered</h2>
-            <p className="hint-text">One rider at a time, nearest first. When time runs out or nobody is near, the courier takes it.</p>
+            <p className="hint-text">
+              One rider at a time, nearest first. Anything nobody accepts waits on every rider&apos;s Orders board until the
+              window ends; only then does the courier take it.
+            </p>
           </div>
         </div>
         <div className="form-grid">
@@ -635,12 +640,14 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
             <input max={120} min={10} onChange={number('offer_seconds')} type="number" value={fleet.offer_seconds} />
           </label>
           <label className="field">
-            <span>Riders to try</span>
+            <span>Riders to ring</span>
             <input max={20} min={1} onChange={number('max_offers')} type="number" value={fleet.max_offers} />
+            <small>After this many, nobody is rung again; the order stays on the Orders board.</small>
           </label>
           <label className="field">
             <span>Minutes before the courier takes it</span>
             <input max={30} min={1} onChange={number('window_minutes')} type="number" value={fleet.window_minutes} />
+            <small>Our riders get this long first. Cash orders always go to the courier.</small>
           </label>
           <label className="field">
             <span>Search radius (km)</span>
@@ -652,6 +659,42 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
             <small>A rider whose phone stops sending a location is taken offline.</small>
           </label>
         </div>
+        <fieldset className="field checkbox-set rider-branches">
+          <legend>
+            Branches our riders serve <strong>· {branchScopeLabel(fleet.location_ids, saved.branches)}</strong>
+          </legend>
+          <small>
+            Leave every box empty to serve every branch. Tick some to start city by city; the rest go straight to the
+            courier.
+          </small>
+          {saved.branches.length === 0 ? (
+            <p className="hint-text">No active branches yet.</p>
+          ) : (
+            <div className="rider-branches__list">
+              {saved.branches.map((branch) => (
+                <label className="rider-branches__item" key={branch.id}>
+                  <input
+                    checked={fleet.location_ids.includes(branch.id)}
+                    onChange={() => setFleet({ ...fleet, location_ids: toggleBranch(fleet.location_ids, branch.id) })}
+                    type="checkbox"
+                  />
+                  <span>
+                    {branch.restaurant_name} · {branch.branch_name}
+                    <small>
+                      {branch.city}
+                      {branch.delivery_enabled ? '' : ' · delivery off'}
+                    </small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {fleet.location_ids.length > 0 ? (
+            <button className="secondary-button" onClick={() => setFleet({ ...fleet, location_ids: [] })} type="button">
+              Serve every branch
+            </button>
+          ) : null}
+        </fieldset>
         <div className="modal-actions">
           <button className="secondary-button" disabled={!fleetDirty || busy !== null} onClick={() => setFleet(saved.fleet)} type="button">
             Discard

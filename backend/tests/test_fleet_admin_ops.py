@@ -68,6 +68,27 @@ class AdminOpsTests(unittest.TestCase):
         admin.put("/api/admin/riders/settings/pay", json={"base": "25", "per_km": "6", "minimum": "30"})
         admin.put("/api/admin/riders/settings/fleet", json={})
 
+    def test_settings_list_the_branches_the_allowlist_can_name(self) -> None:
+        """The admin picks branches by name, so the settings carry the list.
+
+        A demo restaurant's branch is left out, like everywhere else the
+        platform admin reads across restaurants.
+        """
+        from app.models.restaurant import Restaurant
+
+        with self.fdb.session() as db:
+            real = self.fdb.make_order(db)
+            demo = self.fdb.make_order(db)
+            db.get(Restaurant, demo.restaurant_id).is_demo = True
+            db.commit()
+        r = client_for(self.fdb, self.admin).get("/api/admin/riders/settings")
+        self.assertEqual(r.status_code, 200, r.text)
+        branches = {b["id"]: b for b in r.json()["branches"]}
+        self.assertIn(str(real.restaurant_location_id), branches)
+        self.assertNotIn(str(demo.restaurant_location_id), branches)
+        row = branches[str(real.restaurant_location_id)]
+        self.assertEqual((row["restaurant_name"], row["branch_name"], row["city"]), ("Bhagwati Bakery", "Main", "Surat"))
+
     def test_reassign_to_an_offline_rider_is_409(self) -> None:
         with self.fdb.session() as db:
             rider = self.fdb.make_rider(db, status=RiderStatus.OFFLINE)

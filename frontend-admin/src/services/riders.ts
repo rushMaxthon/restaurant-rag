@@ -9,7 +9,7 @@
  * after Save.
  */
 
-import type { RiderPay, RiderVehicle } from '../types/app';
+import type { FleetBranch, RiderPay, RiderVehicle } from '../types/app';
 
 export const MIN_PASSWORD = 8;
 
@@ -100,4 +100,21 @@ const REASSIGN_ERRORS: Record<string, string> = {
 
 export function reassignErrorMessage(detail: unknown, fallback = 'Please try again.'): string {
   return (typeof detail === 'string' && REASSIGN_ERRORS[detail]) || fallback;
+}
+
+/** Add or remove one branch; sorted so saving the same set twice is not "changed". */
+export function toggleBranch(ids: string[], id: string): string[] {
+  const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+  return next.sort();
+}
+
+/**
+ * What the allowlist means, in words. Empty is EVERY branch (the backend's
+ * rule in `fleet/config.py`), which is the opposite of what an empty list of
+ * checkboxes looks like - so the screen has to say it.
+ */
+export function branchScopeLabel(ids: string[], branches: FleetBranch[]): string {
+  if (ids.length === 0) return 'Every branch';
+  const named = branches.filter((b) => ids.includes(b.id)).length;
+  return `${named} of ${branches.length} ${branches.length === 1 ? 'branch' : 'branches'}`;
 }

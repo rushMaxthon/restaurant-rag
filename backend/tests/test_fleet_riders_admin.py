@@ -113,6 +113,35 @@ class RiderAdminTests(unittest.TestCase):
             self.assertEqual(outcome, OfferOutcome.WITHDRAWN)
         advance.assert_called_once_with(delivery.id)
 
+    def test_password_reset_signs_the_rider_out_and_ends_shift(self) -> None:
+        """A reset password ends every session, so the phone can no longer report.
+
+        Left ONLINE, the rider would keep being offered orders for
+        silent_minutes on a phone that has been signed out.
+        """
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db, status=RiderStatus.ONLINE)
+            db.commit()
+            version = rider.token_version
+        r = client_for(self.fdb, self.admin).patch(
+            f"/api/admin/riders/{rider.id}", json={"password": "brand-new-pass"}
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        with self.fdb.session() as db:
+            self.assertEqual(db.get(Rider, rider.id).status, RiderStatus.OFFLINE)
+            self.assertGreater(db.get(User, rider.id).token_version, version)
+
+    def test_password_reset_never_takes_a_rider_off_a_live_trip(self) -> None:
+        with self.fdb.session() as db:
+            rider = self.fdb.make_rider(db, status=RiderStatus.ON_TRIP)
+            db.commit()
+        r = client_for(self.fdb, self.admin).patch(
+            f"/api/admin/riders/{rider.id}", json={"password": "brand-new-pass"}
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        with self.fdb.session() as db:
+            self.assertEqual(db.get(Rider, rider.id).status, RiderStatus.ON_TRIP)
+
     def test_unknown_rider_is_404(self) -> None:
         r = client_for(self.fdb, self.admin).patch(f"/api/admin/riders/{self.owner.id}", json={"city": "X"})
         self.assertEqual(r.status_code, 404)

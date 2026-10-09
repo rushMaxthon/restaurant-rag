@@ -20,6 +20,7 @@ from app.models.order_delivery import OrderDelivery
 from app.models.rider import Rider, RiderOffer, RiderTrip
 from app.models.user import User
 from app.schemas.rider import (
+    FleetBranch,
     ConfirmDeliveredIn,
     FleetConfigIn,
     FleetDeliveryView,
@@ -129,7 +130,30 @@ def _settings_out(db: Session) -> FleetSettings:
         enabled=app_settings().enable_own_fleet,
         pay=RiderPayIn(base=pay.base, per_km=pay.per_km, minimum=pay.minimum),
         fleet=FleetConfigIn(**asdict(fleet)),
+        branches=_branches(db),
     )
+
+
+def _branches(db: Session) -> list[FleetBranch]:
+    from app.models.restaurant import Restaurant
+    from app.models.restaurant_location import RestaurantLocation
+
+    rows = db.execute(
+        select(RestaurantLocation, Restaurant.name)
+        .join(Restaurant, Restaurant.id == RestaurantLocation.restaurant_id)
+        .where(RestaurantLocation.is_active.is_(True), Restaurant.is_demo.is_(False))
+        .order_by(Restaurant.name, RestaurantLocation.branch_name)
+    ).all()
+    return [
+        FleetBranch(
+            id=location.id,
+            restaurant_name=name,
+            branch_name=location.branch_name,
+            city=location.city,
+            delivery_enabled=bool(location.delivery_enabled),
+        )
+        for location, name in rows
+    ]
 
 
 def _delivery_for(db: Session, order_id: uuid.UUID) -> OrderDelivery:

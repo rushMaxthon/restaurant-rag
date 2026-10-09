@@ -21,6 +21,7 @@ import { Pill } from '@components/ui/Pill';
 import { Screen } from '@components/ui/Screen';
 import { Skeleton } from '@components/ui/Skeleton';
 import { usePermissions } from '@hooks/usePermissions';
+import { gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
@@ -289,7 +290,7 @@ export function HomeScreen() {
           <View style={styles.flex}>
             <AppText variant="bodyStrong">Finish setting up</AppText>
             <AppText variant="caption" tone="muted">
-              Allow location and notifications to get orders.
+              {gateReason(permissions.state)}.
             </AppText>
           </View>
           <Icon name="chevron-forward" size={20} color={colors.textFaint} />

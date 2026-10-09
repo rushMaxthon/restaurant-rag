@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { identifyRider } from '@/services/crashReports';
 import { ApiError, setUnauthorizedHandler } from '@/services/http';
 import { login as apiLogin, riderApi, type RiderApi } from '@/services/rider';
 import { clearSession, loadSession, saveSession } from '@/services/session';
@@ -64,6 +65,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     tokenRef.current = result.access_token;
     setState({ status: 'signedIn', token: result.access_token, user: result.user });
   }, []);
+
+  const userId = state.status === 'signedIn' ? state.user.id : null;
+  useEffect(() => identifyRider(userId), [userId]);
 
   const value = useMemo(() => ({ state, signIn, signOut }), [state, signIn, signOut]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

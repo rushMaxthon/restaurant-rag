@@ -194,10 +194,20 @@ class RiderPayIn(BaseModel):
 class FleetConfigIn(BaseModel):
     offer_seconds: int = Field(default=30, ge=10, le=120)
     max_offers: int = Field(default=5, ge=1, le=20)
-    window_minutes: int = Field(default=4, ge=1, le=30)
+    window_minutes: int = Field(default=5, ge=1, le=30)
     radius_km: float = Field(default=6.0, ge=0.5, le=25)
     silent_minutes: int = Field(default=3, ge=1, le=30)
     location_ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class FleetBranch(BaseModel):
+    """A branch `location_ids` can name, so the admin picks by name, not by id."""
+
+    id: uuid.UUID
+    restaurant_name: str
+    branch_name: str
+    city: str
+    delivery_enabled: bool
 
 
 class FleetSettings(BaseModel):
@@ -205,6 +215,8 @@ class FleetSettings(BaseModel):
     enabled: bool
     pay: RiderPayIn
     fleet: FleetConfigIn
+    #: Every active branch of a real (non-demo) restaurant, for the allowlist.
+    branches: list[FleetBranch] = Field(default_factory=list)
 
 
 class FleetOfferRow(BaseModel):

@@ -1,19 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Linking, PermissionsAndroid, Platform } from 'react-native';
+import { AppState, Linking, NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import notifee from '@notifee/react-native';
 
-export type PermissionKey = 'location' | 'notifications';
-export type PermissionState = Record<PermissionKey, boolean>;
+import { firstMissing, type PermissionKey, type PermissionState } from '@utils/permissions';
+
+export type { PermissionKey, PermissionState } from '@utils/permissions';
 
 const ANDROID_13 = 33;
 
+/** Native (BatteryModule.kt); absent on an older install, so Notifee is the fallback. */
+const battery: { isUnrestricted(): Promise<boolean>; requestUnrestricted(): Promise<boolean> } | undefined =
+  NativeModules.RiderBattery;
+
+async function batteryUnrestricted(): Promise<boolean> {
+  try {
+    if (battery) return await battery.isUnrestricted();
+    return !(await notifee.isBatteryOptimizationEnabled());
+  } catch {
+    // Unknown is not a reason to lock a rider out of work.
+    return true;
+  }
+}
+
 async function check(): Promise<PermissionState> {
-  if (Platform.OS !== 'android') return { location: true, notifications: true };
+  if (Platform.OS !== 'android') return { location: true, notifications: true, battery: true };
   const location = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
   const notifications =
     Number(Platform.Version) < ANDROID_13
       ? true
       : await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-  return { location, notifications };
+  return { location, notifications, battery: await batteryUnrestricted() };
 }
 
 /**
@@ -34,6 +50,12 @@ export function usePermissions() {
   const request = useCallback(
     async (key: PermissionKey) => {
       if (Platform.OS !== 'android') return true;
+      if (key === 'battery') {
+        // A system dialog; the answer is read when the app comes back.
+        const asked = battery ? await battery.requestUnrestricted().catch(() => false) : false;
+        if (!asked) await notifee.openBatteryOptimizationSettings();
+        return false;
+      }
       const permission =
         key === 'location'
           ? PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
@@ -49,6 +71,18 @@ export function usePermissions() {
     [refresh],
   );
 
-  const ready = state !== null && state.location && state.notifications;
-  return { state, ready, request, refresh };
+  /** Phone makers' own "auto-start" screen, where the brand has one (Xiaomi, Oppo...). */
+  const openAutoStart = useCallback(async () => {
+    try {
+      const info = await notifee.getPowerManagerInfo();
+      if (info.activity) {
+        await notifee.openPowerManagerSettings();
+        return true;
+      }
+    } catch {}
+    return false;
+  }, []);
+
+  const ready = state !== null && firstMissing(state) === null;
+  return { state, ready, request, refresh, openAutoStart };
 }

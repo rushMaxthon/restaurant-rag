@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  branchScopeLabel,
   emptyRiderDraft,
   lastSeenLabel,
   payExample,
@@ -8,6 +9,7 @@ import {
   riderFormErrors,
   reassignErrorMessage,
   tenDigits,
+  toggleBranch,
 } from './riders';
 
 describe('rider form', () => {
@@ -73,5 +75,26 @@ describe('reassignErrorMessage', () => {
 
   it('falls back to the server message for anything else', () => {
     expect(reassignErrorMessage('something_new', 'Server said no')).toBe('Server said no');
+  });
+});
+
+describe('the branch allowlist', () => {
+  const branches = [
+    { id: 'a', restaurant_name: 'Bhagwati', branch_name: 'Main', city: 'Surat', delivery_enabled: true },
+    { id: 'b', restaurant_name: 'Bhagwati', branch_name: 'Adajan', city: 'Surat', delivery_enabled: true },
+  ];
+
+  it('adds and removes a branch, keeping the list in one order', () => {
+    expect(toggleBranch(['b'], 'a')).toEqual(['a', 'b']);
+    expect(toggleBranch(['a', 'b'], 'a')).toEqual(['b']);
+  });
+
+  it('says an empty list means every branch, not none', () => {
+    expect(branchScopeLabel([], branches)).toBe('Every branch');
+  });
+
+  it('counts the named branches, ignoring ids that no longer exist', () => {
+    expect(branchScopeLabel(['a'], branches)).toBe('1 of 2 branches');
+    expect(branchScopeLabel(['a', 'gone'], branches)).toBe('1 of 2 branches');
   });
 });
