@@ -11,7 +11,7 @@ import { useI18n, type Key } from '@/i18n';
 import { useNav, type RootStackParamList } from '@navigation/types';
 import { digitsOnly } from '@screens/auth/LoginScreen';
 import { ApiError } from '@/services/http';
-import { requestSignupCode } from '@/services/rider';
+import { requestResetCode, requestSignupCode } from '@/services/rider';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
@@ -29,6 +29,9 @@ const NEED: { icon: IconName; key: Key }[] = [
  * against existing accounts before any code goes out, so somebody who is
  * already a rider is sent to sign in rather than through a sign-up that ends
  * in "this number is taken".
+ *
+ * `purpose: 'reset'` is forgot-password on the same screen: the number must
+ * be an account this time, and one that is not is pointed at sign-up.
  */
 export function SignupPhoneScreen() {
   const nav = useNav();
@@ -39,6 +42,8 @@ export function SignupPhoneScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taken, setTaken] = useState(false);
+  const [unknown, setUnknown] = useState(false);
+  const reset = route.params?.purpose === 'reset';
 
   const send = async () => {
     const digits = digitsOnly(phone);
@@ -50,17 +55,22 @@ export function SignupPhoneScreen() {
     setBusy(true);
     setError(null);
     setTaken(false);
+    setUnknown(false);
     try {
       const number = `+91${digits}`;
-      const result = await requestSignupCode(number);
+      const result = reset
+        ? await requestResetCode(number)
+        : await requestSignupCode(number);
       nav.navigate('SignupCode', {
         phone: number,
+        purpose: reset ? 'reset' : 'signup',
         debugCode: result.debug_code ?? null,
         retryAfter: result.retry_after,
       });
     } catch (e) {
       haptic('error');
       if (e instanceof ApiError && e.code === 'phone_in_use') setTaken(true);
+      else if (e instanceof ApiError && e.code === 'no_account') setUnknown(true);
       else
         setError(
           e instanceof Error ? e.message : t('onboarding.account.failed'),
@@ -72,9 +82,9 @@ export function SignupPhoneScreen() {
 
   return (
     <SignupFrame
-      icon="bicycle"
-      title={t('onboarding.signup.title')}
-      lead={t('onboarding.signup.lead')}
+      icon={reset ? 'key-outline' : 'bicycle'}
+      title={t(reset ? 'reset.title' : 'onboarding.signup.title')}
+      lead={t(reset ? 'reset.lead' : 'onboarding.signup.lead')}
       onBack={() => nav.goBack()}
     >
       <TextField
@@ -85,6 +95,7 @@ export function SignupPhoneScreen() {
         onChangeText={v => {
           setError(null);
           setTaken(false);
+          setUnknown(false);
           setPhone(digitsOnly(v));
         }}
         keyboardType="phone-pad"
@@ -107,6 +118,19 @@ export function SignupPhoneScreen() {
           />
         </ErrorCard>
       ) : null}
+      {unknown ? (
+        <ErrorCard message={t('reset.noAccount')}>
+          <Button
+            kind="secondary"
+            size="md"
+            icon="bicycle-outline"
+            label={t('reset.signUp')}
+            onPress={() =>
+              nav.replace('SignupPhone', { phone: digitsOnly(phone), purpose: 'signup' })
+            }
+          />
+        </ErrorCard>
+      ) : null}
       {error ? <ErrorCard message={error} /> : null}
       <Button
         label={t('onboarding.signup.sendCode')}
@@ -115,6 +139,8 @@ export function SignupPhoneScreen() {
         onPress={send}
       />
 
+      {reset ? null : (
+        <>
       <Card style={styles.need}>
         <AppText variant="micro" tone="muted">
           {t('onboarding.signup.needTitle').toUpperCase()}
@@ -140,6 +166,8 @@ export function SignupPhoneScreen() {
           onPress={() => nav.navigate('Login')}
         />
       </View>
+        </>
+      )}
     </SignupFrame>
   );
 }

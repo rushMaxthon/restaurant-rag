@@ -14,12 +14,17 @@ export type TabParamList = {
   Profile: undefined;
 };
 
+/** What a phone code is for: making an account, or a forgotten password. */
+export type CodePurpose = 'signup' | 'reset';
+
 export type RootStackParamList = {
   Login: undefined;
   // Signing up (signed out)
-  SignupPhone: { phone?: string } | undefined;
+  /** `purpose: 'reset'` is forgot-password: the same two screens, a code to an existing account. */
+  SignupPhone: { phone?: string; purpose?: CodePurpose } | undefined;
   SignupCode: {
     phone: string;
+    purpose?: CodePurpose;
     debugCode: string | null;
     retryAfter: number;
     /** Back from the account screen: the code was refused. `errorAt` makes the same error twice still land. */
@@ -27,6 +32,7 @@ export type RootStackParamList = {
     errorAt?: number;
   };
   SignupAccount: { phone: string; code: string };
+  ResetPassword: { phone: string; code: string };
   // The application (signed in, not approved yet)
   OnboardingHome: undefined;
   /** `single`: opened from Fix or Edit - saving goes back instead of on to the next step. */

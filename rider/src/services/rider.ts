@@ -51,6 +51,27 @@ export function signup(body: {
   return request<LoginResponse>('/rider/signup', { method: 'POST', body });
 }
 
+/** Public, forgot password: a code to a rider's own number. 404 `no_account`. */
+export function requestResetCode(phone: string) {
+  return request<SignupCodeResponse>('/rider/password/code', {
+    method: 'POST',
+    body: { phone_number: phone },
+  });
+}
+
+/** Is this the reset code? Does not use it up. */
+export function checkResetCode(phone: string, code: string) {
+  return request<void>('/rider/password/check', {
+    method: 'POST',
+    body: { phone_number: phone, code },
+  });
+}
+
+/** The new password; answers like /auth/login, so the rider is signed straight in. */
+export function resetPassword(body: { phone_number: string; code: string; password: string }) {
+  return request<LoginResponse>('/rider/password/reset', { method: 'POST', body });
+}
+
 export const riderApi = (token: string) => ({
   me: () => request<RiderMe>('/rider/me', { token }),
   setOnline: (online: boolean) =>

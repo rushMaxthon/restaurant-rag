@@ -736,6 +736,26 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   refused every React Native connection (Android sends Origin = the API's own
   URL); `realtime/server.origin_allowed` now accepts same-origin.
 
+- **Forgot password and the dispatch net (2026-10-09).** Riders choose their
+  own password at sign-up and it is only ever a hash - never shown to an
+  admin. A forgotten one is reset in the app (Login -> Forgot password?): the
+  sign-up phone/code screens with `purpose: 'reset'`, then `ResetPassword`.
+  Backend `/rider/password/{code,check,reset}`; the code is
+  `onboarding.phone` with its own purpose (`RESET`), so a sign-up code can
+  never reset a password. 404 `no_account`, 403 `account_inactive` (a reset
+  is not a way back in for a deactivated rider). The reset bumps
+  `token_version` and takes the rider off shift like the admin's reset, and
+  signs them straight in. Separately: dispatch is queued once, on ACCEPTED,
+  and nothing asked again - a lost job left an accepted order with no
+  delivery row and no rider ever heard of it. `service.dispatch_missed`
+  (beat `dispatch-missed-deliveries`, every 60 s, under
+  `enable_delivery_dispatch`) re-dispatches delivery orders accepted in the
+  last 30 min (`DISPATCH_RETRY_WINDOW`) that are still ACCEPTED/PREPARING
+  with no row. Accept time comes from `order_status_events`. A kitchen that
+  marks Out for delivery itself takes the order away from the fleet - that
+  is what happened to the first test orders, which were also accepted before
+  the fleet was switched on.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

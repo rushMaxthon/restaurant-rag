@@ -17,7 +17,7 @@ ever moves forward along the flow.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -258,6 +258,64 @@ def should_dispatch(order: Order) -> bool:
     if order.status in {OrderStatus.CANCELLED, OrderStatus.DELIVERED, OrderStatus.PAYMENT_PENDING}:
         return False
     return True
+
+
+#: How far back the dispatch net looks. Long enough to outlast a worker
+#: restart or a deploy; short enough that it never books a courier for food
+#: that has plainly gone some other way.
+DISPATCH_RETRY_WINDOW = timedelta(minutes=30)
+
+#: Still in the kitchen: nobody has the food yet, so it still needs a rider.
+_AWAITING_COURIER = (OrderStatus.ACCEPTED, OrderStatus.PREPARING)
+
+
+def dispatch_missed(db: Session, now: datetime | None = None) -> list:
+    """Dispatch every recently accepted delivery order that has no delivery
+    row - the ones whose dispatch job was lost. Returns their ids.
+
+    The accept queues `dispatch_order_task` and nothing asked again: a worker
+    that was down, a broker that blinked, a deploy at the wrong second, and
+    the order sat in the kitchen with no rider ever hearing of it (found
+    2026-10-09). The offers had a safety-net beat; dispatch did not. Accept
+    time comes from the event log, because `orders` has no column for it and
+    `updated_at` moves on every later change. `dispatch` itself still decides
+    whether each one should go - the flag, the live-host interlock, pickup -
+    so this can only ever do what the lost job would have done.
+    """
+
+    from app.models.order_status_event import OrderStatusEvent
+
+    now = now or datetime.now(UTC)
+    accepted_recently = (
+        select(OrderStatusEvent.order_id)
+        .where(
+            OrderStatusEvent.to_status == OrderStatus.ACCEPTED,
+            OrderStatusEvent.occurred_at >= now - DISPATCH_RETRY_WINDOW,
+        )
+    )
+    has_row = select(OrderDelivery.id).where(OrderDelivery.order_id == Order.id).exists()
+    orders = db.scalars(
+        select(Order).where(
+            Order.id.in_(accepted_recently),
+            Order.status.in_(_AWAITING_COURIER),
+            Order.fulfillment_type == OrderFulfillmentType.DELIVERY,
+            ~has_row,
+        )
+    ).all()
+    done = []
+    for order in orders:
+        try:
+            row = dispatch(db, order)
+        except DeliveryProviderError as error:
+            # `dispatch` wrote the refusal onto the row before raising, and the
+            # caller's commit keeps it: the admin sees why, and the next pass
+            # leaves the order alone because it has a row now.
+            logger.warning("Dispatch net: order %s refused: %s", order.id, error)
+            continue
+        if row is not None:
+            logger.info("Dispatch net: order %s had no delivery, now %s", order.id, row.provider)
+            done.append(order.id)
+    return done
 
 
 def dispatch(db: Session, order: Order) -> OrderDelivery | None:

@@ -24,7 +24,11 @@ export function km(value: number | null | undefined): string {
 }
 
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Only words that start with a letter: "Test Rider (test)" is TR, not T(.
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(word => /^\p{L}/u.test(word));
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '')).toUpperCase() || 'R';
 }
 

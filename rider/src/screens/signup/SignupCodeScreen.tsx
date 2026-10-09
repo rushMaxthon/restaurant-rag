@@ -9,7 +9,12 @@ import { Icon } from '@components/ui/Icon';
 import { useI18n } from '@/i18n';
 import { useNav, type RootStackParamList } from '@navigation/types';
 import { ApiError } from '@/services/http';
-import { checkSignupCode, requestSignupCode } from '@/services/rider';
+import {
+  checkResetCode,
+  checkSignupCode,
+  requestResetCode,
+  requestSignupCode,
+} from '@/services/rider';
 import { errorKey } from '@utils/onboarding';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
@@ -37,6 +42,9 @@ export function SignupCodeScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(params.error ?? null);
   const [shake, setShake] = useState(0);
+  // Forgot password runs through this screen too; only the calls and the
+  // screen after it differ.
+  const reset = params.purpose === 'reset';
 
   // Back from the account screen with "wrong code": start over on the boxes.
   useEffect(() => {
@@ -65,8 +73,13 @@ export function SignupCodeScreen() {
     setBusy(true);
     setError(null);
     try {
-      await checkSignupCode(params.phone, value);
-      nav.navigate('SignupAccount', { phone: params.phone, code: value });
+      if (reset) {
+        await checkResetCode(params.phone, value);
+        nav.navigate('ResetPassword', { phone: params.phone, code: value });
+      } else {
+        await checkSignupCode(params.phone, value);
+        nav.navigate('SignupAccount', { phone: params.phone, code: value });
+      }
     } catch (e) {
       haptic('error');
       setCode('');
@@ -85,7 +98,9 @@ export function SignupCodeScreen() {
     setError(null);
     setNote(null);
     try {
-      const result = await requestSignupCode(params.phone);
+      const result = reset
+        ? await requestResetCode(params.phone)
+        : await requestSignupCode(params.phone);
       setDebugCode(result.debug_code ?? null);
       setWait(result.retry_after);
       setCode('');
@@ -170,7 +185,12 @@ export function SignupCodeScreen() {
           size="md"
           icon="create-outline"
           label={t('onboarding.code.change')}
-          onPress={() => nav.popTo('SignupPhone', { phone: params.phone })}
+          onPress={() =>
+            nav.popTo('SignupPhone', {
+              phone: params.phone.replace(/^\+91/, ''),
+              purpose: params.purpose,
+            })
+          }
         />
       </View>
     </SignupFrame>

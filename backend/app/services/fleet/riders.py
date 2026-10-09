@@ -170,6 +170,27 @@ def _move_on(delivery_ids: list[uuid.UUID]) -> None:
         offers.queue_advance(delivery_id)
 
 
+def reset_own_password(db: Session, user: User, password: str) -> None:
+    """The rider's own reset, after a code to their phone. Ends every session
+    exactly as the admin's reset does: the usual reason for a reset is a
+    phone that is lost or in somebody else's hands, and that phone must stop
+    working - and stop being offered orders - now, not when its token expires.
+    A rider on a trip keeps the trip (`go_offline` leaves them on it)."""
+
+    user.hashed_password = hash_password(password)
+    released = go_offline(db, user.id, "password reset by the rider")
+    user.token_version += 1
+    from app.services.realtime.outbox import queue_session_revoked
+
+    queue_session_revoked(db, user_id=user.id)
+    db.commit()
+    logger.info("Rider %s reset their password", user.id)
+    _move_on(released)
+    from app.services.fleet import notify
+
+    notify.riders_changed(user.id, force=True)
+
+
 def update_rider(db: Session, admin: User, user_id: uuid.UUID, **fields: Any) -> User:
     user, rider = get_rider(db, user_id)
     released: list[uuid.UUID] = []

@@ -32,6 +32,12 @@ class SignupCheckRequest(BaseModel):
     code: str = Field(min_length=4, max_length=8)
 
 
+class PasswordResetRequest(BaseModel):
+    phone_number: str = Field(min_length=6, max_length=20)
+    code: str = Field(min_length=4, max_length=8)
+    password: str = Field(min_length=8, max_length=128)
+
+
 class SignupRequest(BaseModel):
     phone_number: str = Field(min_length=6, max_length=20)
     code: str = Field(min_length=4, max_length=8)

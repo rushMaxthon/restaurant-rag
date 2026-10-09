@@ -124,6 +124,12 @@ celery_app.conf.update(
                     "task": "app.tasks.delivery.refresh_deliveries_task",
                     "schedule": crontab(minute="*"),
                 },
+                # A lost dispatch job used to strand an accepted order with no
+                # rider and no courier (2026-10-09). Every minute, re-ask.
+                "dispatch-missed-deliveries": {
+                    "task": "app.tasks.delivery.dispatch_missed_task",
+                    "schedule": 60.0,
+                },
             }
             if settings.enable_delivery_dispatch
             else {}
