@@ -138,6 +138,23 @@ def offer_withdrawn(db: Session, offer: Any) -> None:
     riders_changed(offer.rider_user_id, force=True)
 
 
+def application_decided(rider_user_id: uuid.UUID, status: str) -> None:
+    """An admin approved, sent back or rejected a sign-up. The rider is
+    probably not looking at the app, so it is pushed as well as emitted; the
+    app refetches the application either way. Its own session: called after
+    the decision committed, and a failure here must never undo it."""
+
+    _to_rider("rider:application", rider_user_id, {"status": status})
+    from app.config.database import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            _push(db, rider_user_id, {"type": "rider_application", "status": status}, ttl_seconds=86_400)
+            db.commit()
+    except Exception:  # noqa: BLE001 - never into the caller
+        logger.warning("Application push failed rider=%s", rider_user_id, exc_info=True)
+
+
 def trip_changed(db: Session, trip: Any) -> None:
     _to_rider(TRIP_UPDATED_EVENT, trip.rider_user_id, {"trip_id": str(trip.id)})
 

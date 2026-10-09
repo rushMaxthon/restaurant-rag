@@ -11,7 +11,8 @@ from __future__ import annotations
 import os
 import sys
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -20,9 +21,244 @@ from fleet_harness import FleetDB, postgres_available, reset_overrides  # noqa: 
 from fastapi import HTTPException  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
-from app.models.enums import RiderOnboarding  # noqa: E402
+from app.models.enums import (  # noqa: E402
+    ApplicationAction,
+    ApplicationItemKind,
+    ApplicationStatus,
+    ItemStatus,
+    RiderOnboarding,
+    RiderStatus,
+    UserRole,
+    VehicleType,
+)
 from app.models.rider import Rider  # noqa: E402
-from app.services.fleet.onboarding import phone  # noqa: E402
+from app.models.rider_application import RiderApplication, RiderApplicationEvent, RiderApplicationItem  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.auth import hash_password  # noqa: E402
+from app.services.fleet.onboarding import applications, phone  # noqa: E402
+
+JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
+TODAY = date(2026, 10, 9)
+
+
+def make_applicant(fdb, db, digits: str) -> User:
+    """A rider the way sign-up makes one: PENDING, with a DRAFT application."""
+
+    user = User(
+        email=f"rider.91{digits}@riders.invalid",
+        phone_number=f"+91{digits}",
+        full_name="Asha Applicant",
+        hashed_password=hash_password("password123"),
+        role=UserRole.RIDER,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    db.add(Rider(user_id=user.id, vehicle_type=VehicleType.BIKE, onboarding=RiderOnboarding.PENDING))
+    db.flush()
+    applications.start(db, user)
+    db.commit()
+    return user
+
+
+def fill(db, user, vehicle: VehicleType = VehicleType.BIKE) -> None:
+    applications.save_section(db, user, "personal", {
+        "full_name": "Asha Applicant", "date_of_birth": "1995-05-10", "city": "Surat",
+        "address_line": "12 Rander Road, Adajan", "pincode": "395009",
+        "emergency_name": "Ravi", "emergency_phone": "9876500000",
+    }, today=TODAY)
+    applications.save_section(db, user, "vehicle", {
+        "vehicle_type": vehicle.value, "vehicle_number": "GJ 05 AB 1234",
+    }, today=TODAY)
+    applications.save_section(db, user, "documents", {
+        "aadhaar_last4": "4321", "pan": "abcde1234f",
+        "licence_number": "GJ0520190012345", "licence_expiry": "2030-01-01",
+    }, today=TODAY)
+    applications.save_section(db, user, "bank", {
+        "bank_holder": "Asha Applicant", "account_number": "123456789012",
+        "account_number_again": "123456789012", "ifsc": "sbin0001234",
+    }, today=TODAY)
+    app = db.get(RiderApplication, user.id)
+    for kind in applications.required_for(app):
+        if kind in applications.PHOTO_KINDS:
+            applications.save_photo(db, user, kind, JPEG)
+
+
+@unittest.skipUnless(postgres_available(), "local Postgres is not running")
+class ApplicationFlowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.fdb = FleetDB("restaurant_rag_onboarding_flow_test")
+        with cls.fdb.session() as db:
+            cls.admin = cls.fdb.make_admin(db)
+            cls.admin2 = cls.fdb.make_admin(db)
+            db.commit()
+        cls.counter = 0
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        reset_overrides()
+        cls.fdb.drop()
+
+    def setUp(self) -> None:
+        for target in ("upload", "delete"):
+            p = mock.patch(f"app.services.fleet.onboarding.storage.{target}")
+            p.start()
+            self.addCleanup(p.stop)
+        self.decided = mock.patch("app.services.fleet.notify.application_decided").start()
+        self.riders_changed = mock.patch("app.services.fleet.notify.riders_changed").start()
+        self.addCleanup(mock.patch.stopall)
+
+    def applicant(self, db) -> User:
+        type(self).counter += 1
+        return make_applicant(self.fdb, db, f"70000{type(self).counter:05d}")
+
+    def submitted(self, db) -> User:
+        user = self.applicant(db)
+        fill(db, user)
+        applications.submit(db, user)
+        return user
+
+    def test_submit_needs_every_required_item(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.submit(db, user)
+            self.assertEqual(caught.exception.status_code, 422)
+            self.assertIn("PERSONAL", caught.exception.detail["missing"])
+
+    def test_a_complete_draft_submits(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            app = db.get(RiderApplication, user.id)
+            self.assertEqual(app.status, ApplicationStatus.SUBMITTED)
+            self.assertIsNotNone(app.submitted_at)
+            actions = [e.action for e in db.query(RiderApplicationEvent).filter_by(rider_user_id=user.id)]
+            self.assertEqual(actions, [ApplicationAction.SUBMITTED])
+
+    def test_nothing_is_editable_while_under_review(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.save_section(db, user, "personal", {"full_name": "Someone Else"}, today=TODAY)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (409, "not_editable"))
+
+    def test_send_back_needs_a_flag(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.send_back(db, self.admin, user.id)
+            self.assertEqual(caught.exception.detail, "nothing_flagged")
+
+    def test_only_flagged_items_reopen(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            applications.review_item(db, self.admin, user.id, ApplicationItemKind.PAN, accept=False, reason="Blurry")
+            applications.send_back(db, self.admin, user.id)
+            self.assertEqual(db.get(RiderApplication, user.id).status, ApplicationStatus.CHANGES_NEEDED)
+            applications.save_photo(db, user, ApplicationItemKind.PAN, JPEG)
+            with self.assertRaises(HTTPException):
+                applications.save_photo(db, user, ApplicationItemKind.SELFIE, JPEG)
+
+    def test_resubmit_after_fixing(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            applications.review_item(db, self.admin, user.id, ApplicationItemKind.PAN, accept=False, reason="Blurry")
+            applications.send_back(db, self.admin, user.id)
+            with self.assertRaises(HTTPException):
+                applications.submit(db, user)  # PAN still flagged
+            applications.save_photo(db, user, ApplicationItemKind.PAN, JPEG)
+            item = db.query(RiderApplicationItem).filter_by(rider_user_id=user.id, kind=ApplicationItemKind.PAN).one()
+            self.assertEqual(item.status, ItemStatus.PENDING)
+            applications.submit(db, user)
+            actions = [e.action for e in db.query(RiderApplicationEvent).filter_by(rider_user_id=user.id)]
+            self.assertEqual(actions[-1], ApplicationAction.RESUBMITTED)
+
+    def test_approve_needs_everything_accepted(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.approve(db, self.admin, user.id)
+            self.assertEqual(caught.exception.detail, "not_all_accepted")
+            app = db.get(RiderApplication, user.id)
+            for kind in applications.required_for(app):
+                applications.review_item(db, self.admin, user.id, kind, accept=True)
+            applications.approve(db, self.admin, user.id)
+            rider = db.get(Rider, user.id)
+            self.assertEqual(rider.onboarding, RiderOnboarding.APPROVED)
+            self.assertEqual(rider.vehicle_number, "GJ05AB1234")
+            self.assertEqual(rider.city, "Surat")
+            self.decided.assert_called_with(user.id, "APPROVED")
+
+    def test_two_admins(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            applications.review_item(db, self.admin, user.id, ApplicationItemKind.PAN, accept=False, reason="Blurry")
+            applications.send_back(db, self.admin, user.id)
+            with self.assertRaises(HTTPException) as caught:
+                applications.approve(db, self.admin2, user.id)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (409, "state_changed"))
+
+    def test_reject_is_final_until_reopened(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            applications.reject(db, self.admin, user.id, "Documents belong to someone else")
+            self.assertEqual(db.get(Rider, user.id).onboarding, RiderOnboarding.REJECTED)
+            with self.assertRaises(HTTPException):
+                applications.submit(db, user)
+            applications.reopen(db, self.admin, user.id)
+            self.assertEqual(db.get(RiderApplication, user.id).status, ApplicationStatus.CHANGES_NEEDED)
+            self.assertEqual(db.get(Rider, user.id).onboarding, RiderOnboarding.PENDING)
+
+    def test_secrets_are_stored_encrypted(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            fill(db, user)
+            app = db.get(RiderApplication, user.id)
+            self.assertNotIn("ABCDE1234F", app.pan_encrypted)
+            self.assertEqual(app.pan_last4, "234F")
+            self.assertNotIn("123456789012", app.bank_account_encrypted)
+            self.assertEqual(app.bank_account_last4, "9012")
+
+    def test_a_bicycle_needs_no_rc(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            fill(db, user, VehicleType.CYCLE)
+            self.assertNotIn(ApplicationItemKind.RC, applications.required_for(db.get(RiderApplication, user.id)))
+            applications.submit(db, user)
+
+    def test_a_too_young_rider(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.save_section(db, user, "personal", {
+                    "full_name": "Kid", "date_of_birth": "2010-01-01", "city": "Surat",
+                    "address_line": "x", "pincode": "395009", "emergency_name": "M", "emergency_phone": "9876500000",
+                }, today=TODAY)
+            self.assertEqual(caught.exception.detail, {"field": "date_of_birth", "error": "too_young"})
+
+    def test_a_photo_that_is_not_an_image(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            with self.assertRaises(HTTPException) as caught:
+                applications.save_photo(db, user, ApplicationItemKind.SELFIE, b"%PDF-1.7 ...")
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (415, "not_an_image"))
+
+    def test_a_photo_that_is_too_large(self) -> None:
+        with self.fdb.session() as db:
+            user = self.applicant(db)
+            huge = JPEG + b"0" * (get_settings().rider_doc_max_bytes + 1)
+            with self.assertRaises(HTTPException) as caught:
+                applications.save_photo(db, user, ApplicationItemKind.SELFIE, huge)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (413, "too_large"))
+
+    def test_submissions_and_decisions_are_announced(self) -> None:
+        with self.fdb.session() as db:
+            user = self.submitted(db)
+            self.riders_changed.assert_called_with(user.id, force=True)
+            applications.review_item(db, self.admin, user.id, ApplicationItemKind.PAN, accept=False, reason="Blurry")
+            applications.send_back(db, self.admin, user.id)
+            self.decided.assert_called_with(user.id, "CHANGES_NEEDED")
 
 
 @unittest.skipUnless(postgres_available(), "local Postgres is not running")
