@@ -14,7 +14,7 @@ import { LANGUAGE_NAMES, useI18n, type Key } from '@/i18n';
 import { testOfferAlert } from '@/services/push';
 import { THEME_OPTIONS } from '@theme/preference';
 import { useNav } from '@navigation/types';
-import { APP_VERSION, SUPPORT_PHONE } from '@/config/api';
+import { APP_NAME, APP_VERSION, SUPPORT_PHONE } from '@/config/api';
 import { useRider } from '@/store/RiderProvider';
 import { useApi, useSession, useSignedInUser } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
@@ -231,7 +231,7 @@ export function ProfileScreen() {
       </Animated.View>
 
       <AppText variant="caption" tone="faint" align="center">
-        Foodie Rider · v{APP_VERSION}
+        {APP_NAME} · v{APP_VERSION}
       </AppText>
 
       <ConfirmDialog

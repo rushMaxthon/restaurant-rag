@@ -22,6 +22,9 @@ const en = {
     'We will review your changes. You cannot edit while we do.',
   'confirm.submit.yes': 'Send',
   'confirm.submit.no': 'Check again',
+  'net.title': 'No internet',
+  'net.body': 'Turn on mobile data or Wi-Fi to get orders and save your work.',
+  'net.settings': 'Open settings',
 } as const;
 
 const hi: Translations<typeof en> = {
@@ -44,6 +47,9 @@ const hi: Translations<typeof en> = {
   'confirm.resubmit.body': 'हम आपके बदलाव जांचेंगे। तब तक आप बदल नहीं सकेंगे।',
   'confirm.submit.yes': 'भेजें',
   'confirm.submit.no': 'फिर से देखें',
+  'net.title': 'इंटरनेट नहीं है',
+  'net.body': 'ऑर्डर पाने और अपना काम सेव करने के लिए मोबाइल डेटा या Wi-Fi चालू करें।',
+  'net.settings': 'सेटिंग्स खोलें',
 };
 
 const gu: Translations<typeof en> = {
@@ -66,6 +72,9 @@ const gu: Translations<typeof en> = {
     'અમે તમારા ફેરફાર તપાસીશું. ત્યાં સુધી તમે બદલી નહીં શકો.',
   'confirm.submit.yes': 'મોકલો',
   'confirm.submit.no': 'ફરી જુઓ',
+  'net.title': 'ઇન્ટરનેટ નથી',
+  'net.body': 'ઓર્ડર મેળવવા અને તમારું કામ સેવ કરવા મોબાઇલ ડેટા અથવા Wi-Fi ચાલુ કરો.',
+  'net.settings': 'સેટિંગ્સ ખોલો',
 };
 
 export default { en, hi, gu };

@@ -141,7 +141,6 @@ function SignedInGate() {
       <ApplicationProvider>
         <PushRouter />
         <OnboardingStack />
-        <ConnectionBanner />
       </ApplicationProvider>
     );
   }
@@ -150,7 +149,6 @@ function SignedInGate() {
       <GuideProvider>
         <PushRouter />
         <SignedInStack />
-        <ConnectionBanner />
         {/* Last, so a tip sits above every screen and the tab bar. */}
         <Spotlight />
       </GuideProvider>
@@ -235,7 +233,17 @@ function MainTabsWithWatcher() {
   );
 }
 
+/** Every screen, signed in or not, hears about a lost connection. */
 export function RootNavigator() {
+  return (
+    <>
+      <Screens />
+      <ConnectionBanner />
+    </>
+  );
+}
+
+function Screens() {
   const { state } = useSession();
   if (state.status === 'signedIn') return <SignedIn />;
   return (
