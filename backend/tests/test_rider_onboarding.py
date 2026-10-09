@@ -336,5 +336,93 @@ class PhoneCodeTests(unittest.TestCase):
             self.assertEqual(caught.exception.detail, "code_expired")
 
 
+
+@unittest.skipUnless(postgres_available(), "local Postgres is not running")
+class WorkGateTests(unittest.TestCase):
+    """A pending rider may sign in and fill in their application - and nothing
+    else. The app shows them only the application, but these are the checks
+    that hold whatever the app shows."""
+
+    NEAR = (21.185, 72.84)
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.fdb = FleetDB("restaurant_rag_onboarding_gate_test")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        reset_overrides()
+        cls.fdb.drop()
+
+    def setUp(self) -> None:
+        for target in ("offer_made", "offer_withdrawn", "trip_changed", "riders_changed", "delivery_changed"):
+            p = mock.patch(f"app.services.fleet.notify.{target}")
+            p.start()
+            self.addCleanup(p.stop)
+        for target in ("schedule_expiry", "queue_advance"):
+            p = mock.patch(f"app.services.fleet.offers.{target}")
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(reset_overrides)
+
+    def _pending(self, db, status: RiderStatus = RiderStatus.ONLINE) -> User:
+        user = self.fdb.make_rider(db, lat=self.NEAR[0], lng=self.NEAR[1], status=status)
+        db.get(Rider, user.id).onboarding = RiderOnboarding.PENDING
+        db.commit()
+        return user
+
+    def test_a_pending_rider_cannot_go_online(self) -> None:
+        from app.services.fleet import riders
+
+        with self.fdb.session() as db:
+            user = self._pending(db, RiderStatus.OFFLINE)
+            with self.assertRaises(HTTPException) as caught:
+                riders.set_status(db, db.get(User, user.id), True)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (403, "rider_not_approved"))
+            self.assertEqual(db.get(Rider, user.id).status, RiderStatus.OFFLINE)
+
+    def test_a_pending_rider_may_still_go_offline(self) -> None:
+        from app.services.fleet import riders
+
+        with self.fdb.session() as db:
+            user = self._pending(db, RiderStatus.ONLINE)
+            riders.set_status(db, db.get(User, user.id), False)
+            self.assertEqual(db.get(Rider, user.id).status, RiderStatus.OFFLINE)
+
+    def test_a_pending_rider_is_never_offered(self) -> None:
+        from app.services.fleet import offers
+        from app.services.fleet.config import load_fleet
+
+        with self.fdb.session() as db:
+            user = self._pending(db)
+            order = self.fdb.make_order(db)
+            delivery = self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+            found = offers.candidates(db, delivery, load_fleet(db), datetime.now(UTC))
+            self.assertNotIn(user.id, [rider.user_id for rider, _ in found])
+
+    def test_a_pending_rider_cannot_claim(self) -> None:
+        from app.services.fleet import offers
+
+        with self.fdb.session() as db:
+            user = self._pending(db)
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+            with self.assertRaises(HTTPException) as caught:
+                offers.claim(db, db.get(User, user.id), order.id)
+            self.assertEqual(caught.exception.detail, "rider_not_approved")
+
+    def test_a_pending_rider_sees_no_board(self) -> None:
+        from app.services.fleet import offers
+
+        with self.fdb.session() as db:
+            user = self._pending(db)
+            order = self.fdb.make_order(db)
+            self.fdb.make_fleet_delivery(db, order)
+            db.commit()
+            self.assertEqual(offers.open_orders(db, db.get(User, user.id)), [])
+
+
 if __name__ == "__main__":
     unittest.main()
