@@ -153,6 +153,9 @@ export type Offer = {
   earning_estimate: string;
   drop_area: string;
   item_count: number;
+  /** When the kitchen expects the food to be ready; null when the restaurant
+   * has no preparation time set (`utils/ready`). */
+  ready_at?: string | null;
 };
 
 /** An order a free rider may take from the list (backend `OpenOrderView`). */
@@ -170,6 +173,9 @@ export type OpenOrder = {
   minutes_left: number;
   /** Offered to this rider first, and they let it run out or declined it. */
   missed: boolean;
+  /** When the kitchen expects the food to be ready; null when the restaurant
+   * has no preparation time set (`utils/ready`). */
+  ready_at?: string | null;
 };
 
 export type TripStop = {
@@ -203,6 +209,9 @@ export type Trip = {
   drop: TripStop;
   items: { name: string; quantity: number }[];
   item_count: number;
+  /** When the kitchen expects the food to be ready; null when the restaurant
+   * has no preparation time set (`utils/ready`). */
+  ready_at?: string | null;
 };
 
 export type EarningDay = { date: string; trips: number; amount: string };

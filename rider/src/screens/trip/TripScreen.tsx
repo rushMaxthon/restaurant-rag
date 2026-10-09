@@ -37,6 +37,7 @@ import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import { useTour } from '@/guide/useTour';
 import { useKeyboardHeight } from '@hooks/useKeyboardHeight';
+import { useReadyLabel } from '@hooks/useReadyLabel';
 import { useTripAction } from '@hooks/useTripAction';
 import { nextSlide } from '@utils/tripSteps';
 import { useI18n } from '@/i18n';
@@ -118,6 +119,10 @@ export function TripScreen() {
       ? trip.pickup
       : trip.drop;
   }, [trip]);
+
+  // When the food will be ready: shown while the rider is heading to, or
+  // waiting at, the restaurant - after pickup it means nothing.
+  const ready = useReadyLabel(trip?.ready_at);
 
   if (!trip || !stop) {
     return (
@@ -223,6 +228,14 @@ export function TripScreen() {
             <AppText tone="muted" style={styles.gapXs}>
               {stop.address}
             </AppText>
+            {atRestaurant && ready ? (
+              <View
+                style={[styles.away, { backgroundColor: colors.surfaceAlt }]}
+              >
+                <Icon name="restaurant" size={16} color={colors.text} />
+                <AppText variant="label">{ready}</AppText>
+              </View>
+            ) : null}
             {away ? (
               <View
                 style={[styles.away, { backgroundColor: colors.primarySoft }]}

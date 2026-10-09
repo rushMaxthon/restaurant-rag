@@ -53,6 +53,8 @@ const en = {
   'system.claimBusy': 'Finish your current delivery first.',
   'system.claimNotNear':
     'Riders closer to the restaurant get this one first. It opens to you in a few minutes.',
+  'system.claimNotOpen':
+    'The food is not ready yet. This order opens to riders a little before it is.',
   'system.claimFailed': 'Could not take this order. Try again.',
   'system.lastMinute': 'Last minute',
   'system.minutesLeft': '{n} min left',
@@ -108,6 +110,8 @@ const hi: Translations<typeof en> = {
   'system.claimBusy': 'पहले अभी की डिलीवरी पूरी करें।',
   'system.claimNotNear':
     'यह ऑर्डर पहले रेस्टोरेंट के पास वाले राइडर को मिलता है। कुछ मिनट में आपके लिए खुलेगा।',
+  'system.claimNotOpen':
+    'खाना अभी तैयार नहीं है। तैयार होने से थोड़ा पहले यह ऑर्डर राइडर के लिए खुलेगा।',
   'system.claimFailed': 'यह ऑर्डर नहीं ले पाए। फिर से करें।',
   'system.lastMinute': 'आखिरी मिनट',
   'system.minutesLeft': '{n} मिनट बाकी',
@@ -160,6 +164,8 @@ const gu: Translations<typeof en> = {
   'system.claimBusy': 'પહેલાં હાલની ડિલિવરી પૂરી કરો.',
   'system.claimNotNear':
     'આ ઓર્ડર પહેલાં રેસ્ટોરન્ટની નજીકના રાઇડરને મળે છે. થોડી મિનિટમાં તમારા માટે ખુલશે.',
+  'system.claimNotOpen':
+    'જમવાનું હજુ તૈયાર નથી. તૈયાર થવાના થોડા સમય પહેલાં આ ઓર્ડર રાઇડર માટે ખુલશે.',
   'system.claimFailed': 'આ ઓર્ડર લઈ ન શક્યા. ફરી કરો.',
   'system.lastMinute': 'છેલ્લી મિનિટ',
   'system.minutesLeft': '{n} મિનિટ બાકી',

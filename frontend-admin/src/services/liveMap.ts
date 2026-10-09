@@ -208,3 +208,23 @@ export function branchPins(
   const taken = new Set(orderGroups.map(g => g.key));
   return branches.filter(b => !taken.has(`${b.lat.toFixed(5)},${b.lng.toFixed(5)}`));
 }
+
+const CLOCK = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' });
+
+/**
+ * The food-ready line under a waiting order: when the kitchen expects it ready
+ * (the branch's preparation time after accepting) and, while the order is still
+ * held back, when riders will hear of it. Null for a branch with no preparation
+ * time set - the backend never guesses one.
+ */
+export function readyLine(
+  readyAt: string | null | undefined,
+  opensAt: string | null | undefined,
+  now: Date,
+  clock: (iso: string) => string = iso => CLOCK.format(new Date(iso)),
+): string | null {
+  if (!readyAt) return null;
+  if (Date.parse(readyAt) <= now.getTime()) return 'Food should be ready';
+  const ready = `Food ready ${clock(readyAt)}`;
+  return opensAt && Date.parse(opensAt) > now.getTime() ? `${ready} · riders get it at ${clock(opensAt)}` : ready;
+}

@@ -362,6 +362,7 @@ def trip_view(db: Session, trip: RiderTrip) -> dict[str, Any]:
 
     from app.services.fleet.config import load_pay
     from app.services.fleet.earnings import earning_for
+    from app.services.fleet.ready import ready_at
     from app.services.kitchen_push import order_code
 
     delivery = db.get(OrderDelivery, trip.order_delivery_id)
@@ -406,6 +407,7 @@ def trip_view(db: Session, trip: RiderTrip) -> dict[str, Any]:
         },
         "items": [{"name": item.item_name_snapshot, "quantity": item.quantity} for item in items],
         "item_count": sum(item.quantity for item in items),
+        "ready_at": ready_at(db, order, accepted_fallback=delivery.created_at),
     }
 
 

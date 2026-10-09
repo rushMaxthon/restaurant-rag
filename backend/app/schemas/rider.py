@@ -104,6 +104,9 @@ class OfferView(BaseModel):
     earning_estimate: Decimal
     drop_area: str
     item_count: int
+    #: When the kitchen expects the food to be ready (the branch's preparation
+    #: time after it accepted); None when the branch has none set.
+    ready_at: datetime | None = None
 
 
 class OpenOrderView(BaseModel):
@@ -122,6 +125,9 @@ class OpenOrderView(BaseModel):
     minutes_left: int
     #: Offered to this rider first, and they let it run out or declined it.
     missed: bool = False
+    #: When the kitchen expects the food to be ready; None when the branch
+    #: has no preparation time set.
+    ready_at: datetime | None = None
 
 
 class TripStop(BaseModel):
@@ -161,6 +167,9 @@ class TripView(BaseModel):
     drop: TripStop
     items: list[TripItem]
     item_count: int
+    #: When the kitchen expects the food to be ready (the branch's preparation
+    #: time after it accepted); None when the branch has none set.
+    ready_at: datetime | None = None
 
 
 class TripAction(BaseModel):
@@ -203,6 +212,7 @@ class FleetConfigIn(BaseModel):
     silent_minutes: int = Field(default=3, ge=1, le=30)
     wave_minutes: int = Field(default=2, ge=1, le=10)
     first_wave_km: float = Field(default=2.0, ge=0.5, le=25)
+    ready_lead_minutes: int = Field(default=10, ge=0, le=60)
     location_ids: list[str] = Field(default_factory=list, max_length=500)
 
 
@@ -274,6 +284,10 @@ class WaitingOrder(BaseModel):
     #: How far from the branch riders see it right now (the current wave);
     #: None for an order no rider is offered (unassigned, or no branch pin).
     reach_km: float | None = None
+    #: When the food should be ready, and - while still in the future - when
+    #: riders will hear of it (`fleet.ready`).
+    ready_at: datetime | None = None
+    opens_at: datetime | None = None
 
 
 class ReassignIn(BaseModel):

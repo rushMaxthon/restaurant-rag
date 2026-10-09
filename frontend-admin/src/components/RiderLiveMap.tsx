@@ -18,6 +18,7 @@ import {
   GLIDE_MS,
   branchPins,
   metresToPixels,
+  readyLine,
   MAX_ZOOM,
   MIN_ZOOM,
   bearingDeg,
@@ -539,7 +540,10 @@ export function RiderLiveMap({ token, onToast, onNavigate }: Props) {
                   <span className="rmap__muted">waiting {waitedLabel(order.ordered_at, now)}</span>
                 </span>
                 <span className="rmap__muted">{order.restaurant_name}</span>
-                {order.reach_km ? (
+                {readyLine(order.ready_at, order.opens_at, now) ? (
+                  <span className="rmap__muted">{readyLine(order.ready_at, order.opens_at, now)}</span>
+                ) : null}
+                {order.reach_km && !(order.opens_at && Date.parse(order.opens_at) > now.getTime()) ? (
                   <span className="rmap__muted">Riders within {distanceLabel(order.reach_km * 1000)} see it</span>
                 ) : null}
                 {order.offered_to ? (

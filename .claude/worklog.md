@@ -5621,3 +5621,23 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   the selected order's current ring, "Riders within N km see it" on the
   list; the two dials on Pay & dispatch. Checked in the browser on 5174
   against live (13 branches).
+
+## 2026-10-10 - food-ready time for riders
+
+- Owner's ask: tell riders when the food will be ready and time their
+  arrival to it, reusing the branch preparation time from admin.
+- Found: `preparation_time_minutes` exists on the branch, but all 14 live
+  branches have it EMPTY - so nothing changes live until it is filled in
+  (Admin -> Locations -> branch -> Preparation time). Ruled: empty means
+  unknown, never a guessed 15.
+- `fleet/ready.py` (derived from the ACCEPTED event, no migration),
+  `offers.opens_at` (+ `ready_lead_minutes`, default 10, on Pay & dispatch),
+  "holding" in `advance`, board hides held orders, `claim` 409
+  `order_not_open`, waves/window from `opens_at`, `ready_at` on offer /
+  open-order / trip views and on the admin waiting list (+ `opens_at`),
+  Pidge `promised_prep_time` from it.
+- Tests: `test_fleet_ready.py` (17: hold, quick order, no prep, window from
+  opening, claim refused early, cash still goes at once, late re-dispatch,
+  admin assign during hold, expired admin offer goes back to holding,
+  courier request, config). Rider `utils/ready.test.ts` (5) + claim message;
+  admin `readyLine` (4).

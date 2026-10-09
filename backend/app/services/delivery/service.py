@@ -23,7 +23,8 @@ from types import SimpleNamespace
 
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
+from sqlalchemy.orm.exc import UnmappedInstanceError
 
 from app.config import get_settings
 from app.models.enums import OrderFulfillmentType, OrderStatus
@@ -139,7 +140,19 @@ def build_request(order: Order) -> DeliveryRequest:
     if str(getattr(order, "payment_method", "")) == "COD":
         cod = Decimal(str(order.total_amount or 0))
 
-    ready_at = order.scheduled_at or datetime.now(tz=None)
+    # The branch's preparation time after the kitchen accepted (`fleet.ready`);
+    # without one, the order's own time as before.
+    # A plain object (a dry run, a test) has no session and so no ready time.
+    try:
+        session = object_session(order)
+    except UnmappedInstanceError:
+        session = None
+    known = None
+    if session is not None:
+        from app.services.fleet.ready import ready_at as food_ready_at
+
+        known = food_ready_at(session, order, accepted_fallback=datetime.now(UTC))
+    ready_at = known or order.scheduled_at or datetime.now(tz=None)
     return DeliveryRequest(
         reference=str(order.id),
         pickup=pickup,

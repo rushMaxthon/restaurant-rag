@@ -13,10 +13,12 @@ import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
 import { distance, km, rupees } from '@utils/format';
 import { minutesLeftLabel } from '@utils/openOrders';
+import { useReadyLabel } from '@hooks/useReadyLabel';
 
 /**
  * One order on the board, in three short lines: where from and what it pays,
- * where to, then how far and how long before a courier gets it. An order in
+ * where to, then how far and how long before a courier gets it, and when the
+ * food will be ready when the restaurant has said. An order in
  * its last minute gets an amber edge - it is now or never. `blockedReason`
  * disables Take and says why; the button never just goes grey.
  */
@@ -37,6 +39,7 @@ export function OpenOrderCard({
   const { colors } = useTheme();
   const { t, plural } = useI18n();
   const lastMinute = order.minutes_left <= 1;
+  const ready = useReadyLabel(order.ready_at);
   const take = (
     <Button
       kind="success"
@@ -92,6 +95,7 @@ export function OpenOrderCard({
           label={minutesLeftLabel(order.minutes_left)}
           color={lastMinute ? colors.warning : undefined}
         />
+        {ready ? <Meta icon="restaurant" label={ready} /> : null}
       </View>
       {guide ? <GuideTarget id={TARGETS.ordersTake}>{take}</GuideTarget> : take}
     </Card>

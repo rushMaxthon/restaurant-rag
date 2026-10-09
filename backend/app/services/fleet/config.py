@@ -50,6 +50,10 @@ class FleetConfig:
     #: `radius_km`. `offers.reach_m` is the one place that reads them.
     wave_minutes: int = 2
     first_wave_km: float = 2.0
+    #: Food-ready time (2026-10-10): an order reaches riders this many minutes
+    #: before the branch's preparation time says it is ready - at once when it
+    #: is ready sooner. Ten is about a ride to the restaurant. `fleet.ready`.
+    ready_lead_minutes: int = 10
     #: Branches the fleet serves; empty means every branch. A visible list on
     #: the admin page, never a constant in code - the AI allowlist that was
     #: deleted from this codebase is the warning.
@@ -165,6 +169,7 @@ def validate_fleet(data: dict[str, Any]) -> FleetConfig:
         silent_minutes=_whole(data, "silent_minutes", 1, 30, base.silent_minutes),
         wave_minutes=_whole(data, "wave_minutes", 1, 10, base.wave_minutes),
         first_wave_km=first_wave,
+        ready_lead_minutes=_whole(data, "ready_lead_minutes", 0, 60, base.ready_lead_minutes),
         location_ids=list(ids),
     )
 

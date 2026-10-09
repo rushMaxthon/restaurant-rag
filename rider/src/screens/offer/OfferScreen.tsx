@@ -11,6 +11,7 @@ import { CountdownRing } from '@components/ui/CountdownRing';
 import { Icon } from '@components/ui/Icon';
 import { Pill } from '@components/ui/Pill';
 import { useI18n } from '@/i18n';
+import { useReadyLabel } from '@hooks/useReadyLabel';
 import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
@@ -40,6 +41,7 @@ export function OfferScreen() {
   const [askDecline, setAskDecline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown] = useState(offer);
+  const ready = useReadyLabel(shown?.ready_at);
 
   useEffect(() => {
     Vibration.vibrate(RING, true);
@@ -164,6 +166,7 @@ export function OfferScreen() {
               })}
               icon="time"
             />
+            {ready ? <Pill label={ready} icon="restaurant" /> : null}
           </View>
         </Animated.View>
 

@@ -20,6 +20,11 @@ describe('claimErrorMessage', () => {
       'Riders closer to the restaurant get this one first. It opens to you in a few minutes.',
     );
   });
+  it('tells a rider who took it before it opened that the food is not ready', () => {
+    expect(claimErrorMessage('order_not_open')).toBe(
+      'The food is not ready yet. This order opens to riders a little before it is.',
+    );
+  });
   it('tells a rider mid-trip to finish first', () => {
     expect(claimErrorMessage('rider_busy')).toBe(
       'Finish your current delivery first.',

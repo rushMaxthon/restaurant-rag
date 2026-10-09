@@ -41,6 +41,8 @@ const en = {
   'common.deliveries.other': '{n} deliveries',
   'common.minAway': 'about {n} min',
   'common.away': '{distance} away',
+  'common.readyAt': 'Food ready at {time} · in {n} min',
+  'common.readyNow': 'Food should be ready now',
   'common.showPassword': 'Show password',
   'common.hidePassword': 'Hide password',
 } as const;
@@ -85,6 +87,8 @@ const hi: Translations<typeof en> = {
   'common.deliveries.other': '{n} डिलीवरी',
   'common.minAway': 'लगभग {n} मिनट',
   'common.away': '{distance} दूर',
+  'common.readyAt': 'खाना {time} बजे तैयार · {n} मिनट में',
+  'common.readyNow': 'खाना अब तैयार होना चाहिए',
   'common.showPassword': 'पासवर्ड दिखाएं',
   'common.hidePassword': 'पासवर्ड छिपाएं',
 };
@@ -129,6 +133,8 @@ const gu: Translations<typeof en> = {
   'common.deliveries.other': '{n} ડિલિવરી',
   'common.minAway': 'લગભગ {n} મિનિટ',
   'common.away': '{distance} દૂર',
+  'common.readyAt': 'જમવાનું {time} વાગ્યે તૈયાર · {n} મિનિટમાં',
+  'common.readyNow': 'જમવાનું હવે તૈયાર હોવું જોઈએ',
   'common.showPassword': 'પાસવર્ડ બતાવો',
   'common.hidePassword': 'પાસવર્ડ છુપાવો',
 };

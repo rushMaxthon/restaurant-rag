@@ -735,6 +735,13 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
             <small>Nobody takes it in this long, and riders one ring further out see it too.</small>
           </label>
           <label className="field">
+            <span>Send to riders before food is ready (minutes)</span>
+            <input max={60} min={0} onChange={number('ready_lead_minutes')} type="number" value={fleet.ready_lead_minutes} />
+            <small>
+              Uses each branch&apos;s preparation time. A branch without one sends the order to riders at once.
+            </small>
+          </label>
+          <label className="field">
             <span>Offline after silent (minutes)</span>
             <input max={30} min={1} onChange={number('silent_minutes')} type="number" value={fleet.silent_minutes} />
             <small>A rider whose phone stops sending a location is taken offline.</small>

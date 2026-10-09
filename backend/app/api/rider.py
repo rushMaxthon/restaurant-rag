@@ -148,6 +148,7 @@ def _offer_view(db: Session, offer: RiderOffer) -> OfferView:
         pickup_distance_m=offer.distance_to_pickup_m,
         trip_distance_km=round(km, 1),
         earning_estimate=estimate,
+        ready_at=offers.ready_time(db, delivery),
         **_summary(order),
     )
 
@@ -184,6 +185,7 @@ def open_orders(user: RiderUser, db: Db) -> list[OpenOrderView]:
             earning_estimate=row["earning_estimate"],
             minutes_left=row["minutes_left"],
             missed=row["missed"],
+            ready_at=row["ready_at"],
             **_summary(row["order"]),
         )
         for row in offers.open_orders(db, user)

@@ -769,6 +769,21 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   pin (`GET /admin/riders/branches`, dashed = courier only, names from zoom
   14) and the selected order's current ring (`WaitingOrder.reach_km`).
 
+- **Food-ready time (2026-10-10, the owner's rule).** `fleet/ready.py`:
+  ready = the ACCEPTED event + the branch's `preparation_time_minutes` (set
+  on the branch in admin). Derived, not stored - no column, no migration. A
+  branch with NO prep time is unknown, not zero: no ready time is shown and
+  the order goes to riders at once, exactly as before (all 14 live branches
+  had none on 2026-10-10). With one, `offers.opens_at` holds the order until
+  `ready_lead_minutes` (10) before ready - `advance` returns "holding", the
+  board hides it, `claim` is 409 `order_not_open` - and the waves and the
+  courier window count from `opens_at`, not from acceptance. Cash and
+  unserved branches still go to the courier at once; an admin may still
+  assign during the hold. Riders see "Food ready at 7:45 PM · in 18 min"
+  on the offer, the board cards and the trip (`utils/ready`,
+  `hooks/useReadyLabel`); the admin map list shows ready time and when
+  riders get it; Pidge's `promised_prep_time` is the real ready time.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

@@ -136,6 +136,38 @@ def candidates(
     return sorted(found, key=lambda pair: pair[1])
 
 
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def ready_time(db: Session, delivery: OrderDelivery) -> datetime | None:
+    """When the food should be ready (`fleet.ready`); None if the branch has no prep time."""
+
+    from app.services.fleet.ready import ready_at
+
+    order = db.get(Order, delivery.order_id)
+    if order is None:
+        return None
+    return ready_at(db, order, accepted_fallback=delivery.created_at)
+
+
+def opens_at(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> datetime:
+    """When riders hear of this order: `ready_lead_minutes` before the food is ready.
+
+    The owner's rule (2026-10-10): a rider told at the moment of acceptance
+    and riding over at once waits at the counter. Ready sooner than the lead,
+    or with no preparation time known, it is the moment the row was made - as
+    before. The waves and the courier window both count from here, and the
+    board, the one-by-one pings and `claim` all ask this one function.
+    """
+
+    created = _aware(delivery.created_at or now)
+    ready = ready_time(db, delivery)
+    if ready is None:
+        return created
+    return max(created, ready - timedelta(minutes=fleet.ready_lead_minutes))
+
+
 def reach_m(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> float:
     """How far from the branch a rider may be to see - and take - this order now.
 
@@ -149,9 +181,7 @@ def reach_m(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datet
 
     full = fleet.radius_km * 1000
     step = min(fleet.first_wave_km, fleet.radius_km) * 1000
-    started = delivery.created_at or now
-    if started.tzinfo is None:
-        started = started.replace(tzinfo=UTC)
+    started = opens_at(db, delivery, fleet, now)
     wave = int(max(0.0, (now - started).total_seconds()) // (fleet.wave_minutes * 60))
     ring = min(full, step * (wave + 1))
     if ring >= full:
@@ -198,10 +228,7 @@ def _refusal(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: date
         return "cash order"
     if fleet.location_ids and str(order.restaurant_location_id) not in fleet.location_ids:
         return "branch not on the fleet"
-    started = delivery.created_at or now
-    if started.tzinfo is None:
-        started = started.replace(tzinfo=UTC)
-    if now - started > timedelta(minutes=fleet.window_minutes):
+    if now - opens_at(db, delivery, fleet, now) > timedelta(minutes=fleet.window_minutes):
         return f"no rider within {fleet.window_minutes} minutes"
     # Nobody free, nobody accepting, max_offers spent: none of these is a
     # reason any more. Our riders come first (2026-10-08) - the order stays
@@ -275,6 +302,13 @@ def advance(db: Session, delivery_id: uuid.UUID, now: datetime | None = None) ->
             notify.offer_withdrawn(db, expired)
         logger.info("Delivery %s goes to the courier: %s", delivery.id, reason)
         return "fallback"
+
+    # The food is not near ready yet: nobody is rung, and the beat comes back.
+    if now < opens_at(db, delivery, fleet, now):
+        db.commit()
+        if expired is not None:
+            notify.offer_withdrawn(db, expired)
+        return "holding"
 
     # Riders are pinged one by one up to max_offers; after that, or with
     # nobody free right now, the order simply stays OPEN: on every free
@@ -367,10 +401,9 @@ def _start_trip(
     return trip
 
 
-def _window_left(delivery: OrderDelivery, fleet: FleetConfig, now: datetime) -> timedelta:
-    started = delivery.created_at or now
-    if started.tzinfo is None:
-        started = started.replace(tzinfo=UTC)
+def _window_left(started: datetime, fleet: FleetConfig, now: datetime) -> timedelta:
+    """Time left before the courier takes it, counted from `opens_at`."""
+
     return started + timedelta(minutes=fleet.window_minutes) - now
 
 
@@ -437,7 +470,11 @@ def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> l
     ).all()
     out: list[dict[str, Any]] = []
     for delivery in rows:
-        left = _window_left(delivery, fleet, now)
+        opens = opens_at(db, delivery, fleet, now)
+        if now < opens:
+            # Not near ready yet: riders hear of it a little before it is.
+            continue
+        left = _window_left(opens, fleet, now)
         if left.total_seconds() <= 0:
             continue
         order, lat, lng = _branch_point(db, delivery)
@@ -458,6 +495,7 @@ def open_orders(db: Session, rider_user: User, now: datetime | None = None) -> l
             "earning_estimate": estimate,
             "minutes_left": max(1, int(left.total_seconds() // 60)),
             "missed": delivery.id in missed,
+            "ready_at": ready_time(db, delivery),
         })
     out.sort(key=lambda r: (r["pickup_distance_m"] is None, r["pickup_distance_m"] or 0))
     return out
@@ -483,12 +521,15 @@ def claim(db: Session, rider_user: User, order_id: uuid.UUID, now: datetime | No
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, blocked)
     fleet = load_fleet(db)
-    if (
-        delivery is None
-        or delivery.provider != PROVIDER
-        or not _offerable(db, delivery)
-        or _window_left(delivery, fleet, now).total_seconds() <= 0
-    ):
+    if delivery is None or delivery.provider != PROVIDER or not _offerable(db, delivery):
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_taken")
+    opens = opens_at(db, delivery, fleet, now)
+    if now < opens:
+        # The board does not show it yet; a stale one must not take it early.
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_not_open")
+    if _window_left(opens, fleet, now).total_seconds() <= 0:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "order_taken")
     # The board hides an order from riders outside its wave; a stale board
@@ -679,7 +720,7 @@ def schedule_expiry(delivery_id: uuid.UUID, seconds: int) -> None:
 
 __all__ = [
     "PROVIDER", "accept", "advance", "candidates", "claim", "current_offer", "decline", "haversine_m",
-    "open_orders", "reach_m",
+    "open_orders", "opens_at", "reach_m", "ready_time",
     "queue_advance", "queue_advance_after_commit", "reassign", "schedule_expiry", "timeline",
 ]
 
@@ -727,8 +768,11 @@ def waiting_orders(db: Session) -> list[dict]:
         if DeliveryState(delivery.state).is_terminal:
             continue
         reach = None
-        if delivery.provider == PROVIDER and lat is not None and lng is not None:
-            reach = round(reach_m(db, delivery, fleet, now) / 1000, 2)
+        opens = None
+        if delivery.provider == PROVIDER:
+            opens = opens_at(db, delivery, fleet, now)
+            if lat is not None and lng is not None:
+                reach = round(reach_m(db, delivery, fleet, now) / 1000, 2)
         out.append({
             "order_id": order.id,
             "order_code": order_code(order),
@@ -741,5 +785,7 @@ def waiting_orders(db: Session) -> list[dict]:
             "ordered_at": order.created_at,
             "offered_to": pending.get(delivery.id),
             "reach_km": reach,
+            "ready_at": ready_time(db, delivery),
+            "opens_at": opens if opens is not None and opens > now else None,
         })
     return out

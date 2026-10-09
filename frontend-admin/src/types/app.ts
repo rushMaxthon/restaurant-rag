@@ -1959,6 +1959,8 @@ export interface FleetConfig {
   wave_minutes: number;
   /** The first ring, and how much each wave adds. */
   first_wave_km: number;
+  /** Riders hear of an order this many minutes before its food is ready. */
+  ready_lead_minutes: number;
   location_ids: string[];
 }
 
@@ -2048,6 +2050,10 @@ export interface WaitingFleetOrder {
   offered_to: string | null;
   /** How far from the branch riders see it right now (its current wave). */
   reach_km?: number | null;
+  /** When the kitchen expects the food ready; null with no preparation time set. */
+  ready_at?: string | null;
+  /** While held back: when riders will hear of it. */
+  opens_at?: string | null;
 }
 
 export interface FleetDeliveryView {

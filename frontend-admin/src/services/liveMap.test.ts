@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bearingDeg, branchPins, fitView, glideAt, groupByPickup, metresToPixels, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
+import { bearingDeg, branchPins, fitView, glideAt, groupByPickup, metresToPixels, readyLine, nearestRiders, project, riderPinTone, tilesFor, unproject } from './liveMap';
 import type { Rider } from '../types/app';
 
 const rider = (over: Partial<Rider>): Rider => ({
@@ -155,5 +155,26 @@ describe('branchPins', () => {
   it('leaves out a branch already drawn as an order pin', () => {
     const pins = branchPins([branch('a', 21.2), branch('b', 21.3)], groupByPickup([order(21.2)]));
     expect(pins.map(b => b.id)).toEqual(['b']);
+  });
+});
+
+describe('readyLine', () => {
+  const clock = (iso: string) => iso.slice(11, 16);
+  const now = new Date('2026-10-10T14:00:00Z');
+
+  it('says when the food is ready and when riders get it, while held', () => {
+    expect(readyLine('2026-10-10T14:25:00Z', '2026-10-10T14:15:00Z', now, clock)).toBe(
+      'Food ready 14:25 · riders get it at 14:15',
+    );
+  });
+  it('says only the ready time once riders have it', () => {
+    expect(readyLine('2026-10-10T14:05:00Z', null, now, clock)).toBe('Food ready 14:05');
+  });
+  it('says it should be ready once the time has passed', () => {
+    expect(readyLine('2026-10-10T13:55:00Z', null, now, clock)).toBe('Food should be ready');
+  });
+  it('says nothing for a branch with no preparation time', () => {
+    expect(readyLine(null, null, now, clock)).toBeNull();
+    expect(readyLine(undefined, undefined, now, clock)).toBeNull();
   });
 });
