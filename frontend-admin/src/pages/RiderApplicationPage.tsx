@@ -338,7 +338,7 @@ function ApplicationView({
               {detail.submitted_at ? (
                 <span>
                   Submitted {dateTime(detail.submitted_at)}
-                  {detail.status === 'SUBMITTED' ? ` · waiting ${waitingLabel(detail.submitted_at)}` : ''}
+                  {detail.status === 'SUBMITTED' ? ` · waiting ${waitingLabel(detail.submitted_at).toLowerCase()}` : ''}
                 </span>
               ) : (
                 <span>Not submitted yet</span>
