@@ -23,6 +23,7 @@ import { IntroScreen } from '@screens/onboarding/IntroScreen';
 import { OnboardingHomeScreen } from '@screens/onboarding/OnboardingHomeScreen';
 import { PermissionsScreen } from '@screens/onboarding/PermissionsScreen';
 import { ProfileScreen } from '@screens/profile/ProfileScreen';
+import { ResetPasswordScreen } from '@screens/signup/ResetPasswordScreen';
 import { SignupAccountScreen } from '@screens/signup/SignupAccountScreen';
 import { SignupCodeScreen } from '@screens/signup/SignupCodeScreen';
 import { SignupPhoneScreen } from '@screens/signup/SignupPhoneScreen';
@@ -58,6 +59,7 @@ const Bounded = {
   OrdersScreen: withBoundary(OrdersScreen),
   PermissionsScreen: withBoundary(PermissionsScreen),
   ProfileScreen: withBoundary(ProfileScreen),
+  ResetPasswordScreen: withBoundary(ResetPasswordScreen),
   DeliveredScreen: withBoundary(DeliveredScreen),
   TripScreen: withBoundary(TripScreen),
   SignupPhoneScreen: withBoundary(SignupPhoneScreen),
@@ -262,6 +264,11 @@ function Screens() {
       <Stack.Screen
         name="SignupAccount"
         component={Bounded.SignupAccountScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="ResetPassword"
+        component={Bounded.ResetPasswordScreen}
         options={{ animation: 'slide_from_right' }}
       />
     </Stack.Navigator>

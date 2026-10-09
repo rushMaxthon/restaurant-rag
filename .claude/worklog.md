@@ -5600,3 +5600,12 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
 - `components/LanguageSwitch.tsx`: `LanguageSheet` (Profile uses it) + `LanguageButton` on Login, sign-up and the application home.
 - Verified on the emulator: login/sign-up fields clear the keyboard, Hindi switch, back closes the sheet, leave guard, 0 of 7 with vehicle. jest 182, tsc clean, eslint 81 warnings = baseline. Native rebuilt; launcher label is PreeRider, icon still the Android default.
 - The 8001 dev API had to be restarted to serve the new required list - it does not run with --reload.
+
+## 2026-10-09 (evening) — live fleet setup, forgot password, dispatch net
+
+- Live = the local API on 8000 + admin 5174 + storefront 5173 on Supabase. Applied `0090_rider_onboarding` to Supabase with alembic (stamp now 0090, RLS on the new tables). 8000 restarted with `ENABLE_OWN_FLEET=true ENABLE_REALTIME=true`, Pidge forced to sandbox.
+- No Celery worker for live on purpose: 326 old jobs sit in the live Redis queues (pushes, messages). `scratchpad/live_fleet.py` runs only `dispatch_missed` + `offers.advance` every 2 s instead (log `backend/logs/live-fleet.log`).
+- "Order not showing to the rider": the two orders were accepted before the fleet existed and then moved to Out for delivery by the kitchen; plus the emulator had been on the 8001 test stack. Gap found and fixed: a lost dispatch job was never retried -> `service.dispatch_missed` + beat `dispatch-missed-deliveries` (tests/test_delivery_dispatch_missed.py, 7).
+- Forgot password: `/rider/password/{code,check,reset}` (tests/test_rider_password_reset.py, 8) + app Login "Forgot password?" -> SignupPhone/SignupCode with `purpose: 'reset'` -> ResetPassword. Verified on the emulator against live. Initials fix ("Test Rider (test)" was "T(").
+- Live test rider created through the admin API: 9800000101 / rider1234 (approved). Emulator GPS set ~200 m from Bhagwati Bakery.
+- Suites: backend fleet/rider/delivery/realtime 475 OK, rider jest 183, tsc clean.

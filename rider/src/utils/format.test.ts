@@ -48,3 +48,10 @@ describe('weekday and prettyPhone', () => {
     expect(prettyPhone('+919876543210')).toBe('+91 98765 43210');
   });
 });
+
+describe('initials skips words that are not names', () => {
+  it('reads past brackets and punctuation', () => {
+    expect(initials('Test Rider (test)')).toBe('TR');
+    expect(initials('Ravi - Cycle')).toBe('RC');
+  });
+});

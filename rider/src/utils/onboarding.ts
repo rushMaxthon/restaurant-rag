@@ -521,6 +521,8 @@ export const ONBOARDING_ERRORS: Record<string, Key> = {
   not_an_image: 'onboarding.err.notAnImage',
   storage_not_configured: 'onboarding.err.storage',
   phone_in_use: 'onboarding.err.phoneInUse',
+  no_account: 'reset.noAccount',
+  account_inactive: 'reset.inactive',
   code_too_soon: 'onboarding.err.codeTooSoon',
   code_too_many: 'onboarding.err.codeTooMany',
   code_wrong: 'onboarding.err.codeWrong',

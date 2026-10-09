@@ -111,6 +111,20 @@ def cancel_order_delivery_task(self, order_id: str) -> dict[str, str]:
         }
 
 
+@celery_app.task(name="app.tasks.delivery.dispatch_missed_task")
+def dispatch_missed_task() -> dict[str, int]:
+    """The safety net under `dispatch_order_task`: an accepted delivery order
+    whose dispatch job was lost is dispatched on the next beat. See
+    `service.dispatch_missed`."""
+
+    from app.services.delivery.service import dispatch_missed
+
+    with SessionLocal() as db:
+        done = dispatch_missed(db)
+        db.commit()
+    return {"dispatched": len(done)}
+
+
 @celery_app.task(name="app.tasks.delivery.refresh_deliveries_task")
 def refresh_deliveries_task() -> dict[str, int]:
     """Ask the courier what is happening to every delivery still in flight.

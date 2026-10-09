@@ -13,6 +13,7 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from app.models.user import User
 from app.schemas.auth import AuthResponse
 from app.schemas.rider_onboarding import (
     ApplicationView,
+    PasswordResetRequest,
     SignupCheckRequest,
     SignupCodeRequest,
     SignupCodeResponse,
@@ -34,7 +36,7 @@ from app.schemas.rider_onboarding import (
 from app.services.auth import hash_password, require_rider
 from app.services.fleet.onboarding import applications, phone
 from app.services.fleet.onboarding.views import application_view
-from app.services.fleet.riders import _phone_taken, _placeholder_email, canonical_phone
+from app.services.fleet.riders import _phone_taken, _placeholder_email, canonical_phone, reset_own_password
 from app.services.rate_limit import per_ip
 
 router = APIRouter(prefix="/rider", tags=["rider-signup"])
@@ -118,6 +120,67 @@ def signup(
     applications.start(db, user)
     db.commit()
     db.refresh(user)
+    return _auth_response(db, user)
+
+
+# --- forgot password ----------------------------------------------------------
+#
+# The sign-up code machinery with its own purpose (`phone.RESET`). Unlike
+# sign-up these say whether the number has an account: sign-up already
+# answers `phone_in_use` for the same question, so hiding it here would
+# protect nothing and leave a rider who mistyped their number waiting for a
+# code that is never coming.
+
+
+def _rider_for_reset(db: Session, number: str) -> User:
+    user = db.scalar(select(User).where(User.phone_number == number, User.role == UserRole.RIDER).limit(1))
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_account")
+    # A deactivated rider is off the fleet by the admin's decision; a reset
+    # must not be a way back in around it.
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "account_inactive")
+    return user
+
+
+@router.post("/password/code", response_model=SignupCodeResponse)
+def password_code(
+    _rate_limited: Annotated[None, Depends(per_ip("rider-password-code", limit=10, window_seconds=3600))],
+    payload: SignupCodeRequest,
+    db: Db,
+) -> SignupCodeResponse:
+    number = _phone(payload.phone_number)
+    _rider_for_reset(db, number)
+    result = phone.request_code(db, number, purpose=phone.RESET)
+    return SignupCodeResponse(sent=result.sent, retry_after=result.retry_after, debug_code=result.debug_code)
+
+
+@router.post("/password/check", status_code=status.HTTP_204_NO_CONTENT)
+def password_check(
+    _rate_limited: Annotated[None, Depends(per_ip("rider-password-check", limit=30, window_seconds=3600))],
+    payload: SignupCheckRequest,
+    db: Db,
+) -> Response:
+    """The code screen's check, as for sign-up: a typo is said there, and the
+    code is only used up by the reset itself."""
+
+    phone.verify_code(db, _phone(payload.phone_number), payload.code, consume=False, purpose=phone.RESET)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/password/reset", response_model=AuthResponse)
+def password_reset(
+    _rate_limited: Annotated[None, Depends(per_ip("rider-password-reset", limit=10, window_seconds=3600))],
+    payload: PasswordResetRequest,
+    db: Db,
+) -> AuthResponse:
+    number = _phone(payload.phone_number)
+    user = _rider_for_reset(db, number)
+    phone.verify_code(db, number, payload.code, purpose=phone.RESET)
+    reset_own_password(db, user, payload.password)
+    db.refresh(user)
+    # Signed straight in with the new password's session: the rider proved
+    # the phone is theirs a moment ago, typing the password again proves less.
     return _auth_response(db, user)
 
 

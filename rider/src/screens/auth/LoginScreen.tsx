@@ -170,9 +170,21 @@ export function LoginScreen() {
         </Animated.View>
 
         <View style={styles.help}>
-          <AppText variant="caption" tone="muted" align="center">
-            {t('account.login.help')}
-          </AppText>
+          {/* The rider resets it themselves with a code to their phone; the
+              manager is the fallback, not the only way back in. */}
+          <Button
+            kind="ghost"
+            size="md"
+            label={t('reset.forgot')}
+            icon="key-outline"
+            onPress={() =>
+              nav.navigate('SignupPhone', {
+                phone: digitsOnly(phone) || undefined,
+                purpose: 'reset',
+              })
+            }
+            testID="login-forgot"
+          />
           <Button
             kind="ghost"
             size="md"

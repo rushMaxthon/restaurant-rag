@@ -28,6 +28,9 @@ from app.config import get_settings
 from app.models.rider_application import PhoneVerification
 
 PURPOSE = "RIDER_SIGNUP"
+#: A forgotten password. Its own purpose so a code asked for one thing can
+#: never be spent on the other - each looks up only rows of its own kind.
+RESET = "RIDER_PASSWORD"
 VALID_FOR = timedelta(minutes=10)
 RESEND_AFTER = timedelta(seconds=60)
 PER_HOUR = 5
@@ -47,10 +50,10 @@ def _hash(phone: str, code: str) -> str:
     return hmac.new(key, f"{phone}:{code}".encode(), hashlib.sha256).hexdigest()
 
 
-def _latest(db: Session, phone: str) -> PhoneVerification | None:
+def _latest(db: Session, phone: str, purpose: str = PURPOSE) -> PhoneVerification | None:
     return db.scalar(
         select(PhoneVerification)
-        .where(PhoneVerification.phone == phone, PhoneVerification.purpose == PURPOSE)
+        .where(PhoneVerification.phone == phone, PhoneVerification.purpose == purpose)
         .order_by(PhoneVerification.created_at.desc())
         .limit(1)
     )
@@ -60,10 +63,12 @@ def mode() -> str:
     return get_settings().rider_signup_otp_mode.strip().lower()
 
 
-def request_code(db: Session, phone: str, now: datetime | None = None) -> RequestResult:
+def request_code(
+    db: Session, phone: str, now: datetime | None = None, *, purpose: str = PURPOSE
+) -> RequestResult:
     now = now or datetime.now(UTC)
     settings = get_settings()
-    latest = _latest(db, phone)
+    latest = _latest(db, phone, purpose)
     if latest is not None and now - latest.created_at < RESEND_AFTER:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "code_too_soon")
     sent_last_hour = db.scalar(
@@ -71,7 +76,7 @@ def request_code(db: Session, phone: str, now: datetime | None = None) -> Reques
         .select_from(PhoneVerification)
         .where(
             PhoneVerification.phone == phone,
-            PhoneVerification.purpose == PURPOSE,
+            PhoneVerification.purpose == purpose,
             PhoneVerification.created_at >= now - timedelta(hours=1),
         )
     )
@@ -88,7 +93,7 @@ def request_code(db: Session, phone: str, now: datetime | None = None) -> Reques
 
     db.add(
         PhoneVerification(
-            phone=phone, purpose=PURPOSE, code_hash=_hash(phone, code), expires_at=now + VALID_FOR, created_at=now
+            phone=phone, purpose=purpose, code_hash=_hash(phone, code), expires_at=now + VALID_FOR, created_at=now
         )
     )
     db.commit()
@@ -103,7 +108,13 @@ def request_code(db: Session, phone: str, now: datetime | None = None) -> Reques
 
 
 def verify_code(
-    db: Session, phone: str, code: str, now: datetime | None = None, *, consume: bool = True
+    db: Session,
+    phone: str,
+    code: str,
+    now: datetime | None = None,
+    *,
+    consume: bool = True,
+    purpose: str = PURPOSE,
 ) -> None:
     """Passes, or raises `code_expired` (also: already used, or none sent),
     `code_locked` or `code_wrong`. A pass uses the code up, unless `consume`
@@ -112,7 +123,7 @@ def verify_code(
     counts towards the lock either way."""
 
     now = now or datetime.now(UTC)
-    row = _latest(db, phone)
+    row = _latest(db, phone, purpose)
     if row is None or row.verified_at is not None or row.expires_at <= now:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "code_expired")
     if row.attempts >= MAX_ATTEMPTS:
