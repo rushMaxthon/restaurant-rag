@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Vibration, View } from 'react-native';
+import { BackHandler, StyleSheet, Vibration, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -46,6 +46,16 @@ export function OfferScreen() {
     haptic('heavy');
     return () => Vibration.cancel();
   }, []);
+
+  // Android back is a decline by another name: asked the same way, never a
+  // silent dismissal that leaves the order ringing for nobody.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (busy === null) setAskDecline(true);
+      return true;
+    });
+    return () => sub.remove();
+  }, [busy]);
 
   // Withdrawn or taken elsewhere while on screen: close.
   useEffect(() => {

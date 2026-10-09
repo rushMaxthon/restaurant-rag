@@ -3,6 +3,7 @@ import { StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
+import { LanguageSheet } from '@components/LanguageSwitch';
 import { Card } from '@components/ui/Card';
 import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { Icon, type IconName } from '@components/ui/Icon';
@@ -254,41 +255,10 @@ export function ProfileScreen() {
         onConfirm={() => void doSignOut()}
       />
 
-      <Sheet
+      <LanguageSheet
         open={languageOpen}
         onClose={() => setLanguageOpen(false)}
-        title={t('account.language.title')}
-      >
-        {(['system', 'en', 'hi', 'gu'] as const).map(option => {
-          const active = option === i18n.preference;
-          return (
-            <Card
-              key={option}
-              tone={active ? 'primary' : 'surface'}
-              style={styles.row}
-              onPress={() => {
-                i18n.setPreference(option);
-                setLanguageOpen(false);
-              }}
-            >
-              <View style={styles.flex}>
-                <AppText variant="bodyStrong">
-                  {option === 'system'
-                    ? t('account.language.phone')
-                    : LANGUAGE_NAMES[option]}
-                </AppText>
-              </View>
-              {active ? (
-                <Icon
-                  name="checkmark-circle"
-                  size={22}
-                  color={colors.primary}
-                />
-              ) : null}
-            </Card>
-          );
-        })}
-      </Sheet>
+      />
 
       <Sheet
         open={appearance}

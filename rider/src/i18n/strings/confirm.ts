@@ -25,6 +25,10 @@ const en = {
   'net.title': 'No internet',
   'net.body': 'Turn on mobile data or Wi-Fi to get orders and save your work.',
   'net.settings': 'Open settings',
+  'confirm.leave.title': 'Leave this step?',
+  'confirm.leave.body': 'What you typed here is not saved yet. It will be lost.',
+  'confirm.leave.yes': 'Leave',
+  'confirm.leave.no': 'Keep editing',
 } as const;
 
 const hi: Translations<typeof en> = {
@@ -50,6 +54,10 @@ const hi: Translations<typeof en> = {
   'net.title': 'इंटरनेट नहीं है',
   'net.body': 'ऑर्डर पाने और अपना काम सेव करने के लिए मोबाइल डेटा या Wi-Fi चालू करें।',
   'net.settings': 'सेटिंग्स खोलें',
+  'confirm.leave.title': 'यह कदम छोड़ें?',
+  'confirm.leave.body': 'आपने यहाँ जो लिखा है वह अभी सेव नहीं हुआ है। वह मिट जाएगा।',
+  'confirm.leave.yes': 'छोड़ें',
+  'confirm.leave.no': 'भरते रहें',
 };
 
 const gu: Translations<typeof en> = {
@@ -75,6 +83,10 @@ const gu: Translations<typeof en> = {
   'net.title': 'ઇન્ટરનેટ નથી',
   'net.body': 'ઓર્ડર મેળવવા અને તમારું કામ સેવ કરવા મોબાઇલ ડેટા અથવા Wi-Fi ચાલુ કરો.',
   'net.settings': 'સેટિંગ્સ ખોલો',
+  'confirm.leave.title': 'આ પગલું છોડશો?',
+  'confirm.leave.body': 'તમે અહીં જે લખ્યું છે તે હજી સેવ થયું નથી. તે ભૂંસાઈ જશે.',
+  'confirm.leave.yes': 'છોડો',
+  'confirm.leave.no': 'ભરતા રહો',
 };
 
 export default { en, hi, gu };

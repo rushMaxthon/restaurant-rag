@@ -5,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ItemRow } from '@components/onboarding/ItemRow';
 import { StatusBanner } from '@components/onboarding/StatusBanner';
+import { LanguageButton } from '@components/LanguageSwitch';
 import { AppText } from '@components/ui/AppText';
 import { BrandMark } from '@components/ui/BrandMark';
 import { Button } from '@components/ui/Button';
@@ -77,6 +78,7 @@ export function OnboardingHomeScreen() {
             {t('onboarding.home.title')}
           </AppText>
         </View>
+        <LanguageButton />
       </View>
 
       {view ? (

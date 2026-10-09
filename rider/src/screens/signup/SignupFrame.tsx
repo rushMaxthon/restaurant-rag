@@ -2,6 +2,7 @@ import React from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { LanguageButton } from '@components/LanguageSwitch';
 import { AppText } from '@components/ui/AppText';
 import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
@@ -37,15 +38,17 @@ export function SignupFrame({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Screen scroll contentStyle={styles.content}>
-        {onBack ? (
-          <View style={styles.top}>
+        <View style={styles.top}>
+          {onBack ? (
             <IconButton
               icon="arrow-back"
               label={t('common.back')}
               onPress={onBack}
             />
-          </View>
-        ) : null}
+          ) : null}
+          <View style={styles.flex} />
+          <LanguageButton />
+        </View>
         <Animated.View entering={FadeInDown.duration(400)} style={styles.hero}>
           <View style={[styles.tile, { backgroundColor: colors.primarySoft }]}>
             <Icon name={icon} size={30} color={colors.primary} />
@@ -88,7 +91,11 @@ export function ErrorCard({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { flexGrow: 1 },
-  top: { flexDirection: 'row', marginBottom: space.lg },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: space.lg,
+  },
   hero: { gap: space.sm, marginBottom: space.xxl },
   tile: {
     width: 60,
