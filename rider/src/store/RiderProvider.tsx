@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { sequencer } from '@utils/latest';
 import { ApiError } from '@/services/http';
 import { useRiderRealtime } from '@hooks/useRiderRealtime';
 import { useApi, useSession } from '@/store/SessionProvider';
@@ -66,7 +67,18 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
   const { state: session, signOut } = useSession();
   const foreground = useForeground();
-  const [me, setMe] = useState<RiderMe | null>(null);
+  const [me, setMeState] = useState<RiderMe | null>(null);
+  // Polls, focus refreshes, socket hints and "go online" all write `me`, and
+  // the board has as many writers: only the newest answer may land.
+  const meSeq = useRef(sequencer()).current;
+  const ordersSeq = useRef(sequencer()).current;
+  const setMe = useCallback(
+    (next: RiderMe | null) => {
+      meSeq.invalidate();
+      setMeState(next);
+    },
+    [meSeq],
+  );
   const [trip, setTrip] = useState<Trip | null>(null);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,13 +86,16 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const dismissed = useRef<Set<string>>(new Set());
 
   const refreshMe = useCallback(async () => {
+    const ticket = meSeq.start();
     try {
-      setMe(await api.me());
+      const next = await api.me();
+      if (!meSeq.isLatest(ticket)) return;
+      setMeState(next);
       setError(null);
     } catch (e) {
       if (e instanceof ApiError) setError(e.message);
     }
-  }, [api]);
+  }, [api, meSeq]);
 
   const refreshTrip = useCallback(async () => {
     try {
@@ -101,12 +116,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const refreshOpenOrders = useCallback(async () => {
+    const ticket = ordersSeq.start();
     try {
-      setOpenOrders(await api.openOrders());
+      const next = await api.openOrders();
+      if (ordersSeq.isLatest(ticket)) setOpenOrders(next);
     } catch {
       // the next poll tries again
     }
-  }, [api]);
+  }, [api, ordersSeq]);
 
   const clearOffer = useCallback(() => {
     setOffer(current => {
@@ -230,6 +247,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       refreshTrip,
       refreshOffer,
       refreshOpenOrders,
+      setMe,
       clearOffer,
     ],
   );

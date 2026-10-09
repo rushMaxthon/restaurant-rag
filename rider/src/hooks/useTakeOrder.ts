@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useNav } from '@navigation/types';
 import { ApiError } from '@/services/http';
@@ -21,6 +21,13 @@ export function useTakeOrder() {
   const [taking, setTaking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const blocked = takeBlockedReason(me?.status, trip !== null);
+  // The Orders tab stays mounted: an error left up would still be there a
+  // whole delivery later, about an order long gone.
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   const take = useCallback(
     async (order: OpenOrder) => {

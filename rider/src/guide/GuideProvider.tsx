@@ -15,8 +15,10 @@ import {
   decodeSeen,
   encodeSeen,
   isSeen,
+  afterTour,
   markSeen,
   resetAll,
+  unseenTargets,
   SEEN_KEY,
   type Seen,
 } from './guideStore';
@@ -109,10 +111,16 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const finish = useCallback((id: TourId) => {
+  const finish = useCallback((tour: ActiveTour, skipped: boolean) => {
     setActive(null);
+    // Only the tips actually shown count as seen: one dropped because its
+    // control was off-screen gets its turn the next time the screen opens.
+    const shown = tour.steps
+      .slice(0, tour.index + 1)
+      .map(m => m.step.target);
+    const all = TOURS[tour.id].steps.map(step => step.target);
     setSeen(current => {
-      const next = markSeen(current, id);
+      const next = afterTour(current, tour.id, all, shown, skipped);
       AsyncStorage.setItem(SEEN_KEY, encodeSeen(next)).catch(() => {});
       return next;
     });
@@ -121,8 +129,17 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
   const start = useCallback(
     (id: TourId) => {
       if (starting.current || active || isSeen(seen, id)) return;
+      const { tabbed } = TOURS[id];
+      const pending = unseenTargets(
+        seen,
+        id,
+        TOURS[id].steps.map(step => step.target),
+      );
+      const steps = TOURS[id].steps.filter(step =>
+        pending.includes(step.target),
+      );
+      if (steps.length === 0) return;
       starting.current = true;
-      const { steps, tabbed } = TOURS[id];
       const full = Dimensions.get('window');
       // The floating tab bar hides the bottom of a tabbed screen - except
       // for a step that points at the tab bar itself.
@@ -152,12 +169,12 @@ export function GuideProvider({ children }: { children: React.ReactNode }) {
 
   const next = useCallback(() => {
     if (!active) return;
-    if (active.index + 1 >= active.steps.length) finish(active.id);
+    if (active.index + 1 >= active.steps.length) finish(active, false);
     else setActive({ ...active, index: active.index + 1 });
   }, [active, finish]);
 
   const skip = useCallback(() => {
-    if (active) finish(active.id);
+    if (active) finish(active, true);
   }, [active, finish]);
 
   const cancel = useCallback(() => setActive(null), []);

@@ -59,6 +59,8 @@ export function TripScreen() {
   // Folded to one row on the way there; open by default at the counter,
   // where the rider checks the bag against it. A tap overrides either way.
   const [itemsOpen, setItemsOpen] = useState<boolean | null>(null);
+  const step = trip?.step;
+  useEffect(() => setItemsOpen(null), [step]);
   const keyboard = useKeyboardHeight();
   const { lastFix } = useRiderLocation();
   const scroll = useRef<ScrollViewInstance>(null);

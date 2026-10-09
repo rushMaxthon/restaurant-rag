@@ -1,4 +1,4 @@
-import { dayHeaderIndices, groupByDay } from './history';
+import { dateLabel, dayHeaderIndices, groupByDay, mergeNewest } from './history';
 
 const trip = (id: string, endedAt: string, earning: string) =>
   ({ id, ended_at: endedAt, earning } as never);
@@ -47,5 +47,37 @@ describe('which rows stick to the top while scrolling', () => {
 
   it('is nothing for an empty history', () => {
     expect(dayHeaderIndices([])).toEqual([]);
+  });
+});
+
+describe('the count beside a day', () => {
+  it('counts paid deliveries only, like the earnings summary', () => {
+    const rows = groupByDay(
+      [
+        trip('a', '2026-10-09T10:00:00', '44.20'),
+        trip('cancelled', '2026-10-09T09:00:00', '0.00'),
+      ],
+      new Date('2026-10-09T12:00:00'),
+    );
+    expect(rows[0]).toMatchObject({ kind: 'day', count: 1, total: 44.2 });
+    // The unpaid trip is still listed.
+    expect(rows.filter(r => r.kind === 'trip')).toHaveLength(2);
+  });
+});
+
+describe('coming back to History', () => {
+  it('adds new trips on top and keeps the older pages already loaded', () => {
+    const loaded = ['c', 'd', 'e'].map(id => trip(id, '2026-10-01T10:00:00', '1'));
+    const firstPage = ['a', 'b', 'c'].map(id => trip(id, '2026-10-09T10:00:00', '1'));
+    expect(mergeNewest(loaded, firstPage).map(t => t.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+});
+
+describe('a date for an older day', () => {
+  const now = new Date('2026-10-09T12:00:00');
+  it('says Today and Yesterday, and a full date further back', () => {
+    expect(dateLabel('2026-10-09', now)).toBe('Today');
+    expect(dateLabel('2026-10-08', now)).toBe('Yesterday');
+    expect(dateLabel('2026-09-15', now)).toBe('Tue, 15 Sep');
   });
 });

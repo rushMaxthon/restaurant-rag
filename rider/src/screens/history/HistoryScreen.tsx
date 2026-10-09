@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@components/ui/AppText';
+import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
 import { Skeleton } from '@components/ui/Skeleton';
@@ -14,7 +15,13 @@ import type { Earnings, Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { clockTime, km, rupees } from '@utils/format';
-import { dayHeaderIndices, groupByDay, type HistoryRow } from '@utils/history';
+import {
+  dayHeaderIndices,
+  groupByDay,
+  mergeNewest,
+  type HistoryRow,
+} from '@utils/history';
+import { sequencer } from '@utils/latest';
 import { endLabel } from '@utils/tripTimeline';
 import { useNav } from '@navigation/types';
 
@@ -117,50 +124,72 @@ export function HistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [more, setMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
 
   const [week, setWeek] = useState<Earnings | null>(null);
   const rows = useMemo(() => groupByDay(items ?? []), [items]);
   const sticky = useMemo(() => dayHeaderIndices(rows), [rows]);
 
-  const loadFirst = useCallback(async () => {
-    try {
-      const [page, seven] = await Promise.all([
-        api.history(),
-        // The summary is a nicety: a failure leaves it out, not the list.
-        api.earnings(7).catch(() => null),
-      ]);
-      setItems(page);
-      setWeek(seven);
-      setMore(page.length === 20);
-      setError(null);
-    } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : 'Could not load your deliveries.',
-      );
-    }
-  }, [api]);
+  // One counter for every load: a refresh that lands after a newer one, or
+  // a next page that lands after a refresh, is dropped instead of stitched in.
+  const seq = useRef(sequencer()).current;
+  const paging = useRef(false);
+  const loaded = useRef(false);
 
+  /** `merge` keeps the older pages already loaded; `replace` starts over. */
+  const loadFirst = useCallback(
+    async (mode: 'merge' | 'replace') => {
+      const ticket = seq.start();
+      try {
+        const [page, seven] = await Promise.all([
+          api.history(),
+          // The summary is a nicety: a failure leaves it out, not the list.
+          api.earnings(7).catch(() => null),
+        ]);
+        if (!seq.isLatest(ticket)) return;
+        loaded.current = true;
+        setItems(prev =>
+          mode === 'merge' && prev ? mergeNewest(prev, page) : page,
+        );
+        if (mode === 'replace') setMore(page.length === 20);
+        setWeek(seven);
+        setError(null);
+      } catch (e) {
+        if (!seq.isLatest(ticket)) return;
+        setError(
+          e instanceof ApiError ? e.message : 'Could not load your deliveries.',
+        );
+      }
+    },
+    [api, seq],
+  );
+
+  // Coming back (from a trip's detail, or another tab) adds what is new on
+  // top; it never drops the rider back to the first page.
   useFocusEffect(
     useCallback(() => {
-      void loadFirst();
+      void loadFirst(loaded.current ? 'merge' : 'replace');
     }, [loadFirst]),
   );
 
   const loadMore = useCallback(async () => {
     const last = items?.[items.length - 1];
-    if (!more || loadingMore || !last?.ended_at) return;
-    setLoadingMore(true);
+    if (!more || paging.current || !last?.ended_at) return;
+    paging.current = true;
+    const ticket = seq.start();
     try {
       const page = await api.history(last.ended_at);
-      setItems(prev => [...(prev ?? []), ...page]);
+      if (!seq.isLatest(ticket)) return;
+      setItems(prev => {
+        const have = new Set((prev ?? []).map(t => t.id));
+        return [...(prev ?? []), ...page.filter(t => !have.has(t.id))];
+      });
       setMore(page.length === 20);
     } catch {
       // try again on the next scroll
     } finally {
-      setLoadingMore(false);
+      paging.current = false;
     }
-  }, [api, items, more, loadingMore]);
+  }, [api, items, more, seq]);
 
   return (
     <View
@@ -173,7 +202,31 @@ export function HistoryScreen() {
         <AppText variant="title">History</AppText>
         <WeekSummary week={week} />
       </View>
-      {items === null ? (
+      {items === null && error ? (
+        // The first load failed: say so, with a way to try again - grey
+        // placeholders forever would look like it is still loading.
+        <View style={styles.empty}>
+          <View
+            style={[styles.emptyIcon, { backgroundColor: colors.surfaceAlt }]}
+          >
+            <Icon name="cloud-offline-outline" size={34} color={colors.textMuted} />
+          </View>
+          <AppText variant="heading" align="center">
+            Couldn't load your deliveries
+          </AppText>
+          <AppText tone="muted" align="center">
+            {error}
+          </AppText>
+          <Button
+            kind="secondary"
+            size="md"
+            icon="refresh"
+            label="Try again"
+            onPress={() => void loadFirst('replace')}
+            style={styles.retry}
+          />
+        </View>
+      ) : items === null ? (
         <View style={styles.skeletons}>
           {[0, 1, 2, 3].map(i => (
             <Skeleton key={i} height={64} round={20} />
@@ -202,7 +255,7 @@ export function HistoryScreen() {
               refreshing={refreshing}
               onRefresh={async () => {
                 setRefreshing(true);
-                await loadFirst();
+                await loadFirst('replace');
                 setRefreshing(false);
               }}
               tintColor={colors.primary}
@@ -276,6 +329,7 @@ const styles = StyleSheet.create({
     paddingTop: space.huge,
     paddingHorizontal: space.xl,
   },
+  retry: { marginTop: space.md, alignSelf: 'center' },
   emptyIcon: {
     width: 80,
     height: 80,

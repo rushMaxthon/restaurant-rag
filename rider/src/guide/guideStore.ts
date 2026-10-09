@@ -42,3 +42,35 @@ export function markSeen(seen: Seen, id: string): Seen {
 export function resetAll(seen: Seen): Seen {
   return seen.intro ? { intro: true } : {};
 }
+
+const stepKey = (tourId: string, target: string) => `${tourId}:${target}`;
+
+/** The tips of a tour not shown yet (all of them once the tour is done). */
+export function unseenTargets(
+  seen: Seen,
+  tourId: string,
+  targets: readonly string[],
+): string[] {
+  if (isSeen(seen, tourId)) return [];
+  return targets.filter(t => !isSeen(seen, stepKey(tourId, t)));
+}
+
+/**
+ * What a tour leaves behind. Each tip shown is remembered on its own, so a
+ * tip that could not be pointed at this time (Home's Today card pushed under
+ * the tab bar by waiting orders) still gets its turn later; the tour is done
+ * when every tip has been shown, or at once when the rider skips it.
+ */
+export function afterTour(
+  seen: Seen,
+  tourId: string,
+  targets: readonly string[],
+  shown: readonly string[],
+  skipped: boolean,
+): Seen {
+  let next = seen;
+  for (const t of shown) next = markSeen(next, stepKey(tourId, t));
+  if (skipped || unseenTargets(next, tourId, targets).length === 0)
+    next = markSeen(next, tourId);
+  return next;
+}

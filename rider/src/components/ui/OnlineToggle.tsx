@@ -145,7 +145,13 @@ export function OnlineToggle({
                 offLabel,
               ]}
             >
-              <AppText variant="bodyStrong" tone="muted">
+              <AppText
+                variant="bodyStrong"
+                tone="muted"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 Go online
               </AppText>
             </Animated.View>
@@ -156,7 +162,13 @@ export function OnlineToggle({
                 onLabel,
               ]}
             >
-              <AppText variant="bodyStrong" style={{ color: colors.onSuccess }}>
+              <AppText
+                variant="bodyStrong"
+                style={{ color: colors.onSuccess }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 Online
               </AppText>
             </Animated.View>

@@ -117,7 +117,7 @@ export function OfferScreen() {
           <CountdownRing
             expiresAt={expiresAt}
             totalMs={shown.total_seconds * 1000}
-            size={150}
+            size={128}
             onExpire={close}
           />
         </Animated.View>
@@ -249,7 +249,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  body: { flex: 1, justifyContent: 'center', paddingVertical: space.lg },
+  // Sat at the bottom, over the buttons: the rider reads what it pays and
+  // where it goes right where their thumb already is.
+  body: { flex: 1, justifyContent: 'flex-end', paddingVertical: space.lg },
   ring: { alignItems: 'center' },
   earn: {
     alignItems: 'center',

@@ -89,22 +89,20 @@ function ShiftStrip({
               <Icon name="moon" size={18} color={colors.textMuted} />
             </View>
           )}
-          <View style={styles.flex}>
-            <AppText variant="bodyStrong">
-              {online ? "You're online" : "You're offline"}
-            </AppText>
-            <AppText variant="caption" tone="muted" numberOfLines={2}>
-              {online
-                ? disabledReason ?? 'Looking for orders near you'
-                : offlineHint}
-            </AppText>
-          </View>
+          <AppText variant="bodyStrong" style={styles.flex} numberOfLines={2}>
+            {online ? "You're online" : "You're offline"}
+          </AppText>
           {guide ? (
             <GuideTarget id={TARGETS.homeToggle}>{toggle}</GuideTarget>
           ) : (
             toggle
           )}
         </View>
+        {/* Under the row, full width: beside a 148 dp toggle at a large font
+            it had ~96 dp and was cut off. */}
+        <AppText variant="caption" tone="muted" style={styles.hint}>
+          {online ? disabledReason ?? 'Looking for orders near you' : offlineHint}
+        </AppText>
         {error ? (
           <AppText variant="caption" tone="danger">
             {error}
@@ -185,6 +183,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   stripRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  // Lines up with the title, past the 28 dp beacon and the row gap.
+  hint: { marginLeft: 28 + space.md, marginTop: -space.sm },
   offline: {
     gap: space.lg,
     paddingVertical: space.xl,

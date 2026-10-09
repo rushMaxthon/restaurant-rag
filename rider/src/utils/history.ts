@@ -29,7 +29,7 @@ const MONTHS = [
 ];
 
 /** "Today", "Yesterday", else "Mon, 5 Oct" - a bare weekday repeats every week. */
-function headerLabel(day: string, now: Date): string {
+export function dateLabel(day: string, now: Date = new Date()): string {
   const label = dayLabel(day, now);
   if (label === 'Today' || label === 'Yesterday') return label;
   const [, m, d] = day.split('-').map(Number);
@@ -53,7 +53,7 @@ export function groupByDay(
       current = {
         kind: 'day',
         key: `day-${day}`,
-        label: headerLabel(day, now),
+        label: dateLabel(day, now),
         total: 0,
         count: 0,
       };
@@ -61,7 +61,9 @@ export function groupByDay(
     }
     current.total =
       Math.round((current.total + Number(trip.earning || 0)) * 100) / 100;
-    current.count += 1;
+    // Paid deliveries, the same count the earnings summary and Home show; a
+    // trip cancelled before pickup is listed but pays nothing.
+    if (Number(trip.earning || 0) > 0) current.count += 1;
     rows.push({ kind: 'trip', key: trip.id, trip });
   }
   return rows;
@@ -70,4 +72,14 @@ export function groupByDay(
 /** The rows FlashList pins while scrolling: every day heading. */
 export function dayHeaderIndices(rows: readonly HistoryRow[]): number[] {
   return rows.flatMap((row, i) => (row.kind === 'day' ? [i] : []));
+}
+
+/**
+ * The first page fetched again on coming back to History, on top of what was
+ * already loaded: new trips appear, and the rider keeps the older pages they
+ * scrolled to instead of being dropped back to the first twenty.
+ */
+export function mergeNewest(loaded: readonly Trip[], firstPage: readonly Trip[]): Trip[] {
+  const fresh = new Set(firstPage.map(t => t.id));
+  return [...firstPage, ...loaded.filter(t => !fresh.has(t.id))];
 }

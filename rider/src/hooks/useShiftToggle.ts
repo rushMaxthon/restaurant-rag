@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { usePermissions } from '@hooks/usePermissions';
 import { useNav } from '@navigation/types';
@@ -21,18 +21,25 @@ export function useShiftToggle() {
   const refreshPermissions = permissions.refresh;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A ref, set before the first await: `busy` is state and only flips after
+  // the permission check, so a double tap could open Permissions twice or
+  // send two status changes.
+  const inFlight = useRef(false);
 
   const toggle = useCallback(
     async (next: boolean) => {
-      // Asked again at the tap: a copy read when the screen opened would send
-      // a rider who has since granted everything back to Permissions in a loop.
-      if (next && firstMissing(await refreshPermissions()) !== null) {
-        nav.navigate('Permissions');
-        return;
-      }
-      setBusy(true);
-      setError(null);
+      if (inFlight.current) return;
+      inFlight.current = true;
       try {
+        // Asked again at the tap: a copy read when the screen opened would
+        // send a rider who has since granted everything back to Permissions
+        // in a loop.
+        if (next && firstMissing(await refreshPermissions()) !== null) {
+          nav.navigate('Permissions');
+          return;
+        }
+        setBusy(true);
+        setError(null);
         setMe(await api.setOnline(next));
       } catch (e) {
         haptic('error');
@@ -40,6 +47,7 @@ export function useShiftToggle() {
           e instanceof ApiError ? e.message : 'Could not change your status.',
         );
       } finally {
+        inFlight.current = false;
         setBusy(false);
       }
     },

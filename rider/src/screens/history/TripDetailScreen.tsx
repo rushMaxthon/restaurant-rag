@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -37,6 +37,8 @@ export function TripDetailScreen({
   const end = endLabel(trip.end_reason);
   const rows = tripTimeline(trip);
   const when = trip.ended_at ?? trip.accepted_at;
+  // Folded: a finished trip's items are rarely the question.
+  const [itemsOpen, setItemsOpen] = useState(false);
 
   return (
     <Screen scroll contentStyle={styles.content}>
@@ -118,12 +120,14 @@ export function TripDetailScreen({
                   ]}
                 >
                   <AppText
-                    variant="bodyStrong"
+                    variant="body"
                     tone={row.done ? 'default' : 'faint'}
+                    style={styles.flex}
+                    numberOfLines={1}
                   >
                     {row.label}
                   </AppText>
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="label" tone={row.at ? 'muted' : 'faint'}>
                     {row.at ? clockTime(row.at) : 'Did not happen'}
                   </AppText>
                 </View>
@@ -158,10 +162,25 @@ export function TripDetailScreen({
       {trip.items.length > 0 ? (
         <Animated.View entering={FadeInDown.delay(180).duration(motion.base)}>
           <Card>
-            <AppText variant="label" tone="muted">
-              {trip.item_count} ITEM{trip.item_count === 1 ? '' : 'S'}
-            </AppText>
-            {trip.items.map((item, i) => (
+            <Pressable
+              onPress={() => setItemsOpen(o => !o)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: itemsOpen }}
+              hitSlop={8}
+              style={styles.itemsHead}
+            >
+              <Icon name="bag-handle" size={20} color={colors.primary} />
+              <AppText variant="bodyStrong" style={styles.flex}>
+                {trip.item_count} item{trip.item_count === 1 ? '' : 's'}
+              </AppText>
+              <Icon
+                name={itemsOpen ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textMuted}
+              />
+            </Pressable>
+            {itemsOpen &&
+              trip.items.map((item, i) => (
               <View
                 key={`${item.name}-${i}`}
                 style={[
@@ -226,23 +245,30 @@ function Stop({
 }
 
 const styles = StyleSheet.create({
-  content: { gap: space.lg },
+  content: { gap: space.md },
+  itemsHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   pay: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: space.xl,
+    paddingVertical: space.lg,
     borderRadius: radius.xxl,
   },
   divider: { width: 1, alignSelf: 'stretch', marginHorizontal: space.lg },
   timeline: { marginTop: space.md },
   moment: { flexDirection: 'row', gap: space.md },
-  rail: { alignItems: 'center', width: 16 },
-  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, marginTop: 4 },
+  rail: { alignItems: 'center', width: 12 },
+  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, marginTop: 7 },
   bar: { width: 2, flex: 1, marginVertical: 2 },
-  momentText: { flex: 1 },
-  momentGap: { paddingBottom: space.lg },
+  momentText: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    minHeight: 24,
+  },
+  momentGap: { paddingBottom: space.md },
   stops: { gap: space.xs },
   stop: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
   stopIcon: {

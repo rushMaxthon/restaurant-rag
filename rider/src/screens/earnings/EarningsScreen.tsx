@@ -39,7 +39,8 @@ import {
   showsChart,
   type PeriodKey,
 } from '@utils/earningsPeriod';
-import { dayLabel, rupees, weekday } from '@utils/format';
+import { rupees, weekday } from '@utils/format';
+import { dateLabel } from '@utils/history';
 
 const CHART_HEIGHT = 90;
 const MONTHS = [
@@ -63,14 +64,12 @@ function Bar({
   highlight,
   label,
   amount,
-  onPress,
 }: {
   ratio: number;
   index: number;
   highlight: boolean;
   label: string;
   amount: string;
-  onPress: () => void;
 }) {
   const { colors } = useTheme();
   const h = useSharedValue(0);
@@ -82,12 +81,7 @@ function Bar({
   }, [ratio, index, h]);
   const style = useAnimatedStyle(() => ({ height: h.value }));
   return (
-    <Pressable
-      style={styles.barCol}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}: ${amount}`}
-    >
+    <View style={styles.barCol} accessibilityLabel={`${label}: ${amount}`}>
       <View style={styles.barTrack}>
         <Animated.View
           style={[
@@ -104,7 +98,7 @@ function Bar({
           {label}
         </AppText>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -135,6 +129,11 @@ export function EarningsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // The bar the rider tapped; untouched, the latest day.
   const [picked, setPicked] = useState<number | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  // Which period `data` belongs to. A switch keeps the old numbers, dimmed,
+  // until the new ones land - and if they never do, the error says so at the
+  // top, instead of skeletons that look like loading forever.
+  const [dataDays, setDataDays] = useState<number | null>(null);
   useTour('earnings', data !== null);
 
   const load = useCallback(async () => {
@@ -146,6 +145,7 @@ export function EarningsScreen() {
       ]);
       if (mine !== request.current) return;
       setData(earnings);
+      setDataDays(period.days);
       setPayouts(paid ?? []);
       setPayoutsFailed(paid === null);
       setError(null);
@@ -163,6 +163,7 @@ export function EarningsScreen() {
 
   const max = Math.max(1, ...(data?.days.map(d => Number(d.amount)) ?? [1]));
   const month = period.days > 7;
+  const stale = data !== null && dataDays !== period.days;
   const pickedDay = data?.days[picked ?? data.days.length - 1] ?? null;
 
   return (
@@ -186,16 +187,24 @@ export function EarningsScreen() {
         value={periodKey}
         onChange={key => {
           setPeriodKey(key);
-          setData(null);
           setPicked(null);
         }}
       />
+
+      {error ? (
+        <Card tone="alt" style={styles.errorCard}>
+          <Icon name="cloud-offline-outline" size={20} color={colors.danger} />
+          <AppText variant="label" style={styles.flex}>
+            {error} Pull down to try again.
+          </AppText>
+        </Card>
+      ) : null}
 
       <Animated.View
         entering={FadeInDown.delay(60).duration(motion.base)}
         layout={LinearTransition}
       >
-        <View style={styles.hero}>
+        <View style={[styles.hero, stale && styles.stale]}>
           {/* A warm gradient with a soft highlight: the one place money is the hero. */}
           <Svg
             style={StyleSheet.absoluteFill}
@@ -204,25 +213,28 @@ export function EarningsScreen() {
           >
             <Defs>
               <LinearGradient id="earn" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor="#FF7A3D" />
+                <Stop offset="0" stopColor={colors.primary} />
                 <Stop offset="1" stopColor={colors.primaryPressed} />
               </LinearGradient>
             </Defs>
             <Rect x="0" y="0" width="100" height="100" fill="url(#earn)" />
-            <Circle cx="92" cy="8" r="38" fill="#FFFFFF" opacity={0.08} />
+            <Circle cx="92" cy="8" r="38" fill={colors.onPrimary} opacity={0.08} />
           </Svg>
-          <AppText variant="micro" style={styles.heroLabel}>
+          <AppText variant="micro" style={[styles.heroLabel, { color: colors.onPrimary }]}>
             {period.heroLabel}
           </AppText>
           {data ? (
             <AnimatedAmount
               value={Number(data.period_total)}
-              style={styles.heroAmount}
+              style={[styles.heroAmount, { color: colors.onPrimary }]}
             />
           ) : (
             <Skeleton width={160} height={40} style={styles.gapSm} />
           )}
-          <AppText variant="bodyStrong" style={styles.heroCaption}>
+          <AppText
+            variant="bodyStrong"
+            style={[styles.heroCaption, { color: colors.onPrimary }]}
+          >
             {data ? heroLine(data.period_trips, data.period_total) : ' '}
           </AppText>
         </View>
@@ -233,21 +245,35 @@ export function EarningsScreen() {
           entering={FadeInDown.delay(120).duration(motion.base)}
           layout={LinearTransition}
         >
-          <Card>
+          <Card style={stale && styles.stale}>
             <View style={styles.chartHead}>
               <AppText variant="label" tone="muted" style={styles.flex}>
                 DAILY
               </AppText>
               {pickedDay ? (
                 <AppText variant="label">
-                  {dayLabel(pickedDay.date)} ·{' '}
+                  {dateLabel(pickedDay.date)} ·{' '}
                   <AppText variant="label" tone="success">
                     {rupees(pickedDay.amount)}
                   </AppText>
                 </AppText>
               ) : null}
             </View>
-            <View style={styles.chart}>
+            {/* One touch area across the whole chart, the day picked from where
+                the finger lands: thirty bars are ~8 dp each, far too narrow to
+                be buttons of their own. */}
+            <Pressable
+              style={styles.chart}
+              onLayout={e => setChartWidth(e.nativeEvent.layout.width)}
+              onPress={e => {
+                const n = data?.days.length ?? 0;
+                if (n === 0 || chartWidth === 0) return;
+                const i = Math.floor((e.nativeEvent.locationX / chartWidth) * n);
+                setPicked(Math.max(0, Math.min(n - 1, i)));
+              }}
+              accessibilityRole="adjustable"
+              accessibilityLabel="Daily earnings chart. Tap a day to see its amount."
+            >
               {(
                 data?.days ??
                 Array.from({ length: period.days }, (_, i) => ({
@@ -261,13 +287,12 @@ export function EarningsScreen() {
                   index={i}
                   ratio={Number(d.amount) / max}
                   highlight={i === (picked ?? all.length - 1)}
-                  onPress={() => setPicked(i)}
                   // A month has no room for 30 labels: every fifth day, and the last.
                   label={!data || month ? '' : weekday(d.date).toUpperCase()}
                   amount={rupees(d.amount)}
                 />
               ))}
-            </View>
+            </Pressable>
             {month && data ? (
               // Thirty columns have no room for thirty labels: one every five days.
               <View style={styles.monthLabels}>
@@ -377,7 +402,7 @@ export function EarningsScreen() {
               >
                 <View style={styles.flex}>
                   <AppText variant="bodyStrong">
-                    {dayLabel(localDate(p.paid_at))} · {p.trips} deliver
+                    {dateLabel(localDate(p.paid_at))} · {p.trips} deliver
                     {p.trips === 1 ? 'y' : 'ies'}
                   </AppText>
                   <AppText variant="caption" tone="muted" numberOfLines={1}>
@@ -404,11 +429,6 @@ export function EarningsScreen() {
         </AppText>
       </Card>
 
-      {error ? (
-        <AppText variant="label" tone="danger" align="center">
-          {error}
-        </AppText>
-      ) : null}
     </Screen>
   );
 }
@@ -423,9 +443,11 @@ const styles = StyleSheet.create({
     gap: space.xxs,
     overflow: 'hidden',
   },
-  heroLabel: { color: '#FFFFFF', opacity: 0.85 },
-  heroAmount: { fontSize: 36, lineHeight: 44, color: '#FFFFFF' },
-  heroCaption: { color: '#FFFFFF', opacity: 0.8 },
+  heroLabel: { opacity: 0.85 },
+  heroAmount: { fontSize: 36, lineHeight: 44 },
+  heroCaption: { opacity: 0.85 },
+  stale: { opacity: 0.45 },
+  errorCard: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chart: {
     flexDirection: 'row',
     justifyContent: 'space-between',
