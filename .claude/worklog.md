@@ -5591,3 +5591,12 @@ Hindi/Gujarati: `rider/src/i18n/` (see CLAUDE.md). Four parallel agents translat
 ## 2026-10-09 - rider self sign-up and verification
 
 Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding rules/phone/storage/applications/views, work gates, signup + rider application + admin review routes, decision push. 36 new backend tests; full backend 3691 OK. Admin UI and rider app built by two parallel helper agents against the finished API, then reviewed and emulator/browser-tested by me: admin queue + review + flag verified in the browser (local dev API 8001 + admin 5176, seeded applicants in rr_rider_dev only); rider sign-up, code (static 123456), account, application home, step 1 validation and save, camera capture, clean "uploads not set up" verified on the emulator. Fixed: DateInput collapse, typed data not saved while a photo was missing, two wordings. NOT done end to end on a device: photo upload -> submit -> approve, because SUPABASE_URL/SUPABASE_SERVICE_KEY are not set; covered by test_admin_review_flow. User must: add those two keys, run 0090 on Supabase, later switch RIDER_SIGNUP_OTP_MODE to whatsapp.
+
+## 2026-10-09 — rider: keyboard, back flow, offline popup, name, language before sign-in
+
+- Vehicle details always required (`049634e`); app name PreeOrderRider + no-internet popup with "Open settings" (`d98c6e6`).
+- `2220ac0`: edge-to-edge means `adjustResize` does nothing, so `ui/Screen` shortens a scrolling screen by the keyboard height and scrolls the focused field into view (`useRevealOnFocus`, called by `TextField` on focus). `avoidKeyboard={false}` for screens whose footer already rises (ApplicationStep). Status-bar scrim on scrolling screens.
+- Back: on Offer it opens the decline confirm; on an application step with unsaved typing a "Leave this step?" dialog (`beforeRemove`, cleared after a save). Delivered already replaces Trip, so back lands on Main.
+- `components/LanguageSwitch.tsx`: `LanguageSheet` (Profile uses it) + `LanguageButton` on Login, sign-up and the application home.
+- Verified on the emulator: login/sign-up fields clear the keyboard, Hindi switch, back closes the sheet, leave guard, 0 of 7 with vehicle. jest 182, tsc clean, eslint 81 warnings = baseline. Native rebuilt; launcher label is PreeOrderRider, icon still the Android default.
+- The 8001 dev API had to be restarted to serve the new required list - it does not run with --reload.
