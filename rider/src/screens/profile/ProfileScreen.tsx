@@ -3,10 +3,9 @@ import { Alert, StyleSheet, Switch, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppText } from '@components/ui/AppText';
-import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Icon, type IconName } from '@components/ui/Icon';
-import { Pill } from '@components/ui/Pill';
+import { Group, GroupRow } from '@components/ui/Group';
 import { Screen } from '@components/ui/Screen';
 import { Sheet } from '@components/ui/Sheet';
 import { useGuide } from '@/guide/GuideProvider';
@@ -26,41 +25,6 @@ const VEHICLE: Record<string, { label: string; icon: IconName }> = {
   SCOOTER: { label: 'Scooter', icon: 'bicycle' },
   CYCLE: { label: 'Bicycle', icon: 'bicycle-outline' },
 };
-
-function Row({
-  icon,
-  label,
-  value,
-  onPress,
-  trailing,
-}: {
-  icon: IconName;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  trailing?: React.ReactNode;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Card onPress={onPress} style={styles.row}>
-      <View style={[styles.rowIcon, { backgroundColor: colors.surfaceAlt }]}>
-        <Icon name={icon} size={20} color={colors.text} />
-      </View>
-      <AppText variant="bodyStrong" style={styles.flex}>
-        {label}
-      </AppText>
-      {value ? (
-        <AppText variant="label" tone="muted">
-          {value}
-        </AppText>
-      ) : null}
-      {trailing}
-      {onPress && !trailing ? (
-        <Icon name="chevron-forward" size={18} color={colors.textFaint} />
-      ) : null}
-    </Card>
-  );
-}
 
 export function ProfileScreen() {
   const {
@@ -117,137 +81,131 @@ export function ProfileScreen() {
 
   return (
     <Screen scroll tabbed contentStyle={styles.content}>
-      <Animated.View entering={FadeInDown.duration(350)} style={styles.hero}>
-        <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-          <AppText variant="display" tone="onPrimary">
-            {initials(me?.full_name ?? user?.full_name ?? 'R')}
-          </AppText>
-        </View>
-        <AppText variant="title" align="center">
-          {me?.full_name ?? user?.full_name}
-        </AppText>
-        <AppText tone="muted" align="center">
-          {prettyPhone(me?.phone_number ?? user?.phone_number)}
-        </AppText>
-        <View style={styles.pills}>
-          <Pill label="Foodie rider" tone="primary" icon="shield-checkmark" />
-          {me?.city ? <Pill label={me.city} icon="location" /> : null}
-        </View>
+      <Animated.View entering={FadeInDown.duration(350)}>
+        <AppText variant="title">Profile</AppText>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(motion.base)}>
-        <Card style={styles.vehicle}>
-          <View
-            style={[
-              styles.vehicleIcon,
-              { backgroundColor: colors.primarySoft },
-            ]}
-          >
-            <Icon name={vehicle.icon} size={28} color={colors.primary} />
+      {/* Who and on what: the two things anyone checking a rider asks. */}
+      <Animated.View entering={FadeInDown.delay(60).duration(motion.base)}>
+        <Card style={styles.idCard}>
+          <View style={styles.idRow}>
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              <AppText variant="heading" tone="onPrimary">
+                {initials(me?.full_name ?? user?.full_name ?? 'R')}
+              </AppText>
+            </View>
+            <View style={styles.flex}>
+              <AppText variant="heading" numberOfLines={1}>
+                {me?.full_name ?? user?.full_name}
+              </AppText>
+              <AppText variant="caption" tone="muted" numberOfLines={1}>
+                {prettyPhone(me?.phone_number ?? user?.phone_number)}
+                {me?.city ? ` · ${me.city}` : ''}
+              </AppText>
+            </View>
+            <Icon name="shield-checkmark" size={20} color={colors.primary} />
           </View>
-          <View style={styles.flex}>
-            <AppText variant="caption" tone="muted">
-              Your vehicle
+          <View style={[styles.vehicle, { borderTopColor: colors.border }]}>
+            <Icon name={vehicle.icon} size={20} color={colors.textMuted} />
+            <AppText variant="label" tone="muted" style={styles.flex}>
+              {vehicle.label}
             </AppText>
-            <AppText variant="heading">{vehicle.label}</AppText>
-          </View>
-          <View style={[styles.plate, { borderColor: colors.text }]}>
-            <AppText variant="label">{me?.vehicle_number || '—'}</AppText>
+            <View style={[styles.plate, { borderColor: colors.text }]}>
+              <AppText variant="label">{me?.vehicle_number || '—'}</AppText>
+            </View>
           </View>
         </Card>
       </Animated.View>
 
       <Animated.View
-        entering={FadeInDown.delay(140).duration(motion.base)}
+        entering={FadeInDown.delay(120).duration(motion.base)}
         style={styles.list}
       >
-        <AppText variant="micro" tone="muted" style={styles.section}>
-          SETTINGS
-        </AppText>
-        <Row
-          icon="shield-half-outline"
-          label="Permissions"
-          onPress={() => nav.navigate('Permissions')}
-        />
-        <Row
-          icon={mode === 'dark' ? 'moon' : 'sunny'}
-          label="Appearance"
-          value={
-            preference === 'system'
-              ? `${mode === 'dark' ? 'Dark' : 'Light'} · follows phone`
-              : preference === 'dark'
-              ? 'Dark'
-              : 'Light'
-          }
-          onPress={() => setAppearance(true)}
-        />
-        <Row
-          icon="contrast"
-          label="High contrast"
-          value={highContrast ? 'On' : 'For bright sun'}
-          onPress={() => setHighContrast(!highContrast)}
-          trailing={
-            <Switch
-              value={highContrast}
-              onValueChange={setHighContrast}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={highContrast ? colors.onPrimary : colors.textMuted}
-              accessibilityLabel="High contrast"
-            />
-          }
-        />
-        <AppText variant="micro" tone="muted" style={styles.section}>
-          GUIDE
-        </AppText>
-        <Row
-          icon="book-outline"
-          label="How the app works"
-          onPress={() => nav.navigate('Intro', { replay: true })}
-        />
-        <Row
-          icon="bulb-outline"
-          label="Show tips again"
-          value="On every screen"
-          onPress={() => {
-            resetTips();
-            nav.navigate('Main', { screen: 'Home' });
-          }}
-        />
-        <Row
-          icon="volume-high-outline"
-          label="Test the order alert"
-          value={alertNote ?? 'Hear the ring'}
-          onPress={async () => {
-            const ok = await testOfferAlert();
-            setAlertNote(ok ? 'Listen…' : 'Notifications are off');
-            if (alertTimer.current) clearTimeout(alertTimer.current);
-            alertTimer.current = setTimeout(() => setAlertNote(null), 6000);
-          }}
-        />
-        <AppText variant="micro" tone="muted" style={styles.section}>
-          HELP
-        </AppText>
-        <Row
-          icon="headset-outline"
-          label="Call support"
-          onPress={() => call(SUPPORT_PHONE)}
-        />
-        {__DEV__ ? (
-          <Row
-            icon="color-palette-outline"
-            label="Component preview"
-            onPress={() => nav.navigate('Gallery')}
+        <Group title="SETTINGS">
+          <GroupRow
+            icon="shield-half-outline"
+            label="Permissions"
+            onPress={() => nav.navigate('Permissions')}
           />
-        ) : null}
+          <GroupRow
+            icon={mode === 'dark' ? 'moon' : 'sunny'}
+            label="Appearance"
+            value={
+              preference === 'system'
+                ? `${mode === 'dark' ? 'Dark' : 'Light'} · phone`
+                : preference === 'dark'
+                ? 'Dark'
+                : 'Light'
+            }
+            onPress={() => setAppearance(true)}
+          />
+          <GroupRow
+            icon="contrast"
+            label="High contrast"
+            value={highContrast ? undefined : 'For bright sun'}
+            onPress={() => setHighContrast(!highContrast)}
+            trailing={
+              <Switch
+                value={highContrast}
+                onValueChange={setHighContrast}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={highContrast ? colors.onPrimary : colors.textMuted}
+                accessibilityLabel="High contrast"
+              />
+            }
+          />
+        </Group>
+        <Group title="GUIDE">
+          <GroupRow
+            icon="book-outline"
+            label="How the app works"
+            onPress={() => nav.navigate('Intro', { replay: true })}
+          />
+          <GroupRow
+            icon="bulb-outline"
+            label="Show tips again"
+            onPress={() => {
+              resetTips();
+              nav.navigate('Main', { screen: 'Home' });
+            }}
+          />
+          <GroupRow
+            icon="volume-high-outline"
+            label="Test the order alert"
+            value={alertNote ?? undefined}
+            onPress={async () => {
+              const ok = await testOfferAlert();
+              setAlertNote(ok ? 'Listen…' : 'Notifications are off');
+              if (alertTimer.current) clearTimeout(alertTimer.current);
+              alertTimer.current = setTimeout(() => setAlertNote(null), 6000);
+            }}
+          />
+        </Group>
+        <Group title="HELP">
+          <GroupRow
+            icon="headset-outline"
+            label="Call support"
+            onPress={() => call(SUPPORT_PHONE)}
+          />
+          {__DEV__ ? (
+            <GroupRow
+              icon="color-palette-outline"
+              label="Component preview"
+              onPress={() => nav.navigate('Gallery')}
+            />
+          ) : null}
+        </Group>
+        <Group>
+          <GroupRow
+            icon="log-out-outline"
+            label="Sign out"
+            tone="danger"
+            busy={leaving}
+            onPress={confirmSignOut}
+          />
+        </Group>
       </Animated.View>
 
-      <Button
-        kind="danger"
-        label="Sign out"
-        icon="log-out-outline"
-        loading={leaving}
-        onPress={confirmSignOut}
-      />
       <AppText variant="caption" tone="faint" align="center">
         Foodie Rider · v{APP_VERSION}
       </AppText>
@@ -315,28 +273,21 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
   content: { gap: space.lg },
   flex: { flex: 1 },
-  hero: { alignItems: 'center', gap: space.xs, paddingTop: space.md },
+  idCard: { gap: space.md, borderRadius: radius.xxl },
+  idRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   avatar: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.md,
-  },
-  pills: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
-  vehicle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    borderRadius: radius.xxl,
-  },
-  vehicleIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  vehicle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   plate: {
     borderWidth: 2,
@@ -344,8 +295,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
     paddingVertical: 2,
   },
-  list: { gap: space.sm },
-  section: { marginTop: space.sm, marginLeft: space.xs },
+  list: { gap: space.lg },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

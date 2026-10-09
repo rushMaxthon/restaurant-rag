@@ -1,4 +1,4 @@
-import { groupByDay } from './history';
+import { dayHeaderIndices, groupByDay } from './history';
 
 const trip = (id: string, endedAt: string, earning: string) =>
   ({ id, ended_at: endedAt, earning } as never);
@@ -29,5 +29,23 @@ describe('groupByDay', () => {
 
   it('is empty for no trips', () => {
     expect(groupByDay([], now)).toEqual([]);
+  });
+});
+
+describe('which rows stick to the top while scrolling', () => {
+  it('is every day heading and no trip', () => {
+    const rows = groupByDay(
+      [
+        trip('a', '2026-10-09T10:00:00', '40'),
+        trip('b', '2026-10-09T09:00:00', '40'),
+        trip('c', '2026-10-08T09:00:00', '40'),
+      ],
+      new Date('2026-10-09T12:00:00'),
+    );
+    expect(dayHeaderIndices(rows)).toEqual([0, 3]);
+  });
+
+  it('is nothing for an empty history', () => {
+    expect(dayHeaderIndices([])).toEqual([]);
   });
 });

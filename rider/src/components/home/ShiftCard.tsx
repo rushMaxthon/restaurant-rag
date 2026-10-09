@@ -24,6 +24,15 @@ type Props = {
   busy: boolean;
   disabledReason: string | null;
   error: string | null;
+  /** Always the strip, offline too: the Orders tab, where the board is the point. */
+  strip?: boolean;
+  /**
+   * Whether this is the control the Home tip points at. Tabs stay mounted, so
+   * a second copy registered under the same target would take the tip over.
+   */
+  guide?: boolean;
+  /** The strip's second line while offline. */
+  offlineHint?: string;
 };
 
 /**
@@ -35,34 +44,66 @@ type Props = {
  * screen's one big action, because going online is the only thing to do.
  */
 export function ShiftCard(props: Props) {
-  return props.online ? <OnlineStrip {...props} /> : <OfflineCard {...props} />;
+  return props.online || props.strip ? (
+    <ShiftStrip {...props} />
+  ) : (
+    <OfflineCard {...props} />
+  );
 }
 
-function OnlineStrip({ online, onChange, busy, disabledReason, error }: Props) {
+function ShiftStrip({
+  online,
+  onChange,
+  busy,
+  disabledReason,
+  error,
+  guide = true,
+  offlineHint = 'Go online to start getting orders',
+}: Props) {
   const { colors } = useTheme();
+  const toggle = (
+    <OnlineToggle
+      compact
+      online={online}
+      onChange={onChange}
+      busy={busy}
+      disabledReason={disabledReason}
+      // The reason is in the strip's own line; the compact toggle has no
+      // room for a second copy beneath it.
+      showReason={false}
+    />
+  );
   return (
     <Animated.View entering={FadeIn.duration(300)}>
-      <Card style={[styles.strip, { borderColor: colors.success }]}>
+      <Card
+        style={[
+          styles.strip,
+          { borderColor: online ? colors.success : colors.border },
+        ]}
+      >
         <View style={styles.stripRow}>
-          <Beacon color={colors.success} />
+          {online ? (
+            <Beacon color={colors.success} />
+          ) : (
+            <View style={styles.beacon}>
+              <Icon name="moon" size={18} color={colors.textMuted} />
+            </View>
+          )}
           <View style={styles.flex}>
-            <AppText variant="bodyStrong">You're online</AppText>
+            <AppText variant="bodyStrong">
+              {online ? "You're online" : "You're offline"}
+            </AppText>
             <AppText variant="caption" tone="muted" numberOfLines={2}>
-              {disabledReason ?? 'Looking for orders near you'}
+              {online
+                ? disabledReason ?? 'Looking for orders near you'
+                : offlineHint}
             </AppText>
           </View>
-          <GuideTarget id={TARGETS.homeToggle}>
-            <OnlineToggle
-              compact
-              online={online}
-              onChange={onChange}
-              busy={busy}
-              disabledReason={disabledReason}
-              // The reason is in the strip's own line; the compact toggle
-              // has no room for a second copy beneath it.
-              showReason={false}
-            />
-          </GuideTarget>
+          {guide ? (
+            <GuideTarget id={TARGETS.homeToggle}>{toggle}</GuideTarget>
+          ) : (
+            toggle
+          )}
         </View>
         {error ? (
           <AppText variant="caption" tone="danger">

@@ -24,16 +24,15 @@ import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import { useTour } from '@/guide/useTour';
 import { usePermissions } from '@hooks/usePermissions';
-import { firstMissing, gateReason } from '@utils/permissions';
+import { useShiftToggle } from '@hooks/useShiftToggle';
+import { gateReason } from '@utils/permissions';
 import { useNav } from '@navigation/types';
-import { ApiError } from '@/services/http';
 import { useRider } from '@/store/RiderProvider';
-import { useApi, useSignedInUser } from '@/store/SessionProvider';
+import { useSignedInUser } from '@/store/SessionProvider';
 import type { Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 import { greeting, initials } from '@utils/format';
-import { haptic } from '@utils/haptics';
 
 const STEP_LABEL: Record<Trip['step'], string> = {
   to_pickup: 'Going to restaurant',
@@ -46,10 +45,8 @@ const STEP_LABEL: Record<Trip['step'], string> = {
 export function HomeScreen() {
   const { colors } = useTheme();
   const nav = useNav();
-  const api = useApi();
   const user = useSignedInUser();
-  const { me, trip, loading, setMe, refreshMe, refreshTrip, error } =
-    useRider();
+  const { me, trip, loading, refreshMe, refreshTrip, error } = useRider();
   const permissions = usePermissions();
   // Back from the Permissions screen or the phone's settings: read again, so
   // the "Finish setting up" note and the toggle agree with the phone.
@@ -60,46 +57,16 @@ export function HomeScreen() {
     }, [refreshPermissions]),
   );
   const location = useRiderLocation();
-  const [toggling, setToggling] = useState(false);
-  const [toggleError, setToggleError] = useState<string | null>(null);
+  const shift = useShiftToggle();
   const [refreshing, setRefreshing] = useState(false);
-  const online = me?.status === 'ONLINE' || me?.status === 'ON_TRIP';
+  const online = shift.online;
   useTour('home', me !== null && !trip);
-
-  const toggle = useCallback(
-    async (next: boolean) => {
-      // Asked again at the tap: this screen's copy was read when it opened,
-      // and a permission granted since (on the Permissions screen or in the
-      // phone's settings) would otherwise send the rider back there in a loop.
-      if (next && firstMissing(await permissions.refresh()) !== null) {
-        nav.navigate('Permissions');
-        return;
-      }
-      setToggling(true);
-      setToggleError(null);
-      try {
-        // The offline card itself shows what today added up to.
-        setMe(await api.setOnline(next));
-      } catch (e) {
-        haptic('error');
-        setToggleError(
-          e instanceof ApiError ? e.message : 'Could not change your status.',
-        );
-      } finally {
-        setToggling(false);
-      }
-    },
-    [api, nav, permissions, setMe],
-  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([refreshMe(), refreshTrip()]);
     setRefreshing(false);
   }, [refreshMe, refreshTrip]);
-
-  const disabledReason =
-    me?.status === 'ON_TRIP' ? 'Finish your delivery to go offline' : null;
 
   return (
     <Screen
@@ -182,10 +149,10 @@ export function HomeScreen() {
       {!trip ? (
         <ShiftCard
           online={online}
-          onChange={toggle}
-          busy={toggling}
-          disabledReason={disabledReason}
-          error={toggleError}
+          onChange={shift.toggle}
+          busy={shift.busy}
+          disabledReason={shift.disabledReason}
+          error={shift.error}
         />
       ) : null}
 

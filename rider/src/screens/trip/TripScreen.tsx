@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   Keyboard,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -22,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OtpInput } from '@components/trip/OtpInput';
 import { ProblemSheet } from '@components/trip/ProblemSheet';
-import { StepTracker } from '@components/trip/StepTracker';
+import { StepProgress } from '@components/trip/StepProgress';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
@@ -55,6 +56,9 @@ export function TripScreen() {
   const [otp, setOtp] = useState('');
   const [shake, setShake] = useState(0);
   const [problem, setProblem] = useState(false);
+  // Folded to one row on the way there; open by default at the counter,
+  // where the rider checks the bag against it. A tap overrides either way.
+  const [itemsOpen, setItemsOpen] = useState<boolean | null>(null);
   const keyboard = useKeyboardHeight();
   const { lastFix } = useRiderLocation();
   const scroll = useRef<ScrollViewInstance>(null);
@@ -118,6 +122,7 @@ export function TripScreen() {
   }
 
   const atRestaurant = trip.step === 'to_pickup' || trip.step === 'at_pickup';
+  const showItems = itemsOpen ?? trip.step === 'at_pickup';
   const slide = nextSlide(trip.step);
   // Live, from this phone's own GPS: refreshed with every fix, no routing API.
   const heading = trip.step === 'to_pickup' || trip.step === 'to_drop';
@@ -164,9 +169,7 @@ export function TripScreen() {
       >
         <Animated.View entering={FadeInDown.duration(350)}>
           <GuideTarget id={TARGETS.tripSteps}>
-            <Card>
-              <StepTracker step={trip.step} />
-            </Card>
+            <StepProgress step={trip.step} />
           </GuideTarget>
         </Animated.View>
 
@@ -254,13 +257,6 @@ export function TripScreen() {
                 onPress={() => openNavigation(stop.lat, stop.lng, stop.address)}
               />
             </View>
-            <Button
-              kind="ghost"
-              size="md"
-              icon="help-circle-outline"
-              label="Having a problem?"
-              onPress={() => setProblem(true)}
-            />
           </Card>
         </Animated.View>
 
@@ -268,10 +264,25 @@ export function TripScreen() {
         {atRestaurant && trip.items.length > 0 ? (
           <Animated.View entering={FadeInDown.delay(80)}>
             <Card>
-              <AppText variant="label" tone="muted">
-                COLLECT {trip.item_count} ITEM{trip.item_count === 1 ? '' : 'S'}
-              </AppText>
-              {trip.items.map((item, i) => (
+              <Pressable
+                onPress={() => setItemsOpen(!showItems)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showItems }}
+                hitSlop={8}
+                style={styles.itemsHead}
+              >
+                <Icon name="bag-handle" size={20} color={colors.primary} />
+                <AppText variant="bodyStrong" style={styles.flex}>
+                  Collect {trip.item_count} item
+                  {trip.item_count === 1 ? '' : 's'}
+                </AppText>
+                <Icon
+                  name={showItems ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+              {showItems && trip.items.map((item, i) => (
                 <View
                   key={`${item.name}-${i}`}
                   style={[
@@ -426,9 +437,10 @@ const styles = StyleSheet.create({
     paddingBottom: space.sm,
   },
   headerText: { flex: 1 },
-  scroll: { padding: space.lg, gap: space.lg, paddingBottom: 140 },
+  scroll: { padding: space.lg, gap: space.md, paddingBottom: 140 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   stopCard: { borderRadius: radius.xxl },
+  itemsHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',

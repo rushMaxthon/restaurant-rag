@@ -66,3 +66,8 @@ export function groupByDay(
   }
   return rows;
 }
+
+/** The rows FlashList pins while scrolling: every day heading. */
+export function dayHeaderIndices(rows: readonly HistoryRow[]): number[] {
+  return rows.flatMap((row, i) => (row.kind === 'day' ? [i] : []));
+}

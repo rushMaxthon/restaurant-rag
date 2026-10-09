@@ -60,8 +60,8 @@ export const TOURS = {
     steps: [
       {
         target: TARGETS.tripSteps,
-        title: 'Your four stops',
-        body: 'Restaurant, collect, customer, deliver. The bar fills as you go.',
+        title: 'Where you are',
+        body: 'Four steps: restaurant, collect, customer, deliver. The bar fills as you go.',
       },
       {
         target: TARGETS.tripSlide,

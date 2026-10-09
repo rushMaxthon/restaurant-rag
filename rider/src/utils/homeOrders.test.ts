@@ -1,5 +1,5 @@
 import type { OpenOrder } from '@/types/api';
-import { homePreview } from './homeOrders';
+import { homePreview, rankOrders } from './homeOrders';
 
 function order(id: string, over: Partial<OpenOrder> = {}): OpenOrder {
   return {
@@ -61,6 +61,31 @@ describe('which waiting orders Home shows', () => {
       order('a', { pickup_distance_m: 100 }),
     ];
     homePreview(all);
+    expect(all.map(o => o.order_id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('the order of the whole Orders board', () => {
+  it('ranks every order the way Home does, without cutting the list', () => {
+    const all = [
+      order('far', { pickup_distance_m: 4000 }),
+      order('near', { pickup_distance_m: 300 }),
+      order('urgent', { pickup_distance_m: 5000, minutes_left: 1 }),
+      order('unknown', { pickup_distance_m: null as unknown as number }),
+      order('mid', { pickup_distance_m: 1500 }),
+    ];
+    expect(rankOrders(all).map(o => o.order_id)).toEqual([
+      'urgent',
+      'near',
+      'mid',
+      'far',
+      'unknown',
+    ]);
+  });
+
+  it('leaves the list it was given alone', () => {
+    const all = [order('b', { pickup_distance_m: 9 }), order('a', { pickup_distance_m: 1 })];
+    rankOrders(all);
     expect(all.map(o => o.order_id)).toEqual(['b', 'a']);
   });
 });

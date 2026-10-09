@@ -671,6 +671,20 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   is `hooks/useTakeOrder`, shared with the Orders tab. The old radar card
   and `OpenOrders` pointer are gone.
 
+- **The other tabs, same idea (2026-10-09).** Orders: one title line, the
+  same shift strip as Home (`ShiftCard strip guide={false}` - an offline
+  rider goes online right there; `guide={false}` because tabs stay mounted
+  and a second `home.toggle` target would steal Home's tip), cards ranked by
+  `homeOrders.rankOrders` (Home's preview uses it too). Going on/off shift is
+  `hooks/useShiftToggle`. Trip: `trip/StepProgress` (a thin bar, "2 of 4")
+  replaced the four-circle `StepTracker`; items fold to one row, open by
+  default at the restaurant. Earnings: shorter hero with `heroLine`, a 90 dp
+  chart whose bars are tappable, To-be-paid/Paid in one card. History: one
+  line per trip with a status dot, sticky day headings
+  (`history.dayHeaderIndices`) - FlashList draws a pinned heading outside
+  the content padding, so rows pad themselves - and a last-7-days summary.
+  Profile: an identity card and `ui/Group` settings sections.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

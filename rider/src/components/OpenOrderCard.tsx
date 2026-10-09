@@ -4,18 +4,20 @@ import { StyleSheet, View } from 'react-native';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
-import { Pill } from '@components/ui/Pill';
+import { Icon, type IconName } from '@components/ui/Icon';
 import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import type { OpenOrder } from '@/types/api';
+import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
 import { distance, km, rupees } from '@utils/format';
 import { minutesLeftLabel } from '@utils/openOrders';
 
 /**
- * One order on the board: what it pays first, then how far, then how long
- * before a courier gets it. `blockedReason` disables Take and says why -
- * the button never just goes grey.
+ * One order on the board, in three short lines: where from and what it pays,
+ * where to, then how far and how long before a courier gets it. An order in
+ * its last minute gets an amber edge - it is now or never. `blockedReason`
+ * disables Take and says why; the button never just goes grey.
  */
 export function OpenOrderCard({
   order,
@@ -31,6 +33,8 @@ export function OpenOrderCard({
   /** The first card on the board: the one the Orders tip points at. */
   guide?: boolean;
 }) {
+  const { colors } = useTheme();
+  const lastMinute = order.minutes_left <= 1;
   const take = (
     <Button
       kind="success"
@@ -43,14 +47,15 @@ export function OpenOrderCard({
     />
   );
   return (
-    <Card style={styles.card}>
+    <Card
+      style={[styles.card, lastMinute && { borderColor: colors.warning }]}
+    >
       {order.missed ? (
-        <View style={styles.tag}>
-          <Pill
-            icon="alarm"
-            tone="warning"
-            label="You missed this - still yours to take"
-          />
+        <View style={styles.meta}>
+          <Icon name="alarm" size={14} color={colors.warning} />
+          <AppText variant="caption" style={{ color: colors.warning }}>
+            You missed this - still yours to take
+          </AppText>
         </View>
       ) : null}
       <View style={styles.row}>
@@ -67,16 +72,13 @@ export function OpenOrderCard({
           {rupees(order.earning_estimate)}
         </AppText>
       </View>
-      <View style={styles.chips}>
-        <Pill
-          icon="bicycle"
-          label={`${distance(order.pickup_distance_m)} away`}
-        />
-        <Pill icon="navigate" label={`${km(order.trip_distance_km)} trip`} />
-        <Pill
+      <View style={styles.metaRow}>
+        <Meta icon="bicycle" label={`${distance(order.pickup_distance_m)} away`} />
+        <Meta icon="navigate" label={`${km(order.trip_distance_km)} trip`} />
+        <Meta
           icon="time"
-          tone={order.minutes_left <= 1 ? 'warning' : 'neutral'}
           label={minutesLeftLabel(order.minutes_left)}
+          color={lastMinute ? colors.warning : undefined}
         />
       </View>
       {guide ? <GuideTarget id={TARGETS.ordersTake}>{take}</GuideTarget> : take}
@@ -84,10 +86,39 @@ export function OpenOrderCard({
   );
 }
 
+function Meta({
+  icon,
+  label,
+  color,
+}: {
+  icon: IconName;
+  label: string;
+  color?: string;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.meta}>
+      <Icon name={icon} size={14} color={color ?? colors.textMuted} />
+      <AppText
+        variant="label"
+        tone={color ? undefined : 'muted'}
+        style={color ? { color } : undefined}
+      >
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: { gap: space.md, borderRadius: radius.xl },
-  tag: { flexDirection: 'row' },
   flex: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: space.lg,
+    rowGap: space.xs,
+  },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 });

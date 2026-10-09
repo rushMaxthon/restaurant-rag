@@ -1,4 +1,4 @@
-import { PERIODS, periodFor, showsChart } from './earningsPeriod';
+import { PERIODS, heroLine, periodFor, showsChart } from './earningsPeriod';
 
 describe('the earnings period switch', () => {
   it('offers today, the week and the month, in that order', () => {
@@ -20,5 +20,19 @@ describe('the earnings period switch', () => {
 
   it('falls back to the week for an unknown key from storage', () => {
     expect(periodFor('whatever' as never).key).toBe('week');
+  });
+});
+
+describe('the line under the earnings total', () => {
+  it('says how many deliveries and what each paid on average', () => {
+    expect(heroLine(3, '132.60')).toBe('3 deliveries · ₹44 each');
+  });
+
+  it('does not say "each" about a single delivery', () => {
+    expect(heroLine(1, '49')).toBe('1 delivery');
+  });
+
+  it('says so when there were none, rather than dividing by zero', () => {
+    expect(heroLine(0, '0')).toBe('No deliveries yet');
   });
 });

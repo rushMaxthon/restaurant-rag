@@ -5560,3 +5560,14 @@ suites stay green. Admin 483 tests, build, lint at 68 (baseline). Storefront
 - Rider status sync: forced `riders_changed` on every status transition, new `delivery_changed` for non-status steps, offers hint the map; admin Riders list / order delivery panels and storefront delivery card now listen. Verified live: admin list flips Online/Off shift/On trip/Online within 2-4 s of the phone, order page shows "At the restaurant" right after the step. Fixed Go-online permissions loop. Suites: 513 backend (fleet/delivery/realtime/kitchen) OK, admin 551 + build, storefront 539 + build, rider 105.
 - Rider Home redesign: online = compact status strip + up to 3 nearby orders takeable from Home (homePreview tested), then Today/week/pay; offline = one short card with the big toggle; duplicate shift-done card removed; Take logic shared via useTakeOrder. Verified on the emulator (empty, 2 waiting, Take from Home -> trip, offline, Home tip on the compact toggle). Rider jest 111, tsc clean.
 
+
+## 2026-10-09 - rider: Orders, Trip, Earnings, History, Profile redesign
+
+Same approach as the Home redesign: the useful part first, no number twice.
+New: `useShiftToggle`, `ShiftCard strip`, `rankOrders`, `StepProgress` +
+`stepProgress`, `heroLine`, `dayHeaderIndices`, `ui/Group`. Deleted
+`trip/StepTracker`. Verified on the emulator (dark and light): Orders
+online/offline/missed cards and its tip, take -> trip -> OTP -> Delivered,
+History sticky headings, Earnings, Profile. jest 120, tsc clean, eslint 0
+errors (51 pre-existing warnings). Trap: FlashList sticky headers ignore
+contentContainerStyle padding.

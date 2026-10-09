@@ -1,3 +1,5 @@
+import { rupees } from './format';
+
 /** The Earnings screen's period switch: what the server is asked for, and how the hero is labelled. */
 
 export type PeriodKey = 'today' | 'week' | 'month';
@@ -22,4 +24,14 @@ export function periodFor(key: PeriodKey): Period {
 /** One bar is not a chart. */
 export function showsChart(key: PeriodKey): boolean {
   return periodFor(key).days > 1;
+}
+
+/**
+ * The one line under the hero total. The average is whole rupees: it is a
+ * feel for the period, and the exact amounts are on every delivery.
+ */
+export function heroLine(trips: number, total: string | number): string {
+  if (trips <= 0) return 'No deliveries yet';
+  if (trips === 1) return '1 delivery';
+  return `${trips} deliveries · ${rupees(Math.round(Number(total) / trips))} each`;
 }

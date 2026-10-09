@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -35,12 +35,13 @@ import { radius, space, motion } from '@theme/tokens';
 import {
   PERIODS,
   periodFor,
+  heroLine,
   showsChart,
   type PeriodKey,
 } from '@utils/earningsPeriod';
 import { dayLabel, rupees, weekday } from '@utils/format';
 
-const CHART_HEIGHT = 140;
+const CHART_HEIGHT = 90;
 const MONTHS = [
   'Jan',
   'Feb',
@@ -62,12 +63,14 @@ function Bar({
   highlight,
   label,
   amount,
+  onPress,
 }: {
   ratio: number;
   index: number;
   highlight: boolean;
   label: string;
   amount: string;
+  onPress: () => void;
 }) {
   const { colors } = useTheme();
   const h = useSharedValue(0);
@@ -79,7 +82,12 @@ function Bar({
   }, [ratio, index, h]);
   const style = useAnimatedStyle(() => ({ height: h.value }));
   return (
-    <View style={styles.barCol} accessibilityLabel={`${label}: ${amount}`}>
+    <Pressable
+      style={styles.barCol}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${amount}`}
+    >
       <View style={styles.barTrack}>
         <Animated.View
           style={[
@@ -96,7 +104,7 @@ function Bar({
           {label}
         </AppText>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -125,6 +133,8 @@ export function EarningsScreen() {
   const request = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // The bar the rider tapped; untouched, the latest day.
+  const [picked, setPicked] = useState<number | null>(null);
   useTour('earnings', data !== null);
 
   const load = useCallback(async () => {
@@ -153,6 +163,7 @@ export function EarningsScreen() {
 
   const max = Math.max(1, ...(data?.days.map(d => Number(d.amount)) ?? [1]));
   const month = period.days > 7;
+  const pickedDay = data?.days[picked ?? data.days.length - 1] ?? null;
 
   return (
     <Screen
@@ -168,7 +179,6 @@ export function EarningsScreen() {
     >
       <Animated.View entering={FadeInDown.duration(350)}>
         <AppText variant="title">Earnings</AppText>
-        <AppText tone="muted">What your deliveries have paid</AppText>
       </Animated.View>
 
       <Segmented
@@ -177,6 +187,7 @@ export function EarningsScreen() {
         onChange={key => {
           setPeriodKey(key);
           setData(null);
+          setPicked(null);
         }}
       />
 
@@ -211,30 +222,9 @@ export function EarningsScreen() {
           ) : (
             <Skeleton width={160} height={40} style={styles.gapSm} />
           )}
-          <View style={styles.heroRow}>
-            <HeroStat
-              label="Deliveries"
-              value={data ? String(data.period_trips) : '—'}
-            />
-            <HeroStat
-              label={period.days === 1 ? 'Unpaid' : 'Today'}
-              value={
-                data
-                  ? rupees(period.days === 1 ? data.unpaid : data.today)
-                  : '—'
-              }
-            />
-            <HeroStat
-              label="Per delivery"
-              value={
-                data && data.period_trips > 0
-                  ? rupees(
-                      Math.round(Number(data.period_total) / data.period_trips),
-                    )
-                  : '—'
-              }
-            />
-          </View>
+          <AppText variant="bodyStrong" style={styles.heroCaption}>
+            {data ? heroLine(data.period_trips, data.period_total) : ' '}
+          </AppText>
         </View>
       </Animated.View>
 
@@ -244,9 +234,19 @@ export function EarningsScreen() {
           layout={LinearTransition}
         >
           <Card>
-            <AppText variant="label" tone="muted">
-              DAILY
-            </AppText>
+            <View style={styles.chartHead}>
+              <AppText variant="label" tone="muted" style={styles.flex}>
+                DAILY
+              </AppText>
+              {pickedDay ? (
+                <AppText variant="label">
+                  {dayLabel(pickedDay.date)} ·{' '}
+                  <AppText variant="label" tone="success">
+                    {rupees(pickedDay.amount)}
+                  </AppText>
+                </AppText>
+              ) : null}
+            </View>
             <View style={styles.chart}>
               {(
                 data?.days ??
@@ -260,7 +260,8 @@ export function EarningsScreen() {
                   key={d.date}
                   index={i}
                   ratio={Number(d.amount) / max}
-                  highlight={i === all.length - 1}
+                  highlight={i === (picked ?? all.length - 1)}
+                  onPress={() => setPicked(i)}
                   // A month has no room for 30 labels: every fifth day, and the last.
                   label={!data || month ? '' : weekday(d.date).toUpperCase()}
                   amount={rupees(d.amount)}
@@ -291,32 +292,36 @@ export function EarningsScreen() {
 
       <Animated.View
         entering={FadeInDown.delay(180).duration(motion.base)}
-        style={styles.row}
         layout={LinearTransition}
       >
-        <GuideTarget id={TARGETS.earningsUnpaid} style={styles.half}>
-          <Card>
-            <Icon name="hourglass-outline" size={22} color={colors.warning} />
-            <AppText variant="micro" tone="muted" style={styles.gapSm}>
-              TO BE PAID
-            </AppText>
-            <AppText variant="heading">
+        <Card style={styles.row}>
+          <GuideTarget id={TARGETS.earningsUnpaid} style={styles.half}>
+            <View style={styles.payHead}>
+              <Icon name="hourglass-outline" size={16} color={colors.warning} />
+              <AppText variant="micro" tone="muted">
+                TO BE PAID
+              </AppText>
+            </View>
+            <AppText variant="heading" style={styles.gapXs}>
               {data ? rupees(data.unpaid) : '—'}
             </AppText>
-          </Card>
-        </GuideTarget>
-        <Card style={styles.half}>
-          <Icon
-            name="checkmark-done-circle-outline"
-            size={22}
-            color={colors.success}
-          />
-          <AppText variant="micro" tone="muted" style={styles.gapSm}>
-            PAID SO FAR
-          </AppText>
-          <AppText variant="heading">
-            {data ? rupees(data.paid_total) : '—'}
-          </AppText>
+          </GuideTarget>
+          <View style={[styles.split, { backgroundColor: colors.border }]} />
+          <View style={styles.half}>
+            <View style={styles.payHead}>
+              <Icon
+                name="checkmark-done-circle-outline"
+                size={16}
+                color={colors.success}
+              />
+              <AppText variant="micro" tone="muted">
+                PAID SO FAR
+              </AppText>
+            </View>
+            <AppText variant="heading" style={styles.gapXs}>
+              {data ? rupees(data.paid_total) : '—'}
+            </AppText>
+          </View>
         </Card>
       </Animated.View>
 
@@ -327,17 +332,10 @@ export function EarningsScreen() {
       >
         <Card style={styles.payments}>
           <View style={styles.paymentsHead}>
-            <View
-              style={[styles.badge, { backgroundColor: colors.successSoft }]}
-            >
-              <Icon name="card-outline" size={18} color={colors.success} />
-            </View>
-            <View style={styles.flex}>
-              <AppText variant="bodyStrong">Payments</AppText>
-              <AppText variant="caption" tone="muted">
-                Sent to your bank by the platform
-              </AppText>
-            </View>
+            <Icon name="card-outline" size={18} color={colors.success} />
+            <AppText variant="bodyStrong" style={styles.flex}>
+              Payments to your bank
+            </AppText>
           </View>
           {payouts === null ? (
             <Skeleton height={56} round={radius.md} />
@@ -402,8 +400,7 @@ export function EarningsScreen() {
           color={colors.textMuted}
         />
         <AppText variant="caption" tone="muted" style={styles.flex}>
-          Each delivery pays a base amount plus a rate per km, never under the
-          minimum. The exact rates are on Home.
+          Base + a rate per km, never under the minimum. Rates are on Home.
         </AppText>
       </Card>
 
@@ -417,31 +414,23 @@ export function EarningsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: space.lg },
+  content: { gap: space.md },
   flex: { flex: 1 },
   hero: {
     borderRadius: radius.xxl,
-    padding: space.xl,
-    gap: space.xs,
+    padding: space.lg,
+    paddingHorizontal: space.xl,
+    gap: space.xxs,
     overflow: 'hidden',
   },
   heroLabel: { color: '#FFFFFF', opacity: 0.85 },
-  heroAmount: { fontSize: 40, lineHeight: 48, color: '#FFFFFF' },
-  heroRow: { flexDirection: 'row', marginTop: space.lg, gap: space.md },
-  heroStat: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: radius.md,
-    paddingVertical: space.sm,
-    alignItems: 'center',
-  },
-  heroValue: { color: '#FFFFFF' },
+  heroAmount: { fontSize: 36, lineHeight: 44, color: '#FFFFFF' },
   heroCaption: { color: '#FFFFFF', opacity: 0.8 },
   chart: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginTop: space.lg,
+    marginTop: space.md,
     gap: 2,
   },
   barCol: { alignItems: 'center', gap: space.xs, flex: 1 },
@@ -454,17 +443,14 @@ const styles = StyleSheet.create({
   bar: { width: '70%', maxWidth: 22, minWidth: 4, borderRadius: 8 },
   monthLabels: { flexDirection: 'row', marginTop: space.xs },
   monthLabel: { flex: 1 },
-  row: { flexDirection: 'row', gap: space.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+  split: { width: 1, alignSelf: 'stretch' },
+  payHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  chartHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  gapXs: { marginTop: space.xs },
   half: { flex: 1 },
   payments: { gap: space.md },
   paymentsHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  badge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   emptyPay: { padding: space.md, borderRadius: radius.md, gap: space.xxs },
   payRow: {
     flexDirection: 'row',
@@ -478,15 +464,3 @@ const styles = StyleSheet.create({
   gapSm: { marginTop: space.sm },
 });
 
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.heroStat}>
-      <AppText variant="bodyStrong" style={styles.heroValue} numberOfLines={1}>
-        {value}
-      </AppText>
-      <AppText variant="caption" style={styles.heroCaption}>
-        {label}
-      </AppText>
-    </View>
-  );
-}

@@ -18,3 +18,24 @@ const SLIDES: Partial<Record<TripStep, Slide>> = {
 export function nextSlide(step: TripStep): Slide | null {
   return SLIDES[step] ?? null;
 }
+
+const PROGRESS: Record<TripStep, { current: number; label: string }> = {
+  to_pickup: { current: 1, label: 'Going to the restaurant' },
+  at_pickup: { current: 2, label: 'At the restaurant' },
+  to_drop: { current: 3, label: 'Going to the customer' },
+  at_drop: { current: 4, label: 'At the door' },
+  done: { current: 4, label: 'Delivered' },
+};
+
+/**
+ * The thin progress line at the top of a trip: "2 of 4 · At the restaurant".
+ * It replaced a row of four labelled circles that took a whole card to say
+ * the same thing.
+ */
+export function stepProgress(step: TripStep): {
+  current: number;
+  total: number;
+  label: string;
+} {
+  return { ...PROGRESS[step], total: 4 };
+}

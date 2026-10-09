@@ -7,15 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@components/ui/AppText';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
-import { Pill } from '@components/ui/Pill';
 import { Skeleton } from '@components/ui/Skeleton';
 import { ApiError } from '@/services/http';
 import { useApi } from '@/store/SessionProvider';
-import type { Trip } from '@/types/api';
+import type { Earnings, Trip } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { clockTime, km, rupees } from '@utils/format';
-import { groupByDay, type HistoryRow } from '@utils/history';
+import { dayHeaderIndices, groupByDay, type HistoryRow } from '@utils/history';
 import { endLabel } from '@utils/tripTimeline';
 import { useNav } from '@navigation/types';
 
@@ -23,6 +22,13 @@ function TripRow({ trip }: { trip: Trip }) {
   const { colors } = useTheme();
   const nav = useNav();
   const end = endLabel(trip.end_reason);
+  const dot = {
+    success: colors.success,
+    warning: colors.warning,
+    danger: colors.danger,
+    neutral: colors.textFaint,
+  }[end.tone];
+  const delivered = end.tone === 'success';
   return (
     // No entering animation on a recycled FlashList cell: Reanimated's layout
     // animation left the cell measured wrong (a gap above, taps falling through).
@@ -31,32 +37,28 @@ function TripRow({ trip }: { trip: Trip }) {
         style={styles.card}
         onPress={() => nav.navigate('TripDetail', { trip })}
       >
-        <View style={styles.rowBetween}>
-          <View style={styles.flex}>
-            <AppText variant="bodyStrong" numberOfLines={1}>
-              {trip.pickup.name}
-            </AppText>
-            <AppText variant="caption" tone="muted" numberOfLines={1}>
-              to {trip.drop.name} · {km(trip.distance_km)}
-            </AppText>
-          </View>
-          <AppText
-            variant="heading"
-            tone={Number(trip.earning) > 0 ? 'success' : 'muted'}
-          >
-            {rupees(trip.earning)}
+        <View
+          style={[styles.dot, { backgroundColor: dot }]}
+          accessibilityLabel={end.label}
+        />
+        <View style={styles.flex}>
+          <AppText variant="bodyStrong" numberOfLines={1}>
+            {trip.pickup.name}
+          </AppText>
+          <AppText variant="caption" tone="muted" numberOfLines={1}>
+            {/* A delivery that did not happen says so where the eye already is. */}
+            {delivered ? '' : `${end.label} · `}
+            {trip.ended_at ? clockTime(trip.ended_at) : trip.order_code} · to{' '}
+            {trip.drop.name} · {km(trip.distance_km)}
           </AppText>
         </View>
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
-          <Pill label={end.label} tone={end.tone} dot />
-          <View style={styles.meta}>
-            <AppText variant="caption" tone="faint">
-              {trip.order_code}
-              {trip.ended_at ? ` · ${clockTime(trip.ended_at)}` : ''}
-            </AppText>
-            <Icon name="chevron-forward" size={16} color={colors.textFaint} />
-          </View>
-        </View>
+        <AppText
+          variant="bodyStrong"
+          tone={Number(trip.earning) > 0 ? 'success' : 'muted'}
+        >
+          {rupees(trip.earning)}
+        </AppText>
+        <Icon name="chevron-forward" size={16} color={colors.textFaint} />
       </Card>
     </View>
   );
@@ -65,23 +67,44 @@ function TripRow({ trip }: { trip: Trip }) {
 /** A day's heading: what the rider made that day, at a glance. */
 function DayHeader({
   row,
-  first,
 }: {
   row: Extract<HistoryRow, { kind: 'day' }>;
-  first: boolean;
 }) {
+  const { colors } = useTheme();
+  // Opaque: it sticks to the top while the day's trips scroll under it.
   return (
-    <View style={[styles.day, first ? null : styles.dayGap]}>
-      <View style={styles.flex}>
-        <AppText variant="bodyStrong">{row.label}</AppText>
-        <AppText variant="caption" tone="muted">
-          {row.count} {row.count === 1 ? 'delivery' : 'deliveries'}
-        </AppText>
-      </View>
-      <AppText variant="bodyStrong" tone="success">
+    <View style={[styles.day, { backgroundColor: colors.bg }]}>
+      <AppText variant="label" tone="muted" style={styles.flex}>
+        {row.label.toUpperCase()} · {row.count}
+      </AppText>
+      <AppText variant="label" tone="success">
         {rupees(row.total)}
       </AppText>
     </View>
+  );
+}
+
+/** This week at a glance, above the list: the question History is opened for. */
+function WeekSummary({ week }: { week: Earnings | null }) {
+  const { colors } = useTheme();
+  return (
+    <Card tone="alt" style={styles.summary}>
+      <Icon name="calendar-outline" size={20} color={colors.primary} />
+      <AppText variant="label" tone="muted" style={styles.flex}>
+        LAST 7 DAYS
+      </AppText>
+      {week ? (
+        <AppText variant="bodyStrong">
+          {week.period_trips}{' '}
+          {week.period_trips === 1 ? 'delivery' : 'deliveries'} ·{' '}
+          <AppText variant="bodyStrong" tone="success">
+            {rupees(week.period_total)}
+          </AppText>
+        </AppText>
+      ) : (
+        <Skeleton width={120} height={18} />
+      )}
+    </Card>
   );
 }
 
@@ -96,12 +119,19 @@ export function HistoryScreen() {
   const [more, setMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const [week, setWeek] = useState<Earnings | null>(null);
   const rows = useMemo(() => groupByDay(items ?? []), [items]);
+  const sticky = useMemo(() => dayHeaderIndices(rows), [rows]);
 
   const loadFirst = useCallback(async () => {
     try {
-      const page = await api.history();
+      const [page, seven] = await Promise.all([
+        api.history(),
+        // The summary is a nicety: a failure leaves it out, not the list.
+        api.earnings(7).catch(() => null),
+      ]);
       setItems(page);
+      setWeek(seven);
       setMore(page.length === 20);
       setError(null);
     } catch (e) {
@@ -141,12 +171,12 @@ export function HistoryScreen() {
     >
       <View style={styles.header}>
         <AppText variant="title">History</AppText>
-        <AppText tone="muted">Your finished deliveries</AppText>
+        <WeekSummary week={week} />
       </View>
       {items === null ? (
         <View style={styles.skeletons}>
           {[0, 1, 2, 3].map(i => (
-            <Skeleton key={i} height={96} round={20} />
+            <Skeleton key={i} height={64} round={20} />
           ))}
         </View>
       ) : (
@@ -154,17 +184,17 @@ export function HistoryScreen() {
           data={rows}
           keyExtractor={r => r.key}
           getItemType={r => r.kind}
-          renderItem={({ item, index }) =>
+          stickyHeaderIndices={sticky}
+          renderItem={({ item }) =>
             item.kind === 'day' ? (
-              <DayHeader row={item} first={index === 0} />
+              <DayHeader row={item} />
             ) : (
               <TripRow trip={item.trip} />
             )
           }
-          contentContainerStyle={{
-            paddingHorizontal: space.lg,
-            paddingBottom: 120,
-          }}
+          // Rows pad themselves: FlashList draws the pinned day heading
+          // outside the content padding, so it would sit wider than the cards.
+          contentContainerStyle={{ paddingBottom: 120 }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           refreshControl={
@@ -212,24 +242,33 @@ export function HistoryScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  header: { paddingHorizontal: space.lg, marginBottom: space.lg },
+  header: {
+    paddingHorizontal: space.lg,
+    marginBottom: space.sm,
+    gap: space.md,
+  },
+  summary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingVertical: space.md,
+  },
   skeletons: { paddingHorizontal: space.lg, gap: space.md },
-  card: { gap: space.md, marginBottom: space.md },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingVertical: space.md,
+    marginBottom: space.sm,
+    marginHorizontal: space.lg,
+  },
+  dot: { width: 10, height: 10, borderRadius: 5 },
   day: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingBottom: space.sm,
-    paddingHorizontal: space.xs,
-  },
-  dayGap: { marginTop: space.lg },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: space.sm,
+    paddingHorizontal: space.lg + space.xs,
   },
   empty: {
     alignItems: 'center',
