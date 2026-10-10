@@ -43,6 +43,7 @@ from app.models.restaurant_location import RestaurantLocation
 from app.models.restaurant_payout import RestaurantPayout, RestaurantPayoutAccount
 from app.models.rider import Rider, RiderOffer, RiderPayout, RiderTrip
 from app.models.rider_application import PhoneVerification, RiderApplication, RiderApplicationEvent, RiderApplicationItem
+from app.models.rider_referral import RiderBonus, RiderReferral
 from app.models.user import User
 from app.models.user_device_token import UserDeviceToken
 from app.models.user_saved_address import UserSavedAddress
@@ -61,7 +62,9 @@ __all__ = [
     "RiderApplicationItem",
     "Rider",
     "RiderOffer",
+    "RiderBonus",
     "RiderPayout",
+    "RiderReferral",
     "RiderTrip",
     "PlatformSetting",
     "StorefrontVisitorDay",

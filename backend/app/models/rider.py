@@ -22,7 +22,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, Numeric, String, Text, text
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,8 +62,14 @@ class Rider(TimestampMixin, Base):
         default=RiderOnboarding.APPROVED,
         server_default="APPROVED",
     )
+    # The rider's own code to share (`fleet/referral.ensure_code`): made on
+    # approval, or the first time an older rider opens Refer & earn.
+    referral_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
-    __table_args__ = (Index("ix_riders_status", "status"),)
+    __table_args__ = (
+        Index("ix_riders_status", "status"),
+        UniqueConstraint("referral_code", name="uq_riders_referral_code"),
+    )
 
 
 class RiderPayout(TimestampMixin, Base):

@@ -112,6 +112,21 @@ class TripEndReason(StrEnum):
     REASSIGNED = "REASSIGNED"
 
 
+class ReferralStatus(StrEnum):
+    """A referred rider's progress towards the referral reward (`fleet/referral.py`)."""
+
+    WAITING = "WAITING"  # code accepted, rider not approved yet
+    IN_PROGRESS = "IN_PROGRESS"  # approved: the clock runs
+    EARNED = "EARNED"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+
+
+class RiderBonusKind(StrEnum):
+    REFERRAL_REFERRER = "REFERRAL_REFERRER"
+    REFERRAL_JOINER = "REFERRAL_JOINER"
+
+
 class AppMode(StrEnum):
     MARKETPLACE = "MARKETPLACE"
     SINGLE_RESTAURANT = "SINGLE_RESTAURANT"
