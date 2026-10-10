@@ -40,12 +40,42 @@ REFERRAL_KEY = "rider_referral"
 
 
 @dataclass(frozen=True, slots=True)
+class ReferralStep:
+    """Reach `deliveries` and the referrer gets `referrer_amount`, the new rider `joiner_amount`."""
+
+    deliveries: int
+    referrer_amount: Decimal
+    joiner_amount: Decimal
+
+
+#: The owner's Swiggy-style default (2026-10-10): a first reward early, the
+#: bigger one once the new rider has really started working.
+DEFAULT_STEPS = (
+    ReferralStep(10, Decimal("100.00"), Decimal("50.00")),
+    ReferralStep(30, Decimal("400.00"), Decimal("150.00")),
+)
+MAX_STEPS = 5
+
+
+@dataclass(frozen=True, slots=True)
 class ReferralConfig:
     enabled: bool = True
-    referrer_amount: Decimal = Decimal("500")
-    joiner_amount: Decimal = Decimal("200")
-    deliveries_required: int = 20
+    leaderboard_enabled: bool = True
     days_allowed: int = 30
+    steps: tuple[ReferralStep, ...] = DEFAULT_STEPS
+
+    # The v1 single-step view, still read by the referral row's own columns.
+    @property
+    def referrer_amount(self) -> Decimal:
+        return sum((s.referrer_amount for s in self.steps), Decimal("0.00"))
+
+    @property
+    def joiner_amount(self) -> Decimal:
+        return sum((s.joiner_amount for s in self.steps), Decimal("0.00"))
+
+    @property
+    def deliveries_required(self) -> int:
+        return self.steps[-1].deliveries
 
 
 def _refuse(message: str) -> HTTPException:
@@ -72,25 +102,63 @@ def _whole(value: Any, name: str, low: int, high: int) -> int:
     return number
 
 
+def _steps(data: dict[str, Any]) -> tuple[ReferralStep, ...]:
+    raw = data.get("steps")
+    if raw is None:
+        # A v1 settings row (one N, two amounts): it is one step. Missing
+        # fields take v1's own defaults, so nothing saved before changes.
+        raw = [{
+            "deliveries": data.get("deliveries_required", 20),
+            "referrer_amount": data.get("referrer_amount", "500"),
+            "joiner_amount": data.get("joiner_amount", "200"),
+        }]
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_STEPS:
+        raise _refuse(f"Add between 1 and {MAX_STEPS} steps")
+    steps: list[ReferralStep] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise _refuse("Each step needs deliveries and two amounts")
+        step = ReferralStep(
+            deliveries=_whole(row.get("deliveries"), "Deliveries needed", 1, 500),
+            referrer_amount=_amount(row.get("referrer_amount"), "Referrer bonus"),
+            joiner_amount=_amount(row.get("joiner_amount"), "New rider bonus"),
+        )
+        if steps and step.deliveries <= steps[-1].deliveries:
+            raise _refuse("Each step must need more deliveries than the one before it")
+        steps.append(step)
+    if all(s.referrer_amount == 0 and s.joiner_amount == 0 for s in steps):
+        raise _refuse("A referral must pay somebody something")
+    return tuple(steps)
+
+
 def validate_config(data: dict[str, Any]) -> ReferralConfig:
     base = ReferralConfig()
     return ReferralConfig(
         enabled=bool(data.get("enabled", base.enabled)),
-        referrer_amount=_amount(data.get("referrer_amount", base.referrer_amount), "Referrer bonus"),
-        joiner_amount=_amount(data.get("joiner_amount", base.joiner_amount), "New rider bonus"),
-        deliveries_required=_whole(data.get("deliveries_required", base.deliveries_required),
-                                   "Deliveries needed", 1, 500),
+        leaderboard_enabled=bool(data.get("leaderboard_enabled", base.leaderboard_enabled)),
         days_allowed=_whole(data.get("days_allowed", base.days_allowed), "Days allowed", 1, 365),
+        steps=_steps(data),
     )
 
 
+def steps_value(steps: tuple[ReferralStep, ...] | list[ReferralStep]) -> list[dict[str, Any]]:
+    return [
+        {"deliveries": s.deliveries, "referrer_amount": str(s.referrer_amount), "joiner_amount": str(s.joiner_amount)}
+        for s in steps
+    ]
+
+
 def config_value(cfg: ReferralConfig) -> dict[str, Any]:
+    """Stored and wire shape. The v1 totals ride along for older readers."""
+
     return {
         "enabled": cfg.enabled,
+        "leaderboard_enabled": cfg.leaderboard_enabled,
+        "days_allowed": cfg.days_allowed,
+        "steps": steps_value(cfg.steps),
         "referrer_amount": str(cfg.referrer_amount),
         "joiner_amount": str(cfg.joiner_amount),
         "deliveries_required": cfg.deliveries_required,
-        "days_allowed": cfg.days_allowed,
     }
 
 
@@ -198,6 +266,7 @@ def accept_code(db: Session, referred_user_id: uuid.UUID, raw_code: str) -> Ride
         joiner_amount=cfg.joiner_amount,
         deliveries_required=cfg.deliveries_required,
         days_allowed=cfg.days_allowed,
+        steps=steps_value(cfg.steps),
         status=ReferralStatus.WAITING,
     )
     db.add(ref)
@@ -258,42 +327,71 @@ def refresh_status(db: Session, ref: RiderReferral, *, now: datetime | None = No
     return ref
 
 
+def steps_of(ref: RiderReferral) -> list[ReferralStep]:
+    """The steps this referral was accepted on; a v1 row is its one step."""
+
+    rows = ref.steps or []
+    if not rows:
+        return [ReferralStep(ref.deliveries_required, Decimal(ref.referrer_amount), Decimal(ref.joiner_amount))]
+    return [
+        ReferralStep(int(r["deliveries"]), Decimal(str(r["referrer_amount"])), Decimal(str(r["joiner_amount"])))
+        for r in rows
+    ]
+
+
 def _pay(db: Session, ref: RiderReferral, rider_id: uuid.UUID, kind: RiderBonusKind,
-         amount: Decimal, now: datetime) -> bool:
+         amount: Decimal, now: datetime, step: int) -> bool:
     if amount <= 0:
         return False
     try:
         with db.begin_nested():
             db.add(RiderBonus(rider_user_id=rider_id, kind=kind, amount=amount,
-                              referral_id=ref.referred_user_id, earned_at=now))
+                              referral_id=ref.referred_user_id, earned_at=now, step=step))
     except IntegrityError:
         # Already written - by an earlier call or a racing one. The unique
-        # (referral, kind) row is the guard; this is the expected outcome.
+        # (referral, kind, step) row is the guard; this is the expected outcome.
         return False
     return True
 
 
-def on_delivered(db: Session, rider_user_id: uuid.UUID, *, now: datetime | None = None) -> bool:
-    """A trip of this rider ended DELIVERED: earn the referral if this was the Nth."""
+def on_delivered(
+    db: Session, rider_user_id: uuid.UUID, *, now: datetime | None = None
+) -> list[tuple[RiderBonusKind, int, Decimal]]:
+    """A trip of this rider ended DELIVERED: pay every step now reached, once.
+
+    Returns the bonuses this call wrote (empty when none) - the pushes say so.
+    The last step reached makes the referral EARNED; before that it stays
+    IN_PROGRESS, its earned steps already payable.
+    """
 
     now = now or _now()
     ref = db.scalar(
         select(RiderReferral).where(RiderReferral.referred_user_id == rider_user_id).with_for_update()
     )
     if ref is None or ref.status != ReferralStatus.IN_PROGRESS:
-        return False
+        return []
     refresh_status(db, ref, now=now)
     if ref.status != ReferralStatus.IN_PROGRESS or not load_config(db).enabled:
-        return False
-    if delivered_count(db, ref) < ref.deliveries_required:
-        return False
-    paid_referrer = _pay(db, ref, ref.referrer_user_id, RiderBonusKind.REFERRAL_REFERRER, ref.referrer_amount, now)
-    paid_joiner = _pay(db, ref, ref.referred_user_id, RiderBonusKind.REFERRAL_JOINER, ref.joiner_amount, now)
-    ref.status = ReferralStatus.EARNED
-    ref.earned_at = ref.earned_at or now
+        return []
+    count = delivered_count(db, ref)
+    steps = steps_of(ref)
+    written: list[tuple[RiderBonusKind, int, Decimal]] = []
+    for index, step in enumerate(steps):
+        if count < step.deliveries:
+            break
+        for rider_id, kind, amount in (
+            (ref.referrer_user_id, RiderBonusKind.REFERRAL_REFERRER, step.referrer_amount),
+            (ref.referred_user_id, RiderBonusKind.REFERRAL_JOINER, step.joiner_amount),
+        ):
+            if _pay(db, ref, rider_id, kind, amount, now, index):
+                written.append((kind, index, amount))
+    if count >= steps[-1].deliveries:
+        ref.status = ReferralStatus.EARNED
+        ref.earned_at = ref.earned_at or now
     db.flush()
-    logger.info("Referral of %s earned (referrer %s)", ref.referred_user_id, ref.referrer_user_id)
-    return paid_referrer or paid_joiner
+    if written:
+        logger.info("Referral of %s: %d bonus rows written", ref.referred_user_id, len(written))
+    return written
 
 
 # --- cancelling ---------------------------------------------------------------------

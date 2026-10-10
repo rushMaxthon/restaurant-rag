@@ -4,7 +4,7 @@
 ever. Its terms are copied from the admin's settings when the code is
 accepted, so a later change never breaks a promise already made.
 
-`rider_bonuses` is money owed outside trips. UNIQUE (referral_id, kind) is
+`rider_bonuses` is money owed outside trips. UNIQUE (referral_id, kind, step) is
 the guard that a reward is written once, whatever races; `payout_id` is set
 by the payout that paid it, after which the row never changes. Both are
 mirrored in migration 0091, because the test suites build from create_all.
@@ -15,9 +15,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -42,6 +43,11 @@ class RiderReferral(TimestampMixin, Base):
     joiner_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     deliveries_required: Mapped[int] = mapped_column(Integer, nullable=False)
     days_allowed: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: The milestone steps accepted with the code (v2): [{deliveries,
+    #: referrer_amount, joiner_amount}]. The columns above are their totals.
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     status: Mapped[ReferralStatus] = mapped_column(
         _enum(ReferralStatus, "rider_referral_status"),
         nullable=False,
@@ -76,8 +82,10 @@ class RiderBonus(TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("rider_payouts.id", ondelete="SET NULL"), nullable=True
     )
     earned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Which milestone step this pays (0-based).
+    step: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     __table_args__ = (
-        UniqueConstraint("referral_id", "kind", name="uq_rider_bonuses_referral_kind"),
+        UniqueConstraint("referral_id", "kind", "step", name="uq_rider_bonuses_referral_kind_step"),
         CheckConstraint("amount > 0", name="positive"),
     )

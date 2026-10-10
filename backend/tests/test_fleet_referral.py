@@ -120,7 +120,8 @@ class ReferralTests(unittest.TestCase):
             cfg = referral.load_config(db)
             self.assertEqual(
                 (cfg.enabled, cfg.referrer_amount, cfg.joiner_amount, cfg.deliveries_required, cfg.days_allowed),
-                (True, Decimal("500"), Decimal("200"), 20, 30),
+                # v2 default: two steps (10 -> 100+50, 30 -> 400+150); the v1 view is their totals.
+                (True, Decimal("500"), Decimal("200"), 30, 30),
             )
             admin = self.fdb.make_admin(db)
             referral.save_config(db, admin, {"enabled": True, "referrer_amount": "750", "joiner_amount": "0",
@@ -504,7 +505,7 @@ class ReferralTests(unittest.TestCase):
         admin = client_for(self.fdb, self.admin)
         rows = admin.get("/api/admin/riders/referrals").json()
         self.assertIn(str(b.id), [r["referred_user_id"] for r in rows])
-        self.assertEqual(admin.get("/api/admin/riders/settings/referral").json()["deliveries_required"], 20)
+        self.assertEqual(admin.get("/api/admin/riders/settings/referral").json()["deliveries_required"], 30)
         r = admin.put("/api/admin/riders/settings/referral", json={
             "enabled": True, "referrer_amount": "600", "joiner_amount": "250",
             "deliveries_required": 25, "days_allowed": 45})
