@@ -30,6 +30,7 @@ OFFER_EVENT = "rider:offer"
 OFFER_WITHDRAWN_EVENT = "rider:offer_withdrawn"
 TRIP_UPDATED_EVENT = "rider:trip_updated"
 TRIP_CANCELLED_EVENT = "rider:trip_cancelled"
+SHIFT_ENDED_EVENT = "rider:shift_ended"
 #: To the admin room: a rider moved or changed state - the live map refetches.
 RIDERS_CHANGED_EVENT = "fleet:riders_changed"
 
@@ -65,7 +66,11 @@ def _push(db: Session, rider_user_id: uuid.UUID, data: dict[str, str], *, ttl_se
 
     from app.models.rider import Rider
 
-    rider = db.get(Rider, rider_user_id)
+    try:
+        rider = db.get(Rider, rider_user_id)
+    except Exception:  # noqa: BLE001 - a push must never fail the work that sent it
+        logger.warning("Rider push could not read the device rider=%s", rider_user_id, exc_info=True)
+        return "failed"
     if rider is None or not rider.fcm_token:
         return "no_device"
     try:
@@ -136,6 +141,15 @@ def offer_made(db: Session, offer: Any) -> None:
 def offer_withdrawn(db: Session, offer: Any) -> None:
     _to_rider(OFFER_WITHDRAWN_EVENT, offer.rider_user_id, {"offer_id": str(offer.id)})
     riders_changed(offer.rider_user_id, force=True)
+
+
+def shift_ended(db: Session, rider_user_id: uuid.UUID) -> None:
+    """Taken off shift because the phone stopped answering (`riders.sweep_silent`).
+    Pushed: the app is most likely killed, and a rider who does not know waits
+    for orders that will never come."""
+
+    _to_rider(SHIFT_ENDED_EVENT, rider_user_id, {})
+    _push(db, rider_user_id, {"type": "rider_shift_ended"}, ttl_seconds=3_600)
 
 
 def application_decided(rider_user_id: uuid.UUID, status: str) -> None:
@@ -257,7 +271,8 @@ def _order_hint(delivery: Any, reason: str) -> None:
 
 
 __all__ = [
-    "OFFER_CHANNEL", "OFFER_EVENT", "OFFER_WITHDRAWN_EVENT", "TRIP_CANCELLED_EVENT", "TRIP_UPDATED_EVENT",
+    "OFFER_CHANNEL", "OFFER_EVENT", "OFFER_WITHDRAWN_EVENT", "SHIFT_ENDED_EVENT", "TRIP_CANCELLED_EVENT",
+    "TRIP_UPDATED_EVENT",
     "delivery_changed", "offer_made", "offer_withdrawn", "order_moved", "riders_changed",
-    "trip_cancelled", "trip_changed",
+    "shift_ended", "trip_cancelled", "trip_changed",
 ]

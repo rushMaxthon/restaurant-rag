@@ -10,6 +10,8 @@
 export type RiderPush =
   | { kind: 'offer'; offerId: string; expiresAt: string }
   | { kind: 'trip_cancelled'; tripId: string }
+  /** The phone stopped answering past push_minutes and the server ended the shift (`shift_ended`). */
+  | { kind: 'shift_ended' }
   /** An admin approved, sent back or rejected a self-signed-up rider (`application_decided`). */
   | { kind: 'application'; status: string };
 
@@ -29,6 +31,7 @@ export function parsePush(
   if (data.type === 'rider_trip_cancelled' && str('trip_id')) {
     return { kind: 'trip_cancelled', tripId: str('trip_id') };
   }
+  if (data.type === 'rider_shift_ended') return { kind: 'shift_ended' };
   if (data.type === 'rider_application' && str('status')) {
     return { kind: 'application', status: str('status') };
   }

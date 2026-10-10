@@ -190,6 +190,27 @@ async function showTripCancelled(tripId: string): Promise<void> {
   }
 }
 
+/** Taken off shift because the phone stopped answering - most likely the app was killed. */
+async function showShiftEnded(): Promise<void> {
+  try {
+    await channels();
+    await notifee.displayNotification({
+      id: 'rider-shift-ended',
+      title: translate('system.shiftEndedTitle'),
+      body: translate('system.shiftEndedBody'),
+      data: { type: 'rider_shift_ended' },
+      android: {
+        channelId: UPDATES_CHANNEL,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        pressAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+  } catch {
+    // ignored, as above: Home shows them offline when they open the app
+  }
+}
+
 /** An admin decided on the rider's application: worth a notification, since they are rarely looking. */
 async function showApplicationUpdate(status: string): Promise<void> {
   const body =
@@ -229,6 +250,7 @@ async function showPush(message: PushMessage): Promise<void> {
   if (push.kind === 'offer')
     await showOfferAlert(push.offerId, push.expiresAt);
   if (push.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
+  if (push.kind === 'shift_ended') await showShiftEnded();
   if (push.kind === 'application') await showApplicationUpdate(push.status);
 }
 

@@ -5641,3 +5641,55 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   admin assign during hold, expired admin offer goes back to holding,
   courier request, config). Rider `utils/ready.test.ts` (5) + claim message;
   admin `readyLine` (4).
+
+## 2026-10-10 - rider push check; "trip cancelled" push fixed
+
+- Set preparation times on the 15 real branches (owner picked "by type"):
+  bakery + Radhe Dhokla 10, Famous Fast Food + Mr. Kulcha 15, the rest 20.
+- Tested food-ready on the emulator against the LOCAL stack (8001,
+  rr_rider_dev, adb reverse 8000->8001): held 5 min, rang at ready-10 with
+  "Food ready at ...", trip screen and Home card show it too.
+- Push: offer alert with the app in the background works; FCM reaches a
+  killed app within 1-4 s. Found and fixed: the "Delivery cancelled" push
+  never went out - `trips.on_order_cancelled` sent it from `after_commit` on
+  the session that had just committed, which refuses SQL, so `_push` raised
+  reading the rider's token and the error escaped the caller's commit (a
+  cancel that had gone through reported a failure). `_tell` now uses a fresh
+  session on the same bind and `_push` can no longer raise.
+  `tests/test_fleet_push_after_commit.py` (2, red then green). Verified on the
+  emulator: "Delivery cancelled" shows.
+- Not verifiable here: the killed-app alert in a DEBUG build. The headless
+  start has to fetch a 10 MB bundle from Metro and takes 60-120 s, past the
+  30 s offer (and once gave up: "Cannot connect to Metro"). Needs a release
+  build on a phone. Note also: a killed app stops sending location, so after
+  `silent_minutes` (3) the rider is no longer offered anything - by design.
+
+## 2026-10-10 - a killed app still gets orders (owner: "if our app is kill or off we still need to send the push")
+
+- Root cause: a killed app sends no location, and after `silent_minutes` (3)
+  the rider was not offered anything and the sweep took them off shift - the
+  push to a killed app was never even sent. New `push_minutes` (15):
+  `offers.reachable` keeps a phone with an FCM token reachable that long,
+  asked after reporting phones; the sweep then ends the shift and pushes
+  `rider_shift_ended` (app: "You're offline", en/hi/gu). Admin field on Pay
+  & dispatch. `tests/test_fleet_quiet_phone.py` (12).
+- Found on the emulator and fixed: (1) eight test riders held the emulator's
+  FCM token, so one rider's push rang another's phone -> device-token now
+  clears the token from other riders (test in test_fleet_shift). (2) The
+  offer's full-screen alert could not light a locked phone: MainActivity had
+  no showWhenLocked/turnScreenOn -> taken only when started on a locked/dark
+  phone, dropped in onStop (so power-on never shows the app unlocked).
+  (3) Permission gate step 4 `fullScreen` (Android 14 full-screen
+  notifications) via BatteryModule.canUseFullScreen/openFullScreenSettings.
+- Verified on the emulator with the JS bundle inside the APK (the debug app
+  pointed at a dead Metro port; the bundle built with the API at localhost,
+  api.ts restored right after - not committed): app killed for 4m44s, the
+  sweep kept Priya on shift, the offer push arrived in 1 s, and with the
+  SCREEN OFF the phone woke straight into the app. On this overloaded
+  emulator the cold start took 11-25 s, so the 30 s offer sometimes expired
+  first and the order showed as "missed - still yours to take" on Home; a
+  real phone starts in 2-4 s. Release build on a real phone still to try.
+- Emulator restored afterwards (Metro host pref removed, adb reverse 8081
+  back, stay-awake back on, bundle file deleted - the next installDebug
+  drops it from the APK). The emulator still points 8000 -> 8001.
+

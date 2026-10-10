@@ -746,6 +746,14 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
             <input max={30} min={1} onChange={number('silent_minutes')} type="number" value={fleet.silent_minutes} />
             <small>A rider whose phone stops sending a location is taken offline.</small>
           </label>
+          <label className="field">
+            <span>Keep a closed app on shift (minutes)</span>
+            <input max={60} min={0} onChange={number('push_minutes')} type="number" value={fleet.push_minutes} />
+            <small>
+              If the app is closed, orders still reach the rider by notification for this long, after riders whose
+              phones are reporting. Then their shift ends and they are told. 0 turns this off.
+            </small>
+          </label>
         </div>
         <fieldset className="field checkbox-set rider-branches">
           <legend>

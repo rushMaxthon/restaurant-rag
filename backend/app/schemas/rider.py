@@ -210,6 +210,7 @@ class FleetConfigIn(BaseModel):
     window_minutes: int = Field(default=5, ge=1, le=30)
     radius_km: float = Field(default=6.0, ge=0.5, le=25)
     silent_minutes: int = Field(default=3, ge=1, le=30)
+    push_minutes: int = Field(default=15, ge=0, le=60)
     wave_minutes: int = Field(default=2, ge=1, le=10)
     first_wave_km: float = Field(default=2.0, ge=0.5, le=25)
     ready_lead_minutes: int = Field(default=10, ge=0, le=60)

@@ -1955,6 +1955,8 @@ export interface FleetConfig {
   window_minutes: number;
   radius_km: number;
   silent_minutes: number;
+  /** A closed app is still offered orders by push this long after its phone went quiet; 0 = off. */
+  push_minutes: number;
   /** Nearest riders first: the order reaches one ring further every this many minutes. */
   wave_minutes: number;
   /** The first ring, and how much each wave adds. */

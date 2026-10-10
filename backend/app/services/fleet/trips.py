@@ -164,13 +164,19 @@ def on_order_cancelled(db: Session, delivery: OrderDelivery) -> None:
     def _tell(session: Session) -> None:
         from app.services.fleet import notify
 
-        for offer in withdrawn:
-            notify.offer_withdrawn(session, offer)
-        if trip is not None:
-            notify.trip_cancelled(session, trip)
-            # Free again on the admin's screens; the order's own CANCELLED
-            # event already tells everyone watching the order.
-            notify.riders_changed(trip.rider_user_id, force=True)
+        # A FRESH session on the same database: the one that just committed
+        # refuses SQL inside `after_commit`, and the push has to read the
+        # rider's phone token. Passing it along lost every "trip cancelled"
+        # push and raised out of the caller's commit (found on the emulator,
+        # 2026-10-10, `test_fleet_push_after_commit`).
+        with Session(bind=session.get_bind()) as fresh:
+            for offer in withdrawn:
+                notify.offer_withdrawn(fresh, offer)
+            if trip is not None:
+                notify.trip_cancelled(fresh, trip)
+                # Free again on the admin's screens; the order's own CANCELLED
+                # event already tells everyone watching the order.
+                notify.riders_changed(trip.rider_user_id, force=True)
 
     event.listen(db, "after_commit", _tell, once=True)
 

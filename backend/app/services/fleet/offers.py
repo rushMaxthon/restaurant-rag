@@ -99,18 +99,35 @@ def _branch_point(db: Session, delivery: OrderDelivery) -> tuple[Order, float | 
     return order, lat, lng
 
 
+def reachable(fleet: FleetConfig, now: datetime):
+    """Who can hear of an order: a phone reporting within `silent_minutes`, or
+    one gone quiet - a killed app - that a push can still wake, within
+    `push_minutes`. The sweep (`riders.sweep_silent`) keeps exactly these on shift."""
+
+    fresh = Rider.last_location_at >= now - timedelta(minutes=fleet.silent_minutes)
+    if fleet.push_minutes <= fleet.silent_minutes:
+        return fresh
+    pushable = (Rider.last_location_at >= now - timedelta(minutes=fleet.push_minutes)) & (Rider.fcm_token != "")
+    return fresh | pushable
+
+
+def _quiet(rider: Rider, fleet: FleetConfig, now: datetime) -> bool:
+    seen = _aware(rider.last_location_at)
+    return now - seen > timedelta(minutes=fleet.silent_minutes)
+
+
 def candidates(
     db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datetime
 ) -> list[tuple[Rider, float]]:
-    """Online, recently seen, within the radius, not tried yet, not looking at
-    another offer - nearest first."""
+    """Online, reachable, within the radius, not tried yet, not looking at
+    another offer - riders whose phone is reporting first, nearest first; a
+    quiet phone (woken only by the push) after all of them."""
 
     _, lat, lng = _branch_point(db, delivery)
     if lat is None or lng is None:
         return []
     tried = set(db.scalars(select(RiderOffer.rider_user_id).where(RiderOffer.order_delivery_id == delivery.id)))
     busy = set(db.scalars(select(RiderOffer.rider_user_id).where(RiderOffer.outcome == OfferOutcome.PENDING)))
-    fresh_after = now - timedelta(minutes=fleet.silent_minutes)
     rows = db.scalars(
         select(Rider)
         .join(User, User.id == Rider.user_id)
@@ -120,7 +137,7 @@ def candidates(
             # rejected while online must not be offered the next order.
             Rider.onboarding == RiderOnboarding.APPROVED,
             User.is_active.is_(True),
-            Rider.last_location_at >= fresh_after,
+            reachable(fleet, now),
             Rider.last_latitude.is_not(None),
             Rider.last_longitude.is_not(None),
         )
@@ -133,7 +150,7 @@ def candidates(
         metres = haversine_m(rider.last_latitude, rider.last_longitude, lat, lng)
         if metres <= limit:
             found.append((rider, metres))
-    return sorted(found, key=lambda pair: pair[1])
+    return sorted(found, key=lambda pair: (_quiet(pair[0], fleet, now), pair[1]))
 
 
 def _aware(value: datetime) -> datetime:
@@ -197,7 +214,6 @@ def reach_m(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datet
             )
         )
     )
-    fresh_after = now - timedelta(minutes=fleet.silent_minutes)
     free = db.execute(
         select(Rider.user_id, Rider.last_latitude, Rider.last_longitude)
         .join(User, User.id == Rider.user_id)
@@ -205,7 +221,7 @@ def reach_m(db: Session, delivery: OrderDelivery, fleet: FleetConfig, now: datet
             Rider.status == RiderStatus.ONLINE,
             Rider.onboarding == RiderOnboarding.APPROVED,
             User.is_active.is_(True),
-            Rider.last_location_at >= fresh_after,
+            reachable(fleet, now),
             Rider.last_latitude.is_not(None),
             Rider.last_longitude.is_not(None),
         )

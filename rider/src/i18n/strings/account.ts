@@ -63,7 +63,7 @@ const en = {
   'account.splash.tagline': 'Deliver smiles, earn more.',
 
   // Permissions
-  'account.perm.title': 'Three quick things',
+  'account.perm.title': 'Four quick things',
   'account.perm.lead': 'The app needs these to send you orders.',
   'account.perm.location': 'Location',
   'account.perm.locationWhy':
@@ -71,6 +71,9 @@ const en = {
   'account.perm.notifications': 'Notifications',
   'account.perm.notificationsWhy':
     'A new order rings even when your screen is off, so you never miss one.',
+  'account.perm.fullScreen': 'Show orders on the lock screen',
+  'account.perm.fullScreenWhy':
+    'A new order lights up your screen even when the phone is locked in your pocket.',
   'account.perm.battery': 'Run in the background',
   'account.perm.batteryWhy':
     'Without this, your phone closes the app to save battery and orders stop reaching you.',
@@ -84,6 +87,8 @@ const en = {
   'account.perm.reasonLocation': 'Allow location to start getting orders',
   'account.perm.reasonNotifications':
     'Allow notifications to start getting orders',
+  'account.perm.reasonFullScreen':
+    'Let orders show on the lock screen to start getting orders',
   'account.perm.reasonBattery':
     'Let the app run in the background to start getting orders',
 
@@ -199,7 +204,7 @@ const hi: Translations<typeof en> = {
   'account.login.callManager': 'मैनेजर को कॉल करें',
   'account.splash.tagline': 'खुशियां पहुंचाएं, ज़्यादा कमाएं।',
 
-  'account.perm.title': 'बस तीन चीज़ें',
+  'account.perm.title': 'बस चार चीज़ें',
   'account.perm.lead': 'आपको ऑर्डर भेजने के लिए ऐप को इनकी ज़रूरत है।',
   'account.perm.location': 'लोकेशन',
   'account.perm.locationWhy':
@@ -207,6 +212,9 @@ const hi: Translations<typeof en> = {
   'account.perm.notifications': 'नोटिफिकेशन',
   'account.perm.notificationsWhy':
     'स्क्रीन बंद हो तब भी नया ऑर्डर बजेगा, ताकि कोई ऑर्डर न छूटे।',
+  'account.perm.fullScreen': 'लॉक स्क्रीन पर ऑर्डर दिखाएँ',
+  'account.perm.fullScreenWhy':
+    'फ़ोन जेब में लॉक हो तब भी नया ऑर्डर आपकी स्क्रीन जगा देगा।',
   'account.perm.battery': 'बैकग्राउंड में चलने दें',
   'account.perm.batteryWhy':
     'इसके बिना फोन बैटरी बचाने के लिए ऐप बंद कर देता है और ऑर्डर आना रुक जाते हैं।',
@@ -219,6 +227,7 @@ const hi: Translations<typeof en> = {
   'account.perm.notNow': 'अभी नहीं',
   'account.perm.reasonLocation': 'ऑर्डर पाने के लिए लोकेशन चालू करें',
   'account.perm.reasonNotifications': 'ऑर्डर पाने के लिए नोटिफिकेशन चालू करें',
+  'account.perm.reasonFullScreen': 'ऑर्डर पाने के लिए लॉक स्क्रीन पर ऑर्डर दिखाने दें',
   'account.perm.reasonBattery':
     'ऑर्डर पाने के लिए ऐप को बैकग्राउंड में चलने दें',
 
@@ -331,7 +340,7 @@ const gu: Translations<typeof en> = {
   'account.login.callManager': 'મેનેજરને કૉલ કરો',
   'account.splash.tagline': 'ખુશી પહોંચાડો, વધુ કમાઓ.',
 
-  'account.perm.title': 'બસ ત્રણ વસ્તુ',
+  'account.perm.title': 'બસ ચાર વસ્તુ',
   'account.perm.lead': 'તમને ઓર્ડર મોકલવા એપને આની જરૂર છે.',
   'account.perm.location': 'લોકેશન',
   'account.perm.locationWhy':
@@ -339,6 +348,9 @@ const gu: Translations<typeof en> = {
   'account.perm.notifications': 'નોટિફિકેશન',
   'account.perm.notificationsWhy':
     'સ્ક્રીન બંધ હોય ત્યારે પણ નવો ઓર્ડર વાગશે, જેથી એક પણ ઓર્ડર ન છૂટે.',
+  'account.perm.fullScreen': 'લૉક સ્ક્રીન પર ઓર્ડર બતાવો',
+  'account.perm.fullScreenWhy':
+    'ફોન ખિસ્સામાં લૉક હોય ત્યારે પણ નવો ઓર્ડર તમારી સ્ક્રીન ચાલુ કરશે.',
   'account.perm.battery': 'બેકગ્રાઉન્ડમાં ચાલવા દો',
   'account.perm.batteryWhy':
     'આના વગર ફોન બેટરી બચાવવા એપ બંધ કરી દે છે અને ઓર્ડર આવતા બંધ થઈ જાય છે.',
@@ -351,6 +363,7 @@ const gu: Translations<typeof en> = {
   'account.perm.notNow': 'હમણાં નહીં',
   'account.perm.reasonLocation': 'ઓર્ડર મેળવવા લોકેશન ચાલુ કરો',
   'account.perm.reasonNotifications': 'ઓર્ડર મેળવવા નોટિફિકેશન ચાલુ કરો',
+  'account.perm.reasonFullScreen': 'ઓર્ડર મેળવવા લૉક સ્ક્રીન પર ઓર્ડર બતાવવા દો',
   'account.perm.reasonBattery': 'ઓર્ડર મેળવવા એપને બેકગ્રાઉન્ડમાં ચાલવા દો',
 
   'account.intro.howItWorks': 'એપ કેવી રીતે ચાલે છે',

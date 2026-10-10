@@ -1,6 +1,6 @@
 import { firstMissing, gateReason, PERMISSION_ORDER } from './permissions';
 
-const all = { location: true, notifications: true, battery: true };
+const all = { location: true, notifications: true, fullScreen: true, battery: true };
 
 describe('the permission gate', () => {
   it('lets a rider go online only when everything is allowed', () => {
@@ -9,7 +9,7 @@ describe('the permission gate', () => {
   });
 
   it('asks for location first: no location, no orders', () => {
-    expect(firstMissing({ location: false, notifications: false, battery: false })).toBe('location');
+    expect(firstMissing({ location: false, notifications: false, fullScreen: false, battery: false })).toBe('location');
   });
 
   it('names what is still missing, in the order the screen asks', () => {
@@ -23,6 +23,13 @@ describe('the permission gate', () => {
   });
 
   it('asks in a fixed order', () => {
-    expect(PERMISSION_ORDER).toEqual(['location', 'notifications', 'battery']);
+    expect(PERMISSION_ORDER).toEqual(['location', 'notifications', 'fullScreen', 'battery']);
+  });
+
+  it('asks for full-screen alerts: without them an offer cannot wake a phone in a pocket', () => {
+    expect(firstMissing({ ...all, fullScreen: false })).toBe('fullScreen');
+    expect(gateReason({ ...all, fullScreen: false })).toBe(
+      'Let orders show on the lock screen to start getting orders',
+    );
   });
 });

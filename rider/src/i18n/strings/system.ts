@@ -16,6 +16,9 @@ const en = {
   'system.offerBody': 'Tap to see what it pays and accept it.',
   'system.testTitle': 'This is what a new order sounds like',
   'system.testBody': 'A real one shows what it pays and how far it is.',
+  'system.shiftEndedTitle': "You're offline",
+  'system.shiftEndedBody':
+    'We could not reach your phone, so your shift was ended. Open the app and go online to get orders again.',
   'system.cancelledTitle': 'Delivery cancelled',
   'system.cancelledBody':
     'The order was cancelled. Tap to see your earnings for it.',
@@ -76,6 +79,9 @@ const hi: Translations<typeof en> = {
   'system.offerBody': 'कितना मिलेगा देखने और स्वीकार करने के लिए टैप करें।',
   'system.testTitle': 'नया ऑर्डर ऐसे बजता है',
   'system.testBody': 'असली ऑर्डर में दिखेगा कितना मिलेगा और कितनी दूर है।',
+  'system.shiftEndedTitle': 'आप ऑफ़लाइन हैं',
+  'system.shiftEndedBody':
+    'आपके फ़ोन से संपर्क नहीं हो पाया, इसलिए आपकी शिफ़्ट बंद कर दी गई। ऑर्डर पाने के लिए ऐप खोलें और ऑनलाइन जाएँ।',
   'system.cancelledTitle': 'डिलीवरी कैंसल',
   'system.cancelledBody': 'ऑर्डर कैंसल हो गया। इसकी कमाई देखने के लिए टैप करें।',
   'system.channelShift': 'शिफ्ट पर',
@@ -132,6 +138,9 @@ const gu: Translations<typeof en> = {
   'system.offerBody': 'કેટલા મળશે તે જોવા અને સ્વીકારવા ટેપ કરો.',
   'system.testTitle': 'નવો ઓર્ડર આવો વાગે છે',
   'system.testBody': 'સાચા ઓર્ડરમાં દેખાશે કેટલા મળશે અને કેટલું દૂર છે.',
+  'system.shiftEndedTitle': 'તમે ઑફલાઇન છો',
+  'system.shiftEndedBody':
+    'તમારા ફોનનો સંપર્ક ન થયો, એટલે તમારી શિફ્ટ બંધ કરી. ઓર્ડર મેળવવા ઍપ ખોલો અને ઓનલાઇન જાઓ.',
   'system.cancelledTitle': 'ડિલિવરી કેન્સલ',
   'system.cancelledBody': 'ઓર્ડર કેન્સલ થયો. તેની કમાણી જોવા ટેપ કરો.',
   'system.channelShift': 'શિફ્ટ પર',

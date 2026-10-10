@@ -34,6 +34,12 @@ const ITEMS: {
     whyKey: 'account.perm.notificationsWhy',
   },
   {
+    key: 'fullScreen',
+    icon: 'phone-portrait',
+    titleKey: 'account.perm.fullScreen',
+    whyKey: 'account.perm.fullScreenWhy',
+  },
+  {
     key: 'battery',
     icon: 'battery-charging',
     titleKey: 'account.perm.battery',

@@ -17,7 +17,7 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -253,6 +253,13 @@ def history(
 @router.post("/device-token", status_code=status.HTTP_204_NO_CONTENT)
 def device_token(body: DeviceToken, user: RiderUser, db: Db) -> Response:
     rider = db.get(Rider, user.id)
+    # One phone, one rider: the last to sign in on it. Every rider who signed
+    # in on this phone before kept its token, so their offers and cancelled
+    # trips rang for whoever held the phone now (found on the emulator,
+    # 2026-10-10, `test_a_phone_belongs_to_the_last_rider_who_signed_in_on_it`).
+    db.execute(
+        update(Rider).where(Rider.fcm_token == body.token, Rider.user_id != user.id).values(fcm_token="")
+    )
     rider.fcm_token = body.token
     if body.app_version:
         rider.app_version = body.app_version

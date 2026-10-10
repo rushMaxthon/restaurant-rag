@@ -44,6 +44,12 @@ class FleetConfig:
     radius_km: float = 6.0
     #: No location for this long and a rider is no longer "online".
     silent_minutes: int = 3
+    #: A killed app (the owner's rule, 2026-10-10): sends no location, but a
+    #: push still wakes it. A rider on shift whose phone has a push token stays
+    #: reachable this long after it went quiet - asked after every rider whose
+    #: phone IS reporting - and only then is taken off shift, with a push
+    #: saying so. 0 = the old rule (`silent_minutes` for everyone).
+    push_minutes: int = 15
     #: Waves (the owner's rule, 2026-10-09): an order is shown to the riders
     #: nearest the restaurant first - within `first_wave_km` - and every
     #: `wave_minutes` nobody takes it, it reaches one ring further out, up to
@@ -167,6 +173,7 @@ def validate_fleet(data: dict[str, Any]) -> FleetConfig:
         window_minutes=_whole(data, "window_minutes", 1, 30, base.window_minutes),
         radius_km=radius,
         silent_minutes=_whole(data, "silent_minutes", 1, 30, base.silent_minutes),
+        push_minutes=_whole(data, "push_minutes", 0, 60, base.push_minutes),
         wave_minutes=_whole(data, "wave_minutes", 1, 10, base.wave_minutes),
         first_wave_km=first_wave,
         ready_lead_minutes=_whole(data, "ready_lead_minutes", 0, 60, base.ready_lead_minutes),

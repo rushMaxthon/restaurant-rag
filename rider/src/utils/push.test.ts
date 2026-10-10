@@ -56,3 +56,11 @@ describe('offerAlertMs', () => {
     expect(offerAlertMs('not a date', now)).toBeNull();
   });
 });
+
+describe('shift ended (notify.shift_ended)', () => {
+  it('reads the push sent when a quiet phone is taken off shift, and opens Home', () => {
+    const push = parsePush({ type: 'rider_shift_ended' });
+    expect(push).toEqual({ kind: 'shift_ended' });
+    expect(screenFor(push!)).toBe('Home');
+  });
+});

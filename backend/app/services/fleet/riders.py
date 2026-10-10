@@ -311,22 +311,35 @@ def record_locations(db: Session, user: User, fixes: list[LocationFix]) -> Rider
 
 
 def sweep_silent(db: Session, now: datetime | None = None) -> dict[str, Any]:
-    """Riders who stopped reporting: off shift if idle, an alert if on a trip."""
+    """Riders who stopped reporting: off shift if idle, an alert if on a trip.
+
+    An idle rider whose phone a push can still wake - a killed app - is left on
+    shift for `push_minutes`, because offers still reach them
+    (`offers.reachable`, the same rule); only after that are they taken off,
+    and told by push, or they would wait all evening for orders that never come.
+    """
 
     from app.services.fleet.config import load_fleet
+    from app.services.fleet.offers import reachable
 
     now = now or _now()
-    cutoff = now - timedelta(minutes=load_fleet(db).silent_minutes)
+    fleet = load_fleet(db)
+    cutoff = now - timedelta(minutes=fleet.silent_minutes)
     silent = db.scalars(
         select(Rider).where(
             Rider.status != RiderStatus.OFFLINE,
             (Rider.last_location_at.is_(None)) | (Rider.last_location_at < cutoff),
         )
     ).all()
+    still_reachable = set(
+        db.scalars(select(Rider.user_id).where(Rider.status == RiderStatus.ONLINE, reachable(fleet, now)))
+    )
     offline, alerts, released, taken_off = 0, [], [], []
     for rider in silent:
         if rider.status == RiderStatus.ON_TRIP:
             alerts.append(str(rider.user_id))
+            continue
+        if rider.user_id in still_reachable:
             continue
         released += go_offline(db, rider.user_id, "no location for too long")
         taken_off.append(rider.user_id)
@@ -337,6 +350,7 @@ def sweep_silent(db: Session, now: datetime | None = None) -> dict[str, Any]:
 
     for rider_user_id in taken_off:
         notify.riders_changed(rider_user_id, force=True)
+        notify.shift_ended(db, rider_user_id)
     return {"offline": offline, "alerts": alerts}
 
 

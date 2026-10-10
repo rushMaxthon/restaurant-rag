@@ -784,6 +784,27 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   `hooks/useReadyLabel`); the admin map list shows ready time and when
   riders get it; Pidge's `promised_prep_time` is the real ready time.
 
+- **A killed app still gets orders (2026-10-10, the owner's rule).** A killed
+  app sends no location; before this, after `silent_minutes` (3) the rider
+  was no longer offered anything and the sweep took them off shift, so the
+  push that wakes a killed app was never sent. Now `offers.reachable` = a
+  phone reporting within `silent_minutes`, OR one with an FCM token seen
+  within `push_minutes` (15, Pay & dispatch; 0 = the old rule). Candidates,
+  `reach_m` and `riders.sweep_silent` all use it; quiet phones are asked
+  after every reporting phone. Past `push_minutes` the sweep ends the shift
+  and pushes `rider_shift_ended` ("You're offline"). Three fixes found on the
+  emulator the same day: the "trip cancelled" push never went out (sent from
+  `after_commit` on a session that refuses SQL - `trips._tell` now uses a
+  fresh session, `_push` never raises); a phone's token stayed on every
+  rider who ever signed in on it (`/rider/device-token` now clears it from
+  the others); and the offer's full-screen alert could not wake a locked
+  phone - `MainActivity` takes `showWhenLocked`/`turnScreenOn` only when
+  started on a locked/dark phone and drops them in `onStop`, and the
+  permission gate has a 4th step, `fullScreen` (Android 14's
+  "full-screen notifications", `BatteryModule.canUseFullScreen`). A DEBUG
+  build cannot show the killed-app alert in time: its headless start
+  fetches the bundle from Metro (60-120 s); test with the bundle in the APK.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

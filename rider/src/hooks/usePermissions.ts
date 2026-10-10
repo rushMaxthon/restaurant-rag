@@ -9,8 +9,22 @@ export type { PermissionKey, PermissionState } from '@utils/permissions';
 const ANDROID_13 = 33;
 
 /** Native (BatteryModule.kt); absent on an older install, so Notifee is the fallback. */
-const battery: { isUnrestricted(): Promise<boolean>; requestUnrestricted(): Promise<boolean> } | undefined =
-  NativeModules.RiderBattery;
+const battery:
+  | {
+      isUnrestricted(): Promise<boolean>;
+      requestUnrestricted(): Promise<boolean>;
+      canUseFullScreen?(): Promise<boolean>;
+      openFullScreenSettings?(): Promise<boolean>;
+    }
+  | undefined = NativeModules.RiderBattery;
+
+async function fullScreenAllowed(): Promise<boolean> {
+  try {
+    if (battery?.canUseFullScreen) return await battery.canUseFullScreen();
+  } catch {}
+  // Unknown is not a reason to lock a rider out of work.
+  return true;
+}
 
 async function batteryUnrestricted(): Promise<boolean> {
   try {
@@ -23,13 +37,18 @@ async function batteryUnrestricted(): Promise<boolean> {
 }
 
 async function check(): Promise<PermissionState> {
-  if (Platform.OS !== 'android') return { location: true, notifications: true, battery: true };
+  if (Platform.OS !== 'android') return { location: true, notifications: true, fullScreen: true, battery: true };
   const location = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
   const notifications =
     Number(Platform.Version) < ANDROID_13
       ? true
       : await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-  return { location, notifications, battery: await batteryUnrestricted() };
+  return {
+    location,
+    notifications,
+    fullScreen: await fullScreenAllowed(),
+    battery: await batteryUnrestricted(),
+  };
 }
 
 /**
@@ -56,6 +75,14 @@ export function usePermissions() {
   const request = useCallback(
     async (key: PermissionKey) => {
       if (Platform.OS !== 'android') return true;
+      if (key === 'fullScreen') {
+        // Android 14's own settings page for this one app; read again on return.
+        const opened = battery?.openFullScreenSettings
+          ? await battery.openFullScreenSettings().catch(() => false)
+          : false;
+        if (!opened) await Linking.openSettings();
+        return false;
+      }
       if (key === 'battery') {
         // A system dialog; the answer is read when the app comes back.
         const asked = battery ? await battery.requestUnrestricted().catch(() => false) : false;

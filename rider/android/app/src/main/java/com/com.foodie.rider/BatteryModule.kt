@@ -1,8 +1,10 @@
 package com.foodie.rider
 
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import com.facebook.react.bridge.Promise
@@ -26,6 +28,38 @@ class BatteryModule(private val context: ReactApplicationContext) : ReactContext
   fun isUnrestricted(promise: Promise) {
     val power = context.getSystemService(PowerManager::class.java)
     promise.resolve(power?.isIgnoringBatteryOptimizations(context.packageName) ?: true)
+  }
+
+  /**
+   * Android 14 stopped granting full-screen notifications to apps that are not
+   * a phone or an alarm clock. Without it an offer cannot light up a locked
+   * phone - it arrives as a quiet line in the shade. Older Android: always.
+   */
+  @ReactMethod
+  fun canUseFullScreen(promise: Promise) {
+    if (Build.VERSION.SDK_INT < 34) {
+      promise.resolve(true)
+      return
+    }
+    val manager = context.getSystemService(NotificationManager::class.java)
+    promise.resolve(manager?.canUseFullScreenIntent() ?: true)
+  }
+
+  @ReactMethod
+  fun openFullScreenSettings(promise: Promise) {
+    if (Build.VERSION.SDK_INT < 34) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+        .setData(Uri.parse("package:${context.packageName}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(intent)
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.resolve(false)
+    }
   }
 
   @SuppressLint("BatteryLife")

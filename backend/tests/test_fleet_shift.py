@@ -144,6 +144,19 @@ class ShiftTests(unittest.TestCase):
         with self.fdb.session() as db:
             self.assertEqual(db.get(Rider, user.id).app_version, "1.0.0")
 
+    def test_a_phone_belongs_to_the_last_rider_who_signed_in_on_it(self) -> None:
+        # Found on the emulator (2026-10-10): eight test riders had signed in on
+        # one phone and all still held its token, so a push for any of them -
+        # an offer, a cancelled trip - rang for whoever held the phone now.
+        before, now = self._rider(), self._rider()
+        token = "shared-device-" + "x" * 30
+        client_for(self.fdb, before).post("/api/rider/device-token", json={"token": token})
+        r = client_for(self.fdb, now).post("/api/rider/device-token", json={"token": token})
+        self.assertEqual(r.status_code, 204, r.text)
+        with self.fdb.session() as db:
+            self.assertEqual(db.get(Rider, now.id).fcm_token, token)
+            self.assertEqual(db.get(Rider, before.id).fcm_token, "")
+
     def test_sweep_takes_silent_rider_offline_but_not_one_on_a_trip(self) -> None:
         stale = datetime.now(UTC) - timedelta(minutes=10)
         idle = self._rider(seen_at=stale)
