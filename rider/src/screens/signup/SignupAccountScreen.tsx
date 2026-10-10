@@ -26,6 +26,7 @@ export function SignupAccountScreen() {
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<{
     name?: string;
@@ -61,6 +62,7 @@ export function SignupAccountScreen() {
         code: params.code,
         password,
         full_name: fullName,
+        referral_code: referralCode.trim() || undefined,
       });
       // Before signing in, so the app opens on the application and not on
       // tabs that would vanish a second later when /rider/me answers.
@@ -146,6 +148,18 @@ export function SignupAccountScreen() {
         autoComplete="new-password"
         returnKeyType="go"
         placeholder={t('onboarding.account.confirmPlaceholder')}
+        onSubmitEditing={create}
+      />
+      <TextField
+        label={t('referral.codeLabel')}
+        icon="gift-outline"
+        value={referralCode}
+        onChangeText={setReferralCode}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        maxLength={16}
+        returnKeyType="go"
+        placeholder={t('referral.codePlaceholder')}
         onSubmitEditing={create}
       />
       {taken ? (

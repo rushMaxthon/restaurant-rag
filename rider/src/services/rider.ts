@@ -10,6 +10,7 @@ import type {
   Offer,
   OpenOrder,
   Payout,
+  RiderReferral,
   RiderMe,
   Trip,
   TripAction,
@@ -47,6 +48,8 @@ export function signup(body: {
   code: string;
   password: string;
   full_name: string;
+  /** Optional: the code of the rider who referred them. */
+  referral_code?: string;
 }) {
   return request<LoginResponse>('/rider/signup', { method: 'POST', body });
 }
@@ -68,8 +71,15 @@ export function checkResetCode(phone: string, code: string) {
 }
 
 /** The new password; answers like /auth/login, so the rider is signed straight in. */
-export function resetPassword(body: { phone_number: string; code: string; password: string }) {
-  return request<LoginResponse>('/rider/password/reset', { method: 'POST', body });
+export function resetPassword(body: {
+  phone_number: string;
+  code: string;
+  password: string;
+}) {
+  return request<LoginResponse>('/rider/password/reset', {
+    method: 'POST',
+    body,
+  });
 }
 
 export const riderApi = (token: string) => ({
@@ -117,6 +127,13 @@ export const riderApi = (token: string) => ({
   earnings: (days = 7) =>
     request<Earnings>(`/rider/earnings?days=${days}`, { token }),
   payouts: () => request<Payout[]>('/rider/payouts', { token }),
+  referral: () => request<RiderReferral>('/rider/referral', { token }),
+  addReferralCode: (code: string) =>
+    request<RiderReferral>('/rider/referral/code', {
+      method: 'POST',
+      body: { code },
+      token,
+    }),
   // The rider's own application (a self-signed-up rider, until approved).
   application: () => request<ApplicationView>('/rider/application', { token }),
   saveSection: (section: SectionKey, body: Record<string, unknown>) =>

@@ -45,6 +45,7 @@ export type RootStackParamList = {
   Trip: undefined;
   Delivered: { amount: string | null; orderCode: string };
   TripDetail: { trip: Trip };
+  Referral: undefined;
   Gallery: undefined;
 };
 

@@ -43,6 +43,12 @@ const SENTENCES: Record<string, Key> = {
   too_early: 'system.errTooEarly',
   on_trip: 'system.errOnTrip',
   trip_ended: 'system.errTripEnded',
+  // Refer & earn (`fleet/referral.py`)
+  referral_unknown: 'referral.errUnknown',
+  referral_self: 'referral.errSelf',
+  referral_inactive: 'referral.errInactive',
+  referral_taken: 'referral.errTaken',
+  referral_closed: 'referral.errClosed',
   // Sign-up and the application: the same table the step forms use.
   ...ONBOARDING_ERRORS,
 };

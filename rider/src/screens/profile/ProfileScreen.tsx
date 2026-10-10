@@ -178,6 +178,11 @@ export function ProfileScreen() {
         </Group>
         <Group title={t('account.profile.guide')}>
           <GroupRow
+            icon="gift-outline"
+            label={t('referral.title')}
+            onPress={() => nav.navigate('Referral')}
+          />
+          <GroupRow
             icon="book-outline"
             label={t('account.profile.howItWorks')}
             onPress={() => nav.navigate('Intro', { replay: true })}

@@ -4,6 +4,7 @@ import confirm from './confirm';
 import home from './home';
 import money from './money';
 import onboarding from './onboarding';
+import referral from './referral';
 import reset from './reset';
 import system from './system';
 import trip from './trip';
@@ -19,8 +20,20 @@ import trip from './trip';
  * - system: notifications, the shift service, errors from the network
  * - onboarding: sign-up, the application steps and its status screen
  * - reset: forgot password
+ * - referral: Refer & earn, the joining bonus, the code at sign-up
  */
-const areas = [common, confirm, home, trip, money, account, system, onboarding, reset] as const;
+const areas = [
+  common,
+  confirm,
+  home,
+  trip,
+  money,
+  account,
+  system,
+  onboarding,
+  reset,
+  referral,
+] as const;
 
 type Area = (typeof areas)[number];
 type Merge<U> = (U extends unknown ? (x: U) => void : never) extends (

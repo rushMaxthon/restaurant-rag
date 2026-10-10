@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { HomeInsights } from '@components/HomeInsights';
+import { JoiningBonusCard } from '@components/JoiningBonusCard';
 import { NearbyOrders } from '@components/home/NearbyOrders';
 import { ShiftCard } from '@components/home/ShiftCard';
 import { useLocationError } from '@components/ShiftKeeper';
@@ -198,6 +199,7 @@ export function HomeScreen() {
       </Animated.View>
 
       {/* The week so far and what a delivery pays: useful between orders. */}
+      {!trip ? <JoiningBonusCard /> : null}
       {!trip ? <HomeInsights /> : null}
 
       {/* Status notes */}

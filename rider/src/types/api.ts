@@ -90,7 +90,11 @@ export type PhotoKind =
   | 'LICENCE_BACK'
   | 'BANK_PROOF';
 
-export type ItemKind = PhotoKind | 'PERSONAL' | 'VEHICLE_DETAILS' | 'BANK_DETAILS';
+export type ItemKind =
+  | PhotoKind
+  | 'PERSONAL'
+  | 'VEHICLE_DETAILS'
+  | 'BANK_DETAILS';
 
 export type ApplicationItem = {
   kind: ItemKind;
@@ -229,6 +233,8 @@ export type Earnings = {
   unpaid: string;
   paid_total: string;
   days: EarningDay[];
+  /** Referral bonuses earned in the period (`fleet/referral.py`). */
+  bonuses?: { amount: string; kind: string; earned_at: string }[];
 };
 
 /** A payment the admin recorded against this rider's trips (bank transfer, outside the app). */
@@ -247,4 +253,38 @@ export type LocationFix = {
   lng: number;
   accuracy_m?: number | null;
   at: string;
+};
+
+export type ReferralStatus =
+  | 'WAITING'
+  | 'IN_PROGRESS'
+  | 'EARNED'
+  | 'EXPIRED'
+  | 'CANCELLED';
+
+/** One referral's progress (backend `ReferralProgress`). */
+export type ReferralProgress = {
+  name: string;
+  status: ReferralStatus;
+  delivered: number;
+  required: number;
+  deadline: string | null;
+  amount: string;
+};
+
+/** Refer & earn (backend `RiderReferralView`). */
+export type RiderReferral = {
+  /** Null until the rider is approved. */
+  code: string | null;
+  enabled: boolean;
+  terms: {
+    referrer_amount: string;
+    joiner_amount: string;
+    deliveries_required: number;
+    days_allowed: number;
+  };
+  earned_total: string;
+  referrals: ReferralProgress[];
+  /** This rider's own referral, when they joined with a code. */
+  joined_with: ReferralProgress | null;
 };

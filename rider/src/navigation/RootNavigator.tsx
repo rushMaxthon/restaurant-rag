@@ -12,6 +12,7 @@ import { LoginScreen } from '@screens/auth/LoginScreen';
 import { EarningsScreen } from '@screens/earnings/EarningsScreen';
 import { HistoryScreen } from '@screens/history/HistoryScreen';
 import { TripDetailScreen } from '@screens/history/TripDetailScreen';
+import { ReferralScreen } from '@screens/profile/ReferralScreen';
 import { HomeScreen } from '@screens/home/HomeScreen';
 import { OfferScreen } from '@screens/offer/OfferScreen';
 import { OrdersScreen } from '@screens/orders/OrdersScreen';
@@ -55,6 +56,7 @@ const Bounded = {
   HomeScreen: withBoundary(HomeScreen),
   IntroScreen: withBoundary(IntroScreen),
   TripDetailScreen: withBoundary(TripDetailScreen),
+  ReferralScreen: withBoundary(ReferralScreen),
   OfferScreen: withBoundary(OfferScreen),
   OrdersScreen: withBoundary(OrdersScreen),
   PermissionsScreen: withBoundary(PermissionsScreen),
@@ -126,7 +128,9 @@ function SignedInGate() {
   const { me, loading } = useRider();
   const { colors } = useTheme();
   // undefined: not read yet. The read is one AsyncStorage get.
-  const [remembered, setRemembered] = useState<RiderOnboarding | null | undefined>(undefined);
+  const [remembered, setRemembered] = useState<
+    RiderOnboarding | null | undefined
+  >(undefined);
   useEffect(() => {
     let alive = true;
     loadOnboarding().then(value => alive && setRemembered(value));
@@ -134,7 +138,8 @@ function SignedInGate() {
       alive = false;
     };
   }, []);
-  const gate = remembered === undefined ? 'wait' : gateFor(me, remembered, loading);
+  const gate =
+    remembered === undefined ? 'wait' : gateFor(me, remembered, loading);
 
   if (gate === 'wait')
     return <View style={[styles.fill, { backgroundColor: colors.bg }]} />;
@@ -164,9 +169,18 @@ function OnboardingStack() {
       initialRouteName="OnboardingHome"
       screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
     >
-      <Stack.Screen name="OnboardingHome" component={Bounded.OnboardingHomeScreen} />
-      <Stack.Screen name="ApplicationStep" component={Bounded.ApplicationStepScreen} />
-      <Stack.Screen name="ApplicationReview" component={Bounded.ApplicationReviewScreen} />
+      <Stack.Screen
+        name="OnboardingHome"
+        component={Bounded.OnboardingHomeScreen}
+      />
+      <Stack.Screen
+        name="ApplicationStep"
+        component={Bounded.ApplicationStepScreen}
+      />
+      <Stack.Screen
+        name="ApplicationReview"
+        component={Bounded.ApplicationReviewScreen}
+      />
     </Stack.Navigator>
   );
 }
@@ -200,6 +214,7 @@ function SignedInStack() {
       />
       <Stack.Screen name="Trip" component={Bounded.TripScreen} />
       <Stack.Screen name="TripDetail" component={Bounded.TripDetailScreen} />
+      <Stack.Screen name="Referral" component={Bounded.ReferralScreen} />
       <Stack.Screen
         name="Permissions"
         component={Bounded.PermissionsScreen}

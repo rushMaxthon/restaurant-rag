@@ -21,6 +21,7 @@ import { AnimatedAmount } from '@components/ui/AnimatedAmount';
 import { AppText } from '@components/ui/AppText';
 import { Card } from '@components/ui/Card';
 import { Icon } from '@components/ui/Icon';
+import { JoiningBonusCard } from '@components/JoiningBonusCard';
 import { Screen } from '@components/ui/Screen';
 import { Segmented } from '@components/ui/Segmented';
 import { Skeleton } from '@components/ui/Skeleton';
@@ -40,7 +41,7 @@ import {
   showsChart,
   type PeriodKey,
 } from '@utils/earningsPeriod';
-import { monthName, rupees, weekday } from '@utils/format';
+import { dayLabel, monthName, rupees, weekday } from '@utils/format';
 import { dateLabel } from '@utils/history';
 
 const CHART_HEIGHT = 90;
@@ -102,6 +103,15 @@ function localDate(iso: string): string {
  * and every payment that has reached me - the record a rider checks their
  * bank statement against.
  */
+/** "2026-10-10" for a timestamp, on the phone's own calendar. */
+function localDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    '0',
+  )}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function EarningsScreen() {
   const { colors } = useTheme();
   const { t, plural } = useI18n();
@@ -207,9 +217,18 @@ export function EarningsScreen() {
               </LinearGradient>
             </Defs>
             <Rect x="0" y="0" width="100" height="100" fill="url(#earn)" />
-            <Circle cx="92" cy="8" r="38" fill={colors.onPrimary} opacity={0.08} />
+            <Circle
+              cx="92"
+              cy="8"
+              r="38"
+              fill={colors.onPrimary}
+              opacity={0.08}
+            />
           </Svg>
-          <AppText variant="micro" style={[styles.heroLabel, { color: colors.onPrimary }]}>
+          <AppText
+            variant="micro"
+            style={[styles.heroLabel, { color: colors.onPrimary }]}
+          >
             {period.heroLabel}
           </AppText>
           {data ? (
@@ -257,7 +276,9 @@ export function EarningsScreen() {
               onPress={e => {
                 const n = data?.days.length ?? 0;
                 if (n === 0 || chartWidth === 0) return;
-                const i = Math.floor((e.nativeEvent.locationX / chartWidth) * n);
+                const i = Math.floor(
+                  (e.nativeEvent.locationX / chartWidth) * n,
+                );
                 setPicked(Math.max(0, Math.min(n - 1, i)));
               }}
               accessibilityRole="adjustable"
@@ -339,6 +360,27 @@ export function EarningsScreen() {
         </Card>
       </Animated.View>
 
+      <JoiningBonusCard />
+
+      {data?.bonuses?.length ? (
+        <Card style={styles.payments}>
+          {data.bonuses.map((b, i) => (
+            <View key={`${b.earned_at}-${i}`} style={styles.bonusRow}>
+              <Icon name="gift-outline" size={18} color={colors.success} />
+              <View style={styles.bonusText}>
+                <AppText variant="bodyStrong">{t('referral.bonus')}</AppText>
+                <AppText variant="caption" tone="muted">
+                  {dayLabel(localDay(b.earned_at))}
+                </AppText>
+              </View>
+              <AppText variant="bodyStrong" tone="success">
+                {rupees(b.amount)}
+              </AppText>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       {/* Payments received */}
       <Animated.View
         entering={FadeInDown.delay(240).duration(motion.base)}
@@ -417,7 +459,6 @@ export function EarningsScreen() {
           {t('money.rateInfo')}
         </AppText>
       </Card>
-
     </Screen>
   );
 }
@@ -461,6 +502,8 @@ const styles = StyleSheet.create({
   gapXs: { marginTop: space.xs },
   half: { flex: 1 },
   payments: { gap: space.md },
+  bonusRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  bonusText: { flex: 1 },
   paymentsHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   emptyPay: { padding: space.md, borderRadius: radius.md, gap: space.xxs },
   payRow: {
@@ -474,4 +517,3 @@ const styles = StyleSheet.create({
   info: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
   gapSm: { marginTop: space.sm },
 });
-

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@components/ui/ConfirmDialog';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -11,6 +11,8 @@ import { BrandMark } from '@components/ui/BrandMark';
 import { Button } from '@components/ui/Button';
 import { Card } from '@components/ui/Card';
 import { Group, GroupRow } from '@components/ui/Group';
+import { Sheet } from '@components/ui/Sheet';
+import { TextField } from '@components/ui/TextField';
 import { Screen } from '@components/ui/Screen';
 import { Skeleton } from '@components/ui/Skeleton';
 import { SUPPORT_PHONE } from '@/config/api';
@@ -18,12 +20,13 @@ import { useI18n } from '@/i18n';
 import { useNav } from '@navigation/types';
 import { useApplication } from '@/store/ApplicationProvider';
 import { useRider } from '@/store/RiderProvider';
-import { useSession, useSignedInUser } from '@/store/SessionProvider';
+import { useApi, useSession, useSignedInUser } from '@/store/SessionProvider';
 import type { ApplicationView } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
 import { monthName } from '@utils/format';
 import { call } from '@utils/links';
+import { normaliseCode } from '@utils/referral';
 import {
   firstIncompleteStep,
   itemState,
@@ -112,6 +115,7 @@ export function OnboardingHomeScreen() {
       )}
 
       <Group title={t('onboarding.home.help')}>
+        {view && view.status !== 'APPROVED' ? <ReferralCodeRow /> : null}
         <GroupRow
           icon="headset-outline"
           label={t('onboarding.home.callSupport')}
@@ -147,6 +151,89 @@ export function OnboardingHomeScreen() {
 function shortDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getDate()} ${monthName(d.getMonth() + 1)}`;
+}
+
+/**
+ * "Have a referral code?" while the application is open - only for a rider
+ * who joined without one (`fleet/referral.py accept_code`). A code once
+ * accepted is final, so the row goes away.
+ */
+function ReferralCodeRow() {
+  const api = useApi();
+  const { t } = useI18n();
+  const [hasReferrer, setHasReferrer] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    api
+      .referral()
+      .then(r => setHasReferrer(r.joined_with !== null))
+      .catch(() => setHasReferrer(true));
+  }, [api]);
+
+  const add = async () => {
+    if (!code.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addReferralCode(normaliseCode(code));
+      setDone(true);
+      setOpen(false);
+      setHasReferrer(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('referral.errUnknown'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <GroupRow icon="checkmark-circle-outline" label={t('referral.added')} />
+    );
+  }
+  if (hasReferrer !== false) return null;
+  return (
+    <>
+      <GroupRow
+        icon="gift-outline"
+        label={t('referral.haveCode')}
+        onPress={() => setOpen(true)}
+      />
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={t('referral.haveCode')}
+      >
+        <TextField
+          label={t('referral.codeLabel')}
+          icon="gift-outline"
+          value={code}
+          onChangeText={v => {
+            setError(null);
+            setCode(v);
+          }}
+          error={error}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={16}
+          placeholder={t('referral.codePlaceholder')}
+          returnKeyType="done"
+          onSubmitEditing={add}
+        />
+        <Button
+          label={t('referral.add')}
+          icon="checkmark"
+          loading={busy}
+          onPress={add}
+        />
+      </Sheet>
+    </>
+  );
 }
 
 /** A picture for where the application is; none for a rejected one. */
