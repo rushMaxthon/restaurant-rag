@@ -217,6 +217,153 @@ class ReferralTests(unittest.TestCase):
             db.flush()
             self.assertEqual(refused(c.id, code), "referral_inactive")
 
+    # Task 4 ------------------------------------------------------------------
+
+    def _pair(self, db, **terms):
+        """An approved referrer and a referred rider whose code was accepted, then approved."""
+
+        from app.services.fleet import referral
+
+        if terms:
+            admin = self.fdb.make_admin(db)
+            referral.save_config(db, admin, terms)
+        a = self._rider(db, name="Priya")
+        b = self._rider(db, name="New", onboarding=RiderOnboarding.PENDING)
+        referral.accept_code(db, b.id, referral.ensure_code(db, a.id))
+        db.get(Rider, b.id).onboarding = RiderOnboarding.APPROVED
+        referral.on_approved(db, b.id)
+        db.commit()
+        return a, b
+
+    def _delivered(self, db, rider_id, *, at=None, reason=TripEndReason.DELIVERED):
+        order = self.fdb.make_order(db)
+        delivery = self.fdb.make_fleet_delivery(db, order, state="DELIVERED")
+        at = at or datetime.now(UTC)
+        db.add(RiderTrip(order_delivery_id=delivery.id, rider_user_id=rider_id, accepted_at=at,
+                         ended_at=at, end_reason=reason, earning_amount=Decimal("30")))
+        db.flush()
+
+    def test_approval_starts_the_clock(self) -> None:
+        with self.fdb.session() as db:
+            _, b = self._pair(db)
+            ref = db.get(RiderReferral, b.id)
+            self.assertEqual(ref.status, ReferralStatus.IN_PROGRESS)
+            self.assertAlmostEqual((ref.deadline - ref.approved_at).total_seconds(), 30 * 86400, delta=1)
+            self.assertIsNotNone(db.get(Rider, b.id).referral_code)
+
+    def test_earned_exactly_at_n_and_both_paid(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a, b = self._pair(db, deliveries_required=3, referrer_amount="500", joiner_amount="200")
+            self._delivered(db, b.id, reason=TripEndReason.CUSTOMER_UNAVAILABLE)
+            self._delivered(db, b.id, reason=TripEndReason.CANCELLED_AFTER_PICKUP)
+            for _ in range(2):
+                self._delivered(db, b.id)
+                self.assertFalse(referral.on_delivered(db, b.id))
+            self._delivered(db, b.id)
+            self.assertTrue(referral.on_delivered(db, b.id))
+            db.commit()
+            bonuses = {x.kind: (x.rider_user_id, x.amount) for x in db.scalars(select(RiderBonus))
+                       if x.referral_id == b.id}
+            self.assertEqual(bonuses, {
+                RiderBonusKind.REFERRAL_REFERRER: (a.id, Decimal("500.00")),
+                RiderBonusKind.REFERRAL_JOINER: (b.id, Decimal("200.00")),
+            })
+            self.assertEqual(db.get(RiderReferral, b.id).status, ReferralStatus.EARNED)
+
+    def test_earning_twice_pays_once(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1)
+            self._delivered(db, b.id)
+            self.assertTrue(referral.on_delivered(db, b.id))
+            self.assertFalse(referral.on_delivered(db, b.id))
+            # A racing writer that slipped past the status check still cannot add a second row.
+            ref = db.get(RiderReferral, b.id)
+            ref.status = ReferralStatus.IN_PROGRESS
+            db.flush()
+            self.assertFalse(referral.on_delivered(db, b.id))
+            db.commit()
+            rows = [x for x in db.scalars(select(RiderBonus)) if x.referral_id == b.id]
+            self.assertEqual(len(rows), 2)
+
+    def test_zero_amount_writes_no_row(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1, joiner_amount="0")
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+            kinds = [x.kind for x in db.scalars(select(RiderBonus)) if x.referral_id == b.id]
+            self.assertEqual(kinds, [RiderBonusKind.REFERRAL_REFERRER])
+
+    def test_after_the_deadline_nothing_counts_and_it_expires(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1, days_allowed=1)
+            ref = db.get(RiderReferral, b.id)
+            later = ref.deadline + timedelta(hours=1)
+            self._delivered(db, b.id, at=later)
+            self.assertFalse(referral.on_delivered(db, b.id, now=later))
+            referral.refresh_status(db, ref, now=later)
+            db.commit()
+            self.assertEqual(db.get(RiderReferral, b.id).status, ReferralStatus.EXPIRED)
+
+    def test_a_delivery_before_approval_does_not_count(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1)
+            ref = db.get(RiderReferral, b.id)
+            self._delivered(db, b.id, at=ref.approved_at - timedelta(hours=1))
+            self.assertEqual(referral.delivered_count(db, ref), 0)
+
+    def test_programme_off_blocks_new_codes_and_earning(self) -> None:
+        from fastapi import HTTPException
+
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a, b = self._pair(db, deliveries_required=1)
+            a2, b2 = self._pair(db, deliveries_required=1)
+            self._delivered(db, b2.id)
+            referral.on_delivered(db, b2.id)  # earned while on
+            admin = self.fdb.make_admin(db)
+            referral.save_config(db, admin, {"enabled": False})
+            self._delivered(db, b.id)
+            self.assertFalse(referral.on_delivered(db, b.id))
+            c = self._rider(db, name="Late", onboarding=RiderOnboarding.PENDING)
+            with self.assertRaises(HTTPException) as caught:
+                referral.accept_code(db, c.id, referral.ensure_code(db, a.id))
+            self.assertEqual(caught.exception.detail, "referral_closed")
+            db.commit()
+            earned = [x for x in db.scalars(select(RiderBonus)) if x.referral_id == b2.id]
+            self.assertEqual(len(earned), 2)  # untouched
+
+    def test_cancel(self) -> None:
+        from fastapi import HTTPException
+
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            admin = self.fdb.make_admin(db)
+            _, b = self._pair(db, deliveries_required=1)
+            with self.assertRaises(HTTPException):
+                referral.cancel(db, admin, b.id, "  ")
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+            ref = referral.cancel(db, admin, b.id, "Same person, two phones")
+            self.assertEqual(ref.status, ReferralStatus.CANCELLED)
+            self.assertEqual([x for x in db.scalars(select(RiderBonus)) if x.referral_id == b.id], [])
+            with self.assertRaises(HTTPException) as caught:
+                referral.cancel(db, admin, b.id, "again")
+            self.assertEqual(caught.exception.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

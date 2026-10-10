@@ -19,16 +19,18 @@ import re
 import secrets
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.enums import ReferralStatus, RiderOnboarding
-from app.models.rider import Rider
-from app.models.rider_referral import RiderReferral
+from app.models.enums import ReferralStatus, RiderBonusKind, RiderOnboarding, TripEndReason
+from app.models.rider import Rider, RiderTrip
+from app.models.rider_referral import RiderBonus, RiderReferral
 from app.models.user import User
 from app.services.fleet.config import _read, _write
 
@@ -180,4 +182,125 @@ def accept_code(db: Session, referred_user_id: uuid.UUID, raw_code: str) -> Ride
     )
     db.add(ref)
     db.flush()
+    return ref
+
+
+# --- the clock --------------------------------------------------------------------
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def on_approved(db: Session, rider_user_id: uuid.UUID, *, now: datetime | None = None) -> None:
+    """The referred rider was approved: their clock starts, and they get their own code."""
+
+    now = now or _now()
+    ref = db.get(RiderReferral, rider_user_id)
+    if ref is not None and ref.status == ReferralStatus.WAITING:
+        ref.status = ReferralStatus.IN_PROGRESS
+        ref.approved_at = now
+        ref.deadline = now + timedelta(days=ref.days_allowed)
+    ensure_code(db, rider_user_id)
+    db.flush()
+
+
+def delivered_count(db: Session, ref: RiderReferral) -> int:
+    if ref.approved_at is None or ref.deadline is None:
+        return 0
+    return int(
+        db.scalar(
+            select(func.count(RiderTrip.id)).where(
+                RiderTrip.rider_user_id == ref.referred_user_id,
+                RiderTrip.end_reason == TripEndReason.DELIVERED,
+                RiderTrip.ended_at >= ref.approved_at,
+                RiderTrip.ended_at <= ref.deadline,
+            )
+        )
+        or 0
+    )
+
+
+def refresh_status(db: Session, ref: RiderReferral, *, now: datetime | None = None) -> RiderReferral:
+    """IN_PROGRESS past its deadline is EXPIRED, saved the first time anyone looks."""
+
+    now = now or _now()
+    deadline = _aware(ref.deadline)
+    if ref.status == ReferralStatus.IN_PROGRESS and deadline is not None and now > deadline:
+        ref.status = ReferralStatus.EXPIRED
+        db.flush()
+    return ref
+
+
+def _pay(db: Session, ref: RiderReferral, rider_id: uuid.UUID, kind: RiderBonusKind,
+         amount: Decimal, now: datetime) -> bool:
+    if amount <= 0:
+        return False
+    try:
+        with db.begin_nested():
+            db.add(RiderBonus(rider_user_id=rider_id, kind=kind, amount=amount,
+                              referral_id=ref.referred_user_id, earned_at=now))
+    except IntegrityError:
+        # Already written - by an earlier call or a racing one. The unique
+        # (referral, kind) row is the guard; this is the expected outcome.
+        return False
+    return True
+
+
+def on_delivered(db: Session, rider_user_id: uuid.UUID, *, now: datetime | None = None) -> bool:
+    """A trip of this rider ended DELIVERED: earn the referral if this was the Nth."""
+
+    now = now or _now()
+    ref = db.scalar(
+        select(RiderReferral).where(RiderReferral.referred_user_id == rider_user_id).with_for_update()
+    )
+    if ref is None or ref.status != ReferralStatus.IN_PROGRESS:
+        return False
+    refresh_status(db, ref, now=now)
+    if ref.status != ReferralStatus.IN_PROGRESS or not load_config(db).enabled:
+        return False
+    if delivered_count(db, ref) < ref.deliveries_required:
+        return False
+    paid_referrer = _pay(db, ref, ref.referrer_user_id, RiderBonusKind.REFERRAL_REFERRER, ref.referrer_amount, now)
+    paid_joiner = _pay(db, ref, ref.referred_user_id, RiderBonusKind.REFERRAL_JOINER, ref.joiner_amount, now)
+    ref.status = ReferralStatus.EARNED
+    ref.earned_at = ref.earned_at or now
+    db.flush()
+    logger.info("Referral of %s earned (referrer %s)", ref.referred_user_id, ref.referrer_user_id)
+    return paid_referrer or paid_joiner
+
+
+# --- cancelling ---------------------------------------------------------------------
+
+
+def cancel(db: Session, admin: Any, referred_user_id: uuid.UUID, reason: str) -> RiderReferral:
+    """An admin's no to a suspicious referral - never to a bonus already paid out."""
+
+    reason = " ".join((reason or "").split())[:500]
+    if not reason:
+        raise _refuse("A reason is required")
+    ref = db.scalar(
+        select(RiderReferral).where(RiderReferral.referred_user_id == referred_user_id).with_for_update()
+    )
+    if ref is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "referral_not_found")
+    if ref.status in (ReferralStatus.CANCELLED, ReferralStatus.EXPIRED):
+        raise HTTPException(status.HTTP_409_CONFLICT, "state_changed")
+    bonuses = list(db.scalars(
+        select(RiderBonus).where(RiderBonus.referral_id == ref.referred_user_id).with_for_update()
+    ))
+    if any(b.payout_id is not None for b in bonuses):
+        raise HTTPException(status.HTTP_409_CONFLICT, "already_paid")
+    for bonus in bonuses:
+        db.delete(bonus)
+    ref.status = ReferralStatus.CANCELLED
+    ref.cancelled_at, ref.cancel_reason, ref.cancelled_by_user_id = _now(), reason, admin.id
+    db.commit()
+    logger.info("Referral of %s cancelled by %s: %s", referred_user_id, admin.id, reason)
     return ref
