@@ -274,7 +274,7 @@ def _order_hint(delivery: Any, reason: str) -> None:
 # --- referral pushes, after the commit -------------------------------------------
 #
 # The `realtime/outbox.py` pattern: queued on the session, sent by a
-# class-level after_commit listener in a FRESH session (a committed one
+# class-level after_commit listener (outermost commit only - see below) in a FRESH session (a committed one
 # refuses SQL - the trip-cancelled bug), dropped when the outermost
 # transaction rolls back, so a referral that never happened is never told.
 
@@ -288,6 +288,12 @@ def queue_referral_push(db: Session, rider_user_id: uuid.UUID, event: str, **fie
 
 
 def _send_referral_pushes(session: Session) -> None:
+    # SQLAlchemy 2.0 fires after_commit when a SAVEPOINT is released too
+    # (trips._finish runs the referral check in one). That is not the commit:
+    # leave the queue for the outermost one, or a rider is told about a bonus
+    # that may yet roll back - and FCM runs while this request holds locks.
+    if session.in_nested_transaction():
+        return
     queued = session.info.pop(_REFERRAL_QUEUE, None)
     if not queued:
         return

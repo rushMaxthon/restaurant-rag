@@ -7,11 +7,12 @@ import {
   listenForPush,
   onPushTap,
   registerDeviceToken,
+  showReferral,
   takePendingPush,
 } from '@/services/push';
 import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
-import { screenFor, type RiderPush } from '@utils/push';
+import { foregroundAction, type RiderPush, screenFor } from '@utils/push';
 
 /**
  * Where a notification tap takes the rider, from any screen and from a cold
@@ -63,8 +64,11 @@ export function PushRouter() {
     consume();
     const offTap = onPushTap(act);
     const offPush = listenForPush(push => {
-      if (push?.kind === 'application') applicationChanged();
-      else if (push?.kind !== 'referral') void refreshOffer();
+      const action = foregroundAction(push);
+      if (action === 'show_referral' && push?.kind === 'referral')
+        void showReferral(push);
+      else if (action === 'application') applicationChanged();
+      else void refreshOffer();
     });
     const sub = AppState.addEventListener(
       'change',

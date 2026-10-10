@@ -3,6 +3,7 @@ import {
   normaliseCode,
   progressFraction,
   shareMessage,
+  joiningCardState,
   showsJoiningCard,
   stepMarkers,
   nextStep,
@@ -148,5 +149,42 @@ describe('v2 helpers', () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe('joiningCardState', () => {
+  const p = (over: Partial<ReferralProgress>): ReferralProgress => ({
+    name: 'Priya S.',
+    status: 'IN_PROGRESS',
+    delivered: 12,
+    required: 30,
+    deadline: null,
+    amount: '200.00',
+    paid: false,
+    earned_amount: '50.00',
+    paid_amount: '0.00',
+    steps: [
+      { deliveries: 10, amount: '50.00', earned: true, paid: false },
+      { deliveries: 30, amount: '150.00', earned: false, paid: false },
+    ],
+    ...over,
+  });
+  it('shows the next step while working towards it', () => {
+    expect(joiningCardState(p({}))).toEqual({
+      mode: 'progress',
+      deliveries: 30,
+      amount: '150.00',
+    });
+  });
+  it('an expired referral with an unpaid step shows money awaiting payout, never a dead progress bar', () => {
+    expect(joiningCardState(p({ status: 'EXPIRED' }))).toEqual({
+      mode: 'earned',
+      pending: 50,
+    });
+  });
+  it('nothing once everything earned is paid', () => {
+    expect(
+      joiningCardState(p({ status: 'EXPIRED', paid_amount: '50.00' })),
+    ).toBeNull();
   });
 });

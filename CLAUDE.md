@@ -863,6 +863,20 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   the application home. Migration 0091 (RLS on), applied to rr_rider_dev
   only: Supabase gets it from Render's pre-deploy upgrade. Until then do not
   run this code against Supabase - every rider query selects referral_code.
+  **v2, Swiggy-style (same day):** the programme is 1-5 STEPS
+  (`ReferralConfig.steps`, default 10 -> Rs 100+50, 30 -> Rs 400+150, 30
+  days), frozen on `rider_referrals.steps` (JSONB; a v1 row with `[]` reads
+  as one step via `steps_of`, a v1 settings dict too); each reached step
+  writes its bonus rows (`rider_bonuses.step`, UNIQUE referral+kind+step),
+  EARNED at the last step, earned steps survive expiry. Pushes
+  `rider_referral` (joined / approved / earned) are queued on
+  `session.info` by `notify.queue_referral_push` and sent by a class-level
+  `after_commit` listener in a fresh session, dropped on an outermost
+  rollback. View: earned/pending/paid totals, per-step progress, a monthly
+  leaderboard (IST month, referrer step-0 bonuses, admin switch). App: WhatsApp
+  invite (`whatsapp://send`, `<queries>` in the manifest - native rebuild),
+  tabs, step markers, FAQ. Admin: steps editor. Migration 0092 (rr_rider_dev
+  only; Supabase via Render with 0091).
 
 ## Payouts (Razorpay Route)
 

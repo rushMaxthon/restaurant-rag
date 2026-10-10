@@ -240,7 +240,7 @@ async function showApplicationUpdate(status: string): Promise<void> {
 }
 
 /** Refer & earn: a friend joined, was approved, or a step was earned (`queue_referral_push`). */
-async function showReferral(
+export async function showReferral(
   push: Extract<RiderPush, { kind: 'referral' }>,
 ): Promise<void> {
   const vars = {

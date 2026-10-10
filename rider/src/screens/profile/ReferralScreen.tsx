@@ -120,8 +120,10 @@ export function ReferralScreen() {
           style={styles.gap}
         >
           <AppText tone="muted" align="center">
+            {/* The totals go with the LAST step: at the first one the
+                amounts are smaller (review, 2026-10-10). */}
             {t('referral.lead', {
-              n: firstStep?.deliveries ?? terms.deliveries_required,
+              n: terms.deliveries_required,
               days: terms.days_allowed,
               referrer: rupees(terms.referrer_amount),
               joiner: rupees(terms.joiner_amount),

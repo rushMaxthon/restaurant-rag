@@ -63,6 +63,19 @@ export function parsePush(
   return null;
 }
 
+/**
+ * A push that arrives with the app OPEN. A referral notice is shown anyway:
+ * the new rider's "bonus earned" is caused by their own Delivered tap, so
+ * their app is almost always in front. Everything else is a refetch.
+ */
+export function foregroundAction(
+  push: RiderPush | null,
+): 'show_referral' | 'application' | 'refresh_offer' {
+  if (push?.kind === 'referral') return 'show_referral';
+  if (push?.kind === 'application') return 'application';
+  return 'refresh_offer';
+}
+
 /** The screen a tap opens: the offer to answer it; Home once a trip is cancelled, since it is gone. */
 export function screenFor(push: RiderPush): 'Offer' | 'Home' | 'Referral' {
   if (push.kind === 'referral') return 'Referral';

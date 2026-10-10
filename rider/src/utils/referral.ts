@@ -95,3 +95,30 @@ export function stepMarkers(
 export function nextStep(p: ReferralProgress): ReferralStepProgress | null {
   return p.steps?.find(s => !s.earned) ?? null;
 }
+
+export type JoiningCard =
+  | { mode: 'progress'; deliveries: number; amount: string }
+  | { mode: 'earned'; pending: number };
+
+/**
+ * What the joining-bonus card says: the next step while the clock runs;
+ * otherwise only money earned and not yet paid - an expired referral must
+ * never show a progress bar for a step that can no longer be reached.
+ */
+export function joiningCardState(
+  p: ReferralProgress | null,
+): JoiningCard | null {
+  if (!p || !showsJoiningCard(p)) return null;
+  const next = nextStep(p);
+  if (p.status === 'IN_PROGRESS' && next) {
+    return {
+      mode: 'progress',
+      deliveries: next.deliveries,
+      amount: next.amount,
+    };
+  }
+  const pending =
+    Math.round((Number(p.earned_amount) - Number(p.paid_amount || 0)) * 100) /
+    100;
+  return pending > 0 ? { mode: 'earned', pending } : null;
+}

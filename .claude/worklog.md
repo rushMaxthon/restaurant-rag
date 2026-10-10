@@ -5772,3 +5772,16 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   upgrade does it. The local 8000 API (Supabase) still runs the previous code
   and must not be restarted on this one until Supabase is at 0091.
 
+## 2026-10-10 - referral review fixes, then referral v2 (Swiggy-style)
+
+- v1 final review (opus): no Critical; fixed 3 Important + 1 re-graded
+  (bad referral code burned the phone code; joining card said "comes with
+  next payout" for ever; cancel past the 500 cap answered 500; a referral DB
+  error could fail Delivered). Pushed 20d7262. Deferred minors in the v1
+  ledger (deleted with the workspace; listed in the session's final message).
+- v2 at the owner's pick (all four): milestone steps, pushes after commit,
+  WhatsApp-first screen with totals/tabs/leaderboard/FAQ, admin steps editor.
+  Spec/plan `docs/superpowers/{specs,plans}/2026-10-10-rider-referral-v2*`.
+  Migration 0092 round-tripped on rr_rider_dev; 8001 restarted on it. The
+  rider app needs a native rebuild for the WhatsApp `<queries>` entry.
+

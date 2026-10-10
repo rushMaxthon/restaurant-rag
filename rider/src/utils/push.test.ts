@@ -1,4 +1,4 @@
-import { offerAlertMs, parsePush, screenFor } from './push';
+import { foregroundAction, offerAlertMs, parsePush, screenFor } from './push';
 
 describe('parsePush', () => {
   it('reads an offer the backend sent (notify.offer_made)', () => {
@@ -93,5 +93,28 @@ describe('referral (notify.queue_referral_push)', () => {
     expect(
       parsePush({ type: 'rider_referral', event: 'something' }),
     ).toBeNull();
+  });
+});
+
+describe('foregroundAction', () => {
+  it('shows a referral notice even with the app open - the rider caused it by delivering', () => {
+    expect(
+      foregroundAction(
+        parsePush({ type: 'rider_referral', event: 'earned', name: 'x' }),
+      ),
+    ).toBe('show_referral');
+  });
+  it('refetches the application, else checks the offer', () => {
+    expect(
+      foregroundAction(
+        parsePush({ type: 'rider_application', status: 'APPROVED' }),
+      ),
+    ).toBe('application');
+    expect(
+      foregroundAction(
+        parsePush({ type: 'rider_offer', offer_id: '1', expires_at: 'x' }),
+      ),
+    ).toBe('refresh_offer');
+    expect(foregroundAction(null)).toBe('refresh_offer');
   });
 });

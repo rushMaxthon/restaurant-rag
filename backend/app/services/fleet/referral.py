@@ -476,6 +476,10 @@ def _progress(
             select(RiderBonus).where(RiderBonus.referral_id == ref.referred_user_id, RiderBonus.kind == kind)
         )
     }
+    # A step is earned when the friend reached it inside the window - not
+    # when a row exists: a side whose amount is 0 gets no row, and its step
+    # must still read as reached. A cancelled referral earns nothing.
+    reached = 0 if ref.status == ReferralStatus.CANCELLED else delivered_count(db, ref)
     steps = []
     for index, step in enumerate(steps_of(ref)):
         side = step.referrer_amount if kind == RiderBonusKind.REFERRAL_REFERRER else step.joiner_amount
@@ -483,7 +487,7 @@ def _progress(
         steps.append({
             "deliveries": step.deliveries,
             "amount": side,
-            "earned": row is not None,
+            "earned": row is not None or reached >= step.deliveries,
             "paid": row is not None and row.payout_id is not None,
         })
     earned = sum((Decimal(r.amount) for r in rows.values()), Decimal("0.00"))
@@ -619,6 +623,7 @@ def admin_rows(
         refresh_status(db, ref)
         if wanted is not None and ref.status != wanted:
             continue
+        delivered = delivered_count(db, ref)
         rows.append({
             "referred_user_id": ref.referred_user_id,
             "referred_name": names.get(ref.referred_user_id, ""),
@@ -626,7 +631,7 @@ def admin_rows(
             "referrer_name": names.get(ref.referrer_user_id, ""),
             "code": ref.code,
             "status": ref.status.value,
-            "delivered": delivered_count(db, ref),
+            "delivered": delivered,
             "required": ref.deliveries_required,
             "deadline": ref.deadline,
             "referrer_amount": ref.referrer_amount,
@@ -634,9 +639,9 @@ def admin_rows(
             "created_at": ref.created_at,
             "paid": ref.referred_user_id in paid,
             "steps_total": len(steps_of(ref)),
-            "steps_earned": len(set(db.scalars(
-                select(RiderBonus.step).where(RiderBonus.referral_id == ref.referred_user_id)
-            ))),
+            "steps_earned": 0 if ref.status == ReferralStatus.CANCELLED else sum(
+                1 for step in steps_of(ref) if delivered >= step.deliveries
+            ),
         })
     db.commit()
     return rows

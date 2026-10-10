@@ -11,12 +11,7 @@ import type { ReferralProgress } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { rupees } from '@utils/format';
-import {
-  daysLeft,
-  nextStep,
-  progressFraction,
-  showsJoiningCard,
-} from '@utils/referral';
+import { daysLeft, joiningCardState } from '@utils/referral';
 
 /**
  * The rider's own joining bonus while they work towards it, and once earned
@@ -38,10 +33,9 @@ export function JoiningBonusCard() {
     }, [api]),
   );
 
-  if (!mine || !showsJoiningCard(mine)) return null;
-  // v2: the step to reach next; none left means the bonus is earned.
-  const next = nextStep(mine);
-  const earned = next === null;
+  const state = joiningCardState(mine);
+  if (!mine || !state) return null;
+  const earned = state.mode === 'earned';
   return (
     <Card tone="alt" style={styles.card}>
       <View
@@ -61,18 +55,15 @@ export function JoiningBonusCard() {
       <View style={styles.flex}>
         <AppText variant="bodyStrong">
           {t('referral.joinTitle', {
-            amount: rupees(next ? next.amount : mine.earned_amount),
+            amount: rupees(earned ? state.pending : state.amount),
           })}
         </AppText>
         <AppText variant="caption" tone={earned ? 'success' : 'muted'}>
           {earned
             ? t('referral.joinEarned')
             : t('referral.joinBody', {
-                done: Math.min(
-                  mine.delivered,
-                  next?.deliveries ?? mine.required,
-                ),
-                n: next?.deliveries ?? mine.required,
+                done: Math.min(mine.delivered, state.deliveries),
+                n: state.deliveries,
                 days: daysLeft(mine.deadline) ?? 0,
               })}
         </AppText>
@@ -82,7 +73,12 @@ export function JoiningBonusCard() {
               style={[
                 styles.bar,
                 {
-                  width: `${progressFraction(mine) * 100}%`,
+                  width: `${
+                    Math.min(
+                      1,
+                      mine.delivered / Math.max(1, state.deliveries),
+                    ) * 100
+                  }%`,
                   backgroundColor: colors.primary,
                 },
               ]}

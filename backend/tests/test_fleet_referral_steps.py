@@ -299,6 +299,40 @@ class ReferralStepsTests(unittest.TestCase):
         rows = {r["referred_user_id"]: r for r in client_for(self.fdb, self.admin).get("/api/admin/riders/referrals").json()}
         self.assertEqual((rows[str(b.id)]["steps_total"], rows[str(b.id)]["steps_earned"]), (2, 1))
 
+    # Final review fixes ----------------------------------------------------------
+
+    def test_pushes_wait_for_the_outer_commit_not_a_savepoint(self) -> None:
+        """trips._finish runs on_delivered in a savepoint: releasing it is not the commit."""
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, {"steps": [{"deliveries": 1, "referrer_amount": "100", "joiner_amount": "50"}],
+                                   "days_allowed": 30})
+            self.pushes.clear()
+            self._delivered(db, b.id)
+            with db.begin_nested():
+                referral.on_delivered(db, b.id)
+            self.assertEqual(self._events(), [])  # the savepoint released, nothing sent
+            db.rollback()
+            self.assertEqual(self._events(), [])  # and the rollback dropped it
+            self._delivered(db, b.id)
+            with db.begin_nested():
+                referral.on_delivered(db, b.id)
+            db.commit()
+            self.assertEqual(sorted(e for _, e, _, _ in self._events()), ["earned", "earned"])
+
+    def test_a_zero_side_still_shows_its_step_earned(self) -> None:
+        with self.fdb.session() as db:
+            _, b = self._pair(db, {"steps": [{"deliveries": 1, "referrer_amount": "100", "joiner_amount": "0"},
+                                             {"deliveries": 3, "referrer_amount": "100", "joiner_amount": "50"}],
+                                   "days_allowed": 30})
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+        mine = client_for(self.fdb, b).get("/api/rider/referral").json()["joined_with"]
+        self.assertEqual([s["earned"] for s in mine["steps"]], [True, False])
+        rows = {r["referred_user_id"]: r for r in client_for(self.fdb, self.admin).get("/api/admin/riders/referrals").json()}
+        self.assertEqual(rows[str(b.id)]["steps_earned"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
