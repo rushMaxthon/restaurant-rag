@@ -25,6 +25,7 @@ import {
 import { sequencer } from '@utils/latest';
 import { endLabel } from '@utils/tripTimeline';
 import { useNav } from '@navigation/types';
+import { earningLabel } from '@utils/pay';
 
 function TripRow({ trip }: { trip: Trip }) {
   const { colors } = useTheme();
@@ -66,7 +67,7 @@ function TripRow({ trip }: { trip: Trip }) {
           variant="bodyStrong"
           tone={Number(trip.earning) > 0 ? 'success' : 'muted'}
         >
-          {rupees(trip.earning)}
+          {earningLabel(trip.earning, t('money.priceLater'))}
         </AppText>
         <Icon name="chevron-forward" size={16} color={colors.textFaint} />
       </Card>

@@ -18,9 +18,10 @@ import { useRider } from '@/store/RiderProvider';
 import { useApi } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space, motion } from '@theme/tokens';
-import { distance, km, rupees } from '@utils/format';
+import { distance, km } from '@utils/format';
 import { jobMinutes } from '@utils/geo';
 import { haptic } from '@utils/haptics';
+import { earningLabel } from '@utils/pay';
 
 /** Ring, ring, pause - repeated until the rider answers or time runs out. */
 const RING = [0, 400, 200, 400, 900];
@@ -147,7 +148,7 @@ export function OfferScreen() {
             style={[styles.amount, { color: colors.text }]}
             align="center"
           >
-            {rupees(shown.earning_estimate)}
+            {earningLabel(shown.earning_estimate, t('money.priceLater'))}
           </AppText>
           <View style={styles.chips}>
             <Pill

@@ -24,9 +24,26 @@ FLEET_KEY = "own_fleet"
 
 
 @dataclass(frozen=True, slots=True)
+class PaySlab:
+    #: A trip up to this far (inclusive) pays `amount`.
+    up_to_km: float
+    amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class RiderPay:
-    base: Decimal
-    per_km: Decimal
+    """The owner's rate card (2026-10-10), replacing `base + per_km x km`.
+
+    A trip pays the slab its distance falls in, plus `incentive` for every
+    delivery. Past the last slab there is no price: the trip waits for the
+    admin to set one (the owner's "manual pricing above 8 km"), so a long
+    ride is never paid a number nobody chose. `minimum` is what a ride to
+    the restaurant pays when the order is cancelled after the rider got
+    there - the incentive is for a delivery, so it is not added.
+    """
+
+    slabs: tuple[PaySlab, ...]
+    incentive: Decimal
     minimum: Decimal
 
 
@@ -66,8 +83,19 @@ class FleetConfig:
     location_ids: list[str] = field(default_factory=list)
 
 
+#: The owner's table, 2026-10-10. Rs 25 up to 3 km, then Rs 5 more every km.
+_RATE_CARD = (
+    (3.0, "25"), (3.5, "25"), (4.0, "30"), (4.5, "30"), (5.0, "35"), (5.5, "35"),
+    (6.0, "40"), (6.5, "40"), (7.0, "45"), (7.5, "45"), (8.0, "50"),
+)
+
+
 def default_pay() -> RiderPay:
-    return RiderPay(base=Decimal("25"), per_km=Decimal("6"), minimum=Decimal("30"))
+    return RiderPay(
+        slabs=tuple(PaySlab(km, Decimal(amount)) for km, amount in _RATE_CARD),
+        incentive=Decimal("5"),
+        minimum=Decimal("25"),
+    )
 
 
 def _read(db: Session | None, key: str) -> dict[str, Any] | None:
@@ -112,14 +140,48 @@ def _money(value: Any, name: str) -> Decimal:
 
 
 def validate_pay(data: dict[str, Any]) -> RiderPay:
+    """Refused rather than repaired: a saved mistake is every rider's pay at once."""
+
+    rows = data.get("slabs")
+    if not isinstance(rows, list) or not rows:
+        raise _refuse("Add at least one distance slab")
+    if len(rows) > 40:
+        raise _refuse("At most 40 distance slabs")
+    slabs: list[PaySlab] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise _refuse("Each slab needs a distance and an amount")
+        try:
+            km = float(row.get("up_to_km"))
+        except (TypeError, ValueError):
+            raise _refuse("Each slab's distance must be a number") from None
+        if not 0 < km <= 50:
+            raise _refuse("A slab's distance must be between 0 and 50 km")
+        amount = _money(row.get("amount"), "A slab's pay")
+        if slabs and km <= slabs[-1].up_to_km:
+            raise _refuse("Each slab must go further than the one before it")
+        if slabs and amount < slabs[-1].amount:
+            # A rider must never earn less for riding further.
+            raise _refuse("A longer slab cannot pay less than a shorter one")
+        slabs.append(PaySlab(round(km, 2), amount))
     pay = RiderPay(
-        base=_money(data.get("base"), "Base pay"),
-        per_km=_money(data.get("per_km"), "Pay per km"),
-        minimum=_money(data.get("minimum"), "Minimum per trip"),
+        slabs=tuple(slabs),
+        incentive=_money(data.get("incentive"), "Incentive per delivery"),
+        minimum=_money(data.get("minimum"), "Pay for a cancelled ride"),
     )
-    if pay.base == 0 and pay.per_km == 0 and pay.minimum == 0:
-        raise _refuse("A trip must pay the rider something")
+    if all(s.amount == 0 for s in pay.slabs) and pay.incentive == 0:
+        raise _refuse("A delivery must pay the rider something")
     return pay
+
+
+def pay_value(pay: RiderPay) -> dict[str, Any]:
+    """The stored and wire shape: amounts as strings, so nothing rounds on the way."""
+
+    return {
+        "slabs": [{"up_to_km": s.up_to_km, "amount": str(s.amount)} for s in pay.slabs],
+        "incentive": str(pay.incentive),
+        "minimum": str(pay.minimum),
+    }
 
 
 def load_pay(db: Session | None) -> RiderPay:
@@ -129,13 +191,15 @@ def load_pay(db: Session | None) -> RiderPay:
     try:
         return validate_pay(raw)
     except HTTPException:
+        # Also a row from before the rate card (base + per_km): not a rate
+        # card, and the owner's table is what replaced it.
         logger.error("Saved rider pay is invalid; using defaults: %s", raw)
         return default_pay()
 
 
 def save_pay(db: Session, user: Any, data: dict[str, Any]) -> RiderPay:
     pay = validate_pay(data)
-    _write(db, user, PAY_KEY, {"base": str(pay.base), "per_km": str(pay.per_km), "minimum": str(pay.minimum)})
+    _write(db, user, PAY_KEY, pay_value(pay))
     return load_pay(db)
 
 
@@ -199,6 +263,6 @@ def save_fleet(db: Session, user: Any, data: dict[str, Any]) -> FleetConfig:
 
 
 __all__ = [
-    "FLEET_KEY", "FleetConfig", "PAY_KEY", "RiderPay", "default_pay", "load_fleet", "load_pay",
-    "save_fleet", "save_pay", "validate_fleet", "validate_pay",
+    "FLEET_KEY", "FleetConfig", "PAY_KEY", "PaySlab", "RiderPay", "default_pay", "load_fleet", "load_pay",
+    "pay_value", "save_fleet", "save_pay", "validate_fleet", "validate_pay",
 ]

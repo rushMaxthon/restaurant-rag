@@ -4,9 +4,12 @@ import {
   branchScopeLabel,
   emptyRiderDraft,
   lastSeenLabel,
+  payDraftFrom,
   payExample,
+  payFromDraft,
   payFormError,
   riderFormErrors,
+  type PayDraft,
   reassignErrorMessage,
   tenDigits,
   toggleBranch,
@@ -35,18 +38,56 @@ describe('rider form', () => {
   });
 });
 
-describe('pay settings', () => {
-  it('refuses a rate that pays nothing', () => {
-    expect(payFormError({ base: '0', per_km: '0', minimum: '0' })).toBeTruthy();
+describe('pay settings (the rate card)', () => {
+  const card = (): PayDraft => ({
+    slabs: [
+      { up_to_km: '3', amount: '25' },
+      { up_to_km: '3.5', amount: '25' },
+      { up_to_km: '4', amount: '30' },
+      { up_to_km: '8', amount: '50' },
+    ],
+    incentive: '5',
+    minimum: '25',
   });
 
-  it('refuses something that is not a number', () => {
-    expect(payFormError({ base: 'abc', per_km: '6', minimum: '30' })).toBeTruthy();
+  it('accepts the owner’s card', () => {
+    expect(payFormError(card())).toBeNull();
   });
 
-  it('shows what a 4 km trip pays, never under the minimum', () => {
-    expect(payExample({ base: '25', per_km: '6', minimum: '30' }, 4)).toBe(49);
-    expect(payExample({ base: '10', per_km: '2', minimum: '30' }, 1)).toBe(30);
+  it('refuses a card with no slabs, or a slab that is not a number', () => {
+    expect(payFormError({ ...card(), slabs: [] })).toBeTruthy();
+    expect(payFormError({ ...card(), slabs: [{ up_to_km: '3', amount: 'abc' }] })).toBeTruthy();
+    expect(payFormError({ ...card(), slabs: [{ up_to_km: '', amount: '25' }] })).toBeTruthy();
+  });
+
+  it('refuses slabs out of order, or a longer slab paying less', () => {
+    const outOfOrder = card();
+    outOfOrder.slabs[1] = { up_to_km: '2', amount: '25' };
+    expect(payFormError(outOfOrder)).toMatch(/further/);
+    const cheaper = card();
+    cheaper.slabs[2] = { up_to_km: '4', amount: '20' };
+    expect(payFormError(cheaper)).toMatch(/less/);
+  });
+
+  it('refuses a card that pays nothing', () => {
+    expect(payFormError({ slabs: [{ up_to_km: '3', amount: '0' }], incentive: '0', minimum: '0' })).toBeTruthy();
+  });
+
+  it('shows what a trip pays: its slab plus the incentive, the top of a slab included', () => {
+    expect(payExample(card(), 2)).toBe(30);
+    expect(payExample(card(), 3)).toBe(30);
+    expect(payExample(card(), 3.6)).toBe(35);
+    expect(payExample(card(), 8)).toBe(55);
+  });
+
+  it('says past the last slab is priced by hand', () => {
+    expect(payExample(card(), 9)).toBe('manual');
+  });
+
+  it('round-trips the server shape', () => {
+    const pay = payFromDraft(card());
+    expect(pay.slabs[1]).toEqual({ up_to_km: 3.5, amount: '25' });
+    expect(payDraftFrom(pay)).toEqual(card());
   });
 });
 

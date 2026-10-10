@@ -85,6 +85,7 @@ import type {
   RiderCreateInput,
   RiderPay,
   RiderPayoutRecord,
+  RiderTripToPrice,
   RiderUnpaid,
   ApplicationStatus,
   ItemKind,
@@ -300,6 +301,12 @@ export const api = {
   },
   saveRiderPay(token: string, body: RiderPay): Promise<FleetSettings> {
     return request<FleetSettings>('/admin/riders/settings/pay', { method: 'PUT', token, body });
+  },
+  listTripsToPrice(token: string): Promise<RiderTripToPrice[]> {
+    return request<RiderTripToPrice[]>('/admin/riders/trips/to-price', { token });
+  },
+  priceTrip(token: string, tripId: string, amount: string): Promise<{ trip_id: string; earning_amount: string }> {
+    return request(`/admin/riders/trips/${tripId}/pay`, { method: 'PUT', token, body: { amount } });
   },
   saveFleetConfig(token: string, body: FleetConfig): Promise<FleetSettings> {
     return request<FleetSettings>('/admin/riders/settings/fleet', { method: 'PUT', token, body });

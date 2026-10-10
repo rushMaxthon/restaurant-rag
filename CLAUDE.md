@@ -569,10 +569,21 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   `rider_otp_secret` or the JWT secret). Shown ONLY to the order's customer
   (`/orders/{id}/delivery` `delivery_otp`) while ASSIGNED…IN_TRANSIT. 5 wrong → locked;
   admin `confirm-delivered` with a reason.
-- **Pay**: `max(minimum, base + per_km × km)`, admin-set in `platform_settings`
-  (`rider_pay`, `own_fleet`), computed at the end of the trip and stored with its
-  breakdown. Cancelled before reaching the restaurant pays 0, after reaching it the
-  minimum, after pickup the full trip. Payouts lock the trips they pay.
+- **Pay is the owner's rate card (2026-10-10)**, admin-set in `platform_settings`
+  (`rider_pay`; Riders -> Pay & dispatch): a slab by distance (Rs 25 up to 3 km
+  ... Rs 50 up to 8 km - `fleet/config._RATE_CARD` is the default) plus
+  `incentive` (Rs 5) for a successful delivery only, computed at the end of the
+  trip (`fleet/earnings.earning_for`, km to one decimal, top of a slab
+  inclusive) and stored with its breakdown. Past the last slab the amount is
+  NULL ("above 8 km - manual pricing"): Payouts tab -> "Needs a price"
+  (`trips.set_manual_pay`, `PUT /admin/riders/trips/{id}/pay`), incentive added
+  on top, refused once paid out; offers and the board show "Priced by the team".
+  Cancelled before reaching the restaurant pays 0, after reaching it `minimum`
+  (Rs 25), after pickup the slab without the incentive. A saved row in the old
+  `base/per_km` shape reads as the default card. Payouts lock the trips they
+  pay. The CUSTOMER's fee is a different table (`delivery/slabs.py`, Delivery
+  pricing page): Rs 50 up to 3 km ... Rs 100 from 7.5 km, GST on top, saved
+  live 2026-10-10.
 - Fleet timeline entries use the courier shape `{status, at, remark}` (plus `event`):
   `OrderDeliveryResponse.timeline` validates `DeliveryStep`.
 - `refresh_deliveries_task` skips `own_fleet`/`unassigned` rows.

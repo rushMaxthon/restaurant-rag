@@ -61,7 +61,13 @@ const en = {
   'money.perDelivery': 'Per delivery',
   'money.howYouEarn': 'How you earn',
   'money.payRule':
-    '{base} + {perKm} per km, at least {minimum}. A 4 km trip pays {example}.',
+    'Each delivery pays {lowest} to {highest} by distance, up to {lastKm} km, plus {incentive} on top. Tap for all rates.',
+  'money.rateUpTo': 'Up to {to} km',
+  'money.rateRange': '{from} – {to} km',
+  'money.rateAbove': 'Above {km} km',
+  'money.priceLater': 'Priced by the team',
+  'money.incentiveNote': '+{incentive} for every successful delivery, added to the pay above.',
+  'money.ownBike': 'You ride your own bike and pay for its fuel and upkeep.',
 } as const;
 
 const hi: Translations<typeof en> = {
@@ -118,7 +124,13 @@ const hi: Translations<typeof en> = {
   'money.perDelivery': 'हर डिलीवरी',
   'money.howYouEarn': 'आपकी कमाई कैसे होती है',
   'money.payRule':
-    '{base} + हर km के {perKm}, कम से कम {minimum}। 4 km की ट्रिप पर {example} मिलते हैं।',
+    'हर डिलीवरी पर दूरी के हिसाब से {lowest} से {highest} ({lastKm} km तक), ऊपर से {incentive}। सारे रेट देखने के लिए दबाएँ।',
+  'money.rateUpTo': '{to} km तक',
+  'money.rateRange': '{from} – {to} km',
+  'money.rateAbove': '{km} km से ज़्यादा',
+  'money.priceLater': 'टीम तय करेगी',
+  'money.incentiveNote': 'हर सफल डिलीवरी पर {incentive} अलग से, ऊपर की कमाई में जुड़कर।',
+  'money.ownBike': 'बाइक आपकी अपनी, पेट्रोल और रखरखाव का खर्च भी आपका।',
 };
 
 const gu: Translations<typeof en> = {
@@ -175,7 +187,13 @@ const gu: Translations<typeof en> = {
   'money.perDelivery': 'દરેક ડિલિવરી',
   'money.howYouEarn': 'તમારી કમાણી કેવી રીતે',
   'money.payRule':
-    '{base} + દરેક km ના {perKm}, ઓછામાં ઓછા {minimum}. 4 km ની ટ્રિપમાં {example} મળે.',
+    'દરેક ડિલિવરીમાં અંતર પ્રમાણે {lowest} થી {highest} ({lastKm} km સુધી), ઉપરથી {incentive}. બધા રેટ જોવા દબાવો.',
+  'money.rateUpTo': '{to} km સુધી',
+  'money.rateRange': '{from} – {to} km',
+  'money.rateAbove': '{km} km થી વધુ',
+  'money.priceLater': 'ટીમ નક્કી કરશે',
+  'money.incentiveNote': 'દરેક સફળ ડિલિવરી પર {incentive} વધારાના, ઉપરની કમાણીમાં ઉમેરાય.',
+  'money.ownBike': 'બાઇક તમારી પોતાની, પેટ્રોલ અને જાળવણીનો ખર્ચ પણ તમારો.',
 };
 
 export default { en, hi, gu };

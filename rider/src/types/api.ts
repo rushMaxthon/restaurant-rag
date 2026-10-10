@@ -1,3 +1,5 @@
+import type { RiderPay } from '@utils/pay';
+
 /**
  * The rider API's shapes, mirrored from the backend (`app/schemas/rider.py`).
  * Money arrives as decimal strings; it is never added up here.
@@ -45,8 +47,8 @@ export type RiderMe = {
   today_trips: number;
   today_earnings: string;
   fleet_enabled: boolean;
-  /** What a delivery pays right now (admin-set): base + per km, never under minimum. */
-  pay: { base: string; per_km: string; minimum: string };
+  /** The admin's rate card: a slab by distance plus the incentive (`utils/pay`). */
+  pay: RiderPay;
   /**
    * Only APPROVED may work. A self-signed-up rider is PENDING until an admin
    * approves the application; admin-made riders were always APPROVED.
@@ -150,7 +152,8 @@ export type Offer = {
   pickup_address: string;
   pickup_distance_m: number | null;
   trip_distance_km: number;
-  earning_estimate: string;
+  /** Null past the rate card: the team prices that trip by hand. */
+  earning_estimate: string | null;
   drop_area: string;
   item_count: number;
   /** When the kitchen expects the food to be ready; null when the restaurant
@@ -166,7 +169,8 @@ export type OpenOrder = {
   pickup_address: string;
   pickup_distance_m: number | null;
   trip_distance_km: number;
-  earning_estimate: string;
+  /** Null past the rate card: the team prices that trip by hand. */
+  earning_estimate: string | null;
   drop_area: string;
   item_count: number;
   /** Until a courier is booked instead. */
@@ -202,7 +206,8 @@ export type Trip = {
   end_reason: string | null;
   call_attempts: number;
   distance_km: number;
-  earning: string;
+  /** Null for a trip past the rate card until the team prices it. */
+  earning: string | null;
   otp_locked: boolean;
   otp_attempts_left: number;
   pickup: TripStop;

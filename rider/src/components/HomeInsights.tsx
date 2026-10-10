@@ -12,6 +12,7 @@ import type { Earnings, RiderMe } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space, motion } from '@theme/tokens';
 import { rupees } from '@utils/format';
+import { rateCard } from '@utils/pay';
 
 /**
  * Home's lower half: the week so far and what a delivery pays. Both answer
@@ -38,11 +39,9 @@ export function HomeInsights({ me }: { me: RiderMe | null }) {
     week && week.period_trips > 0
       ? Number(week.period_total) / week.period_trips
       : null;
-  const pay = me?.pay;
-  const example =
-    pay != null
-      ? Math.max(Number(pay.minimum), Number(pay.base) + Number(pay.per_km) * 4)
-      : null;
+  // The admin's rate card, folded to one line until tapped.
+  const card = me?.pay?.slabs?.length ? rateCard(me.pay) : null;
+  const [ratesOpen, setRatesOpen] = useState(false);
 
   return (
     <View style={styles.wrap}>
@@ -78,25 +77,69 @@ export function HomeInsights({ me }: { me: RiderMe | null }) {
         </Card>
       </Animated.View>
 
-      {pay ? (
+      {card ? (
         <Animated.View entering={FadeInDown.delay(280).duration(motion.base)}>
-          <Card tone="alt" style={styles.pay}>
-            <View
-              style={[styles.badge, { backgroundColor: colors.primarySoft }]}
-            >
-              <Icon name="cash-outline" size={18} color={colors.primary} />
+          <Card tone="alt" onPress={() => setRatesOpen(open => !open)}>
+            <View style={styles.pay}>
+              <View
+                style={[styles.badge, { backgroundColor: colors.primarySoft }]}
+              >
+                <Icon name="cash-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.flex}>
+                <AppText variant="bodyStrong">{t('money.howYouEarn')}</AppText>
+                <AppText variant="caption" tone="muted">
+                  {t('money.payRule', {
+                    lowest: rupees(card.lowest),
+                    highest: rupees(card.highest),
+                    lastKm: String(card.lastKm),
+                    incentive: rupees(card.incentive),
+                  })}
+                </AppText>
+              </View>
+              <Icon
+                name={ratesOpen ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textFaint}
+              />
             </View>
-            <View style={styles.flex}>
-              <AppText variant="bodyStrong">{t('money.howYouEarn')}</AppText>
-              <AppText variant="caption" tone="muted">
-                {t('money.payRule', {
-                  base: rupees(pay.base),
-                  perKm: rupees(pay.per_km),
-                  minimum: rupees(pay.minimum),
-                  example: example != null ? rupees(example) : '—',
-                })}
-              </AppText>
-            </View>
+            {ratesOpen ? (
+              <View style={[styles.rates, { borderColor: colors.border }]}>
+                {card.rows.map((row, i) => (
+                  <View key={row.to} style={styles.rateRow}>
+                    <AppText variant="caption" style={styles.flex}>
+                      {i === 0
+                        ? t('money.rateUpTo', { to: String(row.to) })
+                        : t('money.rateRange', {
+                            from: String(row.from),
+                            to: String(row.to),
+                          })}
+                    </AppText>
+                    <AppText variant="bodyStrong" tone="success">
+                      {rupees(row.amount)}
+                    </AppText>
+                  </View>
+                ))}
+                <View style={styles.rateRow}>
+                  <AppText variant="caption" style={styles.flex}>
+                    {t('money.rateAbove', { km: String(card.lastKm) })}
+                  </AppText>
+                  <AppText variant="caption" tone="muted">
+                    {t('money.priceLater')}
+                  </AppText>
+                </View>
+                {card.incentive > 0 ? (
+                  <AppText variant="caption" tone="success">
+                    {t('money.incentiveNote', {
+                      incentive: rupees(card.incentive),
+                    })}
+                  </AppText>
+                ) : null}
+                <AppText variant="caption" tone="muted">
+                  {t('money.ownBike')}
+                </AppText>
+              </View>
+            ) : null}
           </Card>
         </Animated.View>
       ) : null}
@@ -142,4 +185,11 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center', gap: 2 },
   rule: { width: 1, height: 32 },
   pay: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  rates: {
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: space.sm,
+  },
+  rateRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
 });

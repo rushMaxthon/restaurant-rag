@@ -53,21 +53,69 @@ function amount(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function payFormError(pay: RiderPay): string | null {
-  const parts = [amount(pay.base), amount(pay.per_km), amount(pay.minimum)];
-  if (parts.some((part) => part === null)) return 'Every pay field needs a number.';
-  if (parts.some((part) => (part as number) < 0 || (part as number) > 1000)) return 'Pay amounts must be between ₹0 and ₹1,000.';
-  if (parts.every((part) => part === 0)) return 'A trip must pay the rider something.';
+/** The rate card as the form edits it: every field a string, so a half-typed number stays put. */
+export interface PayDraft {
+  slabs: Array<{ up_to_km: string; amount: string }>;
+  incentive: string;
+  minimum: string;
+}
+
+export function payDraftFrom(pay: RiderPay): PayDraft {
+  return {
+    slabs: pay.slabs.map((slab) => ({ up_to_km: String(slab.up_to_km), amount: String(Number(slab.amount)) })),
+    incentive: String(Number(pay.incentive)),
+    minimum: String(Number(pay.minimum)),
+  };
+}
+
+export function payFromDraft(draft: PayDraft): RiderPay {
+  return {
+    slabs: draft.slabs.map((slab) => ({ up_to_km: Number(slab.up_to_km), amount: slab.amount.trim() })),
+    incentive: draft.incentive.trim(),
+    minimum: draft.minimum.trim(),
+  };
+}
+
+const inRange = (value: number) => value >= 0 && value <= 1000;
+
+/** The server's rules (`fleet/config.validate_pay`), so a mistake shows before Save. */
+export function payFormError(draft: PayDraft): string | null {
+  if (draft.slabs.length === 0) return 'Add at least one distance slab.';
+  if (draft.slabs.length > 40) return 'At most 40 distance slabs.';
+  let previous: { km: number; pay: number } | null = null;
+  for (const slab of draft.slabs) {
+    const km = amount(slab.up_to_km);
+    const pay = amount(slab.amount);
+    if (km === null || pay === null) return 'Every slab needs a distance and an amount.';
+    if (km <= 0 || km > 50) return 'A slab’s distance must be between 0 and 50 km.';
+    if (!inRange(pay)) return 'Pay amounts must be between ₹0 and ₹1,000.';
+    if (previous && km <= previous.km) return 'Each slab must go further than the one before it.';
+    if (previous && pay < previous.pay) return 'A longer slab cannot pay less than a shorter one.';
+    previous = { km, pay };
+  }
+  const incentive = amount(draft.incentive);
+  const minimum = amount(draft.minimum);
+  if (incentive === null || minimum === null) return 'The incentive and the cancelled-ride pay need a number.';
+  if (!inRange(incentive) || !inRange(minimum)) return 'Pay amounts must be between ₹0 and ₹1,000.';
+  if (incentive === 0 && draft.slabs.every((slab) => amount(slab.amount) === 0)) {
+    return 'A delivery must pay the rider something.';
+  }
   return null;
 }
 
-/** What a trip of `km` pays at these rates - the same sum the server makes. */
-export function payExample(pay: RiderPay, km: number): number | null {
-  const base = amount(pay.base);
-  const perKm = amount(pay.per_km);
-  const minimum = amount(pay.minimum);
-  if (base === null || perKm === null || minimum === null) return null;
-  return Math.round(Math.max(minimum, base + perKm * km) * 100) / 100;
+/**
+ * What a delivered trip of `km` pays - the same sum the server makes
+ * (`fleet/earnings.earning_for`): km to one decimal, the top of a slab
+ * belongs to it, plus the incentive. Past the last slab: 'manual'.
+ */
+export function payExample(draft: PayDraft, km: number): number | 'manual' | null {
+  if (payFormError(draft)) return null;
+  const rounded = Math.round(Math.max(km, 0) * 10) / 10;
+  const incentive = Number(draft.incentive);
+  for (const slab of draft.slabs) {
+    if (rounded <= Number(slab.up_to_km)) return Math.round((Number(slab.amount) + incentive) * 100) / 100;
+  }
+  return 'manual';
 }
 
 export function lastSeenLabel(iso: string | null, now: Date = new Date()): string {

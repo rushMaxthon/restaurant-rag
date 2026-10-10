@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -91,8 +91,12 @@ def rider_eta(order: Any, delivery: OrderDelivery) -> tuple[float, int] | None:
     return road, minutes
 
 
-def _pay(db: Session, trip: RiderTrip, delivery: OrderDelivery, *, full: bool) -> None:
-    """Full pay for a carried trip; the minimum for a wasted ride to the restaurant."""
+def _pay(db: Session, trip: RiderTrip, delivery: OrderDelivery, *, full: bool, delivered: bool = False) -> None:
+    """Full pay for a carried trip; the minimum for a wasted ride to the restaurant.
+
+    Past the rate card the amount stays None until the admin prices it
+    (`set_manual_pay`); payouts already skip a trip with no amount.
+    """
 
     from app.services.fleet.config import load_pay
     from app.services.fleet.earnings import earning_for
@@ -101,7 +105,7 @@ def _pay(db: Session, trip: RiderTrip, delivery: OrderDelivery, *, full: bool) -
     km = trip_km(db, delivery)
     trip.distance_km = round(km, 2)
     if full:
-        trip.earning_amount, trip.earning_breakdown = earning_for(km, pay)
+        trip.earning_amount, trip.earning_breakdown = earning_for(km, pay, delivered=delivered)
     else:
         trip.earning_amount = pay.minimum
         trip.earning_breakdown = {"minimum": str(pay.minimum), "reason": "cancelled after reaching the restaurant"}
@@ -132,8 +136,6 @@ def end_live_trip(db: Session, delivery: OrderDelivery, *, reason: str) -> Rider
         if trip.arrived_pickup_at is not None:
             _pay(db, trip, delivery, full=False)
         else:
-            from decimal import Decimal
-
             trip.earning_amount = Decimal("0.00")
         end = TripEndReason.CANCELLED_BEFORE_PICKUP
     trip.ended_at = now
@@ -236,7 +238,7 @@ def timeline_event(delivery: OrderDelivery, event: str, **data: Any) -> None:
 def _finish(db: Session, trip: RiderTrip, delivery: OrderDelivery, reason: TripEndReason) -> None:
     """The rider carried it, or waited at the door: full pay, back on shift."""
 
-    _pay(db, trip, delivery, full=True)
+    _pay(db, trip, delivery, full=True, delivered=reason == TripEndReason.DELIVERED)
     trip.ended_at = _now()
     trip.end_reason = reason
     _free_rider(db, trip.rider_user_id)
@@ -354,6 +356,70 @@ def admin_confirm_delivered(db: Session, admin: Any, delivery: OrderDelivery, re
     notify.trip_changed(db, trip)
     notify.delivery_changed(db, delivery, "confirmed_by_admin")
     notify.riders_changed(trip.rider_user_id, force=True)
+    return trip
+
+
+def trips_to_price(db: Session) -> list[dict[str, Any]]:
+    """Ended trips past the rate card that nobody has priced yet, oldest first."""
+
+    from app.models.user import User
+    from app.services.kitchen_push import order_code
+
+    rows = db.execute(
+        select(RiderTrip, User.full_name)
+        .join(User, User.id == RiderTrip.rider_user_id)
+        .where(
+            RiderTrip.ended_at.is_not(None),
+            RiderTrip.earning_amount.is_(None),
+            RiderTrip.earning_breakdown["manual"].as_boolean().is_(True),
+        )
+        .order_by(RiderTrip.ended_at)
+    ).all()
+    out = []
+    for trip, name in rows:
+        delivery = db.get(OrderDelivery, trip.order_delivery_id)
+        parts = trip.earning_breakdown or {}
+        out.append({
+            "trip_id": trip.id,
+            "rider_user_id": trip.rider_user_id,
+            "rider_name": name,
+            "order_id": delivery.order_id,
+            "order_code": order_code(delivery.order),
+            "distance_km": parts.get("km", trip.distance_km),
+            "over_km": parts.get("over_km"),
+            "incentive": Decimal(str(parts.get("incentive", "0"))),
+            "delivered": trip.end_reason == TripEndReason.DELIVERED,
+            "end_reason": trip.end_reason,
+            "ended_at": trip.ended_at,
+        })
+    return out
+
+
+def set_manual_pay(db: Session, admin: Any, trip_id: uuid.UUID, amount: Decimal) -> RiderTrip:
+    """The admin's price for a trip past the rate card, plus the incentive it earned.
+
+    Only such a trip, and only while unpaid: a payout is a record of money
+    that has moved, so its trips never change after it.
+    """
+
+    trip = db.scalar(select(RiderTrip).where(RiderTrip.id == trip_id).with_for_update())
+    if trip is None:
+        raise HTTPException(404, "trip_not_found")
+    parts = dict(trip.earning_breakdown or {})
+    if trip.ended_at is None or not parts.get("manual"):
+        raise HTTPException(409, "not_manual")
+    if trip.payout_id is not None:
+        raise HTTPException(409, "already_paid")
+    amount = Decimal(amount)
+    incentive = Decimal(str(parts.get("incentive", "0")))
+    trip.earning_amount = (amount + incentive).quantize(Decimal("0.01"))
+    parts.update({"manual_amount": str(amount), "priced_by": str(admin.id), "priced_at": _now().isoformat()})
+    trip.earning_breakdown = parts
+    db.commit()
+    logger.info("Trip %s priced by hand by %s: %s + %s incentive", trip.id, admin.id, amount, incentive)
+    from app.services.fleet import notify
+
+    notify.trip_changed(db, trip)
     return trip
 
 

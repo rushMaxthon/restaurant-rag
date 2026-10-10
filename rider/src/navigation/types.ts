@@ -43,7 +43,7 @@ export type RootStackParamList = {
   Permissions: undefined;
   Offer: undefined;
   Trip: undefined;
-  Delivered: { amount: string; orderCode: string };
+  Delivered: { amount: string | null; orderCode: string };
   TripDetail: { trip: Trip };
   Gallery: undefined;
 };

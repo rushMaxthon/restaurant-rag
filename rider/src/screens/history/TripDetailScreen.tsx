@@ -13,8 +13,9 @@ import { useI18n } from '@/i18n';
 import type { RootStackParamList } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, radius, space } from '@theme/tokens';
-import { clockTime, dayLabel, km, rupees } from '@utils/format';
+import { clockTime, dayLabel, km } from '@utils/format';
 import { endLabel, tripTimeline } from '@utils/tripTimeline';
+import { earningLabel } from '@utils/pay';
 
 function localDate(iso: string): string {
   const d = new Date(iso);
@@ -69,7 +70,7 @@ export function TripDetailScreen({
               variant="money"
               tone={Number(trip.earning) > 0 ? 'success' : 'muted'}
             >
-              {rupees(trip.earning)}
+              {earningLabel(trip.earning, t('money.priceLater'))}
             </AppText>
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />

@@ -26,6 +26,8 @@ from app.schemas.rider import (
     FleetDeliveryView,
     FleetOfferRow,
     FleetSettings,
+    ManualPayIn,
+    ManualPayOut,
     MapBranch,
     PayoutIn,
     PayoutOut,
@@ -34,6 +36,7 @@ from app.schemas.rider import (
     RiderPayIn,
     RiderResponse,
     RiderUpdate,
+    TripToPrice,
     TripView,
     UnpaidRow,
     WaitingOrder,
@@ -164,7 +167,7 @@ def _settings_out(db: Session) -> FleetSettings:
     fleet = fleet_config.load_fleet(db)
     return FleetSettings(
         enabled=app_settings().enable_own_fleet,
-        pay=RiderPayIn(base=pay.base, per_km=pay.per_km, minimum=pay.minimum),
+        pay=RiderPayIn(**fleet_config.pay_value(pay)),
         fleet=FleetConfigIn(**asdict(fleet)),
         branches=_branches(db),
     )
@@ -244,6 +247,19 @@ def confirm_delivered(order_id: uuid.UUID, body: ConfirmDeliveredIn, admin: Admi
 @router.get("/payouts/unpaid", response_model=list[UnpaidRow])
 def unpaid(_: Admin, db: Db) -> list[UnpaidRow]:
     return [UnpaidRow(**row) for row in payouts.unpaid_summary(db)]
+
+
+@router.get("/trips/to-price", response_model=list[TripToPrice])
+def trips_to_price(_: Admin, db: Db) -> list[TripToPrice]:
+    """Trips past the rate card ("above 8 km - manual pricing") nobody has priced."""
+
+    return [TripToPrice(**row) for row in trips.trips_to_price(db)]
+
+
+@router.put("/trips/{trip_id}/pay", response_model=ManualPayOut)
+def price_trip(trip_id: uuid.UUID, body: ManualPayIn, admin: Admin, db: Db) -> ManualPayOut:
+    trip = trips.set_manual_pay(db, admin, trip_id, body.amount)
+    return ManualPayOut(trip_id=trip.id, earning_amount=trip.earning_amount)
 
 
 @router.post("/{user_id}/payouts", response_model=PayoutOut, status_code=status.HTTP_201_CREATED)

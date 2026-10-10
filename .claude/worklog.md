@@ -5693,3 +5693,24 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   back, stay-awake back on, bundle file deleted - the next installDebug
   drops it from the APK). The emulator still points 8000 -> 8001.
 
+## 2026-10-10 - rider rate card and customer delivery slabs (owner's table)
+
+- Owner sent a table: distance -> customer pays / rider gets, Rs 5 incentive
+  per successful delivery, "above 8 km manual pricing", riders use their own
+  bike and fuel. Asked: GST stays on top of the customer price; above 8 km the
+  trip still runs and the admin prices the rider's pay.
+- Rider pay: `RiderPay` is now slabs + incentive + minimum (was base + per km).
+  `earning_for` returns None past the last slab; `trips.trips_to_price` /
+  `set_manual_pay` + two admin routes. Estimates and trip earnings are
+  nullable on the wire. Admin: rate card editor on Pay & dispatch, "Needs a
+  price" on Payouts. Rider app: Home's "How you earn" card folds open to the
+  full card + incentive + own-bike note (en/hi/gu), `utils/pay.earningLabel`
+  shows "Priced by the team" instead of Rs 0. Tests: test_fleet_config
+  rewritten, new test_fleet_manual_pay (5), riders.test.ts, utils/pay.test.ts.
+- Customer: saved the slabs on live `delivery_pricing` through `save_pricing`
+  (3:50, 3.5:55 ... 7.5:95, *:100; 10 km limit and 18% GST unchanged). No
+  rider_pay row is saved: the code default is the owner's card.
+- APIs 8000 and 8001 restarted on the new code (same sandbox interlocks).
+  Browser check of the admin page not done: Chrome stopped answering
+  screenshots; verified through the API instead.
+

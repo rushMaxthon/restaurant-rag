@@ -46,10 +46,11 @@ import { useRider } from '@/store/RiderProvider';
 import type { Trip, TripStop } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space, motion } from '@theme/tokens';
-import { km, rupees } from '@utils/format';
+import { km } from '@utils/format';
 import { awayLabel, metresBetween } from '@utils/geo';
 import { haptic } from '@utils/haptics';
 import { call, openNavigation } from '@utils/links';
+import { earningLabel } from '@utils/pay';
 
 export function TripScreen() {
   const { colors } = useTheme();
@@ -161,7 +162,7 @@ export function TripScreen() {
           <AppText variant="caption" tone="muted">
             {t('trip.headerMeta', {
               km: km(trip.distance_km),
-              amount: rupees(trip.earning),
+              amount: earningLabel(trip.earning, t('money.priceLater')),
             })}
           </AppText>
         </View>

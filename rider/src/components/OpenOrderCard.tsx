@@ -11,9 +11,10 @@ import { TARGETS } from '@/guide/tours';
 import type { OpenOrder } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
-import { distance, km, rupees } from '@utils/format';
+import { distance, km } from '@utils/format';
 import { minutesLeftLabel } from '@utils/openOrders';
 import { useReadyLabel } from '@hooks/useReadyLabel';
+import { earningLabel } from '@utils/pay';
 
 /**
  * One order on the board, in three short lines: where from and what it pays,
@@ -76,7 +77,7 @@ export function OpenOrderCard({
           </AppText>
         </View>
         <AppText variant="heading" tone="success">
-          {rupees(order.earning_estimate)}
+          {earningLabel(order.earning_estimate, t('money.priceLater'))}
         </AppText>
       </View>
       <View style={styles.metaRow}>

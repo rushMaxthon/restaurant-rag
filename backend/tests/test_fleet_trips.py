@@ -82,7 +82,7 @@ class TripTests(unittest.TestCase):
             self.assertEqual(db.get(Order, order.id).status, OrderStatus.DELIVERED)
             done = db.get(RiderTrip, trip.id)
             self.assertEqual(done.end_reason, TripEndReason.DELIVERED)
-            self.assertEqual(done.earning_amount, Decimal("49.00"))  # 25 + 6 x 4.0
+            self.assertEqual(done.earning_amount, Decimal("35.00"))  # 3.5-4 km slab Rs 30 + Rs 5 a delivery
             self.assertEqual(db.get(Rider, rider.id).status, RiderStatus.ONLINE)
             self.assertEqual(db.get(OrderDelivery, delivery.id).state, "DELIVERED")
 
@@ -150,9 +150,9 @@ class TripTests(unittest.TestCase):
     def test_cancel_during_trip_pays_after_arrival(self) -> None:
         cases = (
             ({}, Decimal("0.00"), TripEndReason.CANCELLED_BEFORE_PICKUP),
-            ({"arrived_pickup_at": datetime.now(UTC)}, Decimal("30"), TripEndReason.CANCELLED_BEFORE_PICKUP),
+            ({"arrived_pickup_at": datetime.now(UTC)}, Decimal("25"), TripEndReason.CANCELLED_BEFORE_PICKUP),
             ({"arrived_pickup_at": datetime.now(UTC), "picked_up_at": datetime.now(UTC)},
-             Decimal("49.00"), TripEndReason.CANCELLED_AFTER_PICKUP),
+             Decimal("30.00"), TripEndReason.CANCELLED_AFTER_PICKUP),  # the slab; Rs 5 is for a delivery
         )
         for trip_kw, pay, reason in cases:
             with self.subTest(trip=list(trip_kw)):

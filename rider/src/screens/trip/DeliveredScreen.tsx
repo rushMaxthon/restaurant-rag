@@ -157,12 +157,19 @@ export function DeliveredScreen({
           <AppText variant="micro" tone="muted" align="center">
             {t('trip.youEarned')}
           </AppText>
-          <AnimatedAmount
-            value={Number(route.params.amount)}
-            duration={900}
-            align="center"
-            tone="success"
-          />
+          {route.params.amount == null ? (
+            // Past the rate card: the team sets this one; never show Rs 0.
+            <AppText variant="heading" tone="success" align="center">
+              {t('money.priceLater')}
+            </AppText>
+          ) : (
+            <AnimatedAmount
+              value={Number(route.params.amount)}
+              duration={900}
+              align="center"
+              tone="success"
+            />
+          )}
         </Animated.View>
       </View>
 

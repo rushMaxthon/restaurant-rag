@@ -64,9 +64,10 @@ class ShiftTests(unittest.TestCase):
         self.assertEqual((body["today_trips"], float(body["today_earnings"])), (0, 0.0))
         self.assertIn("fleet_enabled", body)
         # The rider sees what a delivery pays, from the admin's own setting.
-        self.assertEqual(
-            {k: float(v) for k, v in body["pay"].items()}, {"base": 25.0, "per_km": 6.0, "minimum": 30.0}
-        )
+        pay = body["pay"]
+        self.assertEqual((float(pay["incentive"]), float(pay["minimum"])), (5.0, 25.0))
+        self.assertEqual((float(pay["slabs"][0]["up_to_km"]), float(pay["slabs"][0]["amount"])), (3.0, 25.0))
+        self.assertEqual(float(pay["slabs"][-1]["up_to_km"]), 8.0)
 
     def test_cannot_go_offline_on_a_trip(self) -> None:
         user = self._rider(status=RiderStatus.ON_TRIP)

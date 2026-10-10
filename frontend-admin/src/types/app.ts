@@ -1943,10 +1943,37 @@ export interface RiderCreateInput {
 
 export type RiderUpdateInput = Partial<Omit<RiderCreateInput, 'phone_number'>> & { is_active?: boolean };
 
+/** One row of the rate card: a trip up to `up_to_km` (inclusive) pays `amount`. */
+export interface RiderPaySlab {
+  up_to_km: number;
+  amount: string;
+}
+
+/**
+ * The rider rate card (`fleet/config.RiderPay`). A delivery pays its slab plus
+ * `incentive`; past the last slab the admin prices the trip by hand;
+ * `minimum` is a ride to the restaurant for an order then cancelled.
+ */
 export interface RiderPay {
-  base: string;
-  per_km: string;
+  slabs: RiderPaySlab[];
+  incentive: string;
   minimum: string;
+}
+
+/** A trip past the rate card, waiting for the admin's price. */
+export interface RiderTripToPrice {
+  trip_id: string;
+  rider_user_id: string;
+  rider_name: string;
+  order_id: string;
+  order_code: string;
+  distance_km: number | null;
+  over_km: number | null;
+  /** Added on top of the admin's amount; "0" when the trip was not delivered. */
+  incentive: string;
+  delivered: boolean;
+  end_reason: string | null;
+  ended_at: string;
 }
 
 export interface FleetConfig {

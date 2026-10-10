@@ -14,7 +14,7 @@
  */
 
 import { dueForRefresh, firstTab } from '../services/riderApplications';
-import { Bike, ClipboardCheck, Map as MapIcon, MapPin, Pencil, Power, Save, Settings2, UserPlus, Users, Wallet } from 'lucide-react';
+import { Bike, ClipboardCheck, Map as MapIcon, MapPin, Pencil, Plus, Power, Save, Settings2, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -34,14 +34,17 @@ import {
   branchScopeLabel,
   emptyRiderDraft,
   lastSeenLabel,
+  payDraftFrom,
   payExample,
   payFormError,
+  payFromDraft,
   riderFormErrors,
+  type PayDraft,
   tenDigits,
   toggleBranch,
   type RiderDraft,
 } from '../services/riders';
-import type { FleetConfig, FleetSettings, Rider, RiderPay, RiderUnpaid, ToastMessage } from '../types/app';
+import type { FleetConfig, FleetSettings, Rider, RiderTripToPrice, RiderUnpaid, ToastMessage } from '../types/app';
 
 interface RidersPageProps {
   token: string;
@@ -570,7 +573,7 @@ function RiderEditor({
 function SettingsTab({ token, onToast }: RidersPageProps) {
   const money = useMoney();
   const [saved, setSaved] = useState<FleetSettings | null>(null);
-  const [pay, setPay] = useState<RiderPay | null>(null);
+  const [pay, setPay] = useState<PayDraft | null>(null);
   const [fleet, setFleet] = useState<FleetConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'pay' | 'fleet' | null>(null);
@@ -580,7 +583,7 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
       .getFleetSettings(token)
       .then((settings) => {
         setSaved(settings);
-        setPay(settings.pay);
+        setPay(payDraftFrom(settings.pay));
         setFleet(settings.fleet);
       })
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Please try again.'));
@@ -602,16 +605,16 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
   }
 
   const payError = payFormError(pay);
-  const payDirty = JSON.stringify(pay) !== JSON.stringify(saved.pay);
+  const payDirty = JSON.stringify(pay) !== JSON.stringify(payDraftFrom(saved.pay));
   const fleetDirty = JSON.stringify(fleet) !== JSON.stringify(saved.fleet);
 
   async function savePay() {
     if (!pay || payError) return;
     setBusy('pay');
     try {
-      const next = await api.saveRiderPay(token, pay);
+      const next = await api.saveRiderPay(token, payFromDraft(pay));
       setSaved(next);
-      setPay(next.pay);
+      setPay(payDraftFrom(next.pay));
       onToast('Rider pay saved', 'New rates apply to trips that end from now on.', 'success');
     } catch (e: unknown) {
       onToast('Could not save pay', e instanceof ApiError ? e.message : 'Please try again.', 'error');
@@ -638,7 +641,19 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
   const number = (key: keyof Omit<FleetConfig, 'location_ids'>) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setFleet({ ...fleet, [key]: event.target.value === '' ? 0 : Number(event.target.value) });
 
-  const examples = [2, 4, 7].map((km) => ({ km, pay: payExample(pay, km) }));
+  const examples = [2, 4, 7, 9].map((km) => ({ km, pay: payExample(pay, km) }));
+  const lastKm = pay.slabs.length ? pay.slabs[pay.slabs.length - 1].up_to_km || '?' : '?';
+  const editSlab = (index: number, field: 'up_to_km' | 'amount', value: string) =>
+    setPay({ ...pay, slabs: pay.slabs.map((slab, at) => (at === index ? { ...slab, [field]: value } : slab)) });
+  const slabLabel = (index: number) => {
+    const to = pay.slabs[index].up_to_km || '?';
+    return index === 0 ? `Up to ${to} km` : `${pay.slabs[index - 1].up_to_km || '?'} – ${to} km`;
+  };
+  const addSlab = () => {
+    const last = pay.slabs[pay.slabs.length - 1];
+    const km = last ? Number(last.up_to_km) + 0.5 : 3;
+    setPay({ ...pay, slabs: [...pay.slabs, { up_to_km: String(Number.isFinite(km) ? km : ''), amount: last?.amount ?? '' }] });
+  };
 
   return (
     <>
@@ -661,27 +676,83 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
         <div className="admin-surface__header">
           <div>
             <span className="eyebrow">Pay per delivery</span>
-            <h2>What a rider earns</h2>
-            <p className="hint-text">A base amount plus a rate per km of the trip, never less than the minimum.</p>
+            <h2>Rider rate card</h2>
+            <p className="hint-text">
+              A trip pays the slab its distance falls in, plus the incentive for every successful delivery. Past{' '}
+              {lastKm} km there is no rate: you set that trip&rsquo;s pay on the Payouts tab. Customers&rsquo; delivery
+              fees are set separately, on Delivery pricing.
+            </p>
           </div>
         </div>
+        <div className="delivery-slabs">
+          {pay.slabs.map((slab, index) => (
+            <div className="delivery-slab" key={index}>
+              <strong className="delivery-slab__range">{slabLabel(index)}</strong>
+              <label className="field">
+                <span>Up to (km)</span>
+                <input
+                  disabled={busy !== null}
+                  inputMode="decimal"
+                  min={0}
+                  onChange={(e) => editSlab(index, 'up_to_km', e.target.value)}
+                  step="0.5"
+                  type="number"
+                  value={slab.up_to_km}
+                />
+              </label>
+              <label className="field">
+                <span>Rider gets (₹)</span>
+                <input
+                  disabled={busy !== null}
+                  inputMode="decimal"
+                  min={0}
+                  onChange={(e) => editSlab(index, 'amount', e.target.value)}
+                  step="1"
+                  type="number"
+                  value={slab.amount}
+                />
+              </label>
+              <div className="delivery-slab__paid">
+                <span>With incentive</span>
+                <strong className="money">
+                  {Number.isFinite(Number(slab.amount) + Number(pay.incentive)) && slab.amount !== ''
+                    ? money.format(Number(slab.amount) + Number(pay.incentive || 0))
+                    : '—'}
+                </strong>
+              </div>
+              <button
+                aria-label={`Remove ${slabLabel(index)}`}
+                className="secondary-button delivery-slab__remove"
+                disabled={busy !== null || pay.slabs.length <= 1}
+                onClick={() => setPay({ ...pay, slabs: pay.slabs.filter((_, at) => at !== index) })}
+                title={pay.slabs.length <= 1 ? 'There must always be one slab.' : 'Remove this slab'}
+                type="button"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button className="secondary-button" disabled={busy !== null} onClick={addSlab} type="button">
+          <Plus size={15} /> Add a slab
+        </button>
         <div className="form-grid">
           <label className="field">
-            <span>Base per trip (₹)</span>
-            <input inputMode="decimal" onChange={(e) => setPay({ ...pay, base: e.target.value })} type="number" value={pay.base} />
+            <span>Incentive per delivery (₹)</span>
+            <input inputMode="decimal" min={0} onChange={(e) => setPay({ ...pay, incentive: e.target.value })} type="number" value={pay.incentive} />
+            <small>Added on top for every successful delivery - not for a cancelled trip or a door nobody opened.</small>
           </label>
           <label className="field">
-            <span>Per km (₹)</span>
-            <input inputMode="decimal" onChange={(e) => setPay({ ...pay, per_km: e.target.value })} type="number" value={pay.per_km} />
-          </label>
-          <label className="field">
-            <span>Minimum per trip (₹)</span>
-            <input inputMode="decimal" onChange={(e) => setPay({ ...pay, minimum: e.target.value })} type="number" value={pay.minimum} />
+            <span>Cancelled after reaching the restaurant (₹)</span>
+            <input inputMode="decimal" min={0} onChange={(e) => setPay({ ...pay, minimum: e.target.value })} type="number" value={pay.minimum} />
+            <small>The rider rode there for nothing. Cancelled before they arrived pays nothing.</small>
           </label>
           <div className="field">
-            <span>Examples</span>
+            <span>Examples (delivered)</span>
             <small>
-              {examples.map((e) => `${e.km} km → ${e.pay === null ? '—' : money.format(e.pay)}`).join(' · ')}
+              {examples
+                .map((e) => `${e.km} km → ${e.pay === null ? '—' : e.pay === 'manual' ? 'you set it' : money.format(e.pay)}`)
+                .join(' · ')}
             </small>
           </div>
         </div>
@@ -806,6 +877,108 @@ function SettingsTab({ token, onToast }: RidersPageProps) {
 
 // --- Payouts --------------------------------------------------------------------
 
+/**
+ * Trips past the rate card ("above 8 km - manual pricing") end with no
+ * amount; the admin types it here. Until then the trip is not in "To be
+ * paid", so a payout cannot skip it silently - it is paid in the next one.
+ */
+function TripsToPrice({ token, onToast, onPriced }: RidersPageProps & { onPriced: () => void }) {
+  const money = useMoney();
+  const [rows, setRows] = useState<RiderTripToPrice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api
+      .listTripsToPrice(token)
+      .then((list) => {
+        setRows(list);
+        setError(null);
+      })
+      .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Please try again.'));
+  }, [token]);
+
+  useEffect(load, [load]);
+
+  async function price(row: RiderTripToPrice) {
+    const amount = (amounts[row.trip_id] ?? '').trim();
+    setBusy(row.trip_id);
+    try {
+      const saved = await api.priceTrip(token, row.trip_id, amount);
+      onToast('Trip priced', `${row.rider_name} gets ${money.format(Number(saved.earning_amount))} for ${row.order_code}.`, 'success');
+      load();
+      onPriced();
+    } catch (e: unknown) {
+      onToast('Could not save the price', e instanceof ApiError ? e.message : 'Please try again.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (error) {
+    return (
+      <section className="admin-surface">
+        <EmptyPanel description={error} title="Trips to price didn't load" />
+      </section>
+    );
+  }
+  if (!rows || rows.length === 0) return null;
+
+  return (
+    <section className="admin-surface">
+      <div className="admin-surface__header">
+        <div>
+          <span className="eyebrow">Needs a price</span>
+          <h2>
+            {rows.length} {rows.length === 1 ? 'trip' : 'trips'} past the rate card
+          </h2>
+          <p className="hint-text">
+            Longer than the last slab, so no rate applies. Enter what the rider gets for the distance; the incentive is
+            added on top for a delivered trip.
+          </p>
+        </div>
+      </div>
+      <div className="delivery-slabs">
+        {rows.map((row) => {
+          const typed = amounts[row.trip_id] ?? '';
+          const valid = typed.trim() !== '' && Number.isFinite(Number(typed)) && Number(typed) >= 0 && Number(typed) <= 5000;
+          return (
+            <div className="delivery-slab" key={row.trip_id}>
+              <strong className="delivery-slab__range">
+                {row.rider_name} · {row.order_code}
+                <br />
+                <small className="hint-text">
+                  {row.distance_km ?? '?'} km · {row.delivered ? 'delivered' : 'not delivered'} ·{' '}
+                  {new Date(row.ended_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                </small>
+              </strong>
+              <label className="field">
+                <span>Rider gets (₹)</span>
+                <input
+                  disabled={busy !== null}
+                  inputMode="decimal"
+                  min={0}
+                  onChange={(e) => setAmounts({ ...amounts, [row.trip_id]: e.target.value })}
+                  type="number"
+                  value={typed}
+                />
+              </label>
+              <div className="delivery-slab__paid">
+                <span>{Number(row.incentive) > 0 ? `+ ${money.format(Number(row.incentive))} incentive` : 'No incentive'}</span>
+                <strong className="money">{valid ? money.format(Number(typed) + Number(row.incentive)) : '—'}</strong>
+              </div>
+              <button className="primary-button" disabled={!valid || busy !== null} onClick={() => void price(row)} type="button">
+                <Save size={15} /> {busy === row.trip_id ? 'Saving…' : 'Set pay'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PayoutsTab({ token, onToast }: RidersPageProps) {
   const money = useMoney();
   const [rows, setRows] = useState<RiderUnpaid[] | null>(null);
@@ -861,6 +1034,7 @@ function PayoutsTab({ token, onToast }: RidersPageProps) {
 
   return (
     <>
+      <TripsToPrice onPriced={load} onToast={onToast} token={token} />
       <section className="admin-surface">
         <div className="admin-surface__header">
           <div>

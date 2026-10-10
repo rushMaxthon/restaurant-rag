@@ -59,13 +59,20 @@ class AdminOpsTests(unittest.TestCase):
 
     def test_settings_round_trip_and_owner_is_refused(self) -> None:
         admin = client_for(self.fdb, self.admin)
-        r = admin.put("/api/admin/riders/settings/pay", json={"base": "30", "per_km": "7", "minimum": "35"})
+        r = admin.put("/api/admin/riders/settings/pay", json={
+            "slabs": [{"up_to_km": 3, "amount": "30"}, {"up_to_km": 6, "amount": "45"}],
+            "incentive": "7", "minimum": "20"})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(Decimal(r.json()["pay"]["per_km"]), Decimal("7"))
+        self.assertEqual(Decimal(r.json()["pay"]["incentive"]), Decimal("7"))
+        self.assertEqual([float(s["up_to_km"]) for s in r.json()["pay"]["slabs"]], [3.0, 6.0])
         r = admin.put("/api/admin/riders/settings/fleet", json={"offer_seconds": 40, "radius_km": 5})
         self.assertEqual(r.json()["fleet"]["offer_seconds"], 40)
         self.assertEqual(client_for(self.fdb, self.owner).get("/api/admin/riders/settings").status_code, 403)
-        admin.put("/api/admin/riders/settings/pay", json={"base": "25", "per_km": "6", "minimum": "30"})
+        from app.models.platform_setting import PlatformSetting
+
+        with self.fdb.session() as db:
+            db.query(PlatformSetting).filter(PlatformSetting.key == "rider_pay").delete()
+            db.commit()
         admin.put("/api/admin/riders/settings/fleet", json={})
 
     def test_settings_list_the_branches_the_allowlist_can_name(self) -> None:

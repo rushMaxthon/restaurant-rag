@@ -64,7 +64,8 @@ class RiderMe(BaseModel):
     today_earnings: Decimal
     fleet_enabled: bool
     #: What a delivery pays right now, so the app can say it (admin-set).
-    pay: dict[str, Decimal]
+    #: The admin's rate card, so the app can show what a delivery pays.
+    pay: "RiderPayIn"
     #: APPROVED riders get the app; anyone else gets their application.
     onboarding: RiderOnboarding = RiderOnboarding.APPROVED
     #: None for a rider an admin made (they never applied).
@@ -101,7 +102,8 @@ class OfferView(BaseModel):
     pickup_address: str
     pickup_distance_m: float | None
     trip_distance_km: float
-    earning_estimate: Decimal
+    #: None past the rate card: the admin prices that trip by hand.
+    earning_estimate: Decimal | None
     drop_area: str
     item_count: int
     #: When the kitchen expects the food to be ready (the branch's preparation
@@ -118,7 +120,8 @@ class OpenOrderView(BaseModel):
     pickup_address: str
     pickup_distance_m: float | None
     trip_distance_km: float
-    earning_estimate: Decimal
+    #: None past the rate card: the admin prices that trip by hand.
+    earning_estimate: Decimal | None
     drop_area: str
     item_count: int
     #: Until the courier is booked instead.
@@ -160,7 +163,8 @@ class TripView(BaseModel):
     end_reason: str | None
     call_attempts: int
     distance_km: float
-    earning: Decimal
+    #: None for a trip past the rate card until the admin prices it.
+    earning: Decimal | None
     otp_locked: bool
     otp_attempts_left: int
     pickup: TripStop
@@ -198,9 +202,17 @@ class Earnings(BaseModel):
 # --- admin operations -----------------------------------------------------------
 
 
+class PaySlabIn(BaseModel):
+    up_to_km: float = Field(gt=0, le=50)
+    amount: Decimal = Field(ge=0, le=1000)
+
+
 class RiderPayIn(BaseModel):
-    base: Decimal = Field(ge=0, le=1000)
-    per_km: Decimal = Field(ge=0, le=1000)
+    """The rate card (`fleet/config.RiderPay`): slabs, the per-delivery incentive,
+    and what a ride to the restaurant pays when the order is then cancelled."""
+
+    slabs: list[PaySlabIn] = Field(min_length=1, max_length=40)
+    incentive: Decimal = Field(ge=0, le=1000)
     minimum: Decimal = Field(ge=0, le=1000)
 
 
@@ -297,6 +309,32 @@ class ReassignIn(BaseModel):
 
 class ConfirmDeliveredIn(BaseModel):
     reason: str = Field(min_length=5, max_length=500)
+
+
+class TripToPrice(BaseModel):
+    """A trip past the rate card, waiting for the admin's price."""
+
+    trip_id: uuid.UUID
+    rider_user_id: uuid.UUID
+    rider_name: str
+    order_id: uuid.UUID
+    order_code: str
+    distance_km: float | None
+    over_km: float | None
+    #: Added on top of the admin's amount; 0 when the trip was not delivered.
+    incentive: Decimal
+    delivered: bool
+    end_reason: str | None
+    ended_at: datetime
+
+
+class ManualPayIn(BaseModel):
+    amount: Decimal = Field(ge=0, le=5000)
+
+
+class ManualPayOut(BaseModel):
+    trip_id: uuid.UUID
+    earning_amount: Decimal
 
 
 class UnpaidRow(BaseModel):
