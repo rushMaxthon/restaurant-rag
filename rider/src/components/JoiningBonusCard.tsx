@@ -11,7 +11,12 @@ import type { ReferralProgress } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { rupees } from '@utils/format';
-import { daysLeft, progressFraction, showsJoiningCard } from '@utils/referral';
+import {
+  daysLeft,
+  nextStep,
+  progressFraction,
+  showsJoiningCard,
+} from '@utils/referral';
 
 /**
  * The rider's own joining bonus while they work towards it, and once earned
@@ -34,7 +39,9 @@ export function JoiningBonusCard() {
   );
 
   if (!mine || !showsJoiningCard(mine)) return null;
-  const earned = mine.status === 'EARNED';
+  // v2: the step to reach next; none left means the bonus is earned.
+  const next = nextStep(mine);
+  const earned = next === null;
   return (
     <Card tone="alt" style={styles.card}>
       <View
@@ -53,14 +60,19 @@ export function JoiningBonusCard() {
       </View>
       <View style={styles.flex}>
         <AppText variant="bodyStrong">
-          {t('referral.joinTitle', { amount: rupees(mine.amount) })}
+          {t('referral.joinTitle', {
+            amount: rupees(next ? next.amount : mine.earned_amount),
+          })}
         </AppText>
         <AppText variant="caption" tone={earned ? 'success' : 'muted'}>
           {earned
             ? t('referral.joinEarned')
             : t('referral.joinBody', {
-                done: Math.min(mine.delivered, mine.required),
-                n: mine.required,
+                done: Math.min(
+                  mine.delivered,
+                  next?.deliveries ?? mine.required,
+                ),
+                n: next?.deliveries ?? mine.required,
                 days: daysLeft(mine.deadline) ?? 0,
               })}
         </AppText>

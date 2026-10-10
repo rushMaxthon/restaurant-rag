@@ -38,6 +38,44 @@ const en = {
   'referral.errInactive': 'That rider cannot refer anyone right now.',
   'referral.errTaken': 'You have already used a referral code.',
   'referral.errClosed': 'A referral code can no longer be added.',
+  'referral.whatsapp': 'Invite on WhatsApp',
+  'referral.moreOptions': 'More options',
+  'referral.totalEarned': 'Earned',
+  'referral.totalPending': 'Pending',
+  'referral.totalPaid': 'Paid',
+  'referral.tab.active': 'In progress',
+  'referral.tab.earned': 'Earned',
+  'referral.tab.expired': 'Expired',
+  'referral.noneInTab': 'Nothing here yet.',
+  'referral.stepLine': '{deliveries} deliveries: {amount}',
+  'referral.nextStep': 'Next {amount} at {deliveries} deliveries',
+  'referral.board': 'TOP REFERRERS THIS MONTH',
+  'referral.boardCount': '{count} friends',
+  'referral.myRank': 'Your rank: #{rank}',
+  'referral.notRanked': 'Refer a friend this month to get on the board.',
+  'referral.faq': 'QUESTIONS',
+  'referral.q1': 'When do I get paid?',
+  'referral.a1':
+    "Each step's bonus is added to your next payout, the same way as your trip pay.",
+  'referral.q2': 'What counts as a delivery?',
+  'referral.a2':
+    'Only orders your friend delivers successfully. Cancelled trips and customers not at home do not count.',
+  'referral.q3': 'How long does my friend have?',
+  'referral.a3': '{days} days from the day their application is approved.',
+  'referral.q4': "What if they don't finish in time?",
+  'referral.a4':
+    'Steps already reached stay earned and are paid. Steps not reached by then are not paid.',
+  'referral.q5': 'Is there a limit?',
+  'referral.a5':
+    'No - refer as many friends as you like. Each friend earns you their own bonus.',
+  'referral.push.joinedTitle': 'Your friend joined!',
+  'referral.push.joinedBody': '{name} signed up with your code.',
+  'referral.push.approvedTitle': '{name} is approved',
+  'referral.push.approvedBody':
+    'Now {deliveries} deliveries within {days} days for your first bonus.',
+  'referral.push.earnedTitle': 'Referral bonus {amount}!',
+  'referral.push.earnedBody':
+    'Thanks to {name}. It comes with your next payout.',
 } as const;
 
 const hi: Translations<typeof en> = {
@@ -76,6 +114,42 @@ const hi: Translations<typeof en> = {
   'referral.errInactive': 'यह राइडर अभी किसी को रेफ़र नहीं कर सकता।',
   'referral.errTaken': 'आप पहले ही एक रेफ़रल कोड डाल चुके हैं।',
   'referral.errClosed': 'अब रेफ़रल कोड नहीं जोड़ा जा सकता।',
+  'referral.whatsapp': 'WhatsApp पर बुलाएँ',
+  'referral.moreOptions': 'और तरीके',
+  'referral.totalEarned': 'कमाए',
+  'referral.totalPending': 'मिलना बाकी',
+  'referral.totalPaid': 'मिल गए',
+  'referral.tab.active': 'जारी',
+  'referral.tab.earned': 'मिल गया',
+  'referral.tab.expired': 'समय खत्म',
+  'referral.noneInTab': 'यहाँ अभी कुछ नहीं।',
+  'referral.stepLine': '{deliveries} डिलीवरी: {amount}',
+  'referral.nextStep': 'अगला {amount} - {deliveries} डिलीवरी पर',
+  'referral.board': 'इस महीने के टॉप रेफ़रर',
+  'referral.boardCount': '{count} दोस्त',
+  'referral.myRank': 'आपकी रैंक: #{rank}',
+  'referral.notRanked': 'इस महीने किसी दोस्त को रेफ़र करें और बोर्ड पर आएँ।',
+  'referral.faq': 'सवाल',
+  'referral.q1': 'पैसे कब मिलेंगे?',
+  'referral.a1':
+    'हर स्टेप का बोनस आपके अगले भुगतान में जुड़ता है, ट्रिप की कमाई की तरह।',
+  'referral.q2': 'कौन-सी डिलीवरी गिनी जाती है?',
+  'referral.a2':
+    'सिर्फ़ वे ऑर्डर जो आपका दोस्त सफलतापूर्वक पहुँचाए। रद्द ट्रिप और घर पर न मिलने वाले ग्राहक नहीं गिने जाते।',
+  'referral.q3': 'दोस्त के पास कितना समय है?',
+  'referral.a3': 'उसका आवेदन मंज़ूर होने के दिन से {days} दिन।',
+  'referral.q4': 'अगर समय पर पूरा न हो तो?',
+  'referral.a4': 'जो स्टेप पूरे हो चुके उनके पैसे मिलेंगे। बाकी स्टेप के नहीं।',
+  'referral.q5': 'कोई सीमा है?',
+  'referral.a5':
+    'नहीं - जितने चाहें दोस्तों को रेफ़र करें। हर दोस्त का बोनस अलग मिलता है।',
+  'referral.push.joinedTitle': 'आपका दोस्त जुड़ गया!',
+  'referral.push.joinedBody': '{name} ने आपके कोड से साइन अप किया।',
+  'referral.push.approvedTitle': '{name} को मंज़ूरी मिल गई',
+  'referral.push.approvedBody':
+    'अब पहले बोनस के लिए {days} दिन में {deliveries} डिलीवरी।',
+  'referral.push.earnedTitle': 'रेफ़रल बोनस {amount}!',
+  'referral.push.earnedBody': '{name} की वजह से। यह अगले भुगतान के साथ आएगा।',
 };
 
 const gu: Translations<typeof en> = {
@@ -114,6 +188,42 @@ const gu: Translations<typeof en> = {
   'referral.errInactive': 'આ રાઇડર હાલ કોઈને રેફર કરી શકતો નથી.',
   'referral.errTaken': 'તમે પહેલેથી એક રેફરલ કોડ નાખ્યો છે.',
   'referral.errClosed': 'હવે રેફરલ કોડ ઉમેરી શકાતો નથી.',
+  'referral.whatsapp': 'WhatsApp પર બોલાવો',
+  'referral.moreOptions': 'બીજી રીતો',
+  'referral.totalEarned': 'કમાયા',
+  'referral.totalPending': 'મળવાનું બાકી',
+  'referral.totalPaid': 'મળી ગયા',
+  'referral.tab.active': 'ચાલુ',
+  'referral.tab.earned': 'મળી ગયું',
+  'referral.tab.expired': 'સમય પૂરો',
+  'referral.noneInTab': 'અહીં હજી કંઈ નથી.',
+  'referral.stepLine': '{deliveries} ડિલિવરી: {amount}',
+  'referral.nextStep': 'આગળ {amount} - {deliveries} ડિલિવરી પર',
+  'referral.board': 'આ મહિનાના ટોપ રેફરર',
+  'referral.boardCount': '{count} મિત્રો',
+  'referral.myRank': 'તમારો રેન્ક: #{rank}',
+  'referral.notRanked': 'આ મહિને કોઈ મિત્રને રેફર કરો અને બોર્ડ પર આવો.',
+  'referral.faq': 'સવાલો',
+  'referral.q1': 'પૈસા ક્યારે મળશે?',
+  'referral.a1':
+    'દરેક સ્ટેપનું બોનસ તમારા આગલા પેમેન્ટમાં ઉમેરાય છે, ટ્રિપની કમાણીની જેમ.',
+  'referral.q2': 'કઈ ડિલિવરી ગણાય?',
+  'referral.a2':
+    'ફક્ત એ ઓર્ડર જે તમારો મિત્ર સફળતાપૂર્વક પહોંચાડે. રદ ટ્રિપ અને ઘરે ન મળતા ગ્રાહક ગણાતા નથી.',
+  'referral.q3': 'મિત્ર પાસે કેટલો સમય છે?',
+  'referral.a3': 'તેની અરજી મંજૂર થાય તે દિવસથી {days} દિવસ.',
+  'referral.q4': 'સમયમાં પૂરું ન થાય તો?',
+  'referral.a4': 'જે સ્ટેપ પૂરા થઈ ગયા તેના પૈસા મળશે. બાકીના સ્ટેપના નહીં.',
+  'referral.q5': 'કોઈ મર્યાદા છે?',
+  'referral.a5':
+    'ના - જેટલા મિત્રોને રેફર કરવા હોય કરો. દરેક મિત્રનું બોનસ અલગ મળે છે.',
+  'referral.push.joinedTitle': 'તમારો મિત્ર જોડાયો!',
+  'referral.push.joinedBody': '{name} એ તમારા કોડથી સાઇન અપ કર્યું.',
+  'referral.push.approvedTitle': '{name} ને મંજૂરી મળી',
+  'referral.push.approvedBody':
+    'હવે પહેલા બોનસ માટે {days} દિવસમાં {deliveries} ડિલિવરી.',
+  'referral.push.earnedTitle': 'રેફરલ બોનસ {amount}!',
+  'referral.push.earnedBody': '{name} ના કારણે. તે આગલા પેમેન્ટ સાથે આવશે.',
 };
 
 export default { en, hi, gu };

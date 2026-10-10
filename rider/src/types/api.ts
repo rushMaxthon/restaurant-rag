@@ -270,8 +270,34 @@ export type ReferralProgress = {
   required: number;
   deadline: string | null;
   amount: string;
-  /** This side's bonus is already in a payout. */
+  /** Every earned step of this side is paid and nothing is left to earn. */
   paid: boolean;
+  /** v2 milestone steps, this side's amounts. */
+  steps: ReferralStepProgress[];
+  earned_amount: string;
+  paid_amount: string;
+};
+
+export type ReferralStepProgress = {
+  deliveries: number;
+  amount: string;
+  earned: boolean;
+  paid: boolean;
+};
+
+export type LeaderRow = {
+  rank: number;
+  name: string;
+  count: number;
+  me: boolean;
+};
+
+export type Leaderboard = {
+  /** "2026-10" */
+  month: string;
+  top: LeaderRow[];
+  my_rank: number | null;
+  my_count: number;
 };
 
 /** Refer & earn (backend `RiderReferralView`). */
@@ -284,9 +310,19 @@ export type RiderReferral = {
     joiner_amount: string;
     deliveries_required: number;
     days_allowed: number;
+    steps: {
+      deliveries: number;
+      referrer_amount: string;
+      joiner_amount: string;
+    }[];
   };
   earned_total: string;
+  /** Earned, not yet in a payout. */
+  pending_total: string;
+  paid_total: string;
   referrals: ReferralProgress[];
   /** This rider's own referral, when they joined with a code. */
   joined_with: ReferralProgress | null;
+  /** Null when the admin has switched it off. */
+  leaderboard: Leaderboard | null;
 };

@@ -42,6 +42,11 @@
             <data android:scheme="https" />
         </intent>
         <package android:name="com.google.android.apps.maps" />
+        <!-- Refer & earn opens WhatsApp with the invite typed in (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="whatsapp" />
+        </intent>
     </queries>
 
     <application

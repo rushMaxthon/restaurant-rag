@@ -2,7 +2,11 @@
  * Refer & earn, the parts with no screen (backend `fleet/referral.py`).
  */
 
-import type { ReferralProgress } from '@/types/api';
+import type {
+  ReferralProgress,
+  ReferralStatus,
+  ReferralStepProgress,
+} from '@/types/api';
 
 import { rupees } from './format';
 
@@ -53,11 +57,41 @@ export function shareMessage(
 }
 
 /**
- * The joining-bonus card: while the rider works towards it, then once earned
- * until it is paid - after that, "it comes with your next payout" is false.
+ * The joining-bonus card: while the rider works towards it, and afterwards
+ * for as long as an earned step is not yet paid - then "it comes with your
+ * next payout" would be false.
  */
 export function showsJoiningCard(p: ReferralProgress | null): boolean {
   if (!p) return false;
   if (p.status === 'IN_PROGRESS') return true;
+  const earned = Number(p.earned_amount);
+  if (Number.isFinite(earned)) return earned > Number(p.paid_amount ?? 0);
   return p.status === 'EARNED' && !p.paid;
+}
+
+/** Opens WhatsApp with the message typed in; the caller falls back to Share. */
+export function whatsappUrl(message: string): string {
+  return `whatsapp://send?text=${encodeURIComponent(message)}`;
+}
+
+export type ReferralTab = 'active' | 'earned' | 'expired';
+
+export function tabOf(status: ReferralStatus): ReferralTab {
+  if (status === 'EARNED') return 'earned';
+  if (status === 'EXPIRED' || status === 'CANCELLED') return 'expired';
+  return 'active';
+}
+
+/** Where each step sits along the progress bar, as a fraction of the last. */
+export function stepMarkers(
+  steps: { deliveries: number }[],
+  required: number,
+): number[] {
+  if (required <= 0) return [];
+  return steps.map(s => Math.min(1, s.deliveries / required));
+}
+
+/** The first step not yet earned, or null when every step is. */
+export function nextStep(p: ReferralProgress): ReferralStepProgress | null {
+  return p.steps?.find(s => !s.earned) ?? null;
 }

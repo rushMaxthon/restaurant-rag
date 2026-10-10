@@ -24,7 +24,9 @@ describe('parsePush', () => {
   });
 
   it('reads an application decision (notify.application_decided)', () => {
-    expect(parsePush({ type: 'rider_application', status: 'APPROVED' })).toEqual({
+    expect(
+      parsePush({ type: 'rider_application', status: 'APPROVED' }),
+    ).toEqual({
       kind: 'application',
       status: 'APPROVED',
     });
@@ -62,5 +64,34 @@ describe('shift ended (notify.shift_ended)', () => {
     const push = parsePush({ type: 'rider_shift_ended' });
     expect(push).toEqual({ kind: 'shift_ended' });
     expect(screenFor(push!)).toBe('Home');
+  });
+});
+
+describe('referral (notify.queue_referral_push)', () => {
+  it('reads each referral event and opens Refer & earn', () => {
+    const push = parsePush({
+      type: 'rider_referral',
+      event: 'earned',
+      amount: '100.00',
+      name: 'Ravi K.',
+    });
+    expect(push).toEqual({
+      kind: 'referral',
+      event: 'earned',
+      name: 'Ravi K.',
+      amount: '100.00',
+      deliveries: '',
+      days: '',
+    });
+    expect(screenFor(push!)).toBe('Referral');
+    expect(
+      parsePush({ type: 'rider_referral', event: 'joined', name: 'Ravi K.' })
+        ?.kind,
+    ).toBe('referral');
+  });
+  it('ignores an event it does not know', () => {
+    expect(
+      parsePush({ type: 'rider_referral', event: 'something' }),
+    ).toBeNull();
   });
 });

@@ -4,7 +4,12 @@ import {
   progressFraction,
   shareMessage,
   showsJoiningCard,
+  stepMarkers,
+  nextStep,
+  tabOf,
+  whatsappUrl,
 } from './referral';
+import type { ReferralProgress } from '@/types/api';
 
 describe('referral helpers', () => {
   const now = new Date('2026-10-10T00:00:00Z');
@@ -48,27 +53,100 @@ describe('showsJoiningCard', () => {
     deadline: null,
     amount: '200.00',
     name: 'Priya',
+    steps: [],
   };
+  const card = (
+    status: ReferralProgress['status'],
+    earned: string,
+    paid: string,
+  ): ReferralProgress => ({
+    ...base,
+    status,
+    earned_amount: earned,
+    paid_amount: paid,
+    paid: Number(earned) > 0 && earned === paid,
+  });
   it('shows while working towards it, and once earned until it is paid', () => {
-    expect(
-      showsJoiningCard({ ...base, status: 'IN_PROGRESS', paid: false }),
-    ).toBe(true);
-    expect(showsJoiningCard({ ...base, status: 'EARNED', paid: false })).toBe(
-      true,
-    );
+    expect(showsJoiningCard(card('IN_PROGRESS', '0.00', '0.00'))).toBe(true);
+    expect(showsJoiningCard(card('EARNED', '200.00', '0.00'))).toBe(true);
   });
   it('goes away once paid - "comes with your next payout" would be false', () => {
-    expect(showsJoiningCard({ ...base, status: 'EARNED', paid: true })).toBe(
-      false,
+    expect(showsJoiningCard(card('EARNED', '200.00', '200.00'))).toBe(false);
+  });
+  it('shows nothing for waiting, expired-with-nothing, or no referral', () => {
+    expect(showsJoiningCard(card('WAITING', '0.00', '0.00'))).toBe(false);
+    expect(showsJoiningCard(card('EXPIRED', '0.00', '0.00'))).toBe(false);
+    expect(showsJoiningCard(null)).toBe(false);
+  });
+});
+
+describe('v2 helpers', () => {
+  const progress = (
+    over: Partial<ReferralProgress> = {},
+  ): ReferralProgress => ({
+    name: 'Ravi K.',
+    status: 'IN_PROGRESS',
+    delivered: 12,
+    required: 30,
+    deadline: null,
+    amount: '500.00',
+    paid: false,
+    earned_amount: '100.00',
+    paid_amount: '0.00',
+    steps: [
+      { deliveries: 10, amount: '100.00', earned: true, paid: false },
+      { deliveries: 30, amount: '400.00', earned: false, paid: false },
+    ],
+    ...over,
+  });
+
+  it('builds the WhatsApp link with the message encoded', () => {
+    expect(whatsappUrl('Join me & earn ₹50')).toBe(
+      `whatsapp://send?text=${encodeURIComponent('Join me & earn ₹50')}`,
     );
   });
-  it('shows nothing for waiting, expired, cancelled or no referral', () => {
-    expect(showsJoiningCard({ ...base, status: 'WAITING', paid: false })).toBe(
-      false,
-    );
-    expect(showsJoiningCard({ ...base, status: 'EXPIRED', paid: false })).toBe(
-      false,
-    );
-    expect(showsJoiningCard(null)).toBe(false);
+
+  it('sorts statuses into the three tabs', () => {
+    expect(
+      ['WAITING', 'IN_PROGRESS', 'EARNED', 'EXPIRED', 'CANCELLED'].map(s =>
+        tabOf(s as never),
+      ),
+    ).toEqual(['active', 'active', 'earned', 'expired', 'expired']);
+  });
+
+  it('places a marker for each step along the bar', () => {
+    expect(stepMarkers(progress().steps, 30)).toEqual([1 / 3, 1]);
+  });
+
+  it('names the next step to reach, or none', () => {
+    expect(nextStep(progress())?.deliveries).toBe(30);
+    expect(
+      nextStep(
+        progress({
+          steps: progress().steps.map(s => ({ ...s, earned: true })),
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps the joining card while money is earned but not yet paid', () => {
+    expect(
+      showsJoiningCard(
+        progress({
+          status: 'EXPIRED',
+          earned_amount: '50.00',
+          paid_amount: '0.00',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      showsJoiningCard(
+        progress({
+          status: 'EXPIRED',
+          earned_amount: '50.00',
+          paid_amount: '50.00',
+        }),
+      ),
+    ).toBe(false);
   });
 });

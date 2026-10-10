@@ -34,6 +34,15 @@ export function PushRouter() {
         applicationChanged();
         return;
       }
+      // Refer & earn lives in the approved rider's stack only.
+      if (push.kind === 'referral') {
+        if (
+          navigationRef.isReady() &&
+          navigationRef.getRootState()?.routeNames?.includes('Referral')
+        )
+          navigationRef.navigate('Referral');
+        return;
+      }
       if (screenFor(push) === 'Offer') {
         void refreshOffer();
         return;
@@ -55,7 +64,7 @@ export function PushRouter() {
     const offTap = onPushTap(act);
     const offPush = listenForPush(push => {
       if (push?.kind === 'application') applicationChanged();
-      else void refreshOffer();
+      else if (push?.kind !== 'referral') void refreshOffer();
     });
     const sub = AppState.addEventListener(
       'change',

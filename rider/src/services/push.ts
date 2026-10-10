@@ -18,6 +18,7 @@ import { Platform } from 'react-native';
 
 import { initLanguage } from '@/i18n';
 import { translate } from '@/i18n/translate';
+import { rupees } from '@utils/format';
 import { offerAlertMs, parsePush, type RiderPush } from '@utils/push';
 
 /**
@@ -238,6 +239,44 @@ async function showApplicationUpdate(status: string): Promise<void> {
   }
 }
 
+/** Refer & earn: a friend joined, was approved, or a step was earned (`queue_referral_push`). */
+async function showReferral(
+  push: Extract<RiderPush, { kind: 'referral' }>,
+): Promise<void> {
+  const vars = {
+    name: push.name,
+    amount: push.amount ? rupees(push.amount) : '',
+    deliveries: push.deliveries,
+    days: push.days,
+  };
+  const key = {
+    joined: ['referral.push.joinedTitle', 'referral.push.joinedBody'],
+    approved: ['referral.push.approvedTitle', 'referral.push.approvedBody'],
+    earned: ['referral.push.earnedTitle', 'referral.push.earnedBody'],
+  }[push.event] as [
+    Parameters<typeof translate>[0],
+    Parameters<typeof translate>[0],
+  ];
+  try {
+    await channels();
+    await notifee.displayNotification({
+      // One per event and friend: a second earned step replaces nothing.
+      id: `rider-referral-${push.event}-${push.name}-${push.amount}`,
+      title: translate(key[0], vars),
+      body: translate(key[1], vars),
+      data: { type: 'rider_referral', event: push.event, name: push.name },
+      android: {
+        channelId: UPDATES_CHANNEL,
+        smallIcon: 'ic_notification',
+        color: '#FF5200',
+        pressAction: { id: 'default', launchActivity: 'default' },
+      },
+    });
+  } catch {
+    // ignored, as above: Refer & earn shows it when they open the app
+  }
+}
+
 /** The part of an FCM message we read (v26 does not export its RemoteMessage type). */
 type PushMessage = { data?: { [key: string]: unknown } };
 
@@ -247,11 +286,11 @@ async function showPush(message: PushMessage): Promise<void> {
   // A killed app is started headless for this: no LanguageProvider has run,
   // so read the rider's choice first or the alert speaks the phone's language.
   await initLanguage();
-  if (push.kind === 'offer')
-    await showOfferAlert(push.offerId, push.expiresAt);
+  if (push.kind === 'offer') await showOfferAlert(push.offerId, push.expiresAt);
   if (push.kind === 'trip_cancelled') await showTripCancelled(push.tripId);
   if (push.kind === 'shift_ended') await showShiftEnded();
   if (push.kind === 'application') await showApplicationUpdate(push.status);
+  if (push.kind === 'referral') await showReferral(push);
 }
 
 function handleEvent({ type, detail }: Event): void {

@@ -13,7 +13,19 @@ export type RiderPush =
   /** The phone stopped answering past push_minutes and the server ended the shift (`shift_ended`). */
   | { kind: 'shift_ended' }
   /** An admin approved, sent back or rejected a self-signed-up rider (`application_decided`). */
-  | { kind: 'application'; status: string };
+  | { kind: 'application'; status: string }
+  /** Refer & earn: a friend joined / was approved / a step was earned (`queue_referral_push`). */
+  | {
+      kind: 'referral';
+      event: ReferralEvent;
+      name: string;
+      amount: string;
+      deliveries: string;
+      days: string;
+    };
+
+export type ReferralEvent = 'joined' | 'approved' | 'earned';
+const REFERRAL_EVENTS: ReferralEvent[] = ['joined', 'approved', 'earned'];
 
 export function parsePush(
   data: Record<string, unknown> | undefined,
@@ -35,11 +47,25 @@ export function parsePush(
   if (data.type === 'rider_application' && str('status')) {
     return { kind: 'application', status: str('status') };
   }
+  if (
+    data.type === 'rider_referral' &&
+    REFERRAL_EVENTS.includes(str('event') as ReferralEvent)
+  ) {
+    return {
+      kind: 'referral',
+      event: str('event') as ReferralEvent,
+      name: str('name'),
+      amount: str('amount'),
+      deliveries: str('deliveries'),
+      days: str('days'),
+    };
+  }
   return null;
 }
 
 /** The screen a tap opens: the offer to answer it; Home once a trip is cancelled, since it is gone. */
-export function screenFor(push: RiderPush): 'Offer' | 'Home' {
+export function screenFor(push: RiderPush): 'Offer' | 'Home' | 'Referral' {
+  if (push.kind === 'referral') return 'Referral';
   return push.kind === 'offer' ? 'Offer' : 'Home';
 }
 
