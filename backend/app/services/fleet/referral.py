@@ -271,6 +271,11 @@ def accept_code(db: Session, referred_user_id: uuid.UUID, raw_code: str) -> Ride
     )
     db.add(ref)
     db.flush()
+    from app.services.fleet import notify
+
+    joiner = db.get(User, referred_user_id)
+    notify.queue_referral_push(db, referrer.user_id, "joined",
+                               name=_short_name(joiner.full_name if joiner else ""))
     return ref
 
 
@@ -296,6 +301,12 @@ def on_approved(db: Session, rider_user_id: uuid.UUID, *, now: datetime | None =
         ref.status = ReferralStatus.IN_PROGRESS
         ref.approved_at = now
         ref.deadline = now + timedelta(days=ref.days_allowed)
+        from app.services.fleet import notify
+
+        joiner = db.get(User, rider_user_id)
+        notify.queue_referral_push(db, ref.referrer_user_id, "approved",
+                                   name=_short_name(joiner.full_name if joiner else ""),
+                                   deliveries=steps_of(ref)[0].deliveries, days=ref.days_allowed)
     ensure_code(db, rider_user_id)
     db.flush()
 
@@ -391,6 +402,20 @@ def on_delivered(
     db.flush()
     if written:
         logger.info("Referral of %s: %d bonus rows written", ref.referred_user_id, len(written))
+        from app.services.fleet import notify
+
+        joiner = db.get(User, ref.referred_user_id)
+        referrer = db.get(User, ref.referrer_user_id)
+        for kind, _index, amount in written:
+            mine = kind == RiderBonusKind.REFERRAL_REFERRER
+            notify.queue_referral_push(
+                db,
+                ref.referrer_user_id if mine else ref.referred_user_id,
+                "earned",
+                amount=amount,
+                # Who it is about: the friend for the referrer, the referrer for the new rider.
+                name=_short_name((joiner if mine else referrer).full_name if (joiner if mine else referrer) else ""),
+            )
     return written
 
 

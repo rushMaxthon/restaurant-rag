@@ -20,6 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -270,7 +271,48 @@ def _order_hint(delivery: Any, reason: str) -> None:
     _emit(ORDER_UPDATED_EVENT, payload, room=rooms)
 
 
+# --- referral pushes, after the commit -------------------------------------------
+#
+# The `realtime/outbox.py` pattern: queued on the session, sent by a
+# class-level after_commit listener in a FRESH session (a committed one
+# refuses SQL - the trip-cancelled bug), dropped when the outermost
+# transaction rolls back, so a referral that never happened is never told.
+
+_REFERRAL_QUEUE = "referral_pushes"
+
+
+def queue_referral_push(db: Session, rider_user_id: uuid.UUID, event: str, **fields: Any) -> None:
+    data = {"type": "rider_referral", "event": event}
+    data.update({k: str(v) for k, v in fields.items() if v is not None})
+    db.info.setdefault(_REFERRAL_QUEUE, []).append((rider_user_id, data))
+
+
+def _send_referral_pushes(session: Session) -> None:
+    queued = session.info.pop(_REFERRAL_QUEUE, None)
+    if not queued:
+        return
+    from app.config.database import SessionLocal
+
+    try:
+        with SessionLocal() as fresh:
+            for rider_user_id, data in queued:
+                _push(fresh, rider_user_id, data, ttl_seconds=86_400)
+            fresh.commit()
+    except Exception:  # noqa: BLE001 - a push must never fail the commit that caused it
+        logger.warning("Referral pushes failed (%d queued)", len(queued), exc_info=True)
+
+
+def _drop_referral_pushes(session: Session, previous_transaction: Any) -> None:
+    if previous_transaction.parent is None:  # the outermost transaction, not a savepoint
+        session.info.pop(_REFERRAL_QUEUE, None)
+
+
+event.listen(Session, "after_commit", _send_referral_pushes)
+event.listen(Session, "after_soft_rollback", _drop_referral_pushes)
+
+
 __all__ = [
+    "queue_referral_push",
     "OFFER_CHANNEL", "OFFER_EVENT", "OFFER_WITHDRAWN_EVENT", "SHIFT_ENDED_EVENT", "TRIP_CANCELLED_EVENT",
     "TRIP_UPDATED_EVENT",
     "delivery_changed", "offer_made", "offer_withdrawn", "order_moved", "riders_changed",

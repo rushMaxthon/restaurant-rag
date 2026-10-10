@@ -184,6 +184,51 @@ class ReferralStepsTests(unittest.TestCase):
         # Step 0's Rs 50 joining bonus plus the one Rs 30 trip inside the window.
         self.assertEqual((r.status_code, Decimal(r.json()["amount"])), (201, Decimal("80.00")))
 
+    # Task 2: pushes after commit ---------------------------------------------
+
+    def _events(self, rider_id=None):
+        return [(rid, d["event"], d.get("name", ""), d.get("amount", "")) for rid, d in self.pushes
+                if d.get("type") == "rider_referral" and (rider_id is None or rid == rider_id)]
+
+    def test_joined_and_approved_pushes_go_after_commit(self) -> None:
+        with self.fdb.session() as db:
+            referral.save_config(db, self.fdb.make_admin(db), TWO_STEPS)
+            a = self._rider(db, name="Priya Shah")
+            b = self._rider(db, name="Ravi Kumar", onboarding=RiderOnboarding.PENDING)
+            referral.accept_code(db, b.id, referral.ensure_code(db, a.id))
+            self.assertEqual(self._events(), [])  # nothing before the commit
+            db.commit()
+            self.assertEqual(self._events(a.id), [(a.id, "joined", "Ravi K.", "")])
+            db.get(Rider, b.id).onboarding = RiderOnboarding.APPROVED
+            referral.on_approved(db, b.id)
+            db.commit()
+            approved = [d for rid, d in self.pushes if d.get("event") == "approved"]
+            self.assertEqual(len(approved), 1)
+            self.assertEqual((approved[0]["deliveries"], approved[0]["days"]), ("1", "30"))
+
+    def test_earned_push_to_each_side_with_money(self) -> None:
+        with self.fdb.session() as db:
+            a, b = self._pair(db, {"steps": [{"deliveries": 1, "referrer_amount": "100", "joiner_amount": "0"}],
+                                   "days_allowed": 30})
+            self.pushes.clear()
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+            self.assertEqual(self._events(), [(a.id, "earned", "Ravi K.", "100.00")])
+
+    def test_push_not_sent_after_rollback(self) -> None:
+        with self.fdb.session() as db:
+            referral.save_config(db, self.fdb.make_admin(db), TWO_STEPS)
+            a = self._rider(db, name="Priya Shah")
+            b = self._rider(db, name="Ravi Kumar", onboarding=RiderOnboarding.PENDING)
+            code = referral.ensure_code(db, a.id)
+            db.commit()
+            referral.accept_code(db, b.id, code)
+            db.rollback()
+            db.get(Rider, a.id).notes = "something else"
+            db.commit()
+            self.assertEqual(self._events(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
