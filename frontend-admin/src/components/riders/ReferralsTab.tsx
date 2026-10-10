@@ -1,4 +1,4 @@
-import { Gift, Save, XCircle } from 'lucide-react';
+import { Gift, Plus, Save, Trash2, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { EmptyPanel } from '../EmptyPanel';
@@ -8,6 +8,7 @@ import { StatusPill } from '../StatusPill';
 import { useMoney } from '../../hooks/useMoney';
 import { ApiError, api } from '../../services/api';
 import {
+  MAX_STEPS,
   STATUS_LABEL,
   draftFrom,
   progressLabel,
@@ -15,6 +16,7 @@ import {
   referralSettingsError,
   settingsFrom,
   type ReferralDraft,
+  type StepDraft,
 } from '../../services/riderReferral';
 import type { AdminReferralRow, ReferralStatus, ToastMessage } from '../../types/app';
 
@@ -109,8 +111,14 @@ export function ReferralsTab({ token, onToast }: Props) {
 
   const formError = draft ? referralSettingsError(draft) : null;
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const setText = (key: Exclude<keyof ReferralDraft, 'enabled'>) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (draft) setDraft({ ...draft, [key]: e.target.value });
+  const editStep = (index: number, key: keyof StepDraft, value: string) => {
+    if (draft) setDraft({ ...draft, steps: draft.steps.map((s, i) => (i === index ? { ...s, [key]: value } : s)) });
+  };
+  const addStep = () => {
+    if (!draft || draft.steps.length >= MAX_STEPS) return;
+    const last = draft.steps[draft.steps.length - 1];
+    const next = last ? String((Number(last.deliveries) || 0) + 10) : '10';
+    setDraft({ ...draft, steps: [...draft.steps, { deliveries: next, referrer_amount: '0', joiner_amount: '0' }] });
   };
 
   const columns: Array<TableColumn<AdminReferralRow>> = [
@@ -156,22 +164,63 @@ export function ReferralsTab({ token, onToast }: Props) {
                 <small>Off: no new codes are accepted and nothing new is earned. Bonuses already earned still pay.</small>
               </label>
               <label className="field">
-                <span>Referrer gets (₹)</span>
-                <input inputMode="decimal" min={0} onChange={setText('referrer_amount')} type="number" value={draft.referrer_amount} />
-              </label>
-              <label className="field">
-                <span>New rider gets (₹)</span>
-                <input inputMode="decimal" min={0} onChange={setText('joiner_amount')} type="number" value={draft.joiner_amount} />
-              </label>
-              <label className="field">
-                <span>Deliveries needed</span>
-                <input min={1} onChange={setText('deliveries_required')} type="number" value={draft.deliveries_required} />
+                <span>Monthly leaderboard</span>
+                <input
+                  checked={draft.leaderboard_enabled}
+                  onChange={(e) => setDraft({ ...draft, leaderboard_enabled: e.target.checked })}
+                  type="checkbox"
+                />
+                <small>Riders see this month&rsquo;s top referrers on Refer &amp; earn.</small>
               </label>
               <label className="field">
                 <span>Days allowed after approval</span>
-                <input min={1} onChange={setText('days_allowed')} type="number" value={draft.days_allowed} />
+                <input min={1} onChange={(e) => setDraft({ ...draft, days_allowed: e.target.value })} type="number" value={draft.days_allowed} />
               </label>
             </div>
+            <div className="delivery-slabs">
+              {draft.steps.map((step, index) => (
+                <div className="delivery-slab" key={index}>
+                  <strong className="delivery-slab__range">Step {index + 1}</strong>
+                  <label className="field">
+                    <span>Deliveries</span>
+                    <input min={1} onChange={(e) => editStep(index, 'deliveries', e.target.value)} type="number" value={step.deliveries} />
+                  </label>
+                  <label className="field">
+                    <span>Referrer gets (₹)</span>
+                    <input
+                      inputMode="decimal"
+                      min={0}
+                      onChange={(e) => editStep(index, 'referrer_amount', e.target.value)}
+                      type="number"
+                      value={step.referrer_amount}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>New rider gets (₹)</span>
+                    <input
+                      inputMode="decimal"
+                      min={0}
+                      onChange={(e) => editStep(index, 'joiner_amount', e.target.value)}
+                      type="number"
+                      value={step.joiner_amount}
+                    />
+                  </label>
+                  <button
+                    aria-label={`Remove step ${index + 1}`}
+                    className="secondary-button delivery-slab__remove"
+                    disabled={busy || draft.steps.length <= 1}
+                    onClick={() => setDraft({ ...draft, steps: draft.steps.filter((_, i) => i !== index) })}
+                    title={draft.steps.length <= 1 ? 'There must always be one step.' : 'Remove this step'}
+                    type="button"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="secondary-button" disabled={busy || draft.steps.length >= MAX_STEPS} onClick={addStep} type="button">
+              <Plus size={15} /> Add a step
+            </button>
             {formError ? <p role="alert">{formError}</p> : null}
             <div className="modal-actions">
               <button

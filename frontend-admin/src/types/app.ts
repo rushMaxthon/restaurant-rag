@@ -2187,13 +2187,19 @@ export interface RiderApplicationDetail {
   events: ApplicationEvent[];
 }
 
-/** Rider referral programme settings (`fleet/referral.py`). Amounts as decimal strings. */
-export interface ReferralSettings {
-  enabled: boolean;
+/** One milestone of the referral programme: reach `deliveries`, both are paid. */
+export interface ReferralStep {
+  deliveries: number;
   referrer_amount: string;
   joiner_amount: string;
-  deliveries_required: number;
+}
+
+/** Rider referral programme settings (`fleet/referral.py`, v2: steps). Amounts as decimal strings. */
+export interface ReferralSettings {
+  enabled: boolean;
+  leaderboard_enabled: boolean;
   days_allowed: number;
+  steps: ReferralStep[];
 }
 
 export type ReferralStatus = 'WAITING' | 'IN_PROGRESS' | 'EARNED' | 'EXPIRED' | 'CANCELLED';
@@ -2212,4 +2218,6 @@ export interface AdminReferralRow {
   joiner_amount: string;
   created_at: string;
   paid: boolean;
+  steps_total: number;
+  steps_earned: number;
 }
