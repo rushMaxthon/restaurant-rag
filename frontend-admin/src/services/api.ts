@@ -83,6 +83,9 @@ import type {
   FleetSettings,
   Rider,
   RiderCreateInput,
+  AdminReferralRow,
+  ReferralSettings,
+  ReferralStatus,
   RiderPay,
   RiderPayoutRecord,
   RiderTripToPrice,
@@ -307,6 +310,23 @@ export const api = {
   },
   priceTrip(token: string, tripId: string, amount: string): Promise<{ trip_id: string; earning_amount: string }> {
     return request(`/admin/riders/trips/${tripId}/pay`, { method: 'PUT', token, body: { amount } });
+  },
+  getReferralSettings(token: string): Promise<ReferralSettings> {
+    return request<ReferralSettings>('/admin/riders/settings/referral', { token });
+  },
+  saveReferralSettings(token: string, body: ReferralSettings): Promise<ReferralSettings> {
+    return request<ReferralSettings>('/admin/riders/settings/referral', { method: 'PUT', token, body });
+  },
+  listReferrals(token: string, status?: ReferralStatus): Promise<AdminReferralRow[]> {
+    const query = status ? `?status=${status}` : '';
+    return request<AdminReferralRow[]>(`/admin/riders/referrals${query}`, { token });
+  },
+  cancelReferral(token: string, referredUserId: string, reason: string): Promise<AdminReferralRow> {
+    return request<AdminReferralRow>(`/admin/riders/referrals/${referredUserId}/cancel`, {
+      method: 'POST',
+      token,
+      body: { reason },
+    });
   },
   saveFleetConfig(token: string, body: FleetConfig): Promise<FleetSettings> {
     return request<FleetSettings>('/admin/riders/settings/fleet', { method: 'PUT', token, body });

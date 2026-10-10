@@ -2186,3 +2186,30 @@ export interface RiderApplicationDetail {
   missing_photos?: ItemKind[];
   events: ApplicationEvent[];
 }
+
+/** Rider referral programme settings (`fleet/referral.py`). Amounts as decimal strings. */
+export interface ReferralSettings {
+  enabled: boolean;
+  referrer_amount: string;
+  joiner_amount: string;
+  deliveries_required: number;
+  days_allowed: number;
+}
+
+export type ReferralStatus = 'WAITING' | 'IN_PROGRESS' | 'EARNED' | 'EXPIRED' | 'CANCELLED';
+
+export interface AdminReferralRow {
+  referred_user_id: string;
+  referred_name: string;
+  referrer_user_id: string;
+  referrer_name: string;
+  code: string;
+  status: ReferralStatus;
+  delivered: number;
+  required: number;
+  deadline: string | null;
+  referrer_amount: string;
+  joiner_amount: string;
+  created_at: string;
+  paid: boolean;
+}

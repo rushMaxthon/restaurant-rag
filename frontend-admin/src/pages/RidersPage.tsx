@@ -14,11 +14,12 @@
  */
 
 import { dueForRefresh, firstTab } from '../services/riderApplications';
-import { Bike, ClipboardCheck, Map as MapIcon, MapPin, Pencil, Plus, Power, Save, Settings2, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
+import { Bike, ClipboardCheck, Gift, Map as MapIcon, MapPin, Pencil, Plus, Power, Save, Settings2, Trash2, UserPlus, Users, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ApplicationsTab } from '../components/riders/ApplicationsTab';
+import { ReferralsTab } from '../components/riders/ReferralsTab';
 import { useRidersChanged } from '../hooks/useRealtime';
 import { DataToolbar } from '../components/DataToolbar';
 import { EmptyPanel } from '../components/EmptyPanel';
@@ -52,7 +53,7 @@ interface RidersPageProps {
   onToast: (title: string, description: string, tone?: ToastMessage['tone']) => void;
 }
 
-type Tab = 'applications' | 'map' | 'roster' | 'settings' | 'payouts';
+type Tab = 'applications' | 'map' | 'roster' | 'settings' | 'payouts' | 'referrals';
 type StatusFilter = 'ALL' | 'ONLINE' | 'ON_TRIP' | 'OFFLINE' | 'INACTIVE';
 
 const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
@@ -61,6 +62,7 @@ const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
   { key: 'roster', label: 'Riders', icon: Users },
   { key: 'settings', label: 'Pay & dispatch', icon: Settings2 },
   { key: 'payouts', label: 'Payouts', icon: Wallet },
+  { key: 'referrals', label: 'Referrals', icon: Gift },
 ];
 
 /** The pill's words: a rider who is offline is simply off shift, not broken. */
@@ -132,6 +134,7 @@ export function RidersPage({ token, onToast, onNavigate }: RidersPageProps) {
       {tab === 'roster' ? <RosterTab onToast={onToast} token={token} /> : null}
       {tab === 'settings' ? <SettingsTab onToast={onToast} token={token} /> : null}
       {tab === 'payouts' ? <PayoutsTab onToast={onToast} token={token} /> : null}
+      {tab === 'referrals' ? <ReferralsTab onToast={onToast} token={token} /> : null}
     </div>
   );
 }
