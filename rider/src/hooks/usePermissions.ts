@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Linking, NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import {
+  AppState,
+  Linking,
+  NativeModules,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
 import notifee from '@notifee/react-native';
 
-import { firstMissing, type PermissionKey, type PermissionState } from '@utils/permissions';
+import {
+  firstMissing,
+  type PermissionKey,
+  type PermissionState,
+} from '@utils/permissions';
 
 export type { PermissionKey, PermissionState } from '@utils/permissions';
 
@@ -37,12 +47,22 @@ async function batteryUnrestricted(): Promise<boolean> {
 }
 
 async function check(): Promise<PermissionState> {
-  if (Platform.OS !== 'android') return { location: true, notifications: true, fullScreen: true, battery: true };
-  const location = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+  if (Platform.OS !== 'android')
+    return {
+      location: true,
+      notifications: true,
+      fullScreen: true,
+      battery: true,
+    };
+  const location = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+  );
   const notifications =
     Number(Platform.Version) < ANDROID_13
       ? true
-      : await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      : await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        );
   return {
     location,
     notifications,
@@ -67,8 +87,13 @@ export function usePermissions() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const sub = AppState.addEventListener('change', next => next === 'active' && void refresh());
+    // A native check that throws must not become an unhandled rejection.
+    const quietly = () => void refresh().catch(() => undefined);
+    quietly();
+    const sub = AppState.addEventListener(
+      'change',
+      next => next === 'active' && quietly(),
+    );
     return () => sub.remove();
   }, [refresh]);
 
@@ -85,7 +110,9 @@ export function usePermissions() {
       }
       if (key === 'battery') {
         // A system dialog; the answer is read when the app comes back.
-        const asked = battery ? await battery.requestUnrestricted().catch(() => false) : false;
+        const asked = battery
+          ? await battery.requestUnrestricted().catch(() => false)
+          : false;
         if (!asked) await notifee.openBatteryOptimizationSettings();
         return false;
       }
@@ -93,7 +120,8 @@ export function usePermissions() {
         key === 'location'
           ? PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
           : PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
-      if (key === 'notifications' && Number(Platform.Version) < ANDROID_13) return true;
+      if (key === 'notifications' && Number(Platform.Version) < ANDROID_13)
+        return true;
       const result = await PermissionsAndroid.request(permission);
       if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
         await Linking.openSettings();

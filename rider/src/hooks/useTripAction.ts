@@ -13,6 +13,12 @@ import type { Trip, TripAction } from '@/types/api';
 import { actionId } from '@utils/format';
 
 const RETRY_MS = 3_000;
+const RETRY_MAX_MS = 30_000;
+
+/** 3 s, 6 s, 12 s, 24 s, then every 30 s: a basement does not need 20 requests a minute. */
+export function retryDelay(failures: number): number {
+  return Math.min(RETRY_MS * 2 ** Math.max(failures - 1, 0), RETRY_MAX_MS);
+}
 
 type Pending = { action: TripAction; id: string; otp?: string };
 
@@ -39,6 +45,11 @@ export function useTripAction(
   // One request at a time: the timer, a reconnect and a resume can all fire,
   // and two answers would run onDone twice (two Delivered screens).
   const inFlight = useRef(false);
+  const failures = useRef(0);
+  // The screen can close while a request is out. Its answer must then neither
+  // re-arm a retry (nothing would ever clear it) nor call back into a screen
+  // that is gone; the saved step is sent again when the trip reopens.
+  const alive = useRef(true);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
 
@@ -51,17 +62,25 @@ export function useTripAction(
       timer.current = null;
       try {
         const trip = await api.act(tripId, p.action, p.id, p.otp);
+        failures.current = 0;
         void clearPending();
+        if (!alive.current) return;
         setPending(null);
         setWaitingForNetwork(false);
         doneRef.current(trip);
       } catch (e) {
         if (e instanceof ApiError && (e.isNetwork || e.status >= 500)) {
+          if (!alive.current) return;
+          failures.current += 1;
           setWaitingForNetwork(true);
-          timer.current = setTimeout(() => void attempt(p), RETRY_MS);
+          timer.current = setTimeout(
+            () => void attempt(p),
+            retryDelay(failures.current),
+          );
           return;
         }
         void clearPending();
+        if (!alive.current) return;
         setPending(null);
         setWaitingForNetwork(false);
         setError(
@@ -76,12 +95,14 @@ export function useTripAction(
     [api, tripId],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      timer.current = null;
+    };
+  }, []);
 
   // A step saved before the app was killed goes out again, same id.
   useEffect(() => {

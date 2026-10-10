@@ -13,7 +13,12 @@ export class ApiError extends Error {
   code: string | null;
   detail: unknown;
 
-  constructor(status: number, message: string, code: string | null = null, detail: unknown = null) {
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    detail: unknown = null,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
@@ -43,11 +48,16 @@ const SENTENCES: Record<string, Key> = {
 };
 
 function sentenceFor(code: string): string | null {
-  const key = Object.prototype.hasOwnProperty.call(SENTENCES, code) ? SENTENCES[code] : undefined;
+  const key = Object.prototype.hasOwnProperty.call(SENTENCES, code)
+    ? SENTENCES[code]
+    : undefined;
   return key ? translate(key) : null;
 }
 
-export function messageFor(status: number, detail: unknown): { message: string; code: string | null } {
+export function messageFor(
+  status: number,
+  detail: unknown,
+): { message: string; code: string | null } {
   if (typeof detail === 'string') {
     return { message: sentenceFor(detail) ?? detail, code: detail };
   }
@@ -59,69 +69,110 @@ export function messageFor(status: number, detail: unknown): { message: string; 
   // form to put the sentence under it.
   if (detail && typeof detail === 'object' && 'error' in detail) {
     const code = String((detail as { error: unknown }).error);
-    return { message: sentenceFor(code) ?? translate('system.errValidation'), code };
+    return {
+      message: sentenceFor(code) ?? translate('system.errValidation'),
+      code,
+    };
   }
   // Submit's 422 lists what is missing or flagged.
   if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
     for (const code of ['missing', 'flagged']) {
-      if (code in detail) return { message: sentenceFor(code) ?? translate('system.errValidation'), code };
+      if (code in detail)
+        return {
+          message: sentenceFor(code) ?? translate('system.errValidation'),
+          code,
+        };
     }
   }
   if (Array.isArray(detail) && detail.length > 0) {
     const first = detail[0] as { msg?: string };
-    return { message: first?.msg ?? translate('system.errValidation'), code: 'validation' };
+    return {
+      message: first?.msg ?? translate('system.errValidation'),
+      code: 'validation',
+    };
   }
-  if (status === 401) return { message: translate('system.errAuth'), code: 'auth' };
-  if (status === 403) return { message: translate('system.errForbidden'), code: 'forbidden' };
-  if (status === 429) return { message: translate('system.errRateLimited'), code: 'rate_limited' };
-  if (status >= 500) return { message: translate('system.errServer'), code: 'server' };
+  if (status === 401)
+    return { message: translate('system.errAuth'), code: 'auth' };
+  if (status === 403)
+    return { message: translate('system.errForbidden'), code: 'forbidden' };
+  if (status === 429)
+    return {
+      message: translate('system.errRateLimited'),
+      code: 'rate_limited',
+    };
+  if (status >= 500)
+    return { message: translate('system.errServer'), code: 'server' };
   return { message: translate('system.errGeneric'), code: null };
 }
 
-type Options = { method?: string; body?: unknown; token?: string | null; signal?: AbortSignal };
+type Options = {
+  method?: string;
+  body?: unknown;
+  token?: string | null;
+  signal?: AbortSignal;
+};
 
 let onUnauthorized: ((token: string) => void) | null = null;
 
 /** Set by the session: a 401 on the CURRENT token signs out; an older token's 401 is ignored. */
-export function setUnauthorizedHandler(handler: ((token: string) => void) | null) {
+export function setUnauthorizedHandler(
+  handler: ((token: string) => void) | null,
+) {
   onUnauthorized = handler;
 }
 
-export async function request<T>(path: string, { method = 'GET', body, token, signal }: Options = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  { method = 'GET', body, token, signal }: Options = {},
+): Promise<T> {
+  // The timeout covers the WHOLE answer, body included: it used to stop when
+  // the headers arrived, so a body stalling on a weak cell hung for ever -
+  // and a body that failed on a 200 came back as null, which reads as
+  // "no trip". The caller's signal is let go of in every case.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  signal?.addEventListener('abort', () => controller.abort());
-  let response: Response;
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort);
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    });
-  } catch {
-    throw new ApiError(0, translate('system.errNetwork'), 'network');
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        method,
+        headers: {
+          Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } catch {
+      throw new ApiError(0, translate('system.errNetwork'), 'network');
+    }
+    if (response.status === 204) return undefined as T;
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      if (controller.signal.aborted)
+        throw new ApiError(0, translate('system.errNetwork'), 'network');
+      payload = null;
+    }
+    if (!response.ok) {
+      const detail =
+        payload && typeof payload === 'object'
+          ? (payload as { detail?: unknown }).detail
+          : null;
+      const { message, code } = messageFor(response.status, detail);
+      if (response.status === 401 && token && onUnauthorized)
+        onUnauthorized(token);
+      throw new ApiError(response.status, message, code, detail);
+    }
+    return payload as T;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
-  if (response.status === 204) return undefined as T;
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-  if (!response.ok) {
-    const detail = payload && typeof payload === 'object' ? (payload as { detail?: unknown }).detail : null;
-    const { message, code } = messageFor(response.status, detail);
-    if (response.status === 401 && token && onUnauthorized) onUnauthorized(token);
-    throw new ApiError(response.status, message, code, detail);
-  }
-  return payload as T;
 }
 
 /**
@@ -145,10 +196,12 @@ export function upload<T>(
     xhr.timeout = REQUEST_TIMEOUT_MS * 4;
     if (onProgress && xhr.upload) {
       xhr.upload.onprogress = event => {
-        if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+        if (event.lengthComputable && event.total > 0)
+          onProgress(event.loaded / event.total);
       };
     }
-    const network = () => reject(new ApiError(0, translate('system.errNetwork'), 'network'));
+    const network = () =>
+      reject(new ApiError(0, translate('system.errNetwork'), 'network'));
     xhr.onerror = network;
     xhr.ontimeout = network;
     xhr.onload = () => {
@@ -162,7 +215,10 @@ export function upload<T>(
         resolve(payload as T);
         return;
       }
-      const detail = payload && typeof payload === 'object' ? (payload as { detail?: unknown }).detail : null;
+      const detail =
+        payload && typeof payload === 'object'
+          ? (payload as { detail?: unknown }).detail
+          : null;
       const { message, code } = messageFor(xhr.status, detail);
       if (xhr.status === 401 && token && onUnauthorized) onUnauthorized(token);
       reject(new ApiError(xhr.status, message, code, detail));

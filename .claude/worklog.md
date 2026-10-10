@@ -5734,3 +5734,22 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   (Priya has trips). The debug build shows Metro's grey "Downloading" between
   the native splash and the overlay; a release build does not.
 
+## 2026-10-10 - rider app: lag and crash pass (owner: "smooth, no lag, no crash")
+
+- A review agent read rider/src for lag/crash risks; each finding re-checked
+  against the code before fixing. Fixed with tests first (212 jest, +10):
+  keepIfSame on every poll write; trip/offer sequencers; offer poll skips
+  while one is out; useTripAction alive-guard + backoff
+  (useTripAction.test.tsx, the first hook test here, react-test-renderer);
+  http timeout over the body + listener removed (http.test.ts); location
+  error context for Home + one location send at a time; OfferScreen's
+  close timer cleared; Illustration memoised; usePermissions effect catches.
+- Release build on the emulator (api.ts and the manifest's cleartext flag
+  changed TEMPORARILY, both reverted; the Gradle placeholder route does not
+  work - the RN plugin overrides it per variant): cold start + 20 tab
+  switches + scrolling, logcat clean - no crash, no JS error, no unhandled
+  rejection; 1592 API calls answered. Frame numbers unusable: System UI
+  itself 98.7% janky (software GPU on this host). Emulator rebooted (was up
+  2 days at load 17); adb reverse 8000->8001 and 8081 re-added. The release
+  build (pointed at localhost) is what is installed on it now.
+

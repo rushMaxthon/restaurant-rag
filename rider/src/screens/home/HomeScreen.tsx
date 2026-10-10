@@ -12,7 +12,7 @@ import Animated, {
 import { HomeInsights } from '@components/HomeInsights';
 import { NearbyOrders } from '@components/home/NearbyOrders';
 import { ShiftCard } from '@components/home/ShiftCard';
-import { useRiderLocation } from '@components/ShiftKeeper';
+import { useLocationError } from '@components/ShiftKeeper';
 import { AnimatedAmount } from '@components/ui/AnimatedAmount';
 import { AppText } from '@components/ui/AppText';
 import { Button } from '@components/ui/Button';
@@ -58,7 +58,7 @@ export function HomeScreen() {
       void refreshPermissions();
     }, [refreshPermissions]),
   );
-  const location = useRiderLocation();
+  const locationError = useLocationError();
   const shift = useShiftToggle();
   const [refreshing, setRefreshing] = useState(false);
   const online = shift.online;
@@ -226,13 +226,13 @@ export function HomeScreen() {
           </View>
         </Card>
       ) : null}
-      {online && location.error ? (
+      {online && locationError ? (
         <Card style={styles.note}>
           <Icon name="location-outline" size={22} color={colors.danger} />
           <View style={styles.flex}>
             <AppText variant="bodyStrong">{t('home.noLocation')}</AppText>
             <AppText variant="caption" tone="muted">
-              {t('home.noLocationBody', { reason: location.error })}
+              {t('home.noLocationBody', { reason: locationError })}
             </AppText>
           </View>
         </Card>

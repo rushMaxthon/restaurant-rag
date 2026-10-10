@@ -9,9 +9,10 @@ import { SCENES, type SceneName } from './scenes';
 /**
  * One of the app's pictures (`scenes.ts`), in the current theme. 3:2, as
  * wide as asked. Decorative: the words beside it carry the meaning, so a
- * screen reader skips it.
+ * screen reader skips it. Memoised: it sits on screens that re-render
+ * with every poll, and an SVG tree is not free to reconcile.
  */
-export function Illustration({
+export const Illustration = React.memo(function Illustration({
   name,
   width = 240,
   style,
@@ -41,4 +42,4 @@ export function Illustration({
       <SvgXml xml={xml} width="100%" height="100%" />
     </View>
   );
-}
+});

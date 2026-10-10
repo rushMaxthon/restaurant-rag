@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
 
 import {
   useLocationReporter,
@@ -13,6 +13,12 @@ const LocationContext = createContext<LocationState & { permitted: boolean }>({
   error: null,
   permitted: false,
 });
+
+/**
+ * The GPS's trouble alone, for screens that only warn about it (Home): they
+ * must not re-render on every fix, which comes every 3-5 s on the move.
+ */
+const LocationErrorContext = createContext<string | null>(null);
 
 /**
  * Owns the rider's shift for the whole signed-in app, whichever screen is
@@ -43,13 +49,26 @@ export function ShiftKeeper({ children }: { children: React.ReactNode }) {
   // Signing out unmounts this: the service must not outlive the session.
   useEffect(() => () => void stopShift(), []);
 
+  const { lastFix, error } = location;
+  const value = useMemo(
+    () => ({ lastFix, error, permitted }),
+    [lastFix, error, permitted],
+  );
   return (
-    <LocationContext.Provider value={{ ...location, permitted }}>
-      {children}
+    <LocationContext.Provider value={value}>
+      <LocationErrorContext.Provider value={error}>
+        {children}
+      </LocationErrorContext.Provider>
     </LocationContext.Provider>
   );
 }
 
+/** The latest fix too: re-renders with every one (the trip's distance label). */
 export function useRiderLocation() {
   return useContext(LocationContext);
+}
+
+/** Only why the GPS is not working, or null. */
+export function useLocationError() {
+  return useContext(LocationErrorContext);
 }

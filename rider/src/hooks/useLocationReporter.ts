@@ -34,6 +34,10 @@ export function useLocationReporter(
   // rider with no position offline again within minutes.
   const sentOnce = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
+  // One send at a time. Until the first lands, every fix asks for one; on a
+  // slow cell that started a request per fix, and two at once could both
+  // take the queue and send the same fixes twice.
+  const sending = useRef(false);
   const [state, setState] = useState<LocationState>({
     lastFix: null,
     error: null,
@@ -64,7 +68,8 @@ export function useLocationReporter(
         if (!sentOnce.current) void flushRef.current();
       },
       error => {
-        gpsError.current = error.message || translate('system.locationUnavailable');
+        gpsError.current =
+          error.message || translate('system.locationUnavailable');
         setState(prev => ({ ...prev, error: gpsError.current }));
       },
       {
@@ -85,7 +90,8 @@ export function useLocationReporter(
         lastFix.current,
         gpsError.current,
       );
-      if (batch.length === 0) return;
+      if (batch.length === 0 || sending.current) return;
+      sending.current = true;
       queue.current = [];
       try {
         await api.sendLocation(batch);
@@ -93,6 +99,8 @@ export function useLocationReporter(
       } catch {
         // keep them for the next try, newest last, never more than the server takes
         queue.current = [...batch, ...queue.current].slice(-MAX_QUEUE);
+      } finally {
+        sending.current = false;
       }
     };
     flushRef.current = flush;

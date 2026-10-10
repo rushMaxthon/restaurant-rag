@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Vibration, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +65,16 @@ export function OfferScreen() {
     if (shown && !offer && busy === null) nav.goBack();
   }, [offer, shown, busy, nav]);
 
+  // Closing a moment after "taken by someone else": cleared if the screen
+  // goes first (the offer can be withdrawn and the screen closed meanwhile).
+  const closeLater = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (closeLater.current) clearTimeout(closeLater.current);
+    },
+    [],
+  );
+
   const close = useCallback(() => {
     Vibration.cancel();
     clearOffer();
@@ -88,7 +98,7 @@ export function OfferScreen() {
       setError(e instanceof ApiError ? e.message : t('trip.couldNotAccept'));
       setBusy(null);
       if (e instanceof ApiError && (e.status === 409 || e.status === 404))
-        setTimeout(close, 1400);
+        closeLater.current = setTimeout(close, 1400);
     }
   }, [api, shown, setTrip, clearOffer, refreshMe, nav, close, t]);
 

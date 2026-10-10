@@ -832,6 +832,21 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   never instead of it), Orders/History empty, Home off shift, Delivered (only
   >= 720 dp tall), the application by status. Home's rate card was removed.
 
+- **Smooth and crash-free pass (2026-10-10).** Polls write through
+  `utils/keepIfSame` (an unchanged answer keeps the old object - the board's
+  new `[]` every 8 s used to re-render every screen, hidden tabs included).
+  `trip` and `offer` have sequencers like `me` and the board (a late "no trip"
+  poll could close a trip just accepted). The offer TIMER skips a tick while
+  one is out; a socket hint never waits. `useTripAction` stops when its
+  screen closes (no orphan retry loop, no onDone into a dead screen) and
+  backs off 3/6/12/24/30 s. `http.request`'s timeout covers the body too, and
+  a body aborted on a 200 is a network error, never `null`. Home reads
+  `useLocationError` (not every GPS fix); location sends one at a time.
+  Not done (fine at today's sizes): the Orders board is a plain ScrollView,
+  four `usePermissions` instances, endless pulse animations. This emulator
+  draws ~1 fps even for Android's own System UI (software GPU), so frame
+  timing must be measured on a real phone.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { keepIfSame } from '@utils/keepIfSame';
 import { sequencer } from '@utils/latest';
 import { ApiError } from '@/services/http';
 import { useRiderRealtime } from '@hooks/useRiderRealtime';
@@ -81,6 +82,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   // the board has as many writers: only the newest answer may land.
   const meSeq = useRef(sequencer()).current;
   const ordersSeq = useRef(sequencer()).current;
+  // The trip too: a poll sent before the rider accepted an offer can answer
+  // "no trip" after the accept set one, and the trip screen would close.
+  const tripSeq = useRef(sequencer()).current;
   const setMe = useCallback(
     (next: RiderMe | null) => {
       meSeq.invalidate();
@@ -88,7 +92,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     },
     [meSeq],
   );
-  const [trip, setTrip] = useState<Trip | null>(null);
+  const [trip, setTripState] = useState<Trip | null>(null);
+  const setTrip = useCallback(
+    (next: Trip | null) => {
+      tripSeq.invalidate();
+      setTripState(next);
+    },
+    [tripSeq],
+  );
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +115,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     try {
       const next = await api.me();
       if (!meSeq.isLatest(ticket)) return;
-      setMeState(next);
+      // Unchanged answers keep the old object: a new one re-renders every
+      // screen that reads this provider, background tabs included.
+      setMeState(prev => keepIfSame(prev, next));
       setError(null);
     } catch (e) {
       if (e instanceof ApiError) setError(e.message);
@@ -113,27 +126,44 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const refreshTrip = useCallback(async () => {
     try {
-      setTrip((await api.trip()) ?? null);
+      const ticket = tripSeq.start();
+      const next = (await api.trip()) ?? null;
+      if (!tripSeq.isLatest(ticket)) return;
+      setTripState(prev => keepIfSame(prev, next));
     } catch (e) {
       if (e instanceof ApiError && !e.isNetwork) setError(e.message);
     }
-  }, [api]);
+  }, [api, tripSeq]);
 
+  const offerSeq = useRef(sequencer()).current;
+  const offerOut = useRef(0);
   const refreshOffer = useCallback(async () => {
+    const ticket = offerSeq.start();
+    offerOut.current += 1;
     try {
       const next = (await api.currentOffer()) ?? null;
-      setOffer(next && !dismissed.current.has(next.id) ? next : null);
+      if (!offerSeq.isLatest(ticket)) return;
+      const shown = next && !dismissed.current.has(next.id) ? next : null;
+      setOffer(prev => keepIfSame(prev, shown));
     } catch {
-      // an offer poll that fails is simply tried again in 3 s
+      // an offer poll that fails is simply tried again on the next tick
+    } finally {
+      offerOut.current -= 1;
     }
-  }, [api]);
+  }, [api, offerSeq]);
+  // The timer skips a tick while one is still out: offline, a 3 s poll
+  // against a 15 s timeout stacked five requests. A socket hint never waits.
+  const pollOffer = useCallback(() => {
+    if (offerOut.current === 0) void refreshOffer();
+  }, [refreshOffer]);
 
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const refreshOpenOrders = useCallback(async () => {
     const ticket = ordersSeq.start();
     try {
       const next = await api.openOrders();
-      if (ordersSeq.isLatest(ticket)) setOpenOrders(next);
+      if (ordersSeq.isLatest(ticket))
+        setOpenOrders(prev => keepIfSame(prev, next));
     } catch {
       // the next poll tries again
     }
@@ -208,8 +238,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         void refreshOffer();
         void refreshOpenOrders();
       },
-      onRevoked: () =>
-        void signOut(translate('system.signedOut')),
+      onRevoked: () => void signOut(translate('system.signedOut')),
       onApplication: applicationChanged,
     },
   );
@@ -221,9 +250,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     void refreshOffer();
-    const id = setInterval(refreshOffer, offerPollMs(live));
+    const id = setInterval(pollOffer, offerPollMs(live));
     return () => clearInterval(id);
-  }, [wantsOffers, refreshOffer, live]);
+  }, [wantsOffers, refreshOffer, pollOffer, live]);
 
   // Not on screen: ring. On screen, OfferWatcher opens the offer itself.
   const alerted = useRef<string | null>(null);
@@ -277,6 +306,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       refreshOffer,
       refreshOpenOrders,
       setMe,
+      setTrip,
       clearOffer,
       applicationTick,
       applicationChanged,
