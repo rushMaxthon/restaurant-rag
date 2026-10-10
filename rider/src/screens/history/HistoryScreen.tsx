@@ -26,6 +26,7 @@ import { sequencer } from '@utils/latest';
 import { endLabel } from '@utils/tripTimeline';
 import { useNav } from '@navigation/types';
 import { earningLabel } from '@utils/pay';
+import { Illustration } from '@components/illustrations/Illustration';
 
 function TripRow({ trip }: { trip: Trip }) {
   const { colors } = useTheme();
@@ -76,11 +77,7 @@ function TripRow({ trip }: { trip: Trip }) {
 }
 
 /** A day's heading: what the rider made that day, at a glance. */
-function DayHeader({
-  row,
-}: {
-  row: Extract<HistoryRow, { kind: 'day' }>;
-}) {
+function DayHeader({ row }: { row: Extract<HistoryRow, { kind: 'day' }> }) {
   const { colors } = useTheme();
   // Opaque: it sticks to the top while the day's trips scroll under it.
   return (
@@ -214,11 +211,7 @@ export function HistoryScreen() {
         // The first load failed: say so, with a way to try again - grey
         // placeholders forever would look like it is still loading.
         <View style={styles.empty}>
-          <View
-            style={[styles.emptyIcon, { backgroundColor: colors.surfaceAlt }]}
-          >
-            <Icon name="cloud-offline-outline" size={34} color={colors.textMuted} />
-          </View>
+          <Illustration name="offline" width={200} />
           <AppText variant="heading" align="center">
             {t('money.deliveriesFailedTitle')}
           </AppText>
@@ -273,18 +266,7 @@ export function HistoryScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <View
-                style={[
-                  styles.emptyIcon,
-                  { backgroundColor: colors.surfaceAlt },
-                ]}
-              >
-                <Icon
-                  name="receipt-outline"
-                  size={34}
-                  color={colors.textMuted}
-                />
-              </View>
+              <Illustration name="noTrips" width={200} />
               <AppText variant="heading" align="center">
                 {t('money.noDeliveriesYet')}
               </AppText>
@@ -337,12 +319,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xl,
   },
   retry: { marginTop: space.md, alignSelf: 'center' },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.sm,
-  },
 });

@@ -17,15 +17,20 @@ import type { RootStackParamList } from '@navigation/types';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
+import { Illustration } from '@components/illustrations/Illustration';
+import type { SceneName } from '@components/illustrations/scenes';
 
 /**
  * How the app works, in four cards a new rider can touch. Each card shows
  * the real control, not a drawing of it: the toggle toggles, the slide
- * slides, so the first real order is the second time they have done it.
+ * slides, so the first real order is the second time they have done it. The
+ * picture above it sets the scene (where you are when you use it); it is
+ * never the control.
  */
 
 type Card = {
   key: string;
+  scene: SceneName;
   titleKey: Key;
   bodyKey: Key;
   demo: React.ComponentType;
@@ -126,24 +131,28 @@ function CodeDemo() {
 const CARDS: Card[] = [
   {
     key: 'online',
+    scene: 'goOnline',
     titleKey: 'account.intro.onlineTitle',
     bodyKey: 'account.intro.onlineBody',
     demo: OnlineDemo,
   },
   {
     key: 'ring',
+    scene: 'newOrder',
     titleKey: 'account.intro.ringTitle',
     bodyKey: 'account.intro.ringBody',
     demo: RingDemo,
   },
   {
     key: 'slide',
+    scene: 'pickup',
     titleKey: 'account.intro.slideTitle',
     bodyKey: 'account.intro.slideBody',
     demo: SlideDemo,
   },
   {
     key: 'code',
+    scene: 'handover',
     titleKey: 'account.intro.codeTitle',
     bodyKey: 'account.intro.codeBody',
     demo: CodeDemo,
@@ -239,6 +248,7 @@ export function IntroScreen({
                 <View
                   style={[styles.stage, { backgroundColor: colors.surfaceAlt }]}
                 >
+                  <Illustration name={item.scene} width={180} />
                   {/* Only the card on screen runs its demo: four loops at once cost a cheap phone. */}
                   {i === index ? (
                     <Animated.View
@@ -323,7 +333,8 @@ const styles = StyleSheet.create({
   },
   demo: { alignSelf: 'stretch', alignItems: 'center' },
   stage: {
-    height: 300,
+    height: 330,
+    gap: space.md,
     borderRadius: radius.xxl,
     alignItems: 'center',
     justifyContent: 'center',

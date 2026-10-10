@@ -198,7 +198,7 @@ export function HomeScreen() {
       </Animated.View>
 
       {/* The week so far and what a delivery pays: useful between orders. */}
-      {!trip ? <HomeInsights me={me} /> : null}
+      {!trip ? <HomeInsights /> : null}
 
       {/* Status notes */}
       {permissions.state && !permissions.ready ? (

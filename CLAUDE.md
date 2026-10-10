@@ -816,6 +816,22 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   build cannot show the killed-app alert in time: its headless start
   fetches the bundle from Metro (60-120 s); test with the bundle in the APK.
 
+- **Rydorgo: name, icon, splash and pictures (2026-10-10, the owner's call).**
+  The rider app is "Rydorgo" (`app_name`, `app.json`, `APP_NAME`). The mark is
+  an italic R with three speed lines on the brand gradient, generated from one
+  geometry by `rider/scripts/brand/make_icon.py`: adaptive icon (+ themed
+  monochrome), legacy PNGs, `splash_mark.xml`, and `brandMarkPaths.ts` for
+  `BrandMark` - change them together. Launch: the manifest starts on
+  `LaunchTheme` (orange + mark; Android 12+ via `values-v31`, 288 dp) and
+  `MainActivity` switches to `AppTheme` before drawing; `SplashOverlay` takes
+  over in the same orange with the mark at the same 192 dp. Pictures are SVG
+  templates (`components/illustrations/scenes.ts`, 240 x 160, `{P}` tokens
+  filled from the theme by `palette.ts`, drawn with `SvgXml`) - no image
+  files, so dark mode and high contrast follow; `scenes.test.ts` checks every
+  token resolves. On: login, splash, intro cards (above the live control,
+  never instead of it), Orders/History empty, Home off shift, Delivered (only
+  >= 720 dp tall), the application by status. Home's rate card was removed.
+
 ## Payouts (Razorpay Route)
 
 `app/services/payouts/` + `app/api/payouts.py` + the Payouts page. The

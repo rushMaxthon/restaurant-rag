@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
   Easing,
@@ -24,6 +24,7 @@ import { waitingLabel } from '@utils/delivered';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
+import { Illustration } from '@components/illustrations/Illustration';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -88,6 +89,8 @@ export function DeliveredScreen({
   }));
   const badge = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const sparks = [colors.primary, colors.success, colors.warning];
+  // The picture is a bonus: on a short phone it would push Done off screen.
+  const roomy = useWindowDimensions().height >= 720;
 
   return (
     <Screen style={styles.root}>
@@ -146,6 +149,12 @@ export function DeliveredScreen({
             {t('trip.withCustomer', { code: route.params.orderCode })}
           </AppText>
         </Animated.View>
+
+        {roomy ? (
+          <Animated.View entering={FadeInDown.delay(850).duration(motion.base)}>
+            <Illustration name="delivered" width={200} style={styles.scene} />
+          </Animated.View>
+        ) : null}
 
         <Animated.View
           entering={FadeInDown.delay(700).duration(motion.base)}
@@ -210,6 +219,7 @@ const styles = StyleSheet.create({
   },
   spark: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
   text: { marginTop: space.xxl, gap: space.xs },
+  scene: { marginTop: space.md },
   actions: { gap: space.sm },
   earned: {
     marginTop: space.xxl,

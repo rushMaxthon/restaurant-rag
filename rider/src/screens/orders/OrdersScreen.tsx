@@ -18,6 +18,7 @@ import { useRider } from '@/store/RiderProvider';
 import { useTheme } from '@theme/ThemeProvider';
 import { motion, space } from '@theme/tokens';
 import { rankOrders } from '@utils/homeOrders';
+import { Illustration } from '@components/illustrations/Illustration';
 
 /**
  * The Orders board: every order waiting near the rider, any time - online
@@ -111,11 +112,7 @@ export function OrdersScreen() {
 
       {openOrders.length === 0 ? (
         <View style={styles.empty}>
-          <View
-            style={[styles.emptyIcon, { backgroundColor: colors.surfaceAlt }]}
-          >
-            <Icon name="receipt-outline" size={26} color={colors.textMuted} />
-          </View>
+          <Illustration name="waiting" width={200} />
           <AppText variant="bodyStrong" align="center">
             {t('orders.emptyTitle')}
           </AppText>
@@ -155,13 +152,5 @@ const styles = StyleSheet.create({
     gap: space.xs,
     paddingTop: space.xl,
     paddingHorizontal: space.xl,
-  },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.sm,
   },
 });

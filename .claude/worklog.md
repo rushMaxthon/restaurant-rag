@@ -5714,3 +5714,23 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   Browser check of the admin page not done: Chrome stopped answering
   screenshots; verified through the API instead.
 
+## 2026-10-10 - Rydorgo: name, icon, splash, illustrations
+
+- Rider app renamed PreeRider -> Rydorgo. Home's "How you earn" card removed
+  (HomeInsights keeps the week card).
+- Owner picked: icon "R + speed lines", drawn illustrations, on sign-in +
+  splash, intro cards, empty screens, Delivered + application.
+- Icon/splash generated from one geometry (rider/scripts/brand/make_icon.py,
+  rasterised with resvg - a script tool, not an app dependency). Native launch
+  theme + Android 12 splash attrs; SplashOverlay continues it in orange with a
+  rider riding in. 15 SVG scenes with theme tokens; tests check every token
+  resolves in light/dark/high contrast.
+- Verified on the emulator (debug build installed): launcher shows Rydorgo
+  icon, system splash, overlay, Orders empty, Home off shift, intro cards 1-2.
+  The overlay mark was first sized for a 240 dp system icon; the screen showed
+  Android 14 draws it at 288 dp, corrected to 192 dp (not re-captured after
+  that last size change - the emulator was at load 17). Not seen on a device:
+  login (rider is signed in), Delivered, application screens, History empty
+  (Priya has trips). The debug build shows Metro's grey "Downloading" between
+  the native splash and the overlay; a release build does not.
+

@@ -18,6 +18,7 @@ import { GuideTarget } from '@/guide/GuideProvider';
 import { TARGETS } from '@/guide/tours';
 import { useTheme } from '@theme/ThemeProvider';
 import { radius, space } from '@theme/tokens';
+import { Illustration } from '@components/illustrations/Illustration';
 
 type Props = {
   online: boolean;
@@ -118,23 +119,18 @@ function ShiftStrip({
 }
 
 function OfflineCard({ online, onChange, busy, disabledReason, error }: Props) {
-  const { colors } = useTheme();
   const { t } = useI18n();
   return (
     <Animated.View entering={FadeIn.duration(300)}>
       <Card style={styles.offline}>
-        <View style={styles.offlineHead}>
-          <View
-            style={[styles.offIcon, { backgroundColor: colors.surfaceAlt }]}
-          >
-            <Icon name="moon-outline" size={22} color={colors.textMuted} />
-          </View>
-          <View style={styles.flex}>
-            <AppText variant="heading">{t('home.offline')}</AppText>
-            <AppText variant="caption" tone="muted">
-              {t('home.offlineBody')}
-            </AppText>
-          </View>
+        <Illustration name="resting" width={200} style={styles.center} />
+        <View style={styles.offlineText}>
+          <AppText variant="heading" align="center">
+            {t('home.offline')}
+          </AppText>
+          <AppText variant="caption" tone="muted" align="center">
+            {t('home.offlineBody')}
+          </AppText>
         </View>
         <GuideTarget id={TARGETS.homeToggle} style={styles.center}>
           <OnlineToggle
@@ -196,14 +192,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.xl,
     borderRadius: radius.xxl,
   },
-  offlineHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  offIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  offlineText: { gap: space.xxs },
   beacon: {
     width: 28,
     height: 28,

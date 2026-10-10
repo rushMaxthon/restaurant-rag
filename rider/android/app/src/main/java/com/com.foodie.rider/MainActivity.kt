@@ -27,6 +27,9 @@ class MainActivity : ReactActivity() {
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // The manifest starts on LaunchTheme (the orange splash); the app itself
+    // draws on AppTheme, or that orange shows through every transition.
+    setTheme(R.style.AppTheme)
     wakeForOffer()
     super.onCreate(savedInstanceState)
   }

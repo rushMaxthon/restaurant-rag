@@ -26,6 +26,7 @@ import { useSession } from '@/store/SessionProvider';
 import { useTheme } from '@theme/ThemeProvider';
 import { space, motion } from '@theme/tokens';
 import { haptic } from '@utils/haptics';
+import { Illustration } from '@components/illustrations/Illustration';
 
 export function digitsOnly(value: string): string {
   return value.replace(/\D/g, '').slice(-10);
@@ -95,6 +96,7 @@ export function LoginScreen() {
             <BrandMark size={72} />
             <LanguageButton />
           </View>
+          <Illustration name="road" width={260} style={styles.scene} />
           <AppText variant="display" style={styles.title}>
             {t('account.login.welcome')}
           </AppText>
@@ -163,7 +165,9 @@ export function LoginScreen() {
             icon="bicycle-outline"
             label={t('onboarding.signup.newHere')}
             onPress={() =>
-              nav.navigate('SignupPhone', { phone: digitsOnly(phone) || undefined })
+              nav.navigate('SignupPhone', {
+                phone: digitsOnly(phone) || undefined,
+              })
             }
             testID="login-signup"
           />
@@ -199,6 +203,7 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  scene: { alignSelf: 'center' },
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center' },
   hero: { gap: space.xs, marginBottom: space.xxxl },

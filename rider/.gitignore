@@ -73,3 +73,7 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# brand scripts: the PNG queue and preview sheets they write
+scripts/brand/jobs.json
+scripts/brand/*.png

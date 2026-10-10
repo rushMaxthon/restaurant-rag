@@ -31,6 +31,8 @@ import {
   SECTION_OF,
   showsChecklist,
 } from '@utils/onboarding';
+import { Illustration } from '@components/illustrations/Illustration';
+import type { SceneName } from '@components/illustrations/scenes';
 
 /**
  * What a rider who signed up sees instead of the tabs, until approved: where
@@ -147,6 +149,14 @@ function shortDate(iso: string): string {
   return `${d.getDate()} ${monthName(d.getMonth() + 1)}`;
 }
 
+/** A picture for where the application is; none for a rejected one. */
+const SCENE_FOR: Partial<Record<ApplicationView['status'], SceneName>> = {
+  DRAFT: 'apply',
+  SUBMITTED: 'review',
+  CHANGES_NEEDED: 'fixes',
+  APPROVED: 'approved',
+};
+
 /** The banner, the progress and the next step, and every item with its state. */
 function Summary({ view: app }: { view: ApplicationView }) {
   const nav = useNav();
@@ -178,6 +188,13 @@ function Summary({ view: app }: { view: ApplicationView }) {
       entering={FadeInDown.duration(motion.base)}
       style={styles.gap}
     >
+      {SCENE_FOR[app.status] ? (
+        <Illustration
+          name={SCENE_FOR[app.status] as SceneName}
+          width={220}
+          style={styles.scene}
+        />
+      ) : null}
       <StatusBanner status={app.status} finalReason={app.final_reason} />
 
       {open ? (
@@ -246,6 +263,7 @@ function Summary({ view: app }: { view: ApplicationView }) {
 }
 
 const styles = StyleSheet.create({
+  scene: { alignSelf: 'center' },
   content: { gap: space.xl },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   flex: { flex: 1 },
