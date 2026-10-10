@@ -15,13 +15,21 @@ than repaired.
 from __future__ import annotations
 
 import logging
+import re
+import secrets
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.enums import ReferralStatus, RiderOnboarding
+from app.models.rider import Rider
+from app.models.rider_referral import RiderReferral
+from app.models.user import User
 from app.services.fleet.config import _read, _write
 
 logger = logging.getLogger(__name__)
@@ -99,3 +107,77 @@ def save_config(db: Session, user: Any, data: dict[str, Any]) -> ReferralConfig:
     cfg = validate_config(data)
     _write(db, user, REFERRAL_KEY, config_value(cfg))
     return load_config(db)
+
+
+# --- codes ----------------------------------------------------------------------
+
+
+def normalise(code: str) -> str:
+    """What a rider typed, as stored: uppercase, no spaces."""
+
+    return re.sub(r"\s+", "", code or "").upper()[:16]
+
+
+def _stem(full_name: str) -> str:
+    words = (full_name or "").split()
+    letters = re.sub(r"[^A-Za-z]", "", words[0] if words else "").upper()[:6]
+    return letters or "RIDER"
+
+
+def ensure_code(db: Session, rider_user_id: uuid.UUID) -> str | None:
+    """The rider's code, made the first time it is asked for. APPROVED riders only."""
+
+    rider = db.get(Rider, rider_user_id)
+    if rider is None or rider.onboarding != RiderOnboarding.APPROVED:
+        return None
+    if rider.referral_code:
+        return rider.referral_code
+    user = db.get(User, rider_user_id)
+    stem = _stem(user.full_name if user else "")
+    for _ in range(50):
+        candidate = f"{stem}{secrets.randbelow(10_000):04d}"
+        if db.scalar(select(Rider.user_id).where(Rider.referral_code == candidate)) is None:
+            rider.referral_code = candidate
+            db.flush()
+            return candidate
+    raise RuntimeError("could not find a free referral code")
+
+
+# --- accepting a code ----------------------------------------------------------
+
+
+def _refused(code: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=code)
+
+
+def accept_code(db: Session, referred_user_id: uuid.UUID, raw_code: str) -> RiderReferral:
+    """Link a not-yet-approved rider to the rider whose code they typed, on today's terms."""
+
+    cfg = load_config(db)
+    referred = db.get(Rider, referred_user_id)
+    if not cfg.enabled or referred is None or referred.onboarding == RiderOnboarding.APPROVED:
+        raise _refused("referral_closed")
+    if db.get(RiderReferral, referred_user_id) is not None:
+        raise _refused("referral_taken")
+    code = normalise(raw_code)
+    referrer = db.scalar(select(Rider).where(Rider.referral_code == code)) if code else None
+    if referrer is None:
+        raise _refused("referral_unknown")
+    if referrer.user_id == referred_user_id:
+        raise _refused("referral_self")
+    referrer_user = db.get(User, referrer.user_id)
+    if referrer.onboarding != RiderOnboarding.APPROVED or referrer_user is None or not referrer_user.is_active:
+        raise _refused("referral_inactive")
+    ref = RiderReferral(
+        referred_user_id=referred_user_id,
+        referrer_user_id=referrer.user_id,
+        code=code,
+        referrer_amount=cfg.referrer_amount,
+        joiner_amount=cfg.joiner_amount,
+        deliveries_required=cfg.deliveries_required,
+        days_allowed=cfg.days_allowed,
+        status=ReferralStatus.WAITING,
+    )
+    db.add(ref)
+    db.flush()
+    return ref

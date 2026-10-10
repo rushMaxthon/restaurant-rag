@@ -139,6 +139,84 @@ class ReferralTests(unittest.TestCase):
                 with self.subTest(bad=bad), self.assertRaises(HTTPException):
                     referral.save_config(db, admin, {**good, **bad})
 
+    # Task 3 ------------------------------------------------------------------
+
+    def test_a_code_is_first_name_and_four_digits(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a = self._rider(db, name="Priya Shah")
+            code = referral.ensure_code(db, a.id)
+            self.assertRegex(code, r"^PRIYA\d{4}$")
+            self.assertEqual(referral.ensure_code(db, a.id), code)  # stable
+            b = self._rider(db, name="  ")
+            self.assertRegex(referral.ensure_code(db, b.id), r"^RIDER\d{4}$")
+            c = self._rider(db, name="Venkatalakshmi")
+            self.assertRegex(referral.ensure_code(db, c.id), r"^VENKAT\d{4}$")
+            pending = self._rider(db, onboarding=RiderOnboarding.PENDING)
+            self.assertIsNone(referral.ensure_code(db, pending.id))
+
+    def test_code_is_normalised(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a = self._rider(db)
+            code = referral.ensure_code(db, a.id)
+            b = self._rider(db, name="New", onboarding=RiderOnboarding.PENDING)
+            ref = referral.accept_code(db, b.id, f"  {code.lower()[:3]} {code.lower()[3:]} ")
+            self.assertEqual((ref.referrer_user_id, ref.code, ref.status), (a.id, code, ReferralStatus.WAITING))
+
+    def test_terms_are_frozen_when_the_code_is_accepted(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            admin = self.fdb.make_admin(db)
+            referral.save_config(db, admin, {"referrer_amount": "300", "joiner_amount": "100",
+                                             "deliveries_required": 5, "days_allowed": 7})
+            a = self._rider(db)
+            b = self._rider(db, name="New", onboarding=RiderOnboarding.PENDING)
+            ref = referral.accept_code(db, b.id, referral.ensure_code(db, a.id))
+            referral.save_config(db, admin, {"referrer_amount": "999", "joiner_amount": "999",
+                                             "deliveries_required": 50, "days_allowed": 90})
+            db.refresh(ref)
+            self.assertEqual((ref.referrer_amount, ref.joiner_amount, ref.deliveries_required, ref.days_allowed),
+                             (Decimal("300.00"), Decimal("100.00"), 5, 7))
+
+    def test_every_refusal_has_its_code(self) -> None:
+        from fastapi import HTTPException
+
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a = self._rider(db)
+            code = referral.ensure_code(db, a.id)
+            b = self._rider(db, name="New", onboarding=RiderOnboarding.PENDING)
+
+            def refused(user_id, value) -> str:
+                with self.assertRaises(HTTPException) as caught:
+                    referral.accept_code(db, user_id, value)
+                return caught.exception.detail
+
+            self.assertEqual(refused(b.id, "NOPE0000"), "referral_unknown")
+            pending_referrer = self._rider(db, name="Kiran", onboarding=RiderOnboarding.PENDING)
+            db.get(Rider, pending_referrer.id).referral_code = "KIRAN1111"
+            db.flush()
+            self.assertEqual(refused(b.id, "KIRAN1111"), "referral_inactive")
+            a_self = self._rider(db, name="Self", onboarding=RiderOnboarding.PENDING)
+            db.get(Rider, a_self.id).referral_code = "SELF2222"
+            db.flush()
+            self.assertEqual(refused(a_self.id, "SELF2222"), "referral_self")
+            approved = self._rider(db, name="Old")
+            self.assertEqual(refused(approved.id, code), "referral_closed")
+            referral.accept_code(db, b.id, code)
+            self.assertEqual(refused(b.id, code), "referral_taken")
+            from app.models.user import User
+
+            db.get(User, a.id).is_active = False
+            c = self._rider(db, name="Late", onboarding=RiderOnboarding.PENDING)
+            db.flush()
+            self.assertEqual(refused(c.id, code), "referral_inactive")
+
 
 if __name__ == "__main__":
     unittest.main()
