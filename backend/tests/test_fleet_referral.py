@@ -364,6 +364,53 @@ class ReferralTests(unittest.TestCase):
                 referral.cancel(db, admin, b.id, "again")
             self.assertEqual(caught.exception.status_code, 409)
 
+    # Task 5 ------------------------------------------------------------------
+
+    def _bonus(self, db, rider_id, amount="500", at=None):
+        a = self._rider(db, name="Other")
+        ref = RiderReferral(referred_user_id=a.id, referrer_user_id=rider_id, code=f"X{uuid.uuid4().hex[:6]}",
+                            referrer_amount=Decimal(amount), joiner_amount=Decimal("0"),
+                            deliveries_required=1, days_allowed=1, status=ReferralStatus.EARNED)
+        db.add(ref)
+        db.flush()
+        db.add(RiderBonus(rider_user_id=rider_id, kind=RiderBonusKind.REFERRAL_REFERRER, amount=Decimal(amount),
+                          referral_id=a.id, earned_at=at or datetime.now(UTC)))
+        db.flush()
+
+    def test_bonus_pays_without_trips(self) -> None:
+        with self.fdb.session() as db:
+            rider = self._rider(db)
+            self._bonus(db, rider.id, "500")
+            db.commit()
+        admin = client_for(self.fdb, self.admin)
+        rows = {r["rider_user_id"]: r for r in admin.get("/api/admin/riders/payouts/unpaid").json()}
+        self.assertEqual((Decimal(rows[str(rider.id)]["amount"]), rows[str(rider.id)]["trips"]), (Decimal("500.00"), 0))
+        later = (datetime.now(UTC) + timedelta(minutes=1)).isoformat()
+        r = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": later, "reference": "UTR1"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual((Decimal(r.json()["amount"]), r.json()["trips"]), (Decimal("500.00"), 0))
+        again = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": later})
+        self.assertEqual((again.status_code, again.json()["detail"]), (409, "nothing_to_pay"))
+
+    def test_bonus_and_trips_pay_together_once(self) -> None:
+        now = datetime.now(UTC)
+        with self.fdb.session() as db:
+            rider = self._rider(db)
+            self._delivered(db, rider.id, at=now - timedelta(hours=2))  # Rs 30
+            self._bonus(db, rider.id, "200", at=now - timedelta(hours=1))
+            db.commit()
+        earnings = client_for(self.fdb, rider).get("/api/rider/earnings").json()
+        self.assertEqual(Decimal(earnings["unpaid"]), Decimal("230.00"))
+        self.assertEqual(Decimal(earnings["today"]), Decimal("230.00"))
+        self.assertEqual(earnings["today_trips"], 1)
+        self.assertEqual([(Decimal(b["amount"]), b["kind"]) for b in earnings["bonuses"]],
+                         [(Decimal("200.00"), "REFERRAL_REFERRER")])
+        admin = client_for(self.fdb, self.admin)
+        r = admin.post(f"/api/admin/riders/{rider.id}/payouts", json={"period_to": now.isoformat()})
+        self.assertEqual(Decimal(r.json()["amount"]), Decimal("230.00"))
+        with self.fdb.session() as db:
+            self.assertTrue(all(b.payout_id for b in db.scalars(select(RiderBonus).where(RiderBonus.rider_user_id == rider.id))))
+
 
 if __name__ == "__main__":
     unittest.main()

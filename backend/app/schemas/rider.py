@@ -197,6 +197,7 @@ class Earnings(BaseModel):
     unpaid: Decimal
     paid_total: Decimal
     days: list[EarningDay]
+    bonuses: list["EarningBonus"] = []
 
 
 # --- admin operations -----------------------------------------------------------
@@ -335,6 +336,14 @@ class ManualPayIn(BaseModel):
 class ManualPayOut(BaseModel):
     trip_id: uuid.UUID
     earning_amount: Decimal
+
+
+class EarningBonus(BaseModel):
+    """A referral bonus in the Earnings period (`fleet/referral.py`)."""
+
+    amount: Decimal
+    kind: str
+    earned_at: datetime
 
 
 class UnpaidRow(BaseModel):
