@@ -5753,3 +5753,22 @@ Spec + plan in docs/superpowers. Backend (me, TDD): migration 0090, onboarding r
   2 days at load 17); adb reverse 8000->8001 and 8081 re-added. The release
   build (pointed at localhost) is what is installed on it now.
 
+## 2026-10-10 - rider referral programme (owner: "refer and earn, like Swiggy")
+
+- Brainstormed -> spec `docs/superpowers/specs/2026-10-10-rider-referral-design.md`
+  -> plan `docs/superpowers/plans/2026-10-10-rider-referral.md`, executed
+  inline (owner chose "native"). Decisions: reward after N deliveries within
+  X days of approval; both riders earn (Rs 500 / Rs 200, 20 deliveries, 30
+  days by default, admin-set); paid automatically with the next payout.
+- Backend: migration 0091 (riders.referral_code, rider_referrals,
+  rider_bonuses, RLS on), `fleet/referral.py`, hooks in approve and
+  trips._finish, payouts include bonuses, rider + admin routes, sign-up code.
+  `tests/test_fleet_referral.py` (25).
+- Admin: Riders -> Referrals tab (settings, list, cancel). Rider app: Refer &
+  earn screen, joining-bonus card, code at sign-up / on the application home,
+  bonus rows on Earnings, en/hi/gu.
+- 0091 applied to rr_rider_dev (upgrade/downgrade/upgrade round trip OK) and
+  the 8001 API restarted on it. NOT applied to Supabase - Render's pre-deploy
+  upgrade does it. The local 8000 API (Supabase) still runs the previous code
+  and must not be restarted on this one until Supabase is at 0091.
+

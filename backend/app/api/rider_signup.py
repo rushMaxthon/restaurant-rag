@@ -89,6 +89,13 @@ def signup(
     number = _phone(payload.phone_number)
     if _phone_taken(db, number):
         raise HTTPException(status.HTTP_409_CONFLICT, "phone_in_use")
+    wants_referral = bool(payload.referral_code and payload.referral_code.strip())
+    if wants_referral:
+        from app.services.fleet import referral
+
+        # Before the phone code is used up: a mistyped referral code must
+        # leave the rider able to fix it and send the form again.
+        referral.check_code(db, payload.referral_code)
     phone.verify_code(db, number, payload.code)
 
     user = User(
@@ -118,11 +125,11 @@ def signup(
     )
     db.flush()
     applications.start(db, user)
-    if payload.referral_code and payload.referral_code.strip():
+    if wants_referral:
         from app.services.fleet import referral
 
-        # Checked before the commit: a bad code fails the whole sign-up, so
-        # nothing is half-made and the rider fixes the code and tries again.
+        # Checked again with the new rider (self/taken), before the commit:
+        # a refusal now leaves nothing half-made.
         try:
             referral.accept_code(db, user.id, payload.referral_code)
         except HTTPException:

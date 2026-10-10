@@ -270,6 +270,8 @@ export type ReferralProgress = {
   required: number;
   deadline: string | null;
   amount: string;
+  /** This side's bonus is already in a payout. */
+  paid: boolean;
 };
 
 /** Refer & earn (backend `RiderReferralView`). */

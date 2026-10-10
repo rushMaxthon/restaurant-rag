@@ -50,6 +50,11 @@ class ReferralTests(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.addCleanup(reset_overrides)
+        # Sign-up is rate limited per IP in Redis, which outlives a test run;
+        # the onboarding API tests patch it the same way.
+        p = mock.patch("app.services.rate_limit.hit")
+        p.start()
+        self.addCleanup(p.stop)
         from sqlalchemy import delete
 
         from app.models.platform_setting import PlatformSetting
@@ -508,6 +513,73 @@ class ReferralTests(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["status"]), (200, "CANCELLED"))
         owner = client_for(self.fdb, self.owner)
         self.assertEqual(owner.get("/api/admin/riders/referrals").status_code, 403)
+
+    # Final review fixes --------------------------------------------------------
+
+    def test_bad_code_at_signup_keeps_the_phone_code(self) -> None:
+        """Spec rule 3: fix the code and resubmit - the phone code must still work."""
+
+        number = f"98{uuid.uuid4().int % 10**8:08d}"
+        anon = client_for(self.fdb, None)
+        sent = anon.post("/api/rider/signup/code", json={"phone_number": number})
+        self.assertEqual(sent.status_code, 200, sent.text)
+        otp = sent.json()["debug_code"]
+        body = {"phone_number": number, "code": otp, "password": "password123", "full_name": "New Rider"}
+        bad = anon.post("/api/rider/signup", json={**body, "referral_code": "NOPE0000"})
+        self.assertEqual((bad.status_code, bad.json()["detail"]), (422, "referral_unknown"))
+        again = anon.post("/api/rider/signup", json=body)
+        self.assertEqual(again.status_code, 201, again.text)
+
+    def test_joined_with_says_when_the_bonus_is_paid(self) -> None:
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1)
+            self._delivered(db, b.id)
+            from app.services.fleet import referral
+
+            referral.on_delivered(db, b.id)
+            db.commit()
+        rider = client_for(self.fdb, b)
+        self.assertEqual(rider.get("/api/rider/referral").json()["joined_with"]["paid"], False)
+        later = (datetime.now(UTC) + timedelta(minutes=1)).isoformat()
+        paid = client_for(self.fdb, self.admin).post(f"/api/admin/riders/{b.id}/payouts", json={"period_to": later})
+        self.assertEqual(paid.status_code, 201, paid.text)
+        # client_for swaps one global current-user override: ask as the rider again.
+        rider = client_for(self.fdb, b)
+        self.assertEqual(rider.get("/api/rider/referral").json()["joined_with"]["paid"], True)
+
+    def test_cancel_answers_for_a_referral_past_the_list_cap(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            _, old = self._pair(db)
+            self._pair(db)
+            db.commit()
+        with mock.patch.object(referral, "ADMIN_ROWS_LIMIT", 1):
+            r = client_for(self.fdb, self.admin).post(
+                f"/api/admin/riders/referrals/{old.id}/cancel", json={"reason": "duplicate"})
+        self.assertEqual((r.status_code, r.json()["status"]), (200, "CANCELLED"))
+
+    def test_a_referral_error_never_costs_a_delivery(self) -> None:
+        from sqlalchemy.exc import OperationalError
+
+        from app.models.enums import OrderStatus, RiderStatus
+        from app.models.order_delivery import OrderDelivery
+        from app.services.fleet import referral, trips
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1)
+            db.get(Rider, b.id).status = RiderStatus.ON_TRIP
+            order = self.fdb.make_order(db, status=OrderStatus.OUT_FOR_DELIVERY)
+            delivery = self.fdb.make_fleet_delivery(db, order, state="IN_TRANSIT", distance_metres=2000.0)
+            trip = RiderTrip(order_delivery_id=delivery.id, rider_user_id=b.id, accepted_at=datetime.now(UTC),
+                             picked_up_at=datetime.now(UTC))
+            db.add(trip)
+            db.commit()
+            boom = OperationalError("SELECT 1", {}, Exception("lock timeout"))
+            with mock.patch.object(referral, "on_delivered", side_effect=boom):
+                trips.admin_confirm_delivered(db, self.admin, db.get(OrderDelivery, delivery.id), "code locked")
+        with self.fdb.session() as db:
+            self.assertEqual(db.get(RiderTrip, trip.id).end_reason, TripEndReason.DELIVERED)
 
 
 if __name__ == "__main__":

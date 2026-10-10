@@ -2,6 +2,8 @@
  * Refer & earn, the parts with no screen (backend `fleet/referral.py`).
  */
 
+import type { ReferralProgress } from '@/types/api';
+
 import { rupees } from './format';
 
 export function daysLeft(
@@ -48,4 +50,14 @@ export function shareMessage(
     n: terms.deliveries_required,
     days: terms.days_allowed,
   });
+}
+
+/**
+ * The joining-bonus card: while the rider works towards it, then once earned
+ * until it is paid - after that, "it comes with your next payout" is false.
+ */
+export function showsJoiningCard(p: ReferralProgress | null): boolean {
+  if (!p) return false;
+  if (p.status === 'IN_PROGRESS') return true;
+  return p.status === 'EARNED' && !p.paid;
 }

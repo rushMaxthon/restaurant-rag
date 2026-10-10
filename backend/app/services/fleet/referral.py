@@ -152,6 +152,26 @@ def _refused(code: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=code)
 
 
+def check_code(db: Session, raw_code: str) -> Rider:
+    """The referrer a code names, or the refusal - changing nothing.
+
+    Sign-up asks this BEFORE it uses up the phone code: a mistyped referral
+    code must leave the rider able to fix it and send the form again
+    (`verify_code` consumes the code and commits).
+    """
+
+    if not load_config(db).enabled:
+        raise _refused("referral_closed")
+    code = normalise(raw_code)
+    referrer = db.scalar(select(Rider).where(Rider.referral_code == code)) if code else None
+    if referrer is None:
+        raise _refused("referral_unknown")
+    referrer_user = db.get(User, referrer.user_id)
+    if referrer.onboarding != RiderOnboarding.APPROVED or referrer_user is None or not referrer_user.is_active:
+        raise _refused("referral_inactive")
+    return referrer
+
+
 def accept_code(db: Session, referred_user_id: uuid.UUID, raw_code: str) -> RiderReferral:
     """Link a not-yet-approved rider to the rider whose code they typed, on today's terms."""
 
@@ -318,8 +338,19 @@ def _short_name(full_name: str) -> str:
     return parts[0] if len(parts) == 1 else f"{parts[0]} {parts[-1][0]}."
 
 
-def _progress(db: Session, ref: RiderReferral, name: str, amount: Decimal) -> dict[str, Any]:
+def _progress(
+    db: Session, ref: RiderReferral, name: str, amount: Decimal, kind: RiderBonusKind
+) -> dict[str, Any]:
     refresh_status(db, ref)
+    # Paid = this side's bonus is in a payout: "it comes with your next
+    # payout" is then no longer true, and the app stops saying it.
+    paid = db.scalar(
+        select(RiderBonus.id).where(
+            RiderBonus.referral_id == ref.referred_user_id,
+            RiderBonus.kind == kind,
+            RiderBonus.payout_id.is_not(None),
+        )
+    )
     return {
         "name": name,
         "status": ref.status.value,
@@ -327,6 +358,7 @@ def _progress(db: Session, ref: RiderReferral, name: str, amount: Decimal) -> di
         "required": ref.deliveries_required,
         "deadline": ref.deadline,
         "amount": amount,
+        "paid": paid is not None,
     }
 
 
@@ -346,12 +378,17 @@ def rider_view(db: Session, rider_user_id: uuid.UUID) -> dict[str, Any]:
         .order_by(RiderReferral.created_at.desc())
     ))
     names = _names(db, {r.referred_user_id for r in mine})
-    referrals = [_progress(db, r, _short_name(names.get(r.referred_user_id, "")), r.referrer_amount) for r in mine]
+    referrals = [
+        _progress(db, r, _short_name(names.get(r.referred_user_id, "")), r.referrer_amount,
+                  RiderBonusKind.REFERRAL_REFERRER)
+        for r in mine
+    ]
     own = db.get(RiderReferral, rider_user_id)
     joined_with = None
     if own is not None and own.status != ReferralStatus.CANCELLED:
         referrer = db.get(User, own.referrer_user_id)
-        joined_with = _progress(db, own, _short_name(referrer.full_name if referrer else ""), own.joiner_amount)
+        joined_with = _progress(db, own, _short_name(referrer.full_name if referrer else ""), own.joiner_amount,
+                                RiderBonusKind.REFERRAL_JOINER)
     earned = db.scalar(
         select(func.coalesce(func.sum(RiderBonus.amount), 0)).where(RiderBonus.rider_user_id == rider_user_id)
     )
@@ -371,10 +408,21 @@ def rider_view(db: Session, rider_user_id: uuid.UUID) -> dict[str, Any]:
     }
 
 
-def admin_rows(db: Session, wanted: ReferralStatus | None = None) -> list[dict[str, Any]]:
-    """Every referral, newest first (500 at most), with progress and whether it was paid."""
+#: The admin list's length. A row asked for by id is always found, cap or not.
+ADMIN_ROWS_LIMIT = 500
 
-    refs = list(db.scalars(select(RiderReferral).order_by(RiderReferral.created_at.desc()).limit(500)))
+
+def admin_rows(
+    db: Session, wanted: ReferralStatus | None = None, *, only: uuid.UUID | None = None
+) -> list[dict[str, Any]]:
+    """Every referral, newest first (capped), with progress and whether it was paid."""
+
+    query = select(RiderReferral).order_by(RiderReferral.created_at.desc())
+    if only is not None:
+        query = query.where(RiderReferral.referred_user_id == only)
+    else:
+        query = query.limit(ADMIN_ROWS_LIMIT)
+    refs = list(db.scalars(query))
     names = _names(db, {r.referred_user_id for r in refs} | {r.referrer_user_id for r in refs})
     paid = set(db.scalars(select(RiderBonus.referral_id).where(RiderBonus.payout_id.is_not(None))))
     rows = []

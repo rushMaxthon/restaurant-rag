@@ -387,6 +387,8 @@ class ReferralProgress(BaseModel):
     required: int
     deadline: datetime | None
     amount: Decimal
+    #: This side's bonus is already in a payout.
+    paid: bool = False
 
 
 class RiderReferralView(BaseModel):

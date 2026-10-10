@@ -243,11 +243,20 @@ def _finish(db: Session, trip: RiderTrip, delivery: OrderDelivery, reason: TripE
     trip.end_reason = reason
     _free_rider(db, trip.rider_user_id)
     if reason == TripEndReason.DELIVERED:
+        from sqlalchemy.exc import SQLAlchemyError
+
         from app.services.fleet import referral
 
         # The referral clock (fleet/referral.py): this may be the Nth delivery.
+        # In a savepoint and never raising: a referral problem must not cost
+        # the rider their Delivered step (the payouts rule, "never cost a
+        # sale"). A missed check is caught up by the next delivery's.
         db.flush()
-        referral.on_delivered(db, trip.rider_user_id)
+        try:
+            with db.begin_nested():
+                referral.on_delivered(db, trip.rider_user_id)
+        except SQLAlchemyError:
+            logger.exception("Referral check failed for rider %s; the delivery stands", trip.rider_user_id)
 
 
 def act(

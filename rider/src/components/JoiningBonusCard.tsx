@@ -11,11 +11,12 @@ import type { ReferralProgress } from '@/types/api';
 import { useTheme } from '@theme/ThemeProvider';
 import { space } from '@theme/tokens';
 import { rupees } from '@utils/format';
-import { daysLeft, progressFraction } from '@utils/referral';
+import { daysLeft, progressFraction, showsJoiningCard } from '@utils/referral';
 
 /**
- * The rider's own joining bonus while they work towards it, and once it is
- * earned. Nothing at all for a rider who joined without a code.
+ * The rider's own joining bonus while they work towards it, and once earned
+ * until it is paid (`showsJoiningCard`). Nothing for a rider who joined
+ * without a code.
  */
 export function JoiningBonusCard() {
   const api = useApi();
@@ -32,8 +33,7 @@ export function JoiningBonusCard() {
     }, [api]),
   );
 
-  if (!mine || (mine.status !== 'IN_PROGRESS' && mine.status !== 'EARNED'))
-    return null;
+  if (!mine || !showsJoiningCard(mine)) return null;
   const earned = mine.status === 'EARNED';
   return (
     <Card tone="alt" style={styles.card}>

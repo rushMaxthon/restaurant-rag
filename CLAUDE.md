@@ -721,7 +721,7 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   (`open_orders` -> []). Rules in `services/fleet/onboarding/`: `rules`
   (pure, mirrored in `rider/src/utils/onboarding.ts`), `phone` (sign-up
   codes, HMAC'd, 10 min, 5 tries; `RIDER_SIGNUP_OTP_MODE=static` for now on
-  the owner's call - `otp_debug_code` everywhere, so anyone can register any
+  the owner's call - `debug_code` everywhere, so anyone can register any
   number until it is `whatsapp` with `WHATSAPP_OTP_TEMPLATE`), `storage`
   (private Supabase bucket over REST, `SUPABASE_URL` +
   `SUPABASE_SERVICE_KEY`, type from magic bytes, 5 MB, signed links 5 min;
@@ -846,6 +846,23 @@ always did. Rider login/shift routes are NOT behind it, so riders can be trained
   four `usePermissions` instances, endless pulse animations. This emulator
   draws ~1 fps even for Android's own System UI (software GPU), so frame
   timing must be measured on a real phone.
+
+- **Rider referral (2026-10-10, the owner's rule).** `fleet/referral.py`:
+  an APPROVED rider's code (`riders.referral_code`, first name + 4 digits);
+  a new rider enters it at sign-up or until approved (`accept_code`; refusal
+  codes `referral_unknown|self|inactive|taken|closed`). Terms are frozen on
+  `rider_referrals` (one row per referred rider). Approval starts the clock
+  (`on_approved`); `trips._finish` calls `on_delivered` for every DELIVERED
+  end - N delivered trips between approval and the deadline write two
+  `rider_bonuses` rows (UNIQUE referral+kind is the money guard; zero amounts
+  write nothing). Expiry is saved on read (`refresh_status`). Bonuses join
+  the next payout (`payouts.py`: unpaid, earnings `bonuses`, `pay_rider`
+  stamps `payout_id`). Admin: Riders -> Referrals (settings in
+  `platform_settings` "rider_referral", cancel until paid). App: Profile ->
+  Refer & earn, joining-bonus card on Home/Earnings, code at sign-up and on
+  the application home. Migration 0091 (RLS on), applied to rr_rider_dev
+  only: Supabase gets it from Render's pre-deploy upgrade. Until then do not
+  run this code against Supabase - every rider query selects referral_code.
 
 ## Payouts (Razorpay Route)
 

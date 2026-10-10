@@ -3,6 +3,7 @@ import {
   normaliseCode,
   progressFraction,
   shareMessage,
+  showsJoiningCard,
 } from './referral';
 
 describe('referral helpers', () => {
@@ -37,5 +38,37 @@ describe('referral helpers', () => {
     ).toBe(
       'referral.shareMessage:{"code":"PRIYA4821","amount":"₹200","n":20,"days":30}',
     );
+  });
+});
+
+describe('showsJoiningCard', () => {
+  const base = {
+    delivered: 3,
+    required: 20,
+    deadline: null,
+    amount: '200.00',
+    name: 'Priya',
+  };
+  it('shows while working towards it, and once earned until it is paid', () => {
+    expect(
+      showsJoiningCard({ ...base, status: 'IN_PROGRESS', paid: false }),
+    ).toBe(true);
+    expect(showsJoiningCard({ ...base, status: 'EARNED', paid: false })).toBe(
+      true,
+    );
+  });
+  it('goes away once paid - "comes with your next payout" would be false', () => {
+    expect(showsJoiningCard({ ...base, status: 'EARNED', paid: true })).toBe(
+      false,
+    );
+  });
+  it('shows nothing for waiting, expired, cancelled or no referral', () => {
+    expect(showsJoiningCard({ ...base, status: 'WAITING', paid: false })).toBe(
+      false,
+    );
+    expect(showsJoiningCard({ ...base, status: 'EXPIRED', paid: false })).toBe(
+      false,
+    );
+    expect(showsJoiningCard(null)).toBe(false);
   });
 });

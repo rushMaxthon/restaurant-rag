@@ -282,8 +282,9 @@ def cancel_referral(
     from app.services.fleet import referral
 
     referral.cancel(db, admin, referred_user_id, body.reason)
-    row = next(r for r in referral.admin_rows(db) if r["referred_user_id"] == referred_user_id)
-    return AdminReferralRow(**row)
+    # This one row by id - the list is capped, and a cancel that worked must
+    # never answer as if it failed.
+    return AdminReferralRow(**referral.admin_rows(db, only=referred_user_id)[0])
 
 
 @router.get("/payouts/unpaid", response_model=list[UnpaidRow])
