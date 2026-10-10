@@ -242,6 +242,12 @@ def _finish(db: Session, trip: RiderTrip, delivery: OrderDelivery, reason: TripE
     trip.ended_at = _now()
     trip.end_reason = reason
     _free_rider(db, trip.rider_user_id)
+    if reason == TripEndReason.DELIVERED:
+        from app.services.fleet import referral
+
+        # The referral clock (fleet/referral.py): this may be the Nth delivery.
+        db.flush()
+        referral.on_delivered(db, trip.rider_user_id)
 
 
 def act(

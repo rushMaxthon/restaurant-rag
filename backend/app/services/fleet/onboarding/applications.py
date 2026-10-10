@@ -475,6 +475,10 @@ def approve(db: Session, admin: User, rider_user_id: uuid.UUID) -> RiderApplicat
     rider.vehicle_number = app.vehicle_number
     rider.city = app.city
     user.full_name = app.full_name or user.full_name
+    from app.services.fleet import referral
+
+    # A referred rider's clock starts now; every approved rider gets a code.
+    referral.on_approved(db, rider_user_id)
     _event(db, app, ApplicationAction.APPROVED, admin)
     db.commit()
     _announce(rider_user_id, ApplicationStatus.APPROVED)

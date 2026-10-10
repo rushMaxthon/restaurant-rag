@@ -15,13 +15,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
-from app.models.enums import RiderStatus
+from app.models.enums import ReferralStatus, RiderStatus
 from app.models.order_delivery import OrderDelivery
 from app.models.rider import Rider, RiderOffer, RiderTrip
 from app.models.user import User
 from app.schemas.rider import (
-    FleetBranch,
+    AdminReferralRow,
+    CancelReferralIn,
     ConfirmDeliveredIn,
+    FleetBranch,
     FleetConfigIn,
     FleetDeliveryView,
     FleetOfferRow,
@@ -32,6 +34,7 @@ from app.schemas.rider import (
     PayoutIn,
     PayoutOut,
     ReassignIn,
+    ReferralSettings,
     RiderCreate,
     RiderPayIn,
     RiderResponse,
@@ -242,6 +245,45 @@ def reassign(order_id: uuid.UUID, body: ReassignIn, admin: Admin, db: Db) -> Fle
 def confirm_delivered(order_id: uuid.UUID, body: ConfirmDeliveredIn, admin: Admin, db: Db) -> FleetDeliveryView:
     trips.admin_confirm_delivered(db, admin, _delivery_for(db, order_id), body.reason)
     return delivery_detail(order_id, admin, db)
+
+
+@router.get("/referrals", response_model=list[AdminReferralRow])
+def referrals(
+    _: Admin, db: Db, status_filter: ReferralStatus | None = Query(default=None, alias="status")
+) -> list[AdminReferralRow]:
+    """Who referred whom (`fleet/referral.py`), newest first, optionally one status."""
+
+    from app.services.fleet import referral
+
+    return [AdminReferralRow(**row) for row in referral.admin_rows(db, status_filter)]
+
+
+@router.get("/settings/referral", response_model=ReferralSettings)
+def get_referral_settings(_: Admin, db: Db) -> ReferralSettings:
+    from app.services.fleet import referral
+
+    return ReferralSettings(**referral.config_value(referral.load_config(db)))
+
+
+@router.put("/settings/referral", response_model=ReferralSettings)
+def put_referral_settings(body: ReferralSettings, admin: Admin, db: Db) -> ReferralSettings:
+    """New terms apply to codes accepted from now on; accepted ones keep theirs."""
+
+    from app.services.fleet import referral
+
+    cfg = referral.save_config(db, admin, body.model_dump(mode="json"))
+    return ReferralSettings(**referral.config_value(cfg))
+
+
+@router.post("/referrals/{referred_user_id}/cancel", response_model=AdminReferralRow)
+def cancel_referral(
+    referred_user_id: uuid.UUID, body: CancelReferralIn, admin: Admin, db: Db
+) -> AdminReferralRow:
+    from app.services.fleet import referral
+
+    referral.cancel(db, admin, referred_user_id, body.reason)
+    row = next(r for r in referral.admin_rows(db) if r["referred_user_id"] == referred_user_id)
+    return AdminReferralRow(**row)
 
 
 @router.get("/payouts/unpaid", response_model=list[UnpaidRow])

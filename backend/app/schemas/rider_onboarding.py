@@ -43,6 +43,8 @@ class SignupRequest(BaseModel):
     code: str = Field(min_length=4, max_length=8)
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=120)
+    #: Optional: the code of the rider who referred them (`fleet/referral.py`).
+    referral_code: str | None = Field(default=None, max_length=24)
 
 
 class ItemView(BaseModel):

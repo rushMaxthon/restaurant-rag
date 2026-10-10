@@ -368,3 +368,63 @@ class PayoutOut(BaseModel):
     trips: int
     reference: str
     paid_at: datetime
+
+
+# --- referral (`services/fleet/referral.py`) -------------------------------------
+
+
+class ReferralTerms(BaseModel):
+    referrer_amount: Decimal
+    joiner_amount: Decimal
+    deliveries_required: int
+    days_allowed: int
+
+
+class ReferralProgress(BaseModel):
+    name: str
+    status: str
+    delivered: int
+    required: int
+    deadline: datetime | None
+    amount: Decimal
+
+
+class RiderReferralView(BaseModel):
+    code: str | None
+    enabled: bool
+    terms: ReferralTerms
+    earned_total: Decimal
+    referrals: list[ReferralProgress]
+    joined_with: ReferralProgress | None
+
+
+class ReferralCodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=24)
+
+
+class ReferralSettings(BaseModel):
+    enabled: bool = True
+    referrer_amount: Decimal = Field(default=Decimal("500"), ge=0, le=10000)
+    joiner_amount: Decimal = Field(default=Decimal("200"), ge=0, le=10000)
+    deliveries_required: int = Field(default=20, ge=1, le=500)
+    days_allowed: int = Field(default=30, ge=1, le=365)
+
+
+class AdminReferralRow(BaseModel):
+    referred_user_id: uuid.UUID
+    referred_name: str
+    referrer_user_id: uuid.UUID
+    referrer_name: str
+    code: str
+    status: str
+    delivered: int
+    required: int
+    deadline: datetime | None
+    referrer_amount: Decimal
+    joiner_amount: Decimal
+    created_at: datetime
+    paid: bool
+
+
+class CancelReferralIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)

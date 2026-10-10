@@ -411,6 +411,104 @@ class ReferralTests(unittest.TestCase):
         with self.fdb.session() as db:
             self.assertTrue(all(b.payout_id for b in db.scalars(select(RiderBonus).where(RiderBonus.rider_user_id == rider.id))))
 
+    # Task 6 ------------------------------------------------------------------
+
+    def test_signup_with_a_bad_code_makes_no_account(self) -> None:
+        from app.models.user import User
+        from app.services.fleet.onboarding import phone as phone_codes
+
+        number = f"+9197{uuid.uuid4().int % 10**8:08d}"
+        with mock.patch.object(phone_codes, "verify_code", return_value=None):
+            r = client_for(self.fdb, None).post("/api/rider/signup", json={
+                "phone_number": number, "code": "123456", "password": "password123",
+                "full_name": "New Rider", "referral_code": "NOPE0000"})
+        self.assertEqual((r.status_code, r.json()["detail"]), (422, "referral_unknown"))
+        with self.fdb.session() as db:
+            self.assertIsNone(db.scalar(select(User).where(User.phone_number == number)))
+
+    def test_signup_with_a_good_code_links_the_riders(self) -> None:
+        from app.models.user import User
+        from app.services.fleet import referral
+        from app.services.fleet.onboarding import phone as phone_codes
+
+        with self.fdb.session() as db:
+            a = self._rider(db, name="Priya")
+            code = referral.ensure_code(db, a.id)
+            db.commit()
+        number = f"+9196{uuid.uuid4().int % 10**8:08d}"
+        with mock.patch.object(phone_codes, "verify_code", return_value=None):
+            r = client_for(self.fdb, None).post("/api/rider/signup", json={
+                "phone_number": number, "code": "123456", "password": "password123",
+                "full_name": "New Rider", "referral_code": code.lower()})
+        self.assertEqual(r.status_code, 201, r.text)
+        with self.fdb.session() as db:
+            user = db.scalar(select(User).where(User.phone_number == number))
+            self.assertEqual(db.get(RiderReferral, user.id).referrer_user_id, a.id)
+
+    def test_rider_views_their_programme(self) -> None:
+        with self.fdb.session() as db:
+            a, b = self._pair(db, deliveries_required=2)
+            self._delivered(db, b.id)
+            db.commit()
+        mine = client_for(self.fdb, a).get("/api/rider/referral").json()
+        self.assertRegex(mine["code"], r"^PRIYA\d{4}$")
+        self.assertEqual(mine["terms"]["deliveries_required"], 2)  # today's terms, for new referrals
+        self.assertEqual([(x["status"], x["delivered"], x["required"]) for x in mine["referrals"]],
+                         [("IN_PROGRESS", 1, 2)])
+        self.assertEqual(mine["referrals"][0]["name"], "New")
+        theirs = client_for(self.fdb, b).get("/api/rider/referral").json()
+        self.assertEqual((theirs["joined_with"]["delivered"], theirs["joined_with"]["required"]), (1, 2))
+
+    def test_a_pending_rider_adds_a_code_later_once(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            a = self._rider(db, name="Priya")
+            code = referral.ensure_code(db, a.id)
+            b = self._rider(db, name="New", onboarding=RiderOnboarding.PENDING)
+            db.commit()
+        client = client_for(self.fdb, b)
+        self.assertEqual(client.post("/api/rider/referral/code", json={"code": code}).status_code, 200)
+        again = client.post("/api/rider/referral/code", json={"code": code})
+        self.assertEqual((again.status_code, again.json()["detail"]), (422, "referral_taken"))
+        self.assertIsNone(client.get("/api/rider/referral").json()["code"])
+
+    def test_admin_confirmed_delivery_counts(self) -> None:
+        """Any DELIVERED end goes through trips._finish, which calls the hook."""
+
+        from app.models.enums import OrderStatus, RiderStatus
+        from app.models.order_delivery import OrderDelivery
+        from app.services.fleet import trips
+
+        with self.fdb.session() as db:
+            _, b = self._pair(db, deliveries_required=1)
+            db.get(Rider, b.id).status = RiderStatus.ON_TRIP
+            order = self.fdb.make_order(db, status=OrderStatus.OUT_FOR_DELIVERY)
+            delivery = self.fdb.make_fleet_delivery(db, order, state="IN_TRANSIT", distance_metres=2000.0)
+            db.add(RiderTrip(order_delivery_id=delivery.id, rider_user_id=b.id, accepted_at=datetime.now(UTC),
+                             picked_up_at=datetime.now(UTC)))
+            db.commit()
+            trips.admin_confirm_delivered(db, self.admin, db.get(OrderDelivery, delivery.id), "code locked")
+        with self.fdb.session() as db:
+            self.assertEqual(db.get(RiderReferral, b.id).status, ReferralStatus.EARNED)
+
+    def test_admin_lists_sets_and_cancels(self) -> None:
+        with self.fdb.session() as db:
+            _, b = self._pair(db)
+            db.commit()
+        admin = client_for(self.fdb, self.admin)
+        rows = admin.get("/api/admin/riders/referrals").json()
+        self.assertIn(str(b.id), [r["referred_user_id"] for r in rows])
+        self.assertEqual(admin.get("/api/admin/riders/settings/referral").json()["deliveries_required"], 20)
+        r = admin.put("/api/admin/riders/settings/referral", json={
+            "enabled": True, "referrer_amount": "600", "joiner_amount": "250",
+            "deliveries_required": 25, "days_allowed": 45})
+        self.assertEqual(Decimal(r.json()["referrer_amount"]), Decimal("600.00"))
+        r = admin.post(f"/api/admin/riders/referrals/{b.id}/cancel", json={"reason": "duplicate person"})
+        self.assertEqual((r.status_code, r.json()["status"]), (200, "CANCELLED"))
+        owner = client_for(self.fdb, self.owner)
+        self.assertEqual(owner.get("/api/admin/riders/referrals").status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

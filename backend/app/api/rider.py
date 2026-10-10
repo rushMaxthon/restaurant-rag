@@ -31,7 +31,9 @@ from app.schemas.rider import (
     OfferView,
     OpenOrderView,
     PayoutOut,
+    ReferralCodeIn,
     RiderMe,
+    RiderReferralView,
     StatusUpdate,
     TripAction,
     TripView,
@@ -264,3 +266,23 @@ def device_token(body: DeviceToken, user: RiderUser, db: Db) -> Response:
         rider.app_version = body.app_version
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/referral", response_model=RiderReferralView)
+def my_referral(user: RiderUser, db: Db) -> RiderReferralView:
+    """The rider's code, today's terms, who they referred, and their own joining bonus."""
+
+    from app.services.fleet import referral
+
+    return RiderReferralView(**referral.rider_view(db, user.id))
+
+
+@router.post("/referral/code", response_model=RiderReferralView)
+def add_referral_code(body: ReferralCodeIn, user: RiderUser, db: Db) -> RiderReferralView:
+    """A code the rider skipped at sign-up, until they are approved."""
+
+    from app.services.fleet import referral
+
+    referral.accept_code(db, user.id, body.code)
+    db.commit()
+    return RiderReferralView(**referral.rider_view(db, user.id))

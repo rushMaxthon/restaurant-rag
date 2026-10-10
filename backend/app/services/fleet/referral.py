@@ -304,3 +304,98 @@ def cancel(db: Session, admin: Any, referred_user_id: uuid.UUID, reason: str) ->
     db.commit()
     logger.info("Referral of %s cancelled by %s: %s", referred_user_id, admin.id, reason)
     return ref
+
+
+# --- views ----------------------------------------------------------------------------
+
+
+def _short_name(full_name: str) -> str:
+    """First name and last initial: enough to recognise a friend, no more."""
+
+    parts = (full_name or "").split()
+    if not parts:
+        return ""
+    return parts[0] if len(parts) == 1 else f"{parts[0]} {parts[-1][0]}."
+
+
+def _progress(db: Session, ref: RiderReferral, name: str, amount: Decimal) -> dict[str, Any]:
+    refresh_status(db, ref)
+    return {
+        "name": name,
+        "status": ref.status.value,
+        "delivered": delivered_count(db, ref),
+        "required": ref.deliveries_required,
+        "deadline": ref.deadline,
+        "amount": amount,
+    }
+
+
+def _names(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not ids:
+        return {}
+    return dict(db.execute(select(User.id, User.full_name).where(User.id.in_(ids))).all())
+
+
+def rider_view(db: Session, rider_user_id: uuid.UUID) -> dict[str, Any]:
+    """Refer & earn for one rider: their code, today's terms, their referrals, their own bonus."""
+
+    cfg = load_config(db)
+    code = ensure_code(db, rider_user_id)
+    mine = list(db.scalars(
+        select(RiderReferral).where(RiderReferral.referrer_user_id == rider_user_id)
+        .order_by(RiderReferral.created_at.desc())
+    ))
+    names = _names(db, {r.referred_user_id for r in mine})
+    referrals = [_progress(db, r, _short_name(names.get(r.referred_user_id, "")), r.referrer_amount) for r in mine]
+    own = db.get(RiderReferral, rider_user_id)
+    joined_with = None
+    if own is not None and own.status != ReferralStatus.CANCELLED:
+        referrer = db.get(User, own.referrer_user_id)
+        joined_with = _progress(db, own, _short_name(referrer.full_name if referrer else ""), own.joiner_amount)
+    earned = db.scalar(
+        select(func.coalesce(func.sum(RiderBonus.amount), 0)).where(RiderBonus.rider_user_id == rider_user_id)
+    )
+    db.commit()  # a code made, or an expiry saved, on this read
+    return {
+        "code": code,
+        "enabled": cfg.enabled,
+        "terms": {
+            "referrer_amount": cfg.referrer_amount,
+            "joiner_amount": cfg.joiner_amount,
+            "deliveries_required": cfg.deliveries_required,
+            "days_allowed": cfg.days_allowed,
+        },
+        "earned_total": Decimal(earned or 0),
+        "referrals": referrals,
+        "joined_with": joined_with,
+    }
+
+
+def admin_rows(db: Session, wanted: ReferralStatus | None = None) -> list[dict[str, Any]]:
+    """Every referral, newest first (500 at most), with progress and whether it was paid."""
+
+    refs = list(db.scalars(select(RiderReferral).order_by(RiderReferral.created_at.desc()).limit(500)))
+    names = _names(db, {r.referred_user_id for r in refs} | {r.referrer_user_id for r in refs})
+    paid = set(db.scalars(select(RiderBonus.referral_id).where(RiderBonus.payout_id.is_not(None))))
+    rows = []
+    for ref in refs:
+        refresh_status(db, ref)
+        if wanted is not None and ref.status != wanted:
+            continue
+        rows.append({
+            "referred_user_id": ref.referred_user_id,
+            "referred_name": names.get(ref.referred_user_id, ""),
+            "referrer_user_id": ref.referrer_user_id,
+            "referrer_name": names.get(ref.referrer_user_id, ""),
+            "code": ref.code,
+            "status": ref.status.value,
+            "delivered": delivered_count(db, ref),
+            "required": ref.deliveries_required,
+            "deadline": ref.deadline,
+            "referrer_amount": ref.referrer_amount,
+            "joiner_amount": ref.joiner_amount,
+            "created_at": ref.created_at,
+            "paid": ref.referred_user_id in paid,
+        })
+    db.commit()
+    return rows

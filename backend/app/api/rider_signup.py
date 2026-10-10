@@ -118,6 +118,16 @@ def signup(
     )
     db.flush()
     applications.start(db, user)
+    if payload.referral_code and payload.referral_code.strip():
+        from app.services.fleet import referral
+
+        # Checked before the commit: a bad code fails the whole sign-up, so
+        # nothing is half-made and the rider fixes the code and tries again.
+        try:
+            referral.accept_code(db, user.id, payload.referral_code)
+        except HTTPException:
+            db.rollback()
+            raise
     db.commit()
     db.refresh(user)
     return _auth_response(db, user)
