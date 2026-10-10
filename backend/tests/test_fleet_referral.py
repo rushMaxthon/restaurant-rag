@@ -106,6 +106,39 @@ class ReferralTests(unittest.TestCase):
                 db.flush()
             db.rollback()
 
+    # Task 2 ------------------------------------------------------------------
+
+    def test_settings_default_and_round_trip(self) -> None:
+        from app.services.fleet import referral
+
+        with self.fdb.session() as db:
+            cfg = referral.load_config(db)
+            self.assertEqual(
+                (cfg.enabled, cfg.referrer_amount, cfg.joiner_amount, cfg.deliveries_required, cfg.days_allowed),
+                (True, Decimal("500"), Decimal("200"), 20, 30),
+            )
+            admin = self.fdb.make_admin(db)
+            referral.save_config(db, admin, {"enabled": True, "referrer_amount": "750", "joiner_amount": "0",
+                                             "deliveries_required": 10, "days_allowed": 14})
+            cfg = referral.load_config(db)
+            self.assertEqual((cfg.referrer_amount, cfg.joiner_amount, cfg.deliveries_required, cfg.days_allowed),
+                             (Decimal("750"), Decimal("0"), 10, 14))
+
+    def test_settings_refuse_nonsense(self) -> None:
+        from fastapi import HTTPException
+
+        from app.services.fleet import referral
+
+        good = {"enabled": True, "referrer_amount": "500", "joiner_amount": "200",
+                "deliveries_required": 20, "days_allowed": 30}
+        with self.fdb.session() as db:
+            admin = self.fdb.make_admin(db)
+            for bad in ({"referrer_amount": "-1"}, {"joiner_amount": "abc"}, {"referrer_amount": "10001"},
+                        {"deliveries_required": 0}, {"deliveries_required": 501}, {"days_allowed": 0},
+                        {"days_allowed": 366}):
+                with self.subTest(bad=bad), self.assertRaises(HTTPException):
+                    referral.save_config(db, admin, {**good, **bad})
+
 
 if __name__ == "__main__":
     unittest.main()
