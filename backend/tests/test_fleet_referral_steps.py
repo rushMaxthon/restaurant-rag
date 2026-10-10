@@ -229,6 +229,76 @@ class ReferralStepsTests(unittest.TestCase):
             db.commit()
             self.assertEqual(self._events(), [])
 
+    # Task 3: view, leaderboard, settings API --------------------------------------
+
+    def test_view_has_totals_and_step_progress(self) -> None:
+        with self.fdb.session() as db:
+            a, b = self._pair(db)
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+        mine = client_for(self.fdb, a).get("/api/rider/referral").json()
+        self.assertEqual((Decimal(mine["earned_total"]), Decimal(mine["pending_total"]), Decimal(mine["paid_total"])),
+                         (Decimal("100"), Decimal("100"), Decimal("0")))
+        self.assertEqual([s["deliveries"] for s in mine["terms"]["steps"]], [1, 3])
+        row = mine["referrals"][0]
+        self.assertEqual([(s["deliveries"], Decimal(s["amount"]), s["earned"], s["paid"]) for s in row["steps"]],
+                         [(1, Decimal("100"), True, False), (3, Decimal("400"), False, False)])
+        self.assertEqual((Decimal(row["earned_amount"]), Decimal(row["paid_amount"])), (Decimal("100"), Decimal("0")))
+        theirs = client_for(self.fdb, b).get("/api/rider/referral").json()["joined_with"]
+        self.assertEqual([Decimal(s["amount"]) for s in theirs["steps"]], [Decimal("50"), Decimal("150")])
+
+    def _bonus(self, db, referrer_id, *, kind=RiderBonusKind.REFERRAL_REFERRER, step=0, at=None):
+        friend = self._rider(db, name="Friend Rider")
+        db.add(RiderReferral(referred_user_id=friend.id, referrer_user_id=referrer_id, code="X",
+                             referrer_amount=Decimal("1"), joiner_amount=Decimal("1"),
+                             deliveries_required=1, days_allowed=1, status=ReferralStatus.EARNED))
+        db.flush()
+        db.add(RiderBonus(rider_user_id=referrer_id, kind=kind, amount=Decimal("1"), referral_id=friend.id,
+                          step=step, earned_at=at or datetime.now(UTC)))
+        db.flush()
+
+    def test_leaderboard_this_month_first_steps_only(self) -> None:
+        from app.models.rider_referral import RiderBonus as _B, RiderReferral as _R
+
+        with self.fdb.session() as db:
+            db.query(_B).delete()
+            db.query(_R).delete()
+            x = self._rider(db, name="Xena Top")
+            y = self._rider(db, name="Yash Second")
+            z = self._rider(db, name="Zoya Joiner")
+            self._bonus(db, x.id)
+            self._bonus(db, x.id)
+            self._bonus(db, y.id)
+            self._bonus(db, y.id, at=datetime.now(UTC) - timedelta(days=40))  # last month
+            self._bonus(db, y.id, step=1)  # not a first step
+            self._bonus(db, z.id, kind=RiderBonusKind.REFERRAL_JOINER)  # a joiner's own bonus
+            db.commit()
+        board = client_for(self.fdb, y).get("/api/rider/referral").json()["leaderboard"]
+        self.assertEqual([(r["rank"], r["name"], r["count"], r["me"]) for r in board["top"]],
+                         [(1, "Xena T.", 2, False), (2, "Yash S.", 1, True)])
+        self.assertEqual((board["my_rank"], board["my_count"]), (2, 1))
+
+    def test_leaderboard_off(self) -> None:
+        with self.fdb.session() as db:
+            a, _ = self._pair(db, {**TWO_STEPS, "leaderboard_enabled": False})
+        self.assertIsNone(client_for(self.fdb, a).get("/api/rider/referral").json()["leaderboard"])
+
+    def test_admin_settings_and_rows_speak_steps(self) -> None:
+        admin = client_for(self.fdb, self.admin)
+        r = admin.put("/api/admin/riders/settings/referral", json={**TWO_STEPS, "enabled": True,
+                                                                  "leaderboard_enabled": False})
+        self.assertEqual(r.status_code, 200, r.text)
+        body = admin.get("/api/admin/riders/settings/referral").json()
+        self.assertEqual(([s["deliveries"] for s in body["steps"]], body["leaderboard_enabled"]), ([1, 3], False))
+        with self.fdb.session() as db:
+            _, b = self._pair(db)
+            self._delivered(db, b.id)
+            referral.on_delivered(db, b.id)
+            db.commit()
+        rows = {r["referred_user_id"]: r for r in client_for(self.fdb, self.admin).get("/api/admin/riders/referrals").json()}
+        self.assertEqual((rows[str(b.id)]["steps_total"], rows[str(b.id)]["steps_earned"]), (2, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -373,11 +373,39 @@ class PayoutOut(BaseModel):
 # --- referral (`services/fleet/referral.py`) -------------------------------------
 
 
+class ReferralStepIn(BaseModel):
+    deliveries: int = Field(ge=1, le=500)
+    referrer_amount: Decimal = Field(ge=0, le=10000)
+    joiner_amount: Decimal = Field(ge=0, le=10000)
+
+
 class ReferralTerms(BaseModel):
     referrer_amount: Decimal
     joiner_amount: Decimal
     deliveries_required: int
     days_allowed: int
+    steps: list[ReferralStepIn] = []
+
+
+class ReferralStepProgress(BaseModel):
+    deliveries: int
+    amount: Decimal
+    earned: bool
+    paid: bool
+
+
+class LeaderRow(BaseModel):
+    rank: int
+    name: str
+    count: int
+    me: bool
+
+
+class Leaderboard(BaseModel):
+    month: str
+    top: list[LeaderRow]
+    my_rank: int | None
+    my_count: int
 
 
 class ReferralProgress(BaseModel):
@@ -387,8 +415,11 @@ class ReferralProgress(BaseModel):
     required: int
     deadline: datetime | None
     amount: Decimal
-    #: This side's bonus is already in a payout.
+    #: Every earned step of this side is in a payout and nothing is left to earn.
     paid: bool = False
+    steps: list[ReferralStepProgress] = []
+    earned_amount: Decimal = Decimal("0")
+    paid_amount: Decimal = Decimal("0")
 
 
 class RiderReferralView(BaseModel):
@@ -396,8 +427,11 @@ class RiderReferralView(BaseModel):
     enabled: bool
     terms: ReferralTerms
     earned_total: Decimal
+    pending_total: Decimal = Decimal("0")
+    paid_total: Decimal = Decimal("0")
     referrals: list[ReferralProgress]
     joined_with: ReferralProgress | None
+    leaderboard: Leaderboard | None = None
 
 
 class ReferralCodeIn(BaseModel):
@@ -405,11 +439,16 @@ class ReferralCodeIn(BaseModel):
 
 
 class ReferralSettings(BaseModel):
+    """v2: `steps`. The v1 single-step fields are still accepted (and sent
+    back as totals), so an older client or a v1 saved row keeps working."""
+
     enabled: bool = True
-    referrer_amount: Decimal = Field(default=Decimal("500"), ge=0, le=10000)
-    joiner_amount: Decimal = Field(default=Decimal("200"), ge=0, le=10000)
-    deliveries_required: int = Field(default=20, ge=1, le=500)
+    leaderboard_enabled: bool = True
     days_allowed: int = Field(default=30, ge=1, le=365)
+    steps: list[ReferralStepIn] | None = Field(default=None, min_length=1, max_length=5)
+    referrer_amount: Decimal | None = Field(default=None, ge=0, le=10000)
+    joiner_amount: Decimal | None = Field(default=None, ge=0, le=10000)
+    deliveries_required: int | None = Field(default=None, ge=1, le=500)
 
 
 class AdminReferralRow(BaseModel):
@@ -426,6 +465,8 @@ class AdminReferralRow(BaseModel):
     joiner_amount: Decimal
     created_at: datetime
     paid: bool
+    steps_total: int = 1
+    steps_earned: int = 0
 
 
 class CancelReferralIn(BaseModel):

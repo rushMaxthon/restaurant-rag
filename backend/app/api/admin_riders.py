@@ -271,7 +271,7 @@ def put_referral_settings(body: ReferralSettings, admin: Admin, db: Db) -> Refer
 
     from app.services.fleet import referral
 
-    cfg = referral.save_config(db, admin, body.model_dump(mode="json"))
+    cfg = referral.save_config(db, admin, body.model_dump(mode="json", exclude_none=True))
     return ReferralSettings(**referral.config_value(cfg))
 
 

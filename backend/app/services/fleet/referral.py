@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -464,16 +465,30 @@ def _short_name(full_name: str) -> str:
 def _progress(
     db: Session, ref: RiderReferral, name: str, amount: Decimal, kind: RiderBonusKind
 ) -> dict[str, Any]:
+    """One referral seen from one side: its steps with this side's amounts,
+    which are earned and which paid. `paid` = every earned step paid and
+    nothing left to earn - the joining-bonus card goes away on it."""
+
     refresh_status(db, ref)
-    # Paid = this side's bonus is in a payout: "it comes with your next
-    # payout" is then no longer true, and the app stops saying it.
-    paid = db.scalar(
-        select(RiderBonus.id).where(
-            RiderBonus.referral_id == ref.referred_user_id,
-            RiderBonus.kind == kind,
-            RiderBonus.payout_id.is_not(None),
+    rows = {
+        b.step: b
+        for b in db.scalars(
+            select(RiderBonus).where(RiderBonus.referral_id == ref.referred_user_id, RiderBonus.kind == kind)
         )
-    )
+    }
+    steps = []
+    for index, step in enumerate(steps_of(ref)):
+        side = step.referrer_amount if kind == RiderBonusKind.REFERRAL_REFERRER else step.joiner_amount
+        row = rows.get(index)
+        steps.append({
+            "deliveries": step.deliveries,
+            "amount": side,
+            "earned": row is not None,
+            "paid": row is not None and row.payout_id is not None,
+        })
+    earned = sum((Decimal(r.amount) for r in rows.values()), Decimal("0.00"))
+    paid_amount = sum((Decimal(r.amount) for r in rows.values() if r.payout_id is not None), Decimal("0.00"))
+    finished = ref.status in (ReferralStatus.EARNED, ReferralStatus.EXPIRED, ReferralStatus.CANCELLED)
     return {
         "name": name,
         "status": ref.status.value,
@@ -481,8 +496,47 @@ def _progress(
         "required": ref.deliveries_required,
         "deadline": ref.deadline,
         "amount": amount,
-        "paid": paid is not None,
+        "steps": steps,
+        "earned_amount": earned,
+        "paid_amount": paid_amount,
+        "paid": finished and earned > 0 and paid_amount == earned,
     }
+
+
+#: The leaderboard's calendar: the riders work in India.
+_IST = ZoneInfo("Asia/Kolkata")
+
+
+def leaderboard(db: Session, rider_user_id: uuid.UUID, *, now: datetime | None = None) -> dict[str, Any]:
+    """This month's top referrers: friends who reached their FIRST step this
+    month (a referrer's step-0 bonus), ties to whoever got there first."""
+
+    now = now or _now()
+    local = now.astimezone(_IST)
+    start = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+    counts = (
+        select(
+            RiderBonus.rider_user_id.label("rider"),
+            func.count(RiderBonus.id).label("n"),
+            func.min(RiderBonus.earned_at).label("first"),
+        )
+        .where(
+            RiderBonus.kind == RiderBonusKind.REFERRAL_REFERRER,
+            RiderBonus.step == 0,
+            RiderBonus.earned_at >= start,
+            RiderBonus.earned_at <= now,
+        )
+        .group_by(RiderBonus.rider_user_id)
+        .subquery()
+    )
+    ranked = list(db.execute(select(counts.c.rider, counts.c.n).order_by(counts.c.n.desc(), counts.c.first)).all())
+    names = _names(db, {r for r, _ in ranked[:10]} | {rider_user_id})
+    top = [
+        {"rank": i + 1, "name": _short_name(names.get(r, "")), "count": int(n), "me": r == rider_user_id}
+        for i, (r, n) in enumerate(ranked[:10])
+    ]
+    mine = next(((i + 1, int(n)) for i, (r, n) in enumerate(ranked) if r == rider_user_id), (None, 0))
+    return {"month": local.strftime("%Y-%m"), "top": top, "my_rank": mine[0], "my_count": mine[1]}
 
 
 def _names(db: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -512,9 +566,17 @@ def rider_view(db: Session, rider_user_id: uuid.UUID) -> dict[str, Any]:
         referrer = db.get(User, own.referrer_user_id)
         joined_with = _progress(db, own, _short_name(referrer.full_name if referrer else ""), own.joiner_amount,
                                 RiderBonusKind.REFERRAL_JOINER)
-    earned = db.scalar(
-        select(func.coalesce(func.sum(RiderBonus.amount), 0)).where(RiderBonus.rider_user_id == rider_user_id)
-    )
+    def total(*extra: Any) -> Decimal:
+        value = db.scalar(
+            select(func.coalesce(func.sum(RiderBonus.amount), 0)).where(
+                RiderBonus.rider_user_id == rider_user_id, *extra
+            )
+        )
+        return Decimal(value or 0)
+
+    earned = total()
+    pending = total(RiderBonus.payout_id.is_(None))
+    board = leaderboard(db, rider_user_id) if cfg.leaderboard_enabled else None
     db.commit()  # a code made, or an expiry saved, on this read
     return {
         "code": code,
@@ -524,10 +586,14 @@ def rider_view(db: Session, rider_user_id: uuid.UUID) -> dict[str, Any]:
             "joiner_amount": cfg.joiner_amount,
             "deliveries_required": cfg.deliveries_required,
             "days_allowed": cfg.days_allowed,
+            "steps": steps_value(cfg.steps),
         },
-        "earned_total": Decimal(earned or 0),
+        "earned_total": earned,
+        "pending_total": pending,
+        "paid_total": earned - pending,
         "referrals": referrals,
         "joined_with": joined_with,
+        "leaderboard": board,
     }
 
 
@@ -567,6 +633,10 @@ def admin_rows(
             "joiner_amount": ref.joiner_amount,
             "created_at": ref.created_at,
             "paid": ref.referred_user_id in paid,
+            "steps_total": len(steps_of(ref)),
+            "steps_earned": len(set(db.scalars(
+                select(RiderBonus.step).where(RiderBonus.referral_id == ref.referred_user_id)
+            ))),
         })
     db.commit()
     return rows
